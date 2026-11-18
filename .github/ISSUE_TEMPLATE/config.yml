@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Fragen und Austausch
+    url: https://github.com/encircle360-oss/steuerbote/discussions
+    about: Für Fragen zur Nutzung und zur fachlichen Einordnung.
+  - name: Sicherheitslücke melden
+    url: https://github.com/encircle360-oss/steuerbote/blob/main/SECURITY.md
+    about: Bitte nicht als öffentliches Issue, sondern wie in SECURITY.md beschrieben.

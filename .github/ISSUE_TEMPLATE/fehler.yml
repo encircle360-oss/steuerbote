@@ -1,0 +1,32 @@
+name: Fehler melden
+description: Etwas rechnet, validiert oder übermittelt falsch.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bitte keine echten Steuernummern, Zertifikate, PINs, Zugangsdaten oder Belegdaten einfügen. Beträge und Konten dürfen gerne erfunden sein, solange der Fehler damit nachvollziehbar bleibt.
+  - type: textarea
+    id: beobachtet
+    attributes:
+      label: Was passiert?
+      description: Beobachtetes Verhalten, Fehlermeldung oder falscher Wert.
+    validations:
+      required: true
+  - type: textarea
+    id: erwartet
+    attributes:
+      label: Was sollte passieren?
+      description: Erwartetes Verhalten, möglichst mit Quelle (Gesetz, Anleitung zum Vordruck, ELSTER-Dokumentation).
+    validations:
+      required: true
+  - type: textarea
+    id: schritte
+    attributes:
+      label: Schritte zum Nachstellen
+      description: Beispielbuchungen oder Einstellungen, mit denen der Fehler auftritt.
+  - type: input
+    id: versionen
+    attributes:
+      label: Versionen
+      description: Steuerbote, ERPNext, Frappe, Kontenrahmen.

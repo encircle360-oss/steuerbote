@@ -1,0 +1,27 @@
+name: Funktion vorschlagen
+description: Eine Meldung, ein Kontenrahmen oder eine Funktion fehlt.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Welches Problem soll gelöst werden?
+    validations:
+      required: true
+  - type: textarea
+    id: vorschlag
+    attributes:
+      label: Vorschlag
+      description: Wie könnte die Lösung aussehen? Welche Quelle beschreibt die fachliche Anforderung?
+  - type: dropdown
+    id: bereich
+    attributes:
+      label: Bereich
+      options:
+        - Umsatzsteuer-Voranmeldung
+        - Dauerfristverlängerung / Sondervorauszahlung
+        - Zusammenfassende Meldung
+        - Jahresabschluss (E-Bilanz, Steuererklärungen)
+        - Kontenrahmen / Zuordnung
+        - ERiC / Übermittlung
+        - Sonstiges
