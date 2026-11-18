@@ -22,6 +22,7 @@ steuerbote/                    Repository
 │   │   ├── charset.py         Zeichensatz von ELSTER und Ersatz typografischer Zeichen
 │   │   ├── envelope.py        Umschlag Elster mit TransferHeader, für die Tests und ERiC
 │   │   └── tests/             Unit-Tests und Tests gegen die Schemas der ERiC-Dokumentation
+│   ├── eric/                  ERiC: Einrichtung, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
 │   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns, reines Python
 │   ├── steuerbote/            Frappe-Modul „Steuerbote“, siehe Architektur
