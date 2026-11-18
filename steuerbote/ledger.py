@@ -59,7 +59,7 @@ def _ledger_rows(company: str, from_date: date | str, to_date: date | str) -> li
 		.where(gl_entry.is_cancelled == 0)
 		.where(gl_entry.is_opening == "No")
 		.where(gl_entry.voucher_type != "Period Closing Voucher")
-		.where(Coalesce(journal_entry.field(EXCLUDE_FIELD), 0) == 0)
+		.where(Coalesce(journal_entry[EXCLUDE_FIELD], 0) == 0)
 		.where(Coalesce(account.account_number, "") != "")
 		.groupby(account.account_number, gl_entry.voucher_type, gl_entry.voucher_no)
 		.orderby(Min(gl_entry.posting_date))
