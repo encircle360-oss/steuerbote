@@ -2,23 +2,23 @@
 
 Steuermeldungen aus ERPNext an ELSTER. Zuerst die Umsatzsteuer-Voranmeldung, danach Dauerfristverlängerung, Zusammenfassende Meldung und die Jahresmeldungen (E-Bilanz, Umsatzsteuer-, Körperschaftsteuer- und Gewerbesteuererklärung).
 
-> **Status: in Entwicklung, noch nicht einsatzfähig.** Der Rechenkern der Umsatzsteuer-Voranmeldung steht und ist vollständig getestet. Einstellungen, Oberfläche und die Übermittlung über ERiC folgen, siehe [Roadmap](docs/roadmap.md).
+> **Status: in Entwicklung, noch nicht einsatzfähig.** Rechenkern, Einstellungen, Kontenzuordnung, Meldung, Bericht, Druckformat und die XML-Datei für Mein ELSTER sind da, ebenso die Anbindung an ERiC. Ohne eigene Hersteller-ID läuft die Übermittlung nur als Simulation; die echte Übermittlung folgt mit der Hersteller-ID, siehe [Roadmap](docs/roadmap.md).
 
 ## Was Steuerbote macht
 
 - **Kennzahlen aus dem Hauptbuch.** Die Umsatzsteuer-Voranmeldung wird aus den Buchungen (GL Entry) berechnet, nicht aus Rechnungen. Damit zählen auch Journalbuchungen und importierte Buchungsstapel, etwa aus Trading- oder Abrechnungssystemen.
 - **Verprobung je Beleg.** Für jede Bemessungsgrundlage wird die rechnerische Steuer mit der gebuchten Steuer verglichen, Beleg für Beleg. Abweichende Belege halten die Meldung an, ebenso Salden auf beobachteten Konten: Konten, die zur Umsatzsteuer gehören, aber in den Vorgaben noch keine Kennzahl haben.
 - **Rundung wie im Vordruck.** Bemessungsgrundlagen in vollen Euro (Cent werden abgeschnitten), Steuerbeträge mit Cent, so wie es die Anleitung zum Vordruck USt 1 A verlangt.
-- **Kontenrahmen frei wählbar.** Vorgaben für SKR03 und SKR04 (Ausgabe 2026) liegen bei. Jedes Konto, das DATEV für die Umsatzsteuer kennzeichnet, ist darin zugeordnet, verprobt, beobachtet oder mit Grund bewusst ohne Kennzahl, einschließlich der Kontenbereiche und der Kontonummern aus den SKR-Vorlagen von ERPNext. Die Zuordnung Konto → Kennzahl arbeitet nur mit Kontonummern, deshalb laufen auch andere Kontenrahmen darüber. Eigene Anpassungen je Firma folgen mit den Einstellungen (geplant).
-- **Je Firma und Zeitraum** (geplant). Mehrere Firmen in einer ERPNext-Site mit eigenem Kontenrahmen, eigenem Voranmeldungszeitraum (Monat oder Quartal) und eigenem Zertifikat. Der Rechenkern kennt Zeiträume und Fristen schon heute. Die Kennzahlen gelten je Jahrgang des Vordrucks; vorhanden ist der Jahrgang 2026, weitere Jahrgänge kommen als eigene Kataloge dazu, damit Vorjahre meldbar bleiben.
-- **Übermittlung über ERiC** (geplant). Validierung gegen die ELSTER-Prüfregeln vor der Abgabe, Übermittlung mit Organisationszertifikat, Übermittlungsprotokoll als PDF am Beleg.
-- **Abgabe ohne Hersteller-ID** (geplant). Ausdruck zum Abtippen oder XML-Datei für den Import in Mein ELSTER.
+- **Kontenrahmen frei wählbar.** Vorgaben für SKR03 und SKR04 (Ausgabe 2026) liegen bei. Jedes Konto, das DATEV für die Umsatzsteuer kennzeichnet, ist darin zugeordnet, verprobt, beobachtet oder mit Grund bewusst ohne Kennzahl, einschließlich der Kontenbereiche und der Kontonummern aus den SKR-Vorlagen von ERPNext. Die Zuordnung Konto → Kennzahl arbeitet nur mit Kontonummern, deshalb laufen auch andere Kontenrahmen darüber. Jede Firma hat ihre eigene Kontenzuordnung, vorbelegt aus den Vorgaben.
+- **Je Firma und Zeitraum.** Mehrere Firmen in einer ERPNext-Site mit eigenem Kontenrahmen, eigenem Voranmeldungszeitraum (Monat oder Quartal) und eigenem Zertifikat, das bei jeder Übermittlung eingegeben und nie gespeichert wird. Die Kennzahlen gelten je Jahrgang des Vordrucks; vorhanden ist der Jahrgang 2026, weitere Jahrgänge kommen als eigene Kataloge dazu, damit Vorjahre meldbar bleiben.
+- **Übermittlung über ERiC** (Simulation; echte Übermittlung mit Hersteller-ID). Prüfen gegen die ELSTER-Prüfregeln vor der Abgabe, Testsenden und Senden mit Organisationszertifikat, Übermittlungsprotokoll als PDF an der ELSTER-Übermittlung des Belegs, siehe [Übermittlung an ELSTER](docs/uebermittlung.md).
+- **Abgabe ohne Hersteller-ID.** Die Voranmeldung als XML-Datei für den Import in Mein ELSTER, mit nachgerechneter Kz 83 und dem Zeichensatz von ELSTER; geprüft und abgesendet wird sie in Mein ELSTER, siehe [Abgabe über Mein ELSTER](docs/abgabe-mein-elster.md).
 
 ## Voraussetzungen
 
 - Frappe und ERPNext ab Version 16. Unterstützt wird nur die jeweils aktuelle Hauptversion.
 - Python 3.14.
-- Für die Übermittlung: ERiC (ELSTER Rich Client) der Finanzverwaltung auf Linux x86_64 und ein ELSTER-Organisationszertifikat. ERiC darf nicht weiterverbreitet werden und wird bei der Einrichtung aus dem ELSTER-Entwicklerbereich geladen.
+- Für die Übermittlung: ERiC (ELSTER Rich Client) der Finanzverwaltung auf Linux x86_64 und ein ELSTER-Organisationszertifikat. ERiC darf ein Softwarehersteller nur als Teil seines eigenen Produkts weitergeben, nicht weiterlizenzieren; Steuerbote liefert es deshalb nicht mit, jeder Betreiber lädt es selbst aus dem ELSTER-Entwicklerbereich und richtet es ein, siehe [ERiC](docs/eric.md).
 
 ## Installation
 
@@ -32,7 +32,9 @@ bench --site <site> install-app steuerbote
 
 - [Roadmap](docs/roadmap.md): Arbeitspakete und Reihenfolge
 - [Umsatzsteuer-Voranmeldung: Kennzahlen und Kontenzuordnung](docs/ustva-kennzahlen.md)
+- [Abgabe über Mein ELSTER](docs/abgabe-mein-elster.md): XML-Datei erzeugen und in Mein ELSTER importieren
 - [Architektur](docs/architektur.md): Rechenkern und Frappe-Schicht, DocTypes, Bericht, Arbeitsbereich und Druckformat
+- [Übermittlung an ELSTER](docs/uebermittlung.md): Prüfen, Testsenden, Senden, Simulationsmodus, ERiC-Einstellungen und Übermittlungsprotokoll
 - [Entwicklung](docs/entwicklung.md): Einrichtung, Tests, Stil
 - [Mitwirken](CONTRIBUTING.md), [Hinweise für Coding-Agenten](AGENTS.md), [Sicherheit](SECURITY.md)
 

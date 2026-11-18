@@ -17,6 +17,15 @@
   "column_break_tax_number",
   "elster_tax_number",
   "tax_office",
+  "wid_nr",
+  "datenlieferant_section",
+  "filer_name",
+  "street",
+  "postal_code",
+  "city",
+  "column_break_datenlieferant",
+  "phone",
+  "email",
   "period_rules_section",
   "period_rules",
   "prepayments_section",
@@ -101,6 +110,62 @@
    "label": "Tax Office"
   },
   {
+   "description": "DE and nine digits, without the five-digit suffix, if the company has one.",
+   "fieldname": "wid_nr",
+   "fieldtype": "Data",
+   "label": "Wirtschafts-Identifikationsnummer",
+   "length": 11
+  },
+  {
+   "description": "Who files: the name, address and contact the files for ELSTER carry as Datenlieferant.",
+   "fieldname": "datenlieferant_section",
+   "fieldtype": "Section Break",
+   "label": "Datenlieferant"
+  },
+  {
+   "description": "At most 45 characters. Empty: the name of the company.",
+   "fieldname": "filer_name",
+   "fieldtype": "Data",
+   "label": "Name",
+   "length": 45
+  },
+  {
+   "description": "With the house number, at most 30 characters.",
+   "fieldname": "street",
+   "fieldtype": "Data",
+   "label": "Street and House Number",
+   "length": 30
+  },
+  {
+   "fieldname": "postal_code",
+   "fieldtype": "Data",
+   "label": "Postal Code",
+   "length": 12
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "Town",
+   "length": 30
+  },
+  {
+   "fieldname": "column_break_datenlieferant",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone",
+   "length": 20
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "length": 70,
+   "options": "Email"
+  },
+  {
    "fieldname": "period_rules_section",
    "fieldtype": "Section Break"
   },
@@ -126,7 +191,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-18 02:00:00.000000",
+ "modified": "2026-11-18 04:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",

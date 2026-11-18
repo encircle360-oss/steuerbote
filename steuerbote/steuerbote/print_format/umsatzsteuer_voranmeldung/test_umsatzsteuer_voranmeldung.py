@@ -132,9 +132,14 @@ class TestUmsatzsteuerVoranmeldung(IntegrationTestCase):
 		self.assertNotIn("{{", text)
 
 	def test_prints_the_flags_of_the_return(self):
-		text = cells(
-			self.printed(self.calculated_return(4, attachments=1, no_sepa_mandate=1, supplementary_code="2"))
+		doc = self.calculated_return(
+			4,
+			attachments=1,
+			no_sepa_mandate=1,
+			supplementary_code="2",
+			kz500_begruendung="Umsatzsteuer auf Gutscheine, siehe Schreiben vom 10. April",
 		)
+		text = cells(self.printed(doc))
 		for expected in (
 			"10 | Berichtigte Anmeldung | 10 | |",
 			"11 | Belege (z. B. Verträge, Rechnungen) sind beigefügt bzw. werden gesondert eingereicht | 22 | 1 = Ja |",
@@ -142,6 +147,7 @@ class TestUmsatzsteuerVoranmeldung(IntegrationTestCase):
 			"| 26 | 1 = Ja |",
 			"| 500 | 2 |",
 			"wird bewusst eine von der Verwaltungsauffassung abweichende Rechtsauffassung vertreten",
+			"Begründung: Umsatzsteuer auf Gutscheine, siehe Schreiben vom 10. April |",
 		):
 			self.assertIn(expected, text)
 

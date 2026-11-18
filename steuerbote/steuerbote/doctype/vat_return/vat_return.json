@@ -19,6 +19,7 @@
   "to_date",
   "deadline",
   "status",
+  "transmission_in_progress",
   "amended_from",
   "kennzahlen_section",
   "kennzahlen",
@@ -41,6 +42,7 @@
   "no_sepa_mandate",
   "column_break_further",
   "supplementary_code",
+  "kz500_begruendung",
   "remarks"
  ],
  "fields": [
@@ -140,6 +142,16 @@
    "label": "Status",
    "no_copy": 1,
    "options": "Entwurf\nBerechnet\nBereit\nAbgegeben\nErsetzt",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Set while Prüfen, Testsenden or Senden runs; the return cannot change until it ends.",
+   "fieldname": "transmission_in_progress",
+   "fieldtype": "Check",
+   "label": "Transmission Running",
+   "no_copy": 1,
+   "print_hide": 1,
    "read_only": 1
   },
   {
@@ -283,6 +295,13 @@
    "options": "\n1\n2\n3\n4"
   },
   {
+   "description": "Required with Kz 500: at most 180 characters on one line.",
+   "fieldname": "kz500_begruendung",
+   "fieldtype": "Small Text",
+   "label": "Explanation for Kz 500",
+   "mandatory_depends_on": "eval:doc.supplementary_code"
+  },
+  {
    "description": "Required to file a return that is not ready: why it is correct nonetheless.",
    "fieldname": "remarks",
    "fieldtype": "Small Text",
@@ -290,8 +309,13 @@
   }
  ],
  "is_submittable": 1,
- "links": [],
- "modified": "2026-11-18 03:00:00.000000",
+ "links": [
+  {
+   "link_doctype": "ELSTER Transmission",
+   "link_fieldname": "vat_return"
+  }
+ ],
+ "modified": "2026-11-18 06:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return",

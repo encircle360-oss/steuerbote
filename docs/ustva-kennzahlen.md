@@ -963,7 +963,7 @@ Wer einen dieser Fälle hat, klärt Konto und Kennzahl mit der Steuerberatung un
 - **Zeitraum:** Eine Firma gibt monatlich oder vierteljährlich ab (§ 18 Absatz 2 UStG). Der Vordruck bietet die zwölf Monate und die vier Kalendervierteljahre, und so heißen die Zeiträume auch in Steuerbote, etwa „März 2026“ oder „III. Kalendervierteljahr 2026“.
 - **Frist:** Die Anleitung sagt zu den Zeilen 53 und 54: „Die Vorauszahlung ist am 10. Tag nach Ablauf des Voranmeldungszeitraums fällig“. Mit Dauerfristverlängerung (§§ 46 bis 48 UStDV) verschiebt sich die Frist um einen Monat.
 - **Wochenende und Feiertage:** Fällt die Frist auf einen Samstag, Sonntag oder Feiertag, gilt der nächste Werktag (§ 108 Absatz 3 AO). Feiertage unterscheiden sich je Bundesland, deshalb übergibt sie der Aufrufer.
-- **Zeitraumcode:** `Period.code` liefert den zweistelligen Code der ELSTER-Schnittstelle für die Umsatzsteuer-Voranmeldung: 01 bis 12 für die Monate, 41 bis 44 für die Quartale. Offen: Die Codes werden gegen das ERiC-Schema geprüft, sobald das XML entsteht (Paket 7 der Roadmap).
+- **Zeitraumcode:** `Period.code` liefert den zweistelligen Code der ELSTER-Schnittstelle für die Umsatzsteuer-Voranmeldung: 01 bis 12 für die Monate, 41 bis 44 für die Quartale. Die Tests des XML prüfen jeden Code gegen das Schema des Jahres aus der ERiC-Dokumentation, siehe [Abgabe über Mein ELSTER](abgabe-mein-elster.md).
 
 Beispiele aus den Tests: Januar 2026 ist am 10. Februar 2026 fällig, mit Dauerfristverlängerung am 10. März 2026. Das I. Kalendervierteljahr 2026 ist am 10. April 2026 fällig. Für September 2026 gilt der 12. Oktober 2026, weil der 10. Oktober ein Samstag ist. Dezember 2026 ist am 11. Januar 2027 fällig, weil der 10. Januar ein Sonntag ist.
 

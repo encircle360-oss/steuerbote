@@ -16,7 +16,13 @@ steuerbote/                    Repository
 │   │   ├── calculation.py     calculate(): Buchungszeilen zu Kennzahlen, Summen, Kz 83 und Verprobung
 │   │   ├── period.py          Voranmeldungszeiträume, Fristen und ELSTER-Zeitraumcodes
 │   │   └── tests/             Unit-Tests des Kerns
-│   ├── elster/                Steuernummer im 13-stelligen ELSTER-Format, reines Python ohne Frappe-Import
+│   ├── elster/                ELSTER, reines Python ohne Frappe-Import
+│   │   ├── steuernummer.py    Steuernummer im 13-stelligen ELSTER-Format
+│   │   ├── ustva_xml.py       Voranmeldung als XML: Datei für Mein ELSTER, Nutzdaten für ERiC
+│   │   ├── charset.py         Zeichensatz von ELSTER und Ersatz typografischer Zeichen
+│   │   ├── envelope.py        Umschlag Elster mit TransferHeader, für die Tests und ERiC
+│   │   └── tests/             Unit-Tests und Tests gegen die Schemas der ERiC-Dokumentation
+│   ├── eric/                  ERiC: Einrichtung, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
 │   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns, reines Python
 │   ├── steuerbote/            Frappe-Modul „Steuerbote“, siehe Architektur
@@ -65,18 +71,31 @@ Du brauchst Python 3.14 und eine Bench mit Frappe und ERPNext 16, dazu eine Site
    pre-commit install
    ```
 
-   `requirements-dev.txt` bringt coverage, pre-commit, pytest, pytest-cov, ruff und zizmor in festen Versionen. `pre-commit install` richtet die Hooks aus `.pre-commit-config.yaml` ein. Der Hook `no-commit-to-branch` verhindert Commits direkt auf `main`.
+   `requirements-dev.txt` bringt coverage, lxml, pre-commit, pytest, pytest-cov, ruff und zizmor in festen Versionen. `pre-commit install` richtet die Hooks aus `.pre-commit-config.yaml` ein. Der Hook `no-commit-to-branch` verhindert Commits direkt auf `main`.
 
 ## Tests
 
 ### Kern ohne Bench
 
 ```bash
-pytest          # nur steuerbote/ustva
+pytest          # nur die reinen Module ohne Frappe
 pytest --cov    # mit Abdeckung, wie in der CI
 ```
 
-`pytest` sammelt nur die Tests unter `steuerbote/ustva` (`testpaths` in `pyproject.toml`) und braucht weder Frappe noch eine Bench. `pytest --cov` misst dazu die Abdeckung des Kerns, Zeilen und Zweige, ohne die Tests selbst. Unter 100 % schlägt der Lauf fehl (`fail_under = 100`), und der Bericht zeigt die fehlenden Zeilen.
+`pytest` sammelt nur die Tests der reinen Module, etwa unter `steuerbote/ustva` und `steuerbote/elster` (`testpaths` in `pyproject.toml`), und braucht weder Frappe noch eine Bench. `pytest --cov` misst dazu die Abdeckung des Kerns, Zeilen und Zweige, ohne die Tests selbst. Unter 100 % schlägt der Lauf fehl (`fail_under = 100`), und der Bericht zeigt die fehlenden Zeilen.
+
+### Schematests
+
+`steuerbote/elster/tests/test_schema.py` prüft das XML gegen die Schemas der ERiC-Dokumentation: die Datei für Mein ELSTER gegen `UStVA-2026.xsd`, Nutzdaten und Umschlag gegen `elster11_UStVA_2026_extern.xsd` mit dem ElsterBasisSchema, dazu Reihenfolge, Typen und Längen, die `ustva_xml.py` aus dem Schema übernimmt. Die Schemas tragen keine Lizenz, die eine Weitergabe erlaubt, deshalb liegen sie nicht im Repository. Die Tests lesen sie aus der entpackten ERiC-Dokumentation, deren Verzeichnis die Umgebungsvariable `STEUERBOTE_ERIC_DOC_DIR` nennt:
+
+```bash
+curl -fLo /tmp/eric-doc.zip https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip
+echo "bad21c27ecce56d04fc04bccfd2dfa17b9ff2455aa878758100fc73a28492ad5  /tmp/eric-doc.zip" | sha256sum --check
+unzip -q /tmp/eric-doc.zip -d /tmp/eric-doc
+STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc pytest --cov
+```
+
+Die Variable nennt das Verzeichnis, in das die Zip-Datei entpackt wurde, oder darin das Verzeichnis `Dokumentation`. Sie gilt ebenso für `bench run-tests`, das die Tests unter `steuerbote/elster` mitnimmt. Ohne die Variable überspringt pytest die Schematests und sagt, warum; in einer CI (Umgebungsvariable `CI`) schlagen sie stattdessen fehl. Die CI lädt die Dokumentation in beiden Testjobs, prüft die SHA-256-Summe und entpackt nur die Schemas und Beispiele der UStVA und das ElsterBasisSchema. Gepinnt ist 44.3.6.0, die produktive Version. ERiC 45.1.5.0 ist eine Beta, ihr Schema für 2026 gleicht dem von 44.3.6.0 bis auf den Kopfkommentar.
 
 ### Frappe-Tests
 
@@ -122,8 +141,8 @@ Alle drei Workflows laufen bei Pull Requests, bei Pushes auf `main` und von Hand
 
 | Workflow | Job | Was er tut |
 |---|---|---|
-| Tests | Core (without bench) | pytest mit Abdeckung auf Python 3.14, unter 100 % rot; legt `coverage.xml` als Artefakt ab. |
-| Tests | Frappe site (ERPNext v16) | baut eine Bench mit Frappe und ERPNext `version-16`, MariaDB 11.8 und Redis als Dienste, installiert ERPNext und Steuerbote auf einer Testsite und führt `bench run-tests --app steuerbote` aus. |
+| Tests | Core (without bench) | lädt die ERiC-Dokumentation 44.3.6.0 und prüft ihre SHA-256-Summe, dann pytest mit Abdeckung und Schematests auf Python 3.14, unter 100 % rot; legt `coverage.xml` als Artefakt ab. |
+| Tests | Frappe site (ERPNext v16) | baut eine Bench mit Frappe und ERPNext `version-16`, MariaDB 11.8 und Redis als Dienste, installiert ERPNext und Steuerbote auf einer Testsite, lädt die ERiC-Dokumentation für die Schematests und führt `bench run-tests --app steuerbote` aus. |
 | Linters | pre-commit | alle Hooks auf allen Dateien, ohne `no-commit-to-branch`. |
 | Linters | Frappe semgrep rules | semgrep mit den Regeln aus `frappe/semgrep-rules` und `r/python.lang.correctness`; jeder Fund macht den Job rot. |
 | Security | Secret scan (gitleaks) | durchsucht die ganze Git-Historie nach Geheimnissen; gitleaks wird mit Prüfsumme geladen. |
@@ -138,6 +157,8 @@ Bei Tests bricht ein neuer Lauf für denselben Pull Request oder Branch den lauf
 - **Frappe und ERPNext:** nur die aktuelle Hauptversion, derzeit 16. `pyproject.toml` verlangt `>=16.0.0,<17.0.0` (`[tool.bench.frappe-dependencies]`), `hooks.py` setzt ERPNext voraus, und die CI baut gegen `version-16`. Frappe und ERPNext installiert bench; sie stehen nicht in den Abhängigkeiten des Pakets. Ältere Hauptversionen werden nicht unterstützt, es gibt keine Kompatibilitätsschichten.
 - **Python:** 3.14, in `requires-python`, als `target-version` von ruff und in der CI.
 - **Entwicklungswerkzeuge** sind in `requirements-dev.txt` exakt gepinnt, die pre-commit-Hooks über `rev`, semgrep, gitleaks und zizmor in den Workflows. Einige Versionen stehen an mehreren Stellen: ruff in `requirements-dev.txt` und `.pre-commit-config.yaml`, zizmor zusätzlich in `security.yml`. Ein Update zieht alle Stellen gleich.
+- **lxml** baut das XML für ELSTER. Frappe 16 bringt es selbst mit, ohne eine Version festzulegen. `pyproject.toml` verlangt deshalb nur `lxml>=6.0,<7`, damit die App neben Frappe kein anderes lxml erzwingt, und `requirements-dev.txt` pinnt die Version, mit der die Tests laufen.
+- **ERiC-Dokumentation** für die Schematests: Adresse und SHA-256-Summe der Zip-Datei stehen in `tests.yml`, die Version zusätzlich in `steuerbote/elster/tests/eric_schema.py`.
 - **Neue Abhängigkeiten** nur mit Grund, exakt gepinnt und im Pull Request begründet.
 - **Dependabot** meldet jede Woche neue Versionen für pip und GitHub Actions.
 

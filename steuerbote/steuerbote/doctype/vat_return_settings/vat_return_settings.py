@@ -7,7 +7,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, escape_html, flt
 
-from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster
+from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster, ustva_xml
+from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
 from steuerbote.ustva import Rhythm
 
@@ -29,9 +30,14 @@ class VATReturnSettings(Document):
 		)
 
 		chart: DF.Literal["SKR03", "SKR04", "Eigener Kontenrahmen"]
+		city: DF.Data | None
 		company: DF.Link
 		elster_tax_number: DF.Data | None
+		email: DF.Data | None
+		filer_name: DF.Data | None
 		period_rules: DF.Table[VATReturnPeriodRule]
+		phone: DF.Data | None
+		postal_code: DF.Data | None
 		prepayments: DF.Table[VATReturnPrepayment]
 		state: DF.Literal[
 			"",
@@ -52,14 +58,17 @@ class VATReturnSettings(Document):
 			"Schleswig-Holstein",
 			"Thüringen",
 		]
+		street: DF.Data | None
 		tax_number: DF.Data
 		tax_office: DF.Data | None
 		taxation_type: DF.Literal["Soll"]
 		tolerance: DF.Currency
+		wid_nr: DF.Data | None
 	# end: auto-generated types
 
 	def validate(self) -> None:
 		self.set_elster_tax_number()
+		self.check_for_elster()
 		self.sort_period_rules()
 		with settings_errors():
 			rules.check_period_rules(self.get_period_rules())
@@ -80,6 +89,15 @@ class VATReturnSettings(Document):
 				),
 				title=_("Invalid Steuernummer"),
 			)
+
+	def check_for_elster(self) -> None:
+		"""Refuse a W-IdNr. or a Datenlieferant that ELSTER would not take, before the first file is made."""
+		with xml_errors(_("VAT Return Settings")):
+			self.wid_nr = ustva_xml.normalized_wid_nr(self.wid_nr)
+			for attribute, field in ustva_xml.DATENLIEFERANT.items():
+				ustva_xml.elster_text(
+					self.get(bridge.DATENLIEFERANT_FIELDS[attribute]), field.label, field.length
+				)
 
 	def sort_period_rules(self) -> None:
 		self.period_rules.sort(key=lambda row: (cint(row.year), cint(row.valid_from_month)))
@@ -125,3 +143,13 @@ def settings_errors() -> Iterator[None]:
 		yield
 	except rules.SettingsError as error:
 		frappe.throw(_(error.template).format(*error.values), title=_("VAT Return Settings"))
+
+
+@contextmanager
+def xml_errors(title: str) -> Iterator[None]:
+	"""Show a value that ELSTER does not take as a message in the language of the user."""
+	try:
+		yield
+	except ustva_xml.XmlError as error:
+		label = _(error.label) if error.label else ""
+		frappe.throw(_(error.template).format(*error.values, label=label), title=title)

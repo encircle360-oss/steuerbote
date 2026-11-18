@@ -1,0 +1,110 @@
+"""Every text of the ELSTER transmission has a German translation in translations/de.csv."""
+
+import csv
+import json
+import re
+from pathlib import Path
+from unittest import TestCase
+
+APP = Path(__file__).resolve().parents[3]
+MODULE = APP / "steuerbote"
+TRANSLATIONS = APP / "translations" / "de.csv"
+DOCTYPES = ("eric_settings", "elster_transmission", "elster_transmission_message")
+VAT_RETURN_FIELDS = ("transmission_in_progress",)
+SOURCES = (
+	"doctype/eric_settings/eric_settings.py",
+	"doctype/eric_settings/eric_settings.js",
+	"doctype/elster_transmission/elster_transmission.py",
+	"doctype/elster_transmission/elster_transmission_list.js",
+	"doctype/vat_return/vat_return.py",
+	"doctype/vat_return/vat_return.js",
+	"doctype/vat_return/transmission_adapter.py",
+)
+# German terms and values that read the same in every language.
+UNTRANSLATED = frozenset(
+	{
+		"Datenlieferant",
+		"Erfolgreich",
+		"Fehlgeschlagen",
+		"Hersteller-ID",
+		"Läuft",
+		"Nutzdaten (XML)",
+		"Testmerker",
+		"Transferticket",
+		"Unbekannt",
+		"UStVA Kennzahlen",
+	}
+)
+# Labels Frappe and ERPNext translate themselves; the app keeps out of their translations.
+FRAMEWORK_LABELS = frozenset(
+	{
+		"Code",
+		"Field",
+		"Files",
+		"Finished At",
+		"Kind",
+		"Message",
+		"Messages",
+		"Remarks",
+		"Result",
+		"Started At",
+		"Status",
+		"User",
+		"View",
+		"failed",
+	}
+)
+TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
+
+
+def translated() -> set[str]:
+	with TRANSLATIONS.open(encoding="utf-8", newline="") as file:
+		return {source for source, *_ in csv.reader(file)}
+
+
+def doctype(name: str) -> dict:
+	return json.loads((MODULE / "doctype" / name / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def field_texts(fields) -> set[str]:
+	texts = set()
+	for field in fields:
+		texts.update(field[key] for key in ("label", "description") if field.get(key))
+		if field["fieldtype"] == "Select":
+			texts.update(option for option in field["options"].split("\n") if option)
+	return texts
+
+
+def texts_of_the_transmission() -> set[str]:
+	texts = set()
+	for name in DOCTYPES:
+		definition = doctype(name)
+		texts.update(text for text in (definition["name"], definition.get("description")) if text)
+		texts.update(field_texts(definition["fields"]))
+	texts.update(
+		field_texts(
+			field for field in doctype("vat_return")["fields"] if field["fieldname"] in VAT_RETURN_FIELDS
+		)
+	)
+	for source in SOURCES:
+		texts.update(TRANSLATED_LITERAL.findall((MODULE / source).read_text(encoding="utf-8")))
+	return texts - UNTRANSLATED - FRAMEWORK_LABELS
+
+
+class TransmissionTranslationsTest(TestCase):
+	def test_the_sources_are_read(self):
+		texts = texts_of_the_transmission()
+		for text in (
+			"ERiC Settings",
+			"Install Runtime",
+			"Mark as Filed Outside",
+			"Calculate the return before transmitting it.",
+		):
+			with self.subTest(text=text):
+				self.assertIn(text, texts)
+
+	def test_every_text_of_the_transmission_is_translated(self):
+		self.assertEqual(sorted(texts_of_the_transmission() - translated()), [])
+
+	def test_the_framework_labels_are_left_to_the_framework(self):
+		self.assertEqual(sorted(FRAMEWORK_LABELS & translated()), [])

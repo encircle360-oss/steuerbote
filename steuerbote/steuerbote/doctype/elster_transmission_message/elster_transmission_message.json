@@ -1,0 +1,60 @@
+{
+ "actions": [],
+ "creation": "2026-11-18 04:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "severity",
+  "code",
+  "text",
+  "field"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "severity",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Kind",
+   "options": "error\nhint",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Code",
+   "read_only": 1
+  },
+  {
+   "columns": 5,
+   "fieldname": "text",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Message",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "field",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Field",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-18 04:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "ELSTER Transmission Message",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

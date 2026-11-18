@@ -91,6 +91,17 @@ class ReportFilesTest(TestCase):
 		}
 		self.assertEqual(list(ast.literal_eval(assignments["FILTERS"])), fieldnames)
 
+	def test_the_vat_return_opens_the_report_with_its_own_period(self):
+		script = (MODULE / "doctype" / "vat_return" / "vat_return.js").read_text(encoding="utf-8")
+		route = re.search(
+			r'frappe\.set_route\("query-report", "UStVA Kennzahlen", \{(?P<filters>[^}]*)\}', script
+		)
+		self.assertIsNotNone(route)
+		self.assertEqual(
+			re.findall(r"(\w+): frm\.doc\.(\w+)", route["filters"]),
+			[(field, field) for field in ("company", "year", "rhythm", "period_index")],
+		)
+
 	def test_every_label_of_the_report_is_translated(self):
 		texts = set()
 		for name in ("ustva_kennzahlen.js", "ustva_kennzahlen.py"):

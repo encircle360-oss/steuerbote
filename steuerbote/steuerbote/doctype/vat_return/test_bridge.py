@@ -1,6 +1,9 @@
+import json
 from decimal import Decimal
+from pathlib import Path
 from unittest import TestCase
 
+from steuerbote.elster import ustva_xml
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.ustva import KENNZAHLEN, LedgerLine, Period, calculate
 from steuerbote.ustva.defaults import SKR03
@@ -316,3 +319,134 @@ class ToAmountTest(TestCase):
 		):
 			with self.subTest(value=value):
 				self.assertEqual(str(bridge.to_amount(value)), expected)
+
+
+SETTINGS_DOCTYPE = Path(__file__).parents[1] / "vat_return_settings" / "vat_return_settings.json"
+SETTINGS = {
+	"company": "Beispiel GmbH",
+	"elster_tax_number": "9123045678901",
+	"filer_name": None,
+	"street": "Hauptstraße 1",
+	"postal_code": "80331",
+	"city": "München",
+	"phone": None,
+	"email": None,
+	"wid_nr": None,
+}
+
+
+class FilerTest(TestCase):
+	def test_takes_the_steuernummer_and_the_datenlieferant_from_the_settings(self):
+		filer = bridge.filer(
+			{**SETTINGS, "phone": "089 1234567", "email": "erika@example.org", "wid_nr": "DE123456789"}
+		)
+		self.assertEqual(
+			(filer.steuernummer, filer.name, filer.street, filer.postal_code, filer.city),
+			("9123045678901", "Beispiel GmbH", "Hauptstraße 1", "80331", "München"),
+		)
+		self.assertEqual(
+			(filer.phone, filer.email, filer.wid_nr), ("089 1234567", "erika@example.org", "DE123456789")
+		)
+
+	def test_without_a_name_of_its_own_the_datenlieferant_is_the_company(self):
+		self.assertEqual(bridge.filer(SETTINGS).name, "Beispiel GmbH")
+		self.assertEqual(
+			bridge.filer({**SETTINGS, "filer_name": "Beispiel Holding"}).name, "Beispiel Holding"
+		)
+
+	def test_a_missing_street_is_refused(self):
+		with self.assertRaises(ustva_xml.XmlError) as raised:
+			bridge.filer({**SETTINGS, "street": None})
+		self.assertEqual(raised.exception.label, ustva_xml.STREET_LABEL)
+
+	def test_the_settings_hold_each_part_of_the_datenlieferant_as_long_as_elster_takes_it(self):
+		definition = json.loads(SETTINGS_DOCTYPE.read_text(encoding="utf-8"))
+		lengths = {field["fieldname"]: field.get("length") for field in definition["fields"]}
+		self.assertEqual(set(bridge.DATENLIEFERANT_FIELDS), set(ustva_xml.DATENLIEFERANT))
+		for attribute, fieldname in bridge.DATENLIEFERANT_FIELDS.items():
+			with self.subTest(field=fieldname):
+				self.assertEqual(lengths[fieldname], ustva_xml.DATENLIEFERANT[attribute].length)
+		self.assertEqual(lengths["wid_nr"], len("DE123456789"))
+
+
+class VoranmeldungTest(TestCase):
+	def setUp(self):
+		rows = bridge.kennzahl_rows(calculate(verified_month(), SKR03), KENNZAHLEN, {})
+		self.rows = list(bridge.filing(rows, 2026).rows)
+		self.doc = {"kennzahlen": self.rows, "kz83": 95.0}
+
+	def test_files_the_final_amounts_and_kz83_of_the_return(self):
+		voranmeldung = bridge.voranmeldung(self.doc, Period.month(2026, 3))
+		self.assertEqual(voranmeldung.period, Period.month(2026, 3))
+		self.assertEqual(
+			dict(voranmeldung.amounts),
+			{
+				"81": d("1000.00"),
+				"46": d("300.00"),
+				"47": d("57.00"),
+				"21": d("2000.00"),
+				"45": d("500.00"),
+				"66": d("95.00"),
+				"67": d("57.00"),
+				"83": d("95.00"),
+			},
+		)
+		self.assertEqual(
+			(
+				voranmeldung.corrected,
+				voranmeldung.attachments,
+				voranmeldung.no_sepa_mandate,
+				voranmeldung.offset_requested,
+			),
+			(False, False, False, False),
+		)
+		self.assertEqual((voranmeldung.supplementary_code, voranmeldung.begruendung), (None, None))
+
+	def test_kz83_comes_from_the_return_and_not_from_its_row(self):
+		rows = [{**row, "final": 1} if row["kennzahl"] == "83" else row for row in self.rows]
+		voranmeldung = bridge.voranmeldung({**self.doc, "kennzahlen": rows}, Period.month(2026, 3))
+		self.assertEqual(voranmeldung.amounts["83"], d("95.00"))
+
+	def test_takes_the_further_details_of_the_return(self):
+		doc = {
+			**self.doc,
+			"is_correction": 1,
+			"attachments": 1,
+			"no_sepa_mandate": 1,
+			"offset_requested": 1,
+			"supplementary_code": "2",
+			"kz500_begruendung": "Siehe Anlage",
+		}
+		voranmeldung = bridge.voranmeldung(doc, Period.month(2026, 3), reported_before={"43"})
+		self.assertEqual(
+			(
+				voranmeldung.corrected,
+				voranmeldung.attachments,
+				voranmeldung.no_sepa_mandate,
+				voranmeldung.offset_requested,
+			),
+			(True, True, True, True),
+		)
+		self.assertEqual((voranmeldung.supplementary_code, voranmeldung.begruendung), ("2", "Siehe Anlage"))
+		self.assertEqual(voranmeldung.reported_before, frozenset({"43"}))
+
+	def test_a_return_that_corrects_nothing_writes_no_zeros(self):
+		voranmeldung = bridge.voranmeldung(self.doc, Period.month(2026, 3), reported_before={"43"})
+		self.assertEqual(voranmeldung.reported_before, frozenset())
+
+	def test_an_empty_code_and_begruendung_are_none(self):
+		voranmeldung = bridge.voranmeldung(
+			{**self.doc, "supplementary_code": "", "kz500_begruendung": ""}, Period.month(2026, 3)
+		)
+		self.assertEqual((voranmeldung.supplementary_code, voranmeldung.begruendung), (None, None))
+
+
+class ReportedTest(TestCase):
+	def test_names_the_kennzahlen_with_an_amount_other_than_kz83(self):
+		rows = [
+			{"kennzahl": "81", "final": 1000.0},
+			{"kennzahl": " 45 ", "final": 0.0},
+			{"kennzahl": "66", "final": -0.5},
+			{"kennzahl": "83", "final": 5.0},
+		]
+		self.assertEqual(bridge.reported(rows), frozenset({"81", "66"}))

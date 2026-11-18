@@ -28,10 +28,31 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
 
+      - name: Build the stub of the ERiC library
+        # The tests of the ctypes binding, the worker and the service run against this stub. CI builds it
+        # with all warnings as errors and passes its path to the tests, so a missing compiler fails the run
+        # instead of skipping them.
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -O1 -shared -fPIC -o "$RUNNER_TEMP/libericapi.so" steuerbote/eric/tests/stub/ericapi_stub.c
+          echo "STEUERBOTE_ERIC_STUB=$RUNNER_TEMP/libericapi.so" >> "$GITHUB_ENV"
+
       - name: Install test tools
         run: python -m pip install -r requirements-dev.txt
 
+      - name: Download the ERiC documentation with the XML schemas
+        # The schemas may not be passed on, so they are not in the repository: the tests read them from the
+        # public documentation zip. 44.3.6.0 is the productive release; 45.1 is a beta with the same 2026 schema.
+        env:
+          ERIC_DOCUMENTATION: https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip
+          ERIC_DOCUMENTATION_SHA256: bad21c27ecce56d04fc04bccfd2dfa17b9ff2455aa878758100fc73a28492ad5
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/eric-doc.zip" "$ERIC_DOCUMENTATION"
+          echo "$ERIC_DOCUMENTATION_SHA256  $RUNNER_TEMP/eric-doc.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/eric-doc.zip" '*/Datenarten/ElsterAnmeldung/UStVA/*' '*/ElsterBasisSchema/*' -d "$RUNNER_TEMP/eric-doc"
+
       - name: Run the core tests with coverage
+        env:
+          STEUERBOTE_ERIC_DOC_DIR: ${{ runner.temp }}/eric-doc
         run: python -m pytest --cov --cov-report=term-missing --cov-report=xml
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -80,6 +101,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y mariadb-client
 
+      - name: Build the stub of the ERiC library
+        # The tests of the ctypes binding, the worker and the service run against this stub. CI builds it
+        # with all warnings as errors and passes its path to the tests, so a missing compiler fails the run
+        # instead of skipping them.
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -O1 -shared -fPIC -o "$RUNNER_TEMP/libericapi.so" steuerbote/eric/tests/stub/ericapi_stub.c
+          echo "STEUERBOTE_ERIC_STUB=$RUNNER_TEMP/libericapi.so" >> "$GITHUB_ENV"
+
       - name: Set up a bench with Frappe and ERPNext version-16
         run: |
           pip install frappe-bench
@@ -99,10 +128,22 @@ jobs:
           bench --site test_site install-app erpnext
           bench --site test_site install-app steuerbote
 
+      - name: Download the ERiC documentation with the XML schemas
+        # The schemas may not be passed on, so they are not in the repository: the tests read them from the
+        # public documentation zip. 44.3.6.0 is the productive release; 45.1 is a beta with the same 2026 schema.
+        env:
+          ERIC_DOCUMENTATION: https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip
+          ERIC_DOCUMENTATION_SHA256: bad21c27ecce56d04fc04bccfd2dfa17b9ff2455aa878758100fc73a28492ad5
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/eric-doc.zip" "$ERIC_DOCUMENTATION"
+          echo "$ERIC_DOCUMENTATION_SHA256  $RUNNER_TEMP/eric-doc.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/eric-doc.zip" '*/Datenarten/ElsterAnmeldung/UStVA/*' '*/ElsterBasisSchema/*' -d "$RUNNER_TEMP/eric-doc"
+
       - name: Run the Frappe tests
         working-directory: /home/runner/frappe-bench
         env:
           TYPE: server
+          STEUERBOTE_ERIC_DOC_DIR: ${{ runner.temp }}/eric-doc
         run: |
           bench --site test_site set-config allow_tests true
           bench --site test_site run-tests --app steuerbote

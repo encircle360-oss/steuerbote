@@ -155,6 +155,7 @@
 				<td>
 					Ergänzende Angaben zur Steueranmeldung (1 bis 4)
 					{%- if doc.supplementary_code in supplementary %}<br><span class="note">In dieser Steueranmeldung {{ supplementary[doc.supplementary_code] }}</span>{% endif %}
+					{%- if doc.kz500_begruendung %}<br><span class="note">Begründung: {{ doc.get_formatted("kz500_begruendung") }}</span>{% endif %}
 				</td>
 				<td class="kz">500</td>
 				<td class="flag" colspan="3">{{ doc.supplementary_code or "" }}</td>

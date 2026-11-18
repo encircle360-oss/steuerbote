@@ -1,0 +1,137 @@
+{
+ "actions": [],
+ "creation": "2026-11-18 04:00:00.000000",
+ "description": "Hersteller-ID, product data and the ERiC runtime of this installation.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "simulation",
+  "manufacturer_section",
+  "hersteller_id",
+  "produkt_name",
+  "produkt_version",
+  "column_break_manufacturer",
+  "datenlieferant",
+  "archive_section",
+  "archive_path",
+  "archive_sha256",
+  "column_break_archive",
+  "installed_version",
+  "lib_dir",
+  "log_dir",
+  "last_check"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "description": "On as long as no runtime is installed or no Hersteller-ID is entered: Prüfen and Testsenden only simulate, nothing reaches the Finanzamt.",
+   "fieldname": "simulation",
+   "fieldtype": "Check",
+   "label": "Simulation Mode",
+   "read_only": 1
+  },
+  {
+   "fieldname": "manufacturer_section",
+   "fieldtype": "Section Break",
+   "label": "Manufacturer and Product"
+  },
+  {
+   "description": "Five digits, issued to the manufacturer of the software in the ELSTER developer area.",
+   "fieldname": "hersteller_id",
+   "fieldtype": "Data",
+   "label": "Hersteller-ID"
+  },
+  {
+   "default": "steuerbote",
+   "description": "Goes to ELSTER with every case, at most 50 characters and without the word ELSTER.",
+   "fieldname": "produkt_name",
+   "fieldtype": "Data",
+   "label": "Product Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "produkt_version",
+   "fieldtype": "Data",
+   "label": "Product Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_manufacturer",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Who delivers the data, at most 256 characters: company; contact person; telephone; e-mail; town; postcode; street; country.",
+   "fieldname": "datenlieferant",
+   "fieldtype": "Small Text",
+   "label": "Datenlieferant"
+  },
+  {
+   "fieldname": "archive_section",
+   "fieldtype": "Section Break",
+   "label": "Runtime"
+  },
+  {
+   "description": "Absolute path on the server of the ERiC archive for Linux x86_64, as downloaded from the ELSTER developer area after the login.",
+   "fieldname": "archive_path",
+   "fieldtype": "Data",
+   "label": "ERiC Archive"
+  },
+  {
+   "description": "The checksum the ELSTER developer area lists for the archive, 64 hexadecimal digits.",
+   "fieldname": "archive_sha256",
+   "fieldtype": "Data",
+   "label": "SHA-256 of the Archive"
+  },
+  {
+   "fieldname": "column_break_archive",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "installed_version",
+   "fieldtype": "Data",
+   "label": "Installed Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lib_dir",
+   "fieldtype": "Data",
+   "label": "Library Directory",
+   "read_only": 1
+  },
+  {
+   "fieldname": "log_dir",
+   "fieldtype": "Data",
+   "label": "Log Directory",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_check",
+   "fieldtype": "Datetime",
+   "label": "Last Check",
+   "read_only": 1
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-11-18 06:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "ERiC Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
