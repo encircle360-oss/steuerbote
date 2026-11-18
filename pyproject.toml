@@ -58,12 +58,12 @@ indent-style = "tab"
 docstring-code-format = true
 
 [tool.pytest.ini_options]
-# Only the pure core runs without a bench; Frappe tests run with `bench run-tests`.
-testpaths = ["steuerbote/ustva"]
+# Only the pure modules run without a bench; Frappe tests run with `bench run-tests`.
+testpaths = ["steuerbote/ustva", "steuerbote/elster"]
 addopts = "--strict-markers"
 
 [tool.coverage.run]
-source = ["steuerbote/ustva"]
+source = ["steuerbote/ustva", "steuerbote/elster"]
 omit = ["*/tests/*"]
 branch = true
 

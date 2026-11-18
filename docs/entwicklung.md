@@ -16,6 +16,7 @@ steuerbote/                    Repository
 │   │   ├── calculation.py     calculate(): Buchungszeilen zu Kennzahlen, Summen, Kz 83 und Verprobung
 │   │   ├── period.py          Voranmeldungszeiträume, Fristen und ELSTER-Zeitraumcodes
 │   │   └── tests/             Unit-Tests des Kerns
+│   ├── elster/                Steuernummer im 13-stelligen ELSTER-Format, reines Python ohne Frappe-Import
 │   ├── steuerbote/            Frappe-Modul „Steuerbote“ für DocTypes und Reports, noch leer
 │   ├── tests/                 Frappe-Integrationstests
 │   └── config/, patches/, public/, templates/
