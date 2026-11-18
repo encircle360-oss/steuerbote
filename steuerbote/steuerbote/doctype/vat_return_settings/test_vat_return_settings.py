@@ -55,6 +55,7 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 				"company": COMPANY,
 				"state": "Bayern",
 				"tax_number": "123/456/78901",
+				"period_rules": [{"year": 2026, "rhythm": "monthly", "valid_from_month": 1}],
 				**values,
 			}
 		)
@@ -99,7 +100,8 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 			],
 		).insert()
 		settings = frappe.get_doc("VAT Return Settings", COMPANY)
-		self.assertIs(settings.rhythm_for(2025, 12), Rhythm.MONTHLY)
+		with self.assertRaisesRegex(frappe.ValidationError, "No filing period is set for month 12 of 2025"):
+			settings.rhythm_for(2025, 12)
 		self.assertIs(settings.rhythm_for(2026, 6), Rhythm.MONTHLY)
 		self.assertIs(settings.rhythm_for(2026, 7), Rhythm.QUARTERLY)
 		self.assertIs(settings.rhythm_for(2027, 3), Rhythm.QUARTERLY)
