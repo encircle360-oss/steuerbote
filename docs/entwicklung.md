@@ -20,7 +20,7 @@ steuerbote/                    Repository
 │   │   ├── steuernummer.py    Steuernummer im 13-stelligen ELSTER-Format
 │   │   ├── ustva_xml.py       Voranmeldung als XML: Datei für Mein ELSTER, Nutzdaten für ERiC
 │   │   ├── charset.py         Zeichensatz von ELSTER und Ersatz typografischer Zeichen
-│   │   ├── envelope.py        Umschlag Elster mit TransferHeader, für die Tests und ERiC
+│   │   ├── envelope.py        ganzer Umschlag Elster mit TransferHeader, nur für die Schematests
 │   │   └── tests/             Unit-Tests und Tests gegen die Schemas der ERiC-Dokumentation
 │   ├── eric/                  ERiC: Einrichtung, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
 │   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns

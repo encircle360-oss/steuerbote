@@ -41,7 +41,7 @@ Die ELSTER-Hilfe sagt: „Die Funktion zum Hochladen von Formulardaten (XML-Date
 
 Nicht in der Datei:
 
-- **Kein Umschlag:** kein `Elster`, kein `TransferHeader`, kein `NutzdatenHeader`. Den Umschlag braucht nur die Übermittlung über ERiC.
+- **Kein Umschlag:** kein `Elster`, kein `TransferHeader`, kein `NutzdatenHeader`. Den Umschlag braucht nur die Übermittlung über ERiC; dafür schreibt Steuerbote den `DatenTeil` mit `NutzdatenHeader` und Nutzdaten, den `TransferHeader` setzt ERiC selbst.
 - **Kein Testmerker:** Jede Datei ist ein Echtfall. Testlieferungen gibt es nur über ERiC.
 - **Keine Hersteller-ID, kein Kz 09:** Mein ELSTER übernimmt Kz 09 nicht, und der Import läuft ohne ERiC. Die Hersteller-ID 74931 aus den Beispielen der ERiC-Dokumentation „dient in der Dokumentation nur noch zu Illustrationszwecken“ (ERiC-Entwicklerhandbuch 6.5.3) und steht nie in einer Datei.
 - **Keine Angaben zu Unternehmer, Berater oder Mandant.**
@@ -86,7 +86,9 @@ Danach werden mehrere Leerzeichen zu einem, und Leerzeichen am Anfang und Ende e
 
 ## Berichtigte Anmeldung
 
-Eine berichtigte Anmeldung trägt Kz 10 = 1, und ihre Datei heißt `UStVA_<Jahr>_<Zeitraum>_berichtigt.xml`. Jede Kennzahl, die eine früher abgegebene Meldung desselben Zeitraums hatte und die berichtigte nicht mehr hat, schreibt die Datei ausdrücklich mit 0. Ohne Kz 10 meldet ERiC für einen solchen Nullwert einen Hinweis: „Da es sich nicht um eine Berichtigung der Anmeldung handelt, ist die Erklärung eines Nullwertes nicht erforderlich.“ In einer Berichtigung ist der Nullwert also vorgesehen. Ob Mein ELSTER ihn braucht, ist noch offen.
+Eine berichtigte Anmeldung trägt Kz 10 = 1, und ihre Datei heißt `UStVA_<Jahr>_<Zeitraum>_berichtigt.xml`. Jede Kennzahl, die eine früher abgegebene Meldung desselben Zeitraums hatte und die berichtigte nicht mehr hat, schreibt die Datei ausdrücklich mit 0.
+
+Diese Nullwerte sind eine Schlussfolgerung, keine dokumentierte Regel. Die Anleitung zum Vordruck sagt nichts über Nullwerte. Die ERiC-Hinweise 110085186 bis 110085217 melden einen ausdrücklichen Nullwert nur unter der Bedingung `FeldNichtAngegeben(Kz10)`, also nur ohne Berichtigung: „Da es sich nicht um eine Berichtigung der Anmeldung handelt, ist die Erklärung eines Nullwertes nicht erforderlich.“ Daraus folgt, dass ein Nullwert in einer Berichtigung keinen Hinweis auslöst, aber nicht, dass er nötig ist. Steuerbote schreibt ihn, damit eine weggefallene Kennzahl ausdrücklich auf 0 steht. Ob das nötig ist, klärt erst ein echter Import, siehe [Offene Punkte](#offene-punkte).
 
 ## Kennzahlen und Elemente
 
@@ -157,7 +159,7 @@ Diese Punkte klärt erst ein echter Import in Mein ELSTER:
 
 - **Import ohne Kz 09.** Die Hilfe sagt, dass Mein ELSTER Kz 09 nicht übernimmt, aber nicht, ob es eine Datei ohne Kz 09 annimmt.
 - **Kz 83 im Feld für die manuelle Eingabe.** Wie das Formular einen Wert behandelt, der von seiner eigenen Rechnung abweicht, ist nicht beschrieben. Steuerbote schreibt deshalb nur ein Kz 83, das zu den Kennzahlen passt.
-- **Nullwerte in einer berichtigten Anmeldung,** siehe oben.
+- **Nullwerte in einer berichtigten Anmeldung.** Braucht eine berichtigte Anmeldung die ausdrücklichen Nullwerte für Kennzahlen, die nur eine früher abgegebene Meldung des Zeitraums hatte, oder ersetzt sie ohnehin alle Werte? Keine Quelle sagt es; Steuerbote schreibt die Nullwerte, abgeleitet aus den Hinweisen 110085186 bis 110085217, siehe [Berichtigte Anmeldung](#berichtigte-anmeldung). Beim ersten echten Import einer berichtigten Anmeldung prüfen, wie das Formular die Nullwerte übernimmt.
 - **Die Menüpunkte in Mein ELSTER** sind nur hinter der Anmeldung zu sehen und hier nicht bestätigt.
 
 Außerdem: Die Schemas der ERiC-Dokumentation tragen keine Lizenz, die eine Weitergabe erlaubt. Sie liegen deshalb nicht im Repository; die Tests laden die Dokumentation von ELSTER, siehe [Entwicklung](entwicklung.md#schematests).

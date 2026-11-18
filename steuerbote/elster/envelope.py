@@ -1,4 +1,4 @@
-"""The Elster envelope around the Nutzdaten, for the schema tests and for the transmission through ERiC.
+"""The Elster envelope around the Nutzdaten, for the tests against the schema.
 
 The envelope follows elster11_UStVA_2026_extern.xsd with the ElsterBasisSchema of the ERiC documentation
 44.3.6.0 (HB for ERiC-Entwicklerhandbuch.pdf, DS for Einheitliche_Datenschnittstelle_XML_11.pdf). It is
@@ -12,9 +12,11 @@ EingangsDatum, RC, SigUser and the Empfaenger of the TransferHeader are left to 
 NutzdatenHeader sends to the Bundesfinanzamtsnummer, „die ersten 4 Stellen der 13-stelligen Steuernummer“
 (ERiC-API-Referenz), and names the product, which must not carry the name ELSTER (ERiC licence, § 12).
 
-This envelope serves the tests against the schema and the later ERiC package. The real transmission builds
-the TransferHeader with EricCreateTH, as HB recommends: it takes „ein komplettes Elster-XML oder nur der
-Datenteil“ (ERiC-API-Referenz) and sets the fields of the header itself.
+This envelope is not what ERiC receives. The transmission writes only the DatenTeil with the
+NutzdatenHeader and the Nutzdaten (steuerbote/eric/header.py), and EricCreateTH builds the TransferHeader,
+as HB recommends: it takes „ein komplettes Elster-XML oder nur der Datenteil“ (ERiC-API-Referenz) and sets
+the fields of the header itself. The whole envelope here lets the tests check the Nutzdaten against
+elster11_UStVA_2026_extern.xsd as one delivery.
 """
 
 from datetime import date

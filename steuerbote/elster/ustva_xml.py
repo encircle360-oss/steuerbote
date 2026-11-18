@@ -11,8 +11,10 @@ One tree serves both ways of filing:
   gemäß Schnittstellenbeschreibung, z. B.: "/Elster/DatenTeil/Nutzdatenblock/Nutzdaten/Anmeldungssteuern")
   hochgeladen werden kann“, and „Der zu verwendende Zeichensatz der XML-Datei lautet ISO-8859-15.“ (help).
   ``to_import_file`` writes it with the declaration of the help's example.
-- ERiC takes the same tree in the Elster envelope (envelope.py), in UTF-8 (HB 5.3.2), with the Hersteller-ID
-  in Kz 09, which ERiC requires (JD 110085045). ``to_nutzdaten`` writes it.
+- ERiC takes the same tree as the Nutzdaten of a DatenTeil, in UTF-8 (HB 5.3.2), with the Hersteller-ID in
+  Kz 09, which ERiC requires (JD 110085045). ``to_nutzdaten`` writes it; steuerbote/eric/header.py puts it
+  into the DatenTeil, and EricCreateTH adds the TransferHeader. The whole envelope of envelope.py serves
+  the schema tests only.
 
 Kz 09 stays out of the import file. Mein ELSTER does not import it (the help lists
 Umsatzsteuervoranmeldung/Kz09 among the elements it leaves out), the import goes through the form and not
@@ -25,8 +27,11 @@ The rules (JD, sheet "Allg. Information" for the formats):
 - A base is written in whole euros, a tax with exactly two decimals and a point; there is no plus sign, no
   leading zero and no negative zero. Kz 37 and Kz 39 (Formatkennzeichen %) and Kz 50 (U) take no sign.
 - A Kennzahl of zero is left out: written without Kz 10, an explicit zero draws a hint („ist die Erklärung
-  eines Nullwertes nicht erforderlich“, 110085186 to 110085217). Kz 83 is always written (110085064). A
-  corrected return writes zero for each Kennzahl that the returns it replaces reported and it no longer does.
+  eines Nullwertes nicht erforderlich“, 110085186 to 110085217). Kz 83 is always written (110085064).
+- A corrected return writes zero for each Kennzahl that the returns it replaces reported and it no longer
+  does. This is an inference, not a documented rule: the hints fire only under FeldNichtAngegeben(Kz10), so
+  a zero in a corrected return draws none, and the Anleitung to the form says nothing about zeros. The first
+  real import into Mein ELSTER has to show whether the zeros are needed.
 - A base and its tax in a Kennzahl of its own go together (110085065 to 110085072), so the other one is
   written as zero if need be.
 - Kz 83 is recomputed from the values as written and has to match: no rule of ERiC checks it, and Mein
@@ -292,7 +297,8 @@ class Voranmeldung:
 	``amounts`` holds the Kennzahlen with an amount as the core reports them, Kz 83 included. The yes fields
 	(Kz 10, 22, 26, 29), Kz 500 with its Begründung and the date of Kz 70 have fields of their own.
 	``reported_before`` names the Kennzahlen that the returns a corrected return replaces reported; it
-	writes each of them, as zero if it has no amount for it.
+	writes each of them, as zero if it has no amount for it. Those zeros are inferred from the hints on zero
+	values, not prescribed; see the rules in the docstring of the module.
 	"""
 
 	period: Period
