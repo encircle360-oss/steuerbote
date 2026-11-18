@@ -40,6 +40,7 @@
 "Calculate the return before making the file for Mein ELSTER.","Die Meldung muss berechnet sein, bevor die Datei für Mein ELSTER erzeugt wird."
 "Calculate the return before submitting it.","Die Meldung muss vor der Abgabe berechnet werden."
 "Calculate the return before transmitting it.","Die Meldung muss vor der Übermittlung berechnet werden."
+"Cancelled voucher","Storniert"
 "Certificate File (.pfx)","Zertifikatsdatei (.pfx)"
 "Certificate Password","Zertifikats-Passwort"
 "Certificate and password serve this transmission only. Steuerbote does not keep them.","Zertifikat und Passwort gelten nur für diese Übermittlung. Steuerbote speichert sie nicht."

@@ -6,7 +6,8 @@ steuerbote.ledger, with the same exclusions, and the company's VAT Return Mappin
 The core computes the Kennzahlen, attribution.py finds the vouchers behind them, and comparison.py sets them
 beside the previous period of the same rhythm and the same period one year earlier, which this module
 computes the same way from the ledger, with the mapping on the form of their year. Otherwise the module only
-reads the data and looks up posting dates, account names and the parties of invoices.
+reads the data and looks up posting dates, account names, the parties of invoices and which vouchers are
+cancelled.
 """
 
 from collections.abc import Iterable
@@ -59,15 +60,18 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 	previous_year, previous_year_note = _compared(company, comparison.year_before(period), mapping, settings)
 	by_kennzahl = contributions(lines, mapping)
 	numbers = {account for items in by_kennzahl.values() for item in items for account in item.accounts}
+	vouchers = [item.voucher for items in by_kennzahl.values() for item in items]
 	rows = report_rows(
 		result,
 		mapping.catalogue,
 		by_kennzahl,
 		posting_dates=_posting_dates(company, period),
 		account_names=account_names(company, numbers),
-		parties=_parties(item.voucher for items in by_kennzahl.values() for item in items),
+		parties=_parties(vouchers),
 		print_label=_("Print"),
+		cancelled_label=_("Cancelled voucher"),
 		currency=frappe.get_cached_value("Company", company, "default_currency"),
+		cancelled=_cancelled(vouchers),
 		shown=comparison.compared_kennzahlen(previous, previous_year),
 	)
 	rows = comparison.compared_rows(rows, previous, previous_year)
@@ -195,6 +199,21 @@ def _parties(vouchers: Iterable[str | None]) -> dict[str, str]:
 		for invoice in invoices:
 			parties[f"{voucher_type}:{invoice.name}"] = invoice[party_name] or invoice[party]
 	return parties
+
+
+def _cancelled(vouchers: Iterable[str | None]) -> set[str]:
+	"""The keys of the cancelled vouchers among the vouchers, one query per voucher type.
+
+	The ledger lists cancelled vouchers when the Accounts Settings enable the immutable ledger: ERPNext then
+	keeps the GL Entries of a cancelled voucher and posts their reversal on the day of the cancellation.
+	"""
+	return {
+		f"{voucher_type}:{name}"
+		for voucher_type, names in vouchers_by_type(vouchers).items()
+		for name in frappe.get_all(
+			voucher_type, filters={"name": ["in", names], "docstatus": 2}, pluck="name"
+		)
+	}
 
 
 def _posting_dates(company: str, period: ustva.Period) -> dict[str, date]:

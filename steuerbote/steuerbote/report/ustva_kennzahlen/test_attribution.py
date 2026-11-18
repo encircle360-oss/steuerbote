@@ -208,6 +208,7 @@ def rows_of(
 	lines: list[LedgerLine],
 	mapping: Mapping = SKR03,
 	shown: frozenset[str] = frozenset(),
+	cancelled: frozenset[str] = frozenset(),
 	**extra_values: str,
 ) -> list[dict]:
 	extra = {number: Decimal(amount) for number, amount in extra_values.items()}
@@ -219,7 +220,9 @@ def rows_of(
 		account_names=ACCOUNT_NAMES,
 		parties=PARTIES,
 		print_label="Drucken",
+		cancelled_label="Storniert",
 		currency="EUR",
+		cancelled=cancelled,
 		shown=shown,
 	)
 
@@ -396,6 +399,52 @@ class ReportRowsTest(TestCase):
 			[("SI-1", "Kunde GmbH"), ("JE-1", None), ("PI-1", "Lieferant AG")],
 		)
 
+	def test_a_cancelled_voucher_keeps_its_row_without_a_link_to_its_print_view(self):
+		voucher = "Sales Invoice:SI-1"
+		rows = rows_of(
+			[line("8400", credit="100", voucher=voucher), line("8400", debit="100", voucher=voucher)],
+			cancelled=frozenset({voucher}),
+		)
+		self.assertEqual(
+			[
+				(
+					row["kennzahl"],
+					row["voucher_type"],
+					row["voucher_no"],
+					row["party"],
+					row["debit"],
+					row["credit"],
+					row["amount"],
+					row["print_link"],
+				)
+				for row in rows[:2]
+			],
+			[
+				("81", None, None, None, None, None, d("0"), None),
+				("81", "Sales Invoice", "SI-1", "Kunde GmbH", d("100"), d("100"), d("0"), "Storniert"),
+			],
+		)
+
+	def test_a_cancelled_voucher_is_known_by_its_type_and_name(self):
+		rows = rows_of(
+			[
+				line("8400", credit="100", voucher="Sales Invoice:X-1"),
+				line("8400", credit="50", voucher="Journal Entry:X-1"),
+			],
+			cancelled=frozenset({"Sales Invoice:X-1"}),
+		)
+		self.assertEqual(
+			[(row["voucher_type"], row["voucher_no"], row["print_link"]) for row in rows if row["indent"]],
+			[
+				("Sales Invoice", "X-1", "Storniert"),
+				(
+					"Journal Entry",
+					"X-1",
+					'<a href="/printview?doctype=Journal%20Entry&amp;name=X-1" target="_blank">Drucken</a>',
+				),
+			],
+		)
+
 	def test_the_link_to_the_print_view_escapes_voucher_and_label(self):
 		voucher = "Sales Invoice:SI/2026&<1>"
 		rows = report_rows(
@@ -406,6 +455,7 @@ class ReportRowsTest(TestCase):
 			account_names={},
 			parties={},
 			print_label='Drucken & "Vorschau"',
+			cancelled_label="Storniert",
 			currency="EUR",
 		)
 		self.assertEqual(
@@ -413,6 +463,23 @@ class ReportRowsTest(TestCase):
 			'<a href="/printview?doctype=Sales%20Invoice&amp;name=SI%2F2026%26%3C1%3E" target="_blank">'
 			"Drucken &amp; &quot;Vorschau&quot;</a>",
 		)
+
+	def test_the_label_of_a_cancelled_voucher_is_escaped(self):
+		voucher = "Sales Invoice:SI-1"
+		lines = [line("8400", credit="100", voucher=voucher)]
+		rows = report_rows(
+			calculate(lines, SKR03),
+			SKR03.catalogue,
+			contributions(lines, SKR03),
+			posting_dates={},
+			account_names={},
+			parties={},
+			print_label="Drucken",
+			cancelled_label='Storniert & "<weg>"',
+			currency="EUR",
+			cancelled={voucher},
+		)
+		self.assertEqual(rows[1]["print_link"], "Storniert &amp; &quot;&lt;weg&gt;&quot;")
 
 	def test_a_kennzahl_to_show_appears_without_amount_or_vouchers(self):
 		rows = rows_of(
@@ -457,3 +524,15 @@ class VouchersByTypeTest(TestCase):
 
 	def test_without_vouchers_of_the_types_there_is_nothing_to_read(self):
 		self.assertEqual(vouchers_by_type(["Journal Entry:JE-1", None], ("Sales Invoice",)), {})
+
+	def test_without_types_groups_the_vouchers_of_every_type(self):
+		vouchers = [
+			"Payment Entry:PE-1",
+			None,
+			"Journal Entry:JE-2",
+			"Journal Entry:JE-1",
+			"Payment Entry:PE-1",
+		]
+		self.assertEqual(
+			vouchers_by_type(vouchers), {"Payment Entry": ["PE-1"], "Journal Entry": ["JE-1", "JE-2"]}
+		)

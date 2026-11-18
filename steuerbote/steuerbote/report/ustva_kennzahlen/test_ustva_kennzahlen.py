@@ -161,6 +161,20 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 			[(a["1576"], 19, 0), (a["1200"], 0, 19)],
 		)
 
+		# With the immutable ledger, ERPNext keeps the GL Entries of a cancelled voucher and posts their
+		# reversal on the day of the cancellation: in May for the first entry, in June for the second.
+		cls.cancelled_in_may = post_journal_entry(
+			COMPANY, "2026-05-12", [(a["1400"], 238, 0), (a["8400"], 0, 200), (a["1776"], 0, 38)]
+		)
+		cls.cancelled_in_june = post_journal_entry(
+			COMPANY, "2026-05-14", [(a["1400"], 357, 0), (a["8400"], 0, 300), (a["1776"], 0, 57)]
+		)
+		with cls.change_settings("Accounts Settings", {"enable_immutable_ledger": 1}):
+			with cls.freeze_time("2026-05-20 12:00:00"):
+				cls.cancelled_in_may.cancel()
+			with cls.freeze_time("2026-06-03 12:00:00"):
+				cls.cancelled_in_june.cancel()
+
 	def rows(self, period: int, **values) -> list[dict]:
 		_columns, rows = execute(filters(period, **values))
 		return rows
@@ -343,6 +357,43 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 		vouchers = {row["voucher_no"] for row in self.rows(3)}
 		self.assertNotIn(self.cancelled.name, vouchers)
 		self.assertNotIn(self.settlement.name, vouchers)
+
+	def test_marks_a_cancelled_voucher_instead_of_linking_its_print_view(self):
+		row = next(row for row in self.rows(5) if row["voucher_no"] == self.cancelled_in_may.name)
+		self.assertEqual(
+			(
+				row["kennzahl"],
+				row["voucher_type"],
+				str(row["posting_date"]),
+				money(row["debit"]),
+				money(row["credit"]),
+				money(row["amount"]),
+				row["print_link"],
+			),
+			("81", "Journal Entry", "2026-05-12", money(200), money(200), money(0), "Cancelled voucher"),
+		)
+
+	def test_a_cancellation_in_a_later_period_reduces_that_period(self):
+		found = []
+		for period in (5, 6):
+			rows = self.rows(period)
+			kennzahl = next(row for row in rows if row["kennzahl"] == "81" and not row["indent"])
+			voucher = next(row for row in rows if row["voucher_no"] == self.cancelled_in_june.name)
+			found.append(
+				(
+					money(kennzahl["reported"]),
+					str(voucher["posting_date"]),
+					money(voucher["amount"]),
+					voucher["print_link"],
+				)
+			)
+		self.assertEqual(
+			found,
+			[
+				(money(300), "2026-05-14", money(300), "Cancelled voucher"),
+				(money(-300), "2026-06-03", money(-300), "Cancelled voucher"),
+			],
+		)
 
 	def test_december_deducts_the_sondervorauszahlung(self):
 		self.assertEqual(
