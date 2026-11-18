@@ -3,6 +3,7 @@ from decimal import Decimal
 import frappe
 from frappe.model.document import Document
 from frappe.tests import IntegrationTestCase
+from frappe.translate import clear_cache as clear_translation_cache
 
 from steuerbote.ustva import Rhythm
 
@@ -149,6 +150,13 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 					{"year": 2026, "dauerfristverlaengerung": 0},
 				]
 			).insert()
+
+	def test_frappe_reads_the_german_translations_of_the_app(self):
+		clear_translation_cache()
+		self.assertEqual(
+			frappe._("VAT Return Settings", lang="de"), "Einstellungen Umsatzsteuer-Voranmeldung"
+		)
+		self.assertEqual(frappe._("Filing Period", lang="de"), "Voranmeldungszeitraum")
 
 	def test_refuses_a_sondervorauszahlung_without_dauerfristverlaengerung(self):
 		with self.assertRaisesRegex(frappe.ValidationError, "requires the Dauerfristverlängerung"):
