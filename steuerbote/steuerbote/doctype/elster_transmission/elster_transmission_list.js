@@ -3,7 +3,7 @@ frappe.listview_settings["ELSTER Transmission"] = {
 		if (doc.simulated) {
 			return [__("Simulated"), "blue", "simulated,=,1"];
 		}
-		const colours = { Erfolgreich: "green", Fehlgeschlagen: "red", Läuft: "orange" };
+		const colours = { Erfolgreich: "green", Fehlgeschlagen: "red", Unbekannt: "orange", Läuft: "yellow" };
 		return [__(doc.status), colours[doc.status] || "gray", `status,=,${doc.status}`];
 	},
 };

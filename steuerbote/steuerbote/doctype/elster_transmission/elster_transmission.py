@@ -2,8 +2,10 @@
 outside Steuerbote.
 
 Only the server writes it. VATReturn.transmit creates it while the run waits for its background job, the job
-completes it, and afterwards it stays as it is. A record of a filing, a successful real Senden or a filing
-outside Steuerbote, cannot be deleted, since the Finanzamt has that return.
+completes it with the outcome of steuerbote.eric, and afterwards it stays as it is. A record of a filing, a
+successful real Senden or a filing outside Steuerbote, cannot be deleted, since the Finanzamt has that
+return. A real Senden with an unknown outcome may have reached ELSTER: it blocks sending the return again
+until someone has checked in Mein ELSTER and a System Manager has deleted it.
 """
 
 import frappe
@@ -18,6 +20,7 @@ EXTERN = "extern"
 
 SUCCEEDED = "Erfolgreich"
 FAILED = "Fehlgeschlagen"
+UNKNOWN = "Unbekannt"
 RUNNING = "Läuft"
 
 
@@ -39,12 +42,13 @@ class ELSTERTransmission(Document):
 		finished_at: DF.Datetime | None
 		messages: DF.Table[ELSTERTransmissionMessage]
 		operation: DF.Literal["validate", "test_send", "send", "extern"]
+		outcome: DF.Literal["", "valid", "invalid", "accepted", "rejected", "failed", "unknown"]
 		protocol_pdf: DF.Attach | None
 		remarks: DF.SmallText | None
 		response_xml: DF.Attach | None
 		simulated: DF.Check
 		started_at: DF.Datetime | None
-		status: DF.Literal["Erfolgreich", "Fehlgeschlagen", "Läuft"]
+		status: DF.Literal["Erfolgreich", "Fehlgeschlagen", "Unbekannt", "Läuft"]
 		testmerker: DF.Data | None
 		transferticket: DF.Data | None
 		user: DF.Link | None

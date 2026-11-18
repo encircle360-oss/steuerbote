@@ -71,7 +71,7 @@
    "label": "Runtime"
   },
   {
-   "description": "Path of the ERiC archive for Linux x86_64 on the server, or its address on download.elster.de, as the ELSTER developer area offers it after the login.",
+   "description": "Absolute path on the server of the ERiC archive for Linux x86_64, as downloaded from the ELSTER developer area after the login.",
    "fieldname": "archive_path",
    "fieldtype": "Data",
    "label": "ERiC Archive"
@@ -113,7 +113,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-18 04:00:00.000000",
+ "modified": "2026-11-18 06:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "ERiC Settings",

@@ -31,6 +31,7 @@ UNTRANSLATED = frozenset(
 		"Nutzdaten (XML)",
 		"Testmerker",
 		"Transferticket",
+		"Unbekannt",
 	}
 )
 # Labels Frappe and ERPNext translate themselves; the app keeps out of their translations.
@@ -48,6 +49,7 @@ FRAMEWORK_LABELS = frozenset(
 		"Started At",
 		"Status",
 		"User",
+		"failed",
 	}
 )
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")

@@ -10,6 +10,7 @@
   "company",
   "operation",
   "status",
+  "outcome",
   "simulated",
   "column_break_status",
   "started_at",
@@ -64,9 +65,17 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Erfolgreich\nFehlgeschlagen\nLäuft",
+   "options": "Erfolgreich\nFehlgeschlagen\nUnbekannt\nLäuft",
    "read_only": 1,
    "reqd": 1
+  },
+  {
+   "description": "What ERiC or its simulation answered. Unknown: the data may have reached ELSTER; check in Mein ELSTER before sending again.",
+   "fieldname": "outcome",
+   "fieldtype": "Select",
+   "label": "Outcome",
+   "options": "\nvalid\ninvalid\naccepted\nrejected\nfailed\nunknown",
+   "read_only": 1
   },
   {
    "default": "0",
@@ -172,7 +181,7 @@
  ],
  "in_create": 1,
  "links": [],
- "modified": "2026-11-18 04:00:00.000000",
+ "modified": "2026-11-18 06:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "ELSTER Transmission",

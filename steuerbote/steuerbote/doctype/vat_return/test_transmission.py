@@ -1,22 +1,39 @@
 """Prüfen, Testsenden, Senden and „Als außerhalb abgegeben vermerken“ on the VAT Return.
 
-FakeEric replaces the functions of transmission_adapter: the ERiC library layer, the XML builder and the
-store for certificate and password. Its results have the fields of steuerbote.eric.result.
+The XML of steuerbote.elster, the header, the store of certificate and password and the simulation run for
+real. FakeEric replaces the two calls of transmission_adapter that need an installed ERiC, the worker and
+the runtime directory, with results of steuerbote.eric.result. With the stub of the ERiC library, which the
+CI builds, a runtime installs from an archive and the worker sends through it.
 """
 
 import base64
-import io
-from dataclasses import dataclass, replace
-from decimal import Decimal
-from enum import Enum
+import hashlib
+import shutil
+import tempfile
+import zipfile
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
-from pypdf import PdfWriter
 
 import steuerbote
+from steuerbote.eric import secrets
+from steuerbote.eric.fake import placeholder_pdf
+from steuerbote.eric.header import EnvelopeHeader
+from steuerbote.eric.result import (
+	ERROR,
+	TESTMERKER,
+	UNKNOWN_MESSAGE,
+	Message,
+	Operation,
+	Outcome,
+	TransmissionResult,
+)
+from steuerbote.eric.runtime import RuntimeInfo
+from steuerbote.eric.tests import stub
+from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root, run_installation
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 from steuerbote.steuerbote.doctype.vat_return.vat_return import (
 	VATReturn,
@@ -32,18 +49,26 @@ from steuerbote.tests.helpers import (
 )
 
 COMPANY = "Steuerbote Test Uebermittlung GmbH"
+# Files through the ERiC stub, with periods of its own.
+STUB_COMPANY = "Steuerbote Test ERiC-Stub GmbH"
+DATENLIEFERANT_ADDRESS = {
+	"filer_name": COMPANY,
+	"street": "Hauptstraße 1",
+	"postal_code": "80331",
+	"city": "München",
+}
 ACCOUNTS_USER = "steuerbote-uebermittlung@example.com"
 JOB = "steuerbote.steuerbote.doctype.vat_return.vat_return.run_transmission"
 JOB_ARGUMENTS = ("name", "operation", "token")
 TRANSMISSION = "ELSTER Transmission"
 DATENLIEFERANT = "Steuerbote Test Uebermittlung GmbH; Erika Beispiel; 089 1234567; erika@example.org"
-NUTZDATEN = (
-	'<Anmeldungssteuern xmlns="http://finkonsens.de/elster/elsteranmeldung/ustva/v2026" version="2026"/>'
-)
 # Invented for the tests, like every certificate and password here.
 CERTIFICATE = b"0\x82\x01\x00 invented PKCS #12 \x00\x01\x02"
 PIN = "Geheim-PIN-2026"
 TICKET = "et0123456789abcdef"
+STUB_TICKET = "et0stub0accepted0000000000000001"
+STUB_LIB = "ERiC-44.3.6.0/Linux-x86_64/lib"
+PROTOCOL = placeholder_pdf("Übertragungsprotokoll", ["Erfunden für die Tests"])
 
 ACCOUNTS = {
 	"8400": ("Erlöse 19 % USt", "Income"),
@@ -58,131 +83,63 @@ ACCOUNTS = {
 	"1400": ("Forderungen aus Lieferungen und Leistungen", "Asset"),
 }
 
-
-def money(value) -> Decimal:
-	return Decimal(str(value)).quantize(Decimal("0.01"))
-
-
-def blank_pdf() -> bytes:
-	writer = PdfWriter()
-	writer.add_blank_page(width=595, height=842)
-	buffer = io.BytesIO()
-	writer.write(buffer)
-	return buffer.getvalue()
-
-
-PROTOCOL = blank_pdf()
-
-
-class Operation(Enum):
-	VALIDATE = "validate"
-	TEST_SEND = "test_send"
-	SEND = "send"
-
-
-@dataclass(frozen=True, slots=True)
-class Message:
-	code: str
-	text: str
-	severity: str
-	field: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class TransmissionResult:
-	operation: Operation
-	ok: bool
-	simulated: bool
-	eric_version: str
-	transferticket: str | None
-	testmerker: str | None
-	messages: tuple[Message, ...] = ()
-	protocol_pdf: bytes | None = None
-	server_response_xml: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeInfo:
-	version: str
-	lib_dir: Path
-	plugin_dir: Path
-	log_dir: Path
-	hersteller_id: str
-
-
 RUNTIME = RuntimeInfo(
 	"44.3.6.0",
 	Path("/srv/eric/44.3.6.0/lib"),
-	Path("/srv/eric/44.3.6.0/lib/plugins"),
-	Path("/srv/eric/logs"),
+	Path("/srv/eric/44.3.6.0/lib"),
+	Path("/srv/eric/log"),
 	"",
 )
 
 
 class FakeEric:
-	"""Stands in for transmission_adapter and keeps what it was given."""
+	"""Stands in for the worker and the runtime directory of steuerbote.eric and keeps what it was given."""
 
 	def __init__(
-		self, *, ok: bool = True, messages: tuple[Message, ...] = (), error: Exception | None = None
+		self,
+		*,
+		outcome: Outcome | None = None,
+		messages: tuple[Message, ...] = (),
+		error: Exception | None = None,
 	):
-		self.ok = ok
+		self.outcome = outcome
 		self.messages = messages
 		self.error = error
-		self.secrets: dict[str, tuple[bytes, str]] = {}
-		self.built: list[tuple[str, str, dict[str, Decimal]]] = []
 		self.runs: list[dict] = []
+		self.detections: list[tuple] = []
 
 	def patch(self):
-		return patch.multiple(
-			transmission_adapter,
-			build_nutzdaten=self.build_nutzdaten,
-			run=self.run,
-			stash=self.stash,
-			take=self.take,
-			detect_runtime=self.detect_runtime,
-		)
+		return patch.multiple(transmission_adapter, run=self.run, detect_runtime=self.detect_runtime)
 
-	def build_nutzdaten(self, vat_return, hersteller_id):
-		amounts = {row.kennzahl: money(row.final) for row in vat_return.kennzahlen}
-		self.built.append((vat_return.name, hersteller_id, amounts))
-		return NUTZDATEN
+	def detect_runtime(self, year, operation, hersteller_id, log_dir):
+		self.detections.append((year, operation, hersteller_id, log_dir))
+		return replace(RUNTIME, hersteller_id=hersteller_id, log_dir=log_dir)
 
-	def stash(self, certificate_secret, certificate_password):
-		token = f"token-{len(self.secrets) + 1}"
-		self.secrets[token] = (certificate_secret, certificate_password)
-		return token
-
-	def take(self, token):
-		return self.secrets.pop(token)
-
-	def detect_runtime(self, hersteller_id):
-		return replace(RUNTIME, hersteller_id=hersteller_id)
-
-	def run(self, operation, nutzdaten_xml, header, runtime, certificate_secret, certificate_password):
+	def run(self, operation, nutzdaten_xml, header, runtime_info, certificate_secret, certificate_password):
 		self.runs.append(
 			{
 				"operation": operation,
 				"nutzdaten": nutzdaten_xml,
 				"header": header,
-				"runtime": runtime,
+				"runtime": runtime_info,
 				"certificate": certificate_secret,
 				"password": certificate_password,
 			}
 		)
 		if self.error:
 			raise self.error
-		simulated = runtime is None
-		sending = operation != Operation.VALIDATE.value
+		outcome = self.outcome or (Outcome.ACCEPTED if operation.sends else Outcome.VALID)
 		return TransmissionResult(
-			operation=Operation(operation),
-			ok=self.ok,
-			simulated=simulated,
-			eric_version="simulation" if simulated else RUNTIME.version,
-			transferticket=(("SIM-" if simulated else "") + TICKET) if sending and self.ok else None,
-			testmerker=header["testmerker"],
-			messages=self.messages,
-			protocol_pdf=PROTOCOL,
-			server_response_xml="<Elster/>" if sending else None,
+			operation,
+			outcome.ok,
+			runtime_info is None,
+			RUNTIME.version,
+			TICKET if outcome is Outcome.ACCEPTED else None,
+			TESTMERKER if operation is Operation.TEST_SEND else None,
+			self.messages,
+			PROTOCOL,
+			"<Elster/>" if operation.sends else None,
+			outcome,
 		)
 
 
@@ -209,7 +166,7 @@ class TestTransmission(IntegrationTestCase):
 			number: make_account(COMPANY, number, name, root_type)
 			for number, (name, root_type) in ACCOUNTS.items()
 		}
-		make_settings(COMPANY, [(2026, "monthly", 1)])
+		make_settings(COMPANY, [(2026, "monthly", 1)], **DATENLIEFERANT_ADDRESS)
 		make_mapping(COMPANY)
 		march = "2026-03-10"
 		post_journal_entry(COMPANY, march, [(a["1400"], 1190, 0), (a["8400"], 0, 1000), (a["1776"], 0, 190)])
@@ -219,6 +176,11 @@ class TestTransmission(IntegrationTestCase):
 			COMPANY, march, [(a["3123"], 300, 0), (a["1577"], 57, 0), (a["1787"], 0, 57), (a["1200"], 0, 300)]
 		)
 		post_journal_entry(COMPANY, march, [(a["1576"], 95, 0), (a["1200"], 0, 95)])
+		make_company(STUB_COMPANY, "STUES")
+		make_settings(
+			STUB_COMPANY, [(2026, "monthly", 1)], **{**DATENLIEFERANT_ADDRESS, "filer_name": STUB_COMPANY}
+		)
+		make_mapping(STUB_COMPANY)
 		make_user(ACCOUNTS_USER, "Accounts User")
 
 	def setUp(self):
@@ -250,11 +212,11 @@ class TestTransmission(IntegrationTestCase):
 			log_dir=str(RUNTIME.log_dir),
 		)
 
-	def new_return(self, period: int, **fields):
+	def new_return(self, period: int, company: str = COMPANY, **fields):
 		return frappe.get_doc(
 			{
 				"doctype": "VAT Return",
-				"company": COMPANY,
+				"company": company,
 				"year": 2026,
 				"rhythm": "monthly",
 				"period_index": period,
@@ -268,26 +230,31 @@ class TestTransmission(IntegrationTestCase):
 		doc.reload()
 		return doc
 
-	def stash(self, fake: FakeEric) -> str:
-		with fake.patch():
-			return stash_certificate(base64.b64encode(CERTIFICATE).decode(), PIN)
+	def stash(self) -> str:
+		return stash_certificate(base64.b64encode(CERTIFICATE).decode(), PIN)
 
 	def transmit(self, doc, operation: str, token: str | None = None):
 		with patch("frappe.enqueue") as enqueue:
 			name = doc.transmit(operation, token)
 		return name, enqueue
 
-	def run_job(self, enqueue, fake: FakeEric):
+	def run_job(self, enqueue, fake: FakeEric | None = None):
+		"""Run the job enqueued; without a fake through the real service, whose run is recorded."""
 		(call,) = enqueue.call_args_list
-		with fake.patch(), patch("frappe.publish_realtime") as publish:
+		calls = (
+			fake.patch()
+			if fake
+			else patch.object(transmission_adapter, "run", wraps=transmission_adapter.run)
+		)
+		with calls as run, patch("frappe.publish_realtime") as publish:
 			run_transmission(**{key: call.kwargs[key] for key in JOB_ARGUMENTS})
-		return publish
+		return publish, run
 
-	def transmitted(self, doc, operation: str, fake: FakeEric, token: str | None = None):
+	def transmitted(self, doc, operation: str, fake: FakeEric | None = None, token: str | None = None):
 		name, enqueue = self.transmit(doc, operation, token)
-		publish = self.run_job(enqueue, fake)
+		publish, run = self.run_job(enqueue, fake)
 		doc.reload()
-		return frappe.get_doc(TRANSMISSION, name), publish
+		return frappe.get_doc(TRANSMISSION, name), publish, run
 
 	def attachment(self, transmission, fieldname: str):
 		name = frappe.db.get_value(
@@ -300,11 +267,12 @@ class TestTransmission(IntegrationTestCase):
 		)
 		return frappe.get_doc("File", name)
 
+	def codes(self, transmission) -> list[str]:
+		return [row.code for row in transmission.messages]
+
 	def test_pruefen_in_the_simulation_records_the_result_and_leaves_the_return_as_it_is(self):
 		doc = self.calculated(3)
-		hint = Message("SIM-000", "Simulation, keine Übermittlung", "hint")
-		fake = FakeEric(messages=(hint,))
-		transmission, publish = self.transmitted(doc, "validate", fake)
+		transmission, publish, run = self.transmitted(doc, "validate")
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (0, "Bereit", 0))
 		self.assertEqual(
 			(
@@ -312,63 +280,59 @@ class TestTransmission(IntegrationTestCase):
 				transmission.company,
 				transmission.operation,
 				transmission.status,
+				transmission.outcome,
 				transmission.simulated,
 				transmission.eric_version,
 				transmission.transferticket,
 				transmission.testmerker,
 				transmission.user,
 			),
-			(doc.name, COMPANY, "validate", "Erfolgreich", 1, "simulation", None, None, "Administrator"),
+			(
+				doc.name,
+				COMPANY,
+				"validate",
+				"Erfolgreich",
+				"valid",
+				1,
+				"simulation",
+				None,
+				None,
+				"Administrator",
+			),
 		)
-		self.assertEqual(
-			[(row.code, row.severity, row.text, row.field) for row in transmission.messages],
-			[("SIM-000", "hint", "Simulation, keine Übermittlung", None)],
-		)
+		self.assertIn("SIM-000", self.codes(transmission))
 		self.assertLessEqual(transmission.started_at, transmission.finished_at)
+		operation, nutzdaten, header, runtime_info, certificate, password = run.call_args.args
 		self.assertEqual(
-			fake.built,
-			[
-				(
-					doc.name,
-					"00000",
-					{
-						"81": money(1000),
-						"46": money(300),
-						"47": money(57),
-						"21": money(2000),
-						"45": money(500),
-						"66": money(95),
-						"67": money(57),
-						"83": money(95),
-					},
-				)
-			],
-		)
-		(run,) = fake.runs
-		self.assertEqual(
-			(run["operation"], run["nutzdaten"], run["runtime"], run["certificate"], run["password"]),
-			("validate", NUTZDATEN, None, None, None),
+			(operation, runtime_info, certificate, password), (Operation.VALIDATE, None, None, None)
 		)
 		self.assertEqual(
-			run["header"],
-			{
-				"hersteller_id": "00000",
-				"datenlieferant": COMPANY,
-				"produkt_name": "steuerbote",
-				"produkt_version": steuerbote.__version__,
-				"empfaenger_finanzamt": "9123",
-				"datenart_version": "UStVA_2026",
-				"testmerker": None,
-				"nutzdaten_ticket": "1",
-			},
+			header,
+			EnvelopeHeader(
+				hersteller_id="00000",
+				datenlieferant=COMPANY,
+				produkt_name="steuerbote",
+				produkt_version=steuerbote.__version__,
+				empfaenger_finanzamt="9123",
+				datenart_version="UStVA_2026",
+				testmerker=None,
+				nutzdaten_ticket="1",
+			),
 		)
+		for element in (
+			"<Zeitraum>03</Zeitraum>",
+			"<Steuernummer>9123045678901</Steuernummer>",
+			"<Kz09>00000</Kz09>",
+			"<Kz81>1000</Kz81>",
+			"<Kz67>57.00</Kz67>",
+			"<Kz83>95.00</Kz83>",
+		):
+			with self.subTest(element=element):
+				self.assertIn(element, nutzdaten)
 		xml = self.attachment(transmission, "xml")
 		self.assertEqual((xml.file_url, xml.is_private), (transmission.xml, 1))
-		self.assertEqual(xml.get_content(), NUTZDATEN)
-		protocol = self.attachment(transmission, "protocol_pdf")
-		self.assertEqual((protocol.file_url, protocol.is_private), (transmission.protocol_pdf, 1))
-		self.assertEqual(protocol.get_content(), PROTOCOL)
-		self.assertFalse(transmission.response_xml)
+		self.assertEqual(xml.get_content(), nutzdaten)
+		self.assertFalse(transmission.protocol_pdf or transmission.response_xml)
 		self.assertEqual(
 			publish.call_args.args,
 			(
@@ -386,18 +350,15 @@ class TestTransmission(IntegrationTestCase):
 
 	def test_testsenden_in_the_simulation_needs_no_certificate_and_keeps_the_return_a_draft(self):
 		doc = self.calculated(1)
-		transmission, _ = self.transmitted(doc, "test_send", FakeEric())
+		transmission, _, _ = self.transmitted(doc, "test_send")
 		self.assertEqual(
-			(
-				transmission.status,
-				transmission.simulated,
-				transmission.testmerker,
-				transmission.transferticket,
-			),
-			("Erfolgreich", 1, "700000004", f"SIM-{TICKET}"),
+			(transmission.status, transmission.outcome, transmission.simulated, transmission.testmerker),
+			("Erfolgreich", "accepted", 1, "700000004"),
 		)
+		self.assertTrue(transmission.transferticket.startswith("SIM-"))
+		protocol = self.attachment(transmission, "protocol_pdf")
+		self.assertTrue(protocol.get_content().startswith(b"%PDF"))
 		self.assertEqual((doc.docstatus, doc.status), (0, "Bereit"))
-		self.assertEqual(self.attachment(transmission, "response_xml").get_content(), "<Elster/>")
 
 	def test_senden_is_not_offered_in_the_simulation(self):
 		doc = self.calculated(2)
@@ -417,7 +378,7 @@ class TestTransmission(IntegrationTestCase):
 		doc = self.calculated(2)
 		with self.set_user(ACCOUNTS_USER), patch("frappe.enqueue") as enqueue:
 			with self.assertRaises(frappe.PermissionError):
-				doc.transmit("send", "token-1")
+				doc.transmit("send", "token")
 			doc.transmit("validate")
 		self.assertEqual(enqueue.call_count, 1)
 
@@ -425,33 +386,39 @@ class TestTransmission(IntegrationTestCase):
 		self.use_runtime()
 		doc = self.calculated(4)
 		fake = FakeEric()
-		transmission, _ = self.transmitted(doc, "send", fake, self.stash(fake))
+		token = self.stash()
+		transmission, _, _ = self.transmitted(doc, "send", fake, token)
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (1, "Abgegeben", 0))
 		self.assertEqual(
 			(
 				transmission.status,
+				transmission.outcome,
 				transmission.simulated,
 				transmission.transferticket,
 				transmission.testmerker,
 				transmission.eric_version,
 			),
-			("Erfolgreich", 0, TICKET, None, "44.3.6.0"),
+			("Erfolgreich", "accepted", 0, TICKET, None, "44.3.6.0"),
 		)
+		log_dir = eric_log_root() / transmission.name
+		self.assertEqual(fake.detections, [(2026, Operation.SEND, "12345", log_dir)])
 		(run,) = fake.runs
 		self.assertEqual((run["certificate"], run["password"]), (CERTIFICATE, PIN))
-		self.assertEqual(run["runtime"], replace(RUNTIME, hersteller_id="12345"))
+		self.assertEqual(run["runtime"], replace(RUNTIME, hersteller_id="12345", log_dir=log_dir))
 		self.assertEqual(
-			(run["header"]["hersteller_id"], run["header"]["datenlieferant"], run["header"]["testmerker"]),
+			(run["header"].hersteller_id, run["header"].datenlieferant, run["header"].testmerker),
 			("12345", DATENLIEFERANT, None),
 		)
-		self.assertEqual(fake.built[0][1], "12345")
-		self.assertEqual(fake.secrets, {})
+		self.assertIn("<Kz09>12345</Kz09>", run["nutzdaten"])
+		self.assertEqual(self.attachment(transmission, "protocol_pdf").get_content(), PROTOCOL)
+		with self.assertRaises(secrets.SecretsExpired):
+			secrets.take(token)
 
 	def test_the_certificate_and_its_password_reach_the_job_only_as_a_token(self):
 		self.use_runtime()
 		doc = self.calculated(10)
 		fake = FakeEric()
-		token = self.stash(fake)
+		token = self.stash()
 		name, enqueue = self.transmit(doc, "test_send", token)
 		(call,) = enqueue.call_args_list
 		self.assertEqual(call.args, (JOB,))
@@ -471,7 +438,8 @@ class TestTransmission(IntegrationTestCase):
 		self.run_job(enqueue, fake)
 		transmission = frappe.get_doc(TRANSMISSION, name)
 		self.assertEqual((transmission.testmerker, transmission.simulated), ("700000004", 0))
-		self.assertEqual(fake.runs[0]["header"]["testmerker"], "700000004")
+		self.assertEqual(fake.runs[0]["header"].testmerker, "700000004")
+		self.assertEqual(fake.detections[0][1], Operation.TEST_SEND)
 		recorded = frappe.as_json(transmission.as_dict())
 		self.assertNotIn(PIN, recorded)
 		self.assertNotIn(base64.b64encode(CERTIFICATE).decode(), recorded)
@@ -490,39 +458,72 @@ class TestTransmission(IntegrationTestCase):
 		self.use_runtime()
 		doc = self.calculated(10)
 		fake = FakeEric()
-		transmission, publish = self.transmitted(doc, "test_send", fake, "token-expired")
-		self.assertEqual((transmission.status, doc.transmission_in_progress), ("Fehlgeschlagen", 0))
+		transmission, publish, _ = self.transmitted(doc, "test_send", fake, "expired")
+		self.assertEqual(
+			(transmission.status, transmission.outcome, doc.transmission_in_progress),
+			("Fehlgeschlagen", "failed", 0),
+		)
 		self.assertIn("certificate", transmission.messages[-1].text)
 		self.assertEqual(fake.runs, [])
 		self.assertEqual(publish.call_args.args[1]["status"], "Fehlgeschlagen")
 
-	def test_a_missing_library_ends_in_a_failed_transmission_that_names_it(self):
+	def test_data_the_xml_does_not_take_end_in_a_failed_transmission(self):
 		doc = self.calculated(1)
-		fake = FakeEric(error=transmission_adapter.TransmissionUnavailable("steuerbote.eric.service"))
-		transmission, _ = self.transmitted(doc, "validate", fake)
+		street = frappe.db.get_value("VAT Return Settings", COMPANY, "street")
+		frappe.db.set_value("VAT Return Settings", COMPANY, "street", None)
+		self.addCleanup(frappe.db.set_value, "VAT Return Settings", COMPANY, "street", street)
+		transmission, _, run = self.transmitted(doc, "validate")
 		self.assertEqual((transmission.status, doc.transmission_in_progress), ("Fehlgeschlagen", 0))
-		self.assertIn("steuerbote.eric.service", transmission.messages[-1].text)
+		self.assertIn("street of the Datenlieferant", transmission.messages[-1].text)
+		run.assert_not_called()
 		self.assertEqual((doc.docstatus, doc.status), (0, "Bereit"))
 
 	def test_a_rejected_send_keeps_the_return_a_draft_with_the_messages(self):
 		self.use_runtime()
 		doc = self.calculated(5)
-		error = Message("610101210", "Die Steuernummer ist ungültig.", "error", "Steuernummer")
-		fake = FakeEric(ok=False, messages=(error,))
-		transmission, _ = self.transmitted(doc, "send", fake, self.stash(fake))
+		error = Message("610101210", "Die Steuernummer ist ungültig.", ERROR, "Steuernummer")
+		fake = FakeEric(outcome=Outcome.REJECTED, messages=(error,))
+		transmission, _, _ = self.transmitted(doc, "send", fake, self.stash())
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (0, "Bereit", 0))
-		self.assertEqual((transmission.status, transmission.transferticket), ("Fehlgeschlagen", None))
+		self.assertEqual(
+			(transmission.status, transmission.outcome, transmission.transferticket),
+			("Fehlgeschlagen", "rejected", None),
+		)
 		self.assertEqual(
 			[(row.code, row.severity, row.text, row.field) for row in transmission.messages],
 			[("610101210", "error", "Die Steuernummer ist ungültig.", "Steuernummer")],
 		)
+
+	def test_a_send_that_may_have_reached_elster_blocks_sending_until_it_is_cleared(self):
+		self.use_runtime()
+		doc = self.calculated(12)
+		lost = Message("SB-WORKER", "ERiC hat nach 120 Sekunden nicht geantwortet.", ERROR)
+		fake = FakeEric(outcome=Outcome.UNKNOWN, messages=(lost, UNKNOWN_MESSAGE))
+		transmission, publish, _ = self.transmitted(doc, "send", fake, self.stash())
+		self.assertEqual(
+			(transmission.status, transmission.outcome, transmission.transferticket),
+			("Unbekannt", "unknown", None),
+		)
+		self.assertEqual(self.codes(transmission), ["SB-WORKER", "SB-UNKNOWN"])
+		self.assertEqual((doc.docstatus, publish.call_args.args[1]["status"]), (0, "Unbekannt"))
+		with patch("frappe.enqueue") as enqueue:
+			with self.assertRaisesRegex(
+				frappe.ValidationError, f"Whether {transmission.name} reached ELSTER"
+			):
+				doc.transmit("send", self.stash())
+			with self.assertRaisesRegex(frappe.ValidationError, "transmitted already"):
+				self.calculated(12).transmit("send", self.stash())
+		enqueue.assert_not_called()
+		frappe.delete_doc(TRANSMISSION, transmission.name)
+		_, enqueue = self.transmit(doc, "send", self.stash())
+		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
 
 	def test_a_sent_return_that_could_not_be_submitted_is_never_sent_again(self):
 		self.use_runtime()
 		doc = self.calculated(6)
 		fake = FakeEric()
 		with patch.object(VATReturn, "before_submit", side_effect=frappe.ValidationError("Kaputt")):
-			transmission, _ = self.transmitted(doc, "send", fake, self.stash(fake))
+			transmission, _, _ = self.transmitted(doc, "send", fake, self.stash())
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (0, "Bereit", 0))
 		self.assertEqual((transmission.status, transmission.transferticket), ("Erfolgreich", TICKET))
 		self.assertEqual(transmission.messages[-1].severity, "error")
@@ -530,20 +531,21 @@ class TestTransmission(IntegrationTestCase):
 		self.assertIn("Kaputt", transmission.messages[-1].text)
 		with patch("frappe.enqueue") as enqueue:
 			with self.assertRaisesRegex(frappe.ValidationError, "transmitted already"):
-				doc.transmit("send", self.stash(fake))
+				doc.transmit("send", self.stash())
 			with self.assertRaisesRegex(frappe.ValidationError, "transmitted already"):
-				self.calculated(6).transmit("send", self.stash(fake))
+				self.calculated(6).transmit("send", self.stash())
 		enqueue.assert_not_called()
 
 	def test_a_corrected_return_replaces_the_return_sent_before(self):
 		self.use_runtime()
 		first = self.calculated(7)
 		fake = FakeEric()
-		self.transmitted(first, "send", fake, self.stash(fake))
+		self.transmitted(first, "send", fake, self.stash())
 		correction = self.calculated(7, is_correction=1)
-		self.transmitted(correction, "send", fake, self.stash(fake))
+		self.transmitted(correction, "send", fake, self.stash())
 		first.reload()
 		self.assertEqual((first.status, correction.docstatus, correction.status), ("Ersetzt", 1, "Abgegeben"))
+		self.assertIn("<Kz10>1</Kz10>", fake.runs[1]["nutzdaten"])
 
 	def test_one_transmission_at_a_time(self):
 		doc = self.calculated(8)
@@ -565,17 +567,32 @@ class TestTransmission(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "running"):
 			doc.calculate()
 
-	def test_a_transmission_whose_job_is_gone_is_closed_with_an_unknown_result(self):
+	def test_a_check_whose_job_is_gone_is_closed_as_failed(self):
 		doc = self.calculated(8)
 		first, _ = self.transmit(doc, "validate")
 		with patch("steuerbote.steuerbote.doctype.vat_return.vat_return.is_job_enqueued", return_value=False):
 			second, enqueue = self.transmit(doc, "validate")
 		enqueue.assert_called_once()
 		stale = frappe.get_doc(TRANSMISSION, first)
-		self.assertEqual(stale.status, "Fehlgeschlagen")
+		self.assertEqual((stale.status, stale.outcome), ("Fehlgeschlagen", "failed"))
 		self.assertTrue(stale.finished_at)
 		self.assertIn("Mein ELSTER", stale.messages[-1].text)
 		self.assertEqual(frappe.db.get_value(TRANSMISSION, second, "status"), "Läuft")
+
+	def test_a_send_whose_job_is_gone_has_an_unknown_outcome_and_is_not_repeated(self):
+		self.use_runtime()
+		doc = self.calculated(11)
+		first, _ = self.transmit(doc, "send", self.stash())
+		with (
+			patch("steuerbote.steuerbote.doctype.vat_return.vat_return.is_job_enqueued", return_value=False),
+			patch("frappe.enqueue") as enqueue,
+			self.assertRaisesRegex(frappe.ValidationError, f"Whether {first} reached ELSTER"),
+		):
+			doc.transmit("send", self.stash())
+		enqueue.assert_not_called()
+		self.assertEqual(
+			frappe.db.get_value(TRANSMISSION, first, ["status", "outcome"]), ("Unbekannt", "unknown")
+		)
 
 	def test_only_a_calculated_draft_is_transmitted(self):
 		draft = self.new_return(11)
@@ -622,7 +639,7 @@ class TestTransmission(IntegrationTestCase):
 
 	def test_a_transmission_stays_as_it_was_recorded(self):
 		doc = self.calculated(1)
-		transmission, _ = self.transmitted(doc, "validate", FakeEric())
+		transmission, _, _ = self.transmitted(doc, "validate")
 		transmission.transferticket = "et-geaendert"
 		with self.assertRaisesRegex(frappe.ValidationError, "cannot be changed"):
 			transmission.save()
@@ -632,25 +649,24 @@ class TestTransmission(IntegrationTestCase):
 		self.assertFalse(frappe.db.exists(TRANSMISSION, transmission.name))
 
 	def test_stashing_keeps_certificate_and_password_behind_a_token(self):
-		fake = FakeEric()
 		encoded = base64.b64encode(CERTIFICATE).decode()
-		with fake.patch():
-			token = stash_certificate(encoded, PIN)
-			self.assertEqual(fake.secrets[token], (CERTIFICATE, PIN))
-			for certificate, password, message in (
-				("", PIN, "certificate file"),
-				("kein base64!", PIN, "certificate file"),
-				(encoded, "kurz", "6 to 128"),
-				(encoded, "x" * 129, "6 to 128"),
-				(encoded, "Passwört-2026", "6 to 128"),
+		token = stash_certificate(encoded, PIN)
+		self.assertEqual(secrets.take(token), (CERTIFICATE, PIN))
+		with self.assertRaises(secrets.SecretsExpired):
+			secrets.take(token)
+		for certificate, password, message in (
+			("", PIN, "certificate file"),
+			("kein base64!", PIN, "certificate file"),
+			(encoded, "kurz", "6 to 128"),
+			(encoded, "x" * 129, "6 to 128"),
+			(encoded, "Passwört-2026", "6 to 128"),
+		):
+			with (
+				self.subTest(certificate=certificate[:8], password=len(password)),
+				self.assertRaisesRegex(frappe.ValidationError, message) as raised,
 			):
-				with (
-					self.subTest(certificate=certificate[:8], password=len(password)),
-					self.assertRaisesRegex(frappe.ValidationError, message) as raised,
-				):
-					stash_certificate(certificate, password)
-				self.assertNotIn(password, str(raised.exception))
-		self.assertEqual(len(fake.secrets), 1)
+				stash_certificate(certificate, password)
+			self.assertNotIn(password, str(raised.exception))
 
 	def test_the_form_learns_whether_eric_is_simulated(self):
 		doc = self.new_return(3)
@@ -659,3 +675,40 @@ class TestTransmission(IntegrationTestCase):
 		self.use_runtime()
 		doc.run_method("onload")
 		self.assertEqual(doc.get_onload("elster"), {"simulation": False})
+
+	def test_through_the_eric_stub_a_runtime_installs_and_testsenden_and_senden_go_out(self):
+		library = stub.library()
+		directory = Path(tempfile.mkdtemp(prefix="steuerbote-eric-"))
+		self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+		archive = directory / "ERiC-44.3.6.0-Linux-x86_64.jar"
+		with zipfile.ZipFile(archive, "w") as jar:
+			jar.write(library, f"{STUB_LIB}/libericapi.so")
+			jar.writestr(f"{STUB_LIB}/plugins2/libcommonData.so", b"")
+			jar.writestr(f"{STUB_LIB}/plugins2/libcheckUStVA_2026.so", b"")
+		checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
+		root = directory / "eric"
+		with patch.object(transmission_adapter, "runtime_root", return_value=root):
+			with patch("frappe.publish_realtime"):
+				run_installation(archive_path=str(archive), sha256=checksum)
+			settings = frappe.get_single("ERiC Settings")
+			self.assertEqual(
+				(settings.installed_version, settings.lib_dir), ("44.3.6.0", str(root / "44.3.6.0" / "lib"))
+			)
+			settings.update({"hersteller_id": "12345", "datenlieferant": DATENLIEFERANT})
+			settings.save()
+			doc = self.new_return(1, company=STUB_COMPANY)
+			doc.calculate()
+			doc.reload()
+			test, _, _ = self.transmitted(doc, "test_send", token=self.stash())
+			self.assertEqual(
+				(test.status, test.outcome, test.simulated, test.transferticket, test.testmerker),
+				("Erfolgreich", "accepted", 0, STUB_TICKET, "700000004"),
+			)
+			self.assertEqual(test.eric_version, "44.3.6.0")
+			self.assertTrue((eric_log_root() / test.name).is_dir())
+			self.assertEqual((doc.docstatus, doc.status), (0, "Bereit"))
+			sent, _, _ = self.transmitted(doc, "send", token=self.stash())
+		self.assertEqual(
+			(sent.status, sent.outcome, sent.transferticket), ("Erfolgreich", "accepted", STUB_TICKET)
+		)
+		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (1, "Abgegeben", 0))

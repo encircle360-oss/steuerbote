@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
@@ -6,27 +5,16 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 import steuerbote
-from steuerbote.steuerbote.doctype.eric_settings.eric_settings import run_installation
+from steuerbote.eric.runtime import RuntimeInfo, RuntimeInstallError
+from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root, run_installation
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 
 SETTINGS = "ERiC Settings"
 INSTALLATION_JOB = "steuerbote.steuerbote.doctype.eric_settings.eric_settings.run_installation"
 ARCHIVE = "/srv/eric/ERiC-44.3.6.0-Linux-x86_64.jar"
-ARCHIVE_URL = "https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Linux-x86_64.jar"
 CHECKSUM = "ab" * 32
 LIB_DIR = "/srv/eric/44.3.6.0/lib"
 ACCOUNTS_MANAGER = "steuerbote-eric-einstellungen@example.com"
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeInfo:
-	"""The shape of steuerbote.eric.runtime.RuntimeInfo."""
-
-	version: str
-	lib_dir: Path
-	plugin_dir: Path
-	log_dir: Path
-	hersteller_id: str
 
 
 def make_user(email: str, role: str) -> str:
@@ -112,16 +100,17 @@ class TestERiCSettings(IntegrationTestCase):
 			with self.subTest(value=value), self.assertRaisesRegex(frappe.ValidationError, "SHA-256"):
 				self.settings(archive_sha256=value)
 
-	def test_the_archive_is_a_path_on_the_server_or_an_address_on_download_elster_de(self):
-		self.assertEqual(self.settings(archive_path=ARCHIVE).archive_path, ARCHIVE)
-		self.assertEqual(self.settings(archive_path=ARCHIVE_URL).archive_path, ARCHIVE_URL)
+	def test_the_archive_is_an_absolute_path_on_the_server(self):
+		self.assertEqual(self.settings(archive_path=f" {ARCHIVE} ").archive_path, ARCHIVE)
 		for value in (
 			"ERiC-44.3.6.0-Linux-x86_64.jar",
-			"http://download.elster.de/ERiC.jar",
-			"https://example.org/ERiC.jar",
-			"https://download.elster.de.example.org/ERiC.jar",
+			"eric/ERiC-44.3.6.0-Linux-x86_64.jar",
+			"https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Linux-x86_64.jar",
 		):
-			with self.subTest(value=value), self.assertRaises(frappe.ValidationError):
+			with (
+				self.subTest(value=value),
+				self.assertRaisesRegex(frappe.ValidationError, "absolute path on the server"),
+			):
 				self.settings(archive_path=value)
 
 	def test_installing_needs_the_archive_and_its_checksum(self):
@@ -175,8 +164,9 @@ class TestERiCSettings(IntegrationTestCase):
 		settings = frappe.get_single(SETTINGS)
 		self.assertEqual(
 			(settings.installed_version, settings.lib_dir, settings.log_dir, settings.simulation),
-			("44.3.6.0", LIB_DIR, "/srv/eric/logs", 0),
+			("44.3.6.0", LIB_DIR, str(eric_log_root()), 0),
 		)
+		self.assertTrue(eric_log_root().is_absolute())
 		self.assertTrue(settings.last_check)
 		self.assertEqual(
 			publish.call_args.args,
@@ -190,7 +180,9 @@ class TestERiCSettings(IntegrationTestCase):
 			patch.object(
 				transmission_adapter,
 				"install_from_archive",
-				side_effect=ValueError("The SHA-256 of the archive does not match."),
+				side_effect=RuntimeInstallError(
+					f"Die SHA-256-Summe des Archivs ist {'cd' * 32}, erwartet war {CHECKSUM}."
+				),
 			),
 			patch("frappe.publish_realtime") as publish,
 		):
@@ -202,17 +194,17 @@ class TestERiCSettings(IntegrationTestCase):
 		self.assertEqual(
 			(event, message["ok"], message["version"]), ("steuerbote_eric_installation", False, None)
 		)
-		self.assertIn("does not match", message["error"])
+		self.assertIn("erwartet war", message["error"])
 
-	def test_a_missing_library_layer_is_named(self):
+	def test_an_unexpected_failure_of_the_installation_is_logged(self):
 		self.settings()
+		logged = frappe.db.count("Error Log")
 		with (
 			patch.object(
-				transmission_adapter,
-				"install_from_archive",
-				side_effect=transmission_adapter.TransmissionUnavailable("steuerbote.eric.runtime"),
+				transmission_adapter, "install_from_archive", side_effect=OSError("Datenträger voll")
 			),
 			patch("frappe.publish_realtime") as publish,
 		):
 			run_installation(archive_path=ARCHIVE, sha256=CHECKSUM)
-		self.assertIn("steuerbote.eric.runtime", publish.call_args.args[1]["error"])
+		self.assertEqual(frappe.db.count("Error Log"), logged + 1)
+		self.assertIn("Datenträger voll", publish.call_args.args[1]["error"])

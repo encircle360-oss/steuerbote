@@ -1,92 +1,59 @@
-"""The seam between the Frappe layer and the ERiC packages of Steuerbote.
+"""The calls of the Frappe layer into the ERiC runtime, with the paths and the user of the site filled in.
 
-The VAT Return and the ERiC Settings reach the library layer (steuerbote.eric: service, result, runtime,
-secrets) and the XML builder (steuerbote.elster: ustva_xml, envelope) only through these functions. Each
-imports its module when it is called, so the Frappe layer loads and its tests run without those packages;
-a missing package surfaces as TransmissionUnavailable, which the transmission records as a failure.
+The VAT Return and the ERiC Settings reach the worker and the runtime directory of steuerbote.eric only
+through these functions, so that their tests can replace what needs a real ERiC and run the rest for real:
+the XML of steuerbote.elster, the header, the simulation and the store of certificate and password.
 """
 
-import dataclasses
-import importlib
 from pathlib import Path
-from types import ModuleType
-from typing import Any
 
 import frappe
 from frappe.utils import get_bench_path
 
-# The address the operator copied from the ELSTER developer area; Steuerbote never builds one itself.
-DOWNLOAD_PREFIX = "https://"
-
-
-class TransmissionUnavailable(Exception):
-	"""A module the ELSTER transmission needs is not installed."""
-
-	def __init__(self, module: str) -> None:
-		super().__init__(module)
-		self.module = module
-
-
-def _module(name: str) -> ModuleType:
-	try:
-		return importlib.import_module(name)
-	except ModuleNotFoundError as error:
-		if error.name and name.startswith(error.name):
-			raise TransmissionUnavailable(name) from error
-		raise
-
-
-def build_nutzdaten(vat_return: Any, hersteller_id: str) -> str:
-	"""The Nutzdaten of the return, the element Anmeldungssteuern, as UTF-8 XML for ERiC."""
-	return _module("steuerbote.elster.ustva_xml").to_nutzdaten(vat_return, hersteller_id=hersteller_id)
+from steuerbote.eric import runtime, service
+from steuerbote.eric.header import EnvelopeHeader
+from steuerbote.eric.result import Operation, TransmissionResult
+from steuerbote.eric.runtime import RuntimeInfo
 
 
 def run(
-	operation: str,
+	operation: Operation,
 	nutzdaten_xml: str,
-	header: dict[str, str | None],
-	runtime: Any,
+	header: EnvelopeHeader,
+	runtime_info: RuntimeInfo | None,
 	certificate_secret: bytes | None,
 	certificate_password: str | None,
-) -> Any:
-	"""One run of steuerbote.eric.service: through the ERiC worker with a runtime, else the simulation.
-
-	``header`` holds the fields of steuerbote.elster.envelope.EnvelopeHeader. Returns a
-	steuerbote.eric.result.TransmissionResult.
-	"""
-	result = _module("steuerbote.eric.result")
-	service = _module("steuerbote.eric.service")
-	envelope = _module("steuerbote.elster.envelope")
+) -> TransmissionResult:
+	"""One run of ERiC in its worker process with a runtime, of the simulation without one."""
 	return service.run(
-		result.Operation(operation),
-		nutzdaten_xml,
-		envelope.EnvelopeHeader(**header),
-		runtime,
-		certificate_secret,
-		certificate_password,
+		operation, nutzdaten_xml, header, runtime_info, certificate_secret, certificate_password
 	)
 
 
-def detect_runtime(hersteller_id: str) -> Any:
-	"""The installed ERiC runtime (steuerbote.eric.runtime.RuntimeInfo) with the Hersteller-ID, or None."""
-	runtime = _module("steuerbote.eric.runtime").detect(runtime_root())
-	return dataclasses.replace(runtime, hersteller_id=hersteller_id) if runtime else None
+def detect_runtime(year: int, operation: Operation, hersteller_id: str, log_dir: Path) -> RuntimeInfo | None:
+	"""The newest installed runtime with the plugin of the year, or None.
+
+	A beta sends no real case, so it serves Testsenden only (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 2.3).
+	"""
+	return runtime.detect(
+		runtime_root(),
+		year=year,
+		allow_beta=operation is Operation.TEST_SEND,
+		log_dir=log_dir,
+		hersteller_id=hersteller_id,
+	)
 
 
-def install_from_archive(archive: str, sha256: str) -> Any:
-	"""Unpack the ERiC archive the operator downloaded; returns the RuntimeInfo of the new runtime."""
-	source = archive if archive.startswith(DOWNLOAD_PREFIX) else Path(archive)
-	return _module("steuerbote.eric.runtime").install_from_archive(source, sha256, runtime_root())
-
-
-def stash(certificate_secret: bytes, certificate_password: str) -> str:
-	"""Keep certificate and password encrypted for a short time; returns the token for take()."""
-	return _module("steuerbote.eric.secrets").stash(certificate_secret, certificate_password)
-
-
-def take(token: str) -> tuple[bytes, str]:
-	"""Certificate and password behind ``token``, once: the token is gone afterwards."""
-	return _module("steuerbote.eric.secrets").take(token)
+def install_from_archive(archive_path: str, sha256: str) -> RuntimeInfo:
+	"""Unpack the ERiC archive on the server after checking its SHA-256; the worker loads the libraries
+	once before the version is activated."""
+	return runtime.install_from_archive(
+		Path(archive_path),
+		sha256,
+		runtime_root(),
+		installed_by=frappe.session.user,
+		probe=service.library_versions,
+	)
 
 
 def runtime_root() -> Path:

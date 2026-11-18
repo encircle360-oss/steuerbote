@@ -200,16 +200,21 @@ function ask_for_filing_note(frm) {
 function on_transmission_finished(frm, data) {
 	const procedure = data.simulated ? __("{0} (Simulation)", [__(data.operation)]) : __(data.operation);
 	const link = frappe.utils.get_form_link("ELSTER Transmission", data.transmission, true);
-	const ok = data.status === "Erfolgreich";
-	frappe.show_alert(
-		{
-			message: ok
-				? __("{0} for {1} succeeded, see {2}.", [procedure, data.vat_return, link])
-				: __("{0} for {1} failed, see {2}.", [procedure, data.vat_return, link]),
-			indicator: ok ? "green" : "red",
-		},
-		15
-	);
+	const notices = {
+		Erfolgreich: [__("{0} for {1} succeeded, see {2}.", [procedure, data.vat_return, link]), "green"],
+		Unbekannt: [
+			__(
+				"Whether {0} for {1} reached ELSTER is unknown, see {2}. Check in Mein ELSTER before sending again.",
+				[procedure, data.vat_return, link]
+			),
+			"orange",
+		],
+	};
+	const [message, indicator] = notices[data.status] || [
+		__("{0} for {1} failed, see {2}.", [procedure, data.vat_return, link]),
+		"red",
+	];
+	frappe.show_alert({ message, indicator }, 15);
 	if (frm.doc && frm.doc.name === data.vat_return) {
 		frm.reload_doc();
 	}
