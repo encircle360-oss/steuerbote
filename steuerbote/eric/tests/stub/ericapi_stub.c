@@ -3,7 +3,9 @@
  *
  * It exports the functions of the ERiC single-threading API that steuerbote binds, with the
  * signatures and structure layouts of the ERiC 44 API reference, and answers with canned buffers.
- * Markers in the XML passed to EricBearbeiteVorgang select error codes, a long sleep or a crash.
+ * Markers in the XML passed to EricBearbeiteVorgang select error codes, a long sleep or a crash. As in
+ * ERiC, a send fills the server answer before it prints, so an error of printing follows an accepted
+ * transfer.
  * Every call records what it received and stub_recorded() reads it back, so the tests check what the
  * binding really passed through ctypes, including the versions and fields of the parameter structures.
  */
@@ -44,7 +46,10 @@ enum {
 	IO_READER_FALSCHES_ENCODING = 610301108,
 	IO_READER_SCHEMA_VALIDIERUNGSFEHLER = 610301200,
 	IO_TESTHERSTELLERID_GESPERRT = 610301202,
+	PRINT_UNGUELTIGER_DATEI_PFAD = 610501004,
+	PRINT_ABBRUCH_GENERIERUNG = 610501010,
 	PRINT_FUSSTEXT_ZU_LANG = 610501012,
+	PRINT_PDFCALLBACK = 610501015,
 };
 
 enum {
@@ -384,6 +389,9 @@ EXPORT int EricHoleFehlerText(int fehlerkode, struct EricReturnBufferApi *rueckg
 	case GLOBAL_MEHRFACHE_INITIALISIERUNG:
 		text = "Mehrfache Initialisierung.";
 		break;
+	case PRINT_ABBRUCH_GENERIERUNG:
+		text = "Während der Ausgabe der Inhalte ist ein Fehler aufgetreten.";
+		break;
 	}
 	if (!rueckgabePuffer)
 		return GLOBAL_NULL_PARAMETER;
@@ -560,6 +568,15 @@ static const char answer_without_ticket[] =
 
 static const char unreadable_answer[] = "Stub: keine XML-Antwort";
 
+/* After a timeout the answer of the server may still hold the Transferticket (Kap. 6.2.5.2). */
+static const char timeout_answer[] =
+	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+	"<Elster xmlns=\"http://www.elster.de/elsterxml/schema/v11\"><TransferHeader version=\"11\">"
+	"<Verfahren>ElsterAnmeldung</Verfahren><DatenArt>UStVA</DatenArt><Vorgang>send-Auth</Vorgang>"
+	"<TransferTicket>et0stub0timedout0000000000000004</TransferTicket><HerstellerID>12345</HerstellerID>"
+	"<RC><Rueckgabe><Code>301100006</Code><Text>Stub: Zeitüberschreitung beim Speichern der Daten.</Text>"
+	"</Rueckgabe></RC></TransferHeader><DatenTeil></DatenTeil></Elster>";
+
 static const char transfer_header_error[] =
 	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
 	"<Elster xmlns=\"http://www.elster.de/elsterxml/schema/v11\"><TransferHeader version=\"11\">"
@@ -653,17 +670,17 @@ static int print_pdf(const char *xml, const struct print_parameters *print)
 {
 	char name[64] = "Uebertragungsprotokoll";
 	between(xml, "<NutzdatenTicket>", "</NutzdatenTicket>", name, sizeof name);
+	if (contains(xml, "STUB-PRINT-ERROR"))
+		return PRINT_ABBRUCH_GENERIERUNG;
 	if (print->pdfCallback) {
 		int result = print->pdfCallback(name, (const uint8_t *)canned_pdf, pdf_size(),
 						print->pdfCallbackBenutzerdaten);
 		record_number("pdf_callback_result", result);
-		return result == 0 ? OK : GLOBAL_UNGUELTIGER_PARAMETER;
+		return result == 0 ? OK : PRINT_PDFCALLBACK;
 	}
-	if (!print->pdfName)
-		return GLOBAL_UNGUELTIGER_PARAMETER;
 	FILE *file = fopen(print->pdfName, "wb");
 	if (!file)
-		return GLOBAL_UNGUELTIGER_PARAMETER;
+		return PRINT_UNGUELTIGER_DATEI_PFAD;
 	fwrite(canned_pdf, 1, pdf_size(), file);
 	fclose(file);
 	return OK;
@@ -704,6 +721,8 @@ EXPORT int EricBearbeiteVorgang(const char *datenpuffer, const char *datenartVer
 		return GLOBAL_UNGUELTIGER_PARAMETER;
 	if (druckParameter && druckParameter->fussText && strlen(druckParameter->fussText) > MAX_FUSSTEXT)
 		return PRINT_FUSSTEXT_ZU_LANG;
+	if (druckParameter && !druckParameter->pdfCallback && !druckParameter->pdfName)
+		return GLOBAL_UNGUELTIGER_PARAMETER;
 	int combination = check_combination(bearbeitungsFlags, druckParameter, cryptoParameter);
 	if (combination != OK)
 		return combination;
@@ -746,6 +765,10 @@ EXPORT int EricBearbeiteVorgang(const char *datenpuffer, const char *datenartVer
 	if (bearbeitungsFlags & SENDE) {
 		if (contains(datenpuffer, "STUB-CONNECT"))
 			return TRANSFER_ERR_CONNECTSERVER;
+		if (contains(datenpuffer, "STUB-TIMEOUT-ANSWER")) {
+			fill_text(serverantwortXmlPuffer, timeout_answer);
+			return TRANSFER_ERR_TIMEOUT;
+		}
 		if (contains(datenpuffer, "STUB-TIMEOUT"))
 			return TRANSFER_ERR_TIMEOUT;
 		if (contains(datenpuffer, "STUB-NORESPONSE"))
