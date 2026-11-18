@@ -42,6 +42,9 @@ COLUMNS = (
 	"credit",
 	"amount",
 	"reported",
+	"previous_period",
+	"previous_year",
+	"difference",
 )
 
 # Line, wording on the form and the UstvaResult attribute holding the sum.
@@ -145,19 +148,20 @@ def report_rows(
 	parties: ReadOnlyMapping[str, str],
 	print_label: str,
 	currency: str,
+	shown: Collection[str] = (),
 ) -> list[dict[str, Any]]:
 	"""The rows of the report in the order of the form: Kennzahlen with their vouchers, and the sums.
 
 	A Kennzahl appears when it has an amount or vouchers, so vouchers that cancel each other out stay
-	visible. ``posting_dates``, ``account_names`` and ``parties`` look up the voucher keys and account
-	numbers; a party is shown as ERPNext keeps its name. ``print_label`` is the text of the link to the
-	print view.
+	visible, or when it is one of the Kennzahlen in ``shown``, such as those a compared period reports.
+	``posting_dates``, ``account_names`` and ``parties`` look up the voucher keys and account numbers; a
+	party is shown as ERPNext keeps its name. ``print_label`` is the text of the link to the print view.
 	"""
 	blocks: list[tuple[int, int, list[dict[str, Any]]]] = []
 	for position, kennzahl in enumerate(catalogue.values()):
 		value = result.values.get(kennzahl.number)
 		items = by_kennzahl.get(kennzahl.number, ())
-		if value is None and not items:
+		if value is None and not items and kennzahl.number not in shown:
 			continue
 		rows = [
 			_row(

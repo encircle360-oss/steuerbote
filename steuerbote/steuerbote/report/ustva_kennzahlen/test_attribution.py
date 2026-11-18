@@ -207,6 +207,7 @@ PARTIES = {"Sales Invoice:SI-1": "Kunde GmbH", "Purchase Invoice:PI-1": "Liefera
 def rows_of(
 	lines: list[LedgerLine],
 	mapping: Mapping = SKR03,
+	shown: frozenset[str] = frozenset(),
 	**extra_values: str,
 ) -> list[dict]:
 	extra = {number: Decimal(amount) for number, amount in extra_values.items()}
@@ -219,6 +220,7 @@ def rows_of(
 		parties=PARTIES,
 		print_label="Drucken",
 		currency="EUR",
+		shown=shown,
 	)
 
 
@@ -269,6 +271,9 @@ class ReportRowsTest(TestCase):
 				"credit": None,
 				"amount": d("1000.99"),
 				"reported": d("1000"),
+				"previous_period": None,
+				"previous_year": None,
+				"difference": None,
 				"indent": 0,
 				"parent_kennzahl": None,
 				"bold": 1,
@@ -294,6 +299,9 @@ class ReportRowsTest(TestCase):
 				"credit": d("0"),
 				"amount": d("57.00"),
 				"reported": None,
+				"previous_period": None,
+				"previous_year": None,
+				"difference": None,
 				"indent": 1,
 				"parent_kennzahl": "47",
 				"bold": 0,
@@ -404,6 +412,27 @@ class ReportRowsTest(TestCase):
 			rows[1]["print_link"],
 			'<a href="/printview?doctype=Sales%20Invoice&amp;name=SI%2F2026%26%3C1%3E" target="_blank">'
 			"Drucken &amp; &quot;Vorschau&quot;</a>",
+		)
+
+	def test_a_kennzahl_to_show_appears_without_amount_or_vouchers(self):
+		rows = rows_of(
+			[line("8400", credit="10", voucher="Journal Entry:JE-1")], shown=frozenset({"41", "86"})
+		)
+		self.assertEqual(
+			[
+				(row["kennzahl"], row["line"], row["amount"], row["reported"])
+				for row in rows
+				if not row["indent"]
+			],
+			[
+				("81", 13, d("10"), d("10")),
+				("86", 14, d("0"), d("0")),
+				("41", 19, d("0"), d("0")),
+				(None, 37, None, d("1.90")),
+				(None, 45, None, d("1.90")),
+				(None, 48, None, d("1.90")),
+				("83", 50, d("1.90"), d("1.90")),
+			],
 		)
 
 	def test_every_row_has_every_column(self):

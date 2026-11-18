@@ -1,10 +1,12 @@
 from collections.abc import Iterable
 from decimal import Decimal
+from unittest.mock import patch
 
 import frappe
 from frappe.desk.query_report import run
 from frappe.tests import IntegrationTestCase
 
+from steuerbote import ustva
 from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import PARTY_FIELDS, execute
 from steuerbote.tests.helpers import (
 	make_account,
@@ -17,12 +19,14 @@ from steuerbote.tests.helpers import (
 # Files monthly, with Dauerfristverlängerung and a Sondervorauszahlung in 2026.
 COMPANY = "Steuerbote Test Kennzahlenbericht GmbH"
 
-# The SKR03 accounts of the month in VerifiedMonthTest of the core, a bank and a receivables account.
+# The SKR03 accounts of the month in VerifiedMonthTest of the core, an account for intra-community
+# deliveries, a bank and a receivables account.
 ACCOUNTS = {
 	"8400": ("Erlöse 19 % USt", "Income"),
 	"1776": ("Umsatzsteuer 19 %", "Liability"),
 	"8336": ("Erlöse sonstige Leistungen EU", "Income"),
 	"8338": ("Erlöse Drittland nicht steuerbar", "Income"),
+	"8125": ("Steuerfreie innergemeinschaftliche Lieferungen", "Income"),
 	"3123": ("Sonstige Leistungen EU 19 %", "Expense"),
 	"1787": ("Umsatzsteuer nach § 13b UStG 19 %", "Liability"),
 	"1577": ("Vorsteuer nach § 13b UStG 19 %", "Asset"),
@@ -30,6 +34,9 @@ ACCOUNTS = {
 	"1200": ("Bank", "Asset"),
 	"1400": ("Forderungen aus Lieferungen und Leistungen", "Asset"),
 }
+
+NO_CATALOGUE_2025 = "No comparison with {0}: Steuerbote has no Kennzahlen for 2025 yet."
+MAPPING_DOES_NOT_FIT = "No comparison with {0}: the VAT Return Mapping does not fit the form of {1} ({2})."
 
 
 def money(value) -> Decimal | None:
@@ -97,6 +104,15 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 		make_mapping(COMPANY)
 
 		a = cls.account
+		# February, the previous period of March: a smaller sale, a slightly smaller service, the same
+		# purchase and an intra-community delivery that March does not have.
+		post_journal_entry(
+			COMPANY, "2026-02-10", [(a["1400"], 952, 0), (a["8400"], 0, 800), (a["1776"], 0, 152)]
+		)
+		post_journal_entry(COMPANY, "2026-02-11", [(a["1400"], 1950, 0), (a["8336"], 0, 1950)])
+		post_journal_entry(COMPANY, "2026-02-14", [(a["1576"], 95, 0), (a["1200"], 0, 95)])
+		post_journal_entry(COMPANY, "2026-02-16", [(a["1400"], 800, 0), (a["8125"], 0, 800)])
+
 		march = "2026-03-10"
 		cls.sale = post_journal_entry(
 			COMPANY, march, [(a["1400"], 1190, 0), (a["8400"], 0, 1000), (a["1776"], 0, 190)]
@@ -143,8 +159,8 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 			[(a["1576"], 19, 0), (a["1200"], 0, 19)],
 		)
 
-	def rows(self, period: int) -> list[dict]:
-		_columns, rows = execute(filters(period))
+	def rows(self, period: int, **values) -> list[dict]:
+		_columns, rows = execute(filters(period, **values))
 		return rows
 
 	def test_shows_each_kennzahl_with_the_vouchers_behind_it(self):
@@ -163,8 +179,10 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 				for row in self.rows(3)
 			],
 			[
+				(0, None, None, None, None, None, None),
 				(0, "81", 13, None, None, money(1000), money(1000)),
 				(1, "81", None, self.sale.name, a["8400"], money(1000), None),
+				(0, "41", 19, None, None, money(0), money(0)),
 				(0, "46", 30, None, None, money(300), money(300)),
 				(1, "46", None, self.reverse_charge.name, a["3123"], money(300), None),
 				(0, "47", 30, None, None, money(57), money(57)),
@@ -223,6 +241,62 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 			'<a href="/printview?doctype=Purchase%20Invoice&amp;name=PINV-STKZ-0001" target="_blank">Print</a>',
 		)
 
+	def test_compares_each_kennzahl_and_sum_with_the_previous_period(self):
+		self.assertEqual(
+			[
+				(
+					row["kennzahl"],
+					row["line"],
+					money(row["previous_period"]),
+					money(row["previous_year"]),
+					money(row["difference"]),
+				)
+				for row in self.rows(3)
+				if not row["indent"]
+			],
+			[
+				(None, None, None, None, None),
+				("81", 13, money(800), None, money(200)),
+				("41", 19, money(800), None, money(-800)),
+				("46", 30, money(0), None, money(300)),
+				("47", 30, money(0), None, money(57)),
+				("21", 35, money(1950), None, money(50)),
+				("45", 36, money(0), None, money(500)),
+				(None, 37, money(152), None, money(95)),
+				("66", 38, money(95), None, money(0)),
+				("67", 41, money(0), None, money(57)),
+				(None, 45, money(57), None, money(38)),
+				(None, 48, money(57), None, money(38)),
+				("83", 50, money(57), None, money(38)),
+			],
+		)
+
+	def test_a_year_without_kennzahlen_leaves_its_comparison_empty_with_a_note(self):
+		march = self.rows(3)
+		self.assertEqual(march[0]["label"], NO_CATALOGUE_2025.format("März 2025"))
+		january = self.rows(1)
+		self.assertEqual(
+			[row["label"] for row in january[:2]],
+			[NO_CATALOGUE_2025.format("Dezember 2025"), NO_CATALOGUE_2025.format("Januar 2025")],
+		)
+		self.assertEqual(
+			{(row["previous_period"], row["previous_year"], row["difference"]) for row in january},
+			{(None, None, None)},
+		)
+
+	def test_a_mapping_that_does_not_fit_a_compared_year_leaves_its_comparison_empty(self):
+		reason = "account 8400: unknown Kennzahl 81"
+		with patch.object(ustva.Mapping, "for_year", side_effect=ustva.MappingError(reason)):
+			rows = self.rows(3)
+		self.assertEqual(
+			[row["label"] for row in rows[:2]],
+			[
+				MAPPING_DOES_NOT_FIT.format("Februar 2026", 2026, reason),
+				MAPPING_DOES_NOT_FIT.format("März 2025", 2025, reason),
+			],
+		)
+		self.assertEqual({row["previous_period"] for row in rows}, {None})
+
 	def test_leaves_out_the_cancelled_and_the_excluded_journal_entry(self):
 		vouchers = {row["voucher_no"] for row in self.rows(3)}
 		self.assertNotIn(self.cancelled.name, vouchers)
@@ -232,6 +306,7 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 		self.assertEqual(
 			[(row["kennzahl"], row["line"], money(row["reported"])) for row in self.rows(12)],
 			[
+				(None, None, None),
 				(None, 37, money(0)),
 				(None, 45, money(0)),
 				(None, 48, money(0)),
@@ -271,6 +346,9 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 				"credit",
 				"amount",
 				"reported",
+				"previous_period",
+				"previous_year",
+				"difference",
 				"currency",
 			],
 		)
