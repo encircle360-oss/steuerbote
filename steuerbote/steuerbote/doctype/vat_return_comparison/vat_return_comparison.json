@@ -1,0 +1,119 @@
+{
+ "actions": [],
+ "creation": "2026-11-18 14:00:00.000000",
+ "description": "A Kennzahl of the return against the ledger of the previous period and of the same period a year earlier.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "kennzahl",
+  "label",
+  "current",
+  "previous_period",
+  "previous_year",
+  "difference",
+  "difference_percent",
+  "flagged",
+  "previous_period_known",
+  "previous_year_known"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "kennzahl",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kennzahl",
+   "read_only": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "label",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "current",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "This Period",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "previous_period",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Previous Period",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "previous_year",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Previous Year",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "difference",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Difference to Previous Period",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "difference_percent",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Difference (%)",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "flagged",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Conspicuous",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "previous_period_known",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Previous Period Known",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "previous_year_known",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Previous Year Known",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-18 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT Return Comparison",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

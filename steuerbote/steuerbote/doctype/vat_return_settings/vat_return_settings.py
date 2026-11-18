@@ -32,6 +32,8 @@ class VATReturnSettings(Document):
 		chart: DF.Literal["SKR03", "SKR04", "Eigener Kontenrahmen"]
 		city: DF.Data | None
 		company: DF.Link
+		comparison_threshold_amount: DF.Currency
+		comparison_threshold_percent: DF.Percent
 		elster_tax_number: DF.Data | None
 		email: DF.Data | None
 		filer_name: DF.Data | None

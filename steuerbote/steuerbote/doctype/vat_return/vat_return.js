@@ -6,6 +6,7 @@ frappe.ui.form.on("VAT Return", {
 		frappe.realtime.on(TRANSMISSION_EVENT, (data) => on_transmission_finished(frm, data));
 		// Frappe asks to submit a draft, but Buchen alone files nothing: show_ready_note says how to file.
 		frm.show_submit_message = () => {};
+		leave_unknown_comparison_values_blank();
 	},
 
 	refresh(frm) {
@@ -83,6 +84,25 @@ function eric_simulates(frm) {
 function offer_buchen_only_for_an_accepted_send(frm) {
 	if (frm.doc.docstatus === 0 && !frm.is_new() && !elster_state(frm).sent) {
 		frm.page.clear_primary_action();
+	}
+}
+
+// A Currency or Percent field stores no blank, so the comparison holds 0 for what it does not know: the
+// values of a period without a catalogue of Kennzahlen, and the share of a Kennzahl without an earlier amount.
+function leave_unknown_comparison_values_blank() {
+	const known_with = {
+		previous_period: "previous_period_known",
+		previous_year: "previous_year_known",
+		difference: "previous_period_known",
+		difference_percent: "previous_period_known",
+	};
+	for (const [fieldname, known] of Object.entries(known_with)) {
+		frappe.meta.set_formatter("VAT Return Comparison", fieldname, null, (value, df, options, doc) => {
+			const without_share = fieldname === "difference_percent" && doc && !flt(doc.previous_period);
+			return !doc || !doc[known] || without_share
+				? ""
+				: frappe.form.formatters[df.fieldtype](value, df, options, doc);
+		});
 	}
 }
 

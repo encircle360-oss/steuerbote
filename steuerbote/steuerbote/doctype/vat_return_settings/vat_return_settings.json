@@ -11,6 +11,10 @@
   "column_break_company",
   "taxation_type",
   "tolerance",
+  "comparison_section",
+  "comparison_threshold_percent",
+  "column_break_comparison",
+  "comparison_threshold_amount",
   "tax_number_section",
   "state",
   "tax_number",
@@ -70,6 +74,33 @@
    "fieldname": "tolerance",
    "fieldtype": "Currency",
    "label": "Tolerance per Voucher",
+   "non_negative": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "A Kennzahl is conspicuous when it changes against the previous period by more than both thresholds. Conspicuous Kennzahlen get a hint and never hold the return.",
+   "fieldname": "comparison_section",
+   "fieldtype": "Section Break",
+   "label": "Previous Period Comparison"
+  },
+  {
+   "default": "50",
+   "description": "Change in percent of the amount of the previous period.",
+   "fieldname": "comparison_threshold_percent",
+   "fieldtype": "Percent",
+   "label": "Comparison Threshold (%)",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_comparison",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "100",
+   "description": "Change in euros.",
+   "fieldname": "comparison_threshold_amount",
+   "fieldtype": "Currency",
+   "label": "Comparison Threshold (EUR)",
    "non_negative": 1,
    "options": "Company:company:default_currency"
   },
@@ -191,7 +222,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-18 04:00:00.000000",
+ "modified": "2026-11-18 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",
