@@ -1,16 +1,22 @@
-"""UStVA Kennzahlen: the Kennzahlen of one Voranmeldungszeitraum and the vouchers behind each of them.
+"""UStVA Kennzahlen: the Kennzahlen of one Voranmeldungszeitraum, the vouchers behind each of them, and the
+amounts of the previous period and of the same period one year earlier.
 
 The report reads what "Berechnen" on a VAT Return reads: the general ledger of the period through
 steuerbote.ledger, with the same exclusions, and the company's VAT Return Mapping and VAT Return Settings.
-The core computes the Kennzahlen, attribution.py finds the vouchers behind them, and this module only
-reads the data and looks up posting dates and account names.
+The core computes the Kennzahlen, attribution.py finds the vouchers behind them, and comparison.py sets them
+beside the previous period of the same rhythm and the same period one year earlier, which this module
+computes the same way from the ledger, with the mapping on the form of their year. Otherwise the module only
+reads the data and looks up posting dates, account names and the parties of invoices.
 """
 
+from collections.abc import Iterable
 from datetime import date
+from types import MappingProxyType
 from typing import Any
 
 import frappe
 from frappe import _
+from frappe.model.document import Document
 from frappe.query_builder.functions import Min
 from frappe.utils import cint
 
@@ -18,9 +24,24 @@ from steuerbote import ustva
 from steuerbote.ledger import account_names, load_lines
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for, settings_for
-from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import contributions, report_rows
+from steuerbote.steuerbote.report.ustva_kennzahlen import comparison
+from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import (
+	contributions,
+	report_rows,
+	vouchers_by_type,
+)
 
 FILTERS = ("company", "year", "rhythm", "period_index")
+# Optional: only the Kennzahlen and sums that deviate from the previous period.
+ONLY_DEVIATIONS = "only_deviations"
+
+# The party of an invoice: the field that links it and the field with its name.
+PARTY_FIELDS = MappingProxyType(
+	{
+		"Sales Invoice": ("customer", "customer_name"),
+		"Purchase Invoice": ("supplier", "supplier_name"),
+	}
+)
 
 
 def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -33,18 +54,9 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 	settings = settings_for(company)
 	mapping = mapping_for(company, period.year)
 	lines = load_lines(company, period.start, period.end)
-	try:
-		result = ustva.calculate(
-			lines,
-			mapping,
-			extra_values=bridge.sondervorauszahlung_values(
-				period,
-				settings.has_dauerfrist(period.year),
-				bridge.to_amount(settings.sondervorauszahlung(period.year)),
-			),
-		)
-	except ValueError as error:
-		frappe.throw(str(error))
+	result = _calculate(lines, mapping, period, settings)
+	previous, previous_note = _compared(company, period.previous(), mapping, settings)
+	previous_year, previous_year_note = _compared(company, comparison.year_before(period), mapping, settings)
 	by_kennzahl = contributions(lines, mapping)
 	numbers = {account for items in by_kennzahl.values() for item in items for account in item.accounts}
 	rows = report_rows(
@@ -53,9 +65,16 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 		by_kennzahl,
 		posting_dates=_posting_dates(company, period),
 		account_names=account_names(company, numbers),
+		parties=_parties(item.voucher for items in by_kennzahl.values() for item in items),
+		print_label=_("Print"),
 		currency=frappe.get_cached_value("Company", company, "default_currency"),
+		shown=comparison.compared_kennzahlen(previous, previous_year),
 	)
-	return get_columns(), rows
+	rows = comparison.compared_rows(rows, previous, previous_year)
+	if cint(filters.get(ONLY_DEVIATIONS)):
+		rows = comparison.only_deviations(rows, _thresholds(settings))
+	notes = [comparison.note_row(note) for note in (previous_note, previous_year_note) if note]
+	return get_columns(), notes + rows
 
 
 def get_columns() -> list[dict[str, Any]]:
@@ -79,6 +98,8 @@ def get_columns() -> list[dict[str, Any]]:
 			"options": "voucher_type",
 			"width": 170,
 		},
+		{"fieldname": "print_link", "label": _("Print"), "fieldtype": "Data", "width": 90},
+		{"fieldname": "party", "label": _("Party"), "fieldtype": "Data", "width": 180},
 		{
 			"fieldname": "account",
 			"label": _("Account"),
@@ -90,6 +111,9 @@ def get_columns() -> list[dict[str, Any]]:
 		{"fieldname": "credit", "label": _("Credit"), **money},
 		{"fieldname": "amount", "label": _("Ledger Amount"), **money},
 		{"fieldname": "reported", "label": _("Form Amount"), **money},
+		{"fieldname": "previous_period", "label": _("Previous Period"), **money},
+		{"fieldname": "previous_year", "label": _("Previous Year"), **money},
+		{"fieldname": "difference", "label": _("Difference to Previous Period"), **money, "width": 170},
 		{
 			"fieldname": "currency",
 			"label": _("Currency"),
@@ -114,6 +138,63 @@ def _period(filters: frappe._dict) -> ustva.Period:
 				"Filing {0}, there is no Voranmeldungszeitraum {1}: months run from 1 to 12, quarters from 1 to 4."
 			).format(_(filters.rhythm), filters.period_index)
 		)
+
+
+def _calculate(
+	lines: list[ustva.LedgerLine], mapping: ustva.Mapping, period: ustva.Period, settings: Document
+) -> ustva.UstvaResult:
+	"""What "Berechnen" computes for the period, Kz 39 included in the last period of the year."""
+	try:
+		return ustva.calculate(
+			lines,
+			mapping,
+			extra_values=bridge.sondervorauszahlung_values(
+				period,
+				settings.has_dauerfrist(period.year),
+				bridge.to_amount(settings.sondervorauszahlung(period.year)),
+			),
+		)
+	except ValueError as error:
+		frappe.throw(str(error))
+
+
+def _compared(
+	company: str, period: ustva.Period, mapping: ustva.Mapping, settings: Document
+) -> tuple[ustva.UstvaResult | None, str | None]:
+	"""What a period to compare with reported, computed from its ledger with the company's mapping on the form
+	of its own year, or why the report cannot compare with it."""
+	try:
+		year_mapping = mapping.for_year(period.year)
+	except ustva.UnknownYearError:
+		return None, _("No comparison with {0}: Steuerbote has no Kennzahlen for {1} yet.").format(
+			period.label, period.year
+		)
+	except ustva.MappingError as error:
+		return None, _(
+			"No comparison with {0}: the VAT Return Mapping does not fit the form of {1} ({2})."
+		).format(period.label, period.year, str(error))
+	lines = load_lines(company, period.start, period.end)
+	return _calculate(lines, year_mapping, period, settings), None
+
+
+def _thresholds(settings: Document) -> comparison.Thresholds:
+	"""The thresholds of the company's VAT Return Settings, or the defaults where the settings have none."""
+	return comparison.Thresholds.of(
+		settings.get("comparison_threshold_percent"), settings.get("comparison_threshold_amount")
+	)
+
+
+def _parties(vouchers: Iterable[str | None]) -> dict[str, str]:
+	"""The customer or supplier of each invoice among the vouchers, by voucher key, one query per type."""
+	parties = {}
+	for voucher_type, names in vouchers_by_type(vouchers, PARTY_FIELDS).items():
+		party, party_name = PARTY_FIELDS[voucher_type]
+		invoices = frappe.get_all(
+			voucher_type, filters={"name": ["in", names]}, fields=["name", party, party_name]
+		)
+		for invoice in invoices:
+			parties[f"{voucher_type}:{invoice.name}"] = invoice[party_name] or invoice[party]
+	return parties
 
 
 def _posting_dates(company: str, period: ustva.Period) -> dict[str, date]:

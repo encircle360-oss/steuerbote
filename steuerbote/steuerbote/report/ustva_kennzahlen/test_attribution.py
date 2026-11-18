@@ -8,6 +8,7 @@ from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import (
 	Contribution,
 	contributions,
 	report_rows,
+	vouchers_by_type,
 )
 from steuerbote.ustva import KENNZAHLEN, AccountRule, LedgerLine, Mapping, Side, TaxCheck, calculate
 from steuerbote.ustva.defaults import SKR03, SKR04
@@ -200,7 +201,15 @@ ACCOUNT_NAMES = {
 }
 
 
-def rows_of(lines: list[LedgerLine], mapping: Mapping = SKR03, **extra_values: str) -> list[dict]:
+PARTIES = {"Sales Invoice:SI-1": "Kunde GmbH", "Purchase Invoice:PI-1": "Lieferant AG"}
+
+
+def rows_of(
+	lines: list[LedgerLine],
+	mapping: Mapping = SKR03,
+	shown: frozenset[str] = frozenset(),
+	**extra_values: str,
+) -> list[dict]:
 	extra = {number: Decimal(amount) for number, amount in extra_values.items()}
 	return report_rows(
 		calculate(lines, mapping, extra_values=extra),
@@ -208,7 +217,10 @@ def rows_of(lines: list[LedgerLine], mapping: Mapping = SKR03, **extra_values: s
 		contributions(lines, mapping),
 		posting_dates=POSTING_DATES,
 		account_names=ACCOUNT_NAMES,
+		parties=PARTIES,
+		print_label="Drucken",
 		currency="EUR",
+		shown=shown,
 	)
 
 
@@ -252,11 +264,16 @@ class ReportRowsTest(TestCase):
 				"posting_date": None,
 				"voucher_type": None,
 				"voucher_no": None,
+				"print_link": None,
+				"party": None,
 				"account": None,
 				"debit": None,
 				"credit": None,
 				"amount": d("1000.99"),
 				"reported": d("1000"),
+				"previous_period": None,
+				"previous_year": None,
+				"difference": None,
 				"indent": 0,
 				"parent_kennzahl": None,
 				"bold": 1,
@@ -275,11 +292,16 @@ class ReportRowsTest(TestCase):
 				"posting_date": date(2026, 3, 4),
 				"voucher_type": "Journal Entry",
 				"voucher_no": "JE-4",
+				"print_link": '<a href="/printview?doctype=Journal%20Entry&amp;name=JE-4" target="_blank">Drucken</a>',
+				"party": None,
 				"account": ACCOUNT_NAMES["3123"],
 				"debit": d("300"),
 				"credit": d("0"),
 				"amount": d("57.00"),
 				"reported": None,
+				"previous_period": None,
+				"previous_year": None,
+				"difference": None,
 				"indent": 1,
 				"parent_kennzahl": "47",
 				"bold": 0,
@@ -351,9 +373,87 @@ class ReportRowsTest(TestCase):
 	def test_lines_without_voucher_show_no_voucher(self):
 		rows = rows_of([line("8400", credit="10")])
 		self.assertEqual(
-			(rows[1]["posting_date"], rows[1]["voucher_type"], rows[1]["voucher_no"]), (None, "", "")
+			(
+				rows[1]["posting_date"],
+				rows[1]["voucher_type"],
+				rows[1]["voucher_no"],
+				rows[1]["print_link"],
+				rows[1]["party"],
+			),
+			(None, "", "", None, None),
+		)
+
+	def test_an_invoice_names_its_customer_or_supplier(self):
+		rows = rows_of(
+			[
+				line("8400", credit="100", voucher="Sales Invoice:SI-1"),
+				line("8400", credit="50", voucher="Journal Entry:JE-1"),
+				line("1576", debit="19", voucher="Purchase Invoice:PI-1"),
+			]
+		)
+		self.assertEqual(
+			[(row["voucher_no"], row["party"]) for row in rows if row["indent"]],
+			[("SI-1", "Kunde GmbH"), ("JE-1", None), ("PI-1", "Lieferant AG")],
+		)
+
+	def test_the_link_to_the_print_view_escapes_voucher_and_label(self):
+		voucher = "Sales Invoice:SI/2026&<1>"
+		rows = report_rows(
+			calculate([line("8400", credit="100", voucher=voucher)], SKR03),
+			SKR03.catalogue,
+			contributions([line("8400", credit="100", voucher=voucher)], SKR03),
+			posting_dates={},
+			account_names={},
+			parties={},
+			print_label='Drucken & "Vorschau"',
+			currency="EUR",
+		)
+		self.assertEqual(
+			rows[1]["print_link"],
+			'<a href="/printview?doctype=Sales%20Invoice&amp;name=SI%2F2026%26%3C1%3E" target="_blank">'
+			"Drucken &amp; &quot;Vorschau&quot;</a>",
+		)
+
+	def test_a_kennzahl_to_show_appears_without_amount_or_vouchers(self):
+		rows = rows_of(
+			[line("8400", credit="10", voucher="Journal Entry:JE-1")], shown=frozenset({"41", "86"})
+		)
+		self.assertEqual(
+			[
+				(row["kennzahl"], row["line"], row["amount"], row["reported"])
+				for row in rows
+				if not row["indent"]
+			],
+			[
+				("81", 13, d("10"), d("10")),
+				("86", 14, d("0"), d("0")),
+				("41", 19, d("0"), d("0")),
+				(None, 37, None, d("1.90")),
+				(None, 45, None, d("1.90")),
+				(None, 48, None, d("1.90")),
+				("83", 50, d("1.90"), d("1.90")),
+			],
 		)
 
 	def test_every_row_has_every_column(self):
 		for row in rows_of(verified_month()):
 			self.assertLessEqual(set(COLUMNS), row.keys())
+
+
+class VouchersByTypeTest(TestCase):
+	def test_groups_the_voucher_names_of_the_wanted_types(self):
+		vouchers = [
+			"Sales Invoice:SI-2",
+			"Journal Entry:JE-1",
+			"Sales Invoice:SI-1",
+			None,
+			"Purchase Invoice:PI-1",
+			"Sales Invoice:SI-2",
+		]
+		self.assertEqual(
+			vouchers_by_type(vouchers, ("Sales Invoice", "Purchase Invoice")),
+			{"Sales Invoice": ["SI-1", "SI-2"], "Purchase Invoice": ["PI-1"]},
+		)
+
+	def test_without_vouchers_of_the_types_there_is_nothing_to_read(self):
+		self.assertEqual(vouchers_by_type(["Journal Entry:JE-1", None], ("Sales Invoice",)), {})

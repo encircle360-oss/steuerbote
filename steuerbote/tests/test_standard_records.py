@@ -37,7 +37,9 @@ FRAMEWORK_LABELS = frozenset(
 		"Credit",
 		"Currency",
 		"Debit",
+		"Party",
 		"Posting Date",
+		"Print",
 		"Setup",
 		"Voucher No",
 		"Voucher Type",
@@ -109,7 +111,7 @@ class ReportFilesTest(TestCase):
 		script = (REPORT / "ustva_kennzahlen.js").read_text(encoding="utf-8")
 		source = (REPORT / "ustva_kennzahlen.py").read_text(encoding="utf-8")
 		fieldnames = re.findall(r'fieldname: "(\w+)"', script)
-		self.assertEqual(fieldnames, ["company", "year", "rhythm", "period_index"])
+		self.assertEqual(fieldnames, ["company", "year", "rhythm", "period_index", "only_deviations"])
 		assignments = {
 			target.id: node.value
 			for node in ast.parse(source).body
@@ -117,7 +119,10 @@ class ReportFilesTest(TestCase):
 			for target in node.targets
 			if isinstance(target, ast.Name)
 		}
-		self.assertEqual(list(ast.literal_eval(assignments["FILTERS"])), fieldnames)
+		self.assertEqual(
+			[*ast.literal_eval(assignments["FILTERS"]), ast.literal_eval(assignments["ONLY_DEVIATIONS"])],
+			fieldnames,
+		)
 
 	def test_the_vat_return_opens_the_report_with_its_own_period(self):
 		script = (MODULE / "doctype" / "vat_return" / "vat_return.js").read_text(encoding="utf-8")

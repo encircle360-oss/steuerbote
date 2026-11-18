@@ -14,6 +14,7 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 | `vat_return_settings/rules.py` | Voranmeldungszeitraum je Monat, Dauerfristverlängerung und Sondervorauszahlung je Jahr |
 | `vat_return/bridge.py` | überträgt das Ergebnis des Kerns in die Tabellen der Meldung, bildet die Summen über die gemeldeten Beträge und übergibt die Meldung und den Datenlieferanten an das XML |
 | `report/ustva_kennzahlen/attribution.py` | findet die Belege, aus denen jede Kennzahl besteht |
+| `report/ustva_kennzahlen/comparison.py` | stellt jede Kennzahl und Summe des Berichts neben Vorperiode und Vorjahr und wählt die Abweichungen aus |
 
 So läuft „Berechnen“ an einer Meldung:
 
@@ -201,16 +202,21 @@ Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in ei
 | Kopf der Lieferung, Hersteller-ID, Finanzamt und Testmerker | `envelope_header` in `vat_return.py`, geprüft von `steuerbote/eric/header.py` |
 | Laufzeit des Jahres, Ergebnis eines Laufs | `steuerbote/eric/runtime.py`, `steuerbote/eric/service.py` mit Worker oder Simulation |
 | Belege hinter jeder Kennzahl | `attribution.py` mit den Regeln von `calculate()` |
+| Vorperiode und Vorjahr im Bericht | `calculate()` für die Vergleichszeiträume, `comparison.py` |
 | Druckformat | rechnet keine Kennzahl, nur was der Vordruck selbst bildet: die Zeilen 45 und 48 aus den gespeicherten Summen und die Steuer der Zeilen 13, 14, 25 und 26 aus der Bemessungsgrundlage in vollen Euro |
 
 ## Bericht „UStVA Kennzahlen“
 
-Der Bericht zeigt für einen Zeitraum, aus welchen Buchungen jede Kennzahl besteht. Filter sind Unternehmen, Jahr, Abgaberhythmus und Nummer des Zeitraums.
+Der Bericht zeigt für einen Zeitraum, aus welchen Buchungen jede Kennzahl besteht, und stellt jede Kennzahl neben Vorperiode und Vorjahr. Filter sind Unternehmen, Jahr, Abgaberhythmus und Nummer des Zeitraums, dazu „Nur Abweichungen“.
 
 - Er liest dasselbe wie „Berechnen“: die Abfrage des Hauptbuchs mit denselben Ausschlüssen, die Kontenzuordnung und die Einstellungen des Unternehmens, im letzten Zeitraum des Jahres also auch Kz 39.
-- Je Kennzahl steht eine Zeile in der Reihenfolge des Vordrucks mit Kennzahl, Zeile im Vordruck, Bezeichnung, Betrag laut Hauptbuch und Betrag laut Vordruck. Darunter folgt eine Ebene tiefer je Beleg eine Zeile mit Buchungsdatum, Belegtyp, Belegnr., Konto, Soll, Haben und dem Betrag, den der Beleg beiträgt. Die Summen der Zeilen 37, 45 und 48 und Kz 83 stehen an ihrer Stelle im Vordruck.
+- Je Kennzahl steht eine Zeile in der Reihenfolge des Vordrucks mit Kennzahl, Zeile im Vordruck, Bezeichnung, Betrag laut Hauptbuch und Betrag laut Vordruck. Darunter folgt eine Ebene tiefer je Beleg eine Zeile mit Buchungsdatum, Belegtyp, Belegnr., Drucken, Partei, Konto, Soll, Haben und dem Betrag, den der Beleg beiträgt. Die Summen der Zeilen 37, 45 und 48 und Kz 83 stehen an ihrer Stelle im Vordruck.
+- Die Belegnr. öffnet den Beleg, „Drucken“ seine Druckansicht (`/printview`) in einem neuen Tab. Partei ist bei einer Ausgangsrechnung der Kunde, bei einer Eingangsrechnung der Lieferant, mit dem Namen aus der Rechnung; bei anderen Belegen, etwa Journalbuchungen, bleibt sie leer. Die Parteien liest der Bericht mit einer Abfrage je Belegtyp.
 - Ein Konto mit Regel trägt je Beleg seinen Saldo auf der Seite der Regel bei, mit zusätzlicher Kennzahl auch dort. Eine abgeleitete Steuer, etwa Kz 47 zu Kz 46, entsteht je Beleg aus der Summe seiner Bemessungsgrundlagen zu einem Steuersatz und wird einmal gerundet, wie in `calculate()`. Ihre Belegzeile zeigt die Buchungen der Grundlagenkonten und die Steuer als Betrag.
 - Die Belege einer Kennzahl ergeben genau ihren Betrag laut Hauptbuch. Heben sich die Belege einer Kennzahl auf, steht sie mit 0 im Bericht.
+- **Vorperiodenvergleich.** Jede Kennzahl und jede Summe zeigt den Betrag laut Vordruck der Vorperiode, also des vorigen Zeitraums im selben Abgaberhythmus (für Januar der Dezember des Vorjahres, für das erste Quartal das vierte), und des Vorjahres, also desselben Zeitraums ein Jahr früher, dazu die Differenz zur Vorperiode: Betrag laut Vordruck abzüglich Vorperiode. Beide Zeiträume rechnet der Bericht wie seinen eigenen aus dem Hauptbuch, mit der Kontenzuordnung des Unternehmens auf dem Vordruck ihres Jahres und im letzten Zeitraum eines Jahres mit Kz 39. Frühere Meldungen liest er nicht, so vergleicht er auch Zeiträume, für die es noch keine Meldung gibt. Eine Kennzahl, die nur in Vorperiode oder Vorjahr einen Betrag hat, steht mit 0 im Bericht.
+- Kennt Steuerbote die Kennzahlen eines Vergleichsjahres nicht, etwa 2025, oder passt die Kontenzuordnung nicht zu dessen Vordruck, bleibt die Spalte leer, ohne Vorperiode auch die Differenz. Eine Zeile am Anfang des Berichts nennt den Grund, etwa „Kein Vergleich mit Dezember 2025: Steuerbote kennt die Kennzahlen für 2025 noch nicht.“
+- **Nur Abweichungen** zeigt nur die Kennzahlen und Summen, deren Differenz zur Vorperiode beide Schwellen überschreitet, den Betrag in Euro und den Anteil am Betrag der Vorperiode, jeweils mit ihren Belegen. Die Schwellen kommen aus den Einstellungen des Unternehmens, „Schwelle Vorperiodenvergleich (%)“ und „Schwelle Vorperiodenvergleich (EUR)“; ohne Eintrag gelten 50 % und 100 EUR. Eine Änderung gegenüber 0 überschreitet jede Prozentschwelle. Ohne Vorperiode blendet der Filter nichts aus.
 - Der Bericht zeigt das Hauptbuch, keine Meldung: Korrekturen einer Meldung erscheinen darin nicht.
 
 ## Arbeitsbereich „Steuern“ und Seitenleiste

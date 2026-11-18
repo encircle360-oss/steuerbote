@@ -33,6 +33,12 @@ frappe.query_reports["UStVA Kennzahlen"] = {
 			default: new Date().getMonth() + 1,
 			reqd: 1,
 		},
+		{
+			fieldname: "only_deviations",
+			label: __("Only Deviations"),
+			fieldtype: "Check",
+			default: 0,
+		},
 	],
 	tree: true,
 	name_field: "kennzahl",
