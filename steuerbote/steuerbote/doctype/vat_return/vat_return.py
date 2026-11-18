@@ -511,14 +511,15 @@ def stash_certificate(certificate_secret: str, certificate_password: str) -> str
 	"""Keep the certificate (.pfx, base64) and its password for the next transmission, encrypted and only for
 	a few minutes; returns the token that transmit() takes in their place.
 
-	The parameter names contain "secret" and "password", so Frappe masks both in its logs.
+	Parameters and locals carry "secret" or "password" in their names, which Frappe masks in its logs and
+	tracebacks.
 	"""
 	frappe.has_permission(DOCTYPE, "write", throw=True)
 	try:
-		certificate = base64.b64decode(certificate_secret or "", validate=True)
+		decoded_secret = base64.b64decode(certificate_secret or "", validate=True)
 	except binascii.Error, ValueError:
-		certificate = b""
-	if not certificate or len(certificate) > MAX_CERTIFICATE_BYTES:
+		decoded_secret = b""
+	if not decoded_secret or len(decoded_secret) > MAX_CERTIFICATE_BYTES:
 		frappe.throw(_("The certificate file could not be read. Choose the .pfx file of the ELSTER account."))
 	password = certificate_password or ""
 	if len(password) not in PASSWORD_LENGTHS or not set(password) <= PASSWORD_CHARACTERS:
@@ -527,7 +528,7 @@ def stash_certificate(certificate_secret: str, certificate_password: str) -> str
 				"The certificate password has 6 to 128 characters: letters, digits, spaces and punctuation, without umlauts."
 			)
 		)
-	return transmission_adapter.stash(certificate, password)
+	return transmission_adapter.stash(decoded_secret, password)
 
 
 def run_transmission(name: str, operation: str, token: str | None = None) -> None:
