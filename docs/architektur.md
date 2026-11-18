@@ -8,11 +8,13 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 
 | Modul | Aufgabe |
 |---|---|
-| `steuerbote/ledger.py` | liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns, als einziges dieser Module mit Frappe |
+| `steuerbote/ledger.py` | liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns, mit Frappe |
+| `steuerbote/invoices.py` | liest die eingereichten Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise, mit Frappe |
+| `steuerbote/ustva/plausibility.py` | stellt die Kennzahlen einer Meldung neben Vorperiode und Vorjahr und leitet die Hinweise aus Rechnungen, Hauptbuch und Vergleich ab, im Kern ohne Frappe |
 | `steuerbote/mapping_sync.py` | macht aus den Zeilen der Kontenzuordnung die `Mapping` des Kerns und kürzt die Vorgaben auf die Konten eines Unternehmens |
 | `steuerbote/elster/` | bildet aus Steuernummer und Bundesland die 13-stellige Steuernummer im ELSTER-Format und schreibt die Meldung als XML für Mein ELSTER und ERiC, siehe [Abgabe über Mein ELSTER](abgabe-mein-elster.md) |
 | `vat_return_settings/rules.py` | Voranmeldungszeitraum je Monat, Dauerfristverlängerung und Sondervorauszahlung je Jahr |
-| `vat_return/bridge.py` | überträgt das Ergebnis des Kerns in die Tabellen der Meldung, bildet die Summen über die gemeldeten Beträge und übergibt die Meldung und den Datenlieferanten an das XML |
+| `vat_return/bridge.py` | überträgt das Ergebnis des Kerns in die Tabellen der Meldung, auch Vorperiodenvergleich und Hinweise, bildet die Summen über die gemeldeten Beträge und übergibt die Meldung und den Datenlieferanten an das XML |
 | `report/ustva_kennzahlen/attribution.py` | findet die Belege, aus denen jede Kennzahl besteht |
 | `report/ustva_kennzahlen/comparison.py` | stellt jede Kennzahl und Summe des Berichts neben Vorperiode und Vorjahr und wählt die Abweichungen aus |
 
@@ -23,6 +25,7 @@ So läuft „Berechnen“ an einer Meldung:
 3. Die Kontenzuordnung des Unternehmens wird über `mapping_sync.rows_to_mapping` zur `Mapping` des Kerns, geprüft gegen den Vordruck des Jahres der Meldung.
 4. `calculate()` rechnet Kennzahlen, Summen, Kz 83 und Verprobung.
 5. `bridge.py` schreibt das Ergebnis in die Tabellen der Meldung. Bei jedem Speichern rechnet der Kern Summen und Kz 83 aus den gemeldeten Beträgen neu, damit Korrekturen mit Begründung darin eingehen.
+6. `build_comparison` rechnet Vorperiode und Vorjahr aus dem Hauptbuch, `build_hints` liest die Rechnungen des Zeitraums; beide füllen die Tabellen „Vorperiodenvergleich“ und „Hinweise“, siehe [Vorperiodenvergleich und Hinweise](#vorperiodenvergleich-und-hinweise).
 
 ## DocTypes
 
@@ -38,6 +41,7 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 | `chart` | Kontenrahmen | SKR03, SKR04 oder Eigener Kontenrahmen |
 | `taxation_type` | Besteuerung | nur Soll; die Ist-Versteuerung wird noch nicht unterstützt |
 | `tolerance` | Toleranz je Beleg | wie weit die gebuchte Steuer eines Belegs in der Verprobung abweichen darf, Vorgabe 0,01 EUR |
+| `comparison_threshold_percent`, `comparison_threshold_amount` | Schwelle Vorperiodenvergleich (%), Schwelle Vorperiodenvergleich (EUR) | ab wann eine Kennzahl gegenüber der Vorperiode auffällig ist, Vorgabe 50 % und 100 EUR; gelten für die Meldung und den Bericht „UStVA Kennzahlen“ |
 | `state` | Bundesland | Pflicht |
 | `tax_number` | Steuernummer | Pflicht, wie vom Finanzamt vergeben; das Format wird gegen das Bundesland geprüft |
 | `elster_tax_number` | Steuernummer im ELSTER-Format | 13 Stellen, berechnet |
@@ -81,6 +85,8 @@ Einreichbar, Nummernkreis `UStVA-.YYYY.-.#####`.
 | `deviations` | Abweichende Belege | Tabelle „Abweichender Beleg der Verprobung“: Verprobung, Belegtyp, Belegnr., Berechnete Steuer, Gebuchte Steuer und Unterschied |
 | `unmapped` | Beobachtete Konten mit Saldo | Tabelle „Beobachtetes Konto mit Saldo“: Kontonummer, Konto, Soll und Haben |
 | `accounts_without_number` | Konten ohne Kontonummer | Zahl der Konten, die in keine Kennzahl eingehen können |
+| `hints` | Hinweise | Tabelle „Hinweis zur Umsatzsteuer-Voranmeldung“: Art (Hinweis oder Warnung), Code, Nachricht, Belegtyp, Belegnr. und Partei; füllt „Berechnen“, hält die Meldung nie an |
+| `comparison` | Vorperiodenvergleich | Tabelle „Vorperiodenvergleich der Umsatzsteuer-Voranmeldung“: Kennzahl, Beschreibung, Dieser Zeitraum, Vorperiode, Vorjahr, Differenz zur Vorperiode, Differenz (%) und Auffällig; füllt „Berechnen“ |
 | `attachments` | Belege beigefügt oder gesondert eingereicht (Kz 22) | Kennzeichen des Vordrucks |
 | `offset_requested` | Verrechnung erwünscht oder Erstattungsbetrag abgetreten (Kz 29) | Kennzeichen des Vordrucks |
 | `no_sepa_mandate` | SEPA-Lastschriftmandat ausnahmsweise nicht verwenden (Kz 26) | Kennzeichen des Vordrucks |
@@ -169,6 +175,27 @@ Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cen
 - Eine Meldung, die ELSTER angenommen hat oder die als abgegeben vermerkt ist, lässt sich nicht stornieren (`before_cancel`). Stornieren lässt sich nur eine Meldung, die eine frühere Version von Steuerbote mit „Buchen“ allein eingereicht hat, ohne ELSTER-Übermittlung.
 - „XML für Mein ELSTER“ erzeugt die Datei aus der gespeicherten Meldung, wenn sie abgegeben werden könnte oder abgegeben ist, und hängt sie privat an die Meldung.
 
+## Vorperiodenvergleich und Hinweise
+
+„Berechnen“ füllt an der Meldung zwei Tabellen, die beim Prüfen helfen und nichts ändern: Kein Betrag, keine Summe und nicht, ob die Meldung bereit ist, hängt von ihnen ab. Bereit ist eine Meldung weiter genau dann, wenn alle Verprobungen aufgehen und kein beobachtetes Konto einen Saldo hat. Beide Tabellen zeigen den Stand der letzten Berechnung, eine Korrektur danach erst nach dem nächsten „Berechnen“. Ihre Abschnitte erscheinen im Formular nur mit Zeilen.
+
+**Vorperiodenvergleich.** Je Kennzahl stehen der gemeldete Betrag (nach Korrekturen), der Betrag der Vorperiode und der des Vorjahres, die Differenz zur Vorperiode und ihr Anteil am Betrag der Vorperiode. Vorperiode ist der vorige Zeitraum im selben Abgaberhythmus, Vorjahr derselbe Zeitraum ein Jahr früher, wie im Bericht „UStVA Kennzahlen“. Beide rechnet `build_comparison` in `vat_return.py` aus dem Hauptbuch, mit derselben Abfrage und der Kontenzuordnung auf dem Vordruck ihres Jahres, im letzten Zeitraum eines Jahres mit Kz 39. Frühere Meldungen liest es nicht: Das Hauptbuch ist die einzige Quelle der Kennzahlen, und der Vergleich geht auch, bevor es eine frühere Meldung gibt. Kennt Steuerbote die Kennzahlen eines Jahres nicht, heute 2025, oder passt die Kontenzuordnung nicht zu seinem Vordruck, bleiben die Werte dieses Zeitraums im Formular leer, und ein Hinweis nennt den Grund. Ein solcher Zeitraum kostet keine Abfrage; mit beiden Vergleichszeiträumen fragt „Berechnen“ das Hauptbuch höchstens dreimal ab.
+
+Auffällig ist eine Kennzahl, wenn ihre Änderung gegenüber der Vorperiode beide Schwellen der Einstellungen übersteigt: „Schwelle Vorperiodenvergleich (%)“ als Anteil am Betrag der Vorperiode und „Schwelle Vorperiodenvergleich (EUR)“ als Betrag, ohne Eintrag 50 % und 100 EUR. Gleichstand mit einer Schwelle ist nicht auffällig, eine Änderung gegenüber 0 übersteigt jede Prozentschwelle. Es ist dieselbe Regel wie bei „Nur Abweichungen“ im Bericht (`Thresholds.exceeded` in `report/ustva_kennzahlen/comparison.py`).
+
+**Hinweise.** Jeder Hinweis ist ein Satz mit den Beträgen im Zahlenformat der Site und, wo es sie gibt, mit Beleg und Partei. Eine Warnung betrifft eine Rechnung, die wahrscheinlich falsch ist, ein Hinweis einen Unterschied, den jemand erklären sollte; Warnungen stehen oben. Die Rechnungen liest `steuerbote/invoices.py`: die eingereichten Ausgangsrechnungen des Zeitraums je Erlöskonto und die Eingangsrechnungen je Aufwandskonto der Kz 46 und 84, ohne Eröffnungsrechnungen, Gutschriften mit negativen Beträgen. Netto ist der Nettobetrag der Artikel in Firmenwährung, die Steuer die, die ERPNext je Artikel und Steuerzeile berechnet hat (Item Wise Tax Detail), das Land das der Anschrift auf der Rechnung und die USt-IdNr. die des Kunden oder Lieferanten. Welche Kennzahl eine Rechnungszeile betrifft, sagt die Kontenzuordnung.
+
+| Code | Art | Bedeutung |
+|---|---|---|
+| `EU-OHNE-USTID` | Warnung | Eine Rechnung geht in Kz 41 oder 21 ein, aber der Kunde hat keine USt-IdNr. Kz 41 setzt nach § 6a Absatz 1 Satz 1 Nummer 4 UStG die USt-IdNr. eines anderen Mitgliedstaats voraus, für Kz 21 nennt die Zusammenfassende Meldung sie (§ 18a Absatz 7 Satz 1 Nummer 3 UStG). Ob die Nummer gültig ist, prüft Steuerbote nicht. |
+| `EU-VORLAGE-ADRESSE` | Warnung | Eine Rechnung geht in Kz 41 oder 21 ein, aber die Anschrift auf der Rechnung liegt in Deutschland, außerhalb der EU oder fehlt. Beide Kennzahlen setzen einen Kunden im übrigen Gemeinschaftsgebiet voraus (§ 6a Absatz 1 und § 18b Satz 1 Nummer 2 UStG): in einem der anderen 26 Mitgliedstaaten oder in Monaco, das nach § 1 Absatz 2a UStG als Gebiet Frankreichs gilt. |
+| `NULLSATZ-OHNE-GRUND` | Warnung | Eine Rechnung bucht auf ein Konto der Kz 81 oder 86, aber ohne Steuer. |
+| `STEUER-ABWEICHUNG` | Warnung | Die Steuer einer Rechnung auf einem Konto der Kz 81 oder 86 weicht um mehr als 1 Cent von 19 % oder 7 % des Nettobetrags auf diesem Konto ab. |
+| `ABGLEICH-RECHNUNGEN` | Hinweis | Für Kz 81, 86, 41, 21, 45, 46 oder 84 weicht die Summe der Rechnungen um mehr als 1 EUR vom Betrag laut Hauptbuch ab, etwa wegen einer Journalbuchung auf einem Erlöskonto. |
+| `ABWEICHUNG-VORPERIODE` | Hinweis | Eine Kennzahl ist im Vorperiodenvergleich auffällig. |
+| `KEIN-KATALOG` | Hinweis | Steuerbote kennt die Kennzahlen des Jahres eines Vergleichszeitraums nicht, seine Werte bleiben leer. |
+| `ZUORDNUNG-JAHRGANG` | Hinweis | Die Kontenzuordnung passt nicht zum Vordruck des Jahres eines Vergleichszeitraums, seine Werte bleiben leer. |
+
 ## Übermittlung an ELSTER
 
 Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in einem kurzlebigen Prozess des Jobs. Was Anwender dabei sehen, beschreibt [Übermittlung an ELSTER](uebermittlung.md), die Anbindung von ERiC [ERiC](eric.md).
@@ -203,6 +230,7 @@ Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in ei
 | Laufzeit des Jahres, Ergebnis eines Laufs | `steuerbote/eric/runtime.py`, `steuerbote/eric/service.py` mit Worker oder Simulation |
 | Belege hinter jeder Kennzahl | `attribution.py` mit den Regeln von `calculate()` |
 | Vorperiode und Vorjahr im Bericht | `calculate()` für die Vergleichszeiträume, `comparison.py` |
+| Vorperiodenvergleich und Hinweise der Meldung | `calculate()` für die Vergleichszeiträume, `steuerbote/ustva/plausibility.py` mit der Regel aus `comparison.py`, Rechnungszeilen aus `steuerbote/invoices.py` |
 | Druckformat | rechnet keine Kennzahl, nur was der Vordruck selbst bildet: die Zeilen 45 und 48 aus den gespeicherten Summen und die Steuer der Zeilen 13, 14, 25 und 26 aus der Bemessungsgrundlage in vollen Euro |
 
 ## Bericht „UStVA Kennzahlen“

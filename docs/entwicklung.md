@@ -15,6 +15,7 @@ steuerbote/                    Repository
 │   │   ├── defaults.py        Vorgaben für SKR03 und SKR04
 │   │   ├── calculation.py     calculate(): Buchungszeilen zu Kennzahlen, Summen, Kz 83 und Verprobung
 │   │   ├── period.py          Voranmeldungszeiträume, Fristen und ELSTER-Zeitraumcodes
+│   │   ├── plausibility.py    Vorperiodenvergleich und Hinweise aus Rechnungen, Hauptbuch und Vergleich
 │   │   └── tests/             Unit-Tests des Kerns
 │   ├── elster/                ELSTER, reines Python ohne Frappe-Import
 │   │   ├── steuernummer.py    Steuernummer im 13-stelligen ELSTER-Format
@@ -24,6 +25,7 @@ steuerbote/                    Repository
 │   │   └── tests/             Unit-Tests und Tests gegen die Schemas der ERiC-Dokumentation
 │   ├── eric/                  ERiC: Einrichtung, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
 │   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
+│   ├── invoices.py            liest die Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns, reines Python
 │   ├── steuerbote/            Frappe-Modul „Steuerbote“, siehe Architektur
 │   │   ├── doctype/           Einstellungen, Kontenzuordnung und Umsatzsteuer-Voranmeldung samt Tabellen
