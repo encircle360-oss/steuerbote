@@ -193,6 +193,6 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 	def test_refuses_a_datenlieferant_that_elster_does_not_take(self):
 		with self.assertRaisesRegex(frappe.ValidationError, "town of the Datenlieferant contains characters"):
 			self.make_settings(city="Łódź").insert()
-		with self.assertRaises(frappe.CharacterLengthExceededError):
+		with self.assertRaisesRegex(frappe.ValidationError, "has 31 characters, ELSTER takes at most 30"):
 			self.make_settings(street="x" * 31).insert()
 		self.assertFalse(frappe.db.exists("VAT Return Settings", COMPANY))
