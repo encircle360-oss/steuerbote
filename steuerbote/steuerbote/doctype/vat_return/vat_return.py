@@ -7,17 +7,21 @@ a quarter, so a period number alone names a month or a quarter: the return carri
 be the one the settings prescribe for the first month of the period. An override replaces a computed amount
 once it has a reason, and the totals and Kz 83 always follow the amounts as filed. A period is filed once;
 every further return for it is a corrected return (Kz 10), and filing one marks the returns before it as
-replaced.
+replaced. "XML für Mein ELSTER" (make_import_file) writes the return as saved into the file for the import
+into Mein ELSTER through steuerbote.elster.ustva_xml and attaches it to the return.
 """
 
 import frappe
 from frappe import _
+from frappe.core.doctype.file.utils import get_content_hash
 from frappe.model.document import Document
-from frappe.utils import cint
+from frappe.utils import cint, getdate
 
 from steuerbote import ustva
+from steuerbote.elster import ustva_xml
 from steuerbote.ledger import account_names, accounts_without_number, load_lines
 from steuerbote.steuerbote.doctype.vat_return import bridge
+from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 
 SETTINGS_DOCTYPE = "VAT Return Settings"
 MAPPING_DOCTYPE = "VAT Return Mapping"
@@ -59,6 +63,7 @@ class VATReturn(Document):
 		input_tax: DF.Currency
 		is_correction: DF.Check
 		kennzahlen: DF.Table[VATReturnKennzahl]
+		kz500_begruendung: DF.SmallText | None
 		kz83: DF.Currency
 		naming_series: DF.Literal["UStVA-.YYYY.-.#####"]
 		no_sepa_mandate: DF.Check
@@ -87,6 +92,7 @@ class VATReturn(Document):
 		self._refuse_second_return()
 		self._discard_calculation_of_another_period()
 		self._set_final_amounts()
+		self._check_supplementary_details()
 
 	def before_submit(self):
 		if self.status not in (CALCULATED, READY):
@@ -147,6 +153,22 @@ class VATReturn(Document):
 			self.save()
 		finally:
 			self.flags.calculating = False
+
+	@frappe.whitelist(methods=["POST"])
+	def make_import_file(self) -> str:
+		"""XML für Mein ELSTER: the return as saved, as a file to import into the form, attached privately.
+
+		The file is made for a return that could be filed, calculated and ready or explained in the remarks,
+		and for the return filed for the period. Returns the address of the file.
+		"""
+		saved = frappe.get_doc(self.doctype, self.name)
+		saved._require_import_file()
+		with xml_errors(_("XML for Mein ELSTER")):
+			period = saved._chosen_period(cint(saved.year))
+			voranmeldung = bridge.voranmeldung(saved, period, saved._reported_before())
+			filer = bridge.filer(settings_for(saved.company))
+			content = ustva_xml.to_import_file(filer, voranmeldung, getdate())
+		return saved._attach(ustva_xml.import_file_name(voranmeldung), content)
 
 	def _lacks_mandatory_values(self) -> bool:
 		return (
@@ -238,6 +260,66 @@ class VATReturn(Document):
 		for row, values in zip(self.kennzahlen, filing.rows, strict=True):
 			row.update(values)
 		self.update(filing.totals)
+
+	def _check_supplementary_details(self) -> None:
+		"""Kz 500 and its Begründung go together, the Begründung on one line ELSTER takes."""
+		with xml_errors(_("VAT Return")):
+			ustva_xml.supplementary_details(self.supplementary_code, self.kz500_begruendung)
+
+	def _require_import_file(self) -> None:
+		if self.docstatus == 1 and self.status == FILED:
+			return
+		if self.docstatus != 0:
+			frappe.throw(
+				_(
+					"A replaced or cancelled return makes no file for Mein ELSTER; make it from the return filed."
+				)
+			)
+		if self.status not in (CALCULATED, READY):
+			frappe.throw(_("Calculate the return before making the file for Mein ELSTER."))
+		if not self.ready and not (self.remarks or "").strip():
+			frappe.throw(
+				_(
+					"The return is not ready: a Verprobung deviates or a watched account has a balance. Explain in the remarks why it is filed nonetheless."
+				)
+			)
+
+	def _reported_before(self) -> frozenset[str]:
+		"""What the other filed returns of the period reported, which a corrected return writes as zero."""
+		if not self.is_correction:
+			return frozenset()
+		return frozenset().union(
+			*(
+				bridge.reported(frappe.get_doc("VAT Return", name).kennzahlen)
+				for name in self._other_filed_returns()
+			)
+		)
+
+	def _attach(self, file_name: str, content: bytes) -> str:
+		"""Attach the file privately; a file of the same content attached before is kept instead."""
+		attached = frappe.db.get_value(
+			"File",
+			{
+				"attached_to_doctype": self.doctype,
+				"attached_to_name": self.name,
+				"content_hash": get_content_hash(content),
+			},
+			"file_url",
+		)
+		if attached:
+			return attached
+		file = frappe.get_doc(
+			{
+				"doctype": "File",
+				"file_name": file_name,
+				"attached_to_doctype": self.doctype,
+				"attached_to_name": self.name,
+				"is_private": 1,
+				"content": content,
+			}
+		)
+		file.insert()
+		return file.file_url
 
 
 def _read_rows(read, rows, *args):

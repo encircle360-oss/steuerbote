@@ -165,3 +165,34 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 			self.make_settings(
 				prepayments=[{"year": 2026, "dauerfristverlaengerung": 0, "sondervorauszahlung": 500}]
 			).insert()
+
+	def test_keeps_the_datenlieferant_and_the_wid_nr_as_elster_takes_it(self):
+		self.make_settings(
+			filer_name="Beispiel GmbH",
+			street="Hauptstraße 1",
+			postal_code="80331",
+			city="München",
+			phone="089 1234567",
+			email="erika@example.org",
+			wid_nr="de 123456789",
+		).insert()
+		settings = frappe.get_doc("VAT Return Settings", COMPANY)
+		self.assertEqual(
+			(settings.filer_name, settings.street, settings.postal_code, settings.city),
+			("Beispiel GmbH", "Hauptstraße 1", "80331", "München"),
+		)
+		self.assertEqual(
+			(settings.phone, settings.email, settings.wid_nr),
+			("089 1234567", "erika@example.org", "DE123456789"),
+		)
+
+	def test_refuses_a_wid_nr_of_another_shape(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "is not a Wirtschafts-Identifikationsnummer"):
+			self.make_settings(wid_nr="DE12345678").insert()
+
+	def test_refuses_a_datenlieferant_that_elster_does_not_take(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "town of the Datenlieferant contains characters"):
+			self.make_settings(city="Łódź").insert()
+		with self.assertRaises(frappe.CharacterLengthExceededError):
+			self.make_settings(street="x" * 31).insert()
+		self.assertFalse(frappe.db.exists("VAT Return Settings", COMPANY))

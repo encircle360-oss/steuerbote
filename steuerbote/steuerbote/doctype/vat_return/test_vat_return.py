@@ -1,9 +1,12 @@
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import frappe
 from frappe.tests import IntegrationTestCase
+from lxml import etree
 
+from steuerbote.elster.tests import eric_schema
 from steuerbote.tests.helpers import (
 	make_account,
 	make_company,
@@ -41,8 +44,34 @@ ACCOUNTS = {
 }
 
 
+# The Datenlieferant of COMPANY, invented.
+DATENLIEFERANT = {"street": "Hauptstraße 1", "postal_code": "80331", "city": "München"}
+IMPORT_DECLARATION = b'<?xml version="1.0" encoding="ISO-8859-15" standalone="no"?>\n'
+
+
 def money(value) -> Decimal:
 	return Decimal(str(value)).quantize(Decimal("0.01"))
+
+
+def attached_file(url: str, doc):
+	"""The File that attaches the file at the url to the return; returns of the same content share the url."""
+	return frappe.get_doc(
+		"File", {"file_url": url, "attached_to_doctype": "VAT Return", "attached_to_name": doc.name}
+	)
+
+
+def contents(url: str) -> bytes:
+	return Path(frappe.get_doc("File", {"file_url": url}).get_full_path()).read_bytes()
+
+
+def elements(document: bytes) -> list[tuple[str, str]]:
+	"""Name and text of each child of Umsatzsteuervoranmeldung in an import file."""
+	(anmeldung,) = etree.fromstring(document).iter("{*}Umsatzsteuervoranmeldung")
+	return [(etree.QName(child).localname, child.text) for child in anmeldung]
+
+
+def kennzahlen(document: bytes) -> dict[str, str]:
+	return {name: text for name, text in elements(document) if name.startswith("Kz")}
 
 
 class TestVATReturn(IntegrationTestCase):
@@ -54,7 +83,7 @@ class TestVATReturn(IntegrationTestCase):
 			number: make_account(COMPANY, number, name, root_type)
 			for number, (name, root_type) in ACCOUNTS.items()
 		}
-		make_settings(COMPANY, [(2026, "monthly", 1)])
+		make_settings(COMPANY, [(2026, "monthly", 1)], **DATENLIEFERANT)
 		make_mapping(COMPANY)
 		make_company(SWITCHING_COMPANY, "STVD")
 		make_settings(
@@ -305,3 +334,120 @@ class TestVATReturn(IntegrationTestCase):
 		doc = self.new_return(3, company=UNMAPPED_COMPANY)
 		with self.assertRaisesRegex(frappe.ValidationError, f"{UNMAPPED_COMPANY} has no VAT Return Mapping"):
 			doc.calculate()
+
+	def test_makes_the_import_file_for_mein_elster(self):
+		doc = self.calculated(3)
+		url = doc.make_import_file()
+		file = attached_file(url, doc)
+		self.assertEqual(
+			(file.attached_to_doctype, file.attached_to_name, file.is_private, file.file_name),
+			("VAT Return", doc.name, 1, "UStVA_2026_03.xml"),
+		)
+		document = contents(url)
+		self.assertTrue(document.startswith(IMPORT_DECLARATION))
+		self.assertIn("<Strasse>Hauptstraße 1</Strasse>".encode("iso-8859-15"), document)
+		self.assertEqual(
+			elements(document)[:3],
+			[("Jahr", "2026"), ("Zeitraum", "03"), ("Steuernummer", "9123045678901")],
+		)
+		self.assertEqual(
+			kennzahlen(document),
+			{
+				"Kz21": "2000",
+				"Kz45": "500",
+				"Kz46": "300",
+				"Kz47": "57.00",
+				"Kz66": "95.00",
+				"Kz67": "57.00",
+				"Kz81": "1000",
+				"Kz83": "95.00",
+			},
+		)
+		self.assertEqual(kennzahlen(document)["Kz83"], f"{money(doc.kz83):f}")
+
+	def test_the_import_file_follows_the_schema_of_the_eric_documentation(self):
+		schema = eric_schema.nutzdaten_schema(2026)
+		document = contents(self.calculated(3).make_import_file())
+		self.assertTrue(schema.validate(etree.ElementTree(etree.fromstring(document))), schema.error_log)
+
+	def test_the_import_file_is_attached_once_for_the_same_content(self):
+		doc = self.calculated(3)
+		self.assertEqual(doc.make_import_file(), doc.make_import_file())
+		self.assertEqual(
+			frappe.db.count("File", {"attached_to_doctype": "VAT Return", "attached_to_name": doc.name}), 1
+		)
+
+	def test_the_import_file_follows_overrides_and_the_further_details(self):
+		doc = self.calculated(9)
+		doc.append(
+			"kennzahlen", {"kennzahl": "43", "override": 250, "override_reason": "Export without booking"}
+		)
+		doc.attachments = 1
+		doc.supplementary_code = "2"
+		doc.kz500_begruendung = (
+			"\N{DOUBLE LOW-9 QUOTATION MARK}Gutscheine\N{LEFT DOUBLE QUOTATION MARK}, siehe Anlage"
+		)
+		doc.save()
+		document = contents(doc.make_import_file())
+		self.assertEqual(
+			kennzahlen(document),
+			{
+				"Kz22": "1",
+				"Kz43": "250",
+				"Kz83": "0.00",
+				"Kz500": "2",
+				"Kz500_Begruendung": '"Gutscheine", siehe Anlage',
+			},
+		)
+
+	def test_a_kz500_without_begruendung_is_refused(self):
+		doc = self.calculated(3)
+		doc.supplementary_code = "1"
+		with self.assertRaisesRegex(frappe.ValidationError, "Kennzahl 500 needs a Begründung"):
+			doc.save()
+
+	def test_a_begruendung_without_kz500_is_refused(self):
+		doc = self.calculated(3)
+		doc.kz500_begruendung = "Siehe Anlage"
+		with self.assertRaisesRegex(frappe.ValidationError, "only filed with Kennzahl 500"):
+			doc.save()
+
+	def test_the_import_file_needs_a_calculation(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the return before making the file"):
+			self.new_return(5).make_import_file()
+
+	def test_a_return_that_is_not_ready_needs_remarks_for_the_import_file(self):
+		a = self.account
+		post_journal_entry(
+			COMPANY, "2026-01-15", [(a["1400"], 1180, 0), (a["8400"], 0, 1000), (a["1776"], 0, 180)]
+		)
+		doc = self.calculated(1)
+		self.assertEqual(doc.status, "Berechnet")
+		with self.assertRaisesRegex(frappe.ValidationError, "The return is not ready"):
+			doc.make_import_file()
+		doc.remarks = "The Steuerberatung corrects the invoice in February."
+		doc.save()
+		self.assertEqual(kennzahlen(contents(doc.make_import_file())), {"Kz81": "1000", "Kz83": "190.00"})
+
+	def test_a_corrected_return_writes_zero_for_what_it_no_longer_reports(self):
+		first = self.calculated(11)
+		first.append(
+			"kennzahlen",
+			{"kennzahl": "45", "override": 500, "override_reason": "Export invoice without booking"},
+		)
+		first.save()
+		first.submit()
+		self.assertEqual(kennzahlen(contents(first.make_import_file())), {"Kz45": "500", "Kz83": "0.00"})
+		correction = self.calculated(11, is_correction=1)
+		url = correction.make_import_file()
+		self.assertEqual(attached_file(url, correction).file_name, "UStVA_2026_11_berichtigt.xml")
+		self.assertEqual(kennzahlen(contents(url)), {"Kz10": "1", "Kz45": "0", "Kz83": "0.00"})
+		correction.submit()
+		self.assertEqual(correction.make_import_file(), url)
+		with self.assertRaisesRegex(frappe.ValidationError, "replaced or cancelled return"):
+			first.make_import_file()
+
+	def test_the_import_file_needs_the_address_of_the_datenlieferant(self):
+		doc = self.calculated(12, company=SWITCHING_COMPANY)
+		with self.assertRaisesRegex(frappe.ValidationError, "The street of the Datenlieferant is missing"):
+			doc.make_import_file()

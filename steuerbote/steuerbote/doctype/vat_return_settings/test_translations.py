@@ -1,4 +1,5 @@
-"""Every text the VAT Return Settings show has a German translation in translations/de.csv."""
+"""Every text the VAT Return Settings and the file for Mein ELSTER show has a German translation in
+translations/de.csv."""
 
 import csv
 import json
@@ -6,13 +7,14 @@ import re
 from pathlib import Path
 from unittest import TestCase
 
-from steuerbote.elster import STATES
+from steuerbote.elster import STATES, ustva_xml
 from steuerbote.steuerbote.doctype.vat_return_settings.rules import MESSAGES
 
 APP = Path(__file__).resolve().parents[3]
 TRANSLATIONS = APP / "translations" / "de.csv"
 DOCTYPES = ("vat_return_settings", "vat_return_period_rule", "vat_return_prepayment")
 CONTROLLER = APP / "steuerbote" / "doctype" / "vat_return_settings" / "vat_return_settings.py"
+VAT_RETURN = APP / "steuerbote" / "doctype" / "vat_return"
 # German terms and values that every language shows as they are.
 UNTRANSLATED = frozenset(
 	{
@@ -26,8 +28,8 @@ UNTRANSLATED = frozenset(
 	}
 	| set(STATES.values())
 )
-TRANSLATED_LITERAL = re.compile(r'\b_\("((?:[^"\\]|\\.)*)"\)')
-PLACEHOLDER = re.compile(r"\{\d+\}")
+TRANSLATED_LITERAL = re.compile(r'\b_{1,2}\("((?:[^"\\]|\\.)*)"\)')
+PLACEHOLDER = re.compile(r"\{\w+\}")
 
 
 def rows() -> list[list[str]]:
@@ -51,6 +53,22 @@ def texts_of_the_settings() -> set[str]:
 	return texts - UNTRANSLATED
 
 
+def texts_of_the_import_file() -> set[str]:
+	"""The messages of the ELSTER XML and what the VAT Return shows of its file for Mein ELSTER."""
+	scripts = "".join(
+		(VAT_RETURN / name).read_text(encoding="utf-8") for name in ("vat_return.py", "vat_return.js")
+	)
+	(begruendung,) = (
+		field for field in doctype("vat_return")["fields"] if field["fieldname"] == "kz500_begruendung"
+	)
+	return (
+		set(ustva_xml.MESSAGES)
+		| set(ustva_xml.LABELS)
+		| {text for text in TRANSLATED_LITERAL.findall(scripts) if "Mein ELSTER" in text}
+		| {begruendung["label"], begruendung["description"]}
+	)
+
+
 class TranslationsTest(TestCase):
 	def test_every_row_pairs_a_source_with_its_translation(self):
 		for row in rows():
@@ -67,6 +85,11 @@ class TranslationsTest(TestCase):
 	def test_every_text_of_the_settings_is_translated(self):
 		translated = {source for source, *_ in rows()}
 		self.assertEqual(sorted(texts_of_the_settings() - translated), [])
+
+	def test_every_text_of_the_file_for_mein_elster_is_translated(self):
+		translated = {source for source, *_ in rows()}
+		self.assertIn("XML for Mein ELSTER", texts_of_the_import_file())
+		self.assertEqual(sorted(texts_of_the_import_file() - translated), [])
 
 	def test_translations_keep_the_placeholders(self):
 		for source, translation in rows():

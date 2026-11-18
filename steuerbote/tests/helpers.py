@@ -128,9 +128,11 @@ def make_settings(
 	company: str,
 	period_rules: Iterable[tuple[int, str, int]],
 	prepayments: Iterable[tuple[int, bool, Amount]] = (),
+	**fields,
 ) -> Document:
 	"""VAT Return Settings with rules (year, rhythm, valid from month) and prepayments (year,
-	Dauerfristverlängerung, Sondervorauszahlung), under an invented Steuernummer of Bayern."""
+	Dauerfristverlängerung, Sondervorauszahlung), under an invented Steuernummer of Bayern; ``fields`` go to
+	the settings themselves, such as the Datenlieferant."""
 	return frappe.get_doc(
 		{
 			"doctype": "VAT Return Settings",
@@ -145,6 +147,7 @@ def make_settings(
 				{"year": year, "dauerfristverlaengerung": int(dauerfrist), "sondervorauszahlung": amount}
 				for year, dauerfrist, amount in prepayments
 			],
+			**fields,
 		}
 	).insert(ignore_permissions=True)
 

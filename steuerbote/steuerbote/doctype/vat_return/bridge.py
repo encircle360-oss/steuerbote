@@ -1,8 +1,9 @@
 """Pure Python between the VAT Return document and the core in steuerbote.ustva.
 
-Nothing here imports Frappe. The module turns the core's result into the rows of the return's tables and
-computes the sums of the form over the amounts as filed, so that the controller only moves data and every
-rule is tested without a bench. Amounts are computed by the core alone.
+Nothing here imports Frappe. The module turns the core's result into the rows of the return's tables,
+computes the sums of the form over the amounts as filed and hands the return as filed to the ELSTER XML in
+steuerbote.elster, so that the controller only moves data and every rule is tested without a bench. Amounts
+are computed by the core alone.
 """
 
 from collections.abc import Iterable, Sequence
@@ -10,8 +11,10 @@ from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Protocol
 
+from steuerbote.elster import ustva_xml
 from steuerbote.ustva import Kennzahl, LedgerLine, Mapping, Period, UstvaResult, calculate, catalogue_for
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL, SONDERVORAUSZAHLUNG_KENNZAHL
 from steuerbote.ustva.rounding import ZERO, to_cents
@@ -242,3 +245,69 @@ def unmapped_rows(
 		}
 		for number in result.unmapped
 	]
+
+
+# The field of the VAT Return Settings that holds each part of the Datenlieferant (ustva_xml.DATENLIEFERANT).
+DATENLIEFERANT_FIELDS: ReadOnlyMapping[str, str] = MappingProxyType(
+	{
+		"name": "filer_name",
+		"street": "street",
+		"postal_code": "postal_code",
+		"city": "city",
+		"phone": "phone",
+		"email": "email",
+	}
+)
+
+
+def filer(settings: Row) -> ustva_xml.Filer:
+	"""The company as ELSTER names it, from its VAT Return Settings.
+
+	Without a name of its own, the Datenlieferant carries the name of the company.
+	"""
+	datenlieferant = {attribute: settings.get(field) for attribute, field in DATENLIEFERANT_FIELDS.items()}
+	return ustva_xml.Filer(
+		steuernummer=settings.get("elster_tax_number") or "",
+		**{**datenlieferant, "name": datenlieferant["name"] or settings.get("company")},
+		wid_nr=settings.get("wid_nr"),
+	)
+
+
+def voranmeldung(return_: Row, period: Period, reported_before: Iterable[str] = ()) -> ustva_xml.Voranmeldung:
+	"""The return as filed: the final amount of each row, Kz 83 as the return keeps it, and its further details.
+
+	``reported_before`` are the Kennzahlen of the returns that a corrected return replaces, see ``reported``.
+	"""
+	amounts = {
+		number: to_amount(row.get("final"))
+		for row in return_.get("kennzahlen") or ()
+		if (number := _number(row)) != BALANCE_KENNZAHL
+	}
+	corrected = _checked(return_.get("is_correction"))
+	return ustva_xml.Voranmeldung(
+		period,
+		{**amounts, BALANCE_KENNZAHL: to_amount(return_.get("kz83"))},
+		corrected=corrected,
+		attachments=_checked(return_.get("attachments")),
+		no_sepa_mandate=_checked(return_.get("no_sepa_mandate")),
+		offset_requested=_checked(return_.get("offset_requested")),
+		supplementary_code=return_.get("supplementary_code") or None,
+		begruendung=return_.get("kz500_begruendung") or None,
+		reported_before=frozenset(reported_before) if corrected else frozenset(),
+	)
+
+
+def reported(rows: Iterable[Row]) -> frozenset[str]:
+	"""The Kennzahlen with an amount in the rows of a filed return, Kz 83 aside, which is always written."""
+	return frozenset(
+		number for row in rows if (number := _number(row)) != BALANCE_KENNZAHL and to_amount(row.get("final"))
+	)
+
+
+def _number(row: Row) -> str:
+	return str(row.get("kennzahl") or "").strip()
+
+
+def _checked(value: object) -> bool:
+	"""The value of a check field; Frappe hands out 0 and 1, or nothing."""
+	return bool(int(value or 0))
