@@ -16,23 +16,30 @@ Steuermeldungen aus ERPNext an ELSTER. Zuerst die Umsatzsteuer-Voranmeldung, dan
 
 ## Einblick
 
-Die Bilder stammen aus einer Testumgebung. Firma, Anschrift, Steuernummern und Geschäftspartner sind Beispielwerte.
+Die Bilder stammen aus einer Testumgebung. Firma, Anschrift, Steuernummern und Geschäftspartner sind Beispielwerte. Ein Klick auf ein Bild öffnet es in voller Größe.
 
-![Arbeitsbereich Steuern mit der Zahl offener Voranmeldungen und Verknüpfungen zu Voranmeldung, Bericht und Einrichtung](docs/bilder/workspace-steuern.png)
-
-Arbeitsbereich Steuern: offene Voranmeldungen, Bericht und Einrichtung an einem Ort.
-
-![Umsatzsteuer-Voranmeldung mit den Tabellen Kennzahlen und Verprobung und den Summen dazwischen](docs/bilder/voranmeldung.png)
-
-Voranmeldung mit Verprobung: Kennzahlen und Summen aus dem Hauptbuch, darunter berechnete und gebuchte Steuer im Vergleich.
-
-![Bericht UStVA Kennzahlen mit aufgeklappter Kennzahl 81 und dem Beleg dahinter](docs/bilder/bericht-kennzahlen.png)
-
-Bericht mit Drill-down: unter jeder Kennzahl die Belege, aus denen sie entsteht.
-
-![Druckformat der Umsatzsteuer-Voranmeldung mit Kopfdaten und den Abschnitten A bis H](docs/bilder/druckformat.png)
-
-Druckformat: die Voranmeldung in Reihenfolge und Wortlaut des Vordrucks USt 1 A.
+<table>
+  <tr>
+    <td align="center" valign="top">
+      <a href="docs/bilder/workspace-steuern.png"><img src="docs/bilder/workspace-steuern.png" width="280" alt="Arbeitsbereich Steuern mit offenen Voranmeldungen, Bericht und Einrichtung"></a><br>
+      Arbeitsbereich Steuern
+    </td>
+    <td align="center" valign="top">
+      <a href="docs/bilder/bericht-kennzahlen.png"><img src="docs/bilder/bericht-kennzahlen.png" width="280" alt="Bericht UStVA Kennzahlen mit aufgeklappter Kennzahl 81 und dem Beleg dahinter"></a><br>
+      Bericht mit Drill-down
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <a href="docs/bilder/voranmeldung.png"><img src="docs/bilder/voranmeldung.png" width="280" alt="Umsatzsteuer-Voranmeldung mit Kennzahlen, Summen und Verprobung"></a><br>
+      Voranmeldung mit Verprobung
+    </td>
+    <td align="center" valign="top">
+      <a href="docs/bilder/druckformat.png"><img src="docs/bilder/druckformat.png" width="200" alt="Druckformat der Umsatzsteuer-Voranmeldung nach dem Vordruck USt 1 A"></a><br>
+      Druckformat nach Vordruck USt 1 A
+    </td>
+  </tr>
+</table>
 
 ## Voraussetzungen
 
