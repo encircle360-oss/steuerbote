@@ -94,12 +94,12 @@ def without_declaration(xml: str) -> str:
 
 
 def problems(
-	header: EnvelopeHeader, operation: Operation, *, check_hersteller_id: bool = False
+	header: EnvelopeHeader, operation: Operation, *, own_hersteller_id: str | None = None
 ) -> tuple[Message, ...]:
 	"""What is wrong with the header for the operation, before ERiC or the simulation sees it.
 
-	The own Hersteller-ID is needed for test and real cases alike (Entwicklerhandbuch, Kap. 6.5.3); the
-	simulation runs without one, so it is checked only when asked.
+	ERiC needs the own Hersteller-ID for test and real cases alike (Entwicklerhandbuch, Kap. 6.5.3), so
+	with own_hersteller_id, the one set up for ERiC, the header must name it. The simulation runs without.
 	"""
 	found = []
 
@@ -112,13 +112,18 @@ def problems(
 			refuse("Testmerker", f"Ein Testsenden braucht den Testmerker {TESTMERKER}.")
 		else:
 			refuse("Testmerker", "Ein echtes Senden darf keinen Testmerker tragen.")
-	if check_hersteller_id and not re.fullmatch(r"\d{5}", header.hersteller_id):
-		refuse("HerstellerID", "Die Hersteller-ID besteht aus fünf Ziffern.")
-	elif check_hersteller_id and header.hersteller_id == ILLUSTRATION_HERSTELLER_ID:
+	if own_hersteller_id == ILLUSTRATION_HERSTELLER_ID:
 		refuse(
 			"HerstellerID",
 			f"Die Hersteller-ID {ILLUSTRATION_HERSTELLER_ID} dient nur der Illustration und ist gesperrt. "
 			"Nötig ist die eigene Hersteller-ID, auch für Testfälle.",
+		)
+	elif own_hersteller_id is not None and not re.fullmatch(r"\d{5}", own_hersteller_id):
+		refuse("HerstellerID", "ERiC braucht die eigene Hersteller-ID aus fünf Ziffern, auch zum Prüfen.")
+	elif own_hersteller_id is not None and header.hersteller_id != own_hersteller_id:
+		refuse(
+			"HerstellerID",
+			f"Die Daten nennen die Hersteller-ID {header.hersteller_id}, eingerichtet ist {own_hersteller_id}.",
 		)
 	if not re.fullmatch(r"\d{4}", header.empfaenger_finanzamt):
 		refuse("Empfaenger", "Die Bundesfinanzamtsnummer besteht aus vier Ziffern.")

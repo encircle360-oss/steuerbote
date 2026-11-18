@@ -729,6 +729,10 @@ EXPORT int EricBearbeiteVorgang(const char *datenpuffer, const char *datenartVer
 		fill_text(rueckgabeXmlPuffer, rule_errors);
 		return GLOBAL_PRUEF_FEHLER;
 	}
+	if (contains(datenpuffer, "STUB-BROKEN-RETURN")) {
+		fill_text(rueckgabeXmlPuffer, "<EricBearbeiteVorgang><FehlerRegelpruefung>");
+		return GLOBAL_PRUEF_FEHLER;
+	}
 	if (contains(datenpuffer, "STUB-HINWEIS") && (bearbeitungsFlags & PRUEFE_HINWEISE)) {
 		fill_text(rueckgabeXmlPuffer, hints);
 		if (druckParameter)

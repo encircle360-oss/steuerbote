@@ -87,8 +87,8 @@ class ProblemsTest(TestCase):
 		return [message.field for message in found]
 
 	def test_accepts_a_complete_header(self):
-		self.assertEqual(self.fields(HEADER, check_hersteller_id=True), [])
-		self.assertEqual(self.fields(HEADER, Operation.SEND, check_hersteller_id=True), [])
+		self.assertEqual(self.fields(HEADER, own_hersteller_id="12345"), [])
+		self.assertEqual(self.fields(HEADER, Operation.SEND, own_hersteller_id="12345"), [])
 
 	def test_a_test_send_needs_the_testmerker_and_a_send_none(self):
 		test = replace(HEADER, testmerker=TESTMERKER)
@@ -100,12 +100,16 @@ class ProblemsTest(TestCase):
 		self.assertEqual(self.fields(test, Operation.SEND), ["Testmerker"])
 		self.assertEqual(self.fields(test, Operation.VALIDATE), [])
 
-	def test_checks_the_hersteller_id_only_when_asked(self):
-		for hersteller_id in ("", "1234", "123456", "1234a", ILLUSTRATION_HERSTELLER_ID):
-			with self.subTest(hersteller_id=hersteller_id):
-				header = replace(HEADER, hersteller_id=hersteller_id)
-				self.assertEqual(self.fields(header, check_hersteller_id=True), ["HerstellerID"])
-				self.assertEqual(self.fields(header, check_hersteller_id=False), [])
+	def test_needs_the_own_hersteller_id_when_one_is_set_up(self):
+		for own in ("", "1234", "123456", "1234a", ILLUSTRATION_HERSTELLER_ID):
+			with self.subTest(own=own):
+				header = replace(HEADER, hersteller_id=own)
+				self.assertEqual(self.fields(header, own_hersteller_id=own), ["HerstellerID"])
+				self.assertEqual(self.fields(header), [])
+
+	def test_the_header_names_the_hersteller_id_that_is_set_up(self):
+		self.assertEqual(self.fields(HEADER, own_hersteller_id="54321"), ["HerstellerID"])
+		self.assertEqual(self.fields(replace(HEADER, hersteller_id="00000")), [])
 
 	def test_names_each_field_out_of_shape(self):
 		cases = {
