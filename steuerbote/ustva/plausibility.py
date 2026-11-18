@@ -16,7 +16,7 @@ The rules behind the hints on single invoices:
   Mitgliedstaat ansässige Leistungsempfänger die Steuer dort schuldet“; the Zusammenfassende Meldung
   names for them „die Umsatzsteuer-Identifikationsnummer jedes Leistungsempfängers, die ihm in einem
   anderen Mitgliedstaat erteilt worden ist“ (§ 18a Absatz 7 Satz 1 Nummer 3 Buchstabe a UStG).
-- Kz 81 and 86 hold taxable turnover at 19 % and 7 %, and the form derives their tax from the base (line
+- Kz 81 and 86 hold taxable turnover at 19 % and 7 %, and the form derives their tax from the base (lines
   13 and 14), so an invoice on their accounts charges that rate.
 
 A VAT id is only checked for being there, not for being valid; the party's country is that of the address
@@ -300,8 +300,8 @@ def reconciliation_hints(
 	for kennzahl in (number for number in mapping.catalogue if number in invoiced):
 		booked = ledger.get(kennzahl, ZERO)
 		if abs(invoiced[kennzahl] - booked) > RECONCILIATION_TOLERANCE:
-			invoices = figures.money(invoiced[kennzahl])
-			text = f"Kz {kennzahl}: Die Rechnungen des Zeitraums ergeben netto {invoices}, das Hauptbuch {figures.money(booked)}."
+			amounts = f"netto {figures.money(invoiced[kennzahl])}, das Hauptbuch {figures.money(booked)}"
+			text = f"Kz {kennzahl}: Die Rechnungen des Zeitraums ergeben {amounts}."
 			found.append(Hint(Code.INVOICES_AND_LEDGER, text))
 	return found
 
