@@ -9,6 +9,9 @@ license-files = ["LICENSE"]
 dynamic = ["version"]
 dependencies = [
     # frappe and erpnext are installed and managed by bench, see [tool.bench.frappe-dependencies]
+    # Frappe 16 brings lxml through premailer without pinning it, so the range only names the major version the
+    # ELSTER XML is written for; requirements-dev.txt pins the version the tests run with.
+    "lxml>=6.0,<7",
 ]
 
 [project.urls]
