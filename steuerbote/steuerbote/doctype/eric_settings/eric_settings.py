@@ -4,7 +4,9 @@ The Hersteller-ID belongs to the installation, not to a company, and so does the
 is missing the settings simulate: Prüfen and Testsenden run against the simulation of steuerbote.eric and
 nothing reaches the Finanzamt. Steuerbote ships no part of ERiC and downloads nothing: the operator puts the
 archive for Linux x86_64 from the ELSTER developer area on the server, and the installation job unpacks it
-through steuerbote.eric.runtime after checking its SHA-256.
+through steuerbote.eric.runtime after checking its SHA-256. Before ERiC runs, the operator confirms the
+Datenschutzhinweise of the tax administration (ERiC licence, § 5 Abs. 1 and 2); the settings keep who
+confirmed them and when. The simulation needs no confirmation.
 """
 
 import os
@@ -14,7 +16,7 @@ from pathlib import Path
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import now_datetime
+from frappe.utils import cint, now_datetime
 from frappe.utils.background_jobs import is_job_enqueued
 
 import steuerbote
@@ -56,6 +58,9 @@ class ERiCSettings(Document):
 		last_check: DF.Datetime | None
 		lib_dir: DF.Data | None
 		log_dir: DF.Data | None
+		privacy_notice_confirmed: DF.Check
+		privacy_notice_confirmed_by: DF.Link | None
+		privacy_notice_confirmed_on: DF.Datetime | None
 		produkt_name: DF.Data
 		produkt_version: DF.Data | None
 		simulation: DF.Check
@@ -78,7 +83,23 @@ class ERiCSettings(Document):
 		self.check_archive()
 		if len(self.datenlieferant) > DATENLIEFERANT_LENGTH:
 			frappe.throw(_("The Datenlieferant has at most {0} characters.").format(DATENLIEFERANT_LENGTH))
+		self.record_privacy_notice()
 		self.simulation = int(not self.runs_eric())
+
+	def record_privacy_notice(self) -> None:
+		"""Who confirmed the Datenschutzhinweise and when: the user who first ticks the box, kept until the box
+		is cleared."""
+		if not cint(self.privacy_notice_confirmed):
+			self.privacy_notice_confirmed_by = None
+			self.privacy_notice_confirmed_on = None
+			return
+		before = self.get_doc_before_save()
+		if before and cint(before.privacy_notice_confirmed) and before.privacy_notice_confirmed_by:
+			self.privacy_notice_confirmed_by = before.privacy_notice_confirmed_by
+			self.privacy_notice_confirmed_on = before.privacy_notice_confirmed_on
+			return
+		self.privacy_notice_confirmed_by = frappe.session.user
+		self.privacy_notice_confirmed_on = now_datetime()
 
 	def runs_eric(self) -> bool:
 		"""Whether the transmissions go to ERiC: a runtime is installed and a Hersteller-ID entered."""

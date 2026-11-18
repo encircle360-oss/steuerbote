@@ -6,6 +6,11 @@
  "engine": "InnoDB",
  "field_order": [
   "simulation",
+  "privacy_section",
+  "privacy_notice_confirmed",
+  "column_break_privacy",
+  "privacy_notice_confirmed_by",
+  "privacy_notice_confirmed_on",
   "manufacturer_section",
   "hersteller_id",
   "produkt_name",
@@ -28,6 +33,35 @@
    "fieldname": "simulation",
    "fieldtype": "Check",
    "label": "Simulation Mode",
+   "read_only": 1
+  },
+  {
+   "fieldname": "privacy_section",
+   "fieldtype": "Section Break",
+   "label": "Datenschutzhinweise"
+  },
+  {
+   "default": "0",
+   "description": "Before ERiC is used, the Datenschutzhinweise of the tax administration have to be read and confirmed (§ 5 of the ERiC licence). Their text comes with the ERiC download from the ELSTER developer area. Without the confirmation, only the simulation runs.",
+   "fieldname": "privacy_notice_confirmed",
+   "fieldtype": "Check",
+   "label": "Datenschutzhinweise Read and Confirmed"
+  },
+  {
+   "fieldname": "column_break_privacy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "privacy_notice_confirmed_by",
+   "fieldtype": "Link",
+   "label": "Confirmed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "privacy_notice_confirmed_on",
+   "fieldtype": "Datetime",
+   "label": "Confirmed On",
    "read_only": 1
   },
   {
@@ -113,7 +147,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-18 06:00:00.000000",
+ "modified": "2026-11-18 08:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "ERiC Settings",
