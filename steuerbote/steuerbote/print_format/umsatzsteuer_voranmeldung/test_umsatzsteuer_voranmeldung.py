@@ -99,6 +99,14 @@ class TestUmsatzsteuerVoranmeldung(IntegrationTestCase):
 		):
 			self.assertIn(expected, text)
 
+	def test_the_header_keeps_to_classes_the_print_stylesheet_leaves_alone(self):
+		markup = self.printed(self.calculated_return(3))
+		form = markup[markup.index('<div class="sb-ustva">') :]
+		self.assertEqual(form.count('<td class="sb-label">'), 7)
+		self.assertEqual(form.count('<td class="sb-value">'), 7)
+		classes = {name for value in re.findall(r'\bclass="([^"]*)"', form) for name in value.split()}
+		self.assertNotIn("label", classes)
+
 	def test_prints_the_kennzahlen_in_their_sections_with_the_sums_of_the_form(self):
 		text = cells(self.printed(self.calculated_return(3)))
 		expected_lines = [

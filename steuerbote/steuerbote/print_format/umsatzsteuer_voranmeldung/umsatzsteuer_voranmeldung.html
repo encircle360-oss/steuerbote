@@ -42,22 +42,22 @@
 
 {%- macro flag_row(line, kennzahl, label, value) -%}
 <tr>
-	<td class="line">{{ line }}</td>
+	<td class="sb-line">{{ line }}</td>
 	<td>{{ label }}</td>
-	<td class="kz">{{ kennzahl }}</td>
-	<td class="flag" colspan="3">{{ value }}</td>
+	<td class="sb-kz">{{ kennzahl }}</td>
+	<td class="sb-flag" colspan="3">{{ value }}</td>
 </tr>
 {%- endmacro -%}
 
 {%- macro sum_row(line) -%}
 {%- set label, kennzahl, value = sums[line] -%}
-<tr class="sum">
-	<td class="line">{{ line }}</td>
+<tr class="sb-sum">
+	<td class="sb-line">{{ line }}</td>
 	<td>{{ label }}</td>
-	<td class="kz"></td>
-	<td class="num"></td>
-	<td class="kz">{{ kennzahl }}</td>
-	<td class="num">{{ cents(value) }}</td>
+	<td class="sb-kz"></td>
+	<td class="sb-num"></td>
+	<td class="sb-kz">{{ kennzahl }}</td>
+	<td class="sb-num">{{ cents(value) }}</td>
 </tr>
 {%- endmacro -%}
 
@@ -68,12 +68,12 @@
 {%- set tax = taxes[0] if taxes else none -%}
 {%- set rate = derived_rates.get(base.kennzahl) if base else none -%}
 <tr>
-	<td class="line">{{ line }}</td>
+	<td class="sb-line">{{ line }}</td>
 	<td>{{ (base or tax).label | e }}</td>
-	<td class="kz">{{ base.kennzahl if base else "" }}</td>
-	<td class="num">{{ euros(base.final) if base else "" }}</td>
-	<td class="kz">{{ tax.kennzahl if tax else "" }}</td>
-	<td class="num">
+	<td class="sb-kz">{{ base.kennzahl if base else "" }}</td>
+	<td class="sb-num">{{ euros(base.final) if base else "" }}</td>
+	<td class="sb-kz">{{ tax.kennzahl if tax else "" }}</td>
+	<td class="sb-num">
 		{%- if tax -%}{{ cents(tax.final) }}
 		{%- elif rate -%}{{ cents(frappe.utils.flt(base.final * rate / 100, 2)) }}
 		{%- endif -%}
@@ -81,41 +81,41 @@
 </tr>
 {%- endmacro -%}
 
-<div class="ustva">
+<div class="sb-ustva">
 	<h1>Umsatzsteuer-Voranmeldung {{ doc.year }}</h1>
 	{%- if doc.is_correction %}
-	<p class="subtitle">Berichtigte Anmeldung</p>
+	<p class="sb-subtitle">Berichtigte Anmeldung</p>
 	{%- endif %}
 
-	<table class="head">
-		<tr><td class="label">Unternehmen</td><td>{{ doc.company | e }}</td></tr>
-		<tr><td class="label">Steuernummer</td><td>{{ (settings.tax_number or "") | e }}</td></tr>
-		<tr><td class="label">Steuernummer im ELSTER-Format</td><td>{{ (settings.elster_tax_number or "") | e }}</td></tr>
+	<table class="sb-head">
+		<tr><td class="sb-label">Unternehmen</td><td class="sb-value">{{ doc.company | e }}</td></tr>
+		<tr><td class="sb-label">Steuernummer</td><td class="sb-value">{{ (settings.tax_number or "") | e }}</td></tr>
+		<tr><td class="sb-label">Steuernummer im ELSTER-Format</td><td class="sb-value">{{ (settings.elster_tax_number or "") | e }}</td></tr>
 		{%- if settings.tax_office %}
-		<tr><td class="label">Finanzamt</td><td>{{ settings.tax_office | e }}</td></tr>
+		<tr><td class="sb-label">Finanzamt</td><td class="sb-value">{{ settings.tax_office | e }}</td></tr>
 		{%- endif %}
-		<tr><td class="label">Voranmeldungszeitraum</td><td>{{ (doc.period_label or "") | e }}</td></tr>
-		<tr><td class="label">Fällig am</td><td>{{ frappe.utils.formatdate(doc.deadline, "dd.MM.yyyy") if doc.deadline else "" }}</td></tr>
-		<tr><td class="label">Meldung</td><td>{{ doc.name | e }}, {{ doc.status | e }}</td></tr>
+		<tr><td class="sb-label">Voranmeldungszeitraum</td><td class="sb-value">{{ (doc.period_label or "") | e }}</td></tr>
+		<tr><td class="sb-label">Fällig am</td><td class="sb-value">{{ frappe.utils.formatdate(doc.deadline, "dd.MM.yyyy") if doc.deadline else "" }}</td></tr>
+		<tr><td class="sb-label">Meldung</td><td class="sb-value">{{ doc.name | e }}, {{ doc.status | e }}</td></tr>
 	</table>
 
-	<table class="form">
+	<table class="sb-form">
 		<colgroup>
-			<col class="line">
+			<col class="sb-line">
 			<col>
-			<col class="kz">
-			<col class="num">
-			<col class="kz">
-			<col class="num">
+			<col class="sb-kz">
+			<col class="sb-num">
+			<col class="sb-kz">
+			<col class="sb-num">
 		</colgroup>
 		<thead>
 			<tr>
-				<th class="line">Zeile</th>
+				<th class="sb-line">Zeile</th>
 				<th></th>
-				<th class="kz">Kz</th>
-				<th class="num">Bemessungsgrundlage ohne Umsatzsteuer<br>EUR</th>
-				<th class="kz">Kz</th>
-				<th class="num">Steuer<br>EUR, Ct</th>
+				<th class="sb-kz">Kz</th>
+				<th class="sb-num">Bemessungsgrundlage ohne Umsatzsteuer<br>EUR</th>
+				<th class="sb-kz">Kz</th>
+				<th class="sb-num">Steuer<br>EUR, Ct</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -123,8 +123,8 @@
 			{{ flag_row(11, "22", "Belege (z. B. Verträge, Rechnungen) sind beigefügt bzw. werden gesondert eingereicht", "1 = Ja" if doc.attachments else "") }}
 		</tbody>
 		{%- for letter, title, first, last in sections %}
-		<tbody class="group">
-			<tr class="section"><td colspan="6">{{ letter }} {{ title }}</td></tr>
+		<tbody class="sb-group">
+			<tr class="sb-section"><td colspan="6">{{ letter }} {{ title }}</td></tr>
 			{%- set printed = namespace(any=false) -%}
 			{%- for line in range(first, last + 1) -%}
 				{%- if line in sums -%}
@@ -139,53 +139,53 @@
 				{%- endif -%}
 			{%- endfor -%}
 			{%- if not printed.any %}
-			<tr class="empty"><td></td><td colspan="5">Keine Eintragungen</td></tr>
+			<tr class="sb-empty"><td></td><td colspan="5">Keine Eintragungen</td></tr>
 			{%- endif %}
 		</tbody>
 		{%- endfor %}
-		<tbody class="group">
-			<tr class="section"><td colspan="6">J. Sonstige Angaben</td></tr>
+		<tbody class="sb-group">
+			<tr class="sb-section"><td colspan="6">J. Sonstige Angaben</td></tr>
 			{{ flag_row(53, "29", "Verrechnung des Erstattungsbetrags erwünscht / Erstattungsbetrag ist abgetreten", "1 = Ja" if doc.offset_requested else "") }}
 			{{ flag_row(54, "26", "Das SEPA-Lastschriftmandat soll ausnahmsweise für diesen Voranmeldungszeitraum nicht verwendet werden", "1 = Ja" if doc.no_sepa_mandate else "") }}
 		</tbody>
-		<tbody class="group">
-			<tr class="section"><td colspan="6">Ergänzende Angaben zur Steueranmeldung</td></tr>
+		<tbody class="sb-group">
+			<tr class="sb-section"><td colspan="6">Ergänzende Angaben zur Steueranmeldung</td></tr>
 			<tr>
-				<td class="line">55</td>
+				<td class="sb-line">55</td>
 				<td>
 					Ergänzende Angaben zur Steueranmeldung (1 bis 4)
-					{%- if doc.supplementary_code in supplementary %}<br><span class="note">In dieser Steueranmeldung {{ supplementary[doc.supplementary_code] }}</span>{% endif %}
-					{%- if doc.kz500_begruendung %}<br><span class="note">Begründung: {{ doc.get_formatted("kz500_begruendung") }}</span>{% endif %}
+					{%- if doc.supplementary_code in supplementary %}<br><span class="sb-note">In dieser Steueranmeldung {{ supplementary[doc.supplementary_code] }}</span>{% endif %}
+					{%- if doc.kz500_begruendung %}<br><span class="sb-note">Begründung: {{ doc.get_formatted("kz500_begruendung") }}</span>{% endif %}
 				</td>
-				<td class="kz">500</td>
-				<td class="flag" colspan="3">{{ doc.supplementary_code or "" }}</td>
+				<td class="sb-kz">500</td>
+				<td class="sb-flag" colspan="3">{{ doc.supplementary_code or "" }}</td>
 			</tr>
 		</tbody>
 	</table>
 
 	{%- if overrides %}
 	<h2>Korrekturen gegenüber dem Hauptbuch</h2>
-	<table class="form">
+	<table class="sb-form">
 		<colgroup>
-			<col class="kz">
-			<col class="num">
-			<col class="num">
+			<col class="sb-kz">
+			<col class="sb-num">
+			<col class="sb-num">
 			<col>
 		</colgroup>
 		<thead>
 			<tr>
-				<th class="kz">Kz</th>
-				<th class="num">Betrag laut Hauptbuch</th>
-				<th class="num">Gemeldeter Betrag</th>
+				<th class="sb-kz">Kz</th>
+				<th class="sb-num">Betrag laut Hauptbuch</th>
+				<th class="sb-num">Gemeldeter Betrag</th>
 				<th>Begründung</th>
 			</tr>
 		</thead>
 		<tbody>
 			{%- for row in overrides %}
 			<tr>
-				<td class="kz">{{ row.kennzahl }}</td>
-				<td class="num">{{ euros(row.reported) if row.kind == "base" else cents(row.reported) }}</td>
-				<td class="num">{{ amount(row) }}</td>
+				<td class="sb-kz">{{ row.kennzahl }}</td>
+				<td class="sb-num">{{ euros(row.reported) if row.kind == "base" else cents(row.reported) }}</td>
+				<td class="sb-num">{{ amount(row) }}</td>
 				<td>{{ row.get_formatted("override_reason") }}</td>
 			</tr>
 			{%- endfor %}
@@ -198,7 +198,7 @@
 	<p>{{ doc.get_formatted("remarks") }}</p>
 	{%- endif %}
 
-	<div class="footer">
+	<div class="sb-footer">
 		<p>Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.</p>
 		<p>Dieser Ausdruck ist keine Abgabe. Abgegeben ist die Umsatzsteuer-Voranmeldung erst, wenn sie elektronisch an das Finanzamt übermittelt ist.</p>
 	</div>

@@ -39,6 +39,11 @@ FRAMEWORK_LABELS = frozenset(
 )
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
+CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')
+CLASS_SELECTOR = re.compile(r"\.(-?[A-Za-z_][\w-]*)")
+# Frappe's print stylesheet styles bare classes such as .label (inline, 75 %, bold), so the print format
+# names its classes with a prefix of its own.
+PRINT_CLASS_PREFIX = "sb-"
 
 
 def read_json(path: Path) -> dict:
@@ -228,6 +233,30 @@ class PrintFormatFilesTest(TestCase):
 				self.assertEqual(len(set(channels)), 1)
 		self.assertNotIn("<img", self.template)
 		self.assertNotRegex(css, r"\b(rgb|hsl)a?\(")
+
+	def test_keeps_to_classes_of_its_own(self):
+		used = {name for value in CLASS_ATTRIBUTE.findall(self.template) for name in value.split()}
+		styled = set(CLASS_SELECTOR.findall(self.record["css"]))
+		self.assertNotIn("label", used | styled)
+		self.assertEqual(
+			sorted(name for name in used | styled if not name.startswith(PRINT_CLASS_PREFIX)), []
+		)
+		self.assertEqual(sorted(used), sorted(styled))
+
+	def test_the_header_pairs_each_label_with_its_value(self):
+		labels = re.findall(r'<tr><td class="sb-label">([^<]+)</td><td class="sb-value">', self.template)
+		self.assertEqual(
+			labels,
+			[
+				"Unternehmen",
+				"Steuernummer",
+				"Steuernummer im ELSTER-Format",
+				"Finanzamt",
+				"Voranmeldungszeitraum",
+				"Fällig am",
+				"Meldung",
+			],
+		)
 
 	def test_the_labels_of_the_flags_are_those_of_the_catalogue(self):
 		for number in ("10", "22", "29", "26"):
