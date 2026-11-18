@@ -1,0 +1,72 @@
+[project]
+name = "steuerbote"
+authors = [{ name = "encircle360 GmbH", email = "oss@encircle360.com" }]
+description = "ELSTER tax filings for ERPNext: Umsatzsteuer-Voranmeldung first, year-end filings later"
+requires-python = ">=3.14"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+dynamic = ["version"]
+dependencies = [
+    # frappe and erpnext are installed and managed by bench, see [tool.bench.frappe-dependencies]
+]
+
+[project.urls]
+Homepage = "https://github.com/encircle360-oss/steuerbote"
+Repository = "https://github.com/encircle360-oss/steuerbote.git"
+"Bug Reports" = "https://github.com/encircle360-oss/steuerbote/issues"
+
+[build-system]
+requires = ["flit_core >=3.12,<5"]
+build-backend = "flit_core.buildapi"
+
+[tool.bench.frappe-dependencies]
+frappe = ">=16.0.0,<17.0.0"
+erpnext = ">=16.0.0,<17.0.0"
+
+[tool.ruff]
+line-length = 110
+target-version = "py314"
+
+[tool.ruff.lint]
+select = [
+    "F",   # pyflakes
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "I",   # import order
+    "UP",  # modern syntax
+    "B",   # bugbear
+    "RUF", # ruff's own rules
+    "S",   # bandit security checks
+    "SIM", # simplifications
+    "C4",  # comprehensions
+    "T20", # no print statements in library code
+]
+ignore = [
+    "E101", # indentation contains mixed spaces and tabs (Frappe uses tabs)
+    "W191", # indentation contains tabs
+    "E501", # line length is enforced by the formatter
+]
+typing-modules = ["frappe.types.DF"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*.py" = ["S101"] # assert is fine in tests
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "tab"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+# Only the pure core runs without a bench; Frappe tests run with `bench run-tests`.
+testpaths = ["steuerbote/ustva"]
+addopts = "--strict-markers"
+
+[tool.coverage.run]
+source = ["steuerbote/ustva"]
+omit = ["*/tests/*"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
