@@ -18,6 +18,10 @@ TEST_SEND = "test_send"
 SEND = "send"
 EXTERN = "extern"
 
+MEIN_ELSTER = "mein_elster"
+OTHER_WAY = "other_way"
+FILED_VIA = (MEIN_ELSTER, OTHER_WAY)
+
 SUCCEEDED = "Erfolgreich"
 FAILED = "Fehlgeschlagen"
 UNKNOWN = "Unbekannt"
@@ -39,6 +43,8 @@ class ELSTERTransmission(Document):
 
 		company: DF.Link | None
 		eric_version: DF.Data | None
+		filed_on: DF.Date | None
+		filed_via: DF.Literal["", "mein_elster", "other_way"]
 		finished_at: DF.Datetime | None
 		messages: DF.Table[ELSTERTransmissionMessage]
 		operation: DF.Literal["validate", "test_send", "send", "extern"]

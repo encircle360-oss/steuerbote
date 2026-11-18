@@ -9,6 +9,9 @@ from steuerbote.eric.runtime import RuntimeInfo, RuntimeInstallError
 from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root, run_installation
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 
+# The users of the tests are made by the tests themselves.
+IGNORE_TEST_RECORD_DEPENDENCIES = ["User"]
+
 SETTINGS = "ERiC Settings"
 INSTALLATION_JOB = "steuerbote.steuerbote.doctype.eric_settings.eric_settings.run_installation"
 ARCHIVE = "/srv/eric/ERiC-44.3.6.0-Linux-x86_64.jar"
@@ -44,6 +47,7 @@ class TestERiCSettings(IntegrationTestCase):
 				"installed_version": "",
 				"lib_dir": "",
 				"log_dir": "",
+				"privacy_notice_confirmed": 0,
 				**values,
 			}
 		)
@@ -72,6 +76,34 @@ class TestERiCSettings(IntegrationTestCase):
 			).simulation,
 			0,
 		)
+
+	def test_the_confirmation_of_the_datenschutzhinweise_records_who_and_when(self):
+		unconfirmed = self.settings()
+		self.assertEqual(
+			(unconfirmed.privacy_notice_confirmed_by, unconfirmed.privacy_notice_confirmed_on), (None, None)
+		)
+		confirmed = self.settings(privacy_notice_confirmed=1)
+		self.assertEqual(confirmed.privacy_notice_confirmed_by, "Administrator")
+		self.assertTrue(confirmed.privacy_notice_confirmed_on)
+		again = self.settings(
+			privacy_notice_confirmed=1,
+			privacy_notice_confirmed_by=make_user(ACCOUNTS_MANAGER, "Accounts Manager"),
+			privacy_notice_confirmed_on="2026-01-01 00:00:00",
+		)
+		self.assertEqual(
+			(again.privacy_notice_confirmed_by, str(again.privacy_notice_confirmed_on)),
+			("Administrator", str(confirmed.privacy_notice_confirmed_on)),
+		)
+		withdrawn = self.settings(privacy_notice_confirmed=0)
+		self.assertEqual(
+			(withdrawn.privacy_notice_confirmed_by, withdrawn.privacy_notice_confirmed_on), (None, None)
+		)
+
+	def test_the_simulation_does_not_depend_on_the_datenschutzhinweise(self):
+		runtime = {"hersteller_id": "12345", "installed_version": "44.3.6.0", "lib_dir": LIB_DIR}
+		self.assertEqual(self.settings(**runtime).simulation, 0)
+		self.assertEqual(self.settings(**runtime, privacy_notice_confirmed=1).simulation, 0)
+		self.assertEqual(self.settings(privacy_notice_confirmed=1).simulation, 1)
 
 	def test_a_hersteller_id_has_five_digits(self):
 		for value in ("1234", "123456", "12a45", "12 345"):

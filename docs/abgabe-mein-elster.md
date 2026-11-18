@@ -26,7 +26,7 @@ Die Datei heißt `UStVA_<Jahr>_<Zeitraum>.xml`, etwa `UStVA_2026_10.xml` für Ok
 3. Das Formular prüfen: Zeitraum, Steuernummer, jede Kennzahl und die Kennzeichen. Mein ELSTER übernimmt alles unter `/Anmeldungssteuern/Steuerfall` bis auf Kz 09 und einige Namensfelder von Berater, Unternehmer und Mandant.
 4. Kz 83 vergleichen: „Beim Hochladen von Formulardaten wird der Wert aus "kz83" in das Feld für die manuelle Eingabe im Formular zur Umsatzsteuer-Voranmeldung übernommen.“ Der Betrag, den das Formular selbst rechnet, muss mit Kz 83 der Meldung übereinstimmen. Steuerbote hat Kz 83 vor dem Schreiben nachgerechnet, siehe [Prüfungen](#prüfungen-bevor-die-datei-entsteht).
 5. In Mein ELSTER absenden.
-6. In Steuerbote die Meldung einreichen. Damit steht sie auf „Abgegeben“, und eine weitere Meldung für denselben Zeitraum muss eine berichtigte Anmeldung sein.
+6. In Steuerbote an der Meldung „In Mein ELSTER abgegeben“ wählen, am besten mit dem Transferticket aus dem Protokoll von Mein ELSTER. Damit ist die Meldung gebucht und steht auf „Abgegeben“, und eine weitere Meldung für denselben Zeitraum muss eine berichtigte Anmeldung sein. „Buchen“ allein gibt keine Meldung ab, siehe [Übermittlung an ELSTER](uebermittlung.md#als-außerhalb-abgegeben-vermerken).
 
 ## Welche Jahre
 

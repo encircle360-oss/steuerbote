@@ -52,7 +52,7 @@ class WorkspaceTest(IntegrationTestCase):
 		self.assertEqual(self.open_returns(), before + 2)
 		first.calculate()
 		first.reload()
-		first.submit()
+		first.mark_filed_outside("In Mein ELSTER abgegeben")
 		self.assertEqual(self.open_returns(), before + 1)
 		second.delete()
 		self.assertEqual(self.open_returns(), before)

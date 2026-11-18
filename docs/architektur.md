@@ -102,6 +102,7 @@ Ein Dokument für die ganze Installation (Single), nur für den System Manager. 
 | `datenlieferant` | Datenlieferant | für den Kopf der Lieferung, höchstens 256 Zeichen |
 | `archive_path`, `archive_sha256` | ERiC-Archiv, SHA-256 des Archivs | absoluter Pfad des Archivs auf dem Server und seine Prüfsumme |
 | `installed_version`, `lib_dir`, `log_dir`, `last_check` | Installierte Version, Verzeichnis der Bibliotheken, Verzeichnis der Logdateien, Letzte Prüfung | setzt die Installation |
+| `privacy_notice_confirmed`, `privacy_notice_confirmed_by`, `privacy_notice_confirmed_on` | Datenschutzhinweise gelesen und bestätigt, Bestätigt von, Bestätigt am | die Bestätigung nach § 5 Abs. 1 und 2 des ERiC-Lizenzvertrags; wer sie gibt und wann, setzt das Speichern. Ohne sie läuft kein Vorgang mit ERiC, die Simulation hängt nicht davon ab. |
 
 ### ELSTER-Übermittlung (`ELSTER Transmission`)
 
@@ -116,6 +117,7 @@ Ein Dokument je Lauf von Prüfen, Testsenden oder Senden und je Vermerk einer Ab
 | `simulated` | Simuliert | der Lauf ging an die Simulation |
 | `started_at`, `finished_at`, `user` | Gestartet am, Beendet am, Benutzer | |
 | `transferticket`, `testmerker`, `eric_version` | Transferticket, Testmerker, ERiC-Version | aus dem Ergebnis |
+| `filed_via`, `filed_on` | Abgegeben über, Abgegeben am | bei einem Vermerk: `mein_elster` oder `other_way` und der Tag der Abgabe |
 | `remarks` | Anmerkungen | der Vermerk einer Abgabe außerhalb von Steuerbote |
 | `messages` | Nachrichten | Tabelle „Meldung der ELSTER-Übermittlung“: Art (Fehler oder Hinweis), Code, Nachricht und Feld |
 | `xml`, `protocol_pdf`, `response_xml` | Nutzdaten (XML), Protokoll (PDF), Antwort des ELSTER-Servers (XML) | private Dateien der Übermittlung |
@@ -161,18 +163,20 @@ Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cen
 
 - „Berechnen“ geht, solange die Meldung nicht eingereicht ist, und lässt Korrekturen mit Begründung stehen.
 - Ein Zeitraum wird je Unternehmen einmal abgegeben. Jede weitere Meldung für einen abgegebenen Zeitraum muss eine berichtigte Anmeldung (Kz 10) sein. Wird sie abgegeben, stehen die früheren Meldungen des Zeitraums auf „Ersetzt“; wird sie storniert, steht die zuletzt ersetzte wieder auf „Abgegeben“.
-- „Abgegeben“ heißt: Die Meldung ist in ERPNext eingereicht und festgeschrieben. Das geschieht nach einem Senden, das ELSTER angenommen hat, mit „Als außerhalb abgegeben vermerken“ nach einer Abgabe von Hand oder als XML-Datei über Mein ELSTER, siehe [Abgabe über Mein ELSTER](abgabe-mein-elster.md), oder mit „Buchen“.
+- Als abgegeben zählt ein Zeitraum, sobald eine seiner Meldungen eingereicht ist oder eine seiner Meldungen über Steuerbote gesendet wurde, mit Annahme durch ELSTER oder unbekanntem Ergebnis, auch wenn sie danach storniert wurde. Diese Regel prüfen Senden, die Datei für Mein ELSTER und die Vermerke einer Abgabe (`_refuse_second_filing`); das Speichern lehnt eine zweite Meldung ohne Kz 10 ab, sobald eine Meldung des Zeitraums eingereicht ist (`_refuse_second_return`).
+- „Abgegeben“ heißt: Die Meldung ist in ERPNext eingereicht und festgeschrieben. Das geschieht nach einem Senden, das ELSTER angenommen hat, mit „In Mein ELSTER abgegeben“ nach einer Abgabe über die [Datei für Mein ELSTER](abgabe-mein-elster.md) oder von Hand dort, oder mit „Als außerhalb abgegeben vermerken“ für jeden anderen Weg. „Buchen“ allein lehnt `before_submit` ab, außer für eine Meldung, die ELSTER angenommen hat, deren Buchen danach aber scheiterte; das Formular zeigt die Schaltfläche nur dann.
+- Eine Meldung, die ELSTER angenommen hat oder die als abgegeben vermerkt ist, lässt sich nicht stornieren (`before_cancel`). Stornieren lässt sich nur eine Meldung, die eine frühere Version von Steuerbote mit „Buchen“ allein eingereicht hat, ohne ELSTER-Übermittlung.
 - „XML für Mein ELSTER“ erzeugt die Datei aus der gespeicherten Meldung, wenn sie abgegeben werden könnte oder abgegeben ist, und hängt sie privat an die Meldung.
 
 ## Übermittlung an ELSTER
 
 Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in einem kurzlebigen Prozess des Jobs. Was Anwender dabei sehen, beschreibt [Übermittlung an ELSTER](uebermittlung.md), die Anbindung von ERiC [ERiC](eric.md).
 
-1. `transmit` an der Meldung sperrt ihre Zeile, liest sie neu und prüft: Entwurf, berechnet, kein laufender Vorgang. Für Senden prüft sie dazu, dass kein Simulationsmodus aktiv ist, die Meldung abgegeben werden könnte wie beim Buchen und weder sie noch eine andere Meldung des Zeitraums ohne Kz 10 übermittelt ist oder mit unbekanntem Ergebnis gesendet wurde.
-2. Sie legt die ELSTER-Übermittlung mit dem Status „Läuft“ an, setzt `transmission_in_progress` und stellt `run_transmission` in die Queue `long`, nach dem Commit, mit einer Job-ID je Meldung und ohne doppelte Jobs. Ein Lauf, dessen Job verschwunden ist, wird beim nächsten Start geschlossen.
+1. `transmit` an der Meldung sperrt ihre Zeile, liest sie neu und prüft: Entwurf, berechnet, kein laufender Vorgang, außerhalb der Simulation bestätigte Datenschutzhinweise. Für Senden prüft sie dazu, dass kein Simulationsmodus aktiv ist, die Meldung abgegeben werden könnte wie beim Buchen, der Zeitraum nicht schon abgegeben ist und die Meldung weder übermittelt ist noch mit unbekanntem Ergebnis gesendet wurde.
+2. Sie legt die ELSTER-Übermittlung mit dem Status „Läuft“ an, setzt `transmission_in_progress` und stellt `run_transmission` mit dem Namen dieser Übermittlung in die Queue `long`, nach dem Commit, mit einer Job-ID je Übermittlung. Ein Job, dessen Übermittlung nicht mehr läuft, tut nichts. Ist der Job eines laufenden Vorgangs verschwunden, zeigt `onload` das dem Formular an, und es ruft `release_stale_transmission`: Die Übermittlung wird geschlossen, ein Prüfen als fehlgeschlagen, ein Testsenden oder Senden mit unbekanntem Ergebnis, und die Sperre fällt. Dasselbe geschieht beim nächsten Start eines Vorgangs.
 3. Zertifikat und Passwort gehen vorher an `stash_certificate`, das sie über `steuerbote.eric.secrets` mit dem Schlüssel der Site verschlüsselt höchstens 15 Minuten im Zwischenspeicher ablegt. Der Job bekommt nur den Token und holt sie einmal ab.
 4. Der Job schreibt die Nutzdaten mit `ustva_xml.to_nutzdaten`, aus demselben Baum wie die Datei für Mein ELSTER und mit der Hersteller-ID in Kz 09, und den Kopf der Lieferung als `EnvelopeHeader`. Hersteller-ID, Produktdaten und Datenlieferant kommen aus den ERiC-Einstellungen, das Finanzamt aus den ersten vier Stellen der Steuernummer im ELSTER-Format.
-5. Außerhalb der Simulation sucht `runtime.detect` die Laufzeit für das Jahr der Meldung, eine Beta nur zum Testsenden, mit einem Verzeichnis für `eric.log` je Übermittlung. `service.run` ruft damit den Worker auf, ohne Laufzeit die Simulation.
+5. Außerhalb der Simulation sucht `runtime.detect` die Laufzeit für das Jahr der Meldung, mit einem Verzeichnis für `eric.log` je Übermittlung: die neueste freigegebene Version mit dem Plugin des Jahres, für Prüfen und Testsenden ersatzweise eine Beta, für Senden nie. `service.run` ruft damit den Worker auf, ohne Laufzeit die Simulation.
 6. Das Ergebnis geht in die ELSTER-Übermittlung: Status, Ergebnis laut ERiC, Transferticket, Nachrichten und Dateien. Nur ein Senden, das ELSTER angenommen hat, bucht die Meldung. Scheitert das Buchen, steht der Grund mit dem Transferticket in der Übermittlung, und die Meldung bleibt ein Entwurf, der sich nicht noch einmal senden lässt.
 7. Zum Schluss gibt der Job die Sperre frei und meldet das Ergebnis dem Benutzer.
 

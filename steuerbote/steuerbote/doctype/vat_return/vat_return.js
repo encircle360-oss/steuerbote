@@ -7,6 +7,10 @@ frappe.ui.form.on("VAT Return", {
 	},
 
 	refresh(frm) {
+		if (elster_state(frm).stale && frm.perm[0] && frm.perm[0].write) {
+			frm.call("release_stale_transmission").then(() => frm.reload_doc());
+		}
+		offer_buchen_only_for_an_accepted_send(frm);
 		if (frm.doc.docstatus === 0 && !frm.is_new()) {
 			frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
 		}
@@ -48,7 +52,22 @@ function make_import_file(frm) {
 	frm.call("make_import_file").then((response) => {
 		frm.reload_doc();
 		window.open(response.message);
+		if (frm.doc.docstatus === 0) {
+			frappe.show_alert(
+				{
+					message: __(
+						"Import the file in Mein ELSTER and file the return there, then record the filing with Filed in Mein ELSTER."
+					),
+					indicator: "blue",
+				},
+				15
+			);
+		}
 	});
+}
+
+function elster_state(frm) {
+	return (frm.doc.__onload && frm.doc.__onload.elster) || {};
 }
 
 function eric_simulates(frm) {
@@ -56,9 +75,24 @@ function eric_simulates(frm) {
 	return !elster || elster.simulation;
 }
 
+// Buchen alone files nothing, so a draft gets no Submit button; only a return ELSTER accepted while its
+// submission failed is submitted with it.
+function offer_buchen_only_for_an_accepted_send(frm) {
+	if (frm.doc.docstatus === 0 && !frm.is_new() && !elster_state(frm).sent) {
+		frm.page.clear_primary_action();
+	}
+}
+
 function show_elster_intro(frm) {
 	const notes = [];
 	if (!frm.is_new() && frm.doc.docstatus === 0) {
+		if (elster_state(frm).sent) {
+			notes.push(
+				__(
+					"ELSTER accepted this return, but it could not be submitted afterwards. Do not send it again; submit it with Buchen once the cause is resolved."
+				)
+			);
+		}
 		if (frm.doc.transmission_in_progress) {
 			notes.push(__("A transmission of this return is running. The form reloads when it has finished."));
 		}
@@ -77,7 +111,8 @@ function show_elster_intro(frm) {
 
 function add_elster_buttons(frm) {
 	const calculated = ["Berechnet", "Bereit"].includes(frm.doc.status);
-	if (frm.is_new() || frm.doc.docstatus !== 0 || frm.doc.transmission_in_progress || !calculated) {
+	const blocked = frm.doc.transmission_in_progress || elster_state(frm).sent;
+	if (frm.is_new() || frm.doc.docstatus !== 0 || blocked || !calculated) {
 		return;
 	}
 	const group = __("ELSTER");
@@ -92,7 +127,8 @@ function add_elster_buttons(frm) {
 		const send_label = __("Transmit to the Finanzamt");
 		frm.add_custom_button(send_label, () => ask_for_certificate(frm, "send", send_label), group);
 	}
-	frm.add_custom_button(__("Mark as Filed Outside"), () => ask_for_filing_note(frm), group);
+	frm.add_custom_button(__("Filed in Mein ELSTER"), () => ask_for_filing_note(frm, "mein_elster"), group);
+	frm.add_custom_button(__("Mark as Filed Outside"), () => ask_for_filing_note(frm, "other_way"), group);
 }
 
 function saved(frm) {
@@ -190,22 +226,45 @@ function ask_for_certificate(frm, operation, title) {
 	dialog.show();
 }
 
-function ask_for_filing_note(frm) {
+function ask_for_filing_note(frm, filed_via) {
 	if (!saved(frm)) {
 		return;
 	}
+	const in_mein_elster = filed_via === "mein_elster";
 	frappe.prompt(
 		[
 			{
+				fieldtype: "Data",
+				fieldname: "transferticket",
+				label: __("Transferticket"),
+				description: __("32 characters, as the protocol of ELSTER shows them. Optional."),
+			},
+			{
+				fieldtype: "Date",
+				fieldname: "filed_on",
+				label: __("Filed On"),
+				default: frappe.datetime.get_today(),
+			},
+			{
 				fieldtype: "Small Text",
 				fieldname: "remarks",
-				label: __("How and When Filed"),
-				description: __("For example: on 10 April 2026 in Mein ELSTER, Transferticket et1234567890."),
-				reqd: 1,
+				label: in_mein_elster ? __("Remarks") : __("How and When Filed"),
+				description: in_mein_elster
+					? ""
+					: __("For example: on 10 April 2026 by the Steuerberatung, with the protocol in the files."),
+				reqd: in_mein_elster ? 0 : 1,
 			},
 		],
-		(values) => frm.call("mark_filed_outside", { remarks: values.remarks }).then(() => frm.reload_doc()),
-		__("Mark as Filed Outside"),
+		(values) =>
+			frm
+				.call("mark_filed_outside", {
+					remarks: values.remarks,
+					filed_via,
+					transferticket: values.transferticket,
+					filed_on: values.filed_on,
+				})
+				.then(() => frm.reload_doc()),
+		in_mein_elster ? __("Filed in Mein ELSTER") : __("Mark as Filed Outside"),
 		__("Mark as Filed")
 	);
 }

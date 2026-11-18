@@ -24,6 +24,7 @@ SOURCES = (
 UNTRANSLATED = frozenset(
 	{
 		"Datenlieferant",
+		"Datenschutzhinweise",
 		"Erfolgreich",
 		"Fehlgeschlagen",
 		"Hersteller-ID",
@@ -51,7 +52,6 @@ FRAMEWORK_LABELS = frozenset(
 		"Status",
 		"User",
 		"View",
-		"failed",
 	}
 )
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
