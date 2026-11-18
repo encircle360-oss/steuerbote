@@ -11,8 +11,8 @@ report_rows() turns the result and the contributions into the rows of the report
 a row per Kennzahl, followed by its vouchers one level deeper, and the sums the form computes itself in
 lines 37, 45 and 48. Their wording follows the form USt 1 A 2026 (BMF letter of 29 December 2025,
 GZ III C 3 - S 7344/00039/007/036). A voucher row names the customer or supplier of an invoice and links
-to the print view of its voucher; vouchers_by_type() groups the vouchers so that the report reads the
-parties with one query per voucher type.
+to the print view of its voucher, or says that the voucher is cancelled; vouchers_by_type() groups the
+vouchers so that the report reads the parties and the cancelled vouchers with one query per voucher type.
 """
 
 from collections.abc import Collection, Iterable, Sequence
@@ -147,7 +147,9 @@ def report_rows(
 	account_names: ReadOnlyMapping[str, str],
 	parties: ReadOnlyMapping[str, str],
 	print_label: str,
+	cancelled_label: str,
 	currency: str,
+	cancelled: Collection[str] = (),
 	shown: Collection[str] = (),
 ) -> list[dict[str, Any]]:
 	"""The rows of the report in the order of the form: Kennzahlen with their vouchers, and the sums.
@@ -156,6 +158,8 @@ def report_rows(
 	visible, or when it is one of the Kennzahlen in ``shown``, such as those a compared period reports.
 	``posting_dates``, ``account_names`` and ``parties`` look up the voucher keys and account numbers; a
 	party is shown as ERPNext keeps its name. ``print_label`` is the text of the link to the print view.
+	A voucher whose key is in ``cancelled`` shows ``cancelled_label`` instead of the link, because Frappe
+	prints no cancelled document unless its Print Settings allow it.
 	"""
 	blocks: list[tuple[int, int, list[dict[str, Any]]]] = []
 	for position, kennzahl in enumerate(catalogue.values()):
@@ -175,7 +179,15 @@ def report_rows(
 			)
 		]
 		rows += [
-			_voucher_row(item, posting_dates, account_names, parties, print_label, currency) for item in items
+			_voucher_row(
+				item,
+				posting_dates,
+				account_names,
+				parties,
+				_print_column(item.voucher, print_label, cancelled, cancelled_label),
+				currency,
+			)
+			for item in items
 		]
 		blocks.append((kennzahl.line, position, rows))
 	for line, label, total in SUM_LINES:
@@ -194,7 +206,7 @@ def _voucher_row(
 	posting_dates: ReadOnlyMapping[str, date],
 	account_names: ReadOnlyMapping[str, str],
 	parties: ReadOnlyMapping[str, str],
-	print_label: str,
+	print_column: str | None,
 	currency: str,
 ) -> dict[str, Any]:
 	voucher_type, voucher_no = split_voucher(item.voucher)
@@ -205,7 +217,7 @@ def _voucher_row(
 		posting_date=posting_dates.get(item.voucher) if item.voucher else None,
 		voucher_type=voucher_type,
 		voucher_no=voucher_no,
-		print_link=_print_link(voucher_type, voucher_no, print_label) if item.voucher else None,
+		print_link=print_column,
 		party=parties.get(item.voucher) if item.voucher else None,
 		account=single_name,
 		debit=item.debit,
@@ -217,18 +229,34 @@ def _voucher_row(
 	)
 
 
+def _print_column(
+	voucher: str | None, print_label: str, cancelled: Collection[str], cancelled_label: str
+) -> str | None:
+	"""HTML for the column Print of a voucher: the link to its print view, or the label of a cancelled one."""
+	if not voucher:
+		return None
+	if voucher in cancelled:
+		return escape(cancelled_label)
+	return _print_link(*split_voucher(voucher), print_label)
+
+
 def _print_link(voucher_type: str, voucher_no: str, label: str) -> str:
 	"""HTML for a Data column of the report: a link that opens the print view of the voucher in a new tab."""
 	query = urlencode({"doctype": voucher_type, "name": voucher_no}, quote_via=quote)
 	return f'<a href="{escape(f"/printview?{query}")}" target="_blank">{escape(label)}</a>'
 
 
-def vouchers_by_type(vouchers: Iterable[str | None], voucher_types: Collection[str]) -> dict[str, list[str]]:
-	"""The names of the vouchers of each of the voucher types, by voucher type, each name once."""
+def vouchers_by_type(
+	vouchers: Iterable[str | None], voucher_types: Collection[str] | None = None
+) -> dict[str, list[str]]:
+	"""The names of the vouchers by voucher type, each name once: of the given voucher types or, without
+	them, of every voucher type."""
 	found: dict[str, set[str]] = {}
 	for voucher in vouchers:
+		if not voucher:
+			continue
 		voucher_type, voucher_no = split_voucher(voucher)
-		if voucher_type in voucher_types:
+		if voucher_types is None or voucher_type in voucher_types:
 			found.setdefault(voucher_type, set()).add(voucher_no)
 	return {voucher_type: sorted(names) for voucher_type, names in found.items()}
 

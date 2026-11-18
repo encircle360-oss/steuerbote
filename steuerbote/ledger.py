@@ -2,10 +2,13 @@
 
 The Umsatzsteuer-Voranmeldung is computed from the GL Entries of the period, not from invoices. The core
 expects the caller to leave out what is not turnover of the period (see steuerbote.ustva.calculation), so
-the query skips cancelled entries and their reversals, opening entries, Period Closing Vouchers and the
+the query skips the entries ERPNext flags as cancelled, opening entries, Period Closing Vouchers and the
 Journal Entries flagged with the custom field steuerbote_exclude_from_vat_return, such as the settlement of
-the tax accounts with the tax office. GL Entries are summed per account number and voucher. The voucher key
-joins voucher type and name, because two document types can share a name.
+the tax accounts with the tax office. ERPNext flags a cancelled voucher's entries and their reversal unless
+the Accounts Settings enable the immutable ledger: then it flags nothing and posts the reversal on the day
+of the cancellation, so a cancellation within the period nets to zero and one in a later period reduces
+that period. GL Entries are summed per account number and voucher. The voucher key joins voucher type and
+name, because two document types can share a name.
 """
 
 from collections.abc import Iterable

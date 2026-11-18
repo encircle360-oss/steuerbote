@@ -73,6 +73,7 @@ def compared(
 		account_names={},
 		parties={},
 		print_label="Drucken",
+		cancelled_label="Storniert",
 		currency="EUR",
 		shown=compared_kennzahlen(before, year_ago),
 	)
