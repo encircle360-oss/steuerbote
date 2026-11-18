@@ -3,7 +3,8 @@
 Nothing here imports Frappe. The module turns the core's result into the rows of the return's tables,
 computes the sums of the form over the amounts as filed and hands the return as filed to the ELSTER XML in
 steuerbote.elster, so that the controller only moves data and every rule is tested without a bench. Amounts
-are computed by the core alone.
+are computed by the core alone, and so are the Vorperiodenvergleich and the hints of
+steuerbote.ustva.plausibility, whose results become the rows of the tables "comparison" and "hints".
 """
 
 from collections.abc import Iterable, Sequence
@@ -15,7 +16,16 @@ from types import MappingProxyType
 from typing import Any, Protocol
 
 from steuerbote.elster import ustva_xml
-from steuerbote.ustva import Kennzahl, LedgerLine, Mapping, Period, UstvaResult, calculate, catalogue_for
+from steuerbote.ustva import (
+	Kennzahl,
+	LedgerLine,
+	Mapping,
+	Period,
+	UstvaResult,
+	calculate,
+	catalogue_for,
+	plausibility,
+)
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL, SONDERVORAUSZAHLUNG_KENNZAHL
 from steuerbote.ustva.rounding import ZERO, to_cents
 
@@ -177,6 +187,11 @@ def filing(rows: Sequence[Row], year: int) -> Filing:
 	)
 
 
+def final_amounts(rows: Sequence[Row], year: int) -> dict[str, Decimal]:
+	"""The amount each Kennzahl of the rows is filed with, Kz 83 as filing() computes it."""
+	return {row["kennzahl"]: row["final"] for row in filing(rows, year).rows}
+
+
 def _description(kennzahl: Kennzahl) -> dict[str, Any]:
 	return {
 		"kennzahl": kennzahl.number,
@@ -244,6 +259,52 @@ def unmapped_rows(
 			"credit": credits[number],
 		}
 		for number in result.unmapped
+	]
+
+
+def comparison_rows(comparison: plausibility.Comparison) -> list[dict[str, Any]]:
+	"""The rows of the Vorperiodenvergleich.
+
+	A Currency or Percent field stores no blank, so a value the comparison does not know holds 0: the
+	values of a period without catalogue, and the share of a Kennzahl without an earlier amount. The row
+	says whether each earlier period is known, so that the form can leave the values of an unknown one
+	blank.
+	"""
+	known = {
+		"previous_period_known": int(comparison.previous_period.known),
+		"previous_year_known": int(comparison.previous_year.known),
+	}
+	return [
+		{
+			"kennzahl": row.kennzahl,
+			"label": row.label,
+			"current": row.current,
+			"previous_period": _or_zero(row.previous_period),
+			"previous_year": _or_zero(row.previous_year),
+			"difference": _or_zero(row.difference),
+			"difference_percent": _or_zero(row.difference_percent),
+			"flagged": int(row.flagged),
+			**known,
+		}
+		for row in comparison.rows
+	]
+
+
+def _or_zero(value: Decimal | None) -> Decimal:
+	return ZERO if value is None else value
+
+
+def hint_rows(hints: Iterable[plausibility.Hint]) -> list[dict[str, Any]]:
+	return [
+		{
+			"severity": hint.severity.value,
+			"code": hint.code.value,
+			"text": hint.text,
+			"voucher_type": hint.voucher_type,
+			"voucher_no": hint.voucher_no,
+			"party": hint.party,
+		}
+		for hint in hints
 	]
 
 

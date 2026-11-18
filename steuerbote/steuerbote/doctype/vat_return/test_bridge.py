@@ -5,7 +5,8 @@ from unittest import TestCase
 
 from steuerbote.elster import ustva_xml
 from steuerbote.steuerbote.doctype.vat_return import bridge
-from steuerbote.ustva import KENNZAHLEN, LedgerLine, Period, calculate
+from steuerbote.steuerbote.report.ustva_kennzahlen import comparison
+from steuerbote.ustva import KENNZAHLEN, LedgerLine, Period, calculate, plausibility
 from steuerbote.ustva.defaults import SKR03
 
 
@@ -450,3 +451,169 @@ class ReportedTest(TestCase):
 			{"kennzahl": "83", "final": 5.0},
 		]
 		self.assertEqual(bridge.reported(rows), frozenset({"81", "66"}))
+
+
+DOCTYPES = Path(__file__).parents[1]
+
+
+def fields_of(doctype: str) -> dict[str, dict]:
+	definition = json.loads((DOCTYPES / doctype / f"{doctype}.json").read_text(encoding="utf-8"))
+	return {field["fieldname"]: field for field in definition["fields"]}
+
+
+class FinalAmountsTest(TestCase):
+	def test_the_amount_each_kennzahl_is_filed_with_and_kz83(self):
+		rows = bridge.kennzahl_rows(calculate(verified_month(), SKR03), KENNZAHLEN, {})
+		next(row for row in rows if row["kennzahl"] == "81").update(
+			{"override": 1100.0, "override_reason": "Invoice booked in April"}
+		)
+		self.assertEqual(
+			bridge.final_amounts(rows, 2026),
+			{
+				"81": d("1100"),
+				"46": d("300"),
+				"47": d("57.00"),
+				"21": d("2000"),
+				"45": d("500"),
+				"66": d("95.00"),
+				"67": d("57.00"),
+				"83": d("114.00"),
+			},
+		)
+
+
+class ComparisonRowsTest(TestCase):
+	def comparison(self, previous_period, previous_year):
+		current = {"81": d("1600"), "21": d("2000"), "83": d("304.00")}
+		deviates = comparison.Thresholds().exceeded
+		return plausibility.compare(current, previous_period, previous_year, KENNZAHLEN, deviates)
+
+	def test_a_row_per_kennzahl_with_its_values_and_whether_it_is_conspicuous(self):
+		comparison = self.comparison(
+			plausibility.EarlierPeriod(Period.month(2026, 10), {"81": d("1000"), "83": d("190.00")}),
+			plausibility.EarlierPeriod(Period.month(2025, 11), None),
+		)
+		rows = bridge.comparison_rows(comparison)
+		self.assertEqual([row["kennzahl"] for row in rows], ["81", "21", "83"])
+		self.assertEqual(
+			rows[0],
+			{
+				"kennzahl": "81",
+				"label": KENNZAHLEN["81"].label,
+				"current": d("1600"),
+				"previous_period": d("1000"),
+				"previous_year": d("0"),
+				"difference": d("600"),
+				"difference_percent": d("60.00"),
+				"flagged": 1,
+				"previous_period_known": 1,
+				"previous_year_known": 0,
+			},
+		)
+
+	def test_a_kennzahl_new_in_this_period_has_a_difference_and_a_flag_but_no_percentage(self):
+		comparison = self.comparison(
+			plausibility.EarlierPeriod(Period.month(2026, 10), {}),
+			plausibility.EarlierPeriod(Period.month(2025, 11), {"21": d("500")}),
+		)
+		row = bridge.comparison_rows(comparison)[1]
+		self.assertEqual(
+			{
+				key: row[key]
+				for key in ("previous_period", "previous_year", "difference", "difference_percent")
+			},
+			{
+				"previous_period": d("0"),
+				"previous_year": d("500"),
+				"difference": d("2000"),
+				"difference_percent": d("0"),
+			},
+		)
+		self.assertEqual(
+			(row["flagged"], row["previous_period_known"], row["previous_year_known"]), (1, 1, 1)
+		)
+
+	def test_a_period_without_catalogue_writes_zero_and_says_it_is_unknown(self):
+		comparison = self.comparison(
+			plausibility.EarlierPeriod(Period.month(2025, 12), None),
+			plausibility.EarlierPeriod(Period.month(2025, 1), None),
+		)
+		for row in bridge.comparison_rows(comparison):
+			with self.subTest(kennzahl=row["kennzahl"]):
+				self.assertEqual(
+					[
+						row[key]
+						for key in ("previous_period", "previous_year", "difference", "difference_percent")
+					],
+					[d("0")] * 4,
+				)
+				self.assertEqual(
+					(row["flagged"], row["previous_period_known"], row["previous_year_known"]), (0, 0, 0)
+				)
+
+	def test_every_value_of_a_row_has_a_field_in_the_table(self):
+		comparison = self.comparison(
+			plausibility.EarlierPeriod(Period.month(2026, 10), {}),
+			plausibility.EarlierPeriod(Period.month(2025, 11), None),
+		)
+		fields = fields_of("vat_return_comparison")
+		self.assertEqual(sorted(bridge.comparison_rows(comparison)[0]), sorted(fields))
+		self.assertTrue(all(field.get("read_only") for field in fields.values()))
+
+
+class HintRowsTest(TestCase):
+	def test_a_row_per_hint_with_severity_code_text_voucher_and_party(self):
+		found = [
+			plausibility.Hint(
+				plausibility.Code.EU_WITHOUT_VAT_ID,
+				"Rechnung ...",
+				"Sales Invoice",
+				"ACC-SINV-1",
+				"Muster GmbH",
+			),
+			plausibility.Hint(plausibility.Code.NO_CATALOGUE, "Kein Katalog ..."),
+		]
+		self.assertEqual(
+			bridge.hint_rows(found),
+			[
+				{
+					"severity": "Warnung",
+					"code": "EU-OHNE-USTID",
+					"text": "Rechnung ...",
+					"voucher_type": "Sales Invoice",
+					"voucher_no": "ACC-SINV-1",
+					"party": "Muster GmbH",
+				},
+				{
+					"severity": "Hinweis",
+					"code": "KEIN-KATALOG",
+					"text": "Kein Katalog ...",
+					"voucher_type": "",
+					"voucher_no": "",
+					"party": "",
+				},
+			],
+		)
+
+	def test_every_value_of_a_row_has_a_field_in_the_table(self):
+		(row,) = bridge.hint_rows([plausibility.Hint(plausibility.Code.ZERO_TAX, "Rechnung ...")])
+		fields = fields_of("vat_return_hint")
+		self.assertEqual(sorted(row), sorted(fields))
+		self.assertTrue(all(field.get("read_only") for field in fields.values()))
+
+	def test_the_severities_are_the_options_of_the_table(self):
+		options = fields_of("vat_return_hint")["severity"]["options"].split("\n")
+		self.assertEqual(options, [severity.value for severity in plausibility.Severity])
+
+
+class ThresholdsTest(TestCase):
+	def test_the_settings_offer_the_thresholds_the_report_takes_as_its_defaults(self):
+		fields = fields_of("vat_return_settings")
+		percent, amount = fields["comparison_threshold_percent"], fields["comparison_threshold_amount"]
+		self.assertEqual(
+			(percent["fieldtype"], Decimal(percent["default"])), ("Percent", comparison.DEFAULT_PERCENT)
+		)
+		self.assertEqual(
+			(amount["fieldtype"], Decimal(amount["default"])), ("Currency", comparison.DEFAULT_AMOUNT)
+		)
+		self.assertTrue(percent.get("non_negative") and amount.get("non_negative"))

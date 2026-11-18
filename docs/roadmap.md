@@ -10,6 +10,7 @@ Steuerbote entsteht in drei Stufen: zuerst die Umsatzsteuer-Voranmeldung samt Ü
 - **CI:** Tests für Kern und Frappe-Site, Linters und Sicherheitsprüfungen, siehe [Entwicklung](entwicklung.md#ci).
 - **XML für Mein ELSTER:** Die Meldung erzeugt ihre Voranmeldung als XML-Datei nach dem Schema des Jahres, die Mein ELSTER importiert, siehe [Abgabe über Mein ELSTER](abgabe-mein-elster.md).
 - **ERiC-Anbindung und Übermittlung:** `steuerbote/eric` bindet ERiC ab Version 44 an, mit Laufzeitumgebungen aus dem Archiv des Betreibers, einem kurzlebigen Worker-Prozess je Aufruf und einer Simulation. Am Beleg laufen Prüfen, Testsenden und Senden als Hintergrundjob, jeder Lauf mit einer ELSTER-Übermittlung; dazu kommen die ERiC-Einstellungen und „Als außerhalb abgegeben vermerken“, siehe [Übermittlung an ELSTER](uebermittlung.md) und [ERiC](eric.md). Ohne eigene Hersteller-ID läuft die Übermittlung als Simulation.
+- **Vorperiodenvergleich und Hinweise:** „Berechnen“ stellt jede Kennzahl der Meldung neben Vorperiode und Vorjahr, markiert auffällige Änderungen nach den Schwellen der Einstellungen und gibt Hinweise auf EU-Rechnungen ohne USt-IdNr. oder mit Anschrift außerhalb des übrigen Gemeinschaftsgebiets, auf Rechnungen ohne oder mit abweichender Steuer und auf Rechnungen, die nicht zum Hauptbuch passen. Kein Hinweis hält eine Meldung an, siehe [Architektur](architektur.md#vorperiodenvergleich-und-hinweise).
 - **Noch nicht vorhanden:** die Hersteller-ID und damit Prüfen und Senden mit echtem ERiC. Bis dahin geht eine Voranmeldung von Hand oder per XML-Import in Mein ELSTER an das Finanzamt. Steuerbote ist noch nicht einsatzfähig.
 
 ## Arbeitspakete Stufe 1: Umsatzsteuer-Voranmeldung
@@ -66,6 +67,8 @@ Jede Jahresmeldung wird ein eigenes Modul mit eigener Planung:
 - **Markenprüfung.** Recherche zum Namen „Steuerbote“ beim Deutschen Patent- und Markenamt vor der ersten öffentlichen Veröffentlichung.
 - **ELSTER-Konto mit Zertifikatsdatei.** Für die Übermittlung über ERiC braucht die Firma ein ELSTER-Konto mit Anmeldung per Zertifikatsdatei (.pfx). ELSTER Secure funktioniert mit ERiC nicht.
 - **Hersteller-ID.** Registrierung im ELSTER-Entwicklerbereich und Antrag auf die Hersteller-ID, siehe Paket 0a. Abgeben lässt sich auch ohne sie: von Hand oder per XML-Import in Mein ELSTER.
+- **Katalog 2025.** Ohne Katalog der Kennzahlen für 2025 bleibt der Vorperiodenvergleich mit dem Vorjahr leer, im Januar und im ersten Quartal 2026 auch der mit der Vorperiode.
+- **Gültigkeit der USt-IdNr.** Die Hinweise prüfen nur, ob ein Kunde eine USt-IdNr. hat und wo seine Anschrift liegt. Die Bestätigung der Nummer beim Bundeszentralamt für Steuern (§ 18e UStG) fehlt noch.
 
 Offene Punkte zu einzelnen Kennzahlen und Konten stehen in [Kennzahlen und Kontenzuordnung](ustva-kennzahlen.md).
 
