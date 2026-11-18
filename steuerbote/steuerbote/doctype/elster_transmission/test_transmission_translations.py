@@ -32,6 +32,7 @@ UNTRANSLATED = frozenset(
 		"Testmerker",
 		"Transferticket",
 		"Unbekannt",
+		"UStVA Kennzahlen",
 	}
 )
 # Labels Frappe and ERPNext translate themselves; the app keeps out of their translations.
@@ -49,6 +50,7 @@ FRAMEWORK_LABELS = frozenset(
 		"Started At",
 		"Status",
 		"User",
+		"View",
 		"failed",
 	}
 )

@@ -13,6 +13,19 @@ frappe.ui.form.on("VAT Return", {
 		if (can_make_import_file(frm.doc)) {
 			frm.add_custom_button(__("XML for Mein ELSTER"), () => make_import_file(frm));
 		}
+		if (!frm.is_new()) {
+			frm.add_custom_button(
+				__("UStVA Kennzahlen"),
+				() =>
+					frappe.set_route("query-report", "UStVA Kennzahlen", {
+						company: frm.doc.company,
+						year: frm.doc.year,
+						rhythm: frm.doc.rhythm,
+						period_index: frm.doc.period_index,
+					}),
+				__("View")
+			);
+		}
 		show_elster_intro(frm);
 		add_elster_buttons(frm);
 	},
