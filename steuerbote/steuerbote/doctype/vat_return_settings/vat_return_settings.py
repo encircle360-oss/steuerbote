@@ -5,7 +5,7 @@ from decimal import Decimal
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, flt
+from frappe.utils import cint, escape_html, flt
 
 from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
@@ -76,7 +76,7 @@ class VATReturnSettings(Document):
 		except SteuernummerError:
 			frappe.throw(
 				_("The Steuernummer {0} does not have the format {1} of {2}.").format(
-					self.tax_number, SCHEMES[state].standard, self.state
+					escape_html(self.tax_number), SCHEMES[state].standard, self.state
 				),
 				title=_("Invalid Steuernummer"),
 			)
