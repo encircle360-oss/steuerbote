@@ -1,0 +1,165 @@
+{
+ "actions": [],
+ "autoname": "field:company",
+ "creation": "2026-11-18 02:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "chart",
+  "column_break_company",
+  "taxation_type",
+  "tolerance",
+  "tax_number_section",
+  "state",
+  "tax_number",
+  "column_break_tax_number",
+  "elster_tax_number",
+  "tax_office",
+  "period_rules_section",
+  "period_rules",
+  "prepayments_section",
+  "prepayments"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "SKR03",
+   "fieldname": "chart",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Standard Chart of Accounts",
+   "options": "SKR03\nSKR04\nEigener Kontenrahmen",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_company",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Soll",
+   "description": "Ist-Versteuerung is not supported yet.",
+   "fieldname": "taxation_type",
+   "fieldtype": "Select",
+   "label": "Taxation",
+   "options": "Soll",
+   "reqd": 1
+  },
+  {
+   "default": "0.01",
+   "description": "How far the tax booked in a voucher may differ from the tax on its bases in the Verprobung.",
+   "fieldname": "tolerance",
+   "fieldtype": "Currency",
+   "label": "Tolerance per Voucher",
+   "non_negative": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "tax_number_section",
+   "fieldtype": "Section Break",
+   "label": "Steuernummer and Tax Office"
+  },
+  {
+   "fieldname": "state",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Federal State",
+   "options": "\nBaden-Württemberg\nBayern\nBerlin\nBrandenburg\nBremen\nHamburg\nHessen\nMecklenburg-Vorpommern\nNiedersachsen\nNordrhein-Westfalen\nRheinland-Pfalz\nSaarland\nSachsen\nSachsen-Anhalt\nSchleswig-Holstein\nThüringen",
+   "reqd": 1
+  },
+  {
+   "description": "As issued by the Finanzamt, in the format of the Bundesland.",
+   "fieldname": "tax_number",
+   "fieldtype": "Data",
+   "label": "Steuernummer",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_tax_number",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "13 digits, derived from the Steuernummer and the Bundesland.",
+   "fieldname": "elster_tax_number",
+   "fieldtype": "Data",
+   "label": "ELSTER Steuernummer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tax_office",
+   "fieldtype": "Data",
+   "label": "Tax Office"
+  },
+  {
+   "fieldname": "period_rules_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "Monthly, quarterly or none, from a year and month on until the next rule. Without rules, monthly applies.",
+   "fieldname": "period_rules",
+   "fieldtype": "Table",
+   "label": "Filing Periods",
+   "options": "VAT Return Period Rule"
+  },
+  {
+   "fieldname": "prepayments_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "One row per year. Without a row, the deadlines of that year are not extended.",
+   "fieldname": "prepayments",
+   "fieldtype": "Table",
+   "label": "Dauerfristverlängerung and Sondervorauszahlung",
+   "options": "VAT Return Prepayment"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-11-18 02:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT Return Settings",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Accounts User",
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
