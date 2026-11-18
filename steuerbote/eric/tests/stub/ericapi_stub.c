@@ -92,7 +92,8 @@ static struct {
 
 static int initialised;
 static int live_buffers;
-static int fail_next_buffer;
+/* Buffers created successfully before the next one fails; -1 never fails. */
+static int buffers_before_failure = -1;
 static uint32_t open_handles[MAX_CERTIFICATES];
 static int open_certificates;
 static uint32_t next_handle = FIRST_HANDLE;
@@ -215,7 +216,7 @@ EXPORT void stub_reset(void)
 		records[i].value = NULL;
 	}
 	initialised = 0;
-	fail_next_buffer = 0;
+	buffers_before_failure = -1;
 	open_certificates = 0;
 	next_handle = FIRST_HANDLE;
 	memset(certificate_pin, 0, sizeof certificate_pin);
@@ -226,9 +227,9 @@ EXPORT const char *stub_recorded(const char *key)
 	return recorded(key);
 }
 
-EXPORT void stub_fail_next_buffer(void)
+EXPORT void stub_fail_buffer_after(int successful)
 {
-	fail_next_buffer = 1;
+	buffers_before_failure = successful;
 }
 
 EXPORT int stub_live_buffers(void)
@@ -253,10 +254,12 @@ EXPORT uint32_t stub_pdf_size(void)
 
 EXPORT struct EricReturnBufferApi *EricRueckgabepufferErzeugen(void)
 {
-	if (fail_next_buffer) {
-		fail_next_buffer = 0;
+	if (buffers_before_failure == 0) {
+		buffers_before_failure = -1;
 		return NULL;
 	}
+	if (buffers_before_failure > 0)
+		buffers_before_failure--;
 	struct EricReturnBufferApi *buffer = calloc(1, sizeof *buffer);
 	buffer->data = calloc(1, 1);
 	live_buffers++;

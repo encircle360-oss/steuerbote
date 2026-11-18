@@ -161,7 +161,7 @@ class TextTest(StubTestCase):
 		self.assertIn("<Name>libericapi.so</Name>", self.eric.version())
 
 	def test_a_buffer_eric_cannot_create_is_an_error(self):
-		self.stub.fail_next_buffer()
+		self.stub.fail_buffer()
 		with self.assertRaises(EricError) as raised:
 			self.eric.version()
 		self.assertEqual(raised.exception.code, 610001013)

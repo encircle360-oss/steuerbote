@@ -236,17 +236,18 @@ def process(request: Request) -> TransmissionResult:
 					hersteller_id=header.hersteller_id,
 					datenlieferant=header.datenlieferant,
 				)
+				# process raises only before it calls ERiC, when it gets no return buffer.
+				answer = library.process(
+					xml,
+					header.datenart_version,
+					SEND_FLAGS if operation.sends else VALIDATE_FLAGS,
+					preview=not operation.sends,
+					pdf_path=Path(work) / "protocol.pdf",
+					certificate=certificate,
+					pin=(request.password or "").encode(),
+				)
 			except EricError as error:
 				return failed(_error_message(error))
-			answer = library.process(
-				xml,
-				header.datenart_version,
-				SEND_FLAGS if operation.sends else VALIDATE_FLAGS,
-				preview=not operation.sends,
-				pdf_path=Path(work) / "protocol.pdf",
-				certificate=certificate,
-				pin=(request.password or "").encode(),
-			)
 			return _result(library, operation, runtime.version, testmerker, answer)
 	finally:
 		if certificate is not None:

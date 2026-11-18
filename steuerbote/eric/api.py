@@ -266,6 +266,8 @@ class EricLibrary:
 
 		PDFs come through the callback. pdf_path is passed as well, because the handbook calls pdfName
 		mandatory for a printout (Kap. 5.1.5.4), while the API reference says a callback replaces the file.
+		The code of ERiC is returned, not raised; EricError comes only before the call, when ERiC creates no
+		return buffer.
 		"""
 		pdfs = []
 

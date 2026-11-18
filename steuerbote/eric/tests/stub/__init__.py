@@ -73,8 +73,9 @@ class Controls:
 		value = self._stub.stub_recorded(key.encode())
 		return None if value is None else value.decode()
 
-	def fail_next_buffer(self) -> None:
-		self._stub.stub_fail_next_buffer()
+	def fail_buffer(self, after: int = 0) -> None:
+		"""Let EricRueckgabepufferErzeugen fail once, after this many buffers were created."""
+		self._stub.stub_fail_buffer_after(after)
 
 	@property
 	def live_buffers(self) -> int:

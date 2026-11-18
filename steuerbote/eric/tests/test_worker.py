@@ -275,10 +275,18 @@ class FailureTest(WorkerTestCase):
 		self.assertIsNone(self.stub.recorded("th_input"))
 
 	def test_an_error_while_preparing_sends_nothing(self):
-		self.stub.fail_next_buffer()
+		self.stub.fail_buffer()
 		result = self.run_operation(Operation.SEND)
 		self.assertIs(result.outcome, Outcome.FAILED)
 		self.assertEqual(self.messages(result), [("610001013", ERROR, None)])
+		self.assertIsNone(self.stub.recorded("datenpuffer"))
+
+	def test_a_buffer_eric_cannot_create_for_the_send_sends_nothing(self):
+		self.stub.fail_buffer(after=1)
+		result = self.run_operation(Operation.SEND)
+		self.assertIs(result.outcome, Outcome.FAILED)
+		self.assertEqual(self.messages(result), [("610001013", ERROR, None)])
+		self.assertIsNotNone(self.stub.recorded("th_input"))
 		self.assertIsNone(self.stub.recorded("datenpuffer"))
 
 	def test_a_header_out_of_shape_never_reaches_eric(self):
