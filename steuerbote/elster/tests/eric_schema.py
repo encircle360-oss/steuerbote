@@ -37,13 +37,13 @@ def documentation() -> Path:
 	raise FileNotFoundError(f"{VARIABLE}={configured} holds no unzipped ERiC documentation")
 
 
-def _ustva(year: int) -> Path:
+def _ustva() -> Path:
 	return documentation() / "Datenarten" / "ElsterAnmeldung" / "UStVA"
 
 
 def nutzdaten_xsd(year: int) -> Path:
 	"""UStVA-<year>.xsd: the schema of Anmeldungssteuern, which the import file follows."""
-	return _ustva(year) / "Schema" / str(year) / f"UStVA-{year}.xsd"
+	return _ustva() / "Schema" / str(year) / f"UStVA-{year}.xsd"
 
 
 @cache
@@ -55,10 +55,10 @@ def nutzdaten_schema(year: int) -> etree.XMLSchema:
 def envelope_schema(year: int) -> etree.XMLSchema:
 	"""elster11_UStVA_<year>_extern.xsd, with the ElsterBasisSchema it includes by relative paths."""
 	return etree.XMLSchema(
-		etree.parse(str(_ustva(year) / "Schema" / str(year) / f"elster11_UStVA_{year}_extern.xsd"))
+		etree.parse(str(_ustva() / "Schema" / str(year) / f"elster11_UStVA_{year}_extern.xsd"))
 	)
 
 
 def example(year: int) -> bytes:
 	"""The documentation's example of a Voranmeldung in its envelope, Beispiele/UStVA_<year>.xml."""
-	return (_ustva(year) / "Beispiele" / f"UStVA_{year}.xml").read_bytes()
+	return (_ustva() / "Beispiele" / f"UStVA_{year}.xml").read_bytes()
