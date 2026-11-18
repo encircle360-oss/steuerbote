@@ -20,6 +20,13 @@ ERROR = "error"
 HINT = "hint"
 SEVERITIES = frozenset({ERROR, HINT})
 
+EXIT_OK = 0
+"""The worker process wrote its answer to standard output, whatever the outcome."""
+EXIT_FAILURE = 1
+"""The worker process met an unexpected error; standard error names its type."""
+EXIT_INVALID_REQUEST = 2
+"""The worker process did not understand the request and loaded nothing."""
+
 
 class Operation(Enum):
 	VALIDATE = "validate"

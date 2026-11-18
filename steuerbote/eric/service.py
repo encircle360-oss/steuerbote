@@ -32,6 +32,8 @@ from steuerbote.eric.fake import Simulation
 from steuerbote.eric.header import EnvelopeHeader, problems
 from steuerbote.eric.result import (
 	ERROR,
+	EXIT_INVALID_REQUEST,
+	EXIT_OK,
 	TESTMERKER,
 	UNKNOWN_MESSAGE,
 	Message,
@@ -40,7 +42,6 @@ from steuerbote.eric.result import (
 	TransmissionResult,
 )
 from steuerbote.eric.runtime import RuntimeInfo
-from steuerbote.eric.worker import EXIT_INVALID_REQUEST, EXIT_OK
 
 WORKER_MODULE = "steuerbote.eric.worker"
 APP_ROOT = Path(__file__).resolve().parents[2]

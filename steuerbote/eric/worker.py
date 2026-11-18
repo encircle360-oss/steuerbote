@@ -67,6 +67,9 @@ from steuerbote.eric.api import (
 from steuerbote.eric.header import EnvelopeHeader, datenart, datenteil, problems
 from steuerbote.eric.result import (
 	ERROR,
+	EXIT_FAILURE,
+	EXIT_INVALID_REQUEST,
+	EXIT_OK,
 	HINT,
 	TESTMERKER,
 	UNKNOWN_MESSAGE,
@@ -76,10 +79,6 @@ from steuerbote.eric.result import (
 	TransmissionResult,
 )
 from steuerbote.eric.runtime import RuntimeInfo
-
-EXIT_OK = 0
-EXIT_FAILURE = 1
-EXIT_INVALID_REQUEST = 2
 
 PR_GET_DUMPABLE = 3
 PR_SET_DUMPABLE = 4
