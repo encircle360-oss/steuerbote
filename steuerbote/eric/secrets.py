@@ -30,7 +30,10 @@ def stash(certificate: bytes, password: str) -> str:
 
 	token = token_urlsafe(32)
 	payload = json.dumps({"certificate": base64.b64encode(certificate).decode(), "password": password})
-	frappe.cache.set(_key(token), encrypt(payload), ex=TTL_SECONDS)
+	# Not set_value: it would keep the value in the cache of the request as well, and pickle it. The key
+	# carries the site prefix of make_key, which is what set_value would add.
+	key, value = _key(token), encrypt(payload)
+	frappe.cache.set(key, value, ex=TTL_SECONDS)  # nosemgrep: frappe-cache-breaks-multitenancy
 	return token
 
 
