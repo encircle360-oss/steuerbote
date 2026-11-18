@@ -19,6 +19,7 @@
   "to_date",
   "deadline",
   "status",
+  "transmission_in_progress",
   "amended_from",
   "kennzahlen_section",
   "kennzahlen",
@@ -141,6 +142,16 @@
    "label": "Status",
    "no_copy": 1,
    "options": "Entwurf\nBerechnet\nBereit\nAbgegeben\nErsetzt",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Set while Prüfen, Testsenden or Senden runs; the return cannot change until it ends.",
+   "fieldname": "transmission_in_progress",
+   "fieldtype": "Check",
+   "label": "Transmission Running",
+   "no_copy": 1,
+   "print_hide": 1,
    "read_only": 1
   },
   {
@@ -298,7 +309,12 @@
   }
  ],
  "is_submittable": 1,
- "links": [],
+ "links": [
+  {
+   "link_doctype": "ELSTER Transmission",
+   "link_fieldname": "vat_return"
+  }
+ ],
  "modified": "2026-11-18 04:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
