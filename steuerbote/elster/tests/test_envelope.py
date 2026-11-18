@@ -57,7 +57,7 @@ class EnvelopeTest(TestCase):
 	def test_names_steuerbote_and_its_version_as_the_product(self):
 		document = to_envelope(filer(), voranmeldung(), CREATED, hersteller_id="12345", testmerker=True)
 		self.assertEqual(
-			header(document, "Hersteller"), [("ProduktName", "Steuerbote"), ("ProduktVersion", __version__)]
+			header(document, "Hersteller"), [("ProduktName", "steuerbote"), ("ProduktVersion", __version__)]
 		)
 
 	def test_carries_the_nutzdaten_with_kz09(self):
