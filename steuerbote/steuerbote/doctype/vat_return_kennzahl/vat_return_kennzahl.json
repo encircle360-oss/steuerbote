@@ -1,0 +1,104 @@
+{
+ "actions": [],
+ "creation": "2026-11-18 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "kennzahl",
+  "line",
+  "label",
+  "kind",
+  "column_break_amounts",
+  "amount",
+  "reported",
+  "override",
+  "override_reason",
+  "final"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "kennzahl",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kennzahl",
+   "reqd": 1
+  },
+  {
+   "fieldname": "line",
+   "fieldtype": "Int",
+   "label": "Form Line",
+   "read_only": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "label",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Data",
+   "label": "Amount Kind",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Ledger Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "reported",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Form Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "override",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Override Amount",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "override_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Override"
+  },
+  {
+   "bold": 1,
+   "columns": 2,
+   "fieldname": "final",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount Filed",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-18 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT Return Kennzahl",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

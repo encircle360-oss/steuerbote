@@ -6,3 +6,5 @@ app_email = "oss@encircle360.com"
 app_license = "AGPL-3.0-or-later"
 
 required_apps = ["frappe/erpnext"]
+
+fixtures = [{"dt": "Custom Field", "filters": [["module", "=", "Steuerbote"]]}]
