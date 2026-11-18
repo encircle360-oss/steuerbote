@@ -294,6 +294,17 @@ class FailureTest(WorkerTestCase):
 		self.assertIs(result.outcome, Outcome.FAILED)
 		self.assertEqual(self.messages(result), [("SB-HEADER", ERROR, "HerstellerID")])
 
+	def test_a_log_directory_that_cannot_be_created_sends_nothing(self):
+		blocker = self.directory / "file"
+		blocker.write_text("")
+		runtime = replace(self.runtime, log_dir=blocker / "log")
+		result = self.run_operation(Operation.SEND, runtime=runtime.to_dict())
+		self.assertIs(result.outcome, Outcome.FAILED)
+		(message,) = result.messages
+		self.assertEqual(message.code, "SB-ERIC")
+		self.assertIn(str(blocker / "log"), message.text)
+		self.assertIsNone(self.stub.recorded("plugin_path"))
+
 
 class ProtocolTest(WorkerTestCase):
 	def test_refuses_requests_it_does_not_understand_without_echoing_them(self):

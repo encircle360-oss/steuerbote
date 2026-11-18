@@ -65,7 +65,16 @@ from steuerbote.eric.api import (
 	ProcessResult,
 )
 from steuerbote.eric.header import EnvelopeHeader, datenart, datenteil, problems
-from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Message, Operation, Outcome, TransmissionResult
+from steuerbote.eric.result import (
+	ERROR,
+	HINT,
+	TESTMERKER,
+	UNKNOWN_MESSAGE,
+	Message,
+	Operation,
+	Outcome,
+	TransmissionResult,
+)
 from steuerbote.eric.runtime import RuntimeInfo
 
 EXIT_OK = 0
@@ -90,11 +99,6 @@ UNKNOWN_AFTER_SENDING = frozenset({TRANSFER_ERR_SEND, TRANSFER_ERR_NORESPONSE, T
 
 ERIC_CODE = "SB-ERIC"
 TICKET_CODE = "SB-TICKET"
-UNKNOWN_CODE = "SB-UNKNOWN"
-UNKNOWN_TEXT = (
-	"Ob die Daten bei ELSTER angekommen sind, ist unbekannt. Nicht erneut senden, bevor geklärt ist, "
-	"ob die Anmeldung eingegangen ist."
-)
 
 
 class RequestError(ValueError):
@@ -205,7 +209,10 @@ def process(request: Request) -> TransmissionResult:
 		library = EricLibrary(runtime.lib_dir / LIBRARY)
 	except OSError as error:
 		return failed(Message(ERIC_CODE, f"ERiC lässt sich nicht laden: {error}", ERROR))
-	runtime.log_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+	try:
+		runtime.log_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+	except OSError as error:
+		return failed(Message(ERIC_CODE, f"Das Protokollverzeichnis von ERiC fehlt: {error}", ERROR))
 	try:
 		library.initialise(runtime.plugin_dir, runtime.log_dir)
 	except EricError as error:
@@ -317,7 +324,7 @@ def _result(
 		ticket = _server_messages(library, answer.server_response_xml, messages, accepted=False)
 		return result(Outcome.REJECTED, ticket)
 	if code in UNKNOWN_AFTER_SENDING:
-		messages.append(Message(UNKNOWN_CODE, UNKNOWN_TEXT, ERROR))
+		messages.append(UNKNOWN_MESSAGE)
 		return result(Outcome.UNKNOWN)
 	return result(Outcome.INVALID if code == GLOBAL_PRUEF_FEHLER else Outcome.FAILED)
 

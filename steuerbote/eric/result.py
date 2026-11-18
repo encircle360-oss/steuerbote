@@ -72,6 +72,15 @@ class Message:
 			raise ValueError(f"unknown severity {self.severity!r}, expected one of {sorted(SEVERITIES)}")
 
 
+UNKNOWN_MESSAGE = Message(
+	"SB-UNKNOWN",
+	"Ob die Daten bei ELSTER angekommen sind, ist unbekannt. Nicht erneut senden, bevor geklärt ist, "
+	"ob die Anmeldung eingegangen ist.",
+	ERROR,
+)
+"""Goes with every result whose outcome is UNKNOWN."""
+
+
 @dataclass(frozen=True, slots=True)
 class TransmissionResult:
 	operation: Operation
