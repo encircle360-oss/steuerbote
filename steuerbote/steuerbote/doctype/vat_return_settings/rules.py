@@ -4,8 +4,8 @@
 the Finanzamt exempt a company from the Voranmeldungen altogether. A company records each change as a
 rule: from a year and month on, it files monthly, quarterly or not at all. A rule holds until the next
 one starts, across years. A change takes effect with a Kalendervierteljahr, in month 1, 4, 7 or 10, so a
-quarter never starts in its middle. Without any rule the company files monthly, the shortest period, so
-no deadline passes unnoticed while the rules are still missing.
+quarter never starts in its middle. The Finanzamt sets the Voranmeldungszeitraum, so a month before the
+first rule has none, and asking for it is an error rather than a silent default.
 
 The Dauerfristverlängerung moves the deadlines by one month (§ 46 UStDV). A company that files monthly
 gets it only with a Sondervorauszahlung: „Die Fristverlängerung ist bei einem Unternehmer, der die
@@ -35,6 +35,9 @@ NOT_A_FILING_PERIOD = "{0} is not a filing period: choose monthly, quarterly or 
 NOT_A_QUARTER_START = "The filing period of {0} can only change in month 1, 4, 7 or 10, not in month {1}."
 DUPLICATE_RULE = "The filing period of {0} from month {1} is entered twice."
 NO_VORANMELDUNG_DUE = "No Voranmeldung is due for month {1} of {0}."
+NO_RULE_YET = (
+	"No filing period is set for month {1} of {0}: enter the Voranmeldungszeitraum the Finanzamt set."
+)
 DUPLICATE_PREPAYMENT = "The Dauerfristverlängerung of {0} is entered twice."
 NOT_IN_CENTS = "The Sondervorauszahlung of {0} must be an amount in cents, not {1}."
 SONDERVORAUSZAHLUNG_WITHOUT_DAUERFRIST = (
@@ -46,6 +49,7 @@ MESSAGES = (
 	NOT_A_QUARTER_START,
 	DUPLICATE_RULE,
 	NO_VORANMELDUNG_DUE,
+	NO_RULE_YET,
 	DUPLICATE_PREPAYMENT,
 	NOT_IN_CENTS,
 	SONDERVORAUSZAHLUNG_WITHOUT_DAUERFRIST,
@@ -120,7 +124,7 @@ def rhythm_for(rules: Iterable[PeriodRule], year: int, month: int) -> Rhythm:
 		raise ValueError(f"month must be between 1 and 12, not {month!r}")
 	started = [rule for rule in rules if rule.start <= (year, month)]
 	if not started:
-		return Rhythm.MONTHLY
+		raise SettingsError(NO_RULE_YET, year, month)
 	rule = max(started, key=lambda rule: rule.start)
 	if rule.rhythm is FilingRhythm.NONE:
 		raise NoVoranmeldungError(NO_VORANMELDUNG_DUE, year, month)

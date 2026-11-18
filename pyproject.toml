@@ -64,6 +64,7 @@ testpaths = [
     "steuerbote/elster",
     "steuerbote/steuerbote/doctype/vat_return_settings/test_rules.py",
     "steuerbote/steuerbote/doctype/vat_return_settings/test_translations.py",
+    "steuerbote/tests/test_mapping_sync.py",
 ]
 addopts = "--strict-markers"
 
@@ -74,6 +75,7 @@ source = [
     "steuerbote/ustva",
     "steuerbote/elster",
     "steuerbote.steuerbote.doctype.vat_return_settings.rules",
+    "steuerbote.mapping_sync",
 ]
 omit = ["*/tests/*"]
 branch = true

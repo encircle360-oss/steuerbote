@@ -105,11 +105,12 @@
    "fieldtype": "Section Break"
   },
   {
-   "description": "Monthly, quarterly or none, from a year and month on until the next rule. Without rules, monthly applies.",
+   "description": "Monthly, quarterly or none, from a year and month on until the next rule, as set by the Finanzamt.",
    "fieldname": "period_rules",
    "fieldtype": "Table",
    "label": "Filing Periods",
-   "options": "VAT Return Period Rule"
+   "options": "VAT Return Period Rule",
+   "reqd": 1
   },
   {
    "fieldname": "prepayments_section",

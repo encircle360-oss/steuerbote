@@ -59,8 +59,9 @@ class PeriodRuleTest(TestCase):
 
 
 class RhythmForTest(TestCase):
-	def test_without_rules_the_company_files_monthly(self):
-		self.assertIs(rhythm_for([], 2026, 5), MONTHLY)
+	def test_without_rules_there_is_no_filing_period(self):
+		with self.assertRaisesRegex(SettingsError, "No filing period is set for month 3 of 2026"):
+			rhythm_for([], 2026, 3)
 
 	def test_a_rule_holds_from_its_month_until_the_next_rule(self):
 		rules = [PeriodRule(2026, "monthly"), PeriodRule(2026, "quarterly", 7)]
@@ -86,11 +87,9 @@ class RhythmForTest(TestCase):
 		self.assertIs(rhythm_for(rules, 2026, 6), MONTHLY)
 		self.assertIs(rhythm_for(reversed(rules), 2026, 8), QUARTERLY)
 
-	def test_months_before_the_first_rule_are_monthly(self):
-		rules = [PeriodRule(2026, "quarterly", 4)]
-		self.assertIs(rhythm_for(rules, 2026, 3), MONTHLY)
-		self.assertIs(rhythm_for(rules, 2025, 12), MONTHLY)
-		self.assertIs(rhythm_for(rules, 2026, 4), QUARTERLY)
+	def test_months_before_the_first_rule_have_no_filing_period(self):
+		with self.assertRaisesRegex(SettingsError, "month 6 of 2026"):
+			rhythm_for([PeriodRule(2026, "quarterly", 7)], 2026, 6)
 
 	def test_a_month_without_voranmeldung_is_a_clear_error(self):
 		rules = [PeriodRule(2026, "quarterly"), PeriodRule(2026, "none", 7), PeriodRule(2027, "monthly")]
