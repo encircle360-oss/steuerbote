@@ -56,6 +56,7 @@ function add_elster_buttons(frm) {
 		const send_label = __("Transmit to the Finanzamt");
 		frm.add_custom_button(send_label, () => ask_for_certificate(frm, "send", send_label), group);
 	}
+	frm.add_custom_button(__("Mark as Filed Outside"), () => ask_for_filing_note(frm), group);
 }
 
 function saved(frm) {
@@ -151,6 +152,26 @@ function ask_for_certificate(frm, operation, title) {
 	// The password control of Frappe rates every keystroke on the server; a certificate password stays here.
 	dialog.fields_dict.certificate_password.disable_password_checks();
 	dialog.show();
+}
+
+function ask_for_filing_note(frm) {
+	if (!saved(frm)) {
+		return;
+	}
+	frappe.prompt(
+		[
+			{
+				fieldtype: "Small Text",
+				fieldname: "remarks",
+				label: __("How and When Filed"),
+				description: __("For example: on 10 April 2026 in Mein ELSTER, Transferticket et1234567890."),
+				reqd: 1,
+			},
+		],
+		(values) => frm.call("mark_filed_outside", { remarks: values.remarks }).then(() => frm.reload_doc()),
+		__("Mark as Filed Outside"),
+		__("Mark as Filed")
+	);
 }
 
 function on_transmission_finished(frm, data) {

@@ -1,4 +1,4 @@
-"""Prüfen, Testsenden and Senden on the VAT Return.
+"""Prüfen, Testsenden, Senden and „Als außerhalb abgegeben vermerken“ on the VAT Return.
 
 FakeEric replaces the functions of transmission_adapter: the ERiC library layer, the XML builder and the
 store for certificate and password. Its results have the fields of steuerbote.eric.result.
@@ -587,6 +587,38 @@ class TestTransmission(IntegrationTestCase):
 			with self.assertRaisesRegex(frappe.ValidationError, "draft"):
 				filed.transmit("validate")
 		enqueue.assert_not_called()
+
+	def test_marking_as_filed_outside_records_the_note_and_files_the_return(self):
+		doc = self.calculated(9)
+		note = "Am 9. Oktober 2026 in Mein ELSTER übermittelt"
+		name = doc.mark_filed_outside(note)
+		doc.reload()
+		self.assertEqual((doc.docstatus, doc.status), (1, "Abgegeben"))
+		transmission = frappe.get_doc(TRANSMISSION, name)
+		self.assertEqual(
+			(
+				transmission.vat_return,
+				transmission.operation,
+				transmission.status,
+				transmission.simulated,
+				transmission.remarks,
+				transmission.user,
+			),
+			(doc.name, "extern", "Erfolgreich", 0, note, "Administrator"),
+		)
+		with self.assertRaisesRegex(frappe.ValidationError, "draft"):
+			doc.mark_filed_outside(note)
+		with self.assertRaises(frappe.ValidationError):
+			frappe.delete_doc(TRANSMISSION, name)
+
+	def test_marking_as_filed_outside_needs_a_note_and_a_calculation(self):
+		doc = self.new_return(12)
+		with self.assertRaisesRegex(frappe.ValidationError, "how and when"):
+			doc.mark_filed_outside("  ")
+		with self.assertRaisesRegex(frappe.ValidationError, "Calculate"):
+			doc.mark_filed_outside("In Mein ELSTER übermittelt")
+		self.assertFalse(frappe.db.exists(TRANSMISSION, {"vat_return": doc.name}))
+		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "docstatus"), 0)
 
 	def test_a_transmission_stays_as_it_was_recorded(self):
 		doc = self.calculated(1)

@@ -12,7 +12,7 @@ replaced.
 "Prüfen", "Testsenden" and "Senden" (transmit) run in a background job through transmission_adapter, which
 reaches ERiC or its simulation; every run is recorded as an ELSTER Transmission. While it runs, the return
 cannot change, so that the job files exactly what it sent. Only a successful real Senden submits the return,
-which files it.
+which files it; "Als außerhalb abgegeben vermerken" (mark_filed_outside) submits it with a note instead.
 Certificate and password never become arguments of the job: stash_certificate keeps them encrypted for a few
 minutes and the job takes them back by their token.
 """
@@ -30,6 +30,7 @@ import steuerbote
 from steuerbote import ustva
 from steuerbote.ledger import account_names, accounts_without_number, load_lines
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
+	EXTERN,
 	FAILED,
 	RUNNING,
 	SEND,
@@ -233,6 +234,20 @@ class VATReturn(Document):
 		)
 		return transmission.name
 
+	@frappe.whitelist(methods=["POST"])
+	def mark_filed_outside(self, remarks: str) -> str:
+		"""Als außerhalb abgegeben vermerken: the return went to the Finanzamt another way, for example
+		through Mein ELSTER. Submits the return, records the note and returns the ELSTER Transmission's name."""
+		self.check_permission("submit")
+		note = (remarks or "").strip()
+		if not note:
+			frappe.throw(_("Note how and when the return was filed."))
+		self._lock_for_transmission()
+		if self.docstatus != 0:
+			frappe.throw(_("Only a draft return can be marked as filed."))
+		self.submit()
+		return self._new_transmission(EXTERN, simulated=False, status=SUCCEEDED, remarks=note).name
+
 	def _check_fit_for_filing(self) -> None:
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the return before submitting it."))
@@ -318,17 +333,22 @@ class VATReturn(Document):
 			)
 			record(transmission)
 
-	def _new_transmission(self, operation: str, *, simulated: bool) -> Document:
+	def _new_transmission(
+		self, operation: str, *, simulated: bool, status: str = RUNNING, remarks: str | None = None
+	) -> Document:
+		now = now_datetime()
 		return frappe.get_doc(
 			{
 				"doctype": TRANSMISSION,
 				"vat_return": self.name,
 				"company": self.company,
 				"operation": operation,
-				"status": RUNNING,
+				"status": status,
 				"simulated": int(simulated),
 				"user": frappe.session.user,
-				"started_at": now_datetime(),
+				"started_at": now,
+				"finished_at": None if status == RUNNING else now,
+				"remarks": remarks,
 			}
 		).insert(ignore_permissions=True)
 
