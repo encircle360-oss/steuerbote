@@ -13,6 +13,7 @@ from steuerbote.tests.helpers import (
 	make_mapping,
 	make_settings,
 	post_journal_entry,
+	submitted_without_record,
 )
 
 # The companies, their accounts and the vouchers are made by the tests themselves.
@@ -26,6 +27,7 @@ SWITCHING_COMPANY = "Steuerbote Test Dauerfrist GmbH"
 UNMAPPED_COMPANY = "Steuerbote Test Ohne Zuordnung GmbH"
 # Has neither.
 BARE_COMPANY = "Steuerbote Test Ohne Einstellungen GmbH"
+FILED_IN_MEIN_ELSTER = "In Mein ELSTER abgegeben"
 
 # SKR03 numbers of the month in VerifiedMonthTest of the core, a bank and a receivables account, and a
 # watched account.
@@ -218,8 +220,8 @@ class TestVATReturn(IntegrationTestCase):
 
 	def test_submitting_needs_a_calculation(self):
 		doc = self.new_return(5)
-		with self.assertRaises(frappe.ValidationError):
-			doc.submit()
+		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the return before submitting it"):
+			doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 
 	def test_a_return_that_is_not_ready_needs_remarks(self):
 		a = self.account
@@ -242,11 +244,12 @@ class TestVATReturn(IntegrationTestCase):
 			[("Umsatzsteuer 19 %", "Journal Entry", entry.name, money(190), money(180))],
 		)
 		self.assertEqual(money(doc.deviations[0].difference), money(-10))
-		with self.assertRaises(frappe.ValidationError):
-			doc.submit()
+		with self.assertRaisesRegex(frappe.ValidationError, "The return is not ready"):
+			doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		doc.reload()
 		doc.remarks = "The Steuerberatung corrects the invoice in July."
-		doc.submit()
+		doc.save()
+		doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		self.assertEqual(doc.status, "Abgegeben")
 
 	def test_a_watched_account_with_a_balance_is_listed(self):
@@ -261,20 +264,20 @@ class TestVATReturn(IntegrationTestCase):
 
 	def test_a_second_return_for_a_filed_period_must_be_a_correction(self):
 		first = self.calculated(4)
-		first.submit()
+		first.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		self.assertEqual(first.status, "Abgegeben")
 		with self.assertRaises(frappe.ValidationError):
 			self.new_return(4)
 		correction = self.calculated(4, is_correction=1)
-		correction.submit()
+		correction.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		first.reload()
 		self.assertEqual((first.status, correction.status), ("Ersetzt", "Abgegeben"))
 
 	def test_cancelling_a_correction_restores_the_return_it_replaced(self):
 		first = self.calculated(7)
-		first.submit()
+		submitted_without_record(first)
 		correction = self.calculated(7, is_correction=1)
-		correction.submit()
+		submitted_without_record(correction)
 		correction.cancel()
 		first.reload()
 		self.assertEqual(first.status, "Abgegeben")
@@ -436,13 +439,13 @@ class TestVATReturn(IntegrationTestCase):
 			{"kennzahl": "45", "override": 500, "override_reason": "Export invoice without booking"},
 		)
 		first.save()
-		first.submit()
+		first.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		self.assertEqual(kennzahlen(contents(first.make_import_file())), {"Kz45": "500", "Kz83": "0.00"})
 		correction = self.calculated(11, is_correction=1)
 		url = correction.make_import_file()
 		self.assertEqual(attached_file(url, correction).file_name, "UStVA_2026_11_berichtigt.xml")
 		self.assertEqual(kennzahlen(contents(url)), {"Kz10": "1", "Kz45": "0", "Kz83": "0.00"})
-		correction.submit()
+		correction.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		self.assertEqual(correction.make_import_file(), url)
 		with self.assertRaisesRegex(frappe.ValidationError, "replaced or cancelled return"):
 			first.make_import_file()

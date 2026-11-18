@@ -152,6 +152,13 @@ def make_settings(
 	).insert(ignore_permissions=True)
 
 
+def submitted_without_record(vat_return: Document) -> None:
+	"""Submit a VAT Return the way returns were submitted before Steuerbote recorded every filing: without
+	an ELSTER Transmission."""
+	vat_return.flags.filed_outside = True
+	vat_return.submit()
+
+
 def make_mapping(company: str, chart: str = "SKR03") -> Document:
 	"""A VAT Return Mapping with the defaults of the chart for the accounts the company has."""
 	mapping = frappe.new_doc("VAT Return Mapping")

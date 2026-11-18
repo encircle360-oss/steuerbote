@@ -1,4 +1,4 @@
-"""Prüfen, Testsenden, Senden and „Als außerhalb abgegeben vermerken“ on the VAT Return.
+"""Prüfen, Testsenden, Senden, the notes of a filing outside Steuerbote and the filing state of a period.
 
 The XML of steuerbote.elster, the header, the store of certificate and password and the simulation run for
 real. FakeEric replaces the two calls of transmission_adapter that need an installed ERiC, the worker and
@@ -11,14 +11,20 @@ import hashlib
 import shutil
 import tempfile
 import zipfile
+from collections.abc import Mapping
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
+from types import MappingProxyType
+from typing import ClassVar
 from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
+from frappe.utils import add_days, getdate, today
 
 import steuerbote
+from steuerbote.eric import runtime as eric_runtime
 from steuerbote.eric import secrets
 from steuerbote.eric.fake import placeholder_pdf
 from steuerbote.eric.header import EnvelopeHeader
@@ -51,6 +57,8 @@ from steuerbote.tests.helpers import (
 COMPANY = "Steuerbote Test Uebermittlung GmbH"
 # Files through the ERiC stub, with periods of its own.
 STUB_COMPANY = "Steuerbote Test ERiC-Stub GmbH"
+# The filing state of its periods, in TestFilingState.
+FILING_COMPANY = "Steuerbote Test Abgabestand GmbH"
 DATENLIEFERANT_ADDRESS = {
 	"filer_name": COMPANY,
 	"street": "Hauptstraße 1",
@@ -59,13 +67,17 @@ DATENLIEFERANT_ADDRESS = {
 }
 ACCOUNTS_USER = "steuerbote-uebermittlung@example.com"
 JOB = "steuerbote.steuerbote.doctype.vat_return.vat_return.run_transmission"
-JOB_ARGUMENTS = ("name", "operation", "token")
+JOB_ARGUMENTS = ("name", "operation", "token", "transmission")
 TRANSMISSION = "ELSTER Transmission"
 DATENLIEFERANT = "Steuerbote Test Uebermittlung GmbH; Erika Beispiel; 089 1234567; erika@example.org"
 # Invented for the tests, like every certificate and password here.
 CERTIFICATE = b"0\x82\x01\x00 invented PKCS #12 \x00\x01\x02"
 PIN = "Geheim-PIN-2026"
 TICKET = "et0123456789abcdef"
+# The form of TransferTicketSType in headerbasis_datentypen.xsd, invented.
+MEIN_ELSTER_TICKET = "ab123cdefghijkmnopqrstuvwxyz0123"
+NOTE = "Am 9. Oktober 2026 von der Steuerberatung abgegeben"
+IS_JOB_ENQUEUED = "steuerbote.steuerbote.doctype.vat_return.vat_return.is_job_enqueued"
 STUB_TICKET = "et0stub0accepted0000000000000001"
 STUB_LIB = "ERiC-44.3.6.0/Linux-x86_64/lib"
 PROTOCOL = placeholder_pdf("Übertragungsprotokoll", ["Erfunden für die Tests"])
@@ -157,30 +169,25 @@ def make_user(email: str, role: str) -> str:
 	return email
 
 
-class TestTransmission(IntegrationTestCase):
+class TransmissionTestCase(IntegrationTestCase):
+	"""A company that files monthly, with ERiC Settings that simulate unless use_runtime() sets them up."""
+
+	company = COMPANY
+	abbr = "STUEB"
+	accounts: ClassVar[Mapping[str, tuple[str, str]]] = MappingProxyType({})
+
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
-		make_company(COMPANY, "STUEB")
-		a = {
-			number: make_account(COMPANY, number, name, root_type)
-			for number, (name, root_type) in ACCOUNTS.items()
+		make_company(cls.company, cls.abbr)
+		cls.account = {
+			number: make_account(cls.company, number, name, root_type)
+			for number, (name, root_type) in cls.accounts.items()
 		}
-		make_settings(COMPANY, [(2026, "monthly", 1)], **DATENLIEFERANT_ADDRESS)
-		make_mapping(COMPANY)
-		march = "2026-03-10"
-		post_journal_entry(COMPANY, march, [(a["1400"], 1190, 0), (a["8400"], 0, 1000), (a["1776"], 0, 190)])
-		post_journal_entry(COMPANY, march, [(a["1400"], 2000, 0), (a["8336"], 0, 2000)])
-		post_journal_entry(COMPANY, march, [(a["1400"], 500, 0), (a["8338"], 0, 500)])
-		post_journal_entry(
-			COMPANY, march, [(a["3123"], 300, 0), (a["1577"], 57, 0), (a["1787"], 0, 57), (a["1200"], 0, 300)]
-		)
-		post_journal_entry(COMPANY, march, [(a["1576"], 95, 0), (a["1200"], 0, 95)])
-		make_company(STUB_COMPANY, "STUES")
 		make_settings(
-			STUB_COMPANY, [(2026, "monthly", 1)], **{**DATENLIEFERANT_ADDRESS, "filer_name": STUB_COMPANY}
+			cls.company, [(2026, "monthly", 1)], **{**DATENLIEFERANT_ADDRESS, "filer_name": cls.company}
 		)
-		make_mapping(STUB_COMPANY)
+		make_mapping(cls.company)
 		make_user(ACCOUNTS_USER, "Accounts User")
 
 	def setUp(self):
@@ -198,25 +205,30 @@ class TestTransmission(IntegrationTestCase):
 				"installed_version": "",
 				"lib_dir": "",
 				"log_dir": "",
+				"privacy_notice_confirmed": 0,
 				**values,
 			}
 		)
 		settings.save()
 
-	def use_runtime(self):
+	def use_runtime(self, **values):
 		self.eric_settings(
-			hersteller_id="12345",
-			datenlieferant=DATENLIEFERANT,
-			installed_version=RUNTIME.version,
-			lib_dir=str(RUNTIME.lib_dir),
-			log_dir=str(RUNTIME.log_dir),
+			**{
+				"hersteller_id": "12345",
+				"datenlieferant": DATENLIEFERANT,
+				"installed_version": RUNTIME.version,
+				"lib_dir": str(RUNTIME.lib_dir),
+				"log_dir": str(RUNTIME.log_dir),
+				"privacy_notice_confirmed": 1,
+				**values,
+			}
 		)
 
-	def new_return(self, period: int, company: str = COMPANY, **fields):
+	def new_return(self, period: int, company: str | None = None, **fields):
 		return frappe.get_doc(
 			{
 				"doctype": "VAT Return",
-				"company": company,
+				"company": company or self.company,
 				"year": 2026,
 				"rhythm": "monthly",
 				"period_index": period,
@@ -269,6 +281,28 @@ class TestTransmission(IntegrationTestCase):
 
 	def codes(self, transmission) -> list[str]:
 		return [row.code for row in transmission.messages]
+
+
+class TestTransmission(TransmissionTestCase):
+	accounts = ACCOUNTS
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		a = cls.account
+		march = "2026-03-10"
+		post_journal_entry(COMPANY, march, [(a["1400"], 1190, 0), (a["8400"], 0, 1000), (a["1776"], 0, 190)])
+		post_journal_entry(COMPANY, march, [(a["1400"], 2000, 0), (a["8336"], 0, 2000)])
+		post_journal_entry(COMPANY, march, [(a["1400"], 500, 0), (a["8338"], 0, 500)])
+		post_journal_entry(
+			COMPANY, march, [(a["3123"], 300, 0), (a["1577"], 57, 0), (a["1787"], 0, 57), (a["1200"], 0, 300)]
+		)
+		post_journal_entry(COMPANY, march, [(a["1576"], 95, 0), (a["1200"], 0, 95)])
+		make_company(STUB_COMPANY, "STUES")
+		make_settings(
+			STUB_COMPANY, [(2026, "monthly", 1)], **{**DATENLIEFERANT_ADDRESS, "filer_name": STUB_COMPANY}
+		)
+		make_mapping(STUB_COMPANY)
 
 	def test_pruefen_in_the_simulation_records_the_result_and_leaves_the_return_as_it_is(self):
 		doc = self.calculated(3)
@@ -428,10 +462,10 @@ class TestTransmission(IntegrationTestCase):
 				"name": doc.name,
 				"operation": "test_send",
 				"token": token,
+				"transmission": name,
 				"queue": "long",
 				"timeout": 300,
-				"job_id": f"steuerbote:elster:{doc.name}",
-				"deduplicate": True,
+				"job_id": f"steuerbote:elster:{name}",
 				"enqueue_after_commit": True,
 			},
 		)
@@ -576,7 +610,7 @@ class TestTransmission(IntegrationTestCase):
 		stale = frappe.get_doc(TRANSMISSION, first)
 		self.assertEqual((stale.status, stale.outcome), ("Fehlgeschlagen", "failed"))
 		self.assertTrue(stale.finished_at)
-		self.assertIn("Mein ELSTER", stale.messages[-1].text)
+		self.assertIn("Nothing reached ELSTER", stale.messages[-1].text)
 		self.assertEqual(frappe.db.get_value(TRANSMISSION, second, "status"), "Läuft")
 
 	def test_a_send_whose_job_is_gone_has_an_unknown_outcome_and_is_not_repeated(self):
@@ -595,12 +629,12 @@ class TestTransmission(IntegrationTestCase):
 		)
 
 	def test_only_a_calculated_draft_is_transmitted(self):
-		draft = self.new_return(11)
+		draft = self.new_return(5)
 		with patch("frappe.enqueue") as enqueue:
 			with self.assertRaisesRegex(frappe.ValidationError, "Calculate"):
 				draft.transmit("validate")
-			filed = self.calculated(11)
-			filed.submit()
+			filed = self.calculated(5)
+			filed.mark_filed_outside(NOTE)
 			with self.assertRaisesRegex(frappe.ValidationError, "draft"):
 				filed.transmit("validate")
 		enqueue.assert_not_called()
@@ -609,6 +643,9 @@ class TestTransmission(IntegrationTestCase):
 		doc = self.calculated(9)
 		note = "Am 9. Oktober 2026 in Mein ELSTER übermittelt"
 		name = doc.mark_filed_outside(note)
+		self.assertEqual(
+			frappe.db.get_value(TRANSMISSION, name, ["filed_via", "filed_on"]), ("other_way", None)
+		)
 		doc.reload()
 		self.assertEqual((doc.docstatus, doc.status), (1, "Abgegeben"))
 		transmission = frappe.get_doc(TRANSMISSION, name)
@@ -671,10 +708,13 @@ class TestTransmission(IntegrationTestCase):
 	def test_the_form_learns_whether_eric_is_simulated(self):
 		doc = self.new_return(3)
 		doc.run_method("onload")
-		self.assertEqual(doc.get_onload("elster"), {"simulation": True})
+		self.assertEqual(doc.get_onload("elster"), {"simulation": True, "stale": False, "sent": False})
 		self.use_runtime()
 		doc.run_method("onload")
-		self.assertEqual(doc.get_onload("elster"), {"simulation": False})
+		self.assertEqual(doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False})
+		self.use_runtime(privacy_notice_confirmed=0)
+		doc.run_method("onload")
+		self.assertFalse(doc.get_onload("elster")["simulation"])
 
 	def test_through_the_eric_stub_a_runtime_installs_and_testsenden_and_senden_go_out(self):
 		library = stub.library()
@@ -694,7 +734,9 @@ class TestTransmission(IntegrationTestCase):
 			self.assertEqual(
 				(settings.installed_version, settings.lib_dir), ("44.3.6.0", str(root / "44.3.6.0" / "lib"))
 			)
-			settings.update({"hersteller_id": "12345", "datenlieferant": DATENLIEFERANT})
+			settings.update(
+				{"hersteller_id": "12345", "datenlieferant": DATENLIEFERANT, "privacy_notice_confirmed": 1}
+			)
 			settings.save()
 			doc = self.new_return(1, company=STUB_COMPANY)
 			doc.calculate()
@@ -712,3 +754,200 @@ class TestTransmission(IntegrationTestCase):
 			(sent.status, sent.outcome, sent.transferticket), ("Erfolgreich", "accepted", STUB_TICKET)
 		)
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (1, "Abgegeben", 0))
+
+
+class TestFilingState(TransmissionTestCase):
+	"""Whether a period counts as filed, and how a return gets there. Each test has a month of its own."""
+
+	company = FILING_COMPANY
+	abbr = "STUEA"
+
+	def test_a_period_filed_outside_steuerbote_stops_senden_of_another_draft(self):
+		self.use_runtime()
+		first, second = self.calculated(1), self.calculated(1)
+		first.mark_filed_outside(NOTE)
+		with patch("frappe.enqueue") as enqueue:
+			with self.assertRaisesRegex(frappe.ValidationError, "filed already as"):
+				second.transmit("send", self.stash())
+			second.transmit("validate")
+		self.assertEqual(enqueue.call_count, 1)
+
+	def test_a_period_filed_outside_steuerbote_stops_the_file_for_mein_elster_of_another_draft(self):
+		first, second = self.calculated(2), self.calculated(2)
+		first.mark_filed_outside(NOTE)
+		with self.assertRaisesRegex(frappe.ValidationError, "filed already as"):
+			second.make_import_file()
+		self.assertTrue(first.make_import_file())
+
+	def test_a_filed_return_cannot_be_cancelled(self):
+		outside = self.calculated(3)
+		outside.mark_filed_outside(NOTE)
+		self.use_runtime()
+		sent = self.calculated(4)
+		self.transmitted(sent, "send", FakeEric(), self.stash())
+		for doc in (outside, sent):
+			doc.reload()
+			with (
+				self.subTest(doc=doc.name),
+				self.assertRaisesRegex(frappe.ValidationError, "cannot be cancelled"),
+			):
+				doc.cancel()
+			self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "docstatus"), 1)
+
+	def test_a_cancelled_return_that_was_sent_still_stops_senden_without_kz10(self):
+		self.use_runtime()
+		sent = self.calculated(5)
+		self.transmitted(sent, "send", FakeEric(), self.stash())
+		# A return cancelled before a filed return could no longer be cancelled.
+		frappe.db.set_value("VAT Return", sent.name, "docstatus", 2)
+		draft = self.calculated(5)
+		with patch("frappe.enqueue") as enqueue:
+			with self.assertRaisesRegex(frappe.ValidationError, "transmitted already as"):
+				draft.transmit("send", self.stash())
+			self.calculated(5, is_correction=1).transmit("send", self.stash())
+		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
+
+	def test_buchen_alone_files_no_return(self):
+		doc = self.calculated(6)
+		with self.assertRaisesRegex(frappe.ValidationError, "not by Buchen alone"):
+			doc.submit()
+		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, ["docstatus", "status"]), (0, "Bereit"))
+
+	def test_a_sent_return_that_could_not_be_submitted_is_submitted_with_buchen(self):
+		self.use_runtime()
+		doc = self.calculated(7)
+		with patch.object(VATReturn, "before_submit", side_effect=frappe.ValidationError("Kaputt")):
+			transmission, _, _ = self.transmitted(doc, "send", FakeEric(), self.stash())
+		self.assertEqual((transmission.status, doc.docstatus), ("Erfolgreich", 0))
+		doc.run_method("onload")
+		self.assertTrue(doc.get_onload("elster")["sent"])
+		with self.assertRaisesRegex(frappe.ValidationError, "submit it with Buchen"):
+			doc.mark_filed_outside(NOTE)
+		doc.submit()
+		self.assertEqual(
+			frappe.db.get_value("VAT Return", doc.name, ["docstatus", "status"]), (1, "Abgegeben")
+		)
+
+	def test_in_mein_elster_abgegeben_records_transferticket_and_date(self):
+		doc = self.calculated(8)
+		name = doc.mark_filed_outside(
+			filed_via="mein_elster", transferticket=f" {MEIN_ELSTER_TICKET} ", filed_on="2026-09-08"
+		)
+		doc.reload()
+		self.assertEqual((doc.docstatus, doc.status), (1, "Abgegeben"))
+		transmission = frappe.get_doc(TRANSMISSION, name)
+		self.assertEqual(
+			(
+				transmission.operation,
+				transmission.status,
+				transmission.filed_via,
+				transmission.transferticket,
+				getdate(transmission.filed_on),
+				transmission.remarks or "",
+			),
+			("extern", "Erfolgreich", "mein_elster", MEIN_ELSTER_TICKET, date(2026, 9, 8), ""),
+		)
+
+	def test_the_note_of_a_filing_is_checked(self):
+		doc = self.calculated(9)
+		for values, message in (
+			({"filed_via": "other_way"}, "how and when"),
+			({"remarks": NOTE, "filed_via": "fax"}, "way of filing"),
+			({"filed_via": "mein_elster", "transferticket": "et12"}, "no Transferticket"),
+			({"filed_via": "mein_elster", "filed_on": add_days(today(), 1)}, "in the future"),
+		):
+			with self.subTest(values=values), self.assertRaisesRegex(frappe.ValidationError, message):
+				doc.mark_filed_outside(**values)
+		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "docstatus"), 0)
+		self.assertFalse(frappe.db.exists(TRANSMISSION, {"vat_return": doc.name}))
+
+	def test_the_form_releases_a_lock_whose_job_is_gone(self):
+		self.use_runtime()
+		doc = self.calculated(10)
+		token = self.stash()
+		name, job = self.transmit(doc, "send", token)
+		doc.reload()
+		with patch(IS_JOB_ENQUEUED, return_value=True) as enqueued:
+			doc.run_method("onload")
+		enqueued.assert_called_with(f"steuerbote:elster:{name}")
+		self.assertFalse(doc.get_onload("elster")["stale"])
+		with patch(IS_JOB_ENQUEUED, return_value=False):
+			doc.run_method("onload")
+			self.assertTrue(doc.get_onload("elster")["stale"])
+			doc.release_stale_transmission()
+		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "transmission_in_progress"), 0)
+		stale = frappe.get_doc(TRANSMISSION, name)
+		self.assertEqual((stale.status, stale.outcome), ("Unbekannt", "unknown"))
+		self.assertIn("Mein ELSTER", stale.messages[-1].text)
+		doc.reload()
+		doc.run_method("onload")
+		self.assertFalse(doc.get_onload("elster")["stale"])
+		doc.remarks = "Nach der gelösten Sperre"
+		doc.save()
+		fake = FakeEric()
+		self.run_job(job, fake)
+		self.assertEqual(fake.runs, [])
+		with self.assertRaises(secrets.SecretsExpired):
+			secrets.take(token)
+
+	def test_a_job_whose_transmission_was_closed_does_nothing(self):
+		doc = self.calculated(11)
+		first, first_job = self.transmit(doc, "validate")
+		with patch(IS_JOB_ENQUEUED, return_value=False):
+			doc.release_stale_transmission()
+			second, second_job = self.transmit(doc, "validate")
+		self.assertNotEqual(first_job.call_args.kwargs["job_id"], second_job.call_args.kwargs["job_id"])
+		fake = FakeEric()
+		self.run_job(first_job, fake)
+		self.assertEqual(fake.runs, [])
+		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "transmission_in_progress"), 1)
+		self.assertEqual(frappe.db.get_value(TRANSMISSION, first, "status"), "Fehlgeschlagen")
+		self.assertEqual(frappe.db.get_value(TRANSMISSION, second, "status"), "Läuft")
+		self.run_job(second_job)
+		self.assertEqual(frappe.db.get_value(TRANSMISSION, second, "status"), "Erfolgreich")
+		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "transmission_in_progress"), 0)
+
+	def test_eric_needs_the_confirmed_datenschutzhinweise_the_simulation_does_not(self):
+		doc = self.calculated(12)
+		simulated, _, _ = self.transmitted(doc, "validate")
+		self.assertEqual(simulated.status, "Erfolgreich")
+		self.use_runtime(privacy_notice_confirmed=0)
+		with (
+			patch("frappe.enqueue") as enqueue,
+			self.assertRaisesRegex(frappe.ValidationError, "Datenschutzhinweise"),
+		):
+			doc.transmit("validate")
+		enqueue.assert_not_called()
+		self.use_runtime()
+		name, enqueue = self.transmit(doc, "validate")
+		self.use_runtime(privacy_notice_confirmed=0)
+		fake = FakeEric()
+		self.run_job(enqueue, fake)
+		self.assertEqual(fake.runs, [])
+		transmission = frappe.get_doc(TRANSMISSION, name)
+		self.assertEqual(transmission.status, "Fehlgeschlagen")
+		self.assertIn("Datenschutzhinweise", transmission.messages[-1].text)
+
+	def test_pruefen_and_testsenden_take_a_beta_only_without_a_released_runtime_senden_never(self):
+		released = replace(RUNTIME, version="44.3.6.0")
+		beta = replace(RUNTIME, version="45.1.5.0")
+		log_dir = Path("/srv/eric/log")
+		for installed, expected in (
+			(
+				(released, beta),
+				{Operation.VALIDATE: released, Operation.TEST_SEND: released, Operation.SEND: released},
+			),
+			((beta,), {Operation.VALIDATE: beta, Operation.TEST_SEND: beta, Operation.SEND: None}),
+		):
+
+			def detect(root, *, year, allow_beta, log_dir, hersteller_id, installed=installed):
+				found = [info for info in installed if allow_beta or info is not beta]
+				return replace(found[0], log_dir=log_dir, hersteller_id=hersteller_id) if found else None
+
+			for operation, runtime_info in expected.items():
+				with (
+					self.subTest(installed=len(installed), operation=operation),
+					patch.object(eric_runtime, "detect", side_effect=detect),
+				):
+					found = transmission_adapter.detect_runtime(2026, operation, "12345", log_dir)
+					self.assertEqual(found and found.version, runtime_info and runtime_info.version)
