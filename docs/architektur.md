@@ -213,9 +213,11 @@ Der Bericht zeigt für einen Zeitraum, aus welchen Buchungen jede Kennzahl beste
 - Die Belege einer Kennzahl ergeben genau ihren Betrag laut Hauptbuch. Heben sich die Belege einer Kennzahl auf, steht sie mit 0 im Bericht.
 - Der Bericht zeigt das Hauptbuch, keine Meldung: Korrekturen einer Meldung erscheinen darin nicht.
 
-## Arbeitsbereich „Steuern“
+## Arbeitsbereich „Steuern“ und Seitenleiste
 
-Der Arbeitsbereich führt zu „Neue Umsatzsteuer-Voranmeldung“, zur Liste der Umsatzsteuer-Voranmeldungen, zum Bericht „UStVA Kennzahlen“ und zu den Einstellungen und der Kontenzuordnung. Die Zahlenkarte „Offene Voranmeldungen“ zählt die Meldungen aller Unternehmen, die noch nicht eingereicht sind. Sichtbar ist der Arbeitsbereich für die Rollen Accounts Manager, Accounts User und System Manager.
+Der Arbeitsbereich führt zu „Neue Voranmeldung“, zur Liste „Voranmeldungen“, zum Bericht „UStVA Kennzahlen“ („Kennzahlen (Bericht)“) und zu „Einstellungen“ und „Kontenzuordnung“. Die Zahlenkarte „Offene Voranmeldungen“ zählt die Meldungen aller Unternehmen, die noch nicht eingereicht sind. Sichtbar ist der Arbeitsbereich für die Rollen Accounts Manager, Accounts User und System Manager.
+
+Die Seitenleiste des Moduls bringt Steuerbote selbst mit (`sidebar/steuerbote`). Ohne sie bildet Frappe die Einträge aus den Namen der DocTypes, und die Seitenleiste schneidet Namen wie „Einstellungen Umsatzsteuer-Voranmeldung“ ab. Sie führt zum Arbeitsbereich „Steuern“, zu „Voranmeldungen“, „Kontenzuordnung“, „Einstellungen“, „ERiC-Einstellungen“ und „ELSTER-Übermittlung“ und unter „Berichte“ zu „UStVA Kennzahlen“. Ein neuer DocType mit eigener Liste gehört auch in die Seitenleiste; `test_standard_records.py` prüft das, ebenso, dass keine Bezeichnung länger als 20 Zeichen ist.
 
 ## Druckformat „Umsatzsteuer-Voranmeldung“
 

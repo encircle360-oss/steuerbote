@@ -18,12 +18,15 @@ MODULE = APP / "steuerbote"
 TRANSLATIONS = APP / "translations" / "de.csv"
 REPORT = MODULE / "report" / "ustva_kennzahlen"
 WORKSPACE = MODULE / "workspace" / "steuern" / "steuern.json"
+SIDEBAR = MODULE / "sidebar" / "steuerbote" / "steuerbote.json"
 NUMBER_CARDS = MODULE / "number_card"
 PRINT_FORMAT = MODULE / "print_format" / "umsatzsteuer_voranmeldung"
 VAT_RETURN_SCRIPT = MODULE / "doctype" / "vat_return" / "vat_return.js"
 
 # Names of the app that read the same in every language.
 GERMAN_NAMES = frozenset({"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen"})
+# The German that Frappe shows for the framework labels of the shortcuts and the sidebar.
+FRAMEWORK_GERMAN = {"Reports": "Berichte", "Settings": "Einstellungen"}
 # Labels Frappe and ERPNext translate themselves; the app keeps out of their translations.
 FRAMEWORK_LABELS = frozenset(
 	{
@@ -36,8 +39,11 @@ FRAMEWORK_LABELS = frozenset(
 		"Setup",
 		"Voucher No",
 		"Voucher Type",
+		*FRAMEWORK_GERMAN,
 	}
 )
+# The desk cuts a label after about 22 characters, in the sidebar as on a shortcut card.
+LONGEST_LABEL = 20
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
 CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')
@@ -60,8 +66,18 @@ def translated() -> set[str]:
 	return set(translations())
 
 
+def german(text: str) -> str:
+	return translations().get(text) or FRAMEWORK_GERMAN.get(text, text)
+
+
 def doctype_names() -> set[str]:
 	return {read_json(path)["name"] for path in (MODULE / "doctype").glob("*/*.json")}
+
+
+def doctypes_with_a_list() -> set[str]:
+	"""The DocTypes of the module that are not child tables, the ones Frappe's sidebar links to."""
+	definitions = (read_json(path) for path in (MODULE / "doctype").glob("*/*.json"))
+	return {definition["name"] for definition in definitions if not definition.get("istable")}
 
 
 def untranslated(texts: set[str]) -> list[str]:
@@ -204,6 +220,76 @@ class WorkspaceFilesTest(TestCase):
 		}
 		labels = {shortcut["label"] for shortcut in self.workspace["shortcuts"]}
 		self.assertEqual(untranslated(headers | labels), [])
+
+	def test_the_shortcuts_read_short_in_german(self):
+		labels = {
+			(shortcut["link_to"], shortcut.get("doc_view", "")): german(shortcut["label"])
+			for shortcut in self.workspace["shortcuts"]
+		}
+		self.assertEqual(
+			labels,
+			{
+				("VAT Return", "New"): "Neue Voranmeldung",
+				("VAT Return", "List"): "Voranmeldungen",
+				("UStVA Kennzahlen", ""): "Kennzahlen (Bericht)",
+				("VAT Return Settings", "List"): "Einstellungen",
+				("VAT Return Mapping", "List"): "Kontenzuordnung",
+			},
+		)
+		self.assertEqual([label for label in labels.values() if len(label) > LONGEST_LABEL], [])
+
+
+class SidebarFilesTest(TestCase):
+	"""The module ships its sidebar, so that its entries carry short labels instead of the DocType names."""
+
+	def setUp(self):
+		self.sidebar = read_json(SIDEBAR)
+		self.items = self.sidebar["items"]
+
+	def test_the_sidebar_is_the_module_s_own(self):
+		self.assertEqual(
+			{key: self.sidebar[key] for key in ("doctype", "name", "title", "module", "app", "standard")},
+			{
+				"doctype": "Sidebar",
+				"name": "Steuerbote",
+				"title": "Steuerbote",
+				"module": "Steuerbote",
+				"app": "steuerbote",
+				"standard": 1,
+			},
+		)
+
+	def test_the_sidebar_leads_to_the_workspace_every_list_and_the_report(self):
+		links = [(item["link_type"], item["link_to"]) for item in self.items if item["type"] == "Link"]
+		self.assertEqual(links[0], ("Workspace", read_json(WORKSPACE)["name"]))
+		self.assertEqual(len(links), len(set(links)))
+		self.assertEqual(
+			set(links),
+			{
+				("Workspace", read_json(WORKSPACE)["name"]),
+				("Report", read_json(REPORT / "ustva_kennzahlen.json")["name"]),
+			}
+			| {("DocType", name) for name in doctypes_with_a_list()},
+		)
+
+	def test_the_sidebar_reads_short_in_german(self):
+		labels = [item["label"] for item in self.items]
+		self.assertEqual(untranslated(set(labels)), [])
+		in_german = [german(label) for label in labels]
+		self.assertEqual(
+			in_german,
+			[
+				"Steuern",
+				"Voranmeldungen",
+				"Kontenzuordnung",
+				"Einstellungen",
+				"ERiC-Einstellungen",
+				"ELSTER-Übermittlung",
+				"Berichte",
+				"UStVA Kennzahlen",
+			],
+		)
+		self.assertEqual([label for label in in_german if len(label) > LONGEST_LABEL], [])
 
 
 class PrintFormatFilesTest(TestCase):
