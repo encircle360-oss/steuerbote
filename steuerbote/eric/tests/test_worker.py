@@ -64,7 +64,9 @@ class WorkerTestCase(TestCase):
 			"nutzdaten": nutzdaten(marker),
 			"header": asdict(header),
 			"runtime": self.runtime.to_dict(),
-			"certificate": None if operation is Operation.VALIDATE else base64.b64encode(CONTAINER).decode(),
+			"certificate_secret": (
+				None if operation is Operation.VALIDATE else base64.b64encode(CONTAINER).decode()
+			),
 			"certificate_password": None if operation is Operation.VALIDATE else PIN,
 		}
 		return request | changes
@@ -360,8 +362,8 @@ class ProtocolTest(WorkerTestCase):
 			"header fields": valid | {"header": {"hersteller_id": "12345"}},
 			"header field": valid | {"header": asdict(HEADER) | {"testmerker": 700000004}},
 			"runtime": valid | {"runtime": {"version": "44.3.6.0"}},
-			"certificate": valid | {"certificate": "kein base64!"},
-			"no certificate": valid | {"certificate": None},
+			"certificate": valid | {"certificate_secret": "kein base64!"},
+			"no certificate": valid | {"certificate_secret": None},
 			"no password": valid | {"certificate_password": None},
 			"password": valid | {"certificate_password": 4711},
 		}

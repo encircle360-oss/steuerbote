@@ -9,7 +9,7 @@ never imports Frappe.
 The worker reads one JSON object from standard input and writes one to standard output:
 
 	{"command": "process", "operation": "validate" | "test_send" | "send", "nutzdaten": "<Anmeldungssteuern …>",
-	 "header": {…}, "runtime": {…}, "certificate": "<PKCS#12 in base64>" | null,
+	 "header": {…}, "runtime": {…}, "certificate_secret": "<PKCS#12 in base64>" | null,
 	 "certificate_password": "…" | null}
 		answers with a TransmissionResult as JSON
 	{"command": "version", "runtime": {…}}
@@ -257,16 +257,16 @@ def parse_request(data: bytes) -> Request:
 	if not isinstance(nutzdaten, str):
 		raise RequestError("nutzdaten")
 	header = _header(request.get("header"))
-	certificate = request.get("certificate")
+	certificate = request.get("certificate_secret")
 	password = request.get("certificate_password")
 	if operation.sends and not isinstance(certificate, str):
-		raise RequestError("certificate")
+		raise RequestError("certificate_secret")
 	if operation.sends and not isinstance(password, str):
 		raise RequestError("certificate_password")
 	try:
 		container = None if certificate is None else base64.b64decode(certificate, validate=True)
 	except binascii.Error, TypeError:
-		raise RequestError("certificate") from None
+		raise RequestError("certificate_secret") from None
 	return Request(command, runtime, operation, nutzdaten, header, container, password)
 
 

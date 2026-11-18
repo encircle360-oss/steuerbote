@@ -11,9 +11,12 @@ environment. Its working directory is the directory that holds the package steue
 the same code as this process, whether steuerbote is installed or checked out; -I would drop that
 directory from the module path.
 
-Certificate and PIN go to the worker on standard input and nowhere else. A send that does not come back,
-because of the timeout, a crash or an answer that is no result, has an unknown outcome and must not be
-repeated blindly; a check that does not come back simply failed.
+Certificate and PIN go to the worker on standard input and nowhere else. The request that carries them
+is Sealed, and each variable that holds one of them has secret or password in its name, so a traceback
+with the local variables of its frames, as Frappe writes it in developer mode, shows neither. Once the
+worker has started, a send that does not come back, because of the timeout, a crash, an answer that is
+no result or an exception in this process such as the timeout of the background job, has an unknown
+outcome and must not be repeated blindly; a check that does not come back simply failed.
 """
 
 import base64
@@ -42,6 +45,7 @@ from steuerbote.eric.result import (
 	TransmissionResult,
 )
 from steuerbote.eric.runtime import RuntimeInfo
+from steuerbote.eric.sealed import Sealed
 
 WORKER_MODULE = "steuerbote.eric.worker"
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -72,18 +76,18 @@ def run(
 	nutzdaten_xml: str,
 	header: EnvelopeHeader,
 	runtime: RuntimeInfo | None,
-	certificate: bytes | None,
+	certificate_secret: bytes | None,
 	certificate_password: str | None,
 	timeout_seconds: int = 120,
 ) -> TransmissionResult:
 	"""Dispatch to the ERiC worker when a runtime is configured, else to the simulation.
 
-	SEND and TEST_SEND need certificate and certificate_password with a real runtime; the simulation
-	accepts them being None. Never logs the password or the certificate.
+	SEND and TEST_SEND need the PKCS#12 container certificate_secret and its certificate_password with a
+	real runtime; the simulation accepts them being None. Never logs the password or the certificate.
 	"""
 	if runtime is None:
 		return Simulation().run(operation, nutzdaten_xml, header)
-	if operation.sends and (certificate is None or certificate_password is None):
+	if operation.sends and (certificate_secret is None or certificate_password is None):
 		raise ValueError("sending with ERiC needs the certificate and its password")
 	testmerker = TESTMERKER if operation is Operation.TEST_SEND else None
 	refused = problems(header, operation, own_hersteller_id=runtime.hersteller_id)
@@ -101,16 +105,14 @@ def run(
 		return TransmissionResult(
 			operation, False, False, runtime.version, None, testmerker, refused, outcome=Outcome.FAILED
 		)
-	request = {
-		"command": "process",
-		"operation": operation.value,
-		"nutzdaten": nutzdaten_xml,
-		"header": asdict(header),
-		"runtime": runtime.to_dict(),
-		"certificate": None if certificate is None else base64.b64encode(certificate).decode(),
-		"certificate_password": certificate_password,
-	}
-	return interpret(call_worker(request, timeout_seconds), operation, runtime.version)
+	request_secret = _process_request(
+		operation, nutzdaten_xml, header, runtime, certificate_secret, certificate_password
+	)
+	worker = start_worker()
+	try:
+		return interpret(wait_for(worker, request_secret, timeout_seconds), operation, runtime.version)
+	except Exception as error:
+		return lost(operation, runtime.version, error)
 
 
 def library_versions(runtime: RuntimeInfo, timeout_seconds: int = 60) -> dict[str, str]:
@@ -124,7 +126,12 @@ def library_versions(runtime: RuntimeInfo, timeout_seconds: int = 60) -> dict[st
 
 def call_worker(request: Mapping[str, object], timeout_seconds: int) -> WorkerOutput:
 	"""Run the worker on the request and end its process group after timeout_seconds without an answer."""
-	process = subprocess.Popen(  # noqa: S603 - the interpreter of this process with a fixed module
+	return wait_for(start_worker(), Sealed(json.dumps(request).encode()), timeout_seconds)
+
+
+def start_worker() -> subprocess.Popen:
+	"""The worker process, waiting for its request on standard input."""
+	return subprocess.Popen(  # noqa: S603 - the interpreter of this process with a fixed module
 		[sys.executable, "-E", "-s", "-m", WORKER_MODULE],
 		stdin=subprocess.PIPE,
 		stdout=subprocess.PIPE,
@@ -133,14 +140,27 @@ def call_worker(request: Mapping[str, object], timeout_seconds: int) -> WorkerOu
 		env=WORKER_ENVIRONMENT,
 		process_group=0,
 	)
+
+
+def wait_for(worker: subprocess.Popen, request_secret: Sealed, timeout_seconds: int) -> WorkerOutput:
+	"""Hand the request to the worker and wait for its answer.
+
+	The process group of the worker is ended after timeout_seconds without an answer and before any
+	exception leaves, so that no worker outlives the call.
+	"""
 	try:
-		stdout, stderr = process.communicate(json.dumps(request).encode(), timeout=timeout_seconds)
+		stdout, stderr = worker.communicate(request_secret, timeout=timeout_seconds)
 	except subprocess.TimeoutExpired:
-		with suppress(ProcessLookupError):
-			os.killpg(process.pid, signal.SIGKILL)
-		stdout, stderr = process.communicate()
-		return WorkerOutput(process.returncode, stdout, stderr.decode(errors="replace"), timeout_seconds)
-	return WorkerOutput(process.returncode, stdout, stderr.decode(errors="replace"))
+		_end(worker)
+		stdout, stderr = worker.communicate()
+		return WorkerOutput(worker.returncode, stdout, stderr.decode(errors="replace"), timeout_seconds)
+	except BaseException:
+		_end(worker)
+		worker.wait()
+		for stream in (worker.stdin, worker.stdout, worker.stderr):
+			stream.close()
+		raise
+	return WorkerOutput(worker.returncode, stdout, stderr.decode(errors="replace"))
 
 
 def answer(output: WorkerOutput) -> object:
@@ -172,12 +192,25 @@ def interpret(output: WorkerOutput, operation: Operation, version: str) -> Trans
 		problem = str(error)
 	except ValueError:
 		problem = "Die Antwort des ERiC-Prozesses ist kein Ergebnis."
-	testmerker = TESTMERKER if operation is Operation.TEST_SEND else None
-	message = Message(WORKER_CODE, problem, ERROR)
-	nothing_sent = not operation.sends or (
-		output.timeout_seconds is None and output.returncode == EXIT_INVALID_REQUEST
+	understood = output.timeout_seconds is not None or output.returncode != EXIT_INVALID_REQUEST
+	return _no_result(operation, version, Message(WORKER_CODE, problem, ERROR), maybe_sent=understood)
+
+
+def lost(operation: Operation, version: str, error: Exception) -> TransmissionResult:
+	"""The result after an exception that ended the worker while it ran: unknown for a send."""
+	message = Message(
+		WORKER_CODE,
+		f"Der Lauf von ERiC wurde durch {type(error).__name__} unterbrochen, der ERiC-Prozess wurde beendet.",
+		ERROR,
 	)
-	if nothing_sent:
+	return _no_result(operation, version, message, maybe_sent=True)
+
+
+def _no_result(
+	operation: Operation, version: str, message: Message, *, maybe_sent: bool
+) -> TransmissionResult:
+	testmerker = TESTMERKER if operation is Operation.TEST_SEND else None
+	if not (operation.sends and maybe_sent):
 		return TransmissionResult(
 			operation, False, False, version, None, testmerker, (message,), outcome=Outcome.FAILED
 		)
@@ -191,3 +224,34 @@ def interpret(output: WorkerOutput, operation: Operation, version: str) -> Trans
 		(message, UNKNOWN_MESSAGE),
 		outcome=Outcome.UNKNOWN,
 	)
+
+
+def _process_request(
+	operation: Operation,
+	nutzdaten_xml: str,
+	header: EnvelopeHeader,
+	runtime: RuntimeInfo,
+	certificate_secret: bytes | None,
+	certificate_password: str | None,
+) -> Sealed:
+	"""The request of the worker for the operation, as Sealed JSON: the dictionary never outlives this call."""
+	return Sealed(
+		json.dumps(
+			{
+				"command": "process",
+				"operation": operation.value,
+				"nutzdaten": nutzdaten_xml,
+				"header": asdict(header),
+				"runtime": runtime.to_dict(),
+				"certificate_secret": (
+					None if certificate_secret is None else base64.b64encode(certificate_secret).decode()
+				),
+				"certificate_password": certificate_password,
+			}
+		).encode()
+	)
+
+
+def _end(worker: subprocess.Popen) -> None:
+	with suppress(ProcessLookupError):
+		os.killpg(worker.pid, signal.SIGKILL)

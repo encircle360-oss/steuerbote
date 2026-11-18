@@ -1,18 +1,29 @@
+import base64
 import hashlib
+import json
 import shutil
+import signal
+import subprocess
 import tempfile
 import time
 import zipfile
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from unittest import TestCase
+from unittest import TestCase, mock
 
 from steuerbote.eric import service
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import ERROR, TESTMERKER, Operation, Outcome
 from steuerbote.eric.runtime import RuntimeInfo, install_from_archive
-from steuerbote.eric.service import WorkerError, WorkerOutput, library_versions, run
+from steuerbote.eric.service import (
+	WorkerError,
+	WorkerOutput,
+	library_versions,
+	run,
+)
 from steuerbote.eric.tests import stub
+from steuerbote.eric.tests.tracebacks import frame_variables, interrupted_after
 
 NUTZDATEN = (
 	'<Anmeldungssteuern xmlns="http://finkonsens.de/elster/elsteranmeldung/ustva/v2026" version="2026">'
@@ -31,7 +42,16 @@ HEADER = EnvelopeHeader(
 )
 TEST_HEADER = replace(HEADER, testmerker=TESTMERKER)
 CONTAINER = b"\x30\x82\x01\x00fake\x00pkcs12"
-PIN = "123456"
+PIN = "Geheim-PIN-4711"
+SECRETS = (PIN, base64.b64encode(CONTAINER).decode(), "pkcs12")
+
+
+class JobTimeout(Exception):
+	"""Stands in for the exception a background job gets when it runs too long."""
+
+
+class Interrupted(BaseException):
+	"""An exception that no handler of steuerbote catches."""
 
 
 def nutzdaten(marker: str = "") -> str:
@@ -48,6 +68,18 @@ class ServiceTestCase(TestCase):
 
 	def codes(self, result) -> list[str]:
 		return [message.code for message in result.messages]
+
+	def started_workers(self) -> list[subprocess.Popen]:
+		"""The worker processes the service starts during the test."""
+		workers = []
+		start = service.start_worker
+
+		def recorded() -> subprocess.Popen:
+			workers.append(start())
+			return workers[-1]
+
+		self.enterContext(mock.patch.object(service, "start_worker", side_effect=recorded))
+		return workers
 
 
 class SimulationDispatchTest(ServiceTestCase):
@@ -127,6 +159,125 @@ class LostWorkerTest(ServiceTestCase):
 		result = run(Operation.VALIDATE, nutzdaten("STUB-ABORT"), HEADER, self.runtime, None, None)
 		self.assertIs(result.outcome, Outcome.FAILED)
 		self.assertIn("SIGABRT", result.messages[0].text)
+
+	def test_an_exception_while_a_send_runs_ends_the_worker_and_leaves_the_outcome_unknown(self):
+		workers = self.started_workers()
+		with interrupted_after(1, JobTimeout(PIN)):
+			result = run(
+				Operation.SEND,
+				nutzdaten("STUB-SLEEP"),
+				HEADER,
+				self.runtime,
+				CONTAINER,
+				PIN,
+				timeout_seconds=60,
+			)
+		self.assertIs(result.outcome, Outcome.UNKNOWN)
+		self.assertEqual(self.codes(result), ["SB-WORKER", "SB-UNKNOWN"])
+		self.assertIn("JobTimeout", result.messages[0].text)
+		self.assertNotIn(PIN, result.messages[0].text)
+		(worker,) = workers
+		self.assertEqual(worker.returncode, -signal.SIGKILL)
+
+	def test_an_exception_while_a_check_runs_fails_it(self):
+		with interrupted_after(1, JobTimeout()):
+			result = run(
+				Operation.VALIDATE,
+				nutzdaten("STUB-SLEEP"),
+				HEADER,
+				self.runtime,
+				None,
+				None,
+				timeout_seconds=60,
+			)
+		self.assertIs(result.outcome, Outcome.FAILED)
+		self.assertEqual(self.codes(result), ["SB-WORKER"])
+
+	def test_an_exception_no_handler_catches_still_ends_the_worker(self):
+		workers = self.started_workers()
+		with self.assertRaises(Interrupted), interrupted_after(1, Interrupted()):
+			run(
+				Operation.SEND,
+				nutzdaten("STUB-SLEEP"),
+				HEADER,
+				self.runtime,
+				CONTAINER,
+				PIN,
+				timeout_seconds=60,
+			)
+		(worker,) = workers
+		self.assertEqual(worker.returncode, -signal.SIGKILL)
+		self.assertTrue(worker.stdout.closed and worker.stderr.closed)
+
+	def test_a_worker_that_does_not_start_sent_nothing_and_the_error_stays(self):
+		with (
+			mock.patch.object(service, "start_worker", side_effect=OSError("kein Prozess")),
+			self.assertRaises(OSError),
+		):
+			run(Operation.SEND, nutzdaten(), HEADER, self.runtime, CONTAINER, PIN)
+
+
+class TracebackTest(ServiceTestCase):
+	"""What a traceback with the local variables of its frames, as Frappe writes it in developer mode, shows."""
+
+	def raised(self, call: Callable[[], object]) -> BaseException:
+		try:
+			call()
+		except (OSError, Interrupted) as error:
+			return error
+		self.fail("the call raised nothing")
+
+	def assertShowsNoSecret(self, error: BaseException) -> str:
+		variables = frame_variables(error)
+		for secret in SECRETS:
+			self.assertNotIn(secret, variables)
+		return variables
+
+	def test_an_error_before_the_worker_starts(self):
+		with mock.patch.object(service, "start_worker", side_effect=OSError("kein Prozess")):
+			error = self.raised(
+				lambda: run(Operation.SEND, nutzdaten(), HEADER, self.runtime, CONTAINER, PIN)
+			)
+		variables = self.assertShowsNoSecret(error)
+		self.assertIn("certificate_secret = ********", variables)
+		self.assertIn("request_secret = ********", variables)
+
+	def test_an_exception_while_the_worker_runs(self):
+		with interrupted_after(1, Interrupted()):
+			error = self.raised(
+				lambda: run(
+					Operation.SEND,
+					nutzdaten("STUB-SLEEP"),
+					HEADER,
+					self.runtime,
+					CONTAINER,
+					PIN,
+					timeout_seconds=60,
+				)
+			)
+		variables = self.assertShowsNoSecret(error)
+		self.assertIn("in _communicate", variables)
+		self.assertIn("input = <sealed>", variables)
+
+	def test_the_request_of_a_run_is_sealed(self):
+		request = service._process_request(Operation.SEND, nutzdaten(), HEADER, self.runtime, CONTAINER, PIN)
+		self.assertEqual((repr(request), str(request)), ("<sealed>", "<sealed>"))
+		data = json.loads(request)
+		self.assertEqual(
+			(base64.b64decode(data["certificate_secret"]), data["certificate_password"]), (CONTAINER, PIN)
+		)
+
+	def test_hides_what_frappe_hides(self):
+		def fail(certificate_password: str, request: dict, container: bytes) -> None:
+			raise OSError("kaputt")
+
+		error = self.raised(
+			lambda: fail(PIN, {"certificate_secret": "geheim", "nutzdaten": "<Kz83/>"}, b"offen")
+		)
+		variables = frame_variables(error)
+		self.assertIn("certificate_password = ********", variables)
+		self.assertIn("{certificate_secret: ********, nutzdaten: <Kz83/>}", variables)
+		self.assertIn("container = b'offen'", variables)
 
 
 class OutputTest(TestCase):
