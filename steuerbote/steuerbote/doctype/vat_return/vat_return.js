@@ -4,6 +4,8 @@ const STASH_CERTIFICATE = "steuerbote.steuerbote.doctype.vat_return.vat_return.s
 frappe.ui.form.on("VAT Return", {
 	setup(frm) {
 		frappe.realtime.on(TRANSMISSION_EVENT, (data) => on_transmission_finished(frm, data));
+		// Frappe asks to submit a draft, but Buchen alone files nothing: show_ready_note says how to file.
+		frm.show_submit_message = () => {};
 	},
 
 	refresh(frm) {
@@ -30,6 +32,7 @@ frappe.ui.form.on("VAT Return", {
 				__("View")
 			);
 		}
+		show_ready_note(frm);
 		show_elster_intro(frm);
 		add_elster_buttons(frm);
 	},
@@ -83,6 +86,32 @@ function offer_buchen_only_for_an_accepted_send(frm) {
 	}
 }
 
+function transmission_blocked(frm) {
+	return frm.doc.transmission_in_progress || elster_state(frm).sent;
+}
+
+function ready_to_file(frm) {
+	return (
+		!frm.is_new() &&
+		frm.doc.docstatus === 0 &&
+		frm.doc.status === "Bereit" &&
+		!transmission_blocked(frm)
+	);
+}
+
+function show_ready_note(frm) {
+	if (frm.$ready_note) {
+		frm.$ready_note.remove();
+		frm.$ready_note = null;
+	}
+	if (ready_to_file(frm)) {
+		frm.$ready_note = frm.dashboard.set_headline_alert(
+			__("Ready to file: make the XML for Mein ELSTER or transmit through ELSTER."),
+			"blue"
+		);
+	}
+}
+
 function show_elster_intro(frm) {
 	const notes = [];
 	if (!frm.is_new() && frm.doc.docstatus === 0) {
@@ -111,8 +140,7 @@ function show_elster_intro(frm) {
 
 function add_elster_buttons(frm) {
 	const calculated = ["Berechnet", "Bereit"].includes(frm.doc.status);
-	const blocked = frm.doc.transmission_in_progress || elster_state(frm).sent;
-	if (frm.is_new() || frm.doc.docstatus !== 0 || blocked || !calculated) {
+	if (frm.is_new() || frm.doc.docstatus !== 0 || transmission_blocked(frm) || !calculated) {
 		return;
 	}
 	const group = __("ELSTER");

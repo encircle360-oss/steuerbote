@@ -20,6 +20,7 @@ REPORT = MODULE / "report" / "ustva_kennzahlen"
 WORKSPACE = MODULE / "workspace" / "steuern" / "steuern.json"
 NUMBER_CARDS = MODULE / "number_card"
 PRINT_FORMAT = MODULE / "print_format" / "umsatzsteuer_voranmeldung"
+VAT_RETURN_SCRIPT = MODULE / "doctype" / "vat_return" / "vat_return.js"
 
 # Names of the app that read the same in every language.
 GERMAN_NAMES = frozenset({"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen"})
@@ -50,9 +51,13 @@ def read_json(path: Path) -> dict:
 	return json.loads(path.read_text(encoding="utf-8"))
 
 
-def translated() -> set[str]:
+def translations() -> dict[str, str]:
 	with TRANSLATIONS.open(encoding="utf-8", newline="") as file:
-		return {source for source, *_ in csv.reader(file)}
+		return dict(csv.reader(file))
+
+
+def translated() -> set[str]:
+	return set(translations())
 
 
 def doctype_names() -> set[str]:
@@ -275,3 +280,23 @@ class PrintFormatFilesTest(TestCase):
 			+ "} -%}",
 			self.template,
 		)
+
+
+class VatReturnFormFilesTest(TestCase):
+	"""A draft is filed through ELSTER or a note of its filing, never by Buchen alone."""
+
+	def setUp(self):
+		self.script = VAT_RETURN_SCRIPT.read_text(encoding="utf-8")
+
+	def test_a_draft_gets_no_hint_to_submit_it(self):
+		setup = re.search(r"\n\tsetup\(frm\) \{\n(?P<body>.*?)\n\t\},\n", self.script, re.DOTALL)
+		self.assertIsNotNone(setup)
+		self.assertIn("frm.show_submit_message = () => {};", setup["body"])
+
+	def test_a_return_ready_to_file_says_how_to_file_it(self):
+		(note,) = re.findall(r'__\("(Ready to file: [^"]*)"\)', self.script)
+		self.assertEqual(
+			translations()[note],
+			"Bereit zur Abgabe: XML für Mein ELSTER erzeugen oder über ELSTER übermitteln.",
+		)
+		self.assertRegex(self.script, r'frm\.doc\.status === "Bereit"')
