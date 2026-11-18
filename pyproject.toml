@@ -66,10 +66,13 @@ testpaths = [
     "steuerbote/ustva",
     "steuerbote/elster",
     "steuerbote/eric",
+    "steuerbote/steuerbote/doctype/elster_transmission/test_transmission_translations.py",
     "steuerbote/steuerbote/doctype/vat_return/test_bridge.py",
     "steuerbote/steuerbote/doctype/vat_return_settings/test_rules.py",
     "steuerbote/steuerbote/doctype/vat_return_settings/test_translations.py",
+    "steuerbote/steuerbote/report/ustva_kennzahlen/test_attribution.py",
     "steuerbote/tests/test_mapping_sync.py",
+    "steuerbote/tests/test_standard_records.py",
 ]
 # The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
 addopts = "--strict-markers --ignore=steuerbote/eric/tests/test_secrets.py"
@@ -83,6 +86,7 @@ source = [
     "steuerbote/eric",
     "steuerbote.steuerbote.doctype.vat_return.bridge",
     "steuerbote.steuerbote.doctype.vat_return_settings.rules",
+    "steuerbote.steuerbote.report.ustva_kennzahlen.attribution",
     "steuerbote.mapping_sync",
 ]
 omit = ["*/tests/*", "*/steuerbote/eric/secrets.py"]
