@@ -7,16 +7,46 @@ year, not from earlier VAT Returns: the ledger is the source of every Kennzahl, 
 before any return of those periods exists. All amounts are reported amounts, as the form rounds them.
 
 compared_rows() adds the amounts of the compared periods and the difference to the previous period to the
-rows of report_rows().
+rows of report_rows(). only_deviations() keeps the rows whose change to the previous period exceeds both
+thresholds of the VAT Return Settings, in euros and relative to the previous period, with their vouchers.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
 from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import COLUMNS, SUM_LINES
 from steuerbote.ustva import Period, UstvaResult
-from steuerbote.ustva.rounding import ZERO
+from steuerbote.ustva.rounding import HUNDRED, ZERO
+
+DEFAULT_PERCENT = Decimal("50")
+DEFAULT_AMOUNT = Decimal("100")
+
+
+@dataclass(frozen=True, slots=True)
+class Thresholds:
+	"""When a change to the previous period is a deviation: it exceeds ``amount`` euros and ``percent`` of
+	the previous amount. A change from zero exceeds every percentage."""
+
+	percent: Decimal = DEFAULT_PERCENT
+	amount: Decimal = DEFAULT_AMOUNT
+
+	@classmethod
+	def of(cls, percent: object, amount: object) -> Thresholds:
+		"""The thresholds as the VAT Return Settings hold them; a value that is not set takes the default."""
+		return cls(_setting(percent, DEFAULT_PERCENT), _setting(amount, DEFAULT_AMOUNT))
+
+	def exceeded(self, current: Decimal, previous: Decimal) -> bool:
+		change = abs(current - previous)
+		return change > self.amount and change * HUNDRED > self.percent * abs(previous)
+
+
+def _setting(value: object, default: Decimal) -> Decimal:
+	"""Frappe hands out a float for a Percent or Currency field, and nothing for a field that is not set."""
+	if value is None or value == "":
+		return default
+	return Decimal(str(value))
 
 
 def year_before(period: Period) -> Period:
@@ -74,6 +104,23 @@ def _key(row: dict[str, Any]) -> str | int | None:
 	if row["indent"]:
 		return None
 	return row["kennzahl"] or row["line"]
+
+
+def only_deviations(rows: Sequence[dict[str, Any]], thresholds: Thresholds) -> list[dict[str, Any]]:
+	"""The rows that deviate from the previous period, each with its vouchers.
+
+	A row without an amount of the previous period stays, since nothing tells whether it deviates; so does
+	a note.
+	"""
+	kept: list[dict[str, Any]] = []
+	keep = True
+	for row in rows:
+		if not row["indent"]:
+			previous = row["previous_period"]
+			keep = previous is None or thresholds.exceeded(row["reported"], previous)
+		if keep:
+			kept.append(row)
+	return kept
 
 
 def note_row(text: str) -> dict[str, Any]:

@@ -144,6 +144,7 @@
 "One Umsatzsteuer-Voranmeldung of a company for one Voranmeldungszeitraum, computed from the general ledger.","Eine Umsatzsteuer-Voranmeldung eines Unternehmens für einen Voranmeldungszeitraum, berechnet aus dem Hauptbuch."
 "One row per year. Without a row, the deadlines of that year are not extended.","Eine Zeile je Jahr. Ohne Zeile verlängern sich die Fristen dieses Jahres nicht."
 "One run of Prüfen, Testsenden or Senden for a VAT Return, or the note that it was filed outside Steuerbote. Recorded by the server and kept unchanged.","Ein Lauf von Prüfen, Testsenden oder Senden für eine Umsatzsteuer-Voranmeldung oder der Vermerk, dass sie außerhalb von Steuerbote abgegeben wurde. Vom Server aufgezeichnet und danach unverändert."
+"Only Deviations","Nur Abweichungen"
 "Only a draft return can be calculated.","Nur eine Meldung im Entwurf kann berechnet werden."
 "Only a draft return can be marked as filed.","Nur eine Meldung im Entwurf kann als abgegeben vermerkt werden."
 "Only a draft return can be transmitted. A filed return is corrected by a corrected return (Kz 10).","Nur eine Meldung im Entwurf kann übermittelt werden. Eine abgegebene Meldung wird durch eine berichtigte Anmeldung (Kz 10) korrigiert."

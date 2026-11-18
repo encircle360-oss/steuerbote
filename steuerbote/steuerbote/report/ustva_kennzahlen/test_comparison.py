@@ -3,9 +3,13 @@ from unittest import TestCase
 
 from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import COLUMNS, contributions, report_rows
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import (
+	DEFAULT_AMOUNT,
+	DEFAULT_PERCENT,
+	Thresholds,
 	compared_kennzahlen,
 	compared_rows,
 	note_row,
+	only_deviations,
 	year_before,
 )
 from steuerbote.ustva import LedgerLine, Period, UstvaResult, calculate
@@ -147,6 +151,69 @@ class ComparedKennzahlenTest(TestCase):
 
 	def test_without_compared_periods_there_is_nothing_more_to_show(self):
 		self.assertEqual(compared_kennzahlen(None, None), frozenset())
+
+
+class ThresholdsTest(TestCase):
+	def test_the_defaults_are_50_percent_and_100_euros(self):
+		self.assertEqual(
+			(Thresholds().percent, Thresholds().amount, DEFAULT_PERCENT, DEFAULT_AMOUNT),
+			(d("50"), d("100"), d("50"), d("100")),
+		)
+
+	def test_a_change_deviates_when_it_exceeds_both_thresholds(self):
+		self.assertTrue(Thresholds().exceeded(d("451"), d("300")))
+		self.assertTrue(Thresholds().exceeded(d("0"), d("800")))
+
+	def test_a_change_up_to_the_amount_does_not_deviate(self):
+		self.assertFalse(Thresholds().exceeded(d("200"), d("100")))
+		self.assertTrue(Thresholds().exceeded(d("200.01"), d("100")))
+
+	def test_a_change_up_to_the_percentage_does_not_deviate(self):
+		self.assertFalse(Thresholds().exceeded(d("450"), d("300")))
+		self.assertFalse(Thresholds().exceeded(d("1200"), d("1000")))
+
+	def test_a_change_from_zero_exceeds_every_percentage(self):
+		self.assertTrue(Thresholds(percent=d("1000000")).exceeded(d("100.01"), d("0")))
+		self.assertFalse(Thresholds().exceeded(d("100"), d("0")))
+
+	def test_the_percentage_is_taken_of_the_size_of_a_negative_previous_amount(self):
+		self.assertTrue(Thresholds().exceeded(d("-50"), d("-200")))
+		self.assertFalse(Thresholds().exceeded(d("-250"), d("-400")))
+
+	def test_settings_without_values_take_the_defaults(self):
+		self.assertEqual(Thresholds.of(None, None), Thresholds())
+		self.assertEqual(Thresholds.of("", ""), Thresholds())
+
+	def test_settings_values_become_decimals(self):
+		self.assertEqual(Thresholds.of(12.5, 30.0), Thresholds(d("12.5"), d("30.0")))
+		self.assertEqual(Thresholds.of("20", 0), Thresholds(d("20"), d("0")))
+
+
+class OnlyDeviationsTest(TestCase):
+	def test_the_defaults_keep_the_kennzahl_that_dropped_to_zero(self):
+		self.assertEqual(
+			[(row["kennzahl"], row["line"]) for row in only_deviations(compared(), Thresholds())],
+			[("41", 19)],
+		)
+
+	def test_a_kennzahl_that_deviates_keeps_its_vouchers(self):
+		rows = only_deviations(compared(), Thresholds(percent=d("10"), amount=d("30")))
+		self.assertEqual(
+			[(row["indent"], row["kennzahl"], row["line"], row["voucher_no"]) for row in rows],
+			[
+				(0, "81", 13, None),
+				(1, "81", None, "JE-1"),
+				(0, "41", 19, None),
+				(0, None, 37, None),
+				(0, None, 45, None),
+				(0, None, 48, None),
+				(0, "83", 50, None),
+			],
+		)
+
+	def test_rows_without_a_previous_period_and_notes_stay(self):
+		rows = [note_row("Kein Vergleich mit Februar 2026."), *compared(previous=None)]
+		self.assertEqual(only_deviations(rows, Thresholds()), rows)
 
 
 class YearBeforeTest(TestCase):

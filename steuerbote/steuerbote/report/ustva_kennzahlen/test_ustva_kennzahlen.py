@@ -7,6 +7,8 @@ from frappe.desk.query_report import run
 from frappe.tests import IntegrationTestCase
 
 from steuerbote import ustva
+from steuerbote.steuerbote.doctype.vat_return.vat_return import settings_for
+from steuerbote.steuerbote.report.ustva_kennzahlen import ustva_kennzahlen as report
 from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import PARTY_FIELDS, execute
 from steuerbote.tests.helpers import (
 	make_account,
@@ -283,6 +285,7 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 			{(row["previous_period"], row["previous_year"], row["difference"]) for row in january},
 			{(None, None, None)},
 		)
+		self.assertEqual(self.rows(1, only_deviations=1), january)
 
 	def test_a_mapping_that_does_not_fit_a_compared_year_leaves_its_comparison_empty(self):
 		reason = "account 8400: unknown Kennzahl 81"
@@ -296,6 +299,45 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 			],
 		)
 		self.assertEqual({row["previous_period"] for row in rows}, {None})
+
+	def test_only_deviations_keeps_the_kennzahlen_beyond_both_default_thresholds(self):
+		self.assertEqual(
+			[
+				(row["indent"], row["kennzahl"], row["line"], row["voucher_no"])
+				for row in self.rows(3, only_deviations=1)
+			],
+			[
+				(0, None, None, None),
+				(0, "41", 19, None),
+				(0, "46", 30, None),
+				(1, "46", None, self.reverse_charge.name),
+				(0, "45", 36, None),
+				(1, "45", None, self.export.name),
+			],
+		)
+
+	def test_only_deviations_takes_the_thresholds_of_the_settings(self):
+		settings = settings_for(COMPANY)
+		settings.comparison_threshold_percent = 10
+		settings.comparison_threshold_amount = 30
+		with patch.object(report, "settings_for", return_value=settings):
+			rows = self.rows(3, only_deviations=1)
+		self.assertEqual(
+			[(row["kennzahl"], row["line"]) for row in rows if not row["indent"]],
+			[
+				(None, None),
+				("81", 13),
+				("41", 19),
+				("46", 30),
+				("47", 30),
+				("45", 36),
+				(None, 37),
+				("67", 41),
+				(None, 45),
+				(None, 48),
+				("83", 50),
+			],
+		)
 
 	def test_leaves_out_the_cancelled_and_the_excluded_journal_entry(self):
 		vouchers = {row["voucher_no"] for row in self.rows(3)}

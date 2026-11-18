@@ -32,6 +32,8 @@ from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import (
 )
 
 FILTERS = ("company", "year", "rhythm", "period_index")
+# Optional: only the Kennzahlen and sums that deviate from the previous period.
+ONLY_DEVIATIONS = "only_deviations"
 
 # The party of an invoice: the field that links it and the field with its name.
 PARTY_FIELDS = MappingProxyType(
@@ -69,6 +71,8 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 		shown=comparison.compared_kennzahlen(previous, previous_year),
 	)
 	rows = comparison.compared_rows(rows, previous, previous_year)
+	if cint(filters.get(ONLY_DEVIATIONS)):
+		rows = comparison.only_deviations(rows, _thresholds(settings))
 	notes = [comparison.note_row(note) for note in (previous_note, previous_year_note) if note]
 	return get_columns(), notes + rows
 
@@ -171,6 +175,13 @@ def _compared(
 		).format(period.label, period.year, str(error))
 	lines = load_lines(company, period.start, period.end)
 	return _calculate(lines, year_mapping, period, settings), None
+
+
+def _thresholds(settings: Document) -> comparison.Thresholds:
+	"""The thresholds of the company's VAT Return Settings, or the defaults where the settings have none."""
+	return comparison.Thresholds.of(
+		settings.get("comparison_threshold_percent"), settings.get("comparison_threshold_amount")
+	)
 
 
 def _parties(vouchers: Iterable[str | None]) -> dict[str, str]:
