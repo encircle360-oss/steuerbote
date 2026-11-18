@@ -1,17 +1,14 @@
 """VAT Return: the Umsatzsteuer-Voranmeldung of one company for one Voranmeldungszeitraum.
 
-"Berechnen" (calculate) reads the period's general ledger through steuerbote.ledger, the company's mapping
-and settings, and leaves every amount to the core in steuerbote.ustva; bridge.py maps the results onto
-the tables. An override replaces a computed amount once it has a reason, and the totals and Kz 83 always
-follow the amounts as filed. A period is filed once; every further return for it is a corrected return
-(Kz 10), and filing one marks the returns before it as replaced.
-
-Settings and mapping are read by DocType name. Until VAT Return Settings and VAT Return Mapping are on the
-site, a company without them files monthly, without Dauerfristverlängerung, against the default mapping of
-SKR03 reduced to the accounts it has (DefaultSettings, mapping_for).
+"Berechnen" (calculate) reads the period's general ledger through steuerbote.ledger, the company's VAT
+Return Mapping and VAT Return Settings, and leaves every amount to the core in steuerbote.ustva; bridge.py
+maps the results onto the tables. A company can switch between monthly and quarterly filing at the start of
+a quarter, so a period number alone names a month or a quarter: the return carries its rhythm, which has to
+be the one the settings prescribe for the first month of the period. An override replaces a computed amount
+once it has a reason, and the totals and Kz 83 always follow the amounts as filed. A period is filed once;
+every further return for it is a corrected return (Kz 10), and filing one marks the returns before it as
+replaced.
 """
-
-from decimal import Decimal
 
 import frappe
 from frappe import _
@@ -19,10 +16,8 @@ from frappe.model.document import Document
 from frappe.utils import cint
 
 from steuerbote import ustva
-from steuerbote.ledger import account_names, account_numbers, accounts_without_number, load_lines
+from steuerbote.ledger import account_names, accounts_without_number, load_lines
 from steuerbote.steuerbote.doctype.vat_return import bridge
-from steuerbote.ustva.calculation import TOLERANCE_PER_VOUCHER
-from steuerbote.ustva.rounding import ZERO
 
 SETTINGS_DOCTYPE = "VAT Return Settings"
 MAPPING_DOCTYPE = "VAT Return Mapping"
@@ -33,7 +28,7 @@ READY = "Bereit"
 FILED = "Abgegeben"
 REPLACED = "Ersetzt"
 
-PERIOD_FIELDS = ("company", "year", "period_index")
+PERIOD_FIELDS = ("company", "year", "rhythm", "period_index")
 CALCULATED_TABLES = ("kennzahlen", "checks", "deviations", "unmapped")
 
 
@@ -128,7 +123,7 @@ class VATReturn(Document):
 		try:
 			result = ustva.calculate(
 				lines,
-				mapping_for(self.company, year, settings),
+				mapping_for(self.company, year),
 				extra_values=bridge.sondervorauszahlung_values(
 					period,
 					settings.has_dauerfrist(year),
@@ -157,6 +152,7 @@ class VATReturn(Document):
 		return (
 			not self.company
 			or self.year is None
+			or not self.rhythm
 			or self.period_index is None
 			or any(not row.kennzahl for row in self.kennzahlen)
 		)
@@ -167,13 +163,19 @@ class VATReturn(Document):
 		except ustva.UnknownYearError:
 			frappe.throw(_("Steuerbote has no Kennzahlen for {0} yet.").format(self.year))
 
-	def _set_period(self) -> tuple[ustva.Period, object]:
+	def _set_period(self) -> tuple[ustva.Period, Document]:
 		settings = settings_for(self.company)
 		year = cint(self.year)
-		period = self._resolve_period(settings, year)
+		period = self._chosen_period(year)
+		prescribed = settings.rhythm_for(year, period.first_month)
+		if prescribed is not period.rhythm:
+			frappe.throw(
+				_(
+					"For month {0} of {1}, the VAT Return Settings of {2} prescribe filing {3}, not {4}."
+				).format(period.first_month, year, self.company, _(prescribed.value), _(period.rhythm.value))
+			)
 		self.update(
 			{
-				"rhythm": period.rhythm.value,
 				"period_code": period.code,
 				"period_label": period.label,
 				"from_date": period.start,
@@ -185,22 +187,15 @@ class VATReturn(Document):
 		)
 		return period, settings
 
-	def _resolve_period(self, settings, year: int) -> ustva.Period:
-		number = cint(self.period_index)
+	def _chosen_period(self, year: int) -> ustva.Period:
 		try:
-			return bridge.resolve_period(year, number, lambda month: settings.rhythm_for(year, month))
-		except bridge.NoSuchPeriodError:
-			frappe.throw(
-				_("{0} has no Voranmeldungszeitraum number {1} in {2}.").format(self.company, number, year)
-			)
-		except bridge.AmbiguousPeriodError:
+			return ustva.Period(year, ustva.Rhythm(self.rhythm), cint(self.period_index))
+		except ValueError:
 			frappe.throw(
 				_(
-					"Number {0} is a month and a quarter of {1} under the period rules of {2}, so the return cannot tell which period it is for."
-				).format(number, year, self.company)
+					"Filing {0}, there is no Voranmeldungszeitraum {1}: months run from 1 to 12, quarters from 1 to 4."
+				).format(_(self.rhythm), self.period_index)
 			)
-		except ValueError as error:
-			frappe.throw(str(error))
 
 	def _refuse_second_return(self) -> None:
 		if self.is_correction:
@@ -264,50 +259,23 @@ def _read_rows(read, rows, *args):
 		frappe.throw(messages[error.problem].format(error.kennzahl))
 
 
-class DefaultSettings:
-	"""The settings of a company without a VAT Return Settings document: monthly, without Dauerfrist.
-
-	Stands in until VAT Return Settings is on the site, and is to be removed then.
-	"""
-
-	chart = "SKR03"
-	tolerance = TOLERANCE_PER_VOUCHER
-
-	def rhythm_for(self, year: int, month: int) -> ustva.Rhythm:
-		return ustva.Rhythm.MONTHLY
-
-	def has_dauerfrist(self, year: int) -> bool:
-		return False
-
-	def sondervorauszahlung(self, year: int) -> Decimal:
-		return ZERO
-
-
-def settings_for(company: str):
-	"""The company's VAT Return Settings, read by DocType name."""
-	if _exists(SETTINGS_DOCTYPE, company):
-		return frappe.get_doc(SETTINGS_DOCTYPE, company)
-	return DefaultSettings()
-
-
-def mapping_for(company: str, year: int, settings) -> ustva.Mapping:
-	"""The company's VAT Return Mapping for the year.
-
-	Without one, the default mapping of the company's chart, reduced to the accounts the company has. This
-	stands in until VAT Return Mapping is on the site, and is to be removed then.
-	"""
-	if _exists(MAPPING_DOCTYPE, company):
-		return frappe.get_doc(MAPPING_DOCTYPE, company).to_mapping(year)
-	try:
-		defaults = ustva.default_mapping(settings.chart, year)
-	except KeyError:
+def settings_for(company: str) -> Document:
+	"""The company's VAT Return Settings: rhythm, Dauerfristverlängerung, Sondervorauszahlung, tolerance."""
+	if not frappe.db.exists(SETTINGS_DOCTYPE, company):
 		frappe.throw(
-			_("{0} has no VAT Return Mapping, and the chart {1} has no default mapping.").format(
-				company, settings.chart
-			)
+			_(
+				"{0} has no VAT Return Settings. Create them for the company before its first VAT Return."
+			).format(company)
 		)
-	return bridge.reduce_mapping(defaults, account_numbers(company))
+	return frappe.get_doc(SETTINGS_DOCTYPE, company)
 
 
-def _exists(doctype: str, name: str) -> bool:
-	return bool(frappe.db.exists("DocType", doctype) and frappe.db.exists(doctype, name))
+def mapping_for(company: str, year: int) -> ustva.Mapping:
+	"""The core Mapping of the company's VAT Return Mapping, validated against the form of the year."""
+	if not frappe.db.exists(MAPPING_DOCTYPE, company):
+		frappe.throw(
+			_(
+				"{0} has no VAT Return Mapping. Create one for the company, for example from the defaults of its chart, before calculating a VAT Return."
+			).format(company)
+		)
+	return frappe.get_doc(MAPPING_DOCTYPE, company).to_mapping(year)

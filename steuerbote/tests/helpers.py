@@ -1,4 +1,4 @@
-"""Test data for the Frappe tests: companies, accounts and journal entries.
+"""Test data for the Frappe tests: companies, accounts, journal entries, VAT Return Settings and Mapping.
 
 Every test module builds a company of its own with exactly the accounts it needs, so no test depends on
 ERPNext's test records or on another module's data.
@@ -122,6 +122,39 @@ def post_journal_entry(
 	entry.insert(ignore_permissions=True)
 	entry.submit()
 	return entry
+
+
+def make_settings(
+	company: str,
+	period_rules: Iterable[tuple[int, str, int]],
+	prepayments: Iterable[tuple[int, bool, Amount]] = (),
+) -> Document:
+	"""VAT Return Settings with rules (year, rhythm, valid from month) and prepayments (year,
+	Dauerfristverlängerung, Sondervorauszahlung), under an invented Steuernummer of Bayern."""
+	return frappe.get_doc(
+		{
+			"doctype": "VAT Return Settings",
+			"company": company,
+			"state": "Bayern",
+			"tax_number": "123/456/78901",
+			"period_rules": [
+				{"year": year, "rhythm": rhythm, "valid_from_month": month}
+				for year, rhythm, month in period_rules
+			],
+			"prepayments": [
+				{"year": year, "dauerfristverlaengerung": int(dauerfrist), "sondervorauszahlung": amount}
+				for year, dauerfrist, amount in prepayments
+			],
+		}
+	).insert(ignore_permissions=True)
+
+
+def make_mapping(company: str, chart: str = "SKR03") -> Document:
+	"""A VAT Return Mapping with the defaults of the chart for the accounts the company has."""
+	mapping = frappe.new_doc("VAT Return Mapping")
+	mapping.update({"company": company, "chart": chart})
+	mapping.load_defaults()
+	return mapping.insert(ignore_permissions=True)
 
 
 def _ensure_fiscal_year(company: str, posting_date: date | str) -> None:

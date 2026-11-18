@@ -1,76 +1,26 @@
 """Pure Python between the VAT Return document and the core in steuerbote.ustva.
 
-Nothing here imports Frappe. The module finds the Voranmeldungszeitraum a return is for, turns the core's
-result into the rows of the return's tables and computes the sums of the form over the amounts as filed,
-so that the controller only moves data and every rule is tested without a bench. Amounts are computed by
-the core alone.
+Nothing here imports Frappe. The module turns the core's result into the rows of the return's tables and
+computes the sums of the form over the amounts as filed, so that the controller only moves data and every
+rule is tested without a bench. Amounts are computed by the core alone.
 """
 
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Iterable, Sequence
 from collections.abc import Mapping as ReadOnlyMapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Protocol
 
-from steuerbote.ustva import (
-	Kennzahl,
-	LedgerLine,
-	Mapping,
-	Period,
-	Rhythm,
-	UstvaResult,
-	calculate,
-	catalogue_for,
-)
+from steuerbote.ustva import Kennzahl, LedgerLine, Mapping, Period, UstvaResult, calculate, catalogue_for
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL, SONDERVORAUSZAHLUNG_KENNZAHL
 from steuerbote.ustva.rounding import ZERO, to_cents
-
-MONTHS_PER_QUARTER = 3
 
 
 class Row(Protocol):
 	"""A row of the Kennzahlen table: a dict, or a child document of Frappe, which reads the same way."""
 
 	def get(self, key: str, default: Any = None) -> Any: ...
-
-
-class NoSuchPeriodError(ValueError):
-	"""No month or quarter with this number fits the rhythm the company files in."""
-
-
-class AmbiguousPeriodError(ValueError):
-	"""The number names a month and a quarter of the year, both of which the company files."""
-
-
-def resolve_period(year: int, number: int, rhythm_of_month: Callable[[int], Rhythm]) -> Period:
-	"""The Voranmeldungszeitraum with this number: month 1 to 12 or quarter 1 to 4, by the company's rhythm.
-
-	``rhythm_of_month`` gives the rhythm a month of the year is filed in. The rhythm can change at the start
-	of a quarter, so the number is read as a month and as a quarter, and the reading whose first month is
-	filed in that rhythm is the period. A month that the rules refuse, such as one without a filing
-	obligation, rules out only the reading it belongs to.
-	"""
-	readings = [(Rhythm.MONTHLY, 12, number), (Rhythm.QUARTERLY, 4, (number - 1) * MONTHS_PER_QUARTER + 1)]
-	periods: list[Period] = []
-	refusals: list[Exception] = []
-	for rhythm, last, first_month in readings:
-		if not 1 <= number <= last:
-			continue
-		try:
-			filed_in = Rhythm(rhythm_of_month(first_month))
-		except Exception as refusal:
-			refusals.append(refusal)
-			continue
-		if filed_in is rhythm:
-			periods.append(Period(year, rhythm, number))
-	if len(periods) > 1:
-		raise AmbiguousPeriodError(f"{number} is a month and a quarter of {year}")
-	if periods:
-		return periods[0]
-	if refusals:
-		raise refusals[0]
-	raise NoSuchPeriodError(f"{year} has no Voranmeldungszeitraum {number}")
 
 
 def sondervorauszahlung_values(period: Period, has_dauerfrist: bool, amount: Decimal) -> dict[str, Decimal]:
@@ -84,27 +34,6 @@ def sondervorauszahlung_values(period: Period, has_dauerfrist: bool, amount: Dec
 	if has_dauerfrist and amount and period.next().year != period.year:
 		return {SONDERVORAUSZAHLUNG_KENNZAHL: amount}
 	return {}
-
-
-def reduce_mapping(mapping: Mapping, account_numbers: Collection[str]) -> Mapping:
-	"""The mapping restricted to the accounts a company has.
-
-	Rules and watched accounts are kept for the accounts that exist. A check keeps its existing base and tax
-	accounts and is dropped when either side is left empty, because it would compare against nothing.
-	"""
-	existing = frozenset(account_numbers)
-	checks = []
-	for check in mapping.checks:
-		bases = tuple(account for account in check.base_accounts if account in existing)
-		taxes = tuple(account for account in check.tax_accounts if account in existing)
-		if bases and taxes:
-			checks.append(replace(check, base_accounts=bases, tax_accounts=taxes))
-	return replace(
-		mapping,
-		rules=tuple(rule for rule in mapping.rules if rule.account_number in existing),
-		checks=tuple(checks),
-		watched=tuple(account for account in mapping.watched if account in existing),
-	)
 
 
 @dataclass(frozen=True, slots=True)

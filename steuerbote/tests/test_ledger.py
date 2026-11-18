@@ -3,15 +3,15 @@ from decimal import Decimal
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from steuerbote.ledger import (
-	EXCLUDE_FIELD,
-	account_names,
-	account_numbers,
-	accounts_without_number,
-	load_lines,
+from steuerbote.ledger import EXCLUDE_FIELD, account_names, accounts_without_number, load_lines
+from steuerbote.tests.helpers import (
+	make_account,
+	make_company,
+	make_mapping,
+	make_settings,
+	post_journal_entry,
 )
-from steuerbote.tests.helpers import make_account, make_company, post_journal_entry
-from steuerbote.ustva import LedgerLine
+from steuerbote.ustva import LedgerLine, Period, calculate
 
 COMPANY = "Steuerbote Test Hauptbuch GmbH"
 NEIGHBOUR = "Steuerbote Test Hauptbuch Nachbar GmbH"
@@ -30,6 +30,8 @@ class LedgerTest(IntegrationTestCase):
 		cls.output_tax = make_account(COMPANY, "1776", "Umsatzsteuer 19 %", "Liability")
 		cls.bank = make_account(COMPANY, "1200", "Bank", "Asset")
 		cls.cash = make_account(COMPANY, None, "Kasse", "Asset")
+		make_settings(COMPANY, [(2026, "monthly", 1)])
+		cls.mapping = make_mapping(COMPANY)
 		make_company(NEIGHBOUR, "STHN")
 		cls.neighbour_revenue = make_account(NEIGHBOUR, "8400", "Erlöse 19 % USt", "Income")
 		cls.neighbour_bank = make_account(NEIGHBOUR, "1200", "Bank", "Asset")
@@ -132,9 +134,19 @@ class LedgerTest(IntegrationTestCase):
 		)
 		self.assertEqual(accounts_without_number(COMPANY), [self.cash])
 
-	def test_account_numbers_and_names_of_a_company(self):
-		self.assertEqual(account_numbers(COMPANY), {"8400", "1776", "1200"})
+	def test_account_names_by_number(self):
 		self.assertEqual(
 			account_names(COMPANY, ["8400", "1776", "9999"]), {"8400": self.revenue, "1776": self.output_tax}
 		)
 		self.assertEqual(account_names(COMPANY, []), {})
+
+	def test_the_lines_of_a_period_meet_the_mapping_of_the_company(self):
+		post_journal_entry(
+			COMPANY, "2026-10-05", [(self.bank, 119, 0), (self.revenue, 0, 100), (self.output_tax, 0, 19)]
+		)
+		settings = frappe.get_doc("VAT Return Settings", COMPANY)
+		period = Period(2026, settings.rhythm_for(2026, 10), 10)
+		result = calculate(load_lines(COMPANY, period.start, period.end), self.mapping.to_mapping(2026))
+		self.assertEqual((result.reported("81"), result.kz83), (Decimal("100"), Decimal("19.00")))
+		self.assertEqual([check.label for check in result.checks], ["Umsatzsteuer 19 %"])
+		self.assertTrue(result.ready)

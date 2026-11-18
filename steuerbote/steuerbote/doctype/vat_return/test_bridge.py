@@ -2,12 +2,8 @@ from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.steuerbote.doctype.vat_return import bridge
-from steuerbote.ustva import KENNZAHLEN, LedgerLine, Period, Rhythm, calculate, default_mapping
+from steuerbote.ustva import KENNZAHLEN, LedgerLine, Period, calculate
 from steuerbote.ustva.defaults import SKR03
-
-VERIFIED_ACCOUNTS = frozenset(
-	{"8400", "1776", "8336", "8338", "3123", "1787", "1577", "1576", "1200", "1400"}
-)
 
 
 def d(value: str) -> Decimal:
@@ -37,83 +33,6 @@ def verified_month() -> list[LedgerLine]:
 	]
 
 
-def monthly(month: int) -> Rhythm:
-	return Rhythm.MONTHLY
-
-
-def quarterly(month: int) -> Rhythm:
-	return Rhythm.QUARTERLY
-
-
-def monthly_from_july(month: int) -> Rhythm:
-	return Rhythm.QUARTERLY if month < 7 else Rhythm.MONTHLY
-
-
-def quarterly_from_july(month: int) -> Rhythm:
-	return Rhythm.MONTHLY if month < 7 else Rhythm.QUARTERLY
-
-
-def no_filing_from_july(month: int) -> Rhythm:
-	if month >= 7:
-		raise ValueError("no Voranmeldung from July")
-	return Rhythm.MONTHLY
-
-
-class ResolvePeriodTest(TestCase):
-	def test_a_monthly_company_files_months(self):
-		self.assertEqual(bridge.resolve_period(2026, 3, monthly), Period.month(2026, 3))
-		self.assertEqual(bridge.resolve_period(2026, 12, monthly), Period.month(2026, 12))
-
-	def test_a_quarterly_company_files_quarters(self):
-		self.assertEqual(bridge.resolve_period(2026, 2, quarterly), Period.quarter(2026, 2))
-
-	def test_numbers_outside_the_year_name_no_period(self):
-		for number in (0, -1, 13):
-			with self.subTest(number=number), self.assertRaises(bridge.NoSuchPeriodError):
-				bridge.resolve_period(2026, number, monthly)
-		with self.assertRaises(bridge.NoSuchPeriodError):
-			bridge.resolve_period(2026, 5, quarterly)
-
-	def test_each_reading_asks_for_the_rhythm_of_its_first_month(self):
-		asked = []
-
-		def recording(month: int) -> Rhythm:
-			asked.append(month)
-			return Rhythm.MONTHLY
-
-		bridge.resolve_period(2026, 3, recording)
-		self.assertEqual(asked, [3, 7])
-
-	def test_a_change_to_monthly_filing_in_july(self):
-		self.assertEqual(bridge.resolve_period(2026, 2, monthly_from_july), Period.quarter(2026, 2))
-		self.assertEqual(bridge.resolve_period(2026, 8, monthly_from_july), Period.month(2026, 8))
-		for number in (3, 4):
-			with self.subTest(number=number), self.assertRaises(bridge.NoSuchPeriodError):
-				bridge.resolve_period(2026, number, monthly_from_july)
-
-	def test_a_number_that_names_a_month_and_a_quarter_is_refused(self):
-		self.assertEqual(bridge.resolve_period(2026, 2, quarterly_from_july), Period.month(2026, 2))
-		for number in (3, 4):
-			with self.subTest(number=number), self.assertRaises(bridge.AmbiguousPeriodError):
-				bridge.resolve_period(2026, number, quarterly_from_july)
-
-	def test_a_month_without_filing_rules_out_only_its_own_reading(self):
-		self.assertEqual(bridge.resolve_period(2026, 3, no_filing_from_july), Period.month(2026, 3))
-		with self.assertRaisesRegex(ValueError, "no Voranmeldung from July"):
-			bridge.resolve_period(2026, 8, no_filing_from_july)
-
-	def test_the_rhythm_may_come_as_its_value(self):
-		self.assertEqual(bridge.resolve_period(2026, 2, lambda month: "quarterly"), Period.quarter(2026, 2))
-
-	def test_a_rhythm_that_is_none_of_both_is_a_refusal(self):
-		with self.assertRaisesRegex(ValueError, "none"):
-			bridge.resolve_period(2026, 2, lambda month: "none")
-
-	def test_the_errors_name_year_and_number(self):
-		with self.assertRaisesRegex(bridge.NoSuchPeriodError, "2026.*13"):
-			bridge.resolve_period(2026, 13, monthly)
-
-
 class SondervorauszahlungTest(TestCase):
 	def test_is_deducted_in_december_with_dauerfrist(self):
 		values = bridge.sondervorauszahlung_values(Period.month(2026, 12), True, d("1200.00"))
@@ -132,41 +51,6 @@ class SondervorauszahlungTest(TestCase):
 
 	def test_nothing_is_deducted_without_an_amount(self):
 		self.assertEqual(bridge.sondervorauszahlung_values(Period.month(2026, 12), True, d("0")), {})
-
-
-class ReduceMappingTest(TestCase):
-	def test_keeps_the_rules_of_the_existing_accounts(self):
-		mapping = bridge.reduce_mapping(SKR03, {"8400", "1776", "3123", "1787", "9999"})
-		self.assertEqual([rule.account_number for rule in mapping.rules], ["8400", "3123"])
-		self.assertEqual(mapping.rule_for("8400"), SKR03.rule_for("8400"))
-
-	def test_reduces_each_check_to_the_existing_accounts(self):
-		mapping = bridge.reduce_mapping(SKR03, {"8400", "1776", "3123", "1787"})
-		self.assertEqual(
-			[(check.label, check.base_accounts, check.tax_accounts) for check in mapping.checks],
-			[
-				("Umsatzsteuer 19 %", ("8400",), ("1776",)),
-				("Umsatzsteuer nach § 13b UStG 19 %", ("3123",), ("1787",)),
-			],
-		)
-
-	def test_drops_a_check_without_a_base_or_a_tax_account(self):
-		self.assertEqual(bridge.reduce_mapping(SKR03, {"8400"}).checks, ())
-		self.assertEqual(bridge.reduce_mapping(SKR03, {"1776"}).checks, ())
-
-	def test_keeps_the_watched_accounts_that_exist(self):
-		self.assertEqual(bridge.reduce_mapping(SKR03, {"1548", "1200"}).watched, ("1548",))
-
-	def test_keeps_chart_and_year(self):
-		mapping = bridge.reduce_mapping(default_mapping("SKR04", 2026), {"4400"})
-		self.assertEqual((mapping.chart, mapping.year), ("SKR04", 2026))
-
-	def test_the_reduced_default_mapping_gives_the_verified_month(self):
-		mapping = bridge.reduce_mapping(default_mapping("SKR03", 2026), VERIFIED_ACCOUNTS)
-		result = calculate(verified_month(), mapping)
-		self.assertEqual(result.reported("81"), d("1000"))
-		self.assertEqual(result.kz83, d("95.00"))
-		self.assertTrue(result.ready)
 
 
 class KennzahlRowsTest(TestCase):
@@ -332,28 +216,31 @@ class FilingTest(TestCase):
 
 
 class CheckRowsTest(TestCase):
-	def test_one_row_per_check_with_its_totals(self):
-		result = calculate(verified_month(), bridge.reduce_mapping(SKR03, VERIFIED_ACCOUNTS))
+	def setUp(self):
+		self.rows = bridge.check_rows(calculate(verified_month(), SKR03))
+
+	def test_one_row_per_check_of_the_mapping_in_its_order(self):
+		self.assertEqual([row["label"] for row in self.rows], [check.label for check in SKR03.checks])
+
+	def test_a_row_carries_the_totals_of_its_check(self):
+		rows = {row["label"]: row for row in self.rows}
 		self.assertEqual(
-			bridge.check_rows(result),
-			[
-				{
-					"label": "Umsatzsteuer 19 %",
-					"computed_tax": d("190.00"),
-					"booked_tax": d("190.00"),
-					"difference": d("0.00"),
-					"deviations": 0,
-					"passed": 1,
-				},
-				{
-					"label": "Umsatzsteuer nach § 13b UStG 19 %",
-					"computed_tax": d("57.00"),
-					"booked_tax": d("57.00"),
-					"difference": d("0.00"),
-					"deviations": 0,
-					"passed": 1,
-				},
-			],
+			rows["Umsatzsteuer 19 %"],
+			{
+				"label": "Umsatzsteuer 19 %",
+				"computed_tax": d("190.00"),
+				"booked_tax": d("190.00"),
+				"difference": d("0.00"),
+				"deviations": 0,
+				"passed": 1,
+			},
+		)
+		self.assertEqual(
+			(
+				rows["Umsatzsteuer nach § 13b UStG 19 %"]["computed_tax"],
+				rows["Umsatzsteuer 7 %"]["computed_tax"],
+			),
+			(d("57.00"), d("0.00")),
 		)
 
 

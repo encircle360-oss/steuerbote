@@ -1,18 +1,28 @@
 from datetime import date
 from decimal import Decimal
-from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from steuerbote.steuerbote.doctype.vat_return import vat_return
-from steuerbote.tests.helpers import make_account, make_company, post_journal_entry
-from steuerbote.ustva import Rhythm
+from steuerbote.tests.helpers import (
+	make_account,
+	make_company,
+	make_mapping,
+	make_settings,
+	post_journal_entry,
+)
 
-# The company, its accounts and the vouchers are made by the tests themselves.
+# The companies, their accounts and the vouchers are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
 
+# Files monthly through 2026, without Dauerfristverlängerung.
 COMPANY = "Steuerbote Test Voranmeldung GmbH"
+# Files quarterly until September 2026 and monthly from October, with Dauerfristverlängerung.
+SWITCHING_COMPANY = "Steuerbote Test Dauerfrist GmbH"
+# Has VAT Return Settings but no VAT Return Mapping.
+UNMAPPED_COMPANY = "Steuerbote Test Ohne Zuordnung GmbH"
+# Has neither.
+BARE_COMPANY = "Steuerbote Test Ohne Einstellungen GmbH"
 
 # SKR03 numbers of the month in VerifiedMonthTest of the core, a bank and a receivables account, and a
 # watched account.
@@ -35,27 +45,6 @@ def money(value) -> Decimal:
 	return Decimal(str(value)).quantize(Decimal("0.01"))
 
 
-class FakeSettings:
-	"""VAT Return Settings as the return reads them."""
-
-	chart = "SKR03"
-	tolerance = 0.01
-
-	def __init__(self, rhythm: Rhythm, dauerfrist: bool = False, sondervorauszahlung: str = "0") -> None:
-		self.rhythm = rhythm
-		self.dauerfrist = dauerfrist
-		self.amount = Decimal(sondervorauszahlung)
-
-	def rhythm_for(self, year: int, month: int) -> Rhythm:
-		return self.rhythm
-
-	def has_dauerfrist(self, year: int) -> bool:
-		return self.dauerfrist
-
-	def sondervorauszahlung(self, year: int) -> Decimal:
-		return self.amount
-
-
 class TestVATReturn(IntegrationTestCase):
 	@classmethod
 	def setUpClass(cls):
@@ -65,11 +54,20 @@ class TestVATReturn(IntegrationTestCase):
 			number: make_account(COMPANY, number, name, root_type)
 			for number, (name, root_type) in ACCOUNTS.items()
 		}
+		make_settings(COMPANY, [(2026, "monthly", 1)])
+		make_mapping(COMPANY)
+		make_company(SWITCHING_COMPANY, "STVD")
+		make_settings(
+			SWITCHING_COMPANY, [(2026, "quarterly", 1), (2026, "monthly", 10)], [(2026, True, "1200.00")]
+		)
+		make_mapping(SWITCHING_COMPANY)
+		make_company(UNMAPPED_COMPANY, "STVZ")
+		make_settings(UNMAPPED_COMPANY, [(2026, "monthly", 1)])
+		make_company(BARE_COMPANY, "STVE")
+
 		a = cls.account
 		march = "2026-03-10"
-		cls.sale = post_journal_entry(
-			COMPANY, march, [(a["1400"], 1190, 0), (a["8400"], 0, 1000), (a["1776"], 0, 190)]
-		)
+		post_journal_entry(COMPANY, march, [(a["1400"], 1190, 0), (a["8400"], 0, 1000), (a["1776"], 0, 190)])
 		post_journal_entry(COMPANY, march, [(a["1400"], 2000, 0), (a["8336"], 0, 2000)])
 		post_journal_entry(COMPANY, march, [(a["1400"], 500, 0), (a["8338"], 0, 500)])
 		post_journal_entry(
@@ -82,9 +80,16 @@ class TestVATReturn(IntegrationTestCase):
 		cancelled.cancel()
 		post_journal_entry(COMPANY, "2026-03-31", [(a["1776"], 190, 0), (a["1200"], 0, 190)], exclude=True)
 
-	def new_return(self, period: int, **fields):
+	def new_return(self, period: int, company: str = COMPANY, rhythm: str = "monthly", **fields):
 		return frappe.get_doc(
-			{"doctype": "VAT Return", "company": COMPANY, "year": 2026, "period_index": period, **fields}
+			{
+				"doctype": "VAT Return",
+				"company": company,
+				"year": 2026,
+				"rhythm": rhythm,
+				"period_index": period,
+				**fields,
+			}
 		).insert()
 
 	def calculated(self, period: int, **fields):
@@ -99,7 +104,7 @@ class TestVATReturn(IntegrationTestCase):
 	def amounts(self, doc) -> dict[str, Decimal]:
 		return {row.kennzahl: money(row.final) for row in doc.kennzahlen}
 
-	def test_takes_the_period_from_the_settings(self):
+	def test_derives_dates_code_and_deadline_from_the_period(self):
 		doc = self.new_return(3)
 		self.assertEqual(
 			(doc.rhythm, doc.period_code, doc.period_label, doc.status),
@@ -261,30 +266,42 @@ class TestVATReturn(IntegrationTestCase):
 			frappe.get_doc({"doctype": "VAT Return", "company": COMPANY, "year": 2026}).insert()
 
 	def test_a_year_without_kennzahlen_is_refused(self):
-		with self.assertRaises(frappe.ValidationError):
-			frappe.get_doc(
-				{"doctype": "VAT Return", "company": COMPANY, "year": 2025, "period_index": 1}
-			).insert()
+		with self.assertRaisesRegex(frappe.ValidationError, "no Kennzahlen for 2025"):
+			self.new_return(1, year=2025)
 
-	def test_quarterly_filing_from_the_settings(self):
-		with patch.object(vat_return, "settings_for", return_value=FakeSettings(Rhythm.QUARTERLY)):
-			doc = self.new_return(2)
+	def test_a_rhythm_other_than_the_settings_prescribe_is_refused(self):
+		with self.assertRaisesRegex(
+			frappe.ValidationError, "For month 4 of 2026, .* prescribe filing monthly, not quarterly"
+		):
+			self.new_return(2, rhythm="quarterly")
+
+	def test_the_rhythm_follows_the_switch_to_monthly_filing(self):
+		quarter = self.new_return(2, company=SWITCHING_COMPANY, rhythm="quarterly")
 		self.assertEqual(
-			(doc.rhythm, doc.period_code, doc.period_label, doc.from_date, doc.to_date, doc.deadline),
-			(
-				"quarterly",
-				"42",
-				"II. Kalendervierteljahr 2026",
-				date(2026, 4, 1),
-				date(2026, 6, 30),
-				date(2026, 7, 10),
-			),
+			(quarter.period_code, quarter.period_label, quarter.from_date, quarter.to_date),
+			("42", "II. Kalendervierteljahr 2026", date(2026, 4, 1), date(2026, 6, 30)),
 		)
+		self.assertEqual(self.new_return(10, company=SWITCHING_COMPANY).period_code, "10")
+		with self.assertRaisesRegex(frappe.ValidationError, "prescribe filing quarterly, not monthly"):
+			self.new_return(3, company=SWITCHING_COMPANY)
+		with self.assertRaisesRegex(frappe.ValidationError, "prescribe filing monthly, not quarterly"):
+			self.new_return(4, company=SWITCHING_COMPANY, rhythm="quarterly")
+
+	def test_the_dauerfrist_moves_the_deadline_by_a_month(self):
+		quarter = self.new_return(2, company=SWITCHING_COMPANY, rhythm="quarterly")
+		self.assertEqual(quarter.deadline, date(2026, 8, 10))
 
 	def test_december_deducts_the_sondervorauszahlung_with_dauerfrist(self):
-		settings = FakeSettings(Rhythm.MONTHLY, dauerfrist=True, sondervorauszahlung="1200.00")
-		with patch.object(vat_return, "settings_for", return_value=settings):
-			doc = self.calculated(12)
+		doc = self.calculated(12, company=SWITCHING_COMPANY)
 		self.assertEqual(doc.deadline, date(2027, 2, 10))
 		self.assertEqual(self.amounts(doc), {"39": money(1200), "83": money(-1200)})
 		self.assertEqual((money(doc.sondervorauszahlung), money(doc.kz83)), (money(1200), money(-1200)))
+
+	def test_a_company_without_settings_cannot_file(self):
+		with self.assertRaisesRegex(frappe.ValidationError, f"{BARE_COMPANY} has no VAT Return Settings"):
+			self.new_return(3, company=BARE_COMPANY)
+
+	def test_a_company_without_mapping_cannot_calculate(self):
+		doc = self.new_return(3, company=UNMAPPED_COMPANY)
+		with self.assertRaisesRegex(frappe.ValidationError, f"{UNMAPPED_COMPANY} has no VAT Return Mapping"):
+			doc.calculate()

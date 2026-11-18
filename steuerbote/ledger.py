@@ -85,16 +85,6 @@ def accounts_without_number(company: str) -> list[str]:
 	)
 
 
-def account_numbers(company: str) -> set[str]:
-	"""The account numbers of the company's ledger accounts."""
-	numbers = frappe.get_all(
-		"Account",
-		filters={"company": company, "is_group": 0, "account_number": ["is", "set"]},
-		pluck="account_number",
-	)
-	return {number.strip() for number in numbers}
-
-
 def account_names(company: str, numbers: Iterable[str]) -> dict[str, str]:
 	"""The names of the company's accounts with these numbers, by number; unknown numbers are left out."""
 	numbers = list(numbers)

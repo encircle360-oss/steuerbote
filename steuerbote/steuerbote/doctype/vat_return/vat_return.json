@@ -9,11 +9,11 @@
   "naming_series",
   "company",
   "year",
+  "rhythm",
   "period_index",
   "is_correction",
   "column_break_period",
   "period_label",
-  "rhythm",
   "period_code",
   "from_date",
   "to_date",
@@ -73,6 +73,15 @@
    "reqd": 1
   },
   {
+   "description": "Monthly or quarterly, as the VAT Return Settings prescribe for the first month of the period.",
+   "fieldname": "rhythm",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Rhythm",
+   "options": "monthly\nquarterly",
+   "reqd": 1
+  },
+  {
    "description": "Month 1 to 12 or quarter 1 to 4, as the company files.",
    "fieldname": "period_index",
    "fieldtype": "Int",
@@ -95,13 +104,6 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Return Period",
-   "read_only": 1
-  },
-  {
-   "fieldname": "rhythm",
-   "fieldtype": "Select",
-   "label": "Rhythm",
-   "options": "monthly\nquarterly",
    "read_only": 1
   },
   {
@@ -289,7 +291,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-18 00:00:00.000000",
+ "modified": "2026-11-18 03:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return",
