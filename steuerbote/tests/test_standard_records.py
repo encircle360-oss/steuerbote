@@ -11,12 +11,15 @@ import re
 from pathlib import Path
 from unittest import TestCase
 
+from steuerbote.ustva import KENNZAHLEN
+
 APP = Path(__file__).resolve().parents[1]
 MODULE = APP / "steuerbote"
 TRANSLATIONS = APP / "translations" / "de.csv"
 REPORT = MODULE / "report" / "ustva_kennzahlen"
 WORKSPACE = MODULE / "workspace" / "steuern" / "steuern.json"
 NUMBER_CARDS = MODULE / "number_card"
+PRINT_FORMAT = MODULE / "print_format" / "umsatzsteuer_voranmeldung"
 
 # Names of the app that read the same in every language.
 GERMAN_NAMES = frozenset({"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen"})
@@ -35,6 +38,7 @@ FRAMEWORK_LABELS = frozenset(
 	}
 )
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
+HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
 
 
 def read_json(path: Path) -> dict:
@@ -179,3 +183,55 @@ class WorkspaceFilesTest(TestCase):
 		}
 		labels = {shortcut["label"] for shortcut in self.workspace["shortcuts"]}
 		self.assertEqual(untranslated(headers | labels), [])
+
+
+class PrintFormatFilesTest(TestCase):
+	def setUp(self):
+		self.record = read_json(PRINT_FORMAT / "umsatzsteuer_voranmeldung.json")
+		self.template = (PRINT_FORMAT / "umsatzsteuer_voranmeldung.html").read_text(encoding="utf-8")
+
+	def test_the_print_format_is_a_standard_jinja_format_of_the_vat_return(self):
+		self.assertEqual(
+			{
+				key: self.record[key]
+				for key in ("name", "doc_type", "print_format_type", "standard", "module", "custom_format")
+			},
+			{
+				"name": "Umsatzsteuer-Voranmeldung",
+				"doc_type": "VAT Return",
+				"print_format_type": "Jinja",
+				"standard": "Yes",
+				"module": "Steuerbote",
+				"custom_format": 0,
+			},
+		)
+
+	def test_prints_on_a4_in_black_and_grey(self):
+		css = self.record["css"] + self.template
+		self.assertIn("size: A4 portrait", self.record["css"])
+		colours = HEX_COLOUR.findall(css)
+		self.assertTrue(colours)
+		for colour in colours:
+			with self.subTest(colour=colour):
+				channels = colour if len(colour) == 3 else (colour[0:2], colour[2:4], colour[4:6])
+				self.assertEqual(len(set(channels)), 1)
+		self.assertNotIn("<img", self.template)
+		self.assertNotRegex(css, r"\b(rgb|hsl)a?\(")
+
+	def test_the_labels_of_the_flags_are_those_of_the_catalogue(self):
+		for number in ("10", "22", "29", "26"):
+			with self.subTest(kennzahl=number):
+				self.assertIn(f'"{KENNZAHLEN[number].label}"', self.template)
+		self.assertIn(KENNZAHLEN["500"].label, self.template)
+		self.assertIn(f'"{KENNZAHLEN["83"].label}", "83"', self.template)
+
+	def test_the_derived_rates_are_those_of_the_catalogue(self):
+		rates = {
+			number: int(kennzahl.rate) for number, kennzahl in KENNZAHLEN.items() if kennzahl.derives_tax
+		}
+		self.assertIn(
+			"{%- set derived_rates = {"
+			+ ", ".join(f'"{number}": {rate}' for number, rate in rates.items())
+			+ "} -%}",
+			self.template,
+		)
