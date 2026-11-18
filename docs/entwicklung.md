@@ -37,6 +37,7 @@ steuerbote/                    Repository
 │   └── config/, patches/, public/, templates/
 │                              Standardverzeichnisse einer Frappe-App, noch leer
 ├── docs/                      Dokumentation
+│   └── bilder/                Bildschirmfotos der Oberfläche mit Beispieldaten
 ├── .github/workflows/         CI: Tests, Linters, Security
 ├── .github/dependabot.yml     wöchentliche Updates für GitHub Actions und pip
 ├── pyproject.toml             Paketdaten, Einstellungen für ruff, pytest und coverage

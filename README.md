@@ -14,6 +14,33 @@ Steuermeldungen aus ERPNext an ELSTER. Zuerst die Umsatzsteuer-Voranmeldung, dan
 - **Übermittlung über ERiC** (Simulation; echte Übermittlung mit Hersteller-ID). Prüfen gegen die ELSTER-Prüfregeln vor der Abgabe, Testsenden und Senden mit Organisationszertifikat, Übermittlungsprotokoll als PDF an der ELSTER-Übermittlung des Belegs, siehe [Übermittlung an ELSTER](docs/uebermittlung.md).
 - **Abgabe ohne Hersteller-ID.** Die Voranmeldung als XML-Datei für den Import in Mein ELSTER, mit nachgerechneter Kz 83 und dem Zeichensatz von ELSTER; geprüft und abgesendet wird sie in Mein ELSTER, siehe [Abgabe über Mein ELSTER](docs/abgabe-mein-elster.md).
 
+## Einblick
+
+Die Bilder stammen aus einer Testumgebung. Firma, Anschrift, Steuernummern und Geschäftspartner sind Beispielwerte. Ein Klick auf ein Bild öffnet es in voller Größe.
+
+<table>
+  <tr>
+    <td align="center" valign="top">
+      <a href="docs/bilder/workspace-steuern.png"><img src="docs/bilder/workspace-steuern.png" width="280" alt="Arbeitsbereich Steuern mit offenen Voranmeldungen, Bericht und Einrichtung"></a><br>
+      Arbeitsbereich Steuern
+    </td>
+    <td align="center" valign="top">
+      <a href="docs/bilder/bericht-kennzahlen.png"><img src="docs/bilder/bericht-kennzahlen.png" width="280" alt="Bericht UStVA Kennzahlen mit aufgeklappter Kennzahl 81 und dem Beleg dahinter"></a><br>
+      Bericht mit Drill-down
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <a href="docs/bilder/voranmeldung.png"><img src="docs/bilder/voranmeldung.png" width="280" alt="Umsatzsteuer-Voranmeldung mit Kennzahlen, Summen und Verprobung"></a><br>
+      Voranmeldung mit Verprobung
+    </td>
+    <td align="center" valign="top">
+      <a href="docs/bilder/druckformat.png"><img src="docs/bilder/druckformat.png" width="200" alt="Druckformat der Umsatzsteuer-Voranmeldung nach dem Vordruck USt 1 A"></a><br>
+      Druckformat nach Vordruck USt 1 A
+    </td>
+  </tr>
+</table>
+
 ## Voraussetzungen
 
 - Frappe und ERPNext ab Version 16. Unterstützt wird nur die jeweils aktuelle Hauptversion.
