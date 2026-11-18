@@ -56,6 +56,10 @@ bench get-app https://github.com/encircle360-oss/steuerbote
 bench --site <site> install-app steuerbote
 ```
 
+### Als Teil von erpnext_germanized
+
+[erpnext_germanized](https://github.com/encircle360-oss/erpnext_germanized) ist ein fertiges Container-Image mit ERPNext 16 und den gängigen deutschen Apps, versioniert in der GitHub Container Registry. Steuerbote ist darin bereits enthalten; wer ERPNext neu aufsetzt oder im Container betreibt, braucht die Schritte oben nicht.
+
 ## Dokumentation
 
 - [Roadmap](docs/roadmap.md): Arbeitspakete und Reihenfolge
