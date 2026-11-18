@@ -1,0 +1,61 @@
+{
+ "actions": [],
+ "creation": "2026-11-18 02:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "label",
+  "base_accounts",
+  "tax_accounts",
+  "side"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "description": "Account numbers, separated by commas",
+   "fieldname": "base_accounts",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Base Accounts",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Account numbers, separated by commas",
+   "fieldname": "tax_accounts",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Tax Accounts",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "default": "credit",
+   "fieldname": "side",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Balance Side",
+   "options": "credit\ndebit"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-18 02:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT Return Mapping Check",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
