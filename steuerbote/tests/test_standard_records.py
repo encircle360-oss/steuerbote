@@ -22,6 +22,8 @@ SIDEBAR = MODULE / "sidebar" / "steuerbote" / "steuerbote.json"
 NUMBER_CARDS = MODULE / "number_card"
 PRINT_FORMAT = MODULE / "print_format" / "umsatzsteuer_voranmeldung"
 VAT_RETURN_SCRIPT = MODULE / "doctype" / "vat_return" / "vat_return.js"
+MAPPING = MODULE / "doctype" / "vat_return_mapping"
+MAPPING_RULE = MODULE / "doctype" / "vat_return_mapping_rule" / "vat_return_mapping_rule.json"
 
 # Names of the app that read the same in every language.
 GERMAN_NAMES = frozenset({"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen"})
@@ -386,3 +388,18 @@ class VatReturnFormFilesTest(TestCase):
 			"Bereit zur Abgabe: XML für Mein ELSTER erzeugen oder über ELSTER übermitteln.",
 		)
 		self.assertRegex(self.script, r'frm\.doc\.status === "Bereit"')
+
+
+class MappingRuleFilesTest(TestCase):
+	"""A rule without a tax rate holds 0, since a Float field stores no blank; mapping_sync reads 0 as no rate."""
+
+	def test_the_rules_table_shows_no_rate_as_blank(self):
+		script = (MAPPING / "vat_return_mapping.js").read_text(encoding="utf-8")
+		setup = re.search(r"\n\tsetup\(frm\) \{\n(?P<body>.*?)\n\t\},\n", script, re.DOTALL)
+		self.assertIsNotNone(setup)
+		self.assertIn('frappe.meta.set_formatter("VAT Return Mapping Rule", "tax_rate", null,', setup["body"])
+
+	def test_the_description_of_the_rate_says_what_blank_means(self):
+		(rate,) = (field for field in read_json(MAPPING_RULE)["fields"] if field["fieldname"] == "tax_rate")
+		self.assertEqual(rate["fieldtype"], "Float")
+		self.assertTrue(german(rate["description"]).endswith(" Leer oder 0: kein Satz."))

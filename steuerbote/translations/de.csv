@@ -144,7 +144,7 @@
 "Only a draft return can be calculated.","Nur eine Meldung im Entwurf kann berechnet werden."
 "Only a draft return can be marked as filed.","Nur eine Meldung im Entwurf kann als abgegeben vermerkt werden."
 "Only a draft return can be transmitted. A filed return is corrected by a corrected return (Kz 10).","Nur eine Meldung im Entwurf kann übermittelt werden. Eine abgegebene Meldung wird durch eine berichtigte Anmeldung (Kz 10) korrigiert."
-"Only for a base whose tax has a Kennzahl of its own, such as Kennzahl 46 with 47: the tax is derived from the balance at this rate.","Nur für eine Bemessungsgrundlage, deren Steuer eine eigene Kennzahl hat, etwa Kennzahl 46 mit 47: Die Steuer wird mit diesem Satz aus dem Saldo abgeleitet."
+"Only for a base whose tax has a Kennzahl of its own, such as Kennzahl 46 with 47: the tax is derived from the balance at this rate. Empty or 0: no rate.","Nur für eine Bemessungsgrundlage, deren Steuer eine eigene Kennzahl hat, etwa Kennzahl 46 mit 47: Die Steuer wird mit diesem Satz aus dem Saldo abgeleitet. Leer oder 0: kein Satz."
 "Other Tax (Lines 46 and 47)","Andere Steuerbeträge (Zeilen 46 und 47)"
 "Outcome","Ergebnis laut ERiC"
 "Output Tax (Line 37)","Umsatzsteuer (Zeile 37)"
