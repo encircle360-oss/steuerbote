@@ -1,10 +1,11 @@
+from collections.abc import Iterable
 from decimal import Decimal
 
 import frappe
 from frappe.desk.query_report import run
 from frappe.tests import IntegrationTestCase
 
-from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import execute
+from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import PARTY_FIELDS, execute
 from steuerbote.tests.helpers import (
 	make_account,
 	make_company,
@@ -39,6 +40,50 @@ def filters(period: int, **values) -> dict:
 	return {"company": COMPANY, "year": 2026, "rhythm": "monthly", "period_index": period, **values}
 
 
+def post_invoice(
+	doctype: str,
+	name: str,
+	party: str,
+	party_name: str | None,
+	posting_date: str,
+	rows: Iterable[tuple[str, float, float]],
+) -> str:
+	"""A submitted invoice as the report sees it: its header with the party and its GL Entries.
+
+	Submitting a real invoice needs items, price lists and a chart of accounts with receivables and payables,
+	none of which the report reads.
+	"""
+	party_field, party_name_field = PARTY_FIELDS[doctype]
+	frappe.get_doc(
+		{
+			"doctype": doctype,
+			"name": name,
+			"company": COMPANY,
+			"posting_date": posting_date,
+			party_field: party,
+			party_name_field: party_name,
+			"docstatus": 1,
+		}
+	).db_insert()
+	for account, debit, credit in rows:
+		frappe.get_doc(
+			{
+				"doctype": "GL Entry",
+				"company": COMPANY,
+				"posting_date": posting_date,
+				"account": account,
+				"debit": debit,
+				"credit": credit,
+				"voucher_type": doctype,
+				"voucher_no": name,
+				"is_cancelled": 0,
+				"is_opening": "No",
+				"docstatus": 1,
+			}
+		).db_insert()
+	return name
+
+
 class TestUStVAKennzahlen(IntegrationTestCase):
 	@classmethod
 	def setUpClass(cls):
@@ -70,6 +115,32 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 		cls.cancelled.cancel()
 		cls.settlement = post_journal_entry(
 			COMPANY, "2026-03-31", [(a["1776"], 190, 0), (a["1200"], 0, 190)], exclude=True
+		)
+
+		april = "2026-04-15"
+		cls.invoice = post_invoice(
+			"Sales Invoice",
+			"SINV-STKZ-0001",
+			"CUST-0001",
+			"Kunde GmbH",
+			april,
+			[(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)],
+		)
+		cls.invoice_without_name = post_invoice(
+			"Sales Invoice",
+			"SINV-STKZ-0002",
+			"CUST-0002",
+			None,
+			april,
+			[(a["1400"], 59.5, 0), (a["8400"], 0, 50), (a["1776"], 0, 9.5)],
+		)
+		cls.bill = post_invoice(
+			"Purchase Invoice",
+			"PINV-STKZ-0001",
+			"SUPP-0001",
+			"Lieferant AG",
+			april,
+			[(a["1576"], 19, 0), (a["1200"], 0, 19)],
 		)
 
 	def rows(self, period: int) -> list[dict]:
@@ -113,7 +184,7 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 			],
 		)
 
-	def test_a_voucher_row_carries_its_type_date_and_postings(self):
+	def test_a_voucher_row_carries_its_type_date_postings_and_print_view(self):
 		row = next(row for row in self.rows(3) if row["voucher_no"] == self.reverse_charge.name)
 		self.assertEqual(
 			(
@@ -122,8 +193,34 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 				money(row["debit"]),
 				money(row["credit"]),
 				row["currency"],
+				row["party"],
+				row["print_link"],
 			),
-			("Journal Entry", "2026-03-13", money(300), money(0), "EUR"),
+			(
+				"Journal Entry",
+				"2026-03-13",
+				money(300),
+				money(0),
+				"EUR",
+				None,
+				f'<a href="/printview?doctype=Journal%20Entry&amp;name={self.reverse_charge.name}" '
+				'target="_blank">Print</a>',
+			),
+		)
+
+	def test_an_invoice_names_its_customer_or_supplier(self):
+		vouchers = {row["voucher_no"]: row for row in self.rows(4) if row["indent"]}
+		self.assertEqual(
+			{name: (row["voucher_type"], row["party"]) for name, row in vouchers.items()},
+			{
+				self.invoice: ("Sales Invoice", "Kunde GmbH"),
+				self.invoice_without_name: ("Sales Invoice", "CUST-0002"),
+				self.bill: ("Purchase Invoice", "Lieferant AG"),
+			},
+		)
+		self.assertEqual(
+			vouchers[self.bill]["print_link"],
+			'<a href="/printview?doctype=Purchase%20Invoice&amp;name=PINV-STKZ-0001" target="_blank">Print</a>',
 		)
 
 	def test_leaves_out_the_cancelled_and_the_excluded_journal_entry(self):
@@ -154,12 +251,12 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 		)
 
 	def test_runs_as_the_installed_tree_report(self):
-		report = run("UStVA Kennzahlen", filters=filters(3), is_tree=True, parent_field="parent_kennzahl")
+		result = run("UStVA Kennzahlen", filters=filters(3), is_tree=True, parent_field="parent_kennzahl")
 		self.assertEqual(frappe.db.get_value("Report", "UStVA Kennzahlen", "ref_doctype"), "VAT Return")
-		balance = next(row for row in report["result"] if row["kennzahl"] == "83")
+		balance = next(row for row in result["result"] if row["kennzahl"] == "83")
 		self.assertEqual(money(balance["reported"]), money(95))
 		self.assertEqual(
-			[column["fieldname"] for column in report["columns"]],
+			[column["fieldname"] for column in result["columns"]],
 			[
 				"kennzahl",
 				"line",
@@ -167,6 +264,8 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 				"posting_date",
 				"voucher_type",
 				"voucher_no",
+				"print_link",
+				"party",
 				"account",
 				"debit",
 				"credit",
@@ -175,3 +274,5 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 				"currency",
 			],
 		)
+		voucher_no = next(column for column in result["columns"] if column["fieldname"] == "voucher_no")
+		self.assertEqual((voucher_no["fieldtype"], voucher_no["options"]), ("Dynamic Link", "voucher_type"))
