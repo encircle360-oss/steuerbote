@@ -301,10 +301,11 @@ class InstallationsTest(ArchiveTestCase):
 		self.assertEqual(detect(self.root, year=2024).version, "44.1.4.0")
 		self.assertEqual(detect(self.root).version, "44.3.6.0")
 
-	def test_a_beta_only_when_allowed(self):
+	def test_a_beta_only_when_allowed_and_no_released_runtime_knows_the_year(self):
 		self.assertIsNone(detect(self.root, year=2027))
 		self.assertEqual(detect(self.root, year=2027, allow_beta=True).version, "45.1.5.0")
-		self.assertEqual(detect(self.root, year=2026, allow_beta=True).version, "45.1.5.0")
+		self.assertEqual(detect(self.root, year=2026, allow_beta=True).version, "44.3.6.0")
+		self.assertEqual(detect(self.root, allow_beta=True).version, "44.3.6.0")
 
 	def test_no_runtime_for_a_year_without_its_plugin(self):
 		self.assertIsNone(detect(self.root, year=2023, allow_beta=True))
@@ -402,7 +403,7 @@ class StatusTest(ArchiveTestCase):
 		self.assertIn("libcheckUStVA_2027.so", checks["plugin"][1])
 		self.assertFalse(checks["hersteller_id"][0])
 
-	def test_a_beta_serves_a_year_for_test_sends_only(self):
+	def test_a_beta_serves_a_year_for_checks_and_test_sends_only(self):
 		root = "ERiC-45.1.5.0/Linux-x86_64/lib"
 		members = {
 			f"{root}/libericapi.so": b"ericapi",
@@ -411,9 +412,10 @@ class StatusTest(ArchiveTestCase):
 		}
 		path, checksum = self.jar(members, name="ERiC-45.1.5.0-Linux-x86_64.jar")
 		install_from_archive(path, checksum, self.root)
-		ok, detail = self.checks(year=2027, hersteller_id="12345")["plugin"]
-		self.assertFalse(ok)
-		self.assertIn("Beta", detail)
+		self.assertEqual(
+			self.checks(year=2027, hersteller_id="12345")["plugin"],
+			(False, "Das Jahr 2027 kennt nur die Beta ERiC 45.1.5.0: Prüfen und Testsenden, kein Senden."),
+		)
 
 	def test_without_a_year_the_plugin_check_is_left_out(self):
 		self.assertNotIn("plugin", self.checks(hersteller_id="12345"))

@@ -36,20 +36,19 @@ def detect_runtime(year: int, operation: Operation, hersteller_id: str, log_dir:
 	"""The newest released runtime with the plugin of the year; for Prüfen and Testsenden a beta when no
 	released runtime has that plugin, or None.
 
-	A beta sends no real case (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 2.3), so Senden never gets one. The
-	runtime carries whether the ERiC Settings record the confirmation of the Datenschutzhinweise, without
-	which steuerbote.eric.service runs no ERiC.
+	A beta sends no real case (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 2.3), so Senden never gets one;
+	steuerbote.eric.runtime.detect prefers a released runtime whenever a beta is allowed. The runtime carries
+	whether the ERiC Settings record the confirmation of the Datenschutzhinweise, without which
+	steuerbote.eric.service runs no ERiC.
 	"""
-	found = {
-		"year": year,
-		"log_dir": log_dir,
-		"hersteller_id": hersteller_id,
-		"confirmed_privacy_notice": bool(cint(frappe.get_single(ERIC_SETTINGS).privacy_notice_confirmed)),
-	}
-	released = runtime.detect(runtime_root(), allow_beta=False, **found)
-	if released is not None or operation is Operation.SEND:
-		return released
-	return runtime.detect(runtime_root(), allow_beta=True, **found)
+	return runtime.detect(
+		runtime_root(),
+		year=year,
+		allow_beta=operation is not Operation.SEND,
+		log_dir=log_dir,
+		hersteller_id=hersteller_id,
+		confirmed_privacy_notice=bool(cint(frappe.get_single(ERIC_SETTINGS).privacy_notice_confirmed)),
+	)
 
 
 def install_from_archive(archive_path: str, sha256: str) -> RuntimeInfo:
