@@ -72,10 +72,7 @@ def datenteil(nutzdaten_xml: str, header: EnvelopeHeader) -> str:
 	The Nutzdaten keep their own namespace; their XML declaration and byte order mark are dropped,
 	because the whole delivery is one UTF-8 document.
 	"""
-	nutzdaten = nutzdaten_xml.lstrip("\ufeff").lstrip()
-	declaration = _DECLARATION.match(nutzdaten)
-	if declaration:
-		nutzdaten = nutzdaten[declaration.end() :].lstrip()
+	nutzdaten = without_declaration(nutzdaten_xml)
 	return (
 		"<DatenTeil><Nutzdatenblock>"
 		'<NutzdatenHeader version="11">'
@@ -87,6 +84,13 @@ def datenteil(nutzdaten_xml: str, header: EnvelopeHeader) -> str:
 		f"<Nutzdaten>{nutzdaten}</Nutzdaten>"
 		"</Nutzdatenblock></DatenTeil>"
 	)
+
+
+def without_declaration(xml: str) -> str:
+	"""The XML without a leading byte order mark, XML declaration and white space."""
+	text = xml.lstrip("\ufeff").lstrip()
+	declaration = _DECLARATION.match(text)
+	return text[declaration.end() :].lstrip() if declaration else text
 
 
 def problems(
