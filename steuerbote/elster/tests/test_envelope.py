@@ -28,7 +28,7 @@ def header(document: bytes, name: str) -> list[tuple[str, str | None]]:
 
 
 class EnvelopeTest(TestCase):
-	def test_writes_the_example_of_the_specification(self):
+	def test_writes_the_envelope_of_the_example_month(self):
 		self.assertEqual(envelope(contact="Erika Beispiel"), (FIXTURES / "envelope_2026_10.xml").read_bytes())
 
 	def test_is_utf_8_with_the_elster_namespace_alone_on_the_root(self):

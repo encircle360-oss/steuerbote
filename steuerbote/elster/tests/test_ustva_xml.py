@@ -23,8 +23,9 @@ from steuerbote.elster.tests.examples import (
 from steuerbote.elster.ustva_xml import SCHEMAS, XmlError, import_file_name, to_import_file, to_nutzdaten
 from steuerbote.ustva import Kind, Period, catalogue_for, to_cents
 
-# Table D of the specification: the children of Umsatzsteuervoranmeldung in the order of UStVA-2026.xsd.
-TABLE_D = (
+# The children of Umsatzsteuervoranmeldung in the order of UStVA-2026.xsd, as docs/abgabe-mein-elster.md
+# lists them.
+SCHEMA_ORDER = (
 	*("Jahr", "Zeitraum", "Steuernummer", "WIdNr", "Kz09", "Kz10", "Kz21", "Kz22", "Kz26", "Kz29"),
 	*("Kz35", "Kz36", "Kz37", "Kz39", "Kz41", "Kz42", "Kz43", "Kz44", "Kz45", "Kz46", "Kz47", "Kz48"),
 	*("Kz49", "Kz50", "Kz59", "Kz60", "Kz61", "Kz62", "Kz63", "Kz64", "Kz65", "Kz66", "Kz67", "Kz69"),
@@ -52,7 +53,7 @@ def d(value: str) -> Decimal:
 
 
 class ImportFileTest(TestCase):
-	def test_writes_the_example_month_of_the_specification_byte_for_byte(self):
+	def test_writes_the_import_file_of_the_example_month_byte_for_byte(self):
 		self.assertEqual(
 			to_import_file(filer(), voranmeldung(), CREATED),
 			(FIXTURES / "UStVA_2026_10.xml").read_bytes(),
@@ -132,8 +133,8 @@ class OrderTest(TestCase):
 		self.assertEqual(len(self.schema.order), len(set(self.schema.order)))
 		self.assertEqual(set(self.schema.order), set(catalogue_for(2026)))
 
-	def test_follows_table_d_of_the_specification(self):
-		self.assertEqual(self.schema.elements, TABLE_D)
+	def test_follows_the_sequence_of_the_schema(self):
+		self.assertEqual(self.schema.elements, SCHEMA_ORDER)
 
 	def test_kz90_follows_kz93(self):
 		amounts = {"90": d("10"), "93": d("10"), "83": d("0.70")}
@@ -159,7 +160,7 @@ class OrderTest(TestCase):
 			CREATED,
 			"12345",
 		)
-		self.assertEqual(tuple(name for name, _ in elements(document)), TABLE_D)
+		self.assertEqual(tuple(name for name, _ in elements(document)), SCHEMA_ORDER)
 
 	def test_refuses_a_year_without_schema(self):
 		with self.assertRaises(XmlError) as raised:

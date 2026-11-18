@@ -1,4 +1,4 @@
-"""The example month of the specification of the XML, and helpers to read what the tests write."""
+"""The month of VerifiedMonthTest in the core, filed for October 2026, and helpers to read the XML."""
 
 from datetime import date
 from decimal import Decimal
