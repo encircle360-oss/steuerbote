@@ -160,7 +160,7 @@ Jede Firma soll die Vorgabe ihres Kontenrahmens in ihren Einstellungen anpassen 
 
 ### So rechnet `calculate()`
 
-[`calculation.py`](../steuerbote/ustva/calculation.py) bekommt die Buchungszeilen eines Zeitraums, eine Zeile je Buchung und Konto, in Firmenwährung und in Cent, dazu eine Zuordnung. Was nicht zum Umsatz des Zeitraums gehört, lässt der Aufrufer weg: stornierte Buchungen, Eröffnungs- und Abschlussbuchungen und die Buchungen, mit denen die Steuerkonten gegenüber dem Finanzamt ausgeglichen werden.
+[`calculation.py`](../steuerbote/ustva/calculation.py) bekommt die Buchungszeilen eines Zeitraums, eine Zeile je Buchung und Konto, in Firmenwährung und in Cent, dazu eine Zuordnung. Was nicht zum Umsatz des Zeitraums gehört, lässt der Aufrufer weg: Buchungen, die ERPNext als storniert kennzeichnet, Eröffnungs- und Abschlussbuchungen und die Buchungen, mit denen die Steuerkonten gegenüber dem Finanzamt ausgeglichen werden. Mit „Unveränderliches Hauptbuch aktivieren“ in den Buchhaltungseinstellungen kennzeichnet ERPNext keine Buchung als storniert; dann gehen ein stornierter Beleg und seine Gegenbuchungen ein, siehe [Die Abfrage des Hauptbuchs](architektur.md#die-abfrage-des-hauptbuchs).
 
 1. Soll, Haben und die Zahl der Buchungen werden je Konto summiert, dazu je Konto und Beleg, soweit die Zeilen einen Beleg nennen.
 2. Jedes zugeordnete Konto gibt seinen Saldo auf seiner Seite an seine Kennzahl. Trägt die Regel einen Steuersatz, geht zusätzlich die Steuer an die Steuer-Kennzahl: je Beleg Saldo × Satz, auf Cent gerundet, über alle Belege summiert. Konten ohne Regel, etwa Bankkonten, gehen nicht ein.

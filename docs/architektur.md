@@ -137,13 +137,15 @@ Steuerbote ergänzt die Journalbuchung (Journal Entry) um das Feld „Nicht in d
 
 `ledger.load_lines(company, from_date, to_date)` liest die Buchungen (GL Entry) des Unternehmens im Zeitraum, beide Tage eingeschlossen, zusammen mit der Kontonummer des Kontos. Nicht in die Meldung gehen:
 
-- stornierte Buchungen und ihre Gegenbuchungen,
+- Buchungen, die ERPNext als storniert kennzeichnet (`is_cancelled`), siehe unten,
 - Eröffnungsbuchungen,
 - Periodenabschlussbuchungen (Period Closing Voucher),
 - Journalbuchungen mit dem Haken „Nicht in der Umsatzsteuer-Voranmeldung“,
 - Konten ohne Kontonummer. Keine Regel kann sie zuordnen; die Meldung zählt sie unter „Konten ohne Kontonummer“.
 
 Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cent übergeben. Ein Beleg heißt beim Kern „Belegtyp:Belegnummer“, weil zwei Belegtypen dieselbe Nummer tragen können. Die Abfrage läuft über den Query Builder von Frappe mit Parametern, ohne zusammengesetztes SQL.
+
+**Stornierte Belege.** Ohne „Unveränderliches Hauptbuch aktivieren“ (`enable_immutable_ledger`) in den Buchhaltungseinstellungen kennzeichnet ERPNext beim Stornieren die Buchungen eines Belegs und ihre Gegenbuchungen als storniert, und die Abfrage lässt beide aus, auch in einem Zeitraum, der schon gemeldet ist. Mit der Einstellung bucht ERPNext die Gegenbuchungen am Tag der Stornierung und kennzeichnet nichts, die Abfrage liest also beide: Im selben Zeitraum heben sie sich auf, eine Stornierung in einem späteren Zeitraum mindert diesen Zeitraum.
 
 ## Einstellungen je Unternehmen und Zeitraum
 
@@ -240,6 +242,7 @@ Der Bericht zeigt für einen Zeitraum, aus welchen Buchungen jede Kennzahl beste
 - Er liest dasselbe wie „Berechnen“: die Abfrage des Hauptbuchs mit denselben Ausschlüssen, die Kontenzuordnung und die Einstellungen des Unternehmens, im letzten Zeitraum des Jahres also auch Kz 39.
 - Je Kennzahl steht eine Zeile in der Reihenfolge des Vordrucks mit Kennzahl, Zeile im Vordruck, Bezeichnung, Betrag laut Hauptbuch und Betrag laut Vordruck. Darunter folgt eine Ebene tiefer je Beleg eine Zeile mit Buchungsdatum, Belegtyp, Belegnr., Drucken, Partei, Konto, Soll, Haben und dem Betrag, den der Beleg beiträgt. Die Summen der Zeilen 37, 45 und 48 und Kz 83 stehen an ihrer Stelle im Vordruck.
 - Die Belegnr. öffnet den Beleg, „Drucken“ seine Druckansicht (`/printview`) in einem neuen Tab. Partei ist bei einer Ausgangsrechnung der Kunde, bei einer Eingangsrechnung der Lieferant, mit dem Namen aus der Rechnung; bei anderen Belegen, etwa Journalbuchungen, bleibt sie leer. Die Parteien liest der Bericht mit einer Abfrage je Belegtyp.
+- Ein stornierter Beleg erscheint nur mit „Unveränderliches Hauptbuch aktivieren“, siehe [Die Abfrage des Hauptbuchs](#die-abfrage-des-hauptbuchs). Seine Zeile zeigt unter „Drucken“ „Storniert“ statt des Links, denn Frappe druckt stornierte Belege nur, wenn die Druckeinstellungen es erlauben; die Belegnr. öffnet ihn weiter. Die Beträge bleiben, wie sie im Hauptbuch stehen: 0, wenn Beleg und Stornierung im selben Zeitraum liegen. Welche Belege storniert sind, liest der Bericht mit einer Abfrage je Belegtyp.
 - Ein Konto mit Regel trägt je Beleg seinen Saldo auf der Seite der Regel bei, mit zusätzlicher Kennzahl auch dort. Eine abgeleitete Steuer, etwa Kz 47 zu Kz 46, entsteht je Beleg aus der Summe seiner Bemessungsgrundlagen zu einem Steuersatz und wird einmal gerundet, wie in `calculate()`. Ihre Belegzeile zeigt die Buchungen der Grundlagenkonten und die Steuer als Betrag.
 - Die Belege einer Kennzahl ergeben genau ihren Betrag laut Hauptbuch. Heben sich die Belege einer Kennzahl auf, steht sie mit 0 im Bericht.
 - **Vorperiodenvergleich.** Jede Kennzahl und jede Summe zeigt den Betrag laut Vordruck der Vorperiode, also des vorigen Zeitraums im selben Abgaberhythmus (für Januar der Dezember des Vorjahres, für das erste Quartal das vierte), und des Vorjahres, also desselben Zeitraums ein Jahr früher, dazu die Differenz zur Vorperiode: Betrag laut Vordruck abzüglich Vorperiode. Beide Zeiträume rechnet der Bericht wie seinen eigenen aus dem Hauptbuch, mit der Kontenzuordnung des Unternehmens auf dem Vordruck ihres Jahres und im letzten Zeitraum eines Jahres mit Kz 39. Frühere Meldungen liest er nicht, so vergleicht er auch Zeiträume, für die es noch keine Meldung gibt. Eine Kennzahl, die nur in Vorperiode oder Vorjahr einen Betrag hat, steht mit 0 im Bericht.

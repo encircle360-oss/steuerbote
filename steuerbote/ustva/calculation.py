@@ -3,8 +3,8 @@
 The input is the general ledger of the period, one line per posting and account, in company
 currency and in cents. The ledger is the source rather than invoices so that journal entries and
 imported batches count too. The caller leaves out what does not belong to the period's turnover:
-cancelled entries, opening entries, period closing entries, and the entries that clear the tax
-accounts against the tax office.
+entries the ledger flags as cancelled, opening entries, period closing entries, and the entries
+that clear the tax accounts against the tax office.
 
 Each line can name its voucher, the document the posting belongs to: in ERPNext the voucher_no of
 the GL Entry, joined with its voucher_type if two document types can share a name. The books round
