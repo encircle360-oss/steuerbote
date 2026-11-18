@@ -14,6 +14,26 @@ Steuermeldungen aus ERPNext an ELSTER. Zuerst die Umsatzsteuer-Voranmeldung, dan
 - **Übermittlung über ERiC** (Simulation; echte Übermittlung mit Hersteller-ID). Prüfen gegen die ELSTER-Prüfregeln vor der Abgabe, Testsenden und Senden mit Organisationszertifikat, Übermittlungsprotokoll als PDF an der ELSTER-Übermittlung des Belegs, siehe [Übermittlung an ELSTER](docs/uebermittlung.md).
 - **Abgabe ohne Hersteller-ID.** Die Voranmeldung als XML-Datei für den Import in Mein ELSTER, mit nachgerechneter Kz 83 und dem Zeichensatz von ELSTER; geprüft und abgesendet wird sie in Mein ELSTER, siehe [Abgabe über Mein ELSTER](docs/abgabe-mein-elster.md).
 
+## Einblick
+
+Die Bilder stammen aus einer Testumgebung. Firma, Anschrift, Steuernummern und Geschäftspartner sind Beispielwerte.
+
+![Arbeitsbereich Steuern mit der Zahl offener Voranmeldungen und Verknüpfungen zu Voranmeldung, Bericht und Einrichtung](docs/bilder/workspace-steuern.png)
+
+Arbeitsbereich Steuern: offene Voranmeldungen, Bericht und Einrichtung an einem Ort.
+
+![Umsatzsteuer-Voranmeldung mit den Tabellen Kennzahlen und Verprobung und den Summen dazwischen](docs/bilder/voranmeldung.png)
+
+Voranmeldung mit Verprobung: Kennzahlen und Summen aus dem Hauptbuch, darunter berechnete und gebuchte Steuer im Vergleich.
+
+![Bericht UStVA Kennzahlen mit aufgeklappter Kennzahl 81 und dem Beleg dahinter](docs/bilder/bericht-kennzahlen.png)
+
+Bericht mit Drill-down: unter jeder Kennzahl die Belege, aus denen sie entsteht.
+
+![Druckformat der Umsatzsteuer-Voranmeldung mit Kopfdaten und den Abschnitten A bis H](docs/bilder/druckformat.png)
+
+Druckformat: die Voranmeldung in Reihenfolge und Wortlaut des Vordrucks USt 1 A.
+
 ## Voraussetzungen
 
 - Frappe und ERPNext ab Version 16. Unterstützt wird nur die jeweils aktuelle Hauptversion.
