@@ -62,6 +62,7 @@ docstring-code-format = true
 testpaths = [
     "steuerbote/ustva",
     "steuerbote/elster",
+    "steuerbote/steuerbote/doctype/vat_return/test_bridge.py",
     "steuerbote/steuerbote/doctype/vat_return_settings/test_rules.py",
     "steuerbote/steuerbote/doctype/vat_return_settings/test_translations.py",
     "steuerbote/tests/test_mapping_sync.py",
@@ -74,6 +75,7 @@ addopts = "--strict-markers"
 source = [
     "steuerbote/ustva",
     "steuerbote/elster",
+    "steuerbote.steuerbote.doctype.vat_return.bridge",
     "steuerbote.steuerbote.doctype.vat_return_settings.rules",
     "steuerbote.mapping_sync",
 ]
