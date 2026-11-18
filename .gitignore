@@ -29,6 +29,3 @@ steuerbote/eric/runtime/
 
 # Test sites and bench artefacts
 *.log
-
-# Local tooling state
-.claude/
