@@ -12,7 +12,7 @@ Steuermeldungen aus ERPNext an ELSTER. Zuerst die Umsatzsteuer-Voranmeldung, dan
 - **Kontenrahmen frei wählbar.** Vorgaben für SKR03 und SKR04 (Ausgabe 2026) liegen bei. Jedes Konto, das DATEV für die Umsatzsteuer kennzeichnet, ist darin zugeordnet, verprobt, beobachtet oder mit Grund bewusst ohne Kennzahl, einschließlich der Kontenbereiche und der Kontonummern aus den SKR-Vorlagen von ERPNext. Die Zuordnung Konto → Kennzahl arbeitet nur mit Kontonummern, deshalb laufen auch andere Kontenrahmen darüber. Eigene Anpassungen je Firma folgen mit den Einstellungen (geplant).
 - **Je Firma und Zeitraum** (geplant). Mehrere Firmen in einer ERPNext-Site mit eigenem Kontenrahmen, eigenem Voranmeldungszeitraum (Monat oder Quartal) und eigenem Zertifikat. Der Rechenkern kennt Zeiträume und Fristen schon heute. Die Kennzahlen gelten je Jahrgang des Vordrucks; vorhanden ist der Jahrgang 2026, weitere Jahrgänge kommen als eigene Kataloge dazu, damit Vorjahre meldbar bleiben.
 - **Übermittlung über ERiC** (geplant). Validierung gegen die ELSTER-Prüfregeln vor der Abgabe, Übermittlung mit Organisationszertifikat, Übermittlungsprotokoll als PDF am Beleg.
-- **Abgabe ohne Hersteller-ID** (geplant). Ausdruck zum Abtippen oder XML-Datei für den Import in Mein ELSTER.
+- **Abgabe ohne Hersteller-ID.** Die Voranmeldung als XML-Datei für den Import in Mein ELSTER, mit nachgerechneter Kz 83 und dem Zeichensatz von ELSTER; geprüft und abgesendet wird sie in Mein ELSTER, siehe [Abgabe über Mein ELSTER](docs/abgabe-mein-elster.md).
 
 ## Voraussetzungen
 
@@ -32,6 +32,7 @@ bench --site <site> install-app steuerbote
 
 - [Roadmap](docs/roadmap.md): Arbeitspakete und Reihenfolge
 - [Umsatzsteuer-Voranmeldung: Kennzahlen und Kontenzuordnung](docs/ustva-kennzahlen.md)
+- [Abgabe über Mein ELSTER](docs/abgabe-mein-elster.md): XML-Datei erzeugen und in Mein ELSTER importieren
 - [Architektur](docs/architektur.md): Rechenkern und Frappe-Schicht, DocTypes, Bericht, Arbeitsbereich und Druckformat
 - [Entwicklung](docs/entwicklung.md): Einrichtung, Tests, Stil
 - [Mitwirken](CONTRIBUTING.md), [Hinweise für Coding-Agenten](AGENTS.md), [Sicherheit](SECURITY.md)

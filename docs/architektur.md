@@ -10,9 +10,9 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 |---|---|
 | `steuerbote/ledger.py` | liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns, als einziges dieser Module mit Frappe |
 | `steuerbote/mapping_sync.py` | macht aus den Zeilen der Kontenzuordnung die `Mapping` des Kerns und kürzt die Vorgaben auf die Konten eines Unternehmens |
-| `steuerbote/elster/` | bildet aus Steuernummer und Bundesland die 13-stellige Steuernummer im ELSTER-Format |
+| `steuerbote/elster/` | bildet aus Steuernummer und Bundesland die 13-stellige Steuernummer im ELSTER-Format und schreibt die Meldung als XML für Mein ELSTER und ERiC, siehe [Abgabe über Mein ELSTER](abgabe-mein-elster.md) |
 | `vat_return_settings/rules.py` | Voranmeldungszeitraum je Monat, Dauerfristverlängerung und Sondervorauszahlung je Jahr |
-| `vat_return/bridge.py` | überträgt das Ergebnis des Kerns in die Tabellen der Meldung und bildet die Summen über die gemeldeten Beträge |
+| `vat_return/bridge.py` | überträgt das Ergebnis des Kerns in die Tabellen der Meldung, bildet die Summen über die gemeldeten Beträge und übergibt die Meldung und den Datenlieferanten an das XML |
 | `report/ustva_kennzahlen/attribution.py` | findet die Belege, aus denen jede Kennzahl besteht |
 
 So läuft „Berechnen“ an einer Meldung:
@@ -41,6 +41,8 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 | `tax_number` | Steuernummer | Pflicht, wie vom Finanzamt vergeben; das Format wird gegen das Bundesland geprüft |
 | `elster_tax_number` | Steuernummer im ELSTER-Format | 13 Stellen, berechnet |
 | `tax_office` | Finanzamt | |
+| `wid_nr` | Wirtschafts-Identifikationsnummer | freiwillig, „DE“ und neun Ziffern ohne die fünfstellige Ergänzung |
+| `filer_name`, `street`, `postal_code`, `city`, `phone`, `email` | Name, Straße und Hausnummer, Postleitzahl, Ort, Telefon, E-Mail | Datenlieferant der Datei für ELSTER, Längen wie im Schema (45, 30, 12, 30, 20 und 70 Zeichen); Straße, Postleitzahl und Ort braucht die Datei, ein leerer Name steht für das Unternehmen |
 | `period_rules` | Voranmeldungszeiträume | Pflicht; Tabelle „Regel zum Voranmeldungszeitraum“ mit Jahr, Voranmeldungszeitraum (monatlich, vierteljährlich oder keine) und „Gültig ab Monat“ (1, 4, 7 oder 10) |
 | `prepayments` | Dauerfristverlängerung und Sondervorauszahlung | Tabelle „Dauerfristverlängerung je Jahr“ mit Jahr, Dauerfristverlängerung und Sondervorauszahlung |
 
@@ -82,6 +84,7 @@ Einreichbar, Nummernkreis `UStVA-.YYYY.-.#####`.
 | `offset_requested` | Verrechnung erwünscht oder Erstattungsbetrag abgetreten (Kz 29) | Kennzeichen des Vordrucks |
 | `no_sepa_mandate` | SEPA-Lastschriftmandat ausnahmsweise nicht verwenden (Kz 26) | Kennzeichen des Vordrucks |
 | `supplementary_code` | Ergänzende Angaben zur Steueranmeldung (Kz 500) | Schlüssel 1 bis 4 |
+| `kz500_begruendung` | Begründung zu Kz 500 | Pflicht mit Kz 500 und nur mit ihr, höchstens 180 Zeichen in einer Zeile |
 | `remarks` | Anmerkungen | Pflicht, wenn eine Meldung abgegeben wird, die nicht bereit ist |
 
 ### Feld an der Journalbuchung
@@ -125,7 +128,8 @@ Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cen
 
 - „Berechnen“ geht, solange die Meldung nicht eingereicht ist, und lässt Korrekturen mit Begründung stehen.
 - Ein Zeitraum wird je Unternehmen einmal abgegeben. Jede weitere Meldung für einen abgegebenen Zeitraum muss eine berichtigte Anmeldung (Kz 10) sein. Wird sie abgegeben, stehen die früheren Meldungen des Zeitraums auf „Ersetzt“; wird sie storniert, steht die zuletzt ersetzte wieder auf „Abgegeben“.
-- „Abgegeben“ heißt: Die Meldung ist in ERPNext eingereicht und festgeschrieben. An das Finanzamt geht sie bis zur Anbindung an ERiC von Hand, etwa über Mein ELSTER, siehe [Roadmap](roadmap.md).
+- „Abgegeben“ heißt: Die Meldung ist in ERPNext eingereicht und festgeschrieben. An das Finanzamt geht sie bis zur Anbindung an ERiC von Hand oder als XML-Datei über Mein ELSTER, siehe [Abgabe über Mein ELSTER](abgabe-mein-elster.md).
+- „XML für Mein ELSTER“ erzeugt die Datei aus der gespeicherten Meldung, wenn sie abgegeben werden könnte oder abgegeben ist, und hängt sie privat an die Meldung.
 
 ## Was wo berechnet wird
 
@@ -136,6 +140,7 @@ Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cen
 | Voranmeldungszeitraum, Zeitraumcode, Fälligkeit | `Period` im Kern, Rhythmus aus `vat_return_settings/rules.py` |
 | Kz 39 | `bridge.sondervorauszahlung_values` aus den Einstellungen |
 | Steuernummer im ELSTER-Format | `steuerbote/elster` |
+| XML für Mein ELSTER und ERiC, mit Kz 83 aus den geschriebenen Werten nachgerechnet | `steuerbote/elster/ustva_xml.py` |
 | Belege hinter jeder Kennzahl | `attribution.py` mit den Regeln von `calculate()` |
 | Druckformat | rechnet keine Kennzahl, nur was der Vordruck selbst bildet: die Zeilen 45 und 48 aus den gespeicherten Summen und die Steuer der Zeilen 13, 14, 25 und 26 aus der Bemessungsgrundlage in vollen Euro |
 
@@ -158,7 +163,7 @@ Der Arbeitsbereich führt zu „Neue Umsatzsteuer-Voranmeldung“, zur Liste der
 Das Druckformat gibt eine Meldung in Reihenfolge und Wortlaut des Vordrucks USt 1 A 2026 aus, auf A4, schwarz und grau, ohne Logo und ohne Briefkopf.
 
 - **Kopf:** Unternehmen, Steuernummer, Steuernummer im ELSTER-Format und Finanzamt aus den Einstellungen, Voranmeldungszeitraum, Fälligkeit, Name und Status der Meldung.
-- **Vordruck:** die Zeilen 10 und 11 (Kz 10 und 22), dann die Abschnitte A bis J und die ergänzenden Angaben zur Steueranmeldung (Kz 500). Jede Zeile zeigt Zeile, Bezeichnung, Kennzahl und Bemessungsgrundlage in vollen Euro sowie Kennzahl und Steuer in Euro und Cent. Ein Abschnitt ohne Werte sagt „Keine Eintragungen“. Die Zeilen 37, 45 und 48 und Kz 83 stehen immer da.
+- **Vordruck:** die Zeilen 10 und 11 (Kz 10 und 22), dann die Abschnitte A bis J und die ergänzenden Angaben zur Steueranmeldung (Kz 500 mit Begründung). Jede Zeile zeigt Zeile, Bezeichnung, Kennzahl und Bemessungsgrundlage in vollen Euro sowie Kennzahl und Steuer in Euro und Cent. Ein Abschnitt ohne Werte sagt „Keine Eintragungen“. Die Zeilen 37, 45 und 48 und Kz 83 stehen immer da.
 - **Darunter:** die Korrekturen gegenüber dem Hauptbuch mit Begründung und die Anmerkungen, wenn es sie gibt.
 - **Fußzeile:** „Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.“ und der Hinweis, dass der Ausdruck keine Abgabe ist.
 
