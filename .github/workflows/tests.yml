@@ -28,6 +28,14 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
 
+      - name: Build the stub of the ERiC library
+        # The tests of the ctypes binding, the worker and the service run against this stub. CI builds it
+        # with all warnings as errors and passes its path to the tests, so a missing compiler fails the run
+        # instead of skipping them.
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -O1 -shared -fPIC -o "$RUNNER_TEMP/libericapi.so" steuerbote/eric/tests/stub/ericapi_stub.c
+          echo "STEUERBOTE_ERIC_STUB=$RUNNER_TEMP/libericapi.so" >> "$GITHUB_ENV"
+
       - name: Install test tools
         run: python -m pip install -r requirements-dev.txt
 
@@ -79,6 +87,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mariadb-client
+
+      - name: Build the stub of the ERiC library
+        # The tests of the ctypes binding, the worker and the service run against this stub. CI builds it
+        # with all warnings as errors and passes its path to the tests, so a missing compiler fails the run
+        # instead of skipping them.
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -O1 -shared -fPIC -o "$RUNNER_TEMP/libericapi.so" steuerbote/eric/tests/stub/ericapi_stub.c
+          echo "STEUERBOTE_ERIC_STUB=$RUNNER_TEMP/libericapi.so" >> "$GITHUB_ENV"
 
       - name: Set up a bench with Frappe and ERPNext version-16
         run: |

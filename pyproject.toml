@@ -62,12 +62,14 @@ docstring-code-format = true
 testpaths = [
     "steuerbote/ustva",
     "steuerbote/elster",
+    "steuerbote/eric",
     "steuerbote/steuerbote/doctype/vat_return/test_bridge.py",
     "steuerbote/steuerbote/doctype/vat_return_settings/test_rules.py",
     "steuerbote/steuerbote/doctype/vat_return_settings/test_translations.py",
     "steuerbote/tests/test_mapping_sync.py",
 ]
-addopts = "--strict-markers"
+# The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
+addopts = "--strict-markers --ignore=steuerbote/eric/tests/test_secrets.py"
 
 [tool.coverage.run]
 # The rules of a DocType are named as a module: their directory also holds the controller and its test,
@@ -75,11 +77,12 @@ addopts = "--strict-markers"
 source = [
     "steuerbote/ustva",
     "steuerbote/elster",
+    "steuerbote/eric",
     "steuerbote.steuerbote.doctype.vat_return.bridge",
     "steuerbote.steuerbote.doctype.vat_return_settings.rules",
     "steuerbote.mapping_sync",
 ]
-omit = ["*/tests/*"]
+omit = ["*/tests/*", "*/steuerbote/eric/secrets.py"]
 branch = true
 
 [tool.coverage.report]
