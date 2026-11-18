@@ -15,6 +15,8 @@ APP = Path(__file__).resolve().parents[1]
 MODULE = APP / "steuerbote"
 TRANSLATIONS = APP / "translations" / "de.csv"
 REPORT = MODULE / "report" / "ustva_kennzahlen"
+WORKSPACE = MODULE / "workspace" / "steuern" / "steuern.json"
+NUMBER_CARDS = MODULE / "number_card"
 
 # Names of the app that read the same in every language.
 GERMAN_NAMES = frozenset({"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen"})
@@ -91,3 +93,89 @@ class ReportFilesTest(TestCase):
 			texts.update(TRANSLATED_LITERAL.findall((REPORT / name).read_text(encoding="utf-8")))
 		self.assertIn("Ledger Amount", texts)
 		self.assertEqual(untranslated(texts), [])
+
+
+class WorkspaceFilesTest(TestCase):
+	def setUp(self):
+		self.workspace = read_json(WORKSPACE)
+		self.blocks = json.loads(self.workspace["content"])
+
+	def test_the_workspace_belongs_to_the_module(self):
+		self.assertEqual(
+			{key: self.workspace[key] for key in ("name", "label", "title", "module", "public", "type")},
+			{
+				"name": "Steuern",
+				"label": "Steuern",
+				"title": "Steuern",
+				"module": "Steuerbote",
+				"public": 1,
+				"type": "Workspace",
+			},
+		)
+
+	def test_every_block_names_a_shortcut_or_number_card_of_the_workspace(self):
+		shortcuts = {shortcut["label"] for shortcut in self.workspace["shortcuts"]}
+		cards = {card["label"] for card in self.workspace["number_cards"]}
+		named = {
+			"shortcut": [
+				block["data"]["shortcut_name"] for block in self.blocks if block["type"] == "shortcut"
+			],
+			"number_card": [
+				block["data"]["number_card_name"] for block in self.blocks if block["type"] == "number_card"
+			],
+		}
+		self.assertEqual(sorted(named["shortcut"]), sorted(shortcuts))
+		self.assertEqual(sorted(named["number_card"]), sorted(cards))
+		self.assertEqual(len({block["id"] for block in self.blocks}), len(self.blocks))
+
+	def test_the_shortcuts_open_the_vat_return_its_setup_and_the_report(self):
+		targets = {
+			(shortcut["type"], shortcut["link_to"], shortcut.get("doc_view", ""))
+			for shortcut in self.workspace["shortcuts"]
+		}
+		self.assertEqual(
+			targets,
+			{
+				("DocType", "VAT Return", "New"),
+				("DocType", "VAT Return", "List"),
+				("DocType", "VAT Return Settings", "List"),
+				("DocType", "VAT Return Mapping", "List"),
+				("Report", "UStVA Kennzahlen", ""),
+			},
+		)
+		doctypes = doctype_names()
+		for kind, target, _view in targets:
+			with self.subTest(target=target):
+				if kind == "DocType":
+					self.assertIn(target, doctypes)
+				else:
+					self.assertEqual(read_json(REPORT / "ustva_kennzahlen.json")["name"], target)
+
+	def test_the_number_card_counts_vat_returns_in_draft(self):
+		(row,) = self.workspace["number_cards"]
+		card = read_json(NUMBER_CARDS / "offene_voranmeldungen" / "offene_voranmeldungen.json")
+		self.assertEqual(row["number_card_name"], card["name"])
+		self.assertEqual(
+			{
+				key: card[key]
+				for key in ("label", "type", "document_type", "function", "is_standard", "module")
+			},
+			{
+				"label": "Offene Voranmeldungen",
+				"type": "Document Type",
+				"document_type": "VAT Return",
+				"function": "Count",
+				"is_standard": 1,
+				"module": "Steuerbote",
+			},
+		)
+		self.assertEqual(json.loads(card["filters_json"]), [["VAT Return", "docstatus", "=", "0"]])
+
+	def test_every_text_of_the_workspace_is_translated(self):
+		headers = {
+			re.sub(r"<[^>]+>", "", block["data"]["text"])
+			for block in self.blocks
+			if block["type"] == "header"
+		}
+		labels = {shortcut["label"] for shortcut in self.workspace["shortcuts"]}
+		self.assertEqual(untranslated(headers | labels), [])
