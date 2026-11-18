@@ -180,6 +180,11 @@ class EuHintsTest(TestCase):
 		self.assertEqual(hint.code, Code.EU_ADDRESS)
 		self.assertTrue(hint.text.endswith("aber die Rechnung nennt keine Anschrift des Kunden Muster GmbH."))
 
+	def test_a_name_that_ends_with_a_full_stop_closes_the_sentence(self):
+		(hint,) = invoice_hints([invoice("8125", "500", country=None, party="Muster B.V.")], SKR03, FIGURES)
+		self.assertTrue(hint.text.endswith("des Kunden Muster B.V."))
+		self.assertFalse(hint.text.endswith(".."))
+
 	def test_a_customer_in_another_member_state_with_vat_id_gets_no_hint(self):
 		self.assertEqual(invoice_hints([invoice("8125", "500"), invoice("8336", "100")], SKR03, FIGURES), [])
 

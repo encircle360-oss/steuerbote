@@ -258,7 +258,7 @@ def _eu_hints(line: InvoiceLine, kennzahl: str, net: Decimal, figures: Figures) 
 		address = f"die Anschrift {customer} liegt in {state.german}"
 	else:
 		return found
-	found.append(_about(line, Code.EU_ADDRESS, f"{booked}, aber {address}."))
+	found.append(_about(line, Code.EU_ADDRESS, _sentence(f"{booked}, aber {address}")))
 	return found
 
 
@@ -279,6 +279,11 @@ def _tax_hint(line: InvoiceLine, kennzahl: str, rate: Decimal, figures: Figures)
 
 def _about(line: InvoiceLine, code: Code, text: str) -> Hint:
 	return Hint(code, text, line.voucher_type, line.voucher_no, line.party)
+
+
+def _sentence(text: str) -> str:
+	"""A sentence ends with one full stop, also after a name such as „Muster B.V.“."""
+	return text if text.endswith(".") else f"{text}."
 
 
 def reconciliation_hints(
