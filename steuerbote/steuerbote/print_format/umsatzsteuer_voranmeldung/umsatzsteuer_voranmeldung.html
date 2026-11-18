@@ -1,0 +1,204 @@
+{#-
+	Umsatzsteuer-Voranmeldung in the order and wording of the form USt 1 A 2026 (BMF letter of
+	29 December 2025, GZ III C 3 - S 7344/00039/007/036). Every amount is the final amount of a row of the
+	return, or a sum the VAT Return keeps of them; lines 45 and 48 are the differences of those sums that the
+	form itself prints. The form computes the tax of lines 13, 14, 25 and 26 from the base in full euros.
+	Text fields print as Frappe formats them, since Frappe sanitises their markup when a document is saved.
+-#}
+{%- set settings = frappe.db.get_value("VAT Return Settings", doc.company, ["tax_number", "elster_tax_number", "tax_office"], as_dict=True) or {} -%}
+{%- set rows = doc.kennzahlen or [] -%}
+{%- set output_tax = frappe.utils.flt(doc.output_tax, 2) -%}
+{%- set remaining_tax = frappe.utils.flt(output_tax - frappe.utils.flt(doc.input_tax, 2), 2) -%}
+{%- set prepayment = frappe.utils.flt(remaining_tax + frappe.utils.flt(doc.other_tax, 2), 2) -%}
+{%- set derived_rates = {"81": 19, "86": 7, "89": 19, "93": 7} -%}
+{%- set sums = {
+	37: ("Umsatzsteuer (Summe der Zeilen 13 bis 18 und 25 bis 32)", "", output_tax),
+	45: ("Verbleibender Betrag (Zeile 37 abzüglich der Zeilen 38 bis 44)", "", remaining_tax),
+	48: ("Umsatzsteuer-Vorauszahlung/Überschuss (Summe der Zeilen 45 bis 47)", "", prepayment),
+	50: ("Verbleibende Umsatzsteuer-Vorauszahlung / Verbleibender Überschuss (bitte in jedem Fall ausfüllen)", "83", frappe.utils.flt(doc.kz83, 2)),
+} -%}
+{%- set sections = [
+	("A.", "Steuerpflichtige Lieferungen, sonstige Leistungen und unentgeltliche Wertabgaben", 13, 18),
+	("B.", "Steuerfreie Lieferungen, sonstige Leistungen und unentgeltliche Wertabgaben", 19, 23),
+	("C.", "Innergemeinschaftliche Erwerbe", 24, 29),
+	("D.", "Leistungsempfänger als Steuerschuldner (§ 13b UStG)", 30, 32),
+	("E.", "Ergänzende Angaben zu Umsätzen", 33, 37),
+	("F.", "Abziehbare Vorsteuerbeträge und Berichtigung des Vorsteuerabzugs", 38, 45),
+	("G.", "Andere Steuerbeträge", 46, 47),
+	("H.", "Vorauszahlung/Überschuss", 48, 50),
+	("I.", "Ergänzende Angaben zu Minderungen nach § 17 Absatz 1 Sätze 1 und 2 in Verbindung mit Absatz 2 Nummer 1 Satz 1 UStG", 51, 52),
+] -%}
+{%- set supplementary = {
+	"1": "konnten steuererhebliche Sachverhalte nicht erklärt werden.",
+	"2": "wird bewusst eine von der Verwaltungsauffassung abweichende Rechtsauffassung vertreten.",
+	"3": "sollen Sachverhalte personell vertieft geprüft werden.",
+	"4": "liegen mehrere der vorgenannten Gründe vor (Mehrfachauswahl).",
+} -%}
+{%- set overrides = rows | selectattr("override_reason") | list -%}
+
+{%- macro euros(value) -%}{{ frappe.utils.fmt_money(value, 0, None, "#.###,##") }}{%- endmacro -%}
+{%- macro cents(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
+{%- macro amount(row) -%}{{ euros(row.final) if row.kind == "base" else cents(row.final) }}{%- endmacro -%}
+
+{%- macro flag_row(line, kennzahl, label, value) -%}
+<tr>
+	<td class="line">{{ line }}</td>
+	<td>{{ label }}</td>
+	<td class="kz">{{ kennzahl }}</td>
+	<td class="flag" colspan="3">{{ value }}</td>
+</tr>
+{%- endmacro -%}
+
+{%- macro sum_row(line) -%}
+{%- set label, kennzahl, value = sums[line] -%}
+<tr class="sum">
+	<td class="line">{{ line }}</td>
+	<td>{{ label }}</td>
+	<td class="kz"></td>
+	<td class="num"></td>
+	<td class="kz">{{ kennzahl }}</td>
+	<td class="num">{{ cents(value) }}</td>
+</tr>
+{%- endmacro -%}
+
+{%- macro kennzahl_row(line, on_line) -%}
+{%- set bases = on_line | selectattr("kind", "equalto", "base") | list -%}
+{%- set taxes = on_line | selectattr("kind", "equalto", "tax") | list -%}
+{%- set base = bases[0] if bases else none -%}
+{%- set tax = taxes[0] if taxes else none -%}
+{%- set rate = derived_rates.get(base.kennzahl) if base else none -%}
+<tr>
+	<td class="line">{{ line }}</td>
+	<td>{{ (base or tax).label | e }}</td>
+	<td class="kz">{{ base.kennzahl if base else "" }}</td>
+	<td class="num">{{ euros(base.final) if base else "" }}</td>
+	<td class="kz">{{ tax.kennzahl if tax else "" }}</td>
+	<td class="num">
+		{%- if tax -%}{{ cents(tax.final) }}
+		{%- elif rate -%}{{ cents(frappe.utils.flt(base.final * rate / 100, 2)) }}
+		{%- endif -%}
+	</td>
+</tr>
+{%- endmacro -%}
+
+<div class="ustva">
+	<h1>Umsatzsteuer-Voranmeldung {{ doc.year }}</h1>
+	{%- if doc.is_correction %}
+	<p class="subtitle">Berichtigte Anmeldung</p>
+	{%- endif %}
+
+	<table class="head">
+		<tr><td class="label">Unternehmen</td><td>{{ doc.company | e }}</td></tr>
+		<tr><td class="label">Steuernummer</td><td>{{ (settings.tax_number or "") | e }}</td></tr>
+		<tr><td class="label">Steuernummer im ELSTER-Format</td><td>{{ (settings.elster_tax_number or "") | e }}</td></tr>
+		{%- if settings.tax_office %}
+		<tr><td class="label">Finanzamt</td><td>{{ settings.tax_office | e }}</td></tr>
+		{%- endif %}
+		<tr><td class="label">Voranmeldungszeitraum</td><td>{{ (doc.period_label or "") | e }}</td></tr>
+		<tr><td class="label">Fällig am</td><td>{{ frappe.utils.formatdate(doc.deadline, "dd.MM.yyyy") if doc.deadline else "" }}</td></tr>
+		<tr><td class="label">Meldung</td><td>{{ doc.name | e }}, {{ doc.status | e }}</td></tr>
+	</table>
+
+	<table class="form">
+		<colgroup>
+			<col class="line">
+			<col>
+			<col class="kz">
+			<col class="num">
+			<col class="kz">
+			<col class="num">
+		</colgroup>
+		<thead>
+			<tr>
+				<th class="line">Zeile</th>
+				<th></th>
+				<th class="kz">Kz</th>
+				<th class="num">Bemessungsgrundlage ohne Umsatzsteuer<br>EUR</th>
+				<th class="kz">Kz</th>
+				<th class="num">Steuer<br>EUR, Ct</th>
+			</tr>
+		</thead>
+		<tbody>
+			{{ flag_row(10, "10", "Berichtigte Anmeldung", "1 = Ja" if doc.is_correction else "") }}
+			{{ flag_row(11, "22", "Belege (z. B. Verträge, Rechnungen) sind beigefügt bzw. werden gesondert eingereicht", "1 = Ja" if doc.attachments else "") }}
+		</tbody>
+		{%- for letter, title, first, last in sections %}
+		<tbody class="group">
+			<tr class="section"><td colspan="6">{{ letter }} {{ title }}</td></tr>
+			{%- set printed = namespace(any=false) -%}
+			{%- for line in range(first, last + 1) -%}
+				{%- if line in sums -%}
+					{{ sum_row(line) }}
+					{%- set printed.any = true -%}
+				{%- else -%}
+					{%- set on_line = rows | selectattr("line", "equalto", line) | list -%}
+					{%- if on_line -%}
+						{{ kennzahl_row(line, on_line) }}
+						{%- set printed.any = true -%}
+					{%- endif -%}
+				{%- endif -%}
+			{%- endfor -%}
+			{%- if not printed.any %}
+			<tr class="empty"><td></td><td colspan="5">Keine Eintragungen</td></tr>
+			{%- endif %}
+		</tbody>
+		{%- endfor %}
+		<tbody class="group">
+			<tr class="section"><td colspan="6">J. Sonstige Angaben</td></tr>
+			{{ flag_row(53, "29", "Verrechnung des Erstattungsbetrags erwünscht / Erstattungsbetrag ist abgetreten", "1 = Ja" if doc.offset_requested else "") }}
+			{{ flag_row(54, "26", "Das SEPA-Lastschriftmandat soll ausnahmsweise für diesen Voranmeldungszeitraum nicht verwendet werden", "1 = Ja" if doc.no_sepa_mandate else "") }}
+		</tbody>
+		<tbody class="group">
+			<tr class="section"><td colspan="6">Ergänzende Angaben zur Steueranmeldung</td></tr>
+			<tr>
+				<td class="line">55</td>
+				<td>
+					Ergänzende Angaben zur Steueranmeldung (1 bis 4)
+					{%- if doc.supplementary_code in supplementary %}<br><span class="note">In dieser Steueranmeldung {{ supplementary[doc.supplementary_code] }}</span>{% endif %}
+				</td>
+				<td class="kz">500</td>
+				<td class="flag" colspan="3">{{ doc.supplementary_code or "" }}</td>
+			</tr>
+		</tbody>
+	</table>
+
+	{%- if overrides %}
+	<h2>Korrekturen gegenüber dem Hauptbuch</h2>
+	<table class="form">
+		<colgroup>
+			<col class="kz">
+			<col class="num">
+			<col class="num">
+			<col>
+		</colgroup>
+		<thead>
+			<tr>
+				<th class="kz">Kz</th>
+				<th class="num">Betrag laut Hauptbuch</th>
+				<th class="num">Gemeldeter Betrag</th>
+				<th>Begründung</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in overrides %}
+			<tr>
+				<td class="kz">{{ row.kennzahl }}</td>
+				<td class="num">{{ euros(row.reported) if row.kind == "base" else cents(row.reported) }}</td>
+				<td class="num">{{ amount(row) }}</td>
+				<td>{{ row.get_formatted("override_reason") }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+	{%- endif %}
+
+	{%- if doc.remarks %}
+	<h2>Bemerkungen</h2>
+	<p>{{ doc.get_formatted("remarks") }}</p>
+	{%- endif %}
+
+	<div class="footer">
+		<p>Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.</p>
+		<p>Dieser Ausdruck ist keine Abgabe. Abgegeben ist die Umsatzsteuer-Voranmeldung erst, wenn sie elektronisch an das Finanzamt übermittelt ist.</p>
+	</div>
+</div>

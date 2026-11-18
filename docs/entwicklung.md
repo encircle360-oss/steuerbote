@@ -7,7 +7,7 @@ Diese Seite beschreibt Aufbau, Einrichtung, Tests, Stil und CI. Wie ein Beitrag 
 ```text
 steuerbote/                    Repository
 ├── steuerbote/                Python-Paket der Frappe-App
-│   ├── hooks.py               App-Metadaten, setzt ERPNext voraus
+│   ├── hooks.py               App-Metadaten, setzt ERPNext voraus, nennt die Fixtures der App
 │   ├── ustva/                 Rechenkern der Umsatzsteuer-Voranmeldung, reines Python ohne Frappe-Import
 │   │   ├── kennzahlen.py      Katalog der Kennzahlen des Vordrucks USt 1 A je Jahrgang, bisher 2026
 │   │   ├── rounding.py        Rundung: Bemessungsgrundlagen in vollen Euro, Steuern in Cent
@@ -17,8 +17,17 @@ steuerbote/                    Repository
 │   │   ├── period.py          Voranmeldungszeiträume, Fristen und ELSTER-Zeitraumcodes
 │   │   └── tests/             Unit-Tests des Kerns
 │   ├── elster/                Steuernummer im 13-stelligen ELSTER-Format, reines Python ohne Frappe-Import
-│   ├── steuerbote/            Frappe-Modul „Steuerbote“ für DocTypes und Reports, noch leer
-│   ├── tests/                 Frappe-Integrationstests
+│   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
+│   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns, reines Python
+│   ├── steuerbote/            Frappe-Modul „Steuerbote“, siehe Architektur
+│   │   ├── doctype/           Einstellungen, Kontenzuordnung und Umsatzsteuer-Voranmeldung samt Tabellen
+│   │   ├── report/            Bericht „UStVA Kennzahlen“ mit den Belegen hinter jeder Kennzahl
+│   │   ├── workspace/         Arbeitsbereich „Steuern“
+│   │   ├── number_card/       Zahlenkarte „Offene Voranmeldungen“
+│   │   └── print_format/      Druckformat „Umsatzsteuer-Voranmeldung“
+│   ├── fixtures/              Feld „Nicht in der Umsatzsteuer-Voranmeldung“ an der Journalbuchung
+│   ├── translations/          deutsche Übersetzungen der Oberfläche (de.csv)
+│   ├── tests/                 Frappe-Integrationstests und Hilfen für Testdaten
 │   └── config/, patches/, public/, templates/
 │                              Standardverzeichnisse einer Frappe-App, noch leer
 ├── docs/                      Dokumentation
@@ -29,7 +38,7 @@ steuerbote/                    Repository
 └── .pre-commit-config.yaml    Hooks für pre-commit
 ```
 
-Der Kern unter `steuerbote/ustva` importiert nie Frappe. Deshalb lässt er sich ohne Bench testen. DocTypes und Reports gehören in das Frappe-Modul `steuerbote/steuerbote`.
+Der Kern unter `steuerbote/ustva` importiert nie Frappe. Deshalb lässt er sich ohne Bench testen. DocTypes und Reports gehören in das Frappe-Modul `steuerbote/steuerbote`. Wie Kern und Frappe-Modul zusammenspielen, beschreibt [Architektur](architektur.md).
 
 ## Einrichtung
 

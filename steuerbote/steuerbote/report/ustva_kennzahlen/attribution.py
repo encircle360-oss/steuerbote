@@ -1,0 +1,207 @@
+"""The vouchers behind each Kennzahl, for the report UStVA Kennzahlen. Pure Python, no Frappe.
+
+contributions() splits the core's calculate() by voucher with the core's own rules, so the vouchers of a
+Kennzahl add up to the amount calculate() computes for it. An account with a rule gives its balance on the
+rule's side to the rule's Kennzahl and, with an additional Kennzahl, its balance on that side to it. A rule
+with a tax rate adds the tax derived from the bases of a voucher: per voucher, tax Kennzahl and rate, the
+bases of all accounts are summed and the tax is rounded once, as in calculate(). Lines without a voucher
+count as one voucher.
+
+report_rows() turns the result and the contributions into the rows of the report in the order of the form:
+a row per Kennzahl, followed by its vouchers one level deeper, and the sums the form computes itself in
+lines 37, 45 and 48. Their wording follows the form USt 1 A 2026 (BMF letter of 29 December 2025,
+GZ III C 3 - S 7344/00039/007/036).
+"""
+
+from collections.abc import Iterable, Sequence
+from collections.abc import Mapping as ReadOnlyMapping
+from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
+from typing import Any
+
+from steuerbote.steuerbote.doctype.vat_return.bridge import split_voucher
+from steuerbote.ustva import Kennzahl, LedgerLine, Mapping, Side, UstvaResult, tax_from_base
+from steuerbote.ustva.rounding import ZERO
+
+COLUMNS = (
+	"kennzahl",
+	"line",
+	"label",
+	"posting_date",
+	"voucher_type",
+	"voucher_no",
+	"account",
+	"debit",
+	"credit",
+	"amount",
+	"reported",
+)
+
+# Line, wording on the form and the UstvaResult attribute holding the sum.
+SUM_LINES = (
+	(37, "Umsatzsteuer (Summe der Zeilen 13 bis 18 und 25 bis 32)", "output_tax"),
+	(45, "Verbleibender Betrag (Zeile 37 abzüglich der Zeilen 38 bis 44)", "remaining_tax"),
+	(48, "Umsatzsteuer-Vorauszahlung/Überschuss (Summe der Zeilen 45 bis 47)", "prepayment"),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class Contribution:
+	"""What one voucher adds to one Kennzahl, and the postings it comes from.
+
+	``accounts`` are the account numbers whose balances make up the amount: one for a balance that a rule
+	reports, one or more for a tax derived from the bases of the voucher at one rate. ``debit`` and
+	``credit`` are the postings of these accounts in the voucher.
+	"""
+
+	kennzahl: str
+	voucher: str | None
+	accounts: tuple[str, ...]
+	debit: Decimal
+	credit: Decimal
+	amount: Decimal
+
+
+@dataclass(slots=True)
+class _Postings:
+	debit: Decimal = ZERO
+	credit: Decimal = ZERO
+
+	def balance(self, side: Side) -> Decimal:
+		if side is Side.CREDIT:
+			return self.credit - self.debit
+		return self.debit - self.credit
+
+
+@dataclass(slots=True)
+class _DerivedBase:
+	accounts: list[str] = field(default_factory=list)
+	postings: _Postings = field(default_factory=_Postings)
+	base: Decimal = ZERO
+
+
+def contributions(lines: Iterable[LedgerLine], mapping: Mapping) -> dict[str, list[Contribution]]:
+	"""The contributions of the lines to each Kennzahl, vouchers in the order of their first line."""
+	postings: dict[tuple[str, str | None], _Postings] = {}
+	first_line: dict[str | None, int] = {}
+	for ledger_line in lines:
+		key = (ledger_line.account_number, ledger_line.voucher)
+		total = postings.setdefault(key, _Postings())
+		total.debit += ledger_line.debit
+		total.credit += ledger_line.credit
+		first_line.setdefault(ledger_line.voucher, len(first_line))
+
+	found: dict[str, list[Contribution]] = {}
+	derived: dict[tuple[str, Decimal, str | None], _DerivedBase] = {}
+	for (account, voucher), total in postings.items():
+		rule = mapping.rule_for(account)
+		if rule is None:
+			continue
+		reported = ((rule.kennzahl, rule.side), (rule.also_kennzahl, rule.also_side))
+		for kennzahl, side in reported:
+			if kennzahl is not None:
+				found.setdefault(kennzahl, []).append(
+					Contribution(
+						kennzahl, voucher, (account,), total.debit, total.credit, total.balance(side)
+					)
+				)
+		if rule.tax_rate is not None:
+			tax_kennzahl = mapping.catalogue[rule.kennzahl].tax_kennzahl
+			base = derived.setdefault((tax_kennzahl, rule.tax_rate, voucher), _DerivedBase())
+			base.accounts.append(account)
+			base.postings.debit += total.debit
+			base.postings.credit += total.credit
+			base.base += total.balance(rule.side)
+	for (tax_kennzahl, rate, voucher), base in derived.items():
+		found.setdefault(tax_kennzahl, []).append(
+			Contribution(
+				tax_kennzahl,
+				voucher,
+				tuple(base.accounts),
+				base.postings.debit,
+				base.postings.credit,
+				tax_from_base(base.base, rate),
+			)
+		)
+	for items in found.values():
+		items.sort(key=lambda item: first_line[item.voucher])
+	return found
+
+
+def report_rows(
+	result: UstvaResult,
+	catalogue: ReadOnlyMapping[str, Kennzahl],
+	by_kennzahl: ReadOnlyMapping[str, Sequence[Contribution]],
+	*,
+	posting_dates: ReadOnlyMapping[str, date],
+	account_names: ReadOnlyMapping[str, str],
+	currency: str,
+) -> list[dict[str, Any]]:
+	"""The rows of the report in the order of the form: Kennzahlen with their vouchers, and the sums.
+
+	A Kennzahl appears when it has an amount or vouchers, so vouchers that cancel each other out stay
+	visible. ``posting_dates`` and ``account_names`` look up the voucher keys and account numbers.
+	"""
+	blocks: list[tuple[int, int, list[dict[str, Any]]]] = []
+	for position, kennzahl in enumerate(catalogue.values()):
+		value = result.values.get(kennzahl.number)
+		items = by_kennzahl.get(kennzahl.number, ())
+		if value is None and not items:
+			continue
+		rows = [
+			_row(
+				kennzahl=kennzahl.number,
+				line=kennzahl.line,
+				label=kennzahl.label,
+				amount=value.amount if value else ZERO,
+				reported=value.reported if value else ZERO,
+				bold=1,
+				currency=currency,
+			)
+		]
+		rows += [_voucher_row(item, posting_dates, account_names, currency) for item in items]
+		blocks.append((kennzahl.line, position, rows))
+	for line, label, total in SUM_LINES:
+		blocks.append(
+			(
+				line,
+				len(catalogue),
+				[_row(line=line, label=label, reported=getattr(result, total), bold=1, currency=currency)],
+			)
+		)
+	return [row for _line, _position, rows in sorted(blocks, key=lambda block: block[:2]) for row in rows]
+
+
+def _voucher_row(
+	item: Contribution,
+	posting_dates: ReadOnlyMapping[str, date],
+	account_names: ReadOnlyMapping[str, str],
+	currency: str,
+) -> dict[str, Any]:
+	voucher_type, voucher_no = split_voucher(item.voucher)
+	single_name = account_names.get(item.accounts[0]) if len(item.accounts) == 1 else None
+	return _row(
+		kennzahl=item.kennzahl,
+		label=None if single_name else ", ".join(item.accounts),
+		posting_date=posting_dates.get(item.voucher) if item.voucher else None,
+		voucher_type=voucher_type,
+		voucher_no=voucher_no,
+		account=single_name,
+		debit=item.debit,
+		credit=item.credit,
+		amount=item.amount,
+		indent=1,
+		parent_kennzahl=item.kennzahl,
+		currency=currency,
+	)
+
+
+def _row(indent: int = 0, parent_kennzahl: str | None = None, bold: int = 0, **values: Any) -> dict[str, Any]:
+	return {
+		**dict.fromkeys(COLUMNS),
+		**values,
+		"indent": indent,
+		"parent_kennzahl": parent_kennzahl,
+		"bold": bold,
+	}

@@ -32,6 +32,7 @@ bench --site <site> install-app steuerbote
 
 - [Roadmap](docs/roadmap.md): Arbeitspakete und Reihenfolge
 - [Umsatzsteuer-Voranmeldung: Kennzahlen und Kontenzuordnung](docs/ustva-kennzahlen.md)
+- [Architektur](docs/architektur.md): Rechenkern und Frappe-Schicht, DocTypes, Bericht, Arbeitsbereich und Druckformat
 - [Entwicklung](docs/entwicklung.md): Einrichtung, Tests, Stil
 - [Mitwirken](CONTRIBUTING.md), [Hinweise für Coding-Agenten](AGENTS.md), [Sicherheit](SECURITY.md)
 
