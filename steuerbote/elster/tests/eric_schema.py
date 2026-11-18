@@ -23,7 +23,10 @@ def documentation() -> Path:
 	"""The directory Dokumentation of the unzipped ERiC documentation; skips the test without it."""
 	configured = os.environ.get(VARIABLE)
 	if not configured:
-		message = f"{VARIABLE} is not set: the XML is not checked against the ERiC schemas. Unzip {DOWNLOAD} and set {VARIABLE} to its directory."
+		message = (
+			f"{VARIABLE} is not set: the XML is not checked against the ERiC schemas. "
+			f"Unzip {DOWNLOAD} and set {VARIABLE} to its directory."
+		)
 		if os.environ.get("CI"):
 			raise RuntimeError(message)
 		raise SkipTest(message)

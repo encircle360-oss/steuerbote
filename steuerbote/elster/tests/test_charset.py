@@ -2,8 +2,8 @@ from unittest import TestCase
 
 from steuerbote.elster.charset import ALLOWED, CharsetError, describe, transliterate
 
-# The character set Standard_E_V2 as the specification of the XML lists it: printable ASCII, ¡¢£¥§ª«¬®¯°±²³µ¹º»,
-# ¿ to ÿ, and the characters ISO-8859-15 puts in place of eight of ISO-8859-1.
+# The character set Standard_E_V2 as the specification of the XML lists it: printable ASCII,
+# ¡¢£¥§ª«¬®¯°±²³µ¹º», ¿ to ÿ, and the characters ISO-8859-15 puts in place of eight of ISO-8859-1.
 SPECIFIED = (
 	{chr(code) for code in range(0x20, 0x7F)}
 	| set("¡¢£¥§ª«¬®¯°±²³µ¹º»")
