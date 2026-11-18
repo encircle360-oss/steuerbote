@@ -5,10 +5,12 @@ Return Mapping and VAT Return Settings, and leaves every amount to the core in s
 maps the results onto the tables. A company can switch between monthly and quarterly filing at the start of
 a quarter, so a period number alone names a month or a quarter: the return carries its rhythm, which has to
 be the one the settings prescribe for the first month of the period. An override replaces a computed amount
-once it has a reason, and the totals and Kz 83 always follow the amounts as filed. A period is filed once;
-every further return for it is a corrected return (Kz 10), and filing one marks the returns before it as
-replaced. "XML für Mein ELSTER" (make_import_file) writes the return as saved into the file for the import
-into Mein ELSTER through steuerbote.elster.ustva_xml and attaches it to the return.
+once it has a reason, and the totals and Kz 83 always follow the amounts as filed. "Berechnen" also fills the
+Vorperiodenvergleich (build_comparison) and the hints (build_hints) of steuerbote.ustva.plausibility, which
+inform and never change an amount or whether the return is ready. A period is filed once; every further
+return for it is a corrected return (Kz 10), and filing one marks the returns before it as replaced. "XML für
+Mein ELSTER" (make_import_file) writes the return as saved into the file for the import into Mein ELSTER
+through steuerbote.elster.ustva_xml and attaches it to the return.
 
 "Prüfen", "Testsenden" and "Senden" (transmit) run in a background job: the job writes the same tree as the
 file for Mein ELSTER with the Hersteller-ID for ERiC and hands it to steuerbote.eric, through the worker of an
@@ -26,16 +28,17 @@ import base64
 import binascii
 import contextlib
 import re
+from decimal import Decimal
 
 import frappe
 from frappe import _
 from frappe.core.doctype.file.utils import get_content_hash
 from frappe.model.document import Document
-from frappe.utils import cint, escape_html, getdate, now_datetime, strip_html
+from frappe.utils import cint, escape_html, fmt_money, getdate, now_datetime, strip_html
 from frappe.utils.background_jobs import is_job_enqueued
 
 import steuerbote
-from steuerbote import ustva
+from steuerbote import invoices, ustva
 from steuerbote.elster import ustva_xml
 from steuerbote.eric import secrets
 from steuerbote.eric.header import EnvelopeHeader
@@ -57,6 +60,8 @@ from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission impor
 from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root
 from steuerbote.steuerbote.doctype.vat_return import bridge, transmission_adapter
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
+from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
+from steuerbote.ustva import plausibility
 
 DOCTYPE = "VAT Return"
 SETTINGS_DOCTYPE = "VAT Return Settings"
@@ -71,7 +76,7 @@ FILED = "Abgegeben"
 REPLACED = "Ersetzt"
 
 PERIOD_FIELDS = ("company", "year", "rhythm", "period_index")
-CALCULATED_TABLES = ("kennzahlen", "checks", "deviations", "unmapped")
+CALCULATED_TABLES = ("kennzahlen", "checks", "deviations", "unmapped", "hints", "comparison")
 
 OPERATIONS = (VALIDATE, TEST_SEND, SEND)
 LOCK_FIELD = "transmission_in_progress"
@@ -100,7 +105,11 @@ class VATReturn(Document):
 		from frappe.types import DF
 
 		from steuerbote.steuerbote.doctype.vat_return_check.vat_return_check import VATReturnCheck
+		from steuerbote.steuerbote.doctype.vat_return_comparison.vat_return_comparison import (
+			VATReturnComparison,
+		)
 		from steuerbote.steuerbote.doctype.vat_return_deviation.vat_return_deviation import VATReturnDeviation
+		from steuerbote.steuerbote.doctype.vat_return_hint.vat_return_hint import VATReturnHint
 		from steuerbote.steuerbote.doctype.vat_return_kennzahl.vat_return_kennzahl import VATReturnKennzahl
 		from steuerbote.steuerbote.doctype.vat_return_unmapped_account.vat_return_unmapped_account import (
 			VATReturnUnmappedAccount,
@@ -111,9 +120,11 @@ class VATReturn(Document):
 		attachments: DF.Check
 		checks: DF.Table[VATReturnCheck]
 		company: DF.Link
+		comparison: DF.Table[VATReturnComparison]
 		deadline: DF.Date | None
 		deviations: DF.Table[VATReturnDeviation]
 		from_date: DF.Date | None
+		hints: DF.Table[VATReturnHint]
 		input_tax: DF.Currency
 		is_correction: DF.Check
 		kennzahlen: DF.Table[VATReturnKennzahl]
@@ -194,7 +205,8 @@ class VATReturn(Document):
 
 	@frappe.whitelist(methods=["POST"])
 	def calculate(self) -> None:
-		"""Berechnen: compute the return from the general ledger of the period and save it."""
+		"""Berechnen: compute the return from the general ledger of the period and save it, together with the
+		Vorperiodenvergleich and the hints, which leave its amounts and whether it is ready as they are."""
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft return can be calculated."))
 		self._require_catalogue()
@@ -202,26 +214,18 @@ class VATReturn(Document):
 		period, settings = self._set_period()
 		catalogue = ustva.catalogue_for(year)
 		overrides = _read_rows(bridge.overrides_of, self.kennzahlen, catalogue)
+		mapping = mapping_for(self.company, year)
 		lines = load_lines(self.company, period.start, period.end)
-		try:
-			result = ustva.calculate(
-				lines,
-				mapping_for(self.company, year),
-				extra_values=bridge.sondervorauszahlung_values(
-					period,
-					settings.has_dauerfrist(year),
-					bridge.to_amount(settings.sondervorauszahlung(year)),
-				),
-				tolerance=bridge.to_amount(settings.tolerance),
-			)
-		except ValueError as error:
-			frappe.throw(str(error))
+		result = _calculated(lines, mapping, period, settings)
 		self.set("kennzahlen", bridge.kennzahl_rows(result, catalogue, overrides))
 		self.set("checks", bridge.check_rows(result))
 		self.set("deviations", bridge.deviation_rows(result))
 		self.set(
 			"unmapped", bridge.unmapped_rows(result, lines, account_names(self.company, result.unmapped))
 		)
+		comparison = build_comparison(self, period, settings, mapping)
+		self.set("comparison", bridge.comparison_rows(comparison))
+		self.set("hints", bridge.hint_rows(build_hints(self, period, mapping, result, comparison)))
 		self.ready = int(result.ready)
 		self.status = READY if result.ready else CALCULATED
 		self.accounts_without_number = len(accounts_without_number(self.company))
@@ -678,6 +682,102 @@ def mapping_for(company: str, year: int) -> ustva.Mapping:
 			).format(company)
 		)
 	return frappe.get_doc(MAPPING_DOCTYPE, company).to_mapping(year)
+
+
+def _calculated(
+	lines: list[ustva.LedgerLine], mapping: ustva.Mapping, period: ustva.Period, settings: Document
+) -> ustva.UstvaResult:
+	"""The core's result for a period, with Kz 39 in the last period of a year with Dauerfristverlängerung."""
+	try:
+		return ustva.calculate(
+			lines,
+			mapping,
+			extra_values=bridge.sondervorauszahlung_values(
+				period,
+				settings.has_dauerfrist(period.year),
+				bridge.to_amount(settings.sondervorauszahlung(period.year)),
+			),
+			tolerance=bridge.to_amount(settings.tolerance),
+		)
+	except ValueError as error:
+		frappe.throw(str(error))
+
+
+def build_comparison(
+	doc: Document, period: ustva.Period, settings: Document, mapping: ustva.Mapping
+) -> plausibility.Comparison:
+	"""Vorperiodenvergleich: the amounts the return files against the previous period of its rhythm and
+	against the same period a year earlier. A Kennzahl is flagged by the rule the report UStVA Kennzahlen
+	filters its deviations with, on the thresholds of the settings.
+
+	The earlier amounts come from the ledger, through the same query and the company's mapping validated
+	against the form of their year, and never from earlier VAT Returns: the ledger is the single source of
+	every Kennzahl, and the comparison has to work before any earlier return exists. A year without a catalogue
+	of Kennzahlen, or with a form the mapping does not fit, leaves the amounts of its period empty and costs no
+	query.
+	"""
+	thresholds = Thresholds.of(
+		settings.get("comparison_threshold_percent"), settings.get("comparison_threshold_amount")
+	)
+	return plausibility.compare(
+		_read_rows(bridge.final_amounts, doc.kennzahlen, period.year),
+		_earlier_period(doc.company, period.previous(), settings, mapping),
+		_earlier_period(doc.company, year_before(period), settings, mapping),
+		mapping.catalogue,
+		thresholds.exceeded,
+	)
+
+
+def _earlier_period(
+	company: str, period: ustva.Period, settings: Document, mapping: ustva.Mapping
+) -> plausibility.EarlierPeriod:
+	try:
+		mapping_of_the_year = mapping.for_year(period.year)
+	except ustva.UnknownYearError:
+		return plausibility.EarlierPeriod(period, None, plausibility.Code.NO_CATALOGUE)
+	except ustva.MappingError:
+		return plausibility.EarlierPeriod(period, None, plausibility.Code.MAPPING_UNFIT)
+	result = _calculated(load_lines(company, period.start, period.end), mapping_of_the_year, period, settings)
+	return plausibility.EarlierPeriod(
+		period, {number: value.reported for number, value in result.values.items()}
+	)
+
+
+def build_hints(
+	doc: Document,
+	period: ustva.Period,
+	mapping: ustva.Mapping,
+	result: ustva.UstvaResult,
+	comparison: plausibility.Comparison,
+) -> tuple[plausibility.Hint, ...]:
+	"""Hinweise: the invoices of the period, their reconciliation with the ledger and the Vorperiodenvergleich.
+
+	A hint informs and never holds the return; whether it is ready follows the Verprobung and the watched
+	accounts alone.
+	"""
+	lines = invoices.load_lines(
+		doc.company,
+		period.start,
+		period.end,
+		plausibility.sales_accounts(mapping),
+		plausibility.purchase_accounts(mapping),
+	)
+	ledger = {number: value.amount for number, value in result.values.items()}
+	currency = frappe.get_cached_value("Company", doc.company, "default_currency")
+	return plausibility.hints(comparison, lines, ledger, mapping, _Figures(currency))
+
+
+class _Figures:
+	"""The figures of a hint in the number format of the site, amounts in the company's currency."""
+
+	def __init__(self, currency: str) -> None:
+		self.currency = currency
+
+	def money(self, amount: Decimal) -> str:
+		return fmt_money(amount, currency=self.currency)
+
+	def percent(self, value: Decimal) -> str:
+		return f"{fmt_money(value, precision=1)} %"
 
 
 def filings(returns: list[str]) -> list[dict]:
