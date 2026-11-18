@@ -1,0 +1,94 @@
+{
+ "actions": [],
+ "autoname": "field:company",
+ "creation": "2026-11-18 02:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "chart",
+  "rules",
+  "checks",
+  "watched"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "set_only_once": 1,
+   "unique": 1
+  },
+  {
+   "default": "SKR03",
+   "fieldname": "chart",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Standard Chart of Accounts",
+   "options": "SKR03\nSKR04\nEigener Kontenrahmen",
+   "reqd": 1
+  },
+  {
+   "description": "Which account feeds which Kennzahl. The amount is the balance of the period on the given side.",
+   "fieldname": "rules",
+   "fieldtype": "Table",
+   "label": "Account Rules",
+   "options": "VAT Return Mapping Rule"
+  },
+  {
+   "description": "Verprobung: the tax booked on the tax accounts against the tax on the base accounts, voucher by voucher.",
+   "fieldname": "checks",
+   "fieldtype": "Table",
+   "label": "Tax Checks",
+   "options": "VAT Return Mapping Check"
+  },
+  {
+   "description": "Accounts of the Voranmeldung without a Kennzahl yet. A balance on one of them holds the return.",
+   "fieldname": "watched",
+   "fieldtype": "Table",
+   "label": "Watched Accounts",
+   "options": "VAT Return Watched Account"
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-18 02:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT Return Mapping",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Accounts User",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

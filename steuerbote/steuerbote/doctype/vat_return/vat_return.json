@@ -1,0 +1,349 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-11-18 00:00:00.000000",
+ "description": "One Umsatzsteuer-Voranmeldung of a company for one Voranmeldungszeitraum, computed from the general ledger.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "year",
+  "rhythm",
+  "period_index",
+  "is_correction",
+  "column_break_period",
+  "period_label",
+  "period_code",
+  "from_date",
+  "to_date",
+  "deadline",
+  "status",
+  "amended_from",
+  "kennzahlen_section",
+  "kennzahlen",
+  "totals_section",
+  "output_tax",
+  "input_tax",
+  "other_tax",
+  "column_break_totals",
+  "sondervorauszahlung",
+  "kz83",
+  "ready",
+  "verprobung_section",
+  "checks",
+  "deviations",
+  "unmapped",
+  "accounts_without_number",
+  "further_section",
+  "attachments",
+  "offset_requested",
+  "no_sepa_mandate",
+  "column_break_further",
+  "supplementary_code",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "default": "UStVA-.YYYY.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "UStVA-.YYYY.-.#####",
+   "print_hide": 1,
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "remember_last_selected_value": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_standard_filter": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "description": "Monthly or quarterly, as the VAT Return Settings prescribe for the first month of the period.",
+   "fieldname": "rhythm",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Rhythm",
+   "options": "monthly\nquarterly",
+   "reqd": 1
+  },
+  {
+   "description": "Month 1 to 12 or quarter 1 to 4, as the company files.",
+   "fieldname": "period_index",
+   "fieldtype": "Int",
+   "label": "Period Number",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_correction",
+   "fieldtype": "Check",
+   "label": "Corrected Return (Kz 10)"
+  },
+  {
+   "fieldname": "column_break_period",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "fieldname": "period_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Return Period",
+   "read_only": 1
+  },
+  {
+   "fieldname": "period_code",
+   "fieldtype": "Data",
+   "label": "Period Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline",
+   "fieldtype": "Date",
+   "label": "Due Date",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Entwurf",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Entwurf\nBerechnet\nBereit\nAbgegeben\nErsetzt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "VAT Return",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "kennzahlen_section",
+   "fieldtype": "Section Break",
+   "label": "Kennzahlen"
+  },
+  {
+   "fieldname": "kennzahlen",
+   "fieldtype": "Table",
+   "label": "Kennzahlen",
+   "options": "VAT Return Kennzahl"
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "output_tax",
+   "fieldtype": "Currency",
+   "label": "Output Tax (Line 37)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "input_tax",
+   "fieldtype": "Currency",
+   "label": "Input Tax (Lines 38 to 44)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "other_tax",
+   "fieldtype": "Currency",
+   "label": "Other Tax (Lines 46 and 47)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sondervorauszahlung",
+   "fieldtype": "Currency",
+   "label": "Sondervorauszahlung (Kz 39)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "kz83",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Remaining Prepayment or Surplus (Kz 83)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ready",
+   "fieldtype": "Check",
+   "label": "Ready to File",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "verprobung_section",
+   "fieldtype": "Section Break",
+   "label": "Verprobung"
+  },
+  {
+   "fieldname": "checks",
+   "fieldtype": "Table",
+   "label": "Verprobung",
+   "options": "VAT Return Check",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deviations",
+   "fieldtype": "Table",
+   "label": "Deviating Vouchers",
+   "options": "VAT Return Deviation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unmapped",
+   "fieldtype": "Table",
+   "label": "Watched Accounts with a Balance",
+   "options": "VAT Return Unmapped Account",
+   "read_only": 1
+  },
+  {
+   "description": "Ledger accounts of the company without an account number. No Kennzahl can include them.",
+   "fieldname": "accounts_without_number",
+   "fieldtype": "Int",
+   "label": "Accounts without Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "further_section",
+   "fieldtype": "Section Break",
+   "label": "Further Details"
+  },
+  {
+   "default": "0",
+   "fieldname": "attachments",
+   "fieldtype": "Check",
+   "label": "Documents Enclosed (Kz 22)"
+  },
+  {
+   "default": "0",
+   "fieldname": "offset_requested",
+   "fieldtype": "Check",
+   "label": "Offset Requested or Refund Assigned (Kz 29)"
+  },
+  {
+   "default": "0",
+   "fieldname": "no_sepa_mandate",
+   "fieldtype": "Check",
+   "label": "Do Not Use the SEPA Direct Debit Mandate (Kz 26)"
+  },
+  {
+   "fieldname": "column_break_further",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "supplementary_code",
+   "fieldtype": "Select",
+   "label": "Supplementary Information (Kz 500)",
+   "options": "\n1\n2\n3\n4"
+  },
+  {
+   "description": "Required to file a return that is not ready: why it is correct nonetheless.",
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-11-18 03:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT Return",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 0,
+ "row_format": "Dynamic",
+ "search_fields": "company,period_label",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "period_label",
+ "track_changes": 1
+}

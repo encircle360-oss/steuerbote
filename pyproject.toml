@@ -58,12 +58,27 @@ indent-style = "tab"
 docstring-code-format = true
 
 [tool.pytest.ini_options]
-# Only the pure core runs without a bench; Frappe tests run with `bench run-tests`.
-testpaths = ["steuerbote/ustva"]
+# Only the pure modules run without a bench; Frappe tests run with `bench run-tests`.
+testpaths = [
+    "steuerbote/ustva",
+    "steuerbote/elster",
+    "steuerbote/steuerbote/doctype/vat_return/test_bridge.py",
+    "steuerbote/steuerbote/doctype/vat_return_settings/test_rules.py",
+    "steuerbote/steuerbote/doctype/vat_return_settings/test_translations.py",
+    "steuerbote/tests/test_mapping_sync.py",
+]
 addopts = "--strict-markers"
 
 [tool.coverage.run]
-source = ["steuerbote/ustva"]
+# The rules of a DocType are named as a module: their directory also holds the controller and its test,
+# which import Frappe.
+source = [
+    "steuerbote/ustva",
+    "steuerbote/elster",
+    "steuerbote.steuerbote.doctype.vat_return.bridge",
+    "steuerbote.steuerbote.doctype.vat_return_settings.rules",
+    "steuerbote.mapping_sync",
+]
 omit = ["*/tests/*"]
 branch = true
 
