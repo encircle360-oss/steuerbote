@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\": \"stbhead001\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>VAT Return</b></span>\", \"col\": 12}}, {\"id\": \"stbcard001\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Offene Voranmeldungen\", \"col\": 4}}, {\"id\": \"stbshort01\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New VAT Return\", \"col\": 4}}, {\"id\": \"stbshort02\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"VAT Returns\", \"col\": 4}}, {\"id\": \"stbshort03\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"UStVA Kennzahlen\", \"col\": 4}}, {\"id\": \"stbspace01\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"stbhead002\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Setup</b></span>\", \"col\": 12}}, {\"id\": \"stbshort04\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"VAT Return Settings\", \"col\": 4}}, {\"id\": \"stbshort05\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"VAT Return Mapping\", \"col\": 4}}]",
+ "content": "[{\"id\": \"stbhead001\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>VAT Return</b></span>\", \"col\": 12}}, {\"id\": \"stbcard001\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Offene Voranmeldungen\", \"col\": 4}}, {\"id\": \"stbshort01\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"New VAT Return\", \"col\": 4}}, {\"id\": \"stbshort02\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"VAT Returns\", \"col\": 4}}, {\"id\": \"stbshort03\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Kennzahlen (Report)\", \"col\": 4}}, {\"id\": \"stbspace01\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"stbhead002\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Setup</b></span>\", \"col\": 12}}, {\"id\": \"stbshort04\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Settings\", \"col\": 4}}, {\"id\": \"stbshort05\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Account Mapping\", \"col\": 4}}]",
  "creation": "2026-11-18 00:00:00.000000",
  "custom_blocks": [],
  "docstatus": 0,
@@ -12,7 +12,7 @@
  "is_hidden": 0,
  "label": "Steuern",
  "links": [],
- "modified": "2026-11-18 00:00:00.000000",
+ "modified": "2026-11-18 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Steuern",
@@ -56,21 +56,21 @@
   },
   {
    "color": "Grey",
-   "label": "UStVA Kennzahlen",
+   "label": "Kennzahlen (Report)",
    "link_to": "UStVA Kennzahlen",
    "type": "Report"
   },
   {
    "color": "Grey",
    "doc_view": "List",
-   "label": "VAT Return Settings",
+   "label": "Settings",
    "link_to": "VAT Return Settings",
    "type": "DocType"
   },
   {
    "color": "Grey",
    "doc_view": "List",
-   "label": "VAT Return Mapping",
+   "label": "Account Mapping",
    "link_to": "VAT Return Mapping",
    "type": "DocType"
   }

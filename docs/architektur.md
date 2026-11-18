@@ -54,7 +54,7 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 |---|---|---|
 | `company` | Unternehmen | Pflicht |
 | `chart` | Kontenrahmen | bestimmt die Vorgabe für „Vorgaben laden“ |
-| `rules` | Zuordnungen | Tabelle „Regel der Kontenzuordnung Umsatzsteuer“: Konto, Kontonummer (aus dem Konto), Kennzahl, Seite (Haben oder Soll), Steuersatz (%), Zusätzliche Kennzahl und Seite der zusätzlichen Kennzahl |
+| `rules` | Zuordnungen | Tabelle „Regel der Kontenzuordnung Umsatzsteuer“: Konto, Kontonummer (aus dem Konto), Kennzahl, Seite (Haben oder Soll), Steuersatz (%; leer oder 0 heißt kein Satz, die Tabelle zeigt ihn dann leer), Zusätzliche Kennzahl und Seite der zusätzlichen Kennzahl |
 | `checks` | Verprobungen | Tabelle „Verprobung der Kontenzuordnung Umsatzsteuer“: Bezeichnung, Grundlagenkonten und Steuerkonten (Kontonummern, durch Kommas getrennt), Seite |
 | `watched` | Beobachtete Konten | Tabelle „Beobachtetes Konto der Kontenzuordnung Umsatzsteuer“: Konto und Kontonummer |
 
@@ -213,20 +213,24 @@ Der Bericht zeigt für einen Zeitraum, aus welchen Buchungen jede Kennzahl beste
 - Die Belege einer Kennzahl ergeben genau ihren Betrag laut Hauptbuch. Heben sich die Belege einer Kennzahl auf, steht sie mit 0 im Bericht.
 - Der Bericht zeigt das Hauptbuch, keine Meldung: Korrekturen einer Meldung erscheinen darin nicht.
 
-## Arbeitsbereich „Steuern“
+## Arbeitsbereich „Steuern“ und Seitenleiste
 
-Der Arbeitsbereich führt zu „Neue Umsatzsteuer-Voranmeldung“, zur Liste der Umsatzsteuer-Voranmeldungen, zum Bericht „UStVA Kennzahlen“ und zu den Einstellungen und der Kontenzuordnung. Die Zahlenkarte „Offene Voranmeldungen“ zählt die Meldungen aller Unternehmen, die noch nicht eingereicht sind. Sichtbar ist der Arbeitsbereich für die Rollen Accounts Manager, Accounts User und System Manager.
+Der Arbeitsbereich führt zu „Neue Voranmeldung“, zur Liste „Voranmeldungen“, zum Bericht „UStVA Kennzahlen“ („Kennzahlen (Bericht)“) und zu „Einstellungen“ und „Kontenzuordnung“. Die Zahlenkarte „Offene Voranmeldungen“ zählt die Meldungen aller Unternehmen, die noch nicht eingereicht sind. Sichtbar ist der Arbeitsbereich für die Rollen Accounts Manager, Accounts User und System Manager.
+
+Die Seitenleiste des Moduls bringt Steuerbote selbst mit (`sidebar/steuerbote`). Ohne sie bildet Frappe die Einträge aus den Namen der DocTypes, und die Seitenleiste schneidet Namen wie „Einstellungen Umsatzsteuer-Voranmeldung“ ab. Sie führt zum Arbeitsbereich „Steuern“, zu „Voranmeldungen“, „Kontenzuordnung“, „Einstellungen“, „ERiC-Einstellungen“ und „ELSTER-Übermittlung“ und unter „Berichte“ zu „UStVA Kennzahlen“. Ein neuer DocType mit eigener Liste gehört auch in die Seitenleiste; `test_standard_records.py` prüft das, ebenso, dass keine Bezeichnung länger als 20 Zeichen ist.
 
 ## Druckformat „Umsatzsteuer-Voranmeldung“
 
 Das Druckformat gibt eine Meldung in Reihenfolge und Wortlaut des Vordrucks USt 1 A 2026 aus, auf A4, schwarz und grau, ohne Logo und ohne Briefkopf.
 
-- **Kopf:** Unternehmen, Steuernummer, Steuernummer im ELSTER-Format und Finanzamt aus den Einstellungen, Voranmeldungszeitraum, Fälligkeit, Name und Status der Meldung.
+- **Kopf:** Unternehmen, Steuernummer, Steuernummer im ELSTER-Format und Finanzamt aus den Einstellungen, Voranmeldungszeitraum, Fälligkeit, Name und Status der Meldung, in zwei Spalten: links die Bezeichnung, rechts der Wert.
 - **Vordruck:** die Zeilen 10 und 11 (Kz 10 und 22), dann die Abschnitte A bis J und die ergänzenden Angaben zur Steueranmeldung (Kz 500 mit Begründung). Jede Zeile zeigt Zeile, Bezeichnung, Kennzahl und Bemessungsgrundlage in vollen Euro sowie Kennzahl und Steuer in Euro und Cent. Ein Abschnitt ohne Werte sagt „Keine Eintragungen“. Die Zeilen 37, 45 und 48 und Kz 83 stehen immer da.
 - **Darunter:** die Korrekturen gegenüber dem Hauptbuch mit Begründung und die Anmerkungen, wenn es sie gibt.
 - **Fußzeile:** „Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.“ und der Hinweis, dass der Ausdruck keine Abgabe ist.
 
 Das Druckformat liest nur die Meldung und die Einstellungen ihres Unternehmens. Die Zeilen der Kennzahlen tragen Kennzahl, Zeile, Bezeichnung und Art des Betrags aus dem Katalog des Jahres der Meldung, die Meldung schreibt sie bei jedem Speichern neu. Abschnitte und Steuersätze des Ausdrucks gehören zum Vordruck 2026. Ein neuer Jahrgang braucht deshalb auch hier eine Prüfung Zeile für Zeile, wie der Katalog.
+
+Alle Klassen des Druckformats beginnen mit `sb-`. Das Druck-Stylesheet von Frappe gestaltet allgemeine Klassen wie `label` selbst, als Inline-Element in 75 % der Schriftgröße; eigene Klassen halten diese Regeln vom Ausdruck fern.
 
 ## Für die Steuerberatung zu klären
 

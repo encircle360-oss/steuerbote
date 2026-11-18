@@ -18,11 +18,17 @@ MODULE = APP / "steuerbote"
 TRANSLATIONS = APP / "translations" / "de.csv"
 REPORT = MODULE / "report" / "ustva_kennzahlen"
 WORKSPACE = MODULE / "workspace" / "steuern" / "steuern.json"
+SIDEBAR = MODULE / "sidebar" / "steuerbote" / "steuerbote.json"
 NUMBER_CARDS = MODULE / "number_card"
 PRINT_FORMAT = MODULE / "print_format" / "umsatzsteuer_voranmeldung"
+VAT_RETURN_SCRIPT = MODULE / "doctype" / "vat_return" / "vat_return.js"
+MAPPING = MODULE / "doctype" / "vat_return_mapping"
+MAPPING_RULE = MODULE / "doctype" / "vat_return_mapping_rule" / "vat_return_mapping_rule.json"
 
 # Names of the app that read the same in every language.
 GERMAN_NAMES = frozenset({"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen"})
+# The German that Frappe shows for the framework labels of the shortcuts and the sidebar.
+FRAMEWORK_GERMAN = {"Reports": "Berichte", "Settings": "Einstellungen"}
 # Labels Frappe and ERPNext translate themselves; the app keeps out of their translations.
 FRAMEWORK_LABELS = frozenset(
 	{
@@ -35,23 +41,45 @@ FRAMEWORK_LABELS = frozenset(
 		"Setup",
 		"Voucher No",
 		"Voucher Type",
+		*FRAMEWORK_GERMAN,
 	}
 )
+# The desk cuts a label after about 22 characters, in the sidebar as on a shortcut card.
+LONGEST_LABEL = 20
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
+CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')
+CLASS_SELECTOR = re.compile(r"\.(-?[A-Za-z_][\w-]*)")
+# Frappe's print stylesheet styles bare classes such as .label (inline, 75 %, bold), so the print format
+# names its classes with a prefix of its own.
+PRINT_CLASS_PREFIX = "sb-"
 
 
 def read_json(path: Path) -> dict:
 	return json.loads(path.read_text(encoding="utf-8"))
 
 
-def translated() -> set[str]:
+def translations() -> dict[str, str]:
 	with TRANSLATIONS.open(encoding="utf-8", newline="") as file:
-		return {source for source, *_ in csv.reader(file)}
+		return dict(csv.reader(file))
+
+
+def translated() -> set[str]:
+	return set(translations())
+
+
+def german(text: str) -> str:
+	return translations().get(text) or FRAMEWORK_GERMAN.get(text, text)
 
 
 def doctype_names() -> set[str]:
 	return {read_json(path)["name"] for path in (MODULE / "doctype").glob("*/*.json")}
+
+
+def doctypes_with_a_list() -> set[str]:
+	"""The DocTypes of the module that are not child tables, the ones Frappe's sidebar links to."""
+	definitions = (read_json(path) for path in (MODULE / "doctype").glob("*/*.json"))
+	return {definition["name"] for definition in definitions if not definition.get("istable")}
 
 
 def untranslated(texts: set[str]) -> list[str]:
@@ -195,6 +223,76 @@ class WorkspaceFilesTest(TestCase):
 		labels = {shortcut["label"] for shortcut in self.workspace["shortcuts"]}
 		self.assertEqual(untranslated(headers | labels), [])
 
+	def test_the_shortcuts_read_short_in_german(self):
+		labels = {
+			(shortcut["link_to"], shortcut.get("doc_view", "")): german(shortcut["label"])
+			for shortcut in self.workspace["shortcuts"]
+		}
+		self.assertEqual(
+			labels,
+			{
+				("VAT Return", "New"): "Neue Voranmeldung",
+				("VAT Return", "List"): "Voranmeldungen",
+				("UStVA Kennzahlen", ""): "Kennzahlen (Bericht)",
+				("VAT Return Settings", "List"): "Einstellungen",
+				("VAT Return Mapping", "List"): "Kontenzuordnung",
+			},
+		)
+		self.assertEqual([label for label in labels.values() if len(label) > LONGEST_LABEL], [])
+
+
+class SidebarFilesTest(TestCase):
+	"""The module ships its sidebar, so that its entries carry short labels instead of the DocType names."""
+
+	def setUp(self):
+		self.sidebar = read_json(SIDEBAR)
+		self.items = self.sidebar["items"]
+
+	def test_the_sidebar_is_the_module_s_own(self):
+		self.assertEqual(
+			{key: self.sidebar[key] for key in ("doctype", "name", "title", "module", "app", "standard")},
+			{
+				"doctype": "Sidebar",
+				"name": "Steuerbote",
+				"title": "Steuerbote",
+				"module": "Steuerbote",
+				"app": "steuerbote",
+				"standard": 1,
+			},
+		)
+
+	def test_the_sidebar_leads_to_the_workspace_every_list_and_the_report(self):
+		links = [(item["link_type"], item["link_to"]) for item in self.items if item["type"] == "Link"]
+		self.assertEqual(links[0], ("Workspace", read_json(WORKSPACE)["name"]))
+		self.assertEqual(len(links), len(set(links)))
+		self.assertEqual(
+			set(links),
+			{
+				("Workspace", read_json(WORKSPACE)["name"]),
+				("Report", read_json(REPORT / "ustva_kennzahlen.json")["name"]),
+			}
+			| {("DocType", name) for name in doctypes_with_a_list()},
+		)
+
+	def test_the_sidebar_reads_short_in_german(self):
+		labels = [item["label"] for item in self.items]
+		self.assertEqual(untranslated(set(labels)), [])
+		in_german = [german(label) for label in labels]
+		self.assertEqual(
+			in_german,
+			[
+				"Steuern",
+				"Voranmeldungen",
+				"Kontenzuordnung",
+				"Einstellungen",
+				"ERiC-Einstellungen",
+				"ELSTER-Übermittlung",
+				"Berichte",
+				"UStVA Kennzahlen",
+			],
+		)
+		self.assertEqual([label for label in in_german if len(label) > LONGEST_LABEL], [])
+
 
 class PrintFormatFilesTest(TestCase):
 	def setUp(self):
@@ -229,6 +327,30 @@ class PrintFormatFilesTest(TestCase):
 		self.assertNotIn("<img", self.template)
 		self.assertNotRegex(css, r"\b(rgb|hsl)a?\(")
 
+	def test_keeps_to_classes_of_its_own(self):
+		used = {name for value in CLASS_ATTRIBUTE.findall(self.template) for name in value.split()}
+		styled = set(CLASS_SELECTOR.findall(self.record["css"]))
+		self.assertNotIn("label", used | styled)
+		self.assertEqual(
+			sorted(name for name in used | styled if not name.startswith(PRINT_CLASS_PREFIX)), []
+		)
+		self.assertEqual(sorted(used), sorted(styled))
+
+	def test_the_header_pairs_each_label_with_its_value(self):
+		labels = re.findall(r'<tr><td class="sb-label">([^<]+)</td><td class="sb-value">', self.template)
+		self.assertEqual(
+			labels,
+			[
+				"Unternehmen",
+				"Steuernummer",
+				"Steuernummer im ELSTER-Format",
+				"Finanzamt",
+				"Voranmeldungszeitraum",
+				"Fällig am",
+				"Meldung",
+			],
+		)
+
 	def test_the_labels_of_the_flags_are_those_of_the_catalogue(self):
 		for number in ("10", "22", "29", "26"):
 			with self.subTest(kennzahl=number):
@@ -246,3 +368,38 @@ class PrintFormatFilesTest(TestCase):
 			+ "} -%}",
 			self.template,
 		)
+
+
+class VatReturnFormFilesTest(TestCase):
+	"""A draft is filed through ELSTER or a note of its filing, never by Buchen alone."""
+
+	def setUp(self):
+		self.script = VAT_RETURN_SCRIPT.read_text(encoding="utf-8")
+
+	def test_a_draft_gets_no_hint_to_submit_it(self):
+		setup = re.search(r"\n\tsetup\(frm\) \{\n(?P<body>.*?)\n\t\},\n", self.script, re.DOTALL)
+		self.assertIsNotNone(setup)
+		self.assertIn("frm.show_submit_message = () => {};", setup["body"])
+
+	def test_a_return_ready_to_file_says_how_to_file_it(self):
+		(note,) = re.findall(r'__\("(Ready to file: [^"]*)"\)', self.script)
+		self.assertEqual(
+			translations()[note],
+			"Bereit zur Abgabe: XML für Mein ELSTER erzeugen oder über ELSTER übermitteln.",
+		)
+		self.assertRegex(self.script, r'frm\.doc\.status === "Bereit"')
+
+
+class MappingRuleFilesTest(TestCase):
+	"""A rule without a tax rate holds 0, since a Float field stores no blank; mapping_sync reads 0 as no rate."""
+
+	def test_the_rules_table_shows_no_rate_as_blank(self):
+		script = (MAPPING / "vat_return_mapping.js").read_text(encoding="utf-8")
+		setup = re.search(r"\n\tsetup\(frm\) \{\n(?P<body>.*?)\n\t\},\n", script, re.DOTALL)
+		self.assertIsNotNone(setup)
+		self.assertIn('frappe.meta.set_formatter("VAT Return Mapping Rule", "tax_rate", null,', setup["body"])
+
+	def test_the_description_of_the_rate_says_what_blank_means(self):
+		(rate,) = (field for field in read_json(MAPPING_RULE)["fields"] if field["fieldname"] == "tax_rate")
+		self.assertEqual(rate["fieldtype"], "Float")
+		self.assertTrue(german(rate["description"]).endswith(" Leer oder 0: kein Satz."))

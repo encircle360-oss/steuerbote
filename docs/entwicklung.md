@@ -29,6 +29,7 @@ steuerbote/                    Repository
 │   │   ├── doctype/           Einstellungen, Kontenzuordnung und Umsatzsteuer-Voranmeldung samt Tabellen
 │   │   ├── report/            Bericht „UStVA Kennzahlen“ mit den Belegen hinter jeder Kennzahl
 │   │   ├── workspace/         Arbeitsbereich „Steuern“
+│   │   ├── sidebar/           Seitenleiste des Moduls mit kurzen Bezeichnungen
 │   │   ├── number_card/       Zahlenkarte „Offene Voranmeldungen“
 │   │   └── print_format/      Druckformat „Umsatzsteuer-Voranmeldung“
 │   ├── fixtures/              Feld „Nicht in der Umsatzsteuer-Voranmeldung“ an der Journalbuchung
