@@ -1,0 +1,217 @@
+{
+ "actions": [],
+ "autoname": "format:ELSTER-{YYYY}-{#####}",
+ "creation": "2026-11-18 04:00:00.000000",
+ "description": "One run of Prüfen, Testsenden or Senden for a VAT Return, or the note that it was filed outside Steuerbote. Recorded by the server and kept unchanged.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "vat_return",
+  "company",
+  "operation",
+  "status",
+  "simulated",
+  "column_break_status",
+  "started_at",
+  "finished_at",
+  "user",
+  "result_section",
+  "transferticket",
+  "testmerker",
+  "eric_version",
+  "column_break_result",
+  "remarks",
+  "messages_section",
+  "messages",
+  "files_section",
+  "xml",
+  "protocol_pdf",
+  "response_xml"
+ ],
+ "fields": [
+  {
+   "fieldname": "vat_return",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "VAT Return",
+   "options": "VAT Return",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "operation",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "ELSTER Procedure",
+   "options": "validate\ntest_send\nsend\nextern",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Erfolgreich\nFehlgeschlagen\nLäuft",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "simulated",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Simulated",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Started At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "finished_at",
+   "fieldtype": "Datetime",
+   "label": "Finished At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "result_section",
+   "fieldtype": "Section Break",
+   "label": "Result"
+  },
+  {
+   "bold": 1,
+   "fieldname": "transferticket",
+   "fieldtype": "Data",
+   "label": "Transferticket",
+   "read_only": 1
+  },
+  {
+   "fieldname": "testmerker",
+   "fieldtype": "Data",
+   "label": "Testmerker",
+   "read_only": 1
+  },
+  {
+   "fieldname": "eric_version",
+   "fieldtype": "Data",
+   "label": "ERiC Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_result",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks",
+   "read_only": 1
+  },
+  {
+   "fieldname": "messages_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "messages",
+   "fieldtype": "Table",
+   "label": "Messages",
+   "options": "ELSTER Transmission Message",
+   "read_only": 1
+  },
+  {
+   "fieldname": "files_section",
+   "fieldtype": "Section Break",
+   "label": "Files"
+  },
+  {
+   "fieldname": "xml",
+   "fieldtype": "Attach",
+   "label": "Nutzdaten (XML)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "protocol_pdf",
+   "fieldtype": "Attach",
+   "label": "Protocol (PDF)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "response_xml",
+   "fieldtype": "Attach",
+   "label": "Server Response (XML)",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "links": [],
+ "modified": "2026-11-18 04:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "ELSTER Transmission",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  },
+  {
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1
+  },
+  {
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
