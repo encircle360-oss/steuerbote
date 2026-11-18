@@ -17,6 +17,7 @@ steuerbote/                    Repository
 │   │   ├── period.py          Voranmeldungszeiträume, Fristen und ELSTER-Zeitraumcodes
 │   │   └── tests/             Unit-Tests des Kerns
 │   ├── elster/                Steuernummer im 13-stelligen ELSTER-Format, reines Python ohne Frappe-Import
+│   ├── eric/                  ERiC: Einrichtung, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
 │   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns, reines Python
 │   ├── steuerbote/            Frappe-Modul „Steuerbote“, siehe Architektur
