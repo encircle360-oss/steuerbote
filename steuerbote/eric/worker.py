@@ -9,7 +9,7 @@ never imports Frappe.
 The worker reads one JSON object from standard input and writes one to standard output:
 
 	{"command": "process", "operation": "validate" | "test_send" | "send", "nutzdaten": "<Anmeldungssteuern …>",
-	 "header": {…}, "runtime": {…}, "certificate": "<PKCS#12 in base64>" | null,
+	 "header": {…}, "runtime": {…}, "certificate_secret": "<PKCS#12 in base64>" | null,
 	 "certificate_password": "…" | null}
 		answers with a TransmissionResult as JSON
 	{"command": "version", "runtime": {…}}
@@ -28,8 +28,17 @@ Prüfen is EBV-9 of the handbook (Tabelle 6-2): Hinweisprüfung, validation and 
 encryption parameters. Testsenden and Senden are EBV-6 with send-Auth, the only way to send a UStVA
 (Tabelle 8-8): validation, sending and the Übertragungsprotokoll, signed with the certificate. ERiC 44
 talks to one server and gives the Transferticket in its answer only (ERiC-Releasenotes 44.3.6.0,
-Kap. 5.2.7), read with EricGetErrormessagesFromXMLAnswer (Kap. 6.2.4). Without an answer after sending,
-whether the data arrived is unknown, and nothing is sent again automatically.
+Kap. 5.2.7), read with EricGetErrormessagesFromXMLAnswer (Kap. 6.2.4).
+
+EricBearbeiteVorgang reads, validates, prepares with signature and encryption, sends and prints, in this
+order (Abbildung 6-6); it validates whenever it sends (Kap. 6.2.1), and it prints only after the server
+answered OK (Kap. 5 with Abbildung 5-1). So a send has failed, with nothing sent, only for a code of
+BEFORE_TRANSFER, and is invalid for 610001002. Every other code leaves the outcome of a send unknown,
+the errors of printing among them, and nothing is sent again automatically. A server answer is read
+whenever ERiC returns one, for its Transferticket and messages; after a timeout it may still hold the
+Transferticket (Kap. 6.2.5.2). The buffers after other errors are undefined (API-Referenz,
+EricBearbeiteVorgang), so an answer that cannot be read is kept as it is, and any answer turns even a
+code of BEFORE_TRANSFER into an unknown outcome.
 """
 
 import base64
@@ -54,9 +63,6 @@ from steuerbote.eric.api import (
 	LIBRARY,
 	PRUEFE_HINWEISE,
 	SENDE,
-	TRANSFER_ERR_NORESPONSE,
-	TRANSFER_ERR_SEND,
-	TRANSFER_ERR_TIMEOUT,
 	TRANSFER_ERR_XML_NHEADER,
 	TRANSFER_ERR_XML_THEADER,
 	VALIDIERE,
@@ -93,8 +99,81 @@ SETTINGS = (
 
 VALIDATE_FLAGS = PRUEFE_HINWEISE | VALIDIERE | DRUCKE
 SEND_FLAGS = VALIDIERE | SENDE | DRUCKE
-UNKNOWN_AFTER_SENDING = frozenset({TRANSFER_ERR_SEND, TRANSFER_ERR_NORESPONSE, TRANSFER_ERR_TIMEOUT})
-"""Codes after which ERiC cannot say whether the server received the data (Entwicklerhandbuch, Kap. 6.2.5)."""
+BEFORE_TRANSFER = frozenset(
+	{
+		# The call: its parameters and flags, and ERiC not ready for it (API-Referenz, EricBearbeiteVorgang;
+		# Kap. 6.2.1 for the encryption parameters).
+		610001081,  # GLOBAL_NICHT_INITIALISIERT
+		610001231,  # GLOBAL_MEHRFACHAUFRUFE_NICHT_UNTERSTUETZT
+		610001526,  # GLOBAL_NULL_PARAMETER
+		610001222,  # GLOBAL_UNGUELTIGER_PARAMETER
+		610001226,  # GLOBAL_UNGUELTIGE_PARAMETER_VERSION
+		610001218,  # GLOBAL_UNGUELTIGE_FLAG_KOMBINATION
+		610001209,  # GLOBAL_SEND_FLAG_MEHR_ALS_EINES
+		610001206,  # GLOBAL_VERSCHLUESSELUNGS_PARAMETER_NICHT_ANGEGEBEN
+		610001027,  # GLOBAL_VERSCHLUESSELUNGS_PARAMETER_NICHT_ERLAUBT
+		610001225,  # GLOBAL_VERSAND_ART_NICHT_UNTERSTUETZT
+		610301300,  # IO_UEBERGABEPARAMETER_FEHLERHAFT
+		610301400,  # IO_UNGUELTIGE_UTF8_SEQUENZ
+		610301401,  # IO_UNGUELTIGE_ZEICHEN_IN_PARAMETER
+		# What may be sent at all: Hersteller-ID, Testmerker, a beta (Kap. 5.4.3, 6.5.3, 10.1.1) and the
+		# plugin of the datenartVersion.
+		610001016,  # GLOBAL_HERSTELLER_ID_NICHT_ERLAUBT
+		610001019,  # GLOBAL_ECHTFALL_NICHT_ERLAUBT
+		610001020,  # GLOBAL_NO_VERSAND_IN_BETA_VERSION
+		610001025,  # GLOBAL_TESTMERKER_UNGUELTIG
+		610001042,  # GLOBAL_DATENARTVERSION_UNBEKANNT
+		610001044,  # GLOBAL_DATENARTVERSION_XML_INKONSISTENT
+		610301202,  # IO_TESTHERSTELLERID_GESPERRT
+		# Reading and validating the data, and their size, checked first and once more before the transfer
+		# (Abbildung 6-6; Kap. 5.1.3.3).
+		GLOBAL_PRUEF_FEHLER,
+		610001026,  # GLOBAL_DATENSATZ_ZU_GROSS
+		610301006,  # IO_PARSE_FEHLER
+		610301014,  # IO_STEUERZEICHEN_IM_NDS
+		610301104,  # IO_FALSCHES_VERFAHREN
+		610301105,  # IO_READER_MEHRFACHE_STEUERFAELLE
+		610301106,  # IO_READER_UNERWARTETE_ELEMENTE
+		610301107,  # IO_READER_FORMALE_FEHLER
+		610301108,  # IO_READER_FALSCHES_ENCODING
+		610301109,  # IO_READER_MEHRFACHE_NUTZDATEN_ELEMENTE
+		610301110,  # IO_READER_MEHRFACHE_NUTZDATENBLOCK_ELEMENTE
+		610301111,  # IO_UNBEKANNTE_DATENART
+		610301114,  # IO_READER_UNTERSACHBEREICH_UNGUELTIG
+		610301115,  # IO_READER_ZU_VIELE_NUTZDATENBLOCK_ELEMENTE
+		610301150,  # IO_READER_STEUERZEICHEN_IM_TRANSFERHEADER
+		610301151,  # IO_READER_STEUERZEICHEN_IM_NUTZDATENHEADER
+		610301152,  # IO_READER_STEUERZEICHEN_IN_DEN_NUTZDATEN
+		610301200,  # IO_READER_SCHEMA_VALIDIERUNGSFEHLER
+		610301201,  # IO_READER_UNBEKANNTE_XML_ENTITY
+		610301252,  # IO_DATENTEILNOTFOUND
+		610301253,  # IO_DATENTEILENDNOTFOUND
+		# Certificate, PIN, signature and encryption, which prepare the data before they are sent; a UStVA
+		# uses the certificate only to sign (Abbildung 6-6; Kap. 5.1.3.3, 5.2).
+		610001028,  # GLOBAL_NUR_PORTALZERTIFIKAT_ERLAUBT
+		610201101,  # CRYPT_E_INVALID_HANDLE
+		610201106,  # CRYPT_E_PIN_WRONG
+		610201107,  # CRYPT_E_PIN_LOCKED
+		610201111,  # CRYPT_E_P12_READ
+		610201112,  # CRYPT_E_P12_DECODE
+		610201113,  # CRYPT_E_P12_SIG_KEY
+		610201118,  # CRYPT_E_XML_SIG_ADD
+		610201120,  # CRYPT_E_XML_SIG_SIGN
+		610201124,  # CRYPT_E_ENCRYPT
+		610201201,  # CRYPT_SIGNATUR
+		610201203,  # CRYPT_NICHT_UNTERSTUETZTES_PSE_FORMAT
+		610201205,  # CRYPT_PIN_BENOETIGT
+		610201213,  # CRYPT_CORRUPTED
+		610201221,  # CRYPT_E_P12_NO_SIG_CERT
+		# No connection: the transfer never began (Kap. 4.1.2.2 for the proxy).
+		610101276,  # TRANSFER_ERR_PROXYCONNECT
+		610101278,  # TRANSFER_ERR_CONNECTSERVER
+		610101280,  # TRANSFER_ERR_PROXYAUTH
+		610101282,  # TRANSFER_ERR_SEND_INIT
+		610101284,  # TRANSFER_ERR_PROXYPORT_INVALID
+	}
+)
+"""The return codes of a send after which nothing reached ELSTER; any other code leaves the outcome unknown."""
 
 ERIC_CODE = "SB-ERIC"
 TICKET_CODE = "SB-TICKET"
@@ -178,16 +257,16 @@ def parse_request(data: bytes) -> Request:
 	if not isinstance(nutzdaten, str):
 		raise RequestError("nutzdaten")
 	header = _header(request.get("header"))
-	certificate = request.get("certificate")
+	certificate = request.get("certificate_secret")
 	password = request.get("certificate_password")
 	if operation.sends and not isinstance(certificate, str):
-		raise RequestError("certificate")
+		raise RequestError("certificate_secret")
 	if operation.sends and not isinstance(password, str):
 		raise RequestError("certificate_password")
 	try:
 		container = None if certificate is None else base64.b64decode(certificate, validate=True)
 	except binascii.Error, TypeError:
-		raise RequestError("certificate") from None
+		raise RequestError("certificate_secret") from None
 	return Request(command, runtime, operation, nutzdaten, header, container, password)
 
 
@@ -277,6 +356,21 @@ def versions(runtime: RuntimeInfo) -> dict[str, object]:
 	}
 
 
+def outcome(operation: Operation, code: int, *, server_answered: bool) -> Outcome:
+	"""What a return code of EricBearbeiteVorgang means for the operation, given whether a server answer came."""
+	if not operation.sends:
+		if code in (ERIC_OK, GLOBAL_HINWEISE):
+			return Outcome.VALID
+		return Outcome.INVALID if code == GLOBAL_PRUEF_FEHLER else Outcome.FAILED
+	if code == ERIC_OK:
+		return Outcome.ACCEPTED
+	if code in (TRANSFER_ERR_XML_THEADER, TRANSFER_ERR_XML_NHEADER):
+		return Outcome.REJECTED
+	if code in BEFORE_TRANSFER and not server_answered:
+		return Outcome.INVALID if code == GLOBAL_PRUEF_FEHLER else Outcome.FAILED
+	return Outcome.UNKNOWN
+
+
 def _result(
 	library: EricLibrary, operation: Operation, version: str, testmerker: str | None, answer: ProcessResult
 ) -> TransmissionResult:
@@ -290,43 +384,36 @@ def _result(
 	pdf = answer.pdfs[0].data if answer.pdfs else None
 	server_xml = answer.server_response_xml or None
 
-	def result(outcome: Outcome, ticket: str | None = None) -> TransmissionResult:
+	def result(meaning: Outcome, ticket: str | None = None) -> TransmissionResult:
 		return TransmissionResult(
 			operation,
-			outcome.ok,
+			meaning.ok,
 			False,
 			version,
 			ticket,
 			testmerker,
 			tuple(messages),
-			protocol_pdf=pdf if outcome.ok else None,
+			protocol_pdf=pdf if meaning.ok else None,
 			server_response_xml=server_xml,
-			outcome=outcome,
+			outcome=meaning,
 		)
 
-	if not operation.sends:
-		if code in (ERIC_OK, GLOBAL_HINWEISE):
-			return result(Outcome.VALID)
-		return result(Outcome.INVALID if code == GLOBAL_PRUEF_FEHLER else Outcome.FAILED)
-	if code == ERIC_OK:
-		ticket = _server_messages(library, answer.server_response_xml, messages, accepted=True)
-		if ticket is None:
-			messages.append(
-				Message(
-					TICKET_CODE,
-					"ELSTER hat die Daten angenommen, die Antwort nennt aber kein lesbares Transferticket. "
-					"Die Antwort des Servers liegt bei.",
-					HINT,
-				)
+	meaning = outcome(operation, code, server_answered=server_xml is not None)
+	ticket = None
+	if operation.sends and server_xml is not None:
+		ticket = _server_messages(library, server_xml, messages, rejected=meaning is Outcome.REJECTED)
+	if meaning is Outcome.ACCEPTED and ticket is None:
+		messages.append(
+			Message(
+				TICKET_CODE,
+				"ELSTER hat die Daten angenommen, die Antwort nennt aber kein lesbares Transferticket. "
+				"Die Antwort des Servers liegt bei.",
+				HINT,
 			)
-		return result(Outcome.ACCEPTED, ticket)
-	if code in (TRANSFER_ERR_XML_THEADER, TRANSFER_ERR_XML_NHEADER):
-		ticket = _server_messages(library, answer.server_response_xml, messages, accepted=False)
-		return result(Outcome.REJECTED, ticket)
-	if code in UNKNOWN_AFTER_SENDING:
+		)
+	if meaning is Outcome.UNKNOWN:
 		messages.append(UNKNOWN_MESSAGE)
-		return result(Outcome.UNKNOWN)
-	return result(Outcome.INVALID if code == GLOBAL_PRUEF_FEHLER else Outcome.FAILED)
+	return result(meaning, ticket)
 
 
 def _rule_messages(return_xml: str) -> list[Message]:
@@ -355,12 +442,12 @@ def _rule_messages(return_xml: str) -> list[Message]:
 
 
 def _server_messages(
-	library: EricLibrary, server_xml: str, messages: list[Message], *, accepted: bool
+	library: EricLibrary, server_xml: str, messages: list[Message], *, rejected: bool
 ) -> str | None:
 	"""Add the codes of the server answer to messages; the Transferticket, if the answer names one.
 
-	The return code of the TransferHeader is 0 when the server accepted the delivery; its text is kept as
-	a hint for an accepted delivery and left out when only a NutzdatenHeader failed.
+	The return code of the TransferHeader is 0 when the server accepted the delivery. Its text is kept as
+	a hint, except in a rejection, where code 0 means that only a NutzdatenHeader failed.
 	"""
 	try:
 		answer = library.server_answer(server_xml)
@@ -368,7 +455,7 @@ def _server_messages(
 		return None
 	if answer.code != "0":
 		messages.append(Message(answer.code, answer.text, ERROR, "TransferHeader"))
-	elif accepted:
+	elif not rejected:
 		messages.append(Message(answer.code, answer.text, HINT, "TransferHeader"))
 	with suppress(ElementTree.ParseError):
 		for error in ElementTree.fromstring(answer.nutzdaten_errors_xml):  # noqa: S314 - written by ERiC

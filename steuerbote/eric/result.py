@@ -51,9 +51,11 @@ class Outcome(Enum):
 	REJECTED = "rejected"
 	"""The ELSTER server answered with an error in the TransferHeader or a NutzdatenHeader."""
 	FAILED = "failed"
-	"""Nothing was sent: configuration, certificate, connection or input."""
+	"""Nothing was sent: the run ended before the transfer, in steuerbote or with a code of ERiC that occurs
+	only before it, such as configuration, input, certificate, PIN or no connection."""
 	UNKNOWN = "unknown"
-	"""A send may or may not have reached ELSTER. Never send again before the data are checked in Mein ELSTER."""
+	"""A send may or may not have reached ELSTER: any other code of ERiC, or a worker lost after it started.
+	Never send again before the data are checked in Mein ELSTER."""
 
 	@property
 	def ok(self) -> bool:

@@ -64,7 +64,9 @@ class WorkerTestCase(TestCase):
 			"nutzdaten": nutzdaten(marker),
 			"header": asdict(header),
 			"runtime": self.runtime.to_dict(),
-			"certificate": None if operation is Operation.VALIDATE else base64.b64encode(CONTAINER).decode(),
+			"certificate_secret": (
+				None if operation is Operation.VALIDATE else base64.b64encode(CONTAINER).decode()
+			),
 			"certificate_password": None if operation is Operation.VALIDATE else PIN,
 		}
 		return request | changes
@@ -162,6 +164,12 @@ class ValidateTest(WorkerTestCase):
 		self.assertEqual(self.messages(result), [("610301200", ERROR, None)])
 		self.assertEqual(result.messages[0].text, "Es traten Fehler beim Validieren des XML auf.")
 
+	def test_an_error_while_printing_the_preview_fails_the_check(self):
+		result = self.run_operation(Operation.VALIDATE, "STUB-PRINT-ERROR")
+		self.assertIs(result.outcome, Outcome.FAILED)
+		self.assertEqual(self.messages(result), [("610501010", ERROR, None)])
+		self.assertIsNone(result.protocol_pdf)
+
 
 class SendTest(WorkerTestCase):
 	def test_a_test_send_is_accepted_with_the_ticket_of_the_server(self):
@@ -224,10 +232,37 @@ class SendTest(WorkerTestCase):
 				self.assertEqual(self.messages(result), [(code, ERROR, None), ("SB-UNKNOWN", ERROR, None)])
 				self.assertIn("Nicht erneut senden", result.messages[1].text)
 
+	def test_a_timeout_keeps_the_ticket_the_answer_of_the_server_still_holds(self):
+		result = self.run_operation(Operation.SEND, "STUB-TIMEOUT-ANSWER")
+		self.assertIs(result.outcome, Outcome.UNKNOWN)
+		self.assertEqual(result.transferticket, "et0stub0timedout0000000000000004")
+		self.assertIn("<TransferTicket>et0stub0timedout", result.server_response_xml)
+		self.assertEqual(
+			self.messages(result),
+			[("610101283", ERROR, None), ("301100006", ERROR, "TransferHeader"), ("SB-UNKNOWN", ERROR, None)],
+		)
+		self.assertEqual(result.messages[1].text, "Stub: Zeitüberschreitung beim Speichern der Daten.")
+
+	def test_an_error_after_the_transfer_leaves_the_outcome_unknown_with_the_ticket(self):
+		result = self.run_operation(Operation.TEST_SEND, "STUB-PRINT-ERROR")
+		self.assertIs(result.outcome, Outcome.UNKNOWN)
+		self.assertEqual(result.transferticket, "et0stub0accepted0000000000000001")
+		self.assertEqual(result.testmerker, TESTMERKER)
+		self.assertIn("<TransferTicket>", result.server_response_xml)
+		self.assertIsNone(result.protocol_pdf)
+		self.assertEqual(
+			self.messages(result),
+			[("610501010", ERROR, None), ("0", HINT, "TransferHeader"), ("SB-UNKNOWN", ERROR, None)],
+		)
+		self.assertEqual(
+			result.messages[0].text, "Während der Ausgabe der Inhalte ist ein Fehler aufgetreten."
+		)
+
 	def test_no_connection_means_nothing_was_sent(self):
 		result = self.run_operation(Operation.SEND, "STUB-CONNECT")
 		self.assertIs(result.outcome, Outcome.FAILED)
 		self.assertEqual(self.messages(result), [("610101278", ERROR, None)])
+		self.assertIsNone(result.server_response_xml)
 
 	def test_an_accepted_send_without_a_ticket_says_so(self):
 		result = self.run_operation(Operation.SEND, "STUB-NO-TICKET")
@@ -327,8 +362,8 @@ class ProtocolTest(WorkerTestCase):
 			"header fields": valid | {"header": {"hersteller_id": "12345"}},
 			"header field": valid | {"header": asdict(HEADER) | {"testmerker": 700000004}},
 			"runtime": valid | {"runtime": {"version": "44.3.6.0"}},
-			"certificate": valid | {"certificate": "kein base64!"},
-			"no certificate": valid | {"certificate": None},
+			"certificate": valid | {"certificate_secret": "kein base64!"},
+			"no certificate": valid | {"certificate_secret": None},
 			"no password": valid | {"certificate_password": None},
 			"password": valid | {"certificate_password": 4711},
 		}
@@ -364,6 +399,81 @@ class ProtocolTest(WorkerTestCase):
 		library.EricInitialisiere(None, None)
 		code, stdout, _ = self.serve({"command": "version", "runtime": self.runtime.to_dict()})
 		self.assertIn("610001082", json.loads(stdout)["error"])
+
+
+class OutcomeTest(TestCase):
+	"""What a return code of EricBearbeiteVorgang means for a check and for a send."""
+
+	def test_a_send_fails_only_for_a_code_before_the_transfer(self):
+		for operation in (Operation.SEND, Operation.TEST_SEND):
+			for code in worker.BEFORE_TRANSFER:
+				with self.subTest(operation=operation, code=code):
+					self.assertIs(
+						worker.outcome(operation, code, server_answered=False),
+						Outcome.INVALID if code == 610001002 else Outcome.FAILED,
+					)
+
+	def test_every_other_code_leaves_a_send_unknown(self):
+		after_or_anywhere = {
+			610501001: "PRINT_INTERNER_FEHLER",
+			610501004: "PRINT_UNGUELTIGER_DATEI_PFAD",
+			610501010: "PRINT_ABBRUCH_GENERIERUNG",
+			610501015: "PRINT_PDFCALLBACK",
+			610101200: "TRANSFER_COM_ERROR",
+			610101271: "TRANSFER_ERR_SEND",
+			610101274: "TRANSFER_ERR_NOTENCRYPTED",
+			610101279: "TRANSFER_ERR_NORESPONSE",
+			610101283: "TRANSFER_ERR_TIMEOUT",
+			610101291: "TRANSFER_ERR_OTHER",
+			610001001: "GLOBAL_UNKNOWN",
+			610001003: "GLOBAL_HINWEISE",
+			610001013: "GLOBAL_NICHT_GENUEGEND_ARBEITSSPEICHER",
+			610001032: "GLOBAL_INTERNER_FEHLER",
+			610001045: "GLOBAL_COMMONDATA_NICHT_VERFUEGBAR",
+			610001228: "GLOBAL_PLUGININITIALISIERUNG",
+			610201125: "CRYPT_E_DECRYPT",
+			610201200: "CRYPT_ZERTIFIKAT",
+			610301001: "IO_FEHLER",
+			1: "a code ERiC does not know",
+		}
+		for code, name in after_or_anywhere.items():
+			with self.subTest(code=code, name=name):
+				self.assertIs(worker.outcome(Operation.SEND, code, server_answered=False), Outcome.UNKNOWN)
+
+	def test_an_answer_of_the_server_makes_even_a_code_before_the_transfer_unknown(self):
+		for code in (610001002, 610101278, 610201106, 610301200):
+			with self.subTest(code=code):
+				self.assertIs(worker.outcome(Operation.SEND, code, server_answered=True), Outcome.UNKNOWN)
+
+	def test_the_server_accepts_or_rejects(self):
+		for answered in (False, True):
+			self.assertIs(worker.outcome(Operation.SEND, 0, server_answered=answered), Outcome.ACCEPTED)
+			for code in (610101210, 610101292):
+				self.assertIs(
+					worker.outcome(Operation.SEND, code, server_answered=answered), Outcome.REJECTED
+				)
+
+	def test_a_check_is_valid_invalid_or_failed(self):
+		for code, expected in (
+			(0, Outcome.VALID),
+			(610001003, Outcome.VALID),
+			(610001002, Outcome.INVALID),
+			(610301200, Outcome.FAILED),
+			(610501010, Outcome.FAILED),
+			(610101283, Outcome.FAILED),
+		):
+			with self.subTest(code=code):
+				self.assertIs(worker.outcome(Operation.VALIDATE, code, server_answered=False), expected)
+
+	def test_no_code_of_printing_or_of_the_answer_counts_as_before_the_transfer(self):
+		for code in worker.BEFORE_TRANSFER:
+			with self.subTest(code=code):
+				self.assertRegex(str(code), r"^610[0-3]\d{5}$")
+		self.assertTrue(
+			worker.BEFORE_TRANSFER.isdisjoint(
+				{0, 610101210, 610101271, 610101274, 610101279, 610101283, 610101292}
+			)
+		)
 
 
 class HardeningTest(TestCase):

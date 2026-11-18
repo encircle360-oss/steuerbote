@@ -16,8 +16,10 @@ plugins recursively (Kap. 4.1.1). ERiC runs on Linux x86_64 with glibc 2.28 or n
 
 A main release in November starts with a beta, from which no real case can be sent; its major number is
 odd and the beta is its first delivery, <major>.1 (Kap. 2.3 with the graphic of the release cycle, and
-Kap. 3.1.1). Each April the Mindestversion rises and older releases are rejected (Kap. 5.4.2), so a year
-uses the newest installed runtime with its plugin, and a beta only for a test send.
+Kap. 3.1.1). A beta checks and sends test cases, only a real send is refused (Kap. 5.4.3). Each April the
+Mindestversion rises and older releases are rejected (Kap. 5.4.2), so a year uses the newest released
+runtime with its plugin, and a beta only for a check or a test send of a year that no released runtime
+knows yet.
 
 Messages are German, for the operator. This module is pure Python and never imports Frappe.
 """
@@ -75,14 +77,18 @@ class RuntimeInfo:
 	log_dir: Path
 	"""Where ERiC writes eric.log."""
 	hersteller_id: str
+	confirmed_privacy_notice: bool = False
+	"""Whether the ERiC Settings record that the privacy notices of the tax administration were confirmed,
+	which the licence requires before ERiC is used (Lizenzvertrag, § 5 Abs. 1 und 2)."""
 
-	def to_dict(self) -> dict[str, str]:
+	def to_dict(self) -> dict[str, str | bool]:
 		return {
 			"version": self.version,
 			"lib_dir": str(self.lib_dir),
 			"plugin_dir": str(self.plugin_dir),
 			"log_dir": str(self.log_dir),
 			"hersteller_id": self.hersteller_id,
+			"confirmed_privacy_notice": self.confirmed_privacy_notice,
 		}
 
 	@classmethod
@@ -95,12 +101,16 @@ class RuntimeInfo:
 		wrong = sorted(name for name, value in values.items() if not isinstance(value, str))
 		if wrong:
 			raise ValueError(f"the runtime needs text in {', '.join(wrong)}")
+		confirmed = data.get("confirmed_privacy_notice", False)
+		if not isinstance(confirmed, bool):
+			raise ValueError("confirmed_privacy_notice of the runtime is true or false")
 		return cls(
 			values["version"],
 			Path(values["lib_dir"]),
 			Path(values["plugin_dir"]),
 			Path(values["log_dir"]),
 			values["hersteller_id"],
+			confirmed,
 		)
 
 
@@ -122,8 +132,12 @@ class Installation:
 	def lib_dir(self) -> Path:
 		return self.path / "lib"
 
-	def runtime(self, *, log_dir: Path, hersteller_id: str) -> RuntimeInfo:
-		return RuntimeInfo(self.version, self.lib_dir, self.lib_dir, log_dir, hersteller_id)
+	def runtime(
+		self, *, log_dir: Path, hersteller_id: str, confirmed_privacy_notice: bool = False
+	) -> RuntimeInfo:
+		return RuntimeInfo(
+			self.version, self.lib_dir, self.lib_dir, log_dir, hersteller_id, confirmed_privacy_notice
+		)
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,14 +214,30 @@ def detect(
 	allow_beta: bool = False,
 	log_dir: Path | None = None,
 	hersteller_id: str = "",
+	confirmed_privacy_notice: bool = False,
 ) -> RuntimeInfo | None:
-	"""The newest installed runtime with the plugin of the year, a beta only if allowed."""
-	for installation in installations(target_root):
-		if (year is None or year in installation.years) and (allow_beta or not installation.beta):
-			return installation.runtime(
-				log_dir=log_dir or target_root / LOG_DIRECTORY, hersteller_id=hersteller_id
-			)
-	return None
+	"""The runtime for the year: the newest released installation with its plugin, else, if allow_beta, the
+	newest beta with it.
+
+	A beta refuses real cases only (Kap. 5.4.3), so Prüfen and Testsenden pass allow_beta=True and Senden
+	passes False. Prüfen and Testsenden still get the released runtime whenever one knows the year, the one
+	that Senden uses.
+	"""
+	with_plugin = [
+		installation
+		for installation in installations(target_root)
+		if year is None or year in installation.years
+	]
+	chosen = next((installation for installation in with_plugin if not installation.beta), None)
+	if chosen is None and allow_beta and with_plugin:
+		chosen = with_plugin[0]
+	if chosen is None:
+		return None
+	return chosen.runtime(
+		log_dir=log_dir or target_root / LOG_DIRECTORY,
+		hersteller_id=hersteller_id,
+		confirmed_privacy_notice=confirmed_privacy_notice,
+	)
 
 
 def verify(installation: Installation) -> tuple[str, ...]:
@@ -428,7 +458,7 @@ def _plugin_check(installed: tuple[Installation, ...], year: int) -> Check:
 		return Check(
 			"plugin",
 			False,
-			f"Das Jahr {year} kennt nur die Beta ERiC {with_plugin[0].version}: nur Testsenden, kein echtes Senden.",
+			f"Das Jahr {year} kennt nur die Beta ERiC {with_plugin[0].version}: Prüfen und Testsenden, kein Senden.",
 		)
 	return Check("plugin", False, f"Für das Jahr {year} fehlt ERiC mit dem Plugin {plugin}.")
 

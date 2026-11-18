@@ -5,6 +5,7 @@ import tempfile
 import warnings
 import zipfile
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from unittest import TestCase, mock
 
@@ -300,18 +301,32 @@ class InstallationsTest(ArchiveTestCase):
 		self.assertEqual(detect(self.root, year=2024).version, "44.1.4.0")
 		self.assertEqual(detect(self.root).version, "44.3.6.0")
 
-	def test_a_beta_only_when_allowed(self):
+	def test_a_beta_only_when_allowed_and_no_released_runtime_knows_the_year(self):
 		self.assertIsNone(detect(self.root, year=2027))
 		self.assertEqual(detect(self.root, year=2027, allow_beta=True).version, "45.1.5.0")
-		self.assertEqual(detect(self.root, year=2026, allow_beta=True).version, "45.1.5.0")
+		self.assertEqual(detect(self.root, year=2026, allow_beta=True).version, "44.3.6.0")
+		self.assertEqual(detect(self.root, allow_beta=True).version, "44.3.6.0")
 
 	def test_no_runtime_for_a_year_without_its_plugin(self):
 		self.assertIsNone(detect(self.root, year=2023, allow_beta=True))
 		self.assertIsNone(detect(self.directory / "nowhere"))
 
-	def test_passes_log_directory_and_hersteller_id_on(self):
-		info = detect(self.root, year=2026, log_dir=self.directory / "logs" / "run", hersteller_id="12345")
-		self.assertEqual((info.log_dir, info.hersteller_id), (self.directory / "logs" / "run", "12345"))
+	def test_passes_log_directory_hersteller_id_and_the_confirmation_on(self):
+		info = detect(
+			self.root,
+			year=2026,
+			log_dir=self.directory / "logs" / "run",
+			hersteller_id="12345",
+			confirmed_privacy_notice=True,
+		)
+		self.assertEqual(
+			(info.log_dir, info.hersteller_id, info.confirmed_privacy_notice),
+			(self.directory / "logs" / "run", "12345", True),
+		)
+
+	def test_a_runtime_confirms_nothing_unless_told(self):
+		self.assertFalse(detect(self.root, year=2026).confirmed_privacy_notice)
+		self.assertFalse(detect(self.root, year=2027, allow_beta=True).confirmed_privacy_notice)
 
 
 class VerifyTest(ArchiveTestCase):
@@ -388,7 +403,7 @@ class StatusTest(ArchiveTestCase):
 		self.assertIn("libcheckUStVA_2027.so", checks["plugin"][1])
 		self.assertFalse(checks["hersteller_id"][0])
 
-	def test_a_beta_serves_a_year_for_test_sends_only(self):
+	def test_a_beta_serves_a_year_for_checks_and_test_sends_only(self):
 		root = "ERiC-45.1.5.0/Linux-x86_64/lib"
 		members = {
 			f"{root}/libericapi.so": b"ericapi",
@@ -397,9 +412,10 @@ class StatusTest(ArchiveTestCase):
 		}
 		path, checksum = self.jar(members, name="ERiC-45.1.5.0-Linux-x86_64.jar")
 		install_from_archive(path, checksum, self.root)
-		ok, detail = self.checks(year=2027, hersteller_id="12345")["plugin"]
-		self.assertFalse(ok)
-		self.assertIn("Beta", detail)
+		self.assertEqual(
+			self.checks(year=2027, hersteller_id="12345")["plugin"],
+			(False, "Das Jahr 2027 kennt nur die Beta ERiC 45.1.5.0: Prüfen und Testsenden, kein Senden."),
+		)
 
 	def test_without_a_year_the_plugin_check_is_left_out(self):
 		self.assertNotIn("plugin", self.checks(hersteller_id="12345"))
@@ -420,11 +436,24 @@ class RuntimeInfoTest(TestCase):
 				"plugin_dir": "/eric/44.3.6.0/lib",
 				"log_dir": "/log",
 				"hersteller_id": "12345",
+				"confirmed_privacy_notice": False,
 			},
 		)
 		self.assertEqual(RuntimeInfo.from_dict(data), self.INFO)
+		confirmed = replace(self.INFO, confirmed_privacy_notice=True)
+		self.assertEqual(RuntimeInfo.from_dict(json.loads(json.dumps(confirmed.to_dict()))), confirmed)
+
+	def test_without_the_confirmation_nothing_is_confirmed(self):
+		data = self.INFO.to_dict()
+		del data["confirmed_privacy_notice"]
+		self.assertFalse(RuntimeInfo.from_dict(data).confirmed_privacy_notice)
 
 	def test_refuses_data_of_the_wrong_shape(self):
-		for data in ([], self.INFO.to_dict() | {"lib_dir": 1}, {"version": "44.3.6.0"}):
+		for data in (
+			[],
+			self.INFO.to_dict() | {"lib_dir": 1},
+			{"version": "44.3.6.0"},
+			self.INFO.to_dict() | {"confirmed_privacy_notice": "ja"},
+		):
 			with self.subTest(data=data), self.assertRaises(ValueError):
 				RuntimeInfo.from_dict(data)
