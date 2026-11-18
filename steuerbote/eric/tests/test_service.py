@@ -17,6 +17,7 @@ from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import ERROR, TESTMERKER, Operation, Outcome
 from steuerbote.eric.runtime import RuntimeInfo, install_from_archive
 from steuerbote.eric.service import (
+	PrivacyNoticeNotConfirmed,
 	WorkerError,
 	WorkerOutput,
 	library_versions,
@@ -64,7 +65,14 @@ class ServiceTestCase(TestCase):
 		cls.directory = Path(tempfile.mkdtemp(prefix="steuerbote-eric-service-"))
 		cls.addClassCleanup(shutil.rmtree, cls.directory)
 		cls.lib_dir = stub.install(cls.directory)
-		cls.runtime = RuntimeInfo("44.3.6.0", cls.lib_dir, cls.lib_dir, cls.directory / "log", "12345")
+		cls.runtime = RuntimeInfo(
+			"44.3.6.0",
+			cls.lib_dir,
+			cls.lib_dir,
+			cls.directory / "log",
+			"12345",
+			confirmed_privacy_notice=True,
+		)
 
 	def codes(self, result) -> list[str]:
 		return [message.code for message in result.messages]
@@ -128,6 +136,21 @@ class WorkerDispatchTest(ServiceTestCase):
 		)
 		self.assertIs(result.outcome, Outcome.FAILED)
 		self.assertEqual(self.codes(result), ["SB-HEADER"])
+
+
+class PrivacyNoticeTest(ServiceTestCase):
+	def test_eric_runs_only_after_the_privacy_notices_are_confirmed(self):
+		unconfirmed = replace(self.runtime, confirmed_privacy_notice=False)
+		workers = self.started_workers()
+		for operation, header, certificate, pin in (
+			(Operation.VALIDATE, HEADER, None, None),
+			(Operation.TEST_SEND, TEST_HEADER, CONTAINER, PIN),
+			(Operation.SEND, HEADER, CONTAINER, PIN),
+		):
+			with self.subTest(operation=operation), self.assertRaises(PrivacyNoticeNotConfirmed) as raised:
+				run(operation, nutzdaten(), header, unconfirmed, certificate, pin)
+			self.assertIn("Datenschutzhinweise der Finanzverwaltung", str(raised.exception))
+		self.assertEqual(workers, [])
 
 
 class LostWorkerTest(ServiceTestCase):
@@ -266,6 +289,7 @@ class TracebackTest(ServiceTestCase):
 		self.assertEqual(
 			(base64.b64decode(data["certificate_secret"]), data["certificate_password"]), (CONTAINER, PIN)
 		)
+		self.assertTrue(data["runtime"]["confirmed_privacy_notice"])
 
 	def test_hides_what_frappe_hides(self):
 		def fail(certificate_password: str, request: dict, container: bytes) -> None:
@@ -314,6 +338,11 @@ class VersionTest(ServiceTestCase):
 		self.assertEqual(
 			library_versions(self.runtime),
 			{"libericapi.so": "44, 3, 6, 0", "libcheckUStVA_2026.so": "44, 3, 6, 0"},
+		)
+
+	def test_needs_no_confirmation_of_the_privacy_notices(self):
+		self.assertIn(
+			"libericapi.so", library_versions(replace(self.runtime, confirmed_privacy_notice=False))
 		)
 
 	def test_a_runtime_that_does_not_load_is_an_error(self):

@@ -11,6 +11,9 @@ environment. Its working directory is the directory that holds the package steue
 the same code as this process, whether steuerbote is installed or checked out; -I would drop that
 directory from the module path.
 
+ERiC runs only for a runtime that confirms the privacy notices of the tax administration
+(Lizenzvertrag, § 5 Abs. 1 und 2); the simulation needs no confirmation.
+
 Certificate and PIN go to the worker on standard input and nowhere else. The request that carries them
 is Sealed, and each variable that holds one of them has secret or password in its name, so a traceback
 with the local variables of its frames, as Frappe writes it in developer mode, shows neither. Once the
@@ -54,12 +57,21 @@ STDERR_LIMIT = 2048
 WORKER_CODE = "SB-WORKER"
 PIN = re.compile(r"[\x20-\x7e]{6,128}")
 """The PIN of a Zertifikatsdatei: 6 to 128 ASCII characters from space to tilde (Entwicklerhandbuch, Tabelle 5-3)."""
+PRIVACY_NOTICE_MISSING = (
+	"ERiC läuft erst, wenn die Datenschutzhinweise der Finanzverwaltung zur Kenntnis genommen und bestätigt "
+	"sind (ERiC-Lizenzvertrag, § 5 Abs. 1 und 2). Die ERiC-Einstellungen halten diese Bestätigung noch "
+	"nicht fest."
+)
 
 _SIGNALS = {number.value: number.name for number in signal.Signals}
 
 
 class WorkerError(RuntimeError):
 	"""The worker gave no answer: timeout, crash, unexpected error or an answer that is no JSON."""
+
+
+class PrivacyNoticeNotConfirmed(RuntimeError):
+	"""ERiC was to run for a runtime that does not confirm the privacy notices; nothing was started."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,11 +94,14 @@ def run(
 ) -> TransmissionResult:
 	"""Dispatch to the ERiC worker when a runtime is configured, else to the simulation.
 
-	SEND and TEST_SEND need the PKCS#12 container certificate_secret and its certificate_password with a
-	real runtime; the simulation accepts them being None. Never logs the password or the certificate.
+	With a runtime, PrivacyNoticeNotConfirmed unless the runtime confirms the privacy notices, and SEND
+	and TEST_SEND need the PKCS#12 container certificate_secret and its certificate_password; the
+	simulation accepts them being None. Never logs the password or the certificate.
 	"""
 	if runtime is None:
 		return Simulation().run(operation, nutzdaten_xml, header)
+	if not runtime.confirmed_privacy_notice:
+		raise PrivacyNoticeNotConfirmed(PRIVACY_NOTICE_MISSING)
 	if operation.sends and (certificate_secret is None or certificate_password is None):
 		raise ValueError("sending with ERiC needs the certificate and its password")
 	testmerker = TESTMERKER if operation is Operation.TEST_SEND else None

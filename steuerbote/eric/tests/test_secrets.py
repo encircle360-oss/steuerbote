@@ -115,7 +115,7 @@ class TracebackTest(IntegrationTestCase):
 		directory = Path(tempfile.mkdtemp(prefix="steuerbote-eric-traceback-"))
 		self.addCleanup(shutil.rmtree, directory)
 		lib_dir = stub.install(directory)
-		runtime = RuntimeInfo("44.3.6.0", lib_dir, lib_dir, directory / "log", "12345")
+		runtime = RuntimeInfo("44.3.6.0", lib_dir, lib_dir, directory / "log", "12345", True)
 		with interrupted_after(1, Interrupted()):
 			traceback = self.traceback_of(
 				lambda: service.run(

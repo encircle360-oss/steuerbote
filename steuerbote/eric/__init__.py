@@ -32,7 +32,7 @@ from steuerbote.eric.runtime import (
 	status,
 	verify,
 )
-from steuerbote.eric.service import WorkerError, library_versions, run
+from steuerbote.eric.service import PrivacyNoticeNotConfirmed, WorkerError, library_versions, run
 
 __all__ = [
 	"ERROR",
@@ -45,6 +45,7 @@ __all__ = [
 	"Message",
 	"Operation",
 	"Outcome",
+	"PrivacyNoticeNotConfirmed",
 	"RuntimeInfo",
 	"RuntimeInstallError",
 	"Simulation",

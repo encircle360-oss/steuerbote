@@ -8,6 +8,7 @@ CI builds, a runtime installs from an archive and the worker sends through it.
 
 import base64
 import hashlib
+import json
 import shutil
 import tempfile
 import zipfile
@@ -25,7 +26,7 @@ from frappe.utils import add_days, getdate, today
 
 import steuerbote
 from steuerbote.eric import runtime as eric_runtime
-from steuerbote.eric import secrets
+from steuerbote.eric import secrets, service
 from steuerbote.eric.fake import placeholder_pdf
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import (
@@ -38,6 +39,7 @@ from steuerbote.eric.result import (
 	TransmissionResult,
 )
 from steuerbote.eric.runtime import RuntimeInfo
+from steuerbote.eric.service import PrivacyNoticeNotConfirmed, WorkerOutput
 from steuerbote.eric.tests import stub
 from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root, run_installation
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
@@ -940,7 +942,16 @@ class TestFilingState(TransmissionTestCase):
 			((beta,), {Operation.VALIDATE: beta, Operation.TEST_SEND: beta, Operation.SEND: None}),
 		):
 
-			def detect(root, *, year, allow_beta, log_dir, hersteller_id, installed=installed):
+			def detect(
+				root,
+				*,
+				year,
+				allow_beta,
+				log_dir,
+				hersteller_id,
+				confirmed_privacy_notice,
+				installed=installed,
+			):
 				found = [info for info in installed if allow_beta or info is not beta]
 				return replace(found[0], log_dir=log_dir, hersteller_id=hersteller_id) if found else None
 
@@ -951,3 +962,50 @@ class TestFilingState(TransmissionTestCase):
 				):
 					found = transmission_adapter.detect_runtime(2026, operation, "12345", log_dir)
 					self.assertEqual(found and found.version, runtime_info and runtime_info.version)
+
+	def test_the_runtime_carries_the_confirmation_without_which_the_service_runs_no_eric(self):
+		header = EnvelopeHeader(
+			hersteller_id="12345",
+			datenlieferant=DATENLIEFERANT,
+			produkt_name="steuerbote",
+			produkt_version=steuerbote.__version__,
+			empfaenger_finanzamt="9198",
+			datenart_version="UStVA_2026",
+			testmerker=None,
+			nutzdaten_ticket="1",
+		)
+		checked = TransmissionResult(Operation.VALIDATE, True, False, RUNTIME.version, None, None)
+		answer = WorkerOutput(0, json.dumps(checked.to_dict()).encode(), "")
+
+		def detect(root, *, year, allow_beta, log_dir, hersteller_id, confirmed_privacy_notice):
+			return replace(
+				RUNTIME,
+				log_dir=log_dir,
+				hersteller_id=hersteller_id,
+				confirmed_privacy_notice=confirmed_privacy_notice,
+			)
+
+		for confirmed in (0, 1):
+			self.use_runtime(privacy_notice_confirmed=confirmed)
+			with (
+				self.subTest(confirmed=confirmed),
+				patch.object(eric_runtime, "detect", side_effect=detect),
+				patch.object(service, "start_worker") as start,
+				patch.object(service, "wait_for", return_value=answer),
+			):
+				runtime_info = transmission_adapter.detect_runtime(
+					2026, Operation.VALIDATE, "12345", Path("/srv/eric/log")
+				)
+				self.assertIs(runtime_info.confirmed_privacy_notice, bool(confirmed))
+				if confirmed:
+					result = transmission_adapter.run(
+						Operation.VALIDATE, "<Anmeldungssteuern/>", header, runtime_info, None, None
+					)
+					self.assertIs(result.outcome, Outcome.VALID)
+					start.assert_called_once()
+				else:
+					with self.assertRaisesRegex(PrivacyNoticeNotConfirmed, "Datenschutzhinweise"):
+						transmission_adapter.run(
+							Operation.VALIDATE, "<Anmeldungssteuern/>", header, runtime_info, None, None
+						)
+					start.assert_not_called()

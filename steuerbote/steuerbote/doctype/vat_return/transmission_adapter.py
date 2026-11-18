@@ -8,12 +8,14 @@ the XML of steuerbote.elster, the header, the simulation and the store of certif
 from pathlib import Path
 
 import frappe
-from frappe.utils import get_bench_path
+from frappe.utils import cint, get_bench_path
 
 from steuerbote.eric import runtime, service
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import Operation, TransmissionResult
 from steuerbote.eric.runtime import RuntimeInfo
+
+ERIC_SETTINGS = "ERiC Settings"
 
 
 def run(
@@ -34,9 +36,16 @@ def detect_runtime(year: int, operation: Operation, hersteller_id: str, log_dir:
 	"""The newest released runtime with the plugin of the year; for Prüfen and Testsenden a beta when no
 	released runtime has that plugin, or None.
 
-	A beta sends no real case (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 2.3), so Senden never gets one.
+	A beta sends no real case (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 2.3), so Senden never gets one. The
+	runtime carries whether the ERiC Settings record the confirmation of the Datenschutzhinweise, without
+	which steuerbote.eric.service runs no ERiC.
 	"""
-	found = {"year": year, "log_dir": log_dir, "hersteller_id": hersteller_id}
+	found = {
+		"year": year,
+		"log_dir": log_dir,
+		"hersteller_id": hersteller_id,
+		"confirmed_privacy_notice": bool(cint(frappe.get_single(ERIC_SETTINGS).privacy_notice_confirmed)),
+	}
 	released = runtime.detect(runtime_root(), allow_beta=False, **found)
 	if released is not None or operation is Operation.SEND:
 		return released

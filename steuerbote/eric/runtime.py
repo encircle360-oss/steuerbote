@@ -75,14 +75,18 @@ class RuntimeInfo:
 	log_dir: Path
 	"""Where ERiC writes eric.log."""
 	hersteller_id: str
+	confirmed_privacy_notice: bool = False
+	"""Whether the ERiC Settings record that the privacy notices of the tax administration were confirmed,
+	which the licence requires before ERiC is used (Lizenzvertrag, § 5 Abs. 1 und 2)."""
 
-	def to_dict(self) -> dict[str, str]:
+	def to_dict(self) -> dict[str, str | bool]:
 		return {
 			"version": self.version,
 			"lib_dir": str(self.lib_dir),
 			"plugin_dir": str(self.plugin_dir),
 			"log_dir": str(self.log_dir),
 			"hersteller_id": self.hersteller_id,
+			"confirmed_privacy_notice": self.confirmed_privacy_notice,
 		}
 
 	@classmethod
@@ -95,12 +99,16 @@ class RuntimeInfo:
 		wrong = sorted(name for name, value in values.items() if not isinstance(value, str))
 		if wrong:
 			raise ValueError(f"the runtime needs text in {', '.join(wrong)}")
+		confirmed = data.get("confirmed_privacy_notice", False)
+		if not isinstance(confirmed, bool):
+			raise ValueError("confirmed_privacy_notice of the runtime is true or false")
 		return cls(
 			values["version"],
 			Path(values["lib_dir"]),
 			Path(values["plugin_dir"]),
 			Path(values["log_dir"]),
 			values["hersteller_id"],
+			confirmed,
 		)
 
 
@@ -122,8 +130,12 @@ class Installation:
 	def lib_dir(self) -> Path:
 		return self.path / "lib"
 
-	def runtime(self, *, log_dir: Path, hersteller_id: str) -> RuntimeInfo:
-		return RuntimeInfo(self.version, self.lib_dir, self.lib_dir, log_dir, hersteller_id)
+	def runtime(
+		self, *, log_dir: Path, hersteller_id: str, confirmed_privacy_notice: bool = False
+	) -> RuntimeInfo:
+		return RuntimeInfo(
+			self.version, self.lib_dir, self.lib_dir, log_dir, hersteller_id, confirmed_privacy_notice
+		)
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,12 +212,15 @@ def detect(
 	allow_beta: bool = False,
 	log_dir: Path | None = None,
 	hersteller_id: str = "",
+	confirmed_privacy_notice: bool = False,
 ) -> RuntimeInfo | None:
 	"""The newest installed runtime with the plugin of the year, a beta only if allowed."""
 	for installation in installations(target_root):
 		if (year is None or year in installation.years) and (allow_beta or not installation.beta):
 			return installation.runtime(
-				log_dir=log_dir or target_root / LOG_DIRECTORY, hersteller_id=hersteller_id
+				log_dir=log_dir or target_root / LOG_DIRECTORY,
+				hersteller_id=hersteller_id,
+				confirmed_privacy_notice=confirmed_privacy_notice,
 			)
 	return None
 
