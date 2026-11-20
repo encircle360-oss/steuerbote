@@ -4,7 +4,25 @@ app_publisher = "encircle360 GmbH"
 app_description = "ELSTER tax filings for ERPNext: Umsatzsteuer-Voranmeldung first, year-end filings later"
 app_email = "oss@encircle360.com"
 app_license = "AGPL-3.0-or-later"
+app_home = "/desk/steuern"
 
 required_apps = ["frappe/erpnext"]
+
+# The apps screen and the app switcher of the desk list an app from this entry. Steuerbote also mounts its
+# dock on the rail of ERPNext (dock/steuerbote), and where the desk has that rail, Frappe keeps a mounted app
+# off the apps screen; the entry still offers Steuerbote as the default app of a user.
+# There is no app_logo_url: Frappe takes the logo of the login page from those of all installed apps.
+add_to_apps_screen = [
+	{
+		"name": app_name,
+		"logo": "/assets/steuerbote/images/steuerbote-logo.svg",
+		"title": app_title,
+		"route": app_home,
+		"has_permission": "steuerbote.permissions.has_app_permission",
+	}
+]
+
+# The icon of the module on the rail and in the header of its sidebar.
+app_include_icons = ["/assets/steuerbote/icons/module-icons.svg"]
 
 fixtures = [{"dt": "Custom Field", "filters": [["module", "=", "Steuerbote"]]}]

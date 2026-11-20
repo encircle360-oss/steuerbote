@@ -1,0 +1,11 @@
+<!-- The icon of the module on the rail of the desk and in the header of its sidebar. The classes soft-icon,
+     soft-body and soft-accent are Frappe's: they draw the icon in the tones of the surface that holds it,
+     like the module icons of ERPNext beside it. -->
+
+<svg id="steuerbote-module-symbols" aria-hidden="true" style="display: none;" class="icon" xmlns="http://www.w3.org/2000/svg">
+	<symbol id="icon-steuerbote-soft" viewBox="0 0 24 24" class="soft-icon">
+		<path d="M21.5 3.6 15.3 18.4 12.9 12.8Z" class="soft-accent"/>
+		<path d="M21.5 3.6 6.7 10.4 12.9 12.8 15.3 18.4Z" class="soft-body"/>
+		<path d="M21.5 3.6 12.9 12.8M3.4 16.7l2.8 2.8 4.9-4.9"/>
+	</symbol>
+</svg>
