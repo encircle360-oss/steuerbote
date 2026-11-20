@@ -45,3 +45,6 @@ doc_events = {
 		"on_trash": "steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation.keep_answer",
 	}
 }
+
+# Every day the recipients in the VAT Return Settings of each company hear of its deadlines not filed.
+scheduler_events = {"daily": ["steuerbote.steuerbote.deadlines.send_reminders"]}
