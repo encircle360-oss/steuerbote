@@ -12,13 +12,15 @@ TRANSLATIONS = APP / "translations" / "de.csv"
 DOCTYPES = ("eric_settings", "elster_transmission", "elster_transmission_message")
 VAT_RETURN_FIELDS = ("transmission_in_progress",)
 SOURCES = (
-	"doctype/eric_settings/eric_settings.py",
-	"doctype/eric_settings/eric_settings.js",
-	"doctype/elster_transmission/elster_transmission.py",
-	"doctype/elster_transmission/elster_transmission_list.js",
-	"doctype/vat_return/vat_return.py",
-	"doctype/vat_return/vat_return.js",
-	"doctype/vat_return/transmission_adapter.py",
+	MODULE / "doctype/eric_settings/eric_settings.py",
+	MODULE / "doctype/eric_settings/eric_settings.js",
+	MODULE / "doctype/elster_transmission/elster_transmission.py",
+	MODULE / "doctype/elster_transmission/elster_transmission_list.js",
+	MODULE / "doctype/elster_transmission/transmission.py",
+	MODULE / "doctype/vat_return/vat_return.py",
+	MODULE / "doctype/vat_return/vat_return.js",
+	MODULE / "doctype/vat_return/transmission_adapter.py",
+	APP / "public/js/elster_transmission.js",
 )
 # German terms and values that read the same in every language.
 UNTRANSLATED = frozenset(
@@ -40,12 +42,15 @@ UNTRANSLATED = frozenset(
 FRAMEWORK_LABELS = frozenset(
 	{
 		"Code",
+		"Document",
+		"Document Type",
 		"Field",
 		"Files",
 		"Finished At",
 		"Kind",
 		"Message",
 		"Messages",
+		"Not permitted",
 		"Remarks",
 		"Result",
 		"Started At",
@@ -87,7 +92,7 @@ def texts_of_the_transmission() -> set[str]:
 		)
 	)
 	for source in SOURCES:
-		texts.update(TRANSLATED_LITERAL.findall((MODULE / source).read_text(encoding="utf-8")))
+		texts.update(TRANSLATED_LITERAL.findall(source.read_text(encoding="utf-8")))
 	return texts - UNTRANSLATED - FRAMEWORK_LABELS
 
 
@@ -99,6 +104,8 @@ class TransmissionTranslationsTest(TestCase):
 			"Install Runtime",
 			"Mark as Filed Outside",
 			"Calculate the return before transmitting it.",
+			"A transmission of {0} is running. Wait for its result.",
+			"Certificate File (.pfx)",
 		):
 			with self.subTest(text=text):
 				self.assertIn(text, texts)

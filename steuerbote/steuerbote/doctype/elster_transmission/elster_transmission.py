@@ -1,17 +1,21 @@
-"""ELSTER-Übermittlung: the record of one Prüfen, Testsenden or Senden of a VAT Return, or of its filing
-outside Steuerbote.
+"""ELSTER-Übermittlung: the record of one Prüfen, Testsenden or Senden of a VAT Return or a Dauerfristverlängerung
+(VAT Return Extension), or of its filing outside Steuerbote.
 
-Only the server writes it. VATReturn.transmit creates it while the run waits for its background job, the job
-completes it with the outcome of steuerbote.eric, and afterwards it stays as it is. A record of a filing, a
-successful real Senden or a filing outside Steuerbote, cannot be deleted, since the Finanzamt has that
-return. A real Senden with an unknown outcome may have reached ELSTER: it blocks sending the return again
-until someone has checked in Mein ELSTER and a System Manager has deleted it.
+It names its document by document_type and document, a Dynamic Link. Only the server writes it: transmit of the
+document (transmission.py) creates it while the run waits for its background job, the job completes it with the
+outcome of steuerbote.eric, and afterwards it stays as it is. A record of a filing, a successful real Senden or a
+filing outside Steuerbote, cannot be deleted, since the Finanzamt has that document. A real Senden with an
+unknown outcome may have reached ELSTER: it blocks sending the document again until someone has checked in Mein
+ELSTER and a System Manager has deleted it.
 """
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
+
+# The documents that go to ELSTER through ERiC.
+DOCUMENT_TYPES = ("VAT Return", "VAT Return Extension")
 
 VALIDATE = "validate"
 TEST_SEND = "test_send"
@@ -42,6 +46,8 @@ class ELSTERTransmission(Document):
 		)
 
 		company: DF.Link | None
+		document: DF.DynamicLink
+		document_type: DF.Link
 		eric_version: DF.Data | None
 		filed_on: DF.Date | None
 		filed_via: DF.Literal["", "mein_elster", "other_way"]
@@ -58,13 +64,16 @@ class ELSTERTransmission(Document):
 		testmerker: DF.Data | None
 		transferticket: DF.Data | None
 		user: DF.Link | None
-		vat_return: DF.Link
 		xml: DF.Attach | None
 	# end: auto-generated types
 
 	def validate(self) -> None:
 		if not self.is_new() and not self.flags.recording:
 			frappe.throw(_("An ELSTER Transmission cannot be changed after it was recorded."))
+		if self.document_type not in DOCUMENT_TYPES:
+			frappe.throw(
+				_("Steuerbote transmits no document of type {0} to ELSTER.").format(_(self.document_type))
+			)
 
 	def on_trash(self) -> None:
 		if self.records_a_filing():

@@ -12,21 +12,18 @@ return for it is a corrected return (Kz 10), and filing one marks the returns be
 Mein ELSTER" (make_import_file) writes the return as saved into the file for the import into Mein ELSTER
 through steuerbote.elster.ustva_xml and attaches it to the return.
 
-"Prüfen", "Testsenden" and "Senden" (transmit) run in a background job: the job writes the same tree as the
-file for Mein ELSTER with the Hersteller-ID for ERiC and hands it to steuerbote.eric, through the worker of an
+"Prüfen", "Testsenden" and "Senden" (transmit) run in a background job, as for every document that goes to
+ELSTER through ERiC (elster_transmission/transmission.py): the job writes the same tree as the file for Mein
+ELSTER with the Hersteller-ID for ERiC (nutzdaten) and hands it to steuerbote.eric, through the worker of an
 installed runtime or the simulation; every run is recorded as an ELSTER Transmission. While it runs, the return
 cannot change, so that the job files exactly what it sent. Only a successful real Senden submits the return,
 which files it; "In Mein ELSTER abgegeben" and "Als außerhalb abgegeben vermerken" (mark_filed_outside) submit
 it with a note instead. Submitting alone ("Buchen") files nothing and is refused, except for a return that
 ELSTER accepted while its submission failed. A period counts as filed once a return of it is submitted or
 another return of it was filed through Steuerbote, cancelled or not, and a return with a record of its filing
-cannot be cancelled. Certificate and password never become arguments of the job: stash_certificate keeps
-them encrypted for a few minutes and the job takes them back by their token.
+cannot be cancelled.
 """
 
-import base64
-import binascii
-import contextlib
 import re
 from decimal import Decimal
 
@@ -34,31 +31,20 @@ import frappe
 from frappe import _
 from frappe.core.doctype.file.utils import get_content_hash
 from frappe.model.document import Document
-from frappe.utils import cint, escape_html, fmt_money, getdate, now_datetime, strip_html
-from frappe.utils.background_jobs import is_job_enqueued
+from frappe.utils import cint, escape_html, fmt_money, getdate
 
-import steuerbote
 from steuerbote import invoices, ustva
 from steuerbote.elster import ustva_xml
-from steuerbote.eric import secrets
-from steuerbote.eric.header import EnvelopeHeader
-from steuerbote.eric.result import TESTMERKER, Operation, Outcome
-from steuerbote.eric.service import PIN
 from steuerbote.ledger import account_names, accounts_without_number, load_lines
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
-	FAILED,
 	FILED_VIA,
 	OTHER_WAY,
-	RUNNING,
-	SEND,
 	SUCCEEDED,
-	TEST_SEND,
 	UNKNOWN,
-	VALIDATE,
 )
-from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root
-from steuerbote.steuerbote.doctype.vat_return import bridge, transmission_adapter
+from steuerbote.steuerbote.doctype.elster_transmission.transmission import Transmittable, filings
+from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
 from steuerbote.ustva import plausibility
@@ -66,8 +52,6 @@ from steuerbote.ustva import plausibility
 DOCTYPE = "VAT Return"
 SETTINGS_DOCTYPE = "VAT Return Settings"
 MAPPING_DOCTYPE = "VAT Return Mapping"
-ERIC_SETTINGS = "ERiC Settings"
-TRANSMISSION = "ELSTER Transmission"
 
 DRAFT = "Entwurf"
 CALCULATED = "Berechnet"
@@ -78,24 +62,11 @@ REPLACED = "Ersetzt"
 PERIOD_FIELDS = ("company", "year", "rhythm", "period_index")
 CALCULATED_TABLES = ("kennzahlen", "checks", "deviations", "unmapped", "hints", "comparison")
 
-OPERATIONS = (VALIDATE, TEST_SEND, SEND)
-LOCK_FIELD = "transmission_in_progress"
-TRANSMISSION_JOB = "steuerbote.steuerbote.doctype.vat_return.vat_return.run_transmission"
-TRANSMISSION_EVENT = "steuerbote_elster_transmission"
-# The worker of steuerbote.eric is ended after two minutes; the job keeps time to record the result.
-TRANSMISSION_TIMEOUT = 300
-# One case per delivery, so its NutzdatenTicket is 1 (ERiC-Entwicklerhandbuch 44.3.6.0, p. 95).
-NUTZDATEN_TICKET = "1"
-# Kz 09 and the header of the simulation: five digits as ELSTER wants them, and no Hersteller-ID anyone has.
-SIMULATION_HERSTELLER_ID = "00000"
-DEFAULT_PRODUKT_NAME = "steuerbote"
-# The .pfx file of an ELSTER certificate has a few kilobytes.
-MAX_CERTIFICATE_BYTES = 64 * 1024
 # TransferTicketSType in headerbasis_datentypen.xsd of the ELSTER Basisschema.
 TRANSFERTICKET = re.compile(r"[0-9a-km-z]{2}[0-9]{3}[0-9a-km-z]{27}")
 
 
-class VATReturn(Document):
+class VATReturn(Transmittable, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -151,21 +122,10 @@ class VATReturn(Document):
 	# end: auto-generated types
 
 	def onload(self) -> None:
-		"""Tell the form whether ERiC runs as a simulation, whether the lock of a transmission is stale and
-		whether ELSTER accepted the return while its submission failed, for its banner and its buttons."""
-		simulation = frappe.get_cached_doc(ERIC_SETTINGS).simulation
-		draft = self.docstatus == 0 and not self.is_new()
-		self.set_onload(
-			"elster",
-			{
-				"simulation": bool(cint(simulation)),
-				"stale": draft and self._has_stale_transmission(),
-				"sent": draft and self._was_accepted(),
-			},
-		)
+		self.set_onload("elster", self.elster_state())
 
 	def validate(self):
-		self._refuse_changes_while_transmitting()
+		self.refuse_changes_while_transmitting()
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
 		self._require_catalogue()
@@ -176,7 +136,7 @@ class VATReturn(Document):
 		self._check_supplementary_details()
 
 	def before_submit(self):
-		if not (self.flags.filing_transmission or self.flags.filed_outside or self._was_accepted()):
+		if not (self.flags.filing_transmission or self.flags.filed_outside or self.was_accepted()):
 			frappe.throw(
 				_(
 					"A VAT Return is filed through Senden or by noting its filing in Mein ELSTER or outside Steuerbote, not by Buchen alone."
@@ -186,7 +146,7 @@ class VATReturn(Document):
 		self.status = FILED
 
 	def before_cancel(self):
-		if any(row.status == SUCCEEDED for row in filings([self.name])):
+		if any(row.status == SUCCEEDED for row in self.filings()):
 			frappe.throw(
 				_(
 					"{0} is filed with the Finanzamt and cannot be cancelled. A change goes to the Finanzamt as a corrected return (Kz 10)."
@@ -252,49 +212,6 @@ class VATReturn(Document):
 		return saved._attach(ustva_xml.import_file_name(voranmeldung), content)
 
 	@frappe.whitelist(methods=["POST"])
-	def transmit(self, operation: str, token: str | None = None) -> str:
-		"""Prüfen, Testsenden or Senden: check that the return can go, then run it in a background job.
-
-		Certificate and password reach the job only as ``token`` from stash_certificate(), never as arguments
-		of the job. Returns the name of the ELSTER Transmission that records the run.
-		"""
-		if operation not in OPERATIONS:
-			frappe.throw(_("Steuerbote knows no ELSTER procedure {0}.").format(escape_html(str(operation))))
-		self.check_permission("submit" if operation == SEND else "write")
-		self._lock_for_transmission()
-		if self.docstatus != 0:
-			frappe.throw(
-				_(
-					"Only a draft return can be transmitted. A filed return is corrected by a corrected return (Kz 10)."
-				)
-			)
-		if self.status not in (CALCULATED, READY):
-			frappe.throw(_("Calculate the return before transmitting it."))
-		self._close_stale_transmission()
-		settings = frappe.get_single(ERIC_SETTINGS)
-		simulation = bool(cint(settings.simulation))
-		if not simulation:
-			require_privacy_notice(settings)
-		if operation == SEND:
-			self._check_can_be_sent(simulation)
-		if operation != VALIDATE and not simulation and not token:
-			frappe.throw(_("Choose the certificate file and enter its password."))
-		transmission = self._new_transmission(operation, simulated=simulation)
-		self.db_set(LOCK_FIELD, 1)
-		frappe.enqueue(
-			TRANSMISSION_JOB,
-			queue="long",
-			timeout=TRANSMISSION_TIMEOUT,
-			job_id=transmission_job_id(transmission.name),
-			enqueue_after_commit=True,
-			name=self.name,
-			operation=operation,
-			token=token,
-			transmission=transmission.name,
-		)
-		return transmission.name
-
-	@frappe.whitelist(methods=["POST"])
 	def mark_filed_outside(
 		self,
 		remarks: str | None = None,
@@ -321,10 +238,10 @@ class VATReturn(Document):
 		filed_date = getdate(filed_on) if filed_on else None
 		if filed_date and filed_date > getdate():
 			frappe.throw(_("A return cannot be filed in the future."))
-		self._lock_for_transmission()
+		self.lock_for_transmission()
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft return can be marked as filed."))
-		accepted = [row for row in filings([self.name]) if row.status == SUCCEEDED]
+		accepted = [row for row in self.filings() if row.status == SUCCEEDED]
 		if accepted:
 			frappe.throw(
 				_(
@@ -334,7 +251,7 @@ class VATReturn(Document):
 		self._refuse_second_filing()
 		self.flags.filed_outside = True
 		self.submit()
-		return self._new_transmission(
+		return self.new_transmission(
 			EXTERN,
 			simulated=False,
 			status=SUCCEEDED,
@@ -343,14 +260,6 @@ class VATReturn(Document):
 			transferticket=ticket or None,
 			filed_on=filed_date,
 		).name
-
-	@frappe.whitelist(methods=["POST"])
-	def release_stale_transmission(self) -> None:
-		"""Close the run whose background job is gone, a worker that stopped for instance, and lift its lock,
-		so that the return can be used again; the form calls this when it finds such a lock."""
-		self.check_permission("write")
-		self._lock_for_transmission()
-		self._close_stale_transmission()
 
 	def _check_fit_for_filing(self) -> None:
 		if self.status not in (CALCULATED, READY):
@@ -362,16 +271,20 @@ class VATReturn(Document):
 				)
 			)
 
-	def _check_can_be_sent(self, simulation: bool) -> None:
-		"""Senden files the return, once: it needs ERiC, the return fit for filing and no earlier filing."""
-		if simulation:
+	def check_transmittable(self) -> None:
+		if self.docstatus != 0:
 			frappe.throw(
 				_(
-					"Senden needs an installed ERiC runtime and a Hersteller-ID. In the simulation, only Prüfen and Testsenden are possible."
+					"Only a draft return can be transmitted. A filed return is corrected by a corrected return (Kz 10)."
 				)
 			)
+		if self.status not in (CALCULATED, READY):
+			frappe.throw(_("Calculate the return before transmitting it."))
+
+	def check_can_be_sent(self) -> None:
+		"""Senden files the return, once: it needs the return fit for filing and no earlier filing."""
 		self._check_fit_for_filing()
-		sent = filings([self.name])
+		sent = self.filings()
 		if sent and sent[0].status == UNKNOWN:
 			frappe.throw(
 				_(
@@ -402,85 +315,13 @@ class VATReturn(Document):
 			},
 			pluck="name",
 		)
-		sent = filings(others)
+		sent = filings(DOCTYPE, others)
 		if sent:
 			frappe.throw(
 				_(
 					"{0} of {1} was transmitted already as {2}. Mark this return as a corrected return (Kz 10)."
-				).format(self.period_label, self.company, sent[0].vat_return)
+				).format(self.period_label, self.company, sent[0].document)
 			)
-
-	def _lock_for_transmission(self) -> None:
-		"""Hold the row of the return until the request ends and read it fresh: two requests cannot start a
-		transmission together, and every check sees what the job will send."""
-		frappe.db.get_value(DOCTYPE, self.name, "name", for_update=True)
-		self.reload()
-
-	def _refuse_changes_while_transmitting(self) -> None:
-		"""The job files exactly what it sent, so the return stays as it is while a transmission runs. The
-		flag in the database counts: the form may hold a copy from before the transmission started."""
-		if self.is_new() or self.flags.filing_transmission:
-			return
-		if cint(frappe.db.get_value(DOCTYPE, self.name, LOCK_FIELD)):
-			frappe.throw(
-				_("A transmission of this return is running. Wait for its result before changing the return.")
-			)
-
-	def _close_stale_transmission(self) -> None:
-		"""Refuse a second run while one is queued or running; close the record of a run whose job is gone
-		and lift the lock."""
-		if not cint(self.transmission_in_progress):
-			return
-		running = self._running_transmissions()
-		if any(is_job_enqueued(transmission_job_id(name)) for name in running):
-			frappe.throw(_("A transmission of this return is running. Wait for its result."))
-		for name in running:
-			close_stale_transmission(frappe.get_doc(TRANSMISSION, name))
-		self.db_set(LOCK_FIELD, 0)
-
-	def _has_stale_transmission(self) -> bool:
-		if not cint(self.transmission_in_progress):
-			return False
-		return not any(is_job_enqueued(transmission_job_id(name)) for name in self._running_transmissions())
-
-	def _running_transmissions(self) -> list[str]:
-		return frappe.get_all(
-			TRANSMISSION, filters={"vat_return": self.name, "status": RUNNING}, pluck="name"
-		)
-
-	def _was_accepted(self) -> bool:
-		"""Whether ELSTER accepted a real Senden of the return."""
-		return any(row.operation == SEND and row.status == SUCCEEDED for row in filings([self.name]))
-
-	def _new_transmission(
-		self,
-		operation: str,
-		*,
-		simulated: bool,
-		status: str = RUNNING,
-		remarks: str | None = None,
-		filed_via: str | None = None,
-		transferticket: str | None = None,
-		filed_on=None,
-	) -> Document:
-		now = now_datetime()
-		return frappe.get_doc(
-			{
-				"doctype": TRANSMISSION,
-				"vat_return": self.name,
-				"company": self.company,
-				"operation": operation,
-				"status": status,
-				"simulated": int(simulated),
-				"user": frappe.session.user,
-				"started_at": now,
-				"finished_at": None if status == RUNNING else now,
-				"remarks": remarks,
-				"filed_via": filed_via,
-				"transferticket": transferticket,
-				"filed_on": filed_on,
-			}
-		).insert(ignore_permissions=True)
 
 	def nutzdaten(self, hersteller_id: str) -> str:
 		"""The Nutzdaten for ERiC: the tree of the file for Mein ELSTER, with the Hersteller-ID in Kz 09."""
@@ -778,351 +619,3 @@ class SiteFigures:
 
 	def percent(self, value: Decimal) -> str:
 		return f"{fmt_money(value, precision=1)} %"
-
-
-def filings(returns: list[str]) -> list[dict]:
-	"""The records of the given returns that file them, or may have: a real Senden that ELSTER accepted or
-	whose outcome is unknown, and a filing outside Steuerbote; the latest first. A cancelled return counts
-	as well, since cancelling it in ERPNext takes nothing back from the Finanzamt."""
-	if not returns:
-		return []
-	return frappe.get_all(
-		TRANSMISSION,
-		filters={
-			"vat_return": ["in", returns],
-			"operation": ["in", (SEND, EXTERN)],
-			"status": ["in", (SUCCEEDED, UNKNOWN)],
-			"simulated": 0,
-		},
-		fields=["name", "vat_return", "operation", "status", "transferticket"],
-		order_by="creation desc",
-	)
-
-
-def transmission_job_id(transmission: str) -> str:
-	return f"steuerbote:elster:{transmission}"
-
-
-def close_stale_transmission(transmission: Document) -> None:
-	"""Close a run whose job is gone. A check never left the server, a test send or a send may have
-	reached ELSTER, so its outcome is unknown."""
-	transferred = transmission.operation in (TEST_SEND, SEND) and not cint(transmission.simulated)
-	outcome = Outcome.UNKNOWN if transferred else Outcome.FAILED
-	transmission.update(
-		{
-			"status": UNKNOWN if transferred else FAILED,
-			"outcome": outcome.value,
-			"finished_at": now_datetime(),
-		}
-	)
-	note = (
-		_(
-			"The transmission did not finish and its result is unknown. Before sending again, check in Mein ELSTER whether the return arrived."
-		)
-		if transferred
-		else _(
-			"The run did not finish because its background job is gone. Nothing reached ELSTER; start it again."
-		)
-	)
-	transmission.append("messages", {"severity": "error", "text": note})
-	record(transmission)
-
-
-def require_privacy_notice(settings: Document) -> None:
-	"""ERiC licence, § 5 Abs. 1 and 2: the end user acknowledges the Datenschutzhinweise of the tax
-	administration before using the software."""
-	if not cint(settings.privacy_notice_confirmed):
-		frappe.throw(
-			_(
-				"Before ERiC is used, the Datenschutzhinweise of the tax administration have to be read and confirmed in the ERiC Settings."
-			)
-		)
-
-
-def record(transmission: Document) -> None:
-	"""Save an ELSTER Transmission, which only the server may change."""
-	transmission.flags.recording = True
-	transmission.save(ignore_permissions=True)
-
-
-@frappe.whitelist(methods=["POST"])
-def stash_certificate(certificate_secret: str, certificate_password: str) -> str:
-	"""Keep the certificate (.pfx, base64) and its password for the next transmission in the one-shot store
-	of steuerbote.eric.secrets; returns the token that transmit() takes in their place.
-
-	Parameters and locals carry "secret" or "password" in their names, which Frappe masks in its logs and
-	tracebacks.
-	"""
-	frappe.has_permission(DOCTYPE, "write", throw=True)
-	try:
-		decoded_secret = base64.b64decode(certificate_secret or "", validate=True)
-	except binascii.Error, ValueError:
-		decoded_secret = b""
-	if not decoded_secret or len(decoded_secret) > MAX_CERTIFICATE_BYTES:
-		frappe.throw(_("The certificate file could not be read. Choose the .pfx file of the ELSTER account."))
-	if not PIN.fullmatch(certificate_password or ""):
-		frappe.throw(
-			_(
-				"The certificate password has 6 to 128 characters: letters, digits, spaces and punctuation, without umlauts."
-			)
-		)
-	return secrets.stash(decoded_secret, certificate_password)
-
-
-def run_transmission(name: str, operation: str, transmission: str, token: str | None = None) -> None:
-	"""Background job of VATReturn.transmit: one run through ERiC or its simulation.
-
-	Whatever happens ends in the ELSTER Transmission, the lock of the return is released and the user who
-	started the run gets a realtime notice. Only a Senden that ELSTER accepted changes the return: the job
-	submits it, which files it. A run whose record was closed meanwhile as stale does nothing, since the lock
-	of the return may belong to another run by now, and drops its certificate from the store.
-	"""
-	transmission = frappe.get_doc(TRANSMISSION, transmission)
-	if transmission.status != RUNNING:
-		_discard_certificate(token)
-		return
-	result = None
-	frappe.db.savepoint("elster_transmission")
-	try:
-		result, nutzdaten = _call_eric(name, Operation(operation), token, transmission)
-		_record_result(transmission, result, nutzdaten)
-		if _files_the_return(result):
-			_file_sent_return(name, transmission)
-	except Exception as error:
-		frappe.db.rollback(save_point="elster_transmission")
-		_record_failure(transmission, _failure_text(error), result)
-	finally:
-		frappe.db.set_value(DOCTYPE, name, LOCK_FIELD, 0)
-	frappe.publish_realtime(
-		TRANSMISSION_EVENT,
-		{
-			"vat_return": name,
-			"transmission": transmission.name,
-			"operation": transmission.operation,
-			"status": transmission.status,
-			"simulated": cint(transmission.simulated),
-		},
-		user=transmission.user,
-		after_commit=True,
-	)
-
-
-def _call_eric(name: str, operation: Operation, token: str | None, transmission: Document):
-	doc = frappe.get_doc(DOCTYPE, name)
-	settings = frappe.get_single(ERIC_SETTINGS)
-	simulation = bool(cint(settings.simulation))
-	if not simulation:
-		require_privacy_notice(settings)
-	certificate_secret, certificate_password = _take_certificate(token)
-	header = envelope_header(doc, settings, operation, simulation)
-	nutzdaten = doc.nutzdaten(header.hersteller_id)
-	runtime_info = (
-		None if simulation else _installed_runtime(doc, operation, header.hersteller_id, transmission)
-	)
-	result = transmission_adapter.run(
-		operation, nutzdaten, header, runtime_info, certificate_secret, certificate_password
-	)
-	return result, nutzdaten
-
-
-def envelope_header(
-	doc: Document, settings: Document, operation: Operation, simulation: bool
-) -> EnvelopeHeader:
-	"""The header of the delivery. Its Hersteller-ID is the one of the ERiC Settings, which the runtime and
-	Kz 09 of the Nutzdaten carry as well; only the simulation runs without one."""
-	hersteller_id = settings.hersteller_id or (SIMULATION_HERSTELLER_ID if simulation else "")
-	datenlieferant = settings.datenlieferant or (doc.company if simulation else "")
-	if not hersteller_id:
-		frappe.throw(_("Enter the Hersteller-ID in the ERiC Settings."))
-	if not datenlieferant:
-		frappe.throw(_("Enter the Datenlieferant in the ERiC Settings."))
-	return EnvelopeHeader(
-		hersteller_id=hersteller_id,
-		datenlieferant=datenlieferant,
-		produkt_name=settings.produkt_name or DEFAULT_PRODUKT_NAME,
-		produkt_version=steuerbote.__version__,
-		empfaenger_finanzamt=finanzamt_of(doc.company),
-		datenart_version=f"UStVA_{cint(doc.year)}",
-		testmerker=TESTMERKER if operation is Operation.TEST_SEND else None,
-		nutzdaten_ticket=NUTZDATEN_TICKET,
-	)
-
-
-def finanzamt_of(company: str) -> str:
-	"""The Bundesfinanzamtsnummer: "die ersten 4 Stellen der 13-stelligen Steuernummer" (ERiC-API-Referenz)."""
-	elster_tax_number = settings_for(company).elster_tax_number
-	if not elster_tax_number:
-		frappe.throw(_("The VAT Return Settings of {0} have no ELSTER Steuernummer.").format(company))
-	return elster_tax_number[:4]
-
-
-def _take_certificate(token: str | None) -> tuple[bytes | None, str | None]:
-	if not token:
-		return None, None
-	try:
-		return secrets.take(token)
-	except secrets.SecretsExpired:
-		frappe.throw(
-			_(
-				"The certificate and its password are no longer available. Start the transmission again and enter them anew."
-			)
-		)
-
-
-def _discard_certificate(token: str | None) -> None:
-	if token:
-		with contextlib.suppress(secrets.SecretsExpired):
-			secrets.take(token)
-
-
-def _installed_runtime(doc: Document, operation: Operation, hersteller_id: str, transmission: Document):
-	"""The runtime for the year of the return; ERiC writes its eric.log beside the site, one per run."""
-	log_dir = eric_log_root() / transmission.name
-	runtime_info = transmission_adapter.detect_runtime(cint(doc.year), operation, hersteller_id, log_dir)
-	if runtime_info is None:
-		frappe.throw(
-			_(
-				"No installed ERiC runtime serves {0}. Install the runtime for this year in the ERiC Settings; a beta serves Testsenden only."
-			).format(cint(doc.year))
-		)
-	return runtime_info
-
-
-def _status(result) -> str:
-	if result.ok:
-		return SUCCEEDED
-	return UNKNOWN if result.outcome is Outcome.UNKNOWN else FAILED
-
-
-def _files_the_return(result) -> bool:
-	return result.operation is Operation.SEND and result.outcome is Outcome.ACCEPTED and not result.simulated
-
-
-def _record_result(transmission: Document, result, nutzdaten: str) -> None:
-	transmission.reload()
-	transmission.update(
-		{
-			"status": _status(result),
-			"outcome": result.outcome.value,
-			"simulated": int(result.simulated),
-			"eric_version": result.eric_version,
-			"transferticket": result.transferticket,
-			"testmerker": result.testmerker,
-			"finished_at": now_datetime(),
-		}
-	)
-	transmission.set("messages", _message_rows(result))
-	response = result.server_response_xml
-	files = {
-		"xml": ("nutzdaten.xml", nutzdaten.encode()),
-		"protocol_pdf": ("protokoll.pdf", result.protocol_pdf),
-		"response_xml": ("serverantwort.xml", response.encode() if response else None),
-	}
-	for fieldname, (suffix, content) in files.items():
-		transmission.set(fieldname, _attach_to_transmission(transmission, fieldname, suffix, content))
-	record(transmission)
-
-
-def _message_rows(result) -> list[dict]:
-	return [
-		{"severity": message.severity, "code": message.code, "text": message.text, "field": message.field}
-		for message in result.messages
-	]
-
-
-def _attach_to_transmission(
-	transmission: Document, fieldname: str, suffix: str, content: bytes | None
-) -> str | None:
-	"""A private File on the ELSTER Transmission; returns its address for the field.
-
-	A file that cannot be stored is named in the messages instead: the record of the run, its Transferticket
-	above all, matters more than any one of its files.
-	"""
-	if not content:
-		return None
-	file_name = f"{transmission.vat_return}-{transmission.operation}-{suffix}"
-	frappe.db.savepoint("elster_file")
-	try:
-		file = frappe.get_doc(
-			{
-				"doctype": "File",
-				"file_name": file_name,
-				"attached_to_doctype": TRANSMISSION,
-				"attached_to_name": transmission.name,
-				"attached_to_field": fieldname,
-				"is_private": 1,
-				"content": content,
-			}
-		).insert(ignore_permissions=True)
-	except Exception as error:
-		frappe.db.rollback(save_point="elster_file")
-		transmission.append(
-			"messages",
-			{
-				"severity": "error",
-				"text": _("The file {0} of the transmission could not be stored: {1}").format(
-					file_name, _failure_text(error)
-				),
-			},
-		)
-		return None
-	return file.file_url
-
-
-def _file_sent_return(name: str, transmission: Document) -> None:
-	"""Submit the return the Finanzamt has now. If that fails, the record says so: sending it again would
-	file it twice."""
-	frappe.db.savepoint("elster_filing")
-	try:
-		doc = frappe.get_doc(DOCTYPE, name)
-		doc.flags.filing_transmission = transmission.name
-		doc.submit()
-	except Exception as error:
-		frappe.db.rollback(save_point="elster_filing")
-		transmission.reload()
-		transmission.append(
-			"messages", {"severity": "error", "text": _not_filed_text(transmission, _failure_text(error))}
-		)
-		record(transmission)
-
-
-def _record_failure(transmission: Document, text: str, result) -> None:
-	"""Record a run that broke off; with the result of ERiC, what ERiC answered is kept, the Transferticket
-	of a Senden above all."""
-	transmission.reload()
-	outcome = result.outcome if result else Outcome.FAILED
-	transmission.update(
-		{
-			"status": _status(result) if result else FAILED,
-			"outcome": outcome.value,
-			"finished_at": now_datetime(),
-		}
-	)
-	if result:
-		transmission.update(
-			{
-				"simulated": int(result.simulated),
-				"eric_version": result.eric_version,
-				"transferticket": result.transferticket,
-				"testmerker": result.testmerker,
-			}
-		)
-		transmission.set("messages", _message_rows(result))
-		if _files_the_return(result):
-			text = _not_filed_text(transmission, text)
-	transmission.append("messages", {"severity": "error", "text": text})
-	record(transmission)
-
-
-def _not_filed_text(transmission: Document, reason: str) -> str:
-	return _(
-		"Transmitted with Transferticket {0}, but the return could not be submitted: {1} Do not send it again; submit the return once the cause is resolved."
-	).format(transmission.transferticket, reason)
-
-
-def _failure_text(error: Exception) -> str:
-	"""What the user reads about a failure: the message of an expected error, else a pointer to the Error Log."""
-	if isinstance(error, frappe.ValidationError | ValueError):
-		return strip_html(str(error)).strip()
-	frappe.log_error(title=_("ELSTER transmission failed"))
-	return _("An unexpected error stopped the transmission. The Error Log has the details.")
