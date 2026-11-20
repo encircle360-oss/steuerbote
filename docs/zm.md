@@ -197,7 +197,7 @@ Daraus füllt der Kern die Tabellen der Meldung: Meldezeilen (`build()`), Belege
 
 ### Korrekturen und eigene Zeilen
 
-Eine Zeile bekommt einen korrigierten Betrag in ganzen Euro mit Begründung. Die Korrektur ersetzt den gemeldeten Betrag und hebt die Sperre der Zeile auf, sobald die Meldung gespeichert ist; einen Betrag ohne Begründung lehnt Steuerbote ab. Ebenso bleibt eine eigene Zeile ohne Belege mit USt-IdNr., Art, Betrag und Begründung, etwa ein Verbringen unter der eigenen USt-IdNr. im anderen Mitgliedstaat. „Berechnen“ übernimmt Korrekturen und eigene Zeilen.
+Eine Zeile bekommt einen korrigierten Betrag in ganzen Euro mit Begründung. Die Korrektur ersetzt den gemeldeten Betrag und hebt die Sperre der Zeile auf, sobald die Meldung gespeichert ist; einen Betrag ohne Begründung lehnt Steuerbote ab. Ebenso bleibt eine eigene Zeile ohne Belege mit USt-IdNr., Art, Betrag und Begründung, etwa ein Verbringen unter der eigenen USt-IdNr. im anderen Mitgliedstaat. „Berechnen“ übernimmt Korrekturen und eigene Zeilen. Mehr nimmt das Speichern aus den Zeilen nicht: Ob eine Nummer bestätigt ist, sagt die letzte USt-IdNr.-Bestätigung, und Belege und die Befunde von Schwelle, Abgleich und Vorperiodenvergleich ändert nur „Berechnen“, auch wenn ein Speichern über die Schnittstelle von Frappe andere Werte sendet.
 
 ### USt-IdNrn. prüfen
 

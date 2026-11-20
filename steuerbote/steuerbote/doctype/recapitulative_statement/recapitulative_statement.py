@@ -49,7 +49,7 @@ from steuerbote.zm.correction import as_filed
 from steuerbote.zm.csv_file import csv_file
 from steuerbote.zm.errors import ZmError
 from steuerbote.zm.findings import Finding
-from steuerbote.zm.lines import Art, Statement, build
+from steuerbote.zm.lines import Art, Override, Statement, VoucherAmount, build
 from steuerbote.zm.period import ReportingPeriod
 from steuerbote.zm.reconciliation import Filed, ledger_changes, reconcile
 from steuerbote.zm.rhythm import Coverage, Rule, check_notices, coverage, threshold_findings, threshold_window
@@ -145,6 +145,13 @@ class RecapitulativeStatement(Document):
 		draft = self.docstatus == 0 and not self.is_new()
 		self.set_onload("confirmation", {"stale": draft and self._has_stale_confirmation()})
 
+	def before_insert(self) -> None:
+		"""A new statement starts as a draft that Berechnen has not read yet, whatever the rows it was made with
+		say; only the lines of its own and the overrides stay."""
+		for table in ("vouchers", "reconciliation", "comparison", "hints"):
+			self.set(table, [])
+		self.update({"ready": 0, "status": DRAFT, **dict.fromkeys(TOTALS, 0)})
+
 	def validate(self) -> None:
 		self._refuse_changes_while_confirming()
 		if self._lacks_mandatory_values():
@@ -205,17 +212,13 @@ class RecapitulativeStatement(Document):
 			)
 			parties = zm_sources.parties(item.voucher for item in (*shares, *previous_shares))
 			amounts = bridge.voucher_amounts_of(shares, parties)
-			vat_ids = bridge.line_vat_ids(amounts, overrides)
-			latest = vat_id_confirmation.latest(self.company, vat_ids)
-			outcomes = {vat_id: record.result for vat_id, record in latest.items()}
-			statement = build(amounts, figures, bridge.validity_for(vat_ids, outcomes), overrides)
+			statement, confirmations = self._build(amounts, overrides, figures)
 			previous = build(bridge.voucher_amounts_of(previous_shares, parties), figures)
 			compared = compare(statement, previous, _thresholds(settings).exceeded)
 			deliveries = zm_sources.deliveries(self.company, threshold_window(period), mapping)
 			threshold = threshold_findings(rules, period, deliveries, figures)
 			reconciliation = reconcile(statement, shares, figures, self._filed(covered))
 			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
-			confirmations = {vat_id: bridge.confirmation_fields(record) for vat_id, record in latest.items()}
 			lines = bridge.line_rows(statement, confirmations, period, held)
 		self.set("lines", lines)
 		self.set("vouchers", bridge.voucher_rows(amounts, parties))
@@ -387,15 +390,6 @@ class RecapitulativeStatement(Document):
 		finally:
 			self.flags.filed_outside = False
 
-	def refresh_confirmations(self) -> None:
-		"""Show on each line the latest confirmation of its USt-IdNr."""
-		latest = vat_id_confirmation.latest(self.company, (row.vat_id for row in self.lines))
-		for row in self.lines:
-			record = latest.get(row.vat_id)
-			row.update(
-				bridge.confirmation_fields(record) if record else dict.fromkeys(bridge.CONFIRMATION_FIELDS)
-			)
-
 	def _lacks_mandatory_values(self) -> bool:
 		return (
 			not self.company
@@ -543,17 +537,45 @@ class RecapitulativeStatement(Document):
 			self.update({"ready": 0, "status": DRAFT, **dict.fromkeys(TOTALS, 0)})
 
 	def _apply_lines(self, period: ReportingPeriod) -> None:
-		"""Rebuild the lines from the rows of vouchers and lines, so that an override lifts its block at once and
-		a confirmation counts as soon as the lines show it."""
+		"""Rebuild the lines on every save, so that an override lifts its block at once and a confirmation counts
+		as soon as it is stored.
+
+		Frappe keeps no read-only field from a save through the API, so a save takes only the overrides and the
+		lines of its own from the rows it sends: the status is the stored one unless the calculation was just
+		discarded, the vouchers and the findings of the threshold, the reconciliation and the comparison stay as
+		Berechnen stored them, and each USt-IdNr. counts with its latest VAT ID Confirmation. A new statement is a
+		draft (before_insert), so a calculated one was saved.
+		"""
+		before = self.get_doc_before_save()
+		if before is None:
+			return
+		if self.status != DRAFT:
+			self.update({"status": before.status, "ready": before.ready})
 		if self.status not in (CALCULATED, READY):
 			return
+		self.set(
+			"vouchers",
+			[row.as_dict(no_default_fields=True, no_child_table_fields=True) for row in before.vouchers],
+		)
 		with zm_errors():
-			statement = bridge.statement_of(self.vouchers, self.lines, self._figures())
+			amounts = bridge.voucher_amounts(self.vouchers)
+			statement, confirmations = self._build(amounts, bridge.overrides_of(self.lines), self._figures())
 			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
-			rows = bridge.line_rows(statement, bridge.confirmations_of(self.lines), period, held)
+			rows = bridge.line_rows(statement, confirmations, period, held)
 		self.set("lines", rows)
-		self.set("hints", bridge.merged_hints(statement, self.hints))
+		self.set("hints", bridge.merged_hints(statement, before.hints))
 		self._set_totals_and_status(statement)
+
+	def _build(
+		self, amounts: list[VoucherAmount], overrides: dict[tuple[str, Art], Override], figures: SiteFigures
+	) -> tuple[Statement, dict[str, dict]]:
+		"""The lines of the voucher amounts and the overrides, each USt-IdNr. with its latest confirmation, and
+		that confirmation as the lines show it."""
+		vat_ids = bridge.line_vat_ids(amounts, overrides)
+		latest = vat_id_confirmation.latest(self.company, vat_ids)
+		outcomes = {vat_id: record.result for vat_id, record in latest.items()}
+		statement = build(amounts, figures, bridge.validity_for(vat_ids, outcomes), overrides)
+		return statement, {vat_id: bridge.confirmation_fields(record) for vat_id, record in latest.items()}
 
 	def _set_totals_and_status(self, statement: Statement) -> None:
 		self.update(bridge.totals(statement.meldezeilen))
@@ -770,7 +792,6 @@ def run_confirmation(name: str) -> None:
 				frappe.log_error(title=_("Confirmation of a USt-IdNr. failed"))
 				failed.append(vat_id)
 		doc.reload()
-		doc.refresh_confirmations()
 		doc.flags.confirming = True
 		doc.save()
 	except Exception as error:

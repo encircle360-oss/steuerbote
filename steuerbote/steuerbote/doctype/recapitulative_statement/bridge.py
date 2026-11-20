@@ -2,10 +2,10 @@
 
 Nothing here imports Frappe. The module turns the voucher shares of the ledger into the voucher amounts of the
 core, the core's lines, reconciliation, comparison and findings into the rows of the statement's tables, and the
-rows back into the core's values: the voucher amounts, the overrides with their Begründung and the outcome of
-the latest confirmation of each USt-IdNr. So every save rebuilds the lines from the rows with
-steuerbote.zm.lines.build, and an override lifts its block at once, while the controller only moves data. Every
-amount and every rule is the core's.
+rows back into the core's values: the voucher amounts and the overrides with their Begründung. So every save
+rebuilds the lines with steuerbote.zm.lines.build, from the vouchers Berechnen stored, the overrides of the rows
+and the latest confirmation of each USt-IdNr., which the controller reads from its records, and an override
+lifts its block at once, while the controller only moves data. Every amount and every rule is the core's.
 
 A number that was never confirmed counts as unconfirmed, as does one whose confirmation got no answer: both
 hold the statement back from „Bereit“ until the BZSt confirms the number or the line is overridden with a
@@ -299,15 +299,6 @@ def confirmation_fields(record: Row) -> dict[str, Any]:
 		"confirmation_outcome": record.get("result"),
 		"confirmation_status": record.get("status_code"),
 		"consultation_id": record.get("consultation_id"),
-	}
-
-
-def confirmations_of(rows: Iterable[Row]) -> dict[str, dict[str, Any]]:
-	"""The confirmation that the rows of the lines show for each USt-IdNr., to carry it over a new build."""
-	return {
-		vat_id: {name: row.get(name) for name in CONFIRMATION_FIELDS}
-		for row in rows
-		if (vat_id := str(row.get("vat_id") or ""))
 	}
 
 

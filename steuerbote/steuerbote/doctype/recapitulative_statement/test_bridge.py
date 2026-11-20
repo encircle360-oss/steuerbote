@@ -278,14 +278,6 @@ class ConfirmationFieldsTest(TestCase):
 			date(2026, 3, 3),
 		)
 
-	def test_carries_the_confirmation_of_the_rows_over_by_vat_id(self):
-		rows = [
-			line_row(AUSTRIA, "L", **bridge.confirmation_fields(self.RECORD)),
-			line_row(AUSTRIA, "S", **bridge.confirmation_fields(self.RECORD)),
-			line_row("", "L"),
-		]
-		self.assertEqual(bridge.confirmations_of(rows), {AUSTRIA: bridge.confirmation_fields(self.RECORD)})
-
 
 class LineRowsTest(TestCase):
 	def test_a_row_per_line_with_its_party_amounts_block_and_confirmation(self):

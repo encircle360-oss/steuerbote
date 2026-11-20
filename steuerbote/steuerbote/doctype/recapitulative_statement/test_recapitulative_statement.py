@@ -62,6 +62,7 @@ SALES_USER = "steuerbote-zm-vertrieb@example.com"
 # The form of TransferTicketSType in headerbasis_datentypen.xsd, invented.
 TICKET = "ab123cdefghijkmnopqrstuvwxyz0123"
 HEADER = b"#v3.0\n#ve3.2.1\nUmsatzsteuer-Identifikationsnummer (USt-IdNr.),Summe (Euro),Art der Leistung\n"
+VOUCHER_KEYS = ("voucher_type", "voucher_no", "customer", "party", "vat_id", "kennzahl", "art", "amount")
 
 # SKR03: intra-community deliveries, their Skonti, Dreiecksgeschäfte, EU services, receivables and a bank.
 ACCOUNTS = {
@@ -628,6 +629,47 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			f"Januar 2026 reports months whose Lieferungen or sonstige Leistungen {quarter.name}",
 		):
 			self.statement(1, company=company)
+
+	def test_a_save_takes_only_overrides_and_lines_of_its_own_from_the_rows_it_sends(self):
+		"""Frappe keeps no read-only field from a save through the API, so the rows of a save cannot confirm a
+		number, drop the threshold, change a voucher or make a new statement ready: confirmations come from their
+		records, vouchers and the other findings from what Berechnen stored."""
+		doc = self.calculated(3)
+		for row in doc.lines:
+			row.confirmation_outcome = "valid"
+		doc.vouchers[0].amount = 1
+		doc.save()
+		doc.reload()
+		self.assertEqual(doc.status, "Berechnet")
+		self.assertEqual(
+			[row.code for row in doc.hints if row.code == "ZM-USTID-UNBESTAETIGT"],
+			["ZM-USTID-UNBESTAETIGT"] * 2,
+		)
+		self.assertEqual({row.confirmation_outcome for row in doc.lines}, {None})
+		self.assertEqual(money(doc.vouchers[0].amount), money(10000))
+
+		quarter = self.statement(1, company=QUARTERLY_COMPANY, kind="quarter")
+		quarter.calculate()
+		quarter.reload()
+		row = self.line(quarter, AUSTRIAN)
+		row.override = 60000
+		row.override_reason = "Die Nummer ist bestätigt."
+		quarter.set("hints", [hint for hint in quarter.hints if hint.code != "ZM-SCHWELLE"])
+		quarter.save()
+		quarter.reload()
+		self.assertEqual(quarter.status, "Berechnet")
+		self.assertIn("ZM-SCHWELLE", [hint.code for hint in quarter.hints])
+
+		forged = self.statement(
+			4,
+			status="Bereit",
+			ready=1,
+			vouchers=[{key: row.get(key) for key in VOUCHER_KEYS} for row in doc.vouchers],
+		)
+		self.assertEqual((forged.status, forged.ready, forged.vouchers), ("Entwurf", 0, []))
+		forged.update({"status": "Berechnet", "ready": 1})
+		forged.save()
+		self.assertEqual(frappe.db.get_value(DOCTYPE, forged.name, ["status", "ready"]), ("Entwurf", 0))
 
 	def test_a_statement_is_filed_only_through_the_filing_marks(self):
 		doc = self.statement(8)
