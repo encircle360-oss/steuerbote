@@ -35,7 +35,8 @@ from steuerbote.deadlines import Deadline, Filing, Kind, Status
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import DOCTYPE as REMINDER
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import reminder_name
 from steuerbote.steuerbote.doctype.recapitulative_statement.bridge import reporting_period
-from steuerbote.steuerbote.doctype.vat_return.vat_return import filings as vat_return_filings
+from steuerbote.steuerbote.doctype.elster_transmission.transmission import filings
+from steuerbote.steuerbote.doctype.vat_return.vat_return import DOCTYPE as VAT_RETURN
 from steuerbote.ustva import Mapping
 from steuerbote.ustva.period import Period, Rhythm
 from steuerbote.zm.rhythm import Coverage
@@ -108,7 +109,7 @@ def _vat_returns(company: str) -> list[Filing]:
 def _days_filed(returns: list[str]) -> dict[str, date]:
 	"""The day each of the returns was filed by its latest record that files it: the day noted for a filing outside
 	Steuerbote, or else the day its transmission finished."""
-	records = vat_return_filings(returns)
+	records = filings(VAT_RETURN, returns)
 	if not records:
 		return {}
 	days = {
