@@ -21,6 +21,8 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 | `steuerbote/zm_sources.py` | liest für die Zusammenfassende Meldung die Beiträge der Belege zu Kz 41, 42 und 21, die Kunden der Belege, Kz 41 und 42 je Monat für die Schwelle, die abgegebenen Voranmeldungen und Name und Anschrift eines Kunden, mit Frappe |
 | `recapitulative_statement/bridge.py` | überträgt Zeilen, Belege, Befunde, Abgleich und Vorperiodenvergleich des Kerns in die Tabellen der Zusammenfassenden Meldung und liest Korrekturen und Bestätigungen aus ihnen zurück |
 | `vat_id_confirmation/records.py` | macht aus jeder Abfrage einer Bestätigung die Felder einer USt-IdNr.-Bestätigung und das Ergebnis der Prüfung bis zu ihr |
+| `steuerbote/dauerfrist_sources.py` | liest für die Dauerfristverlängerung die abgegebenen Voranmeldungen eines Jahres mit Kz 83 und Kz 39 und das Gründungsdatum des Unternehmens, mit Frappe |
+| `vat_return_extension/bridge.py` | wählt die abgegebenen Voranmeldungen des Vorjahres, deren Kz 83 und Kz 39 die Grundlage bilden, nennt die Voranmeldungszeiträume, die ihr fehlen, gibt Grundlage, Grundlage von Hand und Monate der Tätigkeit an den Kern und bildet den Vordruck USt 1 H aus den Feldern des Belegs |
 
 So läuft „Berechnen“ an einer Meldung:
 
@@ -161,6 +163,10 @@ Einreichbar, Nummernkreis `ZM-.YYYY.-.#####`. Wie die Meldung arbeitet, steht in
 
 An der Meldung stehen unter „Verknüpfungen“ ihre USt-IdNr.-Bestätigungen.
 
+### Dauerfristverlängerung (`VAT Return Extension`)
+
+Einreichbar, Nummernkreis `DFV-.YYYY.-.#####`, ein Vordruck USt 1 H je Unternehmen und Jahr: im Jahr des Antrags der Antrag auf Dauerfristverlängerung, bei monatlicher Abgabe mit der Anmeldung der Sondervorauszahlung, in jedem weiteren Jahr die Anmeldung allein. „Berechnen“ liest mit `dauerfrist_sources.py` die abgegebenen Voranmeldungen des Vorjahres und das Gründungsdatum, der Kern unter `steuerbote/dauerfrist` rechnet Grundlage, Sondervorauszahlung (Kz 38), Fälligkeit und den Zeitraum der Anrechnung über Kz 39, und `vat_return_extension/bridge.py` überträgt die Werte. Eine Grundlage von Hand mit Begründung ersetzt die aus den Voranmeldungen. Den Vordruck trägt man in Mein ELSTER von Hand ein, bis es das Schema 2027 und die Hersteller-ID gibt; „In Mein ELSTER eingetragen“ und „Als außerhalb abgegeben vermerken“ reichen den Beleg ein und setzen in den Einstellungen die Dauerfristverlängerung des Jahres, bei der Anmeldung dazu Kz 38 als Sondervorauszahlung, die die letzte Voranmeldung des Jahres in Kz 39 abzieht. Eine abgegebene Anmeldung wird storniert und mit „Ändern“ als berichtigte Anmeldung (Kz 10) neu angelegt. Felder, Status und Fristen stehen in [Der Beleg in ERPNext](dauerfristverlaengerung.md#der-beleg-in-erpnext).
+
 ### USt-IdNr.-Bestätigung (`VAT ID Confirmation`)
 
 Ein Dokument je Abfrage beim BZSt oder bei VIES, Nummernkreis `USTID-{YYYY}-{#####}`. Nur der Server legt es an, über den Beleg ändert oder löscht es niemand, auch nicht seine Antwort, die als private Datei daran hängt, und „Transaktionen löschen“ am Unternehmen lässt es aus wie die Meldungen (`company_data_to_be_ignored` in `hooks.py`). Es hält angefragte und anfragende USt-IdNr., Unternehmen, Dienst, Ergebnis der Abfrage und der Prüfung, Code, Nachricht, Nummer der Abfrage, Name und Anschrift einer qualifizierten Abfrage mit den Vergleichsergebnissen, Zeitpunkte, Gültigkeit, HTTP-Status, die vorherige Abfrage und die Meldung, aus der die Prüfung kam. Die Felder stehen in [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
@@ -287,6 +293,7 @@ So läuft „Berechnen“:
 | Meldezeitraum, Code `quart`, Fälligkeit und Abgaberhythmus der Zusammenfassenden Meldung | `steuerbote/zm/period.py` und `steuerbote/zm/rhythm.py`, Feiertage aus der Feiertagsliste des Unternehmens ohne die wöchentlich freien Tage (`steuerbote/holiday_list.py`) |
 | Meldezeilen, Rundung auf ganze Euro, Sperren, Abgleich, Vorperiodenvergleich, Berichtigung und CSV-Datei der Zusammenfassenden Meldung | `steuerbote/zm` |
 | Bestätigung der USt-IdNrn. und ihr Ergebnis | `steuerbote/vatid`, `vat_id_confirmation/records.py` |
+| Grundlage, Sondervorauszahlung (Kz 38), Fristen und Zeitraum der Anrechnung der Dauerfristverlängerung, Vordruck USt 1 H mit Feldern und Regeln des Jahres | `steuerbote/dauerfrist`, Feiertage aus `steuerbote/holiday_list.py` |
 
 ## Bericht „UStVA Kennzahlen“
 
@@ -307,7 +314,7 @@ Der Bericht zeigt für einen Zeitraum, aus welchen Buchungen jede Kennzahl beste
 
 Der Arbeitsbereich führt zu „Neue Voranmeldung“, zur Liste „Voranmeldungen“, zum Bericht „UStVA Kennzahlen“ („Kennzahlen (Bericht)“) und zu den Dauerfristverlängerungen („Dauerfristanträge“), im Abschnitt „Zusammenfassende Meldung“ zu „Neue ZM“, „Zusammenf. Meldungen“ und „USt-IdNr.-Prüfungen“, und zu „Einstellungen“ und „Kontenzuordnung“. Die Zahlenkarte „Offene Voranmeldungen“ zählt die Meldungen aller Unternehmen, die noch nicht eingereicht sind. Sichtbar ist der Arbeitsbereich für die Rollen Accounts Manager, Accounts User und System Manager.
 
-Die Seitenleiste des Moduls bringt Steuerbote selbst mit (`sidebar/steuerbote`). Ohne sie bildet Frappe die Einträge aus den Namen der DocTypes, und die Seitenleiste schneidet Namen wie „Einstellungen Umsatzsteuer-Voranmeldung“ ab. Sie führt zum Arbeitsbereich „Steuern“, zu „Voranmeldungen“, „Dauerfristanträge“, „Zusammenf. Meldungen“, „USt-IdNr.-Prüfungen“, „Kontenzuordnung“, „Einstellungen“, „ERiC-Einstellungen“ und „ELSTER-Übermittlung“ und unter „Berichte“ zu „UStVA Kennzahlen“. Den DocType der Dauerfristverlängerung (`VAT Return Extension`) bringt deren eigenes Paket mit. Ein neuer DocType mit eigener Liste gehört auch in die Seitenleiste; `test_standard_records.py` prüft das, ebenso, dass keine Bezeichnung länger als 20 Zeichen ist.
+Die Seitenleiste des Moduls bringt Steuerbote selbst mit (`sidebar/steuerbote`). Ohne sie bildet Frappe die Einträge aus den Namen der DocTypes, und die Seitenleiste schneidet Namen wie „Einstellungen Umsatzsteuer-Voranmeldung“ ab. Sie führt zum Arbeitsbereich „Steuern“, zu „Voranmeldungen“, „Dauerfristanträge“, „Zusammenf. Meldungen“, „USt-IdNr.-Prüfungen“, „Kontenzuordnung“, „Einstellungen“, „ERiC-Einstellungen“ und „ELSTER-Übermittlung“ und unter „Berichte“ zu „UStVA Kennzahlen“. Ein neuer DocType mit eigener Liste gehört auch in die Seitenleiste; `test_standard_records.py` prüft das, ebenso, dass keine Bezeichnung länger als 20 Zeichen ist.
 
 ## Platz im Desk
 
@@ -335,6 +342,10 @@ Alle Klassen des Druckformats beginnen mit `sb-`. Das Druck-Stylesheet von Frapp
 ## Druckformat „Zusammenfassende Meldung“
 
 Das Druckformat gibt eine Zusammenfassende Meldung im Stil der Voranmeldung aus, auf A4, schwarz und grau, ohne Logo und ohne Briefkopf: im Kopf Unternehmen, eigene USt-IdNr., Meldezeitraum, Fälligkeit, Meldeart, Name und Status der Meldung und, wenn vermerkt, den Tag der Abgabe; dann die Zeilen der Datei je USt-IdNr. und Art mit dem Kunden, bei einer Berichtigung mit „Bisher gemeldet“, die Summen je Art, die Korrekturen mit Begründung und die Anmerkungen. Es rechnet nichts: Die Zeilen sind die mit „In der Datei“, die Summen addieren ihre gemeldeten Beträge. Auch hier beginnen alle Klassen mit `sb-`.
+
+## Druckformat „Dauerfristverlängerung“
+
+Das Druckformat gibt einen Vordruck USt 1 H im Stil der Voranmeldung aus, auf A4, schwarz und grau: Kopf mit Unternehmen, Steuernummer und Finanzamt, bei der Anmeldung der Sondervorauszahlung die abgegebenen Voranmeldungen des Vorjahres mit Kz 83 und Kz 39, dann der Vordruck in Reihenfolge und Wortlaut von 2026, die Grundlage von Hand, die offenen Punkte, die Anmerkungen und die Abgabe. Es rechnet nichts und dient als Vorlage für den Eintrag in Mein ELSTER, siehe [Dauerfristverlängerung](dauerfristverlaengerung.md#der-beleg-in-erpnext).
 
 ## Für die Steuerberatung zu klären
 
