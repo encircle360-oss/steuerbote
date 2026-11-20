@@ -322,6 +322,29 @@ DATENLIEFERANT_FIELDS: ReadOnlyMapping[str, str] = MappingProxyType(
 )
 
 
+def datenlieferant_defaults(settings: Row, company: Row) -> dict[str, str]:
+	"""The parts of the Datenlieferant that the settings leave empty, by field of the settings, from ``company``:
+	its name, street, postal code, town, phone and email under the names of ustva_xml.DATENLIEFERANT.
+
+	The DatenLieferant of UStVA-2026.xsd holds Name, Strasse, PLZ, Ort, Telefon and Email, and ERiC requires the
+	first four (Jahresdokumentation UStVA 2026, sheet "Anmeldungssteuern - Felder" and rules 110085075 to
+	110085078). A value ELSTER would not take, longer than the schema allows or with a character outside its set,
+	is left out, so that the settings still save and the field stays for the user to fill.
+	"""
+	defaults = {}
+	for attribute, fieldname in DATENLIEFERANT_FIELDS.items():
+		value = str(company.get(attribute) or "").strip()
+		if not value or str(settings.get(fieldname) or "").strip():
+			continue
+		field = ustva_xml.DATENLIEFERANT[attribute]
+		try:
+			ustva_xml.elster_text(value, field.label, field.length)
+		except ustva_xml.XmlError:
+			continue
+		defaults[fieldname] = value
+	return defaults
+
+
 def filer(settings: Row) -> ustva_xml.Filer:
 	"""The company as ELSTER names it, from its VAT Return Settings.
 

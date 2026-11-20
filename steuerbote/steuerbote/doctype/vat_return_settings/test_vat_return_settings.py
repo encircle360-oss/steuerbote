@@ -5,6 +5,7 @@ from frappe.model.document import Document
 from frappe.tests import IntegrationTestCase
 from frappe.translate import clear_cache as clear_translation_cache
 
+from steuerbote.tests.helpers import insert_record
 from steuerbote.ustva import Rhythm
 from steuerbote.zm.rhythm import Rhythm as ZmRhythm
 from steuerbote.zm.rhythm import Rule as ZmRule
@@ -14,6 +15,9 @@ IGNORE_TEST_RECORD_DEPENDENCIES = ["Company"]
 
 COMPANY = "Steuerbote Test Einstellungen GmbH"
 ABBR = "STBEIN"
+# Has a phone, an email and a primary address with a phone and an email of its own, all invented.
+CONTACT_COMPANY = "Steuerbote Test Datenlieferant GmbH"
+CONTACT = {"phone_no": "089 7654321", "email": "steuern@example.org"}
 
 
 def make_company(name: str, abbr: str) -> str:
@@ -45,6 +49,34 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 	def setUpClass(cls) -> None:
 		super().setUpClass()
 		make_company(COMPANY, ABBR)
+		make_company(CONTACT_COMPANY, "STBDL")
+		frappe.db.set_value("Company", CONTACT_COMPANY, CONTACT)
+		# Saving an address renders it with the default Address Template, which only the setup wizard makes, so
+		# the address is written as ERPNext keeps it.
+		address = insert_record(
+			"Address",
+			name=f"{CONTACT_COMPANY}-Billing",
+			address_title=CONTACT_COMPANY,
+			address_type="Billing",
+			address_line1="Musterstraße 12",
+			pincode="80331",
+			city="München",
+			country="Germany",
+			phone="089 1111111",
+			email_id="zentrale@example.org",
+			is_primary_address=1,
+			is_your_company_address=1,
+		)
+		insert_record(
+			"Dynamic Link",
+			name=f"{address}-Link",
+			parent=address,
+			parenttype="Address",
+			parentfield="links",
+			idx=1,
+			link_doctype="Company",
+			link_name=CONTACT_COMPANY,
+		)
 
 	def setUp(self) -> None:
 		super().setUp()
@@ -186,6 +218,50 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 		self.assertEqual(
 			(settings.phone, settings.email, settings.wid_nr),
 			("089 1234567", "erika@example.org", "DE123456789"),
+		)
+
+	def contact_settings(self, **values: object) -> Document:
+		settings = self.make_settings(company=CONTACT_COMPANY, **values).insert()
+		self.addCleanup(frappe.delete_doc, "VAT Return Settings", settings.name)
+		return settings
+
+	def test_an_empty_datenlieferant_comes_from_the_company_and_its_address(self):
+		"""The DatenLieferant of the file for ELSTER holds name, street, postal code, town, phone and email
+		(Jahresdokumentation UStVA 2026, sheet "Anmeldungssteuern - Felder")."""
+		settings = self.contact_settings()
+		self.assertEqual(
+			(
+				settings.filer_name,
+				settings.street,
+				settings.postal_code,
+				settings.city,
+				settings.phone,
+				settings.email,
+			),
+			(CONTACT_COMPANY, "Musterstraße 12", "80331", "München", "089 7654321", "steuern@example.org"),
+		)
+
+	def test_what_the_user_entered_stays_and_an_emptied_field_is_filled_again(self):
+		settings = self.contact_settings(filer_name="Beispiel Holding", street="Postfach 10 20 30")
+		self.assertEqual(
+			(settings.filer_name, settings.street, settings.city),
+			("Beispiel Holding", "Postfach 10 20 30", "München"),
+		)
+		settings.city = ""
+		settings.save()
+		self.assertEqual(frappe.db.get_value("VAT Return Settings", CONTACT_COMPANY, "city"), "München")
+
+	def test_phone_and_email_come_from_the_address_when_the_company_has_none(self):
+		frappe.db.set_value("Company", CONTACT_COMPANY, {"phone_no": None, "email": None})
+		self.addCleanup(frappe.db.set_value, "Company", CONTACT_COMPANY, CONTACT)
+		settings = self.contact_settings()
+		self.assertEqual((settings.phone, settings.email), ("089 1111111", "zentrale@example.org"))
+
+	def test_without_an_address_only_the_name_comes_from_the_company(self):
+		settings = self.make_settings().insert()
+		self.assertEqual(
+			(settings.filer_name, settings.street, settings.postal_code, settings.city),
+			(COMPANY, None, None, None),
 		)
 
 	def test_refuses_a_wid_nr_of_another_shape(self):
