@@ -177,11 +177,14 @@ class OverridesTest(TestCase):
 
 
 class ValidityTest(TestCase):
+	SPAN = (date(2026, 4, 1), date(2026, 6, 30))
+
 	def test_the_result_of_the_latest_confirmation_and_unconfirmed_without_one(self):
 		self.assertEqual(
 			bridge.validity_for(
 				[AUSTRIA, FRANCE, SPAIN, "XI123456789", ""],
-				{AUSTRIA: "valid", FRANCE: "invalid", SPAIN: "unknown"},
+				{AUSTRIA: {"result": "valid"}, FRANCE: {"result": "invalid"}, SPAIN: {"result": "unknown"}},
+				self.SPAN,
 			),
 			{
 				AUSTRIA: Validity.CONFIRMED,
@@ -190,6 +193,44 @@ class ValidityTest(TestCase):
 				"XI123456789": Validity.UNCONFIRMED,
 			},
 		)
+
+	def test_a_number_valid_all_through_the_months_counts_as_confirmed_for_them(self):
+		"""evatr-2006: „Die angefragte USt-IdNr. ist zum Anfragezeitpunkt nicht gültig. Sie war gültig im Zeitraum,
+		der durch die Werte in den Feldern gueltigAb und gueltigBis beschrieben ist.“ evatr-2002: „Sie ist erst
+		gültig ab dem Datum im Feld gueltigAb.“ (Statusmeldungen of the eVatR API)"""
+		records = {
+			AUSTRIA: {"result": "invalid", "valid_from": date(2019, 1, 1), "valid_until": date(2026, 7, 15)},
+			FRANCE: {"result": "invalid", "valid_from": "2019-01-01", "valid_until": "2026-06-15"},
+			SPAIN: {"result": "invalid", "valid_from": date(2026, 5, 1), "valid_until": None},
+			"XI123456789": {"result": "invalid", "valid_from": date(2026, 4, 1)},
+			"EL123456789": {"result": "invalid", "valid_until": date(2026, 6, 30)},
+			"BE0123456789": {"result": "invalid"},
+		}
+		self.assertEqual(
+			bridge.validity_for(records, records, self.SPAN),
+			{
+				AUSTRIA: Validity.CONFIRMED,
+				FRANCE: Validity.INVALID,
+				SPAIN: Validity.INVALID,
+				"XI123456789": Validity.CONFIRMED,
+				"EL123456789": Validity.CONFIRMED,
+				"BE0123456789": Validity.INVALID,
+			},
+		)
+		self.assertEqual(bridge.validity_for([AUSTRIA], records), {AUSTRIA: Validity.INVALID})
+
+	def test_the_day_each_number_was_last_asked_about(self):
+		records = {
+			AUSTRIA: {"requested_at": datetime(2026, 3, 2, 9, 30)},
+			FRANCE: {"requested_at": None},
+		}
+		self.assertEqual(bridge.asked_on(records), {AUSTRIA: date(2026, 3, 2)})
+
+	def test_the_first_and_last_day_of_the_months_a_statement_reports(self):
+		june = Coverage(ReportingPeriod.month(2026, 6), (6,), (4, 5, 6))
+		self.assertEqual(bridge.covered_span(june), (date(2026, 4, 1), date(2026, 6, 30)))
+		april = Coverage(ReportingPeriod.month(2026, 4), (4,), ())
+		self.assertEqual(bridge.covered_span(april), (date(2026, 4, 1), date(2026, 4, 30)))
 
 	def test_the_vat_ids_of_the_vouchers_and_the_overrides(self):
 		amounts = [invoice("1", "10.00", vat_id="atu12345678"), invoice("2", "5.00", vat_id=None)]

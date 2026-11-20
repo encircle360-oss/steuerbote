@@ -20,7 +20,17 @@ from steuerbote.steuerbote.doctype.vat_id_confirmation import records
 from steuerbote.vatid.result import Confirmation
 
 DOCTYPE = "VAT ID Confirmation"
-LATEST_FIELDS = ("name", "requested", "requested_at", "service", "result", "status_code", "consultation_id")
+LATEST_FIELDS = (
+	"name",
+	"requested",
+	"requested_at",
+	"service",
+	"result",
+	"status_code",
+	"consultation_id",
+	"valid_from",
+	"valid_until",
+)
 
 
 class VATIDConfirmation(Document):

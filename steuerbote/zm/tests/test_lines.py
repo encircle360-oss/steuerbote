@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from unittest import TestCase
 
@@ -204,6 +205,24 @@ class BlockingTest(TestCase):
 		self.assertEqual(france.findings[0].text, f"Die USt-IdNr. {FRANCE} ist nicht bestätigt.")
 		self.assertEqual(codes(spain), [])
 		self.assertEqual([line.blocked for line in result.lines], [True, False, True])
+
+	def test_the_findings_name_the_day_of_the_confirmation_they_rest_on(self):
+		"""A confirmation holds for the moment of its query („Bestätigungen für zurückliegende Zeitpunkte oder
+		Zeiträume sind nicht möglich.“, BZSt, FAQ), so the finding says how old it is."""
+		result = build(
+			(invoice("1", "10.00", vat_id=AUSTRIA), invoice("2", "10.00", vat_id=FRANCE)),
+			FIGURES,
+			validity={AUSTRIA: Validity.INVALID, FRANCE: Validity.UNCONFIRMED},
+			asked={AUSTRIA: date(2025, 3, 2), FRANCE: date(2026, 11, 20)},
+		)
+		self.assertEqual(
+			[finding.text for finding in result.findings],
+			[
+				f"Die USt-IdNr. {AUSTRIA} ist laut Bestätigungsabfrage vom 2. März 2025 ungültig.",
+				f"Die USt-IdNr. {FRANCE} ist nicht bestätigt; die Bestätigungsabfrage vom 20. November 2026 "
+				"ergab kein Ergebnis.",
+			],
+		)
 
 	def test_a_vat_id_without_a_check_result_passes(self):
 		self.assertTrue(statement(invoice("1", "10.00")).ready)

@@ -274,19 +274,57 @@ def line_vat_ids(
 	return {line_vat_id(item.vat_id, item.art) for item in amounts} | {vat_id for vat_id, _art in overrides}
 
 
-def validity_for(vat_ids: Iterable[str], outcomes: ReadOnlyMapping[str, str | None]) -> dict[str, Validity]:
-	"""The validity of each USt-IdNr. after the result of its latest confirmation; without one, unconfirmed."""
-	return {
-		vat_id: VALIDITY.get(outcomes.get(vat_id) or "", Validity.UNCONFIRMED) for vat_id in vat_ids if vat_id
-	}
+def validity_for(
+	vat_ids: Iterable[str], records: ReadOnlyMapping[str, Row], span: tuple[date, date] | None = None
+) -> dict[str, Validity]:
+	"""The validity of each USt-IdNr. after the result of its latest confirmation; without one, unconfirmed.
+
+	The BZSt answers for the moment of the query. A number it finds not valid then counts as valid for the months
+	of ``span`` when the answer says it was valid all through them, as evatr-2006 does with gueltigAb and
+	gueltigBis („Sie war gültig im Zeitraum, der durch die Werte in den Feldern gueltigAb und gueltigBis
+	beschrieben ist.“) and evatr-2002 with gueltigAb („Sie ist erst gültig ab dem Datum im Feld gueltigAb.“),
+	statuses of the eVatR API.
+	"""
+	return {vat_id: _validity(records.get(vat_id), span) for vat_id in vat_ids if vat_id}
+
+
+def _validity(record: Row | None, span: tuple[date, date] | None) -> Validity:
+	validity = VALIDITY.get((record or {}).get("result") or "", Validity.UNCONFIRMED)
+	if validity is Validity.INVALID and span is not None and _valid_through(record, span):
+		return Validity.CONFIRMED
+	return validity
+
+
+def _valid_through(record: Row, span: tuple[date, date]) -> bool:
+	valid_from, valid_until = _day(record.get("valid_from")), _day(record.get("valid_until"))
+	if valid_from is None and valid_until is None:
+		return False
+	return (valid_from is None or valid_from <= span[0]) and (valid_until is None or span[1] <= valid_until)
+
+
+def asked_on(records: ReadOnlyMapping[str, Row]) -> dict[str, date]:
+	"""The day each USt-IdNr. was last asked about, as its latest confirmation keeps it."""
+	found = {}
+	for vat_id, record in records.items():
+		day = confirmation_fields(record)["confirmation_date"]
+		if day:
+			found[vat_id] = day
+	return found
+
+
+def covered_span(covered: Coverage) -> tuple[date, date]:
+	"""The first and the last day of the months whose lines a statement reports."""
+	goods_from, goods_to = covered.goods_span
+	services_from, services_to = covered.services_span or covered.goods_span
+	return min(goods_from, services_from), max(goods_to, services_to)
 
 
 def statement_of(voucher_rows: Iterable[Row], line_rows: Sequence[Row], figures: Figures) -> Statement:
 	"""The lines of the statement as its rows hold them: the vouchers, the overrides and the confirmations."""
 	amounts = voucher_amounts(voucher_rows)
 	overrides = overrides_of(line_rows)
-	outcomes = {str(row.get("vat_id") or ""): row.get("confirmation_outcome") for row in line_rows}
-	return build(amounts, figures, validity_for(line_vat_ids(amounts, overrides), outcomes), overrides)
+	records = {str(row.get("vat_id") or ""): {"result": row.get("confirmation_outcome")} for row in line_rows}
+	return build(amounts, figures, validity_for(line_vat_ids(amounts, overrides), records), overrides)
 
 
 def confirmation_fields(record: Row) -> dict[str, Any]:

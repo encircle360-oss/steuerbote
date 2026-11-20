@@ -164,7 +164,7 @@ class RecapitulativeStatement(Document):
 		with zm_errors():
 			check_notices(period, bool(cint(self.anzeige)), bool(cint(self.widerruf)))
 		if not self.flags.calculating:
-			self._apply_lines(period)
+			self._apply_lines(covered)
 
 	def before_submit(self) -> None:
 		if not self.flags.filed_outside:
@@ -212,7 +212,7 @@ class RecapitulativeStatement(Document):
 			)
 			parties = zm_sources.parties(item.voucher for item in (*shares, *previous_shares))
 			amounts = bridge.voucher_amounts_of(shares, parties)
-			statement, confirmations = self._build(amounts, overrides, figures)
+			statement, confirmations = self._build(amounts, overrides, covered, figures)
 			previous = build(bridge.voucher_amounts_of(previous_shares, parties), figures)
 			compared = compare(statement, previous, _thresholds(settings).exceeded)
 			deliveries = zm_sources.deliveries(self.company, threshold_window(period), mapping)
@@ -536,7 +536,7 @@ class RecapitulativeStatement(Document):
 				self.set(table, [])
 			self.update({"ready": 0, "status": DRAFT, **dict.fromkeys(TOTALS, 0)})
 
-	def _apply_lines(self, period: ReportingPeriod) -> None:
+	def _apply_lines(self, covered: Coverage) -> None:
 		"""Rebuild the lines on every save, so that an override lifts its block at once and a confirmation counts
 		as soon as it is stored.
 
@@ -559,22 +559,27 @@ class RecapitulativeStatement(Document):
 		)
 		with zm_errors():
 			amounts = bridge.voucher_amounts(self.vouchers)
-			statement, confirmations = self._build(amounts, bridge.overrides_of(self.lines), self._figures())
+			overrides = bridge.overrides_of(self.lines)
+			statement, confirmations = self._build(amounts, overrides, covered, self._figures())
 			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
-			rows = bridge.line_rows(statement, confirmations, period, held)
+			rows = bridge.line_rows(statement, confirmations, covered.period, held)
 		self.set("lines", rows)
 		self.set("hints", bridge.merged_hints(statement, before.hints))
 		self._set_totals_and_status(statement)
 
 	def _build(
-		self, amounts: list[VoucherAmount], overrides: dict[tuple[str, Art], Override], figures: SiteFigures
+		self,
+		amounts: list[VoucherAmount],
+		overrides: dict[tuple[str, Art], Override],
+		covered: Coverage,
+		figures: SiteFigures,
 	) -> tuple[Statement, dict[str, dict]]:
-		"""The lines of the voucher amounts and the overrides, each USt-IdNr. with its latest confirmation, and
-		that confirmation as the lines show it."""
+		"""The lines of the voucher amounts and the overrides, each USt-IdNr. with its latest confirmation for the
+		months the statement reports, and that confirmation as the lines show it."""
 		vat_ids = bridge.line_vat_ids(amounts, overrides)
 		latest = vat_id_confirmation.latest(self.company, vat_ids)
-		outcomes = {vat_id: record.result for vat_id, record in latest.items()}
-		statement = build(amounts, figures, bridge.validity_for(vat_ids, outcomes), overrides)
+		validity = bridge.validity_for(vat_ids, latest, bridge.covered_span(covered))
+		statement = build(amounts, figures, validity, overrides, bridge.asked_on(latest))
 		return statement, {vat_id: bridge.confirmation_fields(record) for vat_id, record in latest.items()}
 
 	def _set_totals_and_status(self, statement: Statement) -> None:

@@ -709,6 +709,50 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			doc.cancel()
 		self.assertTrue(doc.make_csv_file())
 
+	def test_a_number_valid_all_through_the_months_counts_for_them_and_a_finding_says_how_old_it_is(self):
+		"""The BZSt answers for the moment of the query. A number that lost its validity after the months of the
+		statement (evatr-2006 with gueltigBis after them) was valid for them; one that lost it within them was not,
+		and the finding names the day of the query it rests on."""
+		company = "Steuerbote Test ZM Gültigkeit GmbH"
+		a = self.make_monthly_company(company, "STZG")
+		post_sales_invoice(
+			company,
+			"SINV-STZG-06-1",
+			ALPEN,
+			"2026-06-10",
+			[(a["1400"], 2000, 0), (a["8125"], 0, 2000)],
+			customer_address=self.alpen_address,
+		)
+		post_sales_invoice(
+			company,
+			"SINV-STZG-06-2",
+			PARIS,
+			"2026-06-12",
+			[(a["1400"], 700, 0), (a["8336"], 0, 700)],
+			customer_address=self.paris_address,
+		)
+		doc = self.calculated(6, company=company)
+		service = FakeBzst(
+			{
+				AUSTRIAN: [answer("evatr-2006", gueltigAb="2019-01-01", gueltigBis="2026-07-15")],
+				FRENCH: [answer("evatr-2006", gueltigAb="2019-01-01", gueltigBis="2026-06-15")],
+			}
+		)
+		self.confirm(doc, service)
+		self.assertEqual(
+			[(row.vat_id, row.confirmation_outcome, row.blocked) for row in doc.lines],
+			[(AUSTRIAN, "invalid", 0), (FRENCH, "invalid", 1)],
+		)
+		self.assertEqual(
+			[(row.code, row.text) for row in doc.hints if row.code.startswith("ZM-USTID")],
+			[
+				(
+					"ZM-USTID-UNGUELTIG",
+					f"Die USt-IdNr. {FRENCH} ist laut Bestätigungsabfrage vom 20. November 2026 ungültig.",
+				)
+			],
+		)
+
 	def test_a_quarterly_rhythm_above_the_threshold_holds_the_statement(self):
 		doc = self.statement(1, company=QUARTERLY_COMPANY, kind="quarter")
 		self.assertEqual(
