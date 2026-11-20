@@ -106,10 +106,7 @@ class Period:
 	def deadline(self, dauerfristverlaengerung: bool = False, holidays: Collection[date] = ()) -> date:
 		"""The day the Voranmeldung is due and the Vorauszahlung has to be paid."""
 		months_after_end = 2 if dauerfristverlaengerung else 1
-		due = _add_months(self.end, months_after_end).replace(day=DUE_DAY)
-		while due.weekday() >= SATURDAY or due in holidays:
-			due += timedelta(days=1)
-		return due
+		return next_working_day(_add_months(self.end, months_after_end).replace(day=DUE_DAY), holidays)
 
 	def previous(self) -> Period:
 		if self.index > 1:
@@ -122,6 +119,17 @@ class Period:
 		if self.index < last:
 			return Period(self.year, self.rhythm, self.index + 1)
 		return Period(self.year + 1, self.rhythm, 1)
+
+
+def next_working_day(day: date, holidays: Collection[date] = ()) -> date:
+	"""The day itself or, if it is a Saturday, a Sunday or one of the holidays, the next working day.
+
+	§ 108 Absatz 3 AO: „Fällt das Ende einer Frist auf einen Sonntag, einen gesetzlichen Feiertag oder einen
+	Sonnabend, so endet die Frist mit dem Ablauf des nächstfolgenden Werktags.“
+	"""
+	while day.weekday() >= SATURDAY or day in holidays:
+		day += timedelta(days=1)
+	return day
 
 
 def _is_int(value: object) -> bool:
