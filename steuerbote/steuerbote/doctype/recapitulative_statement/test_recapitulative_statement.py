@@ -594,6 +594,23 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		):
 			self.statement(1, company=QUARTERLY_COMPANY, kind="quarter", anzeige=1)
 
+	def test_a_weekly_day_off_of_the_holiday_list_moves_no_deadline(self):
+		"""The Pfingstmontag of COMPANY moves the deadline of April to 26 May; a Monday the list of another company
+		only marks as its weekly day off does not."""
+		mondays_off = frappe.get_doc(
+			{
+				"doctype": "Holiday List",
+				"holiday_list_name": "Steuerbote Test Montags frei 2026",
+				"from_date": "2026-01-01",
+				"to_date": "2026-12-31",
+				"holidays": [{"holiday_date": "2026-05-25", "description": "Montag", "weekly_off": 1}],
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.set_value("Company", CONFIRMING_COMPANY, "default_holiday_list", mondays_off.name)
+		self.addCleanup(frappe.db.set_value, "Company", CONFIRMING_COMPANY, "default_holiday_list", None)
+		self.assertEqual(self.statement(4, company=CONFIRMING_COMPANY).deadline, date(2026, 5, 25))
+		self.assertEqual(self.statement(4).deadline, date(2026, 5, 26))
+
 	def test_a_company_needs_the_rhythm_of_the_zm_and_its_own_ust_idnr(self):
 		company = make_company("Steuerbote Test ZM ohne Regeln GmbH", "STZO")
 		make_settings(company, [(2026, "monthly", 1)])

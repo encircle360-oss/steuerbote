@@ -1,7 +1,7 @@
 from datetime import date
 from unittest import TestCase
 
-from steuerbote.ustva.period import Period, Rhythm
+from steuerbote.ustva.period import Period, Rhythm, deadline_holidays
 
 
 class PeriodTest(TestCase):
@@ -106,3 +106,23 @@ class DeadlineTest(TestCase):
 		holidays = {date(2026, 4, 10)}
 		self.assertEqual(date(2026, 4, 10).weekday(), 4)
 		self.assertEqual(Period.quarter(2026, 1).deadline(holidays=holidays), date(2026, 4, 13))
+
+
+class DeadlineHolidaysTest(TestCase):
+	"""§ 108 Absatz 3 AO moves a deadline off a Sunday, a public holiday or a Saturday, not off another weekly day
+	off of the company."""
+
+	def test_the_days_of_a_holiday_list_without_its_weekly_days_off(self):
+		days = [
+			(date(2026, 5, 25), 0),
+			(date(2026, 5, 29), 1),
+			(date(2026, 12, 25), False),
+			(date(2026, 12, 26), True),
+		]
+		self.assertEqual(deadline_holidays(days), frozenset({date(2026, 5, 25), date(2026, 12, 25)}))
+		self.assertEqual(deadline_holidays([]), frozenset())
+
+	def test_a_weekly_day_off_moves_no_deadline(self):
+		self.assertEqual(date(2026, 12, 10).weekday(), 3)
+		thursdays_off = deadline_holidays([(date(2026, 12, 10), 1)])
+		self.assertEqual(Period.month(2026, 11).deadline(holidays=thursdays_off), date(2026, 12, 10))

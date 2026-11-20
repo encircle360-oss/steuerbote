@@ -42,6 +42,7 @@ steuerbote/                    Repository
 │   ├── invoices.py            liest die Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns, reines Python
 │   ├── zm_sources.py          liest für die Zusammenfassende Meldung Hauptbuch, Kunden, Adressen und abgegebene Voranmeldungen
+│   ├── holiday_list.py        liest die Feiertage der Fristen aus der Feiertagsliste des Unternehmens
 │   ├── steuerbote/            Frappe-Modul „Steuerbote“, siehe Architektur
 │   │   ├── doctype/           Einstellungen, Kontenzuordnung, Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung und USt-IdNr.-Bestätigung samt Tabellen
 │   │   ├── report/            Bericht „UStVA Kennzahlen“ mit den Belegen hinter jeder Kennzahl

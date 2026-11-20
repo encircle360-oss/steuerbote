@@ -17,6 +17,7 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 | `vat_return/bridge.py` | überträgt das Ergebnis des Kerns in die Tabellen der Meldung, auch Vorperiodenvergleich und Hinweise, bildet die Summen über die gemeldeten Beträge und übergibt die Meldung und den Datenlieferanten an das XML |
 | `report/ustva_kennzahlen/attribution.py` | findet die Belege, aus denen jede Kennzahl besteht |
 | `report/ustva_kennzahlen/comparison.py` | stellt jede Kennzahl und Summe des Berichts neben Vorperiode und Vorjahr und wählt die Abweichungen aus |
+| `steuerbote/holiday_list.py` | liest die Feiertage der Fristen von Zusammenfassender Meldung und Dauerfristverlängerung aus der Standard-Feiertagsliste des Unternehmens, ohne die wöchentlich freien Tage (`deadline_holidays` in `ustva/period.py`), mit Frappe |
 | `steuerbote/zm_sources.py` | liest für die Zusammenfassende Meldung die Beiträge der Belege zu Kz 41, 42 und 21, die Kunden der Belege, Kz 41 und 42 je Monat für die Schwelle, die abgegebenen Voranmeldungen und Name und Anschrift eines Kunden, mit Frappe |
 | `recapitulative_statement/bridge.py` | überträgt Zeilen, Belege, Befunde, Abgleich und Vorperiodenvergleich des Kerns in die Tabellen der Zusammenfassenden Meldung und liest Korrekturen und Bestätigungen aus ihnen zurück |
 | `vat_id_confirmation/records.py` | macht aus jeder Abfrage einer Bestätigung die Felder einer USt-IdNr.-Bestätigung und das Ergebnis der Prüfung bis zu ihr |
@@ -282,7 +283,7 @@ So läuft „Berechnen“:
 | Vorperiode und Vorjahr im Bericht | `calculate()` für die Vergleichszeiträume, `comparison.py` |
 | Vorperiodenvergleich und Hinweise der Meldung | `calculate()` für die Vergleichszeiträume, `steuerbote/ustva/plausibility.py` mit der Regel aus `comparison.py`, Rechnungszeilen aus `steuerbote/invoices.py` |
 | Druckformat | rechnet keine Kennzahl, nur was der Vordruck selbst bildet: die Zeilen 45 und 48 aus den gespeicherten Summen und die Steuer der Zeilen 13, 14, 25 und 26 aus der Bemessungsgrundlage in vollen Euro |
-| Meldezeitraum, Code `quart`, Fälligkeit und Abgaberhythmus der Zusammenfassenden Meldung | `steuerbote/zm/period.py` und `steuerbote/zm/rhythm.py`, Feiertage aus der Feiertagsliste des Unternehmens |
+| Meldezeitraum, Code `quart`, Fälligkeit und Abgaberhythmus der Zusammenfassenden Meldung | `steuerbote/zm/period.py` und `steuerbote/zm/rhythm.py`, Feiertage aus der Feiertagsliste des Unternehmens ohne die wöchentlich freien Tage (`steuerbote/holiday_list.py`) |
 | Meldezeilen, Rundung auf ganze Euro, Sperren, Abgleich, Vorperiodenvergleich, Berichtigung und CSV-Datei der Zusammenfassenden Meldung | `steuerbote/zm` |
 | Bestätigung der USt-IdNrn. und ihr Ergebnis | `steuerbote/vatid`, `vat_id_confirmation/records.py` |
 

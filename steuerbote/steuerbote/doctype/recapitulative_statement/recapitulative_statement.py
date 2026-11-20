@@ -22,7 +22,7 @@ statement cannot be cancelled, since a change goes to the BZSt as a Berichtigung
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import frappe
@@ -32,7 +32,7 @@ from frappe.model.document import Document
 from frappe.utils import cint, escape_html, getdate, strip_html
 from frappe.utils.background_jobs import is_job_enqueued
 
-from steuerbote import vatid, zm_sources
+from steuerbote import holiday_list, vatid, zm_sources
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import FILED_VIA, OTHER_WAY
 from steuerbote.steuerbote.doctype.recapitulative_statement import bridge
 from steuerbote.steuerbote.doctype.vat_id_confirmation import vat_id_confirmation
@@ -390,7 +390,7 @@ class RecapitulativeStatement(Document):
 				"period_label": period.label,
 				"from_date": period.start,
 				"to_date": period.end,
-				"deadline": period.deadline(holidays(self.company)),
+				"deadline": period.deadline(holiday_list.holidays(self.company)),
 			}
 		)
 		return period
@@ -634,17 +634,6 @@ def requester(company: str) -> str:
 			).format(company)
 		)
 	return vatid.normalize(ust_idnr)
-
-
-def holidays(company: str) -> list[date]:
-	"""The days of the holiday list of the company, on which no deadline ends (§ 108 Absatz 3 AO)."""
-	holiday_list = frappe.get_cached_value("Company", company, "default_holiday_list")
-	if not holiday_list:
-		return []
-	days = frappe.get_all(
-		"Holiday", filters={"parent": holiday_list, "parenttype": "Holiday List"}, pluck="holiday_date"
-	)
-	return [getdate(day) for day in days]
 
 
 def confirmation_job_id(name: str) -> str:
