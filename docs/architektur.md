@@ -1,6 +1,6 @@
 # Architektur
 
-Steuerbote besteht aus zwei Schichten. Der Rechenkern unter `steuerbote/ustva` kennt die Kennzahlen des Vordrucks, rundet, ordnet Konten zu, rechnet und prüft, alles in reinem Python ohne Frappe. Die Frappe-Schicht liest das Hauptbuch und die Einstellungen aus ERPNext, übergibt sie dem Kern und hält das Ergebnis in DocTypes, einem Bericht, einem Arbeitsbereich und einem Druckformat fest. Über die ERiC-Anbindung unter `steuerbote/eric` übermittelt sie die Meldung an ELSTER. Diese Seite beschreibt die Frappe-Schicht. Die fachlichen Regeln des Kerns stehen in [Kennzahlen und Kontenzuordnung](ustva-kennzahlen.md), Aufbau, Tests und Stil in [Entwicklung](entwicklung.md).
+Steuerbote besteht aus zwei Schichten. Der Rechenkern unter `steuerbote/ustva` kennt die Kennzahlen des Vordrucks, rundet, ordnet Konten zu, rechnet und prüft, alles in reinem Python ohne Frappe. Die Frappe-Schicht liest das Hauptbuch und die Einstellungen aus ERPNext, übergibt sie dem Kern und hält das Ergebnis in DocTypes, einem Bericht, einem Arbeitsbereich und einem Druckformat fest. Über die ERiC-Anbindung unter `steuerbote/eric` übermittelt sie die Meldung an ELSTER. Ebenso rechnen eigene Kerne die Zusammenfassende Meldung (`steuerbote/zm`, siehe [Zusammenfassende Meldung](zm.md)), die Bestätigung ausländischer USt-IdNrn. (`steuerbote/vatid`, siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md)) und die Dauerfristverlängerung (`steuerbote/dauerfrist`). Diese Seite beschreibt die Frappe-Schicht. Die fachlichen Regeln des Kerns stehen in [Kennzahlen und Kontenzuordnung](ustva-kennzahlen.md), Aufbau, Tests und Stil in [Entwicklung](entwicklung.md).
 
 ## Der Kern rechnet, die Frappe-Schicht liest und speichert
 
@@ -13,10 +13,13 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 | `steuerbote/ustva/plausibility.py` | stellt die Kennzahlen einer Meldung neben Vorperiode und Vorjahr und leitet die Hinweise aus Rechnungen, Hauptbuch und Vergleich ab, im Kern ohne Frappe |
 | `steuerbote/mapping_sync.py` | macht aus den Zeilen der Kontenzuordnung die `Mapping` des Kerns und kürzt die Vorgaben auf die Konten eines Unternehmens |
 | `steuerbote/elster/` | bildet aus Steuernummer und Bundesland die 13-stellige Steuernummer im ELSTER-Format und schreibt die Meldung als XML für Mein ELSTER und ERiC, siehe [Abgabe über Mein ELSTER](abgabe-mein-elster.md) |
-| `vat_return_settings/rules.py` | Voranmeldungszeitraum je Monat, Dauerfristverlängerung und Sondervorauszahlung je Jahr |
+| `vat_return_settings/rules.py` | Voranmeldungszeitraum je Monat, Dauerfristverlängerung und Sondervorauszahlung je Jahr, Abgaberhythmus der Zusammenfassenden Meldung und eigene USt-IdNr. |
 | `vat_return/bridge.py` | überträgt das Ergebnis des Kerns in die Tabellen der Meldung, auch Vorperiodenvergleich und Hinweise, bildet die Summen über die gemeldeten Beträge und übergibt die Meldung und den Datenlieferanten an das XML |
 | `report/ustva_kennzahlen/attribution.py` | findet die Belege, aus denen jede Kennzahl besteht |
 | `report/ustva_kennzahlen/comparison.py` | stellt jede Kennzahl und Summe des Berichts neben Vorperiode und Vorjahr und wählt die Abweichungen aus |
+| `steuerbote/zm_sources.py` | liest für die Zusammenfassende Meldung die Beiträge der Belege zu Kz 41, 42 und 21, die Kunden der Belege, Kz 41 und 42 je Monat für die Schwelle, die abgegebenen Voranmeldungen und Name und Anschrift eines Kunden, mit Frappe |
+| `recapitulative_statement/bridge.py` | überträgt Zeilen, Belege, Befunde, Abgleich und Vorperiodenvergleich des Kerns in die Tabellen der Zusammenfassenden Meldung und liest Korrekturen und Bestätigungen aus ihnen zurück |
+| `vat_id_confirmation/records.py` | macht aus jeder Abfrage einer Bestätigung die Felder einer USt-IdNr.-Bestätigung und das Ergebnis der Prüfung bis zu ihr |
 
 So läuft „Berechnen“ an einer Meldung:
 
@@ -47,9 +50,11 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 | `elster_tax_number` | Steuernummer im ELSTER-Format | 13 Stellen, berechnet |
 | `tax_office` | Finanzamt | |
 | `wid_nr` | Wirtschafts-Identifikationsnummer | freiwillig, „DE“ und neun Ziffern ohne die fünfstellige Ergänzung |
+| `ust_idnr` | USt-IdNr. | die eigene deutsche USt-IdNr., „DE“ und neun Ziffern, mit der Steuerbote die USt-IdNrn. der Kunden bestätigen lässt; leer übernimmt das Speichern das Feld „Steuernummer“ (`tax_id`) des Unternehmens, wenn es eine deutsche USt-IdNr. ist |
 | `filer_name`, `street`, `postal_code`, `city`, `phone`, `email` | Name, Straße und Hausnummer, Postleitzahl, Ort, Telefon, E-Mail | Datenlieferant der Datei für ELSTER, Längen wie im Schema (45, 30, 12, 30, 20 und 70 Zeichen); Straße, Postleitzahl und Ort braucht die Datei, ein leerer Name steht für das Unternehmen |
 | `period_rules` | Voranmeldungszeiträume | Pflicht; Tabelle „Regel zum Voranmeldungszeitraum“ mit Jahr, Voranmeldungszeitraum (monatlich, vierteljährlich oder keine) und „Gültig ab Monat“ (1, 4, 7 oder 10) |
 | `prepayments` | Dauerfristverlängerung und Sondervorauszahlung | Tabelle „Dauerfristverlängerung je Jahr“ mit Jahr, Dauerfristverlängerung und Sondervorauszahlung |
+| `zm_rules` | Abgaberhythmus der Zusammenfassenden Meldung | Tabelle „Regel zur Zusammenfassenden Meldung“ mit Jahr, Gültig ab Monat, Abgaberhythmus (monatlich, vierteljährlich oder jährlich), Sonstige Leistungen monatlich und Grund; geprüft von `steuerbote/zm/rhythm.py` |
 
 ### Kontenzuordnung Umsatzsteuer (`VAT Return Mapping`)
 
@@ -128,6 +133,35 @@ Ein Dokument je Lauf von Prüfen, Testsenden oder Senden und je Vermerk einer Ab
 | `remarks` | Anmerkungen | der Vermerk einer Abgabe außerhalb von Steuerbote |
 | `messages` | Nachrichten | Tabelle „Meldung der ELSTER-Übermittlung“: Art (Fehler oder Hinweis), Code, Nachricht und Feld |
 | `xml`, `protocol_pdf`, `response_xml` | Nutzdaten (XML), Protokoll (PDF), Antwort des ELSTER-Servers (XML) | private Dateien der Übermittlung |
+
+### Zusammenfassende Meldung (`Recapitulative Statement`)
+
+Einreichbar, Nummernkreis `ZM-.YYYY.-.#####`. Wie die Meldung arbeitet, steht in [Die Zusammenfassende Meldung](#die-zusammenfassende-meldung) und in [Zusammenfassende Meldung](zm.md#die-zusammenfassende-meldung-in-erpnext).
+
+| Feld | Bezeichnung | Inhalt |
+|---|---|---|
+| `company`, `year` | Unternehmen, Jahr | Pflicht |
+| `period_kind`, `period_index` | Art des Meldezeitraums, Nummer des Zeitraums | Kalendermonat, zwei Monate eines Quartals, Kalendervierteljahr oder Kalenderjahr (`zm.period.Kind`); Monat 1 bis 12 oder Quartal 1 bis 4 |
+| `meldeart`, `corrects` | Meldeart, Berichtigt | Erstmeldung oder Berichtigung, gesetzt von „Berichtigung anlegen“ mit der Meldung, die sie berichtigt |
+| `anzeige`, `widerruf` | Anzeige der monatlichen Abgabe, Widerruf der Anzeige | Kennzeichen im Formular von Mein ELSTER, geprüft mit `check_notices()` |
+| `period_label`, `quart`, `from_date`, `to_date`, `deadline` | Meldezeitraum, Zeitraumcode, Von-Datum, Bis-Datum, Fälligkeitsdatum | berechnet, etwa „März 2026“ und 23; fällig am 25. Tag nach Ablauf, sonst am nächsten Werktag nach der Feiertagsliste des Unternehmens |
+| `status` | Status | Entwurf, Berechnet, Bereit, Abgegeben oder Ersetzt |
+| `confirmation_in_progress` | Prüfung läuft | gesetzt, solange „USt-IdNrn. prüfen“ läuft; so lange lässt sich die Meldung nicht ändern |
+| `lines` | Meldezeilen | Tabelle „Zeile der Zusammenfassenden Meldung“: USt-IdNr., Art der Leistung, Kunde, Betrag laut Hauptbuch, Korrigierter Betrag mit Begründung, Gemeldeter Betrag, Hält die Meldung an, Bisher gemeldet, In der Datei und die letzte Prüfung der Nummer (Geprüft am, Dienst, Ergebnis der Prüfung, Code, Nummer der Abfrage, USt-IdNr.-Bestätigung) |
+| `total_l`, `total_d`, `total_s` | Summe L, Summe D, Summe S | Summen der Meldezeilen je Art |
+| `ready` | Bereit zur Abgabe | keine Zeile gesperrt, keine Schwelle überschritten und jeder Beleg im Hauptbuch wiedergefunden |
+| `hints` | Befunde | Tabelle „Befund der Zusammenfassenden Meldung“: Art (Fehler oder Hinweis), Code, Nachricht, Belegtyp, Belegnr. und Partei |
+| `reconciliation` | Abgleich mit der Voranmeldung | Tabelle „Abgleich der Zusammenfassenden Meldung“ je Art: Kennzahl, Betrag laut Hauptbuch, Betrag in den Meldezeilen, Unterschied, Gemeldeter Betrag, Laut abgegebenen Voranmeldungen, Abweichende Belege und Abgeglichen |
+| `comparison` | Vorperiodenvergleich | Tabelle „Vorperiodenvergleich der Zusammenfassenden Meldung“: USt-IdNr., Art der Leistung, Dieser Zeitraum, Vorperiode, Differenz zur Vorperiode, Differenz (%) und Auffällig |
+| `vouchers` | Belege der Meldezeilen | Tabelle „Beleg der Zusammenfassenden Meldung“: Belegtyp, Belegnr., Kunde, Partei, USt-IdNr., Kennzahl, Art der Leistung, Betrag laut Hauptbuch und Bestimmungsland |
+| `filed_via`, `filed_on`, `transferticket`, `filed_by`, `filing_note` | Abgegeben über, Abgegeben am, Transferticket, Vermerkt von, Wie und wann abgegeben | der Vermerk der Abgabe |
+| `remarks` | Anmerkungen | Pflicht, wenn eine Meldung abgegeben wird, die nicht bereit ist |
+
+An der Meldung stehen unter „Verknüpfungen“ ihre USt-IdNr.-Bestätigungen.
+
+### USt-IdNr.-Bestätigung (`VAT ID Confirmation`)
+
+Ein Dokument je Abfrage beim BZSt oder bei VIES, Nummernkreis `USTID-{YYYY}-{#####}`. Nur der Server legt es an, niemand ändert oder löscht es, auch nicht seine Antwort, die als private Datei daran hängt. Es hält angefragte und anfragende USt-IdNr., Unternehmen, Dienst, Ergebnis der Abfrage und der Prüfung, Code, Nachricht, Nummer der Abfrage, Name und Anschrift einer qualifizierten Abfrage mit den Vergleichsergebnissen, Zeitpunkte, Gültigkeit, HTTP-Status, die vorherige Abfrage und die Meldung, aus der die Prüfung kam. Die Felder stehen in [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
 
 ### Feld an der Journalbuchung
 
@@ -218,6 +252,20 @@ Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in ei
 
 `vat_return/transmission_adapter.py` enthält die Aufrufe, die ein eingerichtetes ERiC brauchen: Worker, Laufzeit des Jahres und Installation, mit den Pfaden und dem Benutzer der Site. Die Tests ersetzen nur diese Aufrufe und lassen XML, Kopf, Ablage von Zertifikat und Passwort und Simulation wirklich laufen. Mit der Stub-Bibliothek der ERiC-Tests richtet ein Test eine Laufzeit aus einem Archiv ein und sendet durch den Worker.
 
+## Die Zusammenfassende Meldung
+
+Die Meldung folgt dem Muster der Voranmeldung: Der Kern unter `steuerbote/zm` rechnet, `steuerbote/zm_sources.py` liest, `recapitulative_statement/bridge.py` überträgt, und der Controller bewegt nur Daten.
+
+So läuft „Berechnen“:
+
+1. Die Meldung bestimmt aus Jahr, Art und Nummer ihren Meldezeitraum (`ReportingPeriod`) und prüft ihn gegen den Abgaberhythmus der Einstellungen (`coverage()`), der auch die Monate der Lieferungen und der sonstigen Leistungen nennt.
+2. `zm_sources.shares` liest mit `ledger.load_lines` nur die Konten, denen die Kontenzuordnung Kz 41, 42 oder 21 gibt, und teilt die Buchungen mit `attribution.contributions()` je Beleg auf; `zm_sources.parties` liest Kunde, USt-IdNr. und Bestimmungsland je Belegtyp mit einer Abfrage, siehe [Zusammenfassende Meldung](zm.md#berechnen).
+3. Die letzte USt-IdNr.-Bestätigung jeder Nummer gibt ihr Ergebnis; eine Nummer ohne Bestätigung gilt als nicht bestätigt.
+4. `lines.build()` bildet die Meldezeilen mit ihren Befunden und den Korrekturen der Zeilen, `threshold_findings()` prüft die Schwelle an Kz 41 und 42 je Monat, `reconcile()` gleicht mit dem Hauptbuch und den abgegebenen Voranmeldungen ab, `compare()` stellt die Vorperiode daneben.
+5. `bridge.py` schreibt alles in die Tabellen. Bei jedem Speichern baut die Meldung die Zeilen aus ihren Belegen, Korrekturen und Bestätigungen neu, damit eine Korrektur mit Begründung ihre Sperre sofort aufhebt.
+
+„USt-IdNrn. prüfen“ läuft als Hintergrundjob (`run_confirmation`) in der Queue `long`, mit einer Job-ID je Meldung und `confirmation_in_progress` als Sperre: je Nummer ein `vatid.confirm()` mit eigenem `UrllibFetch`, eine Abfrage nach der anderen, jede Bestätigung sofort festgeschrieben. Ist der Job verschwunden, gibt `release_stale_confirmation` die Sperre frei. „CSV für Mein ELSTER“ (`make_csv_file`) schreibt die Datei mit `csv_file()` aus der gespeicherten Meldung. „In Mein ELSTER abgegeben“ und „Als außerhalb abgegeben vermerken“ (`mark_filed_outside`) reichen die Meldung ein; „Buchen“ allein lehnt `before_submit` ab, und `before_cancel` lehnt jedes Stornieren ab. „Berichtigung anlegen“ (`make_correction`) legt eine Meldung mit der Meldeart Berichtigung an, deren Datei `correct()` gegen alle Abgaben des Meldezeitraums bildet; wird sie abgegeben, stehen die früheren auf „Ersetzt“.
+
 ## Was wo berechnet wird
 
 | Was | Wo |
@@ -234,6 +282,9 @@ Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in ei
 | Vorperiode und Vorjahr im Bericht | `calculate()` für die Vergleichszeiträume, `comparison.py` |
 | Vorperiodenvergleich und Hinweise der Meldung | `calculate()` für die Vergleichszeiträume, `steuerbote/ustva/plausibility.py` mit der Regel aus `comparison.py`, Rechnungszeilen aus `steuerbote/invoices.py` |
 | Druckformat | rechnet keine Kennzahl, nur was der Vordruck selbst bildet: die Zeilen 45 und 48 aus den gespeicherten Summen und die Steuer der Zeilen 13, 14, 25 und 26 aus der Bemessungsgrundlage in vollen Euro |
+| Meldezeitraum, Code `quart`, Fälligkeit und Abgaberhythmus der Zusammenfassenden Meldung | `steuerbote/zm/period.py` und `steuerbote/zm/rhythm.py`, Feiertage aus der Feiertagsliste des Unternehmens |
+| Meldezeilen, Rundung auf ganze Euro, Sperren, Abgleich, Vorperiodenvergleich, Berichtigung und CSV-Datei der Zusammenfassenden Meldung | `steuerbote/zm` |
+| Bestätigung der USt-IdNrn. und ihr Ergebnis | `steuerbote/vatid`, `vat_id_confirmation/records.py` |
 
 ## Bericht „UStVA Kennzahlen“
 
@@ -252,9 +303,9 @@ Der Bericht zeigt für einen Zeitraum, aus welchen Buchungen jede Kennzahl beste
 
 ## Arbeitsbereich „Steuern“ und Seitenleiste
 
-Der Arbeitsbereich führt zu „Neue Voranmeldung“, zur Liste „Voranmeldungen“, zum Bericht „UStVA Kennzahlen“ („Kennzahlen (Bericht)“) und zu „Einstellungen“ und „Kontenzuordnung“. Die Zahlenkarte „Offene Voranmeldungen“ zählt die Meldungen aller Unternehmen, die noch nicht eingereicht sind. Sichtbar ist der Arbeitsbereich für die Rollen Accounts Manager, Accounts User und System Manager.
+Der Arbeitsbereich führt zu „Neue Voranmeldung“, zur Liste „Voranmeldungen“, zum Bericht „UStVA Kennzahlen“ („Kennzahlen (Bericht)“) und zu den Dauerfristverlängerungen („Dauerfristanträge“), im Abschnitt „Zusammenfassende Meldung“ zu „Neue ZM“, „Zusammenf. Meldungen“ und „USt-IdNr.-Prüfungen“, und zu „Einstellungen“ und „Kontenzuordnung“. Die Zahlenkarte „Offene Voranmeldungen“ zählt die Meldungen aller Unternehmen, die noch nicht eingereicht sind. Sichtbar ist der Arbeitsbereich für die Rollen Accounts Manager, Accounts User und System Manager.
 
-Die Seitenleiste des Moduls bringt Steuerbote selbst mit (`sidebar/steuerbote`). Ohne sie bildet Frappe die Einträge aus den Namen der DocTypes, und die Seitenleiste schneidet Namen wie „Einstellungen Umsatzsteuer-Voranmeldung“ ab. Sie führt zum Arbeitsbereich „Steuern“, zu „Voranmeldungen“, „Kontenzuordnung“, „Einstellungen“, „ERiC-Einstellungen“ und „ELSTER-Übermittlung“ und unter „Berichte“ zu „UStVA Kennzahlen“. Ein neuer DocType mit eigener Liste gehört auch in die Seitenleiste; `test_standard_records.py` prüft das, ebenso, dass keine Bezeichnung länger als 20 Zeichen ist.
+Die Seitenleiste des Moduls bringt Steuerbote selbst mit (`sidebar/steuerbote`). Ohne sie bildet Frappe die Einträge aus den Namen der DocTypes, und die Seitenleiste schneidet Namen wie „Einstellungen Umsatzsteuer-Voranmeldung“ ab. Sie führt zum Arbeitsbereich „Steuern“, zu „Voranmeldungen“, „Dauerfristanträge“, „Zusammenf. Meldungen“, „USt-IdNr.-Prüfungen“, „Kontenzuordnung“, „Einstellungen“, „ERiC-Einstellungen“ und „ELSTER-Übermittlung“ und unter „Berichte“ zu „UStVA Kennzahlen“. Den DocType der Dauerfristverlängerung (`VAT Return Extension`) bringt deren eigenes Paket mit. Ein neuer DocType mit eigener Liste gehört auch in die Seitenleiste; `test_standard_records.py` prüft das, ebenso, dass keine Bezeichnung länger als 20 Zeichen ist.
 
 ## Platz im Desk
 
@@ -278,6 +329,10 @@ Das Druckformat gibt eine Meldung in Reihenfolge und Wortlaut des Vordrucks USt 
 Das Druckformat liest nur die Meldung und die Einstellungen ihres Unternehmens. Die Zeilen der Kennzahlen tragen Kennzahl, Zeile, Bezeichnung und Art des Betrags aus dem Katalog des Jahres der Meldung, die Meldung schreibt sie bei jedem Speichern neu. Abschnitte und Steuersätze des Ausdrucks gehören zum Vordruck 2026. Ein neuer Jahrgang braucht deshalb auch hier eine Prüfung Zeile für Zeile, wie der Katalog.
 
 Alle Klassen des Druckformats beginnen mit `sb-`. Das Druck-Stylesheet von Frappe gestaltet allgemeine Klassen wie `label` selbst, als Inline-Element in 75 % der Schriftgröße; eigene Klassen halten diese Regeln vom Ausdruck fern.
+
+## Druckformat „Zusammenfassende Meldung“
+
+Das Druckformat gibt eine Zusammenfassende Meldung im Stil der Voranmeldung aus, auf A4, schwarz und grau, ohne Logo und ohne Briefkopf: im Kopf Unternehmen, eigene USt-IdNr., Meldezeitraum, Fälligkeit, Meldeart, Name und Status der Meldung und, wenn vermerkt, den Tag der Abgabe; dann die Zeilen der Datei je USt-IdNr. und Art mit dem Kunden, bei einer Berichtigung mit „Bisher gemeldet“, die Summen je Art, die Korrekturen mit Begründung und die Anmerkungen. Es rechnet nichts: Die Zeilen sind die mit „In der Datei“, die Summen addieren ihre gemeldeten Beträge. Auch hier beginnen alle Klassen mit `sb-`.
 
 ## Für die Steuerberatung zu klären
 

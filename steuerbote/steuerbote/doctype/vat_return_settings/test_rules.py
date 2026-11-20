@@ -13,11 +13,15 @@ from steuerbote.steuerbote.doctype.vat_return_settings.rules import (
 	SettingsError,
 	check_period_rules,
 	check_prepayments,
+	check_zm_rules,
 	has_dauerfrist,
+	own_vat_id,
 	rhythm_for,
 	sondervorauszahlung,
+	zm_rule,
 )
 from steuerbote.ustva import Rhythm
+from steuerbote.zm import rhythm as zm_rhythm
 
 MONTHLY, QUARTERLY = Rhythm.MONTHLY, Rhythm.QUARTERLY
 
@@ -173,6 +177,68 @@ class CheckTest(TestCase):
 			check_prepayments(
 				[Prepayment(2026, dauerfristverlaengerung=True), Prepayment(2027), Prepayment(2026)]
 			)
+
+
+class OwnVatIdTest(TestCase):
+	"""The company asks with its own German USt-IdNr. to confirm the USt-IdNrn. of its customers."""
+
+	def test_keeps_the_number_entered_as_the_confirmation_writes_it(self):
+		self.assertEqual(own_vat_id("de 123 456 789", None), "DE123456789")
+		self.assertEqual(own_vat_id("DE123456789", "DE987654321"), "DE123456789")
+
+	def test_takes_the_tax_id_of_the_company_when_it_is_a_german_ust_idnr(self):
+		self.assertEqual(own_vat_id(None, "DE 987654321"), "DE987654321")
+		self.assertEqual(own_vat_id("", "de987654321"), "DE987654321")
+
+	def test_leaves_it_empty_when_the_tax_id_is_none(self):
+		for tax_id in (None, "", "123/456/78901", "ATU12345678", "DE12345678"):
+			with self.subTest(tax_id=tax_id):
+				self.assertIsNone(own_vat_id(None, tax_id))
+
+	def test_refuses_a_number_that_is_not_german(self):
+		for value in ("ATU12345678", "DE12345678", "DE1234567890", "123456789"):
+			with (
+				self.subTest(value=value),
+				self.assertRaisesRegex(SettingsError, r"is not a German USt-IdNr\.: DE and nine digits\.$"),
+			):
+				own_vat_id(value, "DE987654321")
+
+
+class ZmRuleTest(TestCase):
+	"""The rows of the rhythm of the Zusammenfassende Meldung become the rules of steuerbote.zm.rhythm."""
+
+	def test_takes_the_values_of_the_row(self):
+		self.assertEqual(
+			zm_rule(2026, 5, "monthly", True),
+			zm_rhythm.Rule(2026, 5, zm_rhythm.Rhythm.MONTHLY, services_monthly=True),
+		)
+		self.assertIs(zm_rule(2026, 4, "quarterly", False).rhythm, zm_rhythm.Rhythm.QUARTERLY)
+		self.assertIs(zm_rule(2026, 1, "yearly", False).rhythm, zm_rhythm.Rhythm.YEARLY)
+
+	def test_a_broken_row_is_a_settings_error_with_the_template_of_the_core(self):
+		cases = (
+			((2026, 5, "quarterly", False), zm_rhythm.NOT_A_QUARTER_START, (2026, 5)),
+			((2026, 4, "yearly", False), zm_rhythm.NOT_A_YEAR_START, (2026, 4)),
+			((2026, 4, "quarterly", True), zm_rhythm.SERVICES_MONTHLY_ONLY, (2026, 4)),
+			((2026, 4, "weekly", False), zm_rhythm.NOT_A_RHYTHM, ("weekly",)),
+			((26, 1, "monthly", False), zm_rhythm.NOT_A_YEAR, (26,)),
+			((2026, 13, "monthly", False), zm_rhythm.NOT_A_MONTH, (13,)),
+		)
+		for values, template, filled in cases:
+			with self.subTest(values=values), self.assertRaises(SettingsError) as raised:
+				zm_rule(*values)
+			self.assertEqual((raised.exception.template, raised.exception.values), (template, filled))
+
+	def test_checks_the_rules_together(self):
+		check_zm_rules([zm_rule(2026, 1, "quarterly", False), zm_rule(2026, 5, "monthly", False)])
+		with self.assertRaises(SettingsError) as raised:
+			check_zm_rules([zm_rule(2026, 4, "monthly", False), zm_rule(2026, 4, "quarterly", False)])
+		self.assertEqual(
+			(raised.exception.template, raised.exception.values), (zm_rhythm.DUPLICATE_RULE, (2026, 4))
+		)
+		with self.assertRaises(SettingsError) as raised:
+			check_zm_rules([zm_rule(2026, 1, "yearly", False), zm_rule(2026, 7, "monthly", False)])
+		self.assertEqual(raised.exception.template, zm_rhythm.YEAR_NOT_WHOLE)
 
 
 class SettingsErrorTest(TestCase):

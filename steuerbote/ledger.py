@@ -8,10 +8,11 @@ the tax accounts with the tax office. ERPNext flags a cancelled voucher's entrie
 the Accounts Settings enable the immutable ledger: then it flags nothing and posts the reversal on the day
 of the cancellation, so a cancellation within the period nets to zero and one in a later period reduces
 that period. GL Entries are summed per account number and voucher. The voucher key joins voucher type and
-name, because two document types can share a name.
+name, because two document types can share a name. A caller that needs only some accounts, such as the
+Zusammenfassende Meldung those of Kz 41, 42 and 21, names their numbers and reads nothing else.
 """
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from datetime import date
 from decimal import Decimal
 
@@ -24,8 +25,11 @@ from steuerbote.ustva.rounding import CENT
 EXCLUDE_FIELD = "steuerbote_exclude_from_vat_return"
 
 
-def load_lines(company: str, from_date: date | str, to_date: date | str) -> list[LedgerLine]:
-	"""The ledger lines of the company from ``from_date`` to ``to_date``, both included.
+def load_lines(
+	company: str, from_date: date | str, to_date: date | str, account_numbers: Collection[str] | None = None
+) -> list[LedgerLine]:
+	"""The ledger lines of the company from ``from_date`` to ``to_date``, both included, of every account or
+	of the ``account_numbers`` given.
 
 	Accounts without an account number cannot be mapped and are skipped; accounts_without_number lists them.
 	"""
@@ -36,15 +40,17 @@ def load_lines(company: str, from_date: date | str, to_date: date | str) -> list
 			credit=_cents(row.credit),
 			voucher=f"{row.voucher_type}:{row.voucher_no}",
 		)
-		for row in _ledger_rows(company, from_date, to_date)
+		for row in _ledger_rows(company, from_date, to_date, account_numbers)
 	]
 
 
-def _ledger_rows(company: str, from_date: date | str, to_date: date | str) -> list[frappe._dict]:
+def _ledger_rows(
+	company: str, from_date: date | str, to_date: date | str, account_numbers: Collection[str] | None
+) -> list[frappe._dict]:
 	gl_entry = frappe.qb.DocType("GL Entry")
 	account = frappe.qb.DocType("Account")
 	journal_entry = frappe.qb.DocType("Journal Entry")
-	return (
+	query = (
 		frappe.qb.from_(gl_entry)
 		.inner_join(account)
 		.on(account.name == gl_entry.account)
@@ -64,7 +70,11 @@ def _ledger_rows(company: str, from_date: date | str, to_date: date | str) -> li
 		.where(gl_entry.voucher_type != "Period Closing Voucher")
 		.where(Coalesce(journal_entry[EXCLUDE_FIELD], 0) == 0)
 		.where(Coalesce(account.account_number, "") != "")
-		.groupby(account.account_number, gl_entry.voucher_type, gl_entry.voucher_no)
+	)
+	if account_numbers is not None:
+		query = query.where(account.account_number.isin(list(account_numbers) or [""]))
+	return (
+		query.groupby(account.account_number, gl_entry.voucher_type, gl_entry.voucher_no)
 		.orderby(Min(gl_entry.posting_date))
 		.orderby(gl_entry.voucher_type)
 		.orderby(gl_entry.voucher_no)

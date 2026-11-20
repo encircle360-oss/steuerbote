@@ -1,0 +1,178 @@
+{
+ "actions": [],
+ "creation": "2026-11-20 18:00:00.000000",
+ "description": "The vouchers of one USt-IdNr. and Art of a Zusammenfassende Meldung, the amount it files and the latest confirmation of the USt-IdNr.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "vat_id",
+  "art",
+  "party",
+  "amount",
+  "column_break_amounts",
+  "override",
+  "override_reason",
+  "reported",
+  "blocked",
+  "filed_amount",
+  "in_file",
+  "confirmation_section",
+  "confirmation_date",
+  "confirmation_service",
+  "confirmation_outcome",
+  "column_break_confirmation",
+  "confirmation_status",
+  "consultation_id",
+  "confirmation"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "vat_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "VAT ID"
+  },
+  {
+   "columns": 1,
+   "description": "L innergemeinschaftliche Lieferung (Kz 41), D Dreiecksgeschäft (Kz 42), S sonstige Leistung (Kz 21).",
+   "fieldname": "art",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Kind of Supply",
+   "options": "L\nD\nS",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "party",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Ledger Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "description": "In whole euros and with a reason, it replaces the amount filed and lifts the block of the line; 0 drops the line.",
+   "fieldname": "override",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Override Amount",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "override_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Override"
+  },
+  {
+   "bold": 1,
+   "columns": 2,
+   "fieldname": "reported",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount Filed",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "blocked",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Holds the Statement",
+   "read_only": 1
+  },
+  {
+   "description": "What the BZSt holds for the line after the earlier filings of the period, for a Berichtigung.",
+   "fieldname": "filed_amount",
+   "fieldtype": "Currency",
+   "label": "Filed Before",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "The CSV file for Mein ELSTER reports the line; a Berichtigung reports only the lines that change what was filed.",
+   "fieldname": "in_file",
+   "fieldtype": "Check",
+   "label": "In the File",
+   "read_only": 1
+  },
+  {
+   "fieldname": "confirmation_section",
+   "fieldtype": "Section Break",
+   "label": "Latest Confirmation"
+  },
+  {
+   "fieldname": "confirmation_date",
+   "fieldtype": "Date",
+   "label": "Confirmed On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "confirmation_service",
+   "fieldtype": "Select",
+   "label": "Service",
+   "options": "\nbzst\nvies",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "confirmation_outcome",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Confirmation Result",
+   "options": "\nvalid\ninvalid\nunknown",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_confirmation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "confirmation_status",
+   "fieldtype": "Data",
+   "label": "Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "consultation_id",
+   "fieldtype": "Data",
+   "label": "Consultation Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "confirmation",
+   "fieldtype": "Link",
+   "label": "VAT ID Confirmation",
+   "options": "VAT ID Confirmation",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-20 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Recapitulative Statement Line",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

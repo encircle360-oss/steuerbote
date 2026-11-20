@@ -134,6 +134,17 @@ class LedgerTest(IntegrationTestCase):
 		)
 		self.assertEqual(accounts_without_number(COMPANY), [self.cash])
 
+	def test_reads_only_the_accounts_asked_for(self):
+		entry = post_journal_entry(
+			COMPANY, "2026-11-12", [(self.bank, 119, 0), (self.revenue, 0, 100), (self.output_tax, 0, 19)]
+		)
+		self.assertEqual(
+			load_lines(COMPANY, "2026-11-01", "2026-11-30", account_numbers=["8400", "9999"]),
+			lines_of(f"Journal Entry:{entry.name}", ("8400", "0", "100")),
+		)
+		self.assertEqual(load_lines(COMPANY, "2026-11-01", "2026-11-30", account_numbers=[]), [])
+		self.assertEqual(len(load_lines(COMPANY, "2026-11-01", "2026-11-30")), 3)
+
 	def test_account_names_by_number(self):
 		self.assertEqual(
 			account_names(COMPANY, ["8400", "1776", "9999"]), {"8400": self.revenue, "1776": self.output_tax}

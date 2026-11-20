@@ -14,6 +14,12 @@ Sondervorauszahlung auf die Steuer eines jeden Kalenderjahres entrichtet“ (§ 
 Sondervorauszahlung without the Dauerfristverlängerung is refused. Each year has its own row; a year
 without one keeps the deadlines without the extension, which is the earlier of the two.
 
+The Zusammenfassende Meldung has a rhythm of its own (§ 18a UStG), which the company records as rules of
+steuerbote.zm.rhythm: from a year and month on monthly, quarterly or yearly, until the next rule. zm_rule() and
+check_zm_rules() read them and report a broken rule with the template of the core. The confirmation of the
+USt-IdNrn. of its customers asks with the company's own German USt-IdNr. (§ 18e Nr. 1 UStG; UStAE 18e.1
+Abs. 1), which own_vat_id() takes from the settings or else from the Tax ID of the company.
+
 Messages are English templates with positional placeholders. SettingsError keeps the template and its
 values apart, so the Frappe layer can translate the template before formatting it. This module is pure
 Python and never imports Frappe.
@@ -27,6 +33,10 @@ from enum import Enum
 
 from steuerbote.ustva.period import Rhythm
 from steuerbote.ustva.rounding import CENT, ZERO, require_decimal
+from steuerbote.vatid.ustid import is_german
+from steuerbote.vatid.ustid import normalize as normalize_vat_id
+from steuerbote.zm import rhythm as zm_rhythm
+from steuerbote.zm.errors import ZmError
 
 QUARTER_START_MONTHS = (1, 4, 7, 10)
 
@@ -43,6 +53,7 @@ NOT_IN_CENTS = "The Sondervorauszahlung of {0} must be an amount in cents, not {
 SONDERVORAUSZAHLUNG_WITHOUT_DAUERFRIST = (
 	"The Sondervorauszahlung of {0} requires the Dauerfristverlängerung of that year."
 )
+NOT_A_GERMAN_VAT_ID = "{0} is not a German USt-IdNr.: DE and nine digits."
 MESSAGES = (
 	NOT_A_YEAR,
 	NOT_A_FILING_PERIOD,
@@ -53,6 +64,7 @@ MESSAGES = (
 	DUPLICATE_PREPAYMENT,
 	NOT_IN_CENTS,
 	SONDERVORAUSZAHLUNG_WITHOUT_DAUERFRIST,
+	NOT_A_GERMAN_VAT_ID,
 )
 
 
@@ -152,6 +164,32 @@ def check_prepayments(prepayments: Iterable[Prepayment]) -> None:
 	duplicate = _first_duplicate(prepayment.year for prepayment in prepayments)
 	if duplicate is not None:
 		raise SettingsError(DUPLICATE_PREPAYMENT, duplicate)
+
+
+def zm_rule(year: int, month: int, rhythm: str, services_monthly: bool) -> zm_rhythm.Rule:
+	"""A row of the rhythm of the Zusammenfassende Meldung as a rule of steuerbote.zm.rhythm."""
+	try:
+		return zm_rhythm.Rule(year, month, rhythm, services_monthly)
+	except ZmError as error:
+		raise SettingsError(error.template, *error.values) from None
+
+
+def check_zm_rules(rules: Iterable[zm_rhythm.Rule]) -> None:
+	"""Two rules with the same start, or a rule within the year of a yearly one, would leave months open."""
+	try:
+		zm_rhythm.check_rules(rules)
+	except ZmError as error:
+		raise SettingsError(error.template, *error.values) from None
+
+
+def own_vat_id(value: str | None, company_tax_id: str | None) -> str | None:
+	"""The company's own German USt-IdNr. as the confirmation writes it: the one entered or, without one, the
+	Tax ID of the company if that is a German USt-IdNr.; None when there is neither."""
+	if value:
+		if not is_german(value):
+			raise SettingsError(NOT_A_GERMAN_VAT_ID, value)
+		return normalize_vat_id(value)
+	return normalize_vat_id(company_tax_id) if is_german(company_tax_id) else None
 
 
 def _filing_rhythm(value: FilingRhythm | str) -> FilingRhythm:

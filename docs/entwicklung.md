@@ -24,17 +24,31 @@ steuerbote/                    Repository
 │   │   ├── charset.py         Zeichensatz von ELSTER und Ersatz typografischer Zeichen
 │   │   ├── envelope.py        ganzer Umschlag Elster mit TransferHeader, nur für die Schematests
 │   │   └── tests/             Unit-Tests und Tests gegen die Schemas der ERiC-Dokumentation
+│   ├── zm/                    Rechenkern der Zusammenfassenden Meldung, reines Python ohne Frappe-Import
+│   │   ├── period.py          Meldezeiträume, ELSTER-Codes und Fristen
+│   │   ├── rhythm.py          Abgaberhythmus je Monat samt Schwelle von 50.000 €
+│   │   ├── lines.py           Meldezeilen je USt-IdNr. und Art aus den Belegen hinter Kz 41, 42 und 21
+│   │   ├── ustid.py           Schreibweise der USt-IdNrn. und welche eine Zeile nicht melden kann
+│   │   ├── findings.py        was die Meldung anhält und was jemand ansehen sollte
+│   │   ├── reconciliation.py  Abgleich mit Kz 41, 42 und 21 der Voranmeldungen
+│   │   ├── comparison.py      Vorperiodenvergleich je USt-IdNr. und Art
+│   │   ├── correction.py      Berichtigung: welche Zeilen sie meldet und welchen Zeitraum sie berichtigt
+│   │   ├── csv_file.py        CSV-Datei für den Import in Mein ELSTER
+│   │   └── tests/             Unit-Tests des Kerns
+│   ├── vatid/                 Bestätigung ausländischer USt-IdNrn. beim BZSt, VIES als Ausweichdienst, reines Python ohne Frappe-Import
+│   ├── dauerfrist/            Rechenkern von Dauerfristverlängerung und Sondervorauszahlung (USt 1 H), reines Python ohne Frappe-Import
 │   ├── eric/                  ERiC: Einrichtung, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
 │   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
 │   ├── invoices.py            liest die Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns, reines Python
+│   ├── zm_sources.py          liest für die Zusammenfassende Meldung Hauptbuch, Kunden, Adressen und abgegebene Voranmeldungen
 │   ├── steuerbote/            Frappe-Modul „Steuerbote“, siehe Architektur
-│   │   ├── doctype/           Einstellungen, Kontenzuordnung und Umsatzsteuer-Voranmeldung samt Tabellen
+│   │   ├── doctype/           Einstellungen, Kontenzuordnung, Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung und USt-IdNr.-Bestätigung samt Tabellen
 │   │   ├── report/            Bericht „UStVA Kennzahlen“ mit den Belegen hinter jeder Kennzahl
 │   │   ├── workspace/         Arbeitsbereich „Steuern“
 │   │   ├── sidebar/           Seitenleiste des Moduls mit kurzen Bezeichnungen
 │   │   ├── number_card/       Zahlenkarte „Offene Voranmeldungen“
-│   │   └── print_format/      Druckformat „Umsatzsteuer-Voranmeldung“
+│   │   └── print_format/      Druckformate „Umsatzsteuer-Voranmeldung“ und „Zusammenfassende Meldung“
 │   ├── dock/                  Eintrag „Steuern“ in der Leiste von ERPNext
 │   ├── fixtures/              Feld „Nicht in der Umsatzsteuer-Voranmeldung“ an der Journalbuchung
 │   ├── public/                Logo (images/) und Symbol der Leiste (icons/)
@@ -51,7 +65,7 @@ steuerbote/                    Repository
 └── .pre-commit-config.yaml    Hooks für pre-commit
 ```
 
-Der Kern unter `steuerbote/ustva` importiert nie Frappe. Deshalb lässt er sich ohne Bench testen. DocTypes und Reports gehören in das Frappe-Modul `steuerbote/steuerbote`. Wie Kern und Frappe-Modul zusammenspielen, beschreibt [Architektur](architektur.md).
+Die Kerne unter `steuerbote/ustva`, `steuerbote/zm`, `steuerbote/vatid` und `steuerbote/dauerfrist` importieren nie Frappe. Deshalb lassen sie sich ohne Bench testen. DocTypes und Reports gehören in das Frappe-Modul `steuerbote/steuerbote`. Wie Kern und Frappe-Modul zusammenspielen, beschreibt [Architektur](architektur.md).
 
 ## Einrichtung
 

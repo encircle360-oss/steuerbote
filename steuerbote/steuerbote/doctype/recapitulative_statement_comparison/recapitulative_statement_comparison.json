@@ -1,0 +1,92 @@
+{
+ "actions": [],
+ "creation": "2026-11-20 18:00:00.000000",
+ "description": "A line of the Zusammenfassende Meldung against the line of the previous Meldezeitraum from the ledger.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "vat_id",
+  "art",
+  "current",
+  "previous",
+  "difference",
+  "difference_percent",
+  "flagged"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "vat_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "VAT ID",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "art",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Kind of Supply",
+   "options": "L\nD\nS",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "current",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "This Period",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "previous",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Previous Period",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "difference",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Difference to Previous Period",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "difference_percent",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Difference (%)",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "flagged",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Conspicuous",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-20 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Recapitulative Statement Comparison",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

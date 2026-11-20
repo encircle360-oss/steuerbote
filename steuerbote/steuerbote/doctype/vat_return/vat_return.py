@@ -764,10 +764,10 @@ def build_hints(
 	)
 	ledger = {number: value.amount for number, value in result.values.items()}
 	currency = frappe.get_cached_value("Company", doc.company, "default_currency")
-	return plausibility.hints(comparison, lines, ledger, mapping, _Figures(currency))
+	return plausibility.hints(comparison, lines, ledger, mapping, SiteFigures(currency))
 
 
-class _Figures:
+class SiteFigures:
 	"""The figures of a hint in the number format of the site, amounts in the company's currency."""
 
 	def __init__(self, currency: str) -> None:

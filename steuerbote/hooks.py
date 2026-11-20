@@ -26,3 +26,11 @@ add_to_apps_screen = [
 app_include_icons = ["/assets/steuerbote/icons/module-icons.svg"]
 
 fixtures = [{"dt": "Custom Field", "filters": [["module", "=", "Steuerbote"]]}]
+
+# The answer kept with a VAT ID Confirmation is part of the proof of its query.
+doc_events = {
+	"File": {
+		"validate": "steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation.keep_answer",
+		"on_trash": "steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation.keep_answer",
+	}
+}

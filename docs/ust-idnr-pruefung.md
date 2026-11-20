@@ -1,6 +1,6 @@
 # Prüfung ausländischer USt-IdNrn.
 
-Steuerbote lässt sich die USt-IdNr. eines Kunden aus einem anderen Mitgliedstaat im Bestätigungsverfahren nach § 18e UStG bestätigen. Diese Seite beschreibt den Kern unter `steuerbote/vatid`: reines Python ohne Frappe-Import, die Abfrage beim Bundeszentralamt für Steuern (BZSt), das Ausweichen auf VIES, die Bedeutung jeder Antwort und den Datensatz, der als Nachweis bleibt. Die Frappe-Schicht mit den gespeicherten Prüfungen und den Prüfungen an der Zusammenfassenden Meldung gehört zu Stufe 2 der [Roadmap](roadmap.md); was sie übergibt und speichert, steht [unten](#was-die-frappe-schicht-übergibt-und-speichert). Die Seite ersetzt keine Steuerberatung.
+Steuerbote lässt sich die USt-IdNr. eines Kunden aus einem anderen Mitgliedstaat im Bestätigungsverfahren nach § 18e UStG bestätigen. Diese Seite beschreibt den Kern unter `steuerbote/vatid`: reines Python ohne Frappe-Import, die Abfrage beim Bundeszentralamt für Steuern (BZSt), das Ausweichen auf VIES, die Bedeutung jeder Antwort und den Datensatz, der als Nachweis bleibt. In ERPNext prüft die Zusammenfassende Meldung damit die USt-IdNrn. ihrer Zeilen und hält jede Abfrage als USt-IdNr.-Bestätigung fest, siehe [In ERPNext](#in-erpnext). Die Seite ersetzt keine Steuerberatung.
 
 Die Quellen stehen am [Ende der Seite](#quellen), alle am 20. November 2026 gelesen.
 
@@ -205,7 +205,37 @@ In der Zusammenfassenden Meldung gilt XI nur für Waren. Für Lieferungen gelten
 - `fetch`: der Transport. `UrllibFetch(timeout_seconds=…, opener=…)` nimmt nur HTTPS, die Zertifikate des Systems und die Proxys der Umgebung; ein eigener `opener` mit `urllib.request.ProxyHandler` setzt einen Proxy. Ein eigener Transport gibt jede HTTP-Antwort zurück, auch mit Status 4xx und 5xx, und wirft `OSError` nur, wenn keine Antwort kam. Je Prüfung ein eigener `UrllibFetch`, denn er hält die Cookies der Dienste.
 - `clock`: eine Uhr mit Zeitzone, etwa `lambda: datetime.now(UTC)`.
 
-Speichern soll die Frappe-Schicht jeden Datensatz aus `queries()` als eigene, nicht änderbare Prüfung, die Antwort (`response_text`) als private Datei, und an einer Zeile der Zusammenfassenden Meldung die letzte Prüfung mit Tag, Dienst, Ergebnis, Status und Nummer der Abfrage. Prüfungen laufen nacheinander, nicht gleichzeitig, und ohne automatische Wiederholung; nach `unavailable` fragt jemand später erneut, nach einer Antwort von VIES auch beim BZSt.
+Die Frappe-Schicht speichert jeden Datensatz aus `queries()` als eigene, nicht änderbare Bestätigung, die Antwort (`response_text`) als private Datei, und zeigt an einer Zeile der Zusammenfassenden Meldung die letzte Prüfung mit Tag, Dienst, Ergebnis, Status und Nummer der Abfrage, siehe [In ERPNext](#in-erpnext). Prüfungen laufen nacheinander, nicht gleichzeitig, und ohne automatische Wiederholung; nach `unavailable` fragt jemand später erneut, nach einer Antwort von VIES auch beim BZSt.
+
+## In ERPNext
+
+„USt-IdNrn. prüfen“ an einer berechneten Zusammenfassenden Meldung im Entwurf fragt nach jeder USt-IdNr., die eine ihrer Zeilen meldet, jede Nummer einmal. Die Prüfung läuft als Hintergrundjob in der Queue `long`. Solange sie läuft, lässt sich die Meldung nicht ändern; ist ihr Job verschwunden, gibt das Formular die Sperre frei. Je Nummer:
+
+1. Anfragende Nummer ist die USt-IdNr. aus den Einstellungen des Unternehmens; ohne sie beginnt keine Prüfung.
+2. Name und Ort für die qualifizierte Abfrage kommen aus dem Kunden der Belege der Zeile: sein Name und die Hauptadresse am Kunden, ohne sie seine bevorzugte Rechnungsadresse oder die zuletzt geänderte seiner Adressen, je mit Postleitzahl und erster Adresszeile. Ohne Ort fragt Steuerbote nur einfach.
+3. `confirm()` fragt mit einem eigenen `UrllibFetch`, der bis zu 60 Sekunden auf jede Antwort wartet, eine Abfrage nach der anderen und keine zweimal.
+4. Jede Abfrage wird als USt-IdNr.-Bestätigung gespeichert und sofort festgeschrieben: Der Datensatz ist der Nachweis einer Abfrage, die der Dienst erhalten hat, und was danach scheitert, nimmt ihn nicht zurück.
+
+Am Ende zeigt jede Zeile die letzte Prüfung ihrer Nummer: Tag, Dienst, Ergebnis, Code und Nummer der Abfrage, mit einem Link auf die Bestätigung. Wer die Prüfung gestartet hat, bekommt eine Nachricht. „Berechnen“ liest die letzte Bestätigung jeder Nummer des Unternehmens ebenso, auch eine aus einer früheren Meldung. Prüfungen der App erpnext_germany (VAT ID Check) zählen nicht, denn sie fragen immer mit dem Standardunternehmen (Entscheidung des Maintainers).
+
+**Was die Meldung daraus macht.** Mit „gültig“ ist die Nummer bestätigt. „Ungültig“ sperrt die Zeile (`ZM-USTID-UNGUELTIG`), „unbekannt“ und eine Nummer ohne Bestätigung sperren sie ebenso (`ZM-USTID-UNBESTAETIGT`). Eine Korrektur der Zeile mit Begründung hebt die Sperre auf (Entscheidung des Maintainers). Das Ergebnis einer Prüfung ist das ihrer letzten Abfrage, die eines hat: Scheitert die qualifizierte Abfrage, nachdem das BZSt die Nummer bestätigt hat, bleibt sie bestätigt; antwortet VIES, weil das BZSt nicht konnte, zählt die Antwort von VIES.
+
+**Die USt-IdNr.-Bestätigung** (`VAT ID Confirmation`) speichert je Abfrage:
+
+| Feld | Inhalt |
+|---|---|
+| Angefragte USt-IdNr., Anfragende USt-IdNr., Unternehmen | was gefragt wurde und für wen |
+| Dienst | BZSt oder VIES |
+| Ergebnis der Abfrage, Ergebnis der Prüfung | was der Dienst auf diese Abfrage geantwortet hat, und was die Prüfung bis zu ihr über die Nummer sagt |
+| Code, Nachricht, Nummer der Abfrage | Status mit dem Text des Katalogs, `id` des BZSt oder `requestIdentifier` von VIES |
+| Qualifizierte Abfrage, Firmenname, Straße und Hausnummer, Postleitzahl, Ort, Ergebnis Name, Ergebnis Straße, Ergebnis Postleitzahl, Ergebnis Ort | Name und Anschrift der qualifizierten Abfrage und ihre Vergleichsergebnisse A bis D |
+| Angefragt am, Beantwortet am, Zeitpunkt laut Dienst, Tag laut Dienst | nach der Uhr des Servers in der Zeitzone der Site, und `anfrageZeitpunkt` des Dienstes |
+| Gültig ab, Gültig bis | `gueltigAb` und `gueltigBis` des BZSt |
+| HTTP-Status, Dienst nicht verfügbar, Warum VIES geantwortet hat, Vorherige Abfrage | wie der Dienst geantwortet hat und welche Abfrage dieser in derselben Prüfung voranging |
+| Zusammenfassende Meldung, Benutzer | woher die Prüfung kam und wer sie gestartet hat |
+| Antwort (Nachweis) | die Antwort, wie sie kam, als private Datei: JSON vom BZSt, SOAP von VIES |
+
+Nur der Server legt eine Bestätigung an. Niemand ändert oder löscht sie, auch kein System Manager, und ihre Antwort ebenso wenig: Steuerbote lehnt jede Änderung und jedes Löschen der Datei ab (`keep_answer`, eingehängt als `doc_events` für File). Lesen dürfen sie die Rollen Accounts User, Accounts Manager und System Manager.
 
 ## Datenschutz
 
