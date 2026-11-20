@@ -1,6 +1,8 @@
 # Übermittlung an ELSTER
 
-Steuerbote übermittelt die Umsatzsteuer-Voranmeldung über ERiC, die Schnittstelle der Finanzverwaltung. Am Beleg „Umsatzsteuer-Voranmeldung“ gibt es dafür die Gruppe „ELSTER“ mit drei Vorgängen, „Prüfen“, „Testsenden“ und „Senden“, und den Vermerken „In Mein ELSTER abgegeben“ und „Als außerhalb abgegeben vermerken“ für Meldungen, die auf anderem Weg zum Finanzamt gehen. Jeder Vorgang läuft im Hintergrund und hinterlässt eine ELSTER-Übermittlung mit Ergebnis, Meldungen und Dateien. Wie ERiC selbst eingebunden ist, beschreibt [ERiC](eric.md).
+Steuerbote übermittelt die Umsatzsteuer-Voranmeldung und die Dauerfristverlängerung (Vordruck USt 1 H) über ERiC, die Schnittstelle der Finanzverwaltung. An beiden Belegen gibt es dafür die Gruppe „ELSTER“ mit drei Vorgängen, „Prüfen“, „Testsenden“ und „Senden“, und den Vermerken „In Mein ELSTER abgegeben“ (an der Dauerfristverlängerung „In Mein ELSTER eingetragen“) und „Als außerhalb abgegeben vermerken“ für Meldungen, die auf anderem Weg zum Finanzamt gehen. Jeder Vorgang läuft im Hintergrund und hinterlässt eine ELSTER-Übermittlung mit Ergebnis, Meldungen und Dateien. Wie ERiC selbst eingebunden ist, beschreibt [ERiC](eric.md).
+
+Diese Seite beschreibt die Vorgänge an der Voranmeldung. An der Dauerfristverlängerung laufen sie genauso, mit demselben Dialog, derselben Sperre, denselben Ergebnissen und derselben ELSTER-Übermittlung; was dort anders ist, steht unter [Dauerfristverlängerung](#dauerfristverlängerung).
 
 Ohne eigene Hersteller-ID oder ohne installierte ERiC-Laufzeitumgebung läuft Steuerbote im [Simulationsmodus](#simulationsmodus). Dann geht nichts an das Finanzamt.
 
@@ -24,6 +26,17 @@ Dabei gilt:
 - **Berechtigungen.** Prüfen und Testsenden darf, wer die Meldung bearbeiten darf (Accounts User, Accounts Manager, System Manager). Senden und die Vermerke darf nur, wer buchen darf (Accounts Manager, System Manager).
 - **Ein Zeitraum wird einmal abgegeben.** Ein Zeitraum gilt als abgegeben, sobald eine seiner Meldungen gebucht ist oder eine seiner Meldungen über Steuerbote gesendet wurde, mit Annahme durch ELSTER oder unbekanntem Ergebnis, auch wenn sie später storniert wurde. Danach lehnt Steuerbote für jede andere Meldung des Zeitraums Senden, die Vermerke und die Datei für Mein ELSTER ab, außer für eine berichtigte Anmeldung (Kz 10). Eine Meldung, die schon mit Transferticket übermittelt ist oder deren Senden ein unbekanntes Ergebnis hat, lässt sich nicht noch einmal senden.
 - **Keine Stornierung einer abgegebenen Meldung.** Eine Meldung, die ELSTER angenommen hat oder die als abgegeben vermerkt ist, lässt sich nicht stornieren, denn das nähme beim Finanzamt nichts zurück. Eine Änderung geht als [berichtigte Anmeldung](#berichtigte-anmeldung-kz-10).
+
+## Dauerfristverlängerung
+
+Der Beleg „Dauerfristverlängerung“ übermittelt den Vordruck USt 1 H eines Unternehmens für ein Jahr, siehe [Dauerfristverlängerung](dauerfristverlaengerung.md#der-beleg-in-erpnext). Er gehört zur Datenart UStVA, also gelten Laufzeitumgebung, Plugin und Kopf der Lieferung der Voranmeldung (`UStVA_<Jahr>`, ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 2-13). Anders als an der Voranmeldung:
+
+- **Die Nutzdaten** sind der Kontext des Vordrucks, `Umsatzsteuersondervorauszahlung` bei monatlicher oder `Dauerfristverlaengerung` bei vierteljährlicher Abgabe, mit der Hersteller-ID in Kz 09, siehe [XML für ERiC](dauerfristverlaengerung.md#xml-für-eric). Eine Datei für Mein ELSTER gibt es nicht.
+- **Ein Jahr wird einmal abgegeben.** Ist für das Unternehmen und Jahr schon ein Vordruck abgegeben oder über Steuerbote gesendet, mit Annahme durch ELSTER oder unbekanntem Ergebnis, auch wenn er später storniert wurde, gehen Senden und Vermerk nur für eine berichtigte Anmeldung der Sondervorauszahlung (Kz 10). Den Antrag allein kann man nicht berichtigen.
+- **Ein Jahr ohne Vordruck oder Schema** in Steuerbote lässt sich nicht übermitteln, nur von Hand in Mein ELSTER abgeben.
+- **Nach einem angenommenen Senden** ist der Beleg abgegeben über ERiC, am Tag der Antwort, mit dem Transferticket, und seine Sondervorauszahlung steht in den Einstellungen des Unternehmens.
+- **Berichtigen** heißt eine abgegebene Anmeldung der Sondervorauszahlung stornieren und mit „Ändern“ als berichtigte Anmeldung (Kz 10) neu anlegen; das Stornieren nimmt beim Finanzamt nichts zurück.
+- **Die Vermerke** legen ebenfalls eine ELSTER-Übermittlung mit dem Vorgang „Außerhalb abgegeben“ an.
 
 ## Zertifikat und Passwort
 
@@ -88,11 +101,11 @@ Drei Sonderfälle:
 
 ## ELSTER-Übermittlung
 
-Jeder Vorgang und jeder Vermerk ist eine ELSTER-Übermittlung. Die Liste steht unter „ELSTER-Übermittlung“, die Übermittlungen einer Meldung stehen an der Meldung unter „Verknüpfungen“.
+Jeder Vorgang und jeder Vermerk ist eine ELSTER-Übermittlung. Die Liste steht unter „ELSTER-Übermittlung“, die Übermittlungen eines Belegs stehen am Beleg unter „Verknüpfungen“. Eine ELSTER-Übermittlung nennt ihren Beleg mit Dokumententyp und Dokument. Übermittlungen aus Versionen bis 0.2, die nur eine Umsatzsteuer-Voranmeldung nennen konnten, ordnet `bench migrate` einmal ihrer Voranmeldung zu.
 
 | Feld | Inhalt |
 |---|---|
-| Umsatzsteuer-Voranmeldung, Unternehmen | die Meldung und ihr Unternehmen |
+| Dokumententyp, Dokument, Unternehmen | der Beleg, eine Umsatzsteuer-Voranmeldung oder eine Dauerfristverlängerung, und sein Unternehmen |
 | Vorgang | Prüfen, Testsenden, Senden oder Außerhalb abgegeben |
 | Status | Läuft, Erfolgreich, Fehlgeschlagen oder Unbekannt |
 | Ergebnis laut ERiC | Gültig oder Ungültig nach Prüfen, Angenommen oder Abgelehnt nach einem Senden, Fehlgeschlagen, wenn nichts gesendet wurde, Unbekannt, wenn offen ist, ob ein Senden angekommen ist |
@@ -112,7 +125,7 @@ Eine ELSTER-Übermittlung schreibt nur der Server, danach lässt sie sich nicht 
 
 Jeder Lauf legt seine Dateien als private Dateien an seiner ELSTER-Übermittlung ab:
 
-- **Nutzdaten (XML):** die geprüften oder übermittelten Daten der Meldung in UTF-8, wie ERiC sie erhält.
+- **Nutzdaten (XML):** die geprüften oder übermittelten Daten der Meldung oder des Vordrucks in UTF-8, wie ERiC sie erhält.
 - **Protokoll (PDF):** bei Prüfen mit ERiC die Vorschau, bei Senden das Übermittlungsprotokoll mit Transferticket, beim simulierten Testsenden ein Platzhalter. Ein simuliertes Prüfen legt kein PDF ab.
 - **Antwort des ELSTER-Servers (XML):** die Antwort von ELSTER, wenn es eine gibt.
 

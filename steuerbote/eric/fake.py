@@ -3,10 +3,15 @@
 Without an ERiC runtime steuerbote answers with this simulation, so the whole way from the button to the
 record of the Übermittlung can be used and tested before a Hersteller-ID exists. It checks what can be
 checked without ERiC: the header of the delivery, that the Nutzdaten are XML without a DTD, with the root
-Anmeldungssteuern in the namespace of the year and the Kennzahl 83, which the Jahresdokumentation
-UStVA 2026 makes mandatory (rule 110085064), and, with the ERiC documentation at hand, the Nutzdaten
-against UStVA-<Jahr>.xsd of Datenarten/ElsterAnmeldung/UStVA/Schema/<Jahr>/. The variable
-STEUERBOTE_ERIC_DOC_DIR names the unzipped documentation package or its directory Dokumentation.
+Anmeldungssteuern in the namespace of the year, and, with the ERiC documentation at hand, the Nutzdaten against
+UStVA-<Jahr>.xsd of Datenarten/ElsterAnmeldung/UStVA/Schema/<Jahr>/. The variable STEUERBOTE_ERIC_DOC_DIR names
+the unzipped documentation package or its directory Dokumentation.
+
+The Datenart UStVA holds form USt 1 H next to the Voranmeldung (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 2-13),
+and the schema leaves the rules that tie its elements together to ERiC. Of these the simulation checks those
+on the structure, from the sheet "Anmeldungssteuern - Regeln" of the Jahresdokumentation UStVA 2026: the
+Steuerfall holds exactly one of the three contexts (110085099), each context the fields it requires (CONTEXTS),
+and a context's Jahr is the year of the Datenart (110085047, 110085130, 110085131).
 
 A test send or send that passes answers with a Transferticket "SIM-" and the first 28 hexadecimal digits
 of the SHA-256 of the Nutzdaten, a form no Transferticket of ERiC has, and with a one-page PDF saying that
@@ -19,6 +24,8 @@ import hashlib
 import os
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
+from typing import NamedTuple
 from xml.etree import ElementTree
 
 from steuerbote.eric.header import EnvelopeHeader, datenart, problems, without_declaration
@@ -34,7 +41,69 @@ PDF_TITLE = "Simulation, keine Übermittlung"
 SIMULATION_NOTICE = Message(
 	"SIM-000", "Simulationsmodus: ERiC ist nicht eingerichtet, es wird nichts an ELSTER übermittelt.", HINT
 )
-STRUCTURE_ONLY = "Die Simulation prüft nur Aufbau, Wurzelelement und Kennzahl 83, nicht das XSD des Jahres {year}: {reason}"
+STRUCTURE_ONLY = (
+	"Die Simulation prüft nur Aufbau, Kontext und Pflichtfelder, nicht das XSD des Jahres {year}: {reason}"
+)
+
+
+class Required(NamedTuple):
+	"""A field a context requires, with the Fehlercode of its rule and what the message says."""
+
+	element: str
+	code: str
+	text: str
+
+
+class Context(NamedTuple):
+	"""What the simulation checks of a context of the Steuerfall and how its protocol names it.
+
+	``year_rule`` is the Fehlercode of the rule that the Jahr is the year of the Datenart, ``form`` the name of
+	form USt 1 H for a context of it, None for the Voranmeldung.
+	"""
+
+	required: tuple[Required, ...]
+	year_rule: str
+	form: str | None = None
+
+
+_JAHR = Required("Jahr", "110085048", "Das Jahr ist ein Pflichtfeld")
+_STEUERNUMMER = Required("Steuernummer", "110085044", "Die Steuernummer ist ein Pflichtfeld")
+_HERSTELLER_ID = Required("Kz09", "110085045", "Die Kennzahl 09, die Hersteller-ID, ist ein Pflichtfeld")
+CONTEXTS: MappingProxyType[str, Context] = MappingProxyType(
+	{
+		"Umsatzsteuervoranmeldung": Context(
+			(
+				Required(
+					"Kz83",
+					"110085064",
+					"Die Kennzahl 83, der verbleibende Betrag der Anmeldung, ist ein Pflichtfeld",
+				),
+			),
+			"110085047",
+		),
+		"Dauerfristverlaengerung": Context(
+			(_JAHR, _STEUERNUMMER, _HERSTELLER_ID), "110085130", "Antrag auf Dauerfristverlängerung"
+		),
+		"Umsatzsteuersondervorauszahlung": Context(
+			(
+				_JAHR,
+				_STEUERNUMMER,
+				_HERSTELLER_ID,
+				Required(
+					"Kz38",
+					"110085143",
+					"Die Kennzahl 38, die Sondervorauszahlung, ist ein Pflichtfeld, gegebenenfalls 0",
+				),
+			),
+			"110085131",
+			"Anmeldung der Sondervorauszahlung",
+		),
+	}
+)
+ONE_CONTEXT = (
+	"Der Steuerfall enthält genau einen der Kontexte Umsatzsteuervoranmeldung, Dauerfristverlaengerung und "
+	"Umsatzsteuersondervorauszahlung (Regel 110085099)."
+)
 
 
 class Simulation:
@@ -49,9 +118,9 @@ class Simulation:
 		errors = list(problems(header, operation))
 		if not errors:
 			year = datenart(header.datenart_version).year
-			root, structure = _structure(nutzdaten_xml, year)
+			context, structure = _structure(nutzdaten_xml, year)
 			errors.extend(structure)
-			if root is not None and not structure:
+			if not structure:
 				schema_errors, unchecked = self._schema_errors(without_declaration(nutzdaten_xml), year)
 				errors.extend(schema_errors)
 				if unchecked:
@@ -73,7 +142,7 @@ class Simulation:
 			return TransmissionResult(operation, True, True, SIMULATED_VERSION, None, None, tuple(messages))
 		digest = hashlib.sha256(nutzdaten_xml.encode()).hexdigest()
 		ticket = TICKET_PREFIX + digest[:28]
-		pdf = placeholder_pdf(PDF_TITLE, _protocol_lines(operation, header, root, year, ticket, digest))
+		pdf = placeholder_pdf(PDF_TITLE, _protocol_lines(operation, header, context, year, ticket, digest))
 		return TransmissionResult(
 			operation, True, True, SIMULATED_VERSION, ticket, testmerker, tuple(messages), protocol_pdf=pdf
 		)
@@ -140,6 +209,7 @@ def placeholder_pdf(title: str, lines: Sequence[str]) -> bytes:
 
 
 def _structure(nutzdaten_xml: str, year: int) -> tuple[ElementTree.Element | None, list[Message]]:
+	"""The one context of the Nutzdaten, or the errors of their structure."""
 	text = without_declaration(nutzdaten_xml)
 	if "<!DOCTYPE" in text:
 		return None, [Message("SIM-002", "Die Nutzdaten dürfen keine DTD enthalten.", ERROR)]
@@ -149,7 +219,7 @@ def _structure(nutzdaten_xml: str, year: int) -> tuple[ElementTree.Element | Non
 		return None, [Message("SIM-002", f"Die Nutzdaten sind kein wohlgeformtes XML: {error}.", ERROR)]
 	namespace = NAMESPACE.format(year=year)
 	if root.tag != f"{{{namespace}}}Anmeldungssteuern":
-		return root, [
+		return None, [
 			Message(
 				"SIM-003",
 				f"Die Nutzdaten beginnen nicht mit Anmeldungssteuern im Namensraum {namespace}.",
@@ -157,22 +227,36 @@ def _structure(nutzdaten_xml: str, year: int) -> tuple[ElementTree.Element | Non
 				"Anmeldungssteuern",
 			)
 		]
-	if root.find(f".//{{{namespace}}}Kz83") is None:
-		return root, [
-			Message(
-				"SIM-004",
-				"Die Kennzahl 83, der verbleibende Betrag der Anmeldung, ist ein Pflichtfeld (Regel 110085064).",
-				ERROR,
-				"Kz83",
-			)
-		]
-	return root, []
+	contexts = [
+		child
+		for steuerfall in root.iterfind(f"{{{namespace}}}Steuerfall")
+		for child in steuerfall
+		if _local_name(child) in CONTEXTS
+	]
+	if len(contexts) != 1:
+		return None, [Message("SIM-006", ONE_CONTEXT, ERROR, "Steuerfall")]
+	(context,) = contexts
+	rules = CONTEXTS[_local_name(context)]
+	for field in rules.required:
+		if context.find(f"{{{namespace}}}{field.element}") is None:
+			return None, [Message("SIM-004", f"{field.text} (Regel {field.code}).", ERROR, field.element)]
+	jahr = context.findtext(f"{{{namespace}}}Jahr")
+	if jahr is not None and jahr.strip() != str(year):
+		wrong_year = (
+			f"Das Jahr {jahr.strip()} ist nicht das Jahr der Datenart, {year} (Regel {rules.year_rule})."
+		)
+		return None, [Message("SIM-007", wrong_year, ERROR, "Jahr")]
+	return context, []
+
+
+def _local_name(element: ElementTree.Element) -> str:
+	return element.tag.rpartition("}")[2]
 
 
 def _protocol_lines(
 	operation: Operation,
 	header: EnvelopeHeader,
-	root: ElementTree.Element,
+	context: ElementTree.Element,
 	year: int,
 	ticket: str,
 	digest: str,
@@ -180,15 +264,20 @@ def _protocol_lines(
 	namespace = NAMESPACE.format(year=year)
 
 	def value(name: str) -> str:
-		return root.findtext(f".//{{{namespace}}}{name}", default="").strip()
+		return context.findtext(f"{{{namespace}}}{name}", default="").strip()
 
+	form = CONTEXTS[_local_name(context)].form
+	if form is None:
+		filing = [f"Zeitraum: {value('Zeitraum')}/{value('Jahr')}", f"Kennzahl 83: {value('Kz83')}"]
+	else:
+		kz38 = [f"Kennzahl 38: {value('Kz38')}"] if context.find(f"{{{namespace}}}Kz38") is not None else []
+		filing = [f"Vordruck: {form} {value('Jahr')}", *kz38]
 	return [
 		"Diese Übermittlung wurde nur simuliert. Es wurde nichts an ELSTER übermittelt.",
 		"",
 		f"Vorgang: {'Testsenden' if operation is Operation.TEST_SEND else 'Senden'}",
 		f"Datenart: {header.datenart_version}",
-		f"Zeitraum: {value('Zeitraum')}/{value('Jahr')}",
-		f"Kennzahl 83: {value('Kz83')}",
+		*filing,
 		f"Transferticket (simuliert): {ticket}",
 		f"SHA-256 der Nutzdaten: {digest}",
 		f"{header.produkt_name} {header.produkt_version}",

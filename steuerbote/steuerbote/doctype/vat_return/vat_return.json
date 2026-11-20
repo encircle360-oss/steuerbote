@@ -341,13 +341,8 @@
   }
  ],
  "is_submittable": 1,
- "links": [
-  {
-   "link_doctype": "ELSTER Transmission",
-   "link_fieldname": "vat_return"
-  }
- ],
- "modified": "2026-11-18 14:00:00.000000",
+ "links": [],
+ "modified": "2026-11-20 23:30:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return",

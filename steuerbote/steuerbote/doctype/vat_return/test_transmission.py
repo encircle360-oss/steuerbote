@@ -1,9 +1,8 @@
 """Prüfen, Testsenden, Senden, the notes of a filing outside Steuerbote and the filing state of a period.
 
 The XML of steuerbote.elster, the header, the store of certificate and password and the simulation run for
-real. FakeEric replaces the two calls of transmission_adapter that need an installed ERiC, the worker and
-the runtime directory, with results of steuerbote.eric.result. With the stub of the ERiC library, which the
-CI builds, a runtime installs from an archive and the worker sends through it.
+real; FakeEric of steuerbote/tests/transmitting.py stands in for an installed ERiC. With the stub of the ERiC
+library, which the CI builds, a runtime installs from an archive and the worker sends through it.
 """
 
 import base64
@@ -21,39 +20,49 @@ from typing import ClassVar
 from unittest.mock import patch
 
 import frappe
+from frappe.desk.form.meta import get_meta as get_form_meta
+from frappe.desk.notifications import get_open_count
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, getdate, today
 
 import steuerbote
 from steuerbote.eric import runtime as eric_runtime
 from steuerbote.eric import secrets, service
-from steuerbote.eric.fake import placeholder_pdf
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import (
 	ERROR,
-	TESTMERKER,
 	UNKNOWN_MESSAGE,
 	Message,
 	Operation,
 	Outcome,
 	TransmissionResult,
 )
-from steuerbote.eric.runtime import RuntimeInfo
 from steuerbote.eric.service import PrivacyNoticeNotConfirmed, WorkerOutput
 from steuerbote.eric.tests import stub
+from steuerbote.steuerbote.doctype.elster_transmission.transmission import stash_certificate
 from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root, run_installation
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
-from steuerbote.steuerbote.doctype.vat_return.vat_return import (
-	VATReturn,
-	run_transmission,
-	stash_certificate,
-)
+from steuerbote.steuerbote.doctype.vat_return.vat_return import VATReturn
 from steuerbote.tests.helpers import (
 	make_account,
 	make_company,
 	make_mapping,
 	make_settings,
+	make_user,
 	post_journal_entry,
+)
+from steuerbote.tests.transmitting import (
+	CERTIFICATE,
+	DATENLIEFERANT,
+	IS_JOB_ENQUEUED,
+	JOB,
+	PIN,
+	PROTOCOL,
+	RUNTIME,
+	TICKET,
+	TRANSMISSION,
+	FakeEric,
+	Transmitting,
 )
 
 COMPANY = "Steuerbote Test Uebermittlung GmbH"
@@ -68,21 +77,11 @@ DATENLIEFERANT_ADDRESS = {
 	"city": "München",
 }
 ACCOUNTS_USER = "steuerbote-uebermittlung@example.com"
-JOB = "steuerbote.steuerbote.doctype.vat_return.vat_return.run_transmission"
-JOB_ARGUMENTS = ("name", "operation", "token", "transmission")
-TRANSMISSION = "ELSTER Transmission"
-DATENLIEFERANT = "Steuerbote Test Uebermittlung GmbH; Erika Beispiel; 089 1234567; erika@example.org"
-# Invented for the tests, like every certificate and password here.
-CERTIFICATE = b"0\x82\x01\x00 invented PKCS #12 \x00\x01\x02"
-PIN = "Geheim-PIN-2026"
-TICKET = "et0123456789abcdef"
 # The form of TransferTicketSType in headerbasis_datentypen.xsd, invented.
 MEIN_ELSTER_TICKET = "ab123cdefghijkmnopqrstuvwxyz0123"
 NOTE = "Am 9. Oktober 2026 von der Steuerberatung abgegeben"
-IS_JOB_ENQUEUED = "steuerbote.steuerbote.doctype.vat_return.vat_return.is_job_enqueued"
 STUB_TICKET = "et0stub0accepted0000000000000001"
 STUB_LIB = "ERiC-44.3.6.0/Linux-x86_64/lib"
-PROTOCOL = placeholder_pdf("Übertragungsprotokoll", ["Erfunden für die Tests"])
 
 ACCOUNTS = {
 	"8400": ("Erlöse 19 % USt", "Income"),
@@ -97,81 +96,8 @@ ACCOUNTS = {
 	"1400": ("Forderungen aus Lieferungen und Leistungen", "Asset"),
 }
 
-RUNTIME = RuntimeInfo(
-	"44.3.6.0",
-	Path("/srv/eric/44.3.6.0/lib"),
-	Path("/srv/eric/44.3.6.0/lib"),
-	Path("/srv/eric/log"),
-	"",
-)
 
-
-class FakeEric:
-	"""Stands in for the worker and the runtime directory of steuerbote.eric and keeps what it was given."""
-
-	def __init__(
-		self,
-		*,
-		outcome: Outcome | None = None,
-		messages: tuple[Message, ...] = (),
-		error: Exception | None = None,
-	):
-		self.outcome = outcome
-		self.messages = messages
-		self.error = error
-		self.runs: list[dict] = []
-		self.detections: list[tuple] = []
-
-	def patch(self):
-		return patch.multiple(transmission_adapter, run=self.run, detect_runtime=self.detect_runtime)
-
-	def detect_runtime(self, year, operation, hersteller_id, log_dir):
-		self.detections.append((year, operation, hersteller_id, log_dir))
-		return replace(RUNTIME, hersteller_id=hersteller_id, log_dir=log_dir)
-
-	def run(self, operation, nutzdaten_xml, header, runtime_info, certificate_secret, certificate_password):
-		self.runs.append(
-			{
-				"operation": operation,
-				"nutzdaten": nutzdaten_xml,
-				"header": header,
-				"runtime": runtime_info,
-				"certificate": certificate_secret,
-				"password": certificate_password,
-			}
-		)
-		if self.error:
-			raise self.error
-		outcome = self.outcome or (Outcome.ACCEPTED if operation.sends else Outcome.VALID)
-		return TransmissionResult(
-			operation,
-			outcome.ok,
-			runtime_info is None,
-			RUNTIME.version,
-			TICKET if outcome is Outcome.ACCEPTED else None,
-			TESTMERKER if operation is Operation.TEST_SEND else None,
-			self.messages,
-			PROTOCOL,
-			"<Elster/>" if operation.sends else None,
-			outcome,
-		)
-
-
-def make_user(email: str, role: str) -> str:
-	if not frappe.db.exists("User", email):
-		frappe.get_doc(
-			{
-				"doctype": "User",
-				"email": email,
-				"first_name": "Steuerbote",
-				"send_welcome_email": 0,
-				"roles": [{"role": role}],
-			}
-		).insert(ignore_permissions=True)
-	return email
-
-
-class TransmissionTestCase(IntegrationTestCase):
+class TransmissionTestCase(Transmitting, IntegrationTestCase):
 	"""A company that files monthly, with ERiC Settings that simulate unless use_runtime() sets them up."""
 
 	company = COMPANY
@@ -192,40 +118,6 @@ class TransmissionTestCase(IntegrationTestCase):
 		make_mapping(cls.company)
 		make_user(ACCOUNTS_USER, "Accounts User")
 
-	def setUp(self):
-		super().setUp()
-		self.eric_settings()
-
-	def eric_settings(self, **values):
-		"""Without values the ERiC Settings simulate; use_runtime() configures a runtime."""
-		settings = frappe.get_single("ERiC Settings")
-		settings.update(
-			{
-				"hersteller_id": "",
-				"datenlieferant": "",
-				"produkt_name": "steuerbote",
-				"installed_version": "",
-				"lib_dir": "",
-				"log_dir": "",
-				"privacy_notice_confirmed": 0,
-				**values,
-			}
-		)
-		settings.save()
-
-	def use_runtime(self, **values):
-		self.eric_settings(
-			**{
-				"hersteller_id": "12345",
-				"datenlieferant": DATENLIEFERANT,
-				"installed_version": RUNTIME.version,
-				"lib_dir": str(RUNTIME.lib_dir),
-				"log_dir": str(RUNTIME.log_dir),
-				"privacy_notice_confirmed": 1,
-				**values,
-			}
-		)
-
 	def new_return(self, period: int, company: str | None = None, **fields):
 		return frappe.get_doc(
 			{
@@ -243,46 +135,6 @@ class TransmissionTestCase(IntegrationTestCase):
 		doc.calculate()
 		doc.reload()
 		return doc
-
-	def stash(self) -> str:
-		return stash_certificate(base64.b64encode(CERTIFICATE).decode(), PIN)
-
-	def transmit(self, doc, operation: str, token: str | None = None):
-		with patch("frappe.enqueue") as enqueue:
-			name = doc.transmit(operation, token)
-		return name, enqueue
-
-	def run_job(self, enqueue, fake: FakeEric | None = None):
-		"""Run the job enqueued; without a fake through the real service, whose run is recorded."""
-		(call,) = enqueue.call_args_list
-		calls = (
-			fake.patch()
-			if fake
-			else patch.object(transmission_adapter, "run", wraps=transmission_adapter.run)
-		)
-		with calls as run, patch("frappe.publish_realtime") as publish:
-			run_transmission(**{key: call.kwargs[key] for key in JOB_ARGUMENTS})
-		return publish, run
-
-	def transmitted(self, doc, operation: str, fake: FakeEric | None = None, token: str | None = None):
-		name, enqueue = self.transmit(doc, operation, token)
-		publish, run = self.run_job(enqueue, fake)
-		doc.reload()
-		return frappe.get_doc(TRANSMISSION, name), publish, run
-
-	def attachment(self, transmission, fieldname: str):
-		name = frappe.db.get_value(
-			"File",
-			{
-				"attached_to_doctype": TRANSMISSION,
-				"attached_to_name": transmission.name,
-				"attached_to_field": fieldname,
-			},
-		)
-		return frappe.get_doc("File", name)
-
-	def codes(self, transmission) -> list[str]:
-		return [row.code for row in transmission.messages]
 
 
 class TestTransmission(TransmissionTestCase):
@@ -312,7 +164,8 @@ class TestTransmission(TransmissionTestCase):
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (0, "Bereit", 0))
 		self.assertEqual(
 			(
-				transmission.vat_return,
+				transmission.document_type,
+				transmission.document,
 				transmission.company,
 				transmission.operation,
 				transmission.status,
@@ -324,6 +177,7 @@ class TestTransmission(TransmissionTestCase):
 				transmission.user,
 			),
 			(
+				"VAT Return",
 				doc.name,
 				COMPANY,
 				"validate",
@@ -374,7 +228,8 @@ class TestTransmission(TransmissionTestCase):
 			(
 				"steuerbote_elster_transmission",
 				{
-					"vat_return": doc.name,
+					"document_type": "VAT Return",
+					"document": doc.name,
 					"transmission": transmission.name,
 					"operation": "validate",
 					"status": "Erfolgreich",
@@ -401,7 +256,9 @@ class TestTransmission(TransmissionTestCase):
 		with patch("frappe.enqueue") as enqueue, self.assertRaisesRegex(frappe.ValidationError, "simulation"):
 			doc.transmit("send")
 		enqueue.assert_not_called()
-		self.assertFalse(frappe.db.exists(TRANSMISSION, {"vat_return": doc.name}))
+		self.assertFalse(
+			frappe.db.exists(TRANSMISSION, {"document_type": "VAT Return", "document": doc.name})
+		)
 
 	def test_an_unknown_operation_is_refused(self):
 		doc = self.calculated(2)
@@ -589,7 +446,7 @@ class TestTransmission(TransmissionTestCase):
 		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "transmission_in_progress"), 1)
 		self.assertEqual(frappe.db.get_value(TRANSMISSION, name, "status"), "Läuft")
 		with (
-			patch("steuerbote.steuerbote.doctype.vat_return.vat_return.is_job_enqueued", return_value=True),
+			patch(IS_JOB_ENQUEUED, return_value=True),
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaisesRegex(frappe.ValidationError, "running"),
 		):
@@ -606,7 +463,7 @@ class TestTransmission(TransmissionTestCase):
 	def test_a_check_whose_job_is_gone_is_closed_as_failed(self):
 		doc = self.calculated(8)
 		first, _ = self.transmit(doc, "validate")
-		with patch("steuerbote.steuerbote.doctype.vat_return.vat_return.is_job_enqueued", return_value=False):
+		with patch(IS_JOB_ENQUEUED, return_value=False):
 			second, enqueue = self.transmit(doc, "validate")
 		enqueue.assert_called_once()
 		stale = frappe.get_doc(TRANSMISSION, first)
@@ -620,7 +477,7 @@ class TestTransmission(TransmissionTestCase):
 		doc = self.calculated(11)
 		first, _ = self.transmit(doc, "send", self.stash())
 		with (
-			patch("steuerbote.steuerbote.doctype.vat_return.vat_return.is_job_enqueued", return_value=False),
+			patch(IS_JOB_ENQUEUED, return_value=False),
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaisesRegex(frappe.ValidationError, f"Whether {first} reached ELSTER"),
 		):
@@ -653,14 +510,15 @@ class TestTransmission(TransmissionTestCase):
 		transmission = frappe.get_doc(TRANSMISSION, name)
 		self.assertEqual(
 			(
-				transmission.vat_return,
+				transmission.document_type,
+				transmission.document,
 				transmission.operation,
 				transmission.status,
 				transmission.simulated,
 				transmission.remarks,
 				transmission.user,
 			),
-			(doc.name, "extern", "Erfolgreich", 0, note, "Administrator"),
+			("VAT Return", doc.name, "extern", "Erfolgreich", 0, note, "Administrator"),
 		)
 		with self.assertRaisesRegex(frappe.ValidationError, "draft"):
 			doc.mark_filed_outside(note)
@@ -673,8 +531,46 @@ class TestTransmission(TransmissionTestCase):
 			doc.mark_filed_outside("  ")
 		with self.assertRaisesRegex(frappe.ValidationError, "Calculate"):
 			doc.mark_filed_outside("In Mein ELSTER übermittelt")
-		self.assertFalse(frappe.db.exists(TRANSMISSION, {"vat_return": doc.name}))
+		self.assertFalse(
+			frappe.db.exists(TRANSMISSION, {"document_type": "VAT Return", "document": doc.name})
+		)
 		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "docstatus"), 0)
+
+	def test_the_return_lists_its_transmissions_under_its_connections(self):
+		doc = self.calculated(2)
+		first, _, _ = self.transmitted(doc, "validate")
+		second, _, _ = self.transmitted(doc, "test_send")
+		data = frappe.get_meta("VAT Return").get_dashboard_data()
+		self.assertEqual(
+			(data.fieldname, data.dynamic_links, [group["items"] for group in data.transactions]),
+			("document", {"document": ["VAT Return", "document_type"]}, [["ELSTER Transmission"]]),
+		)
+		(links,) = get_open_count("VAT Return", doc.name)["count"]["external_links_found"]
+		self.assertEqual((links["doctype"], links["count"]), (TRANSMISSION, 2))
+		self.assertEqual(
+			sorted(frappe.get_all(TRANSMISSION, filters={"document": doc.name}, pluck="name")),
+			sorted([first.name, second.name]),
+		)
+
+	def test_the_form_brings_the_dialog_the_transmissions_share(self):
+		script = get_form_meta("VAT Return", cached=False).get("__js")
+		self.assertIn("function ask_for_certificate(frm, operation, title, texts) {", script)
+		self.assertIn("add_transmission_buttons(frm, group, return_texts());", script)
+		self.assertNotIn("{% include", script)
+
+	def test_a_transmission_names_a_document_that_files_through_eric(self):
+		transmission = frappe.get_doc(
+			{
+				"doctype": TRANSMISSION,
+				"document_type": "Company",
+				"document": COMPANY,
+				"company": COMPANY,
+				"operation": "validate",
+				"status": "Läuft",
+			}
+		)
+		with self.assertRaisesRegex(frappe.ValidationError, "no document of type Company"):
+			transmission.insert(ignore_permissions=True)
 
 	def test_a_transmission_stays_as_it_was_recorded(self):
 		doc = self.calculated(1)
@@ -861,7 +757,9 @@ class TestFilingState(TransmissionTestCase):
 			with self.subTest(values=values), self.assertRaisesRegex(frappe.ValidationError, message):
 				doc.mark_filed_outside(**values)
 		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "docstatus"), 0)
-		self.assertFalse(frappe.db.exists(TRANSMISSION, {"vat_return": doc.name}))
+		self.assertFalse(
+			frappe.db.exists(TRANSMISSION, {"document_type": "VAT Return", "document": doc.name})
+		)
 
 	def test_the_form_releases_a_lock_whose_job_is_gone(self):
 		self.use_runtime()

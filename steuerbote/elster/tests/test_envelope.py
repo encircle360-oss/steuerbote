@@ -1,11 +1,15 @@
 from unittest import TestCase
 
+from lxml import etree
+
 from steuerbote import __version__
-from steuerbote.elster import ustva_xml
-from steuerbote.elster.envelope import to_envelope, transfer_datenlieferant
+from steuerbote.elster import ust1h_xml, ustva_xml
+from steuerbote.elster.envelope import envelope_of, to_envelope, transfer_datenlieferant
 from steuerbote.elster.tests.examples import (
 	CREATED,
 	FIXTURES,
+	anmeldung,
+	antrag,
 	children,
 	elements,
 	filer,
@@ -88,6 +92,51 @@ class EnvelopeTest(TestCase):
 		self.assertIn(
 			("NutzdatenTicket", "x" * 32), header(envelope(nutzdaten_ticket="x" * 32), "NutzdatenHeader")
 		)
+
+
+class Ust1HEnvelopeTest(TestCase):
+	"""Form USt 1 H travels in the same envelope as the Voranmeldung, as the Datenart UStVA (HB table 2-13)."""
+
+	def envelope(self, filing, **arguments) -> bytes:
+		values: dict = {"hersteller_id": "12345", "testmerker": True, "produkt_version": "0.1.0", **arguments}
+		nutzdaten = ust1h_xml.build(filer(**CONTACT), filing, CREATED, values["hersteller_id"])
+		return envelope_of(nutzdaten, filer(**CONTACT), **values)
+
+	def test_names_the_verfahren_datenart_and_vorgang_of_the_voranmeldung(self):
+		for filing in (antrag(), anmeldung()):
+			with self.subTest(context=filing.context):
+				self.assertEqual(
+					header(self.envelope(filing), "TransferHeader")[:5],
+					header(envelope(), "TransferHeader")[:5],
+				)
+				self.assertEqual(
+					header(self.envelope(filing, testmerker=False), "TransferHeader")[:4],
+					[
+						("Verfahren", "ElsterAnmeldung"),
+						("DatenArt", "UStVA"),
+						("Vorgang", "send-Auth"),
+						("HerstellerID", "12345"),
+					],
+				)
+
+	def test_sends_to_the_bundesfinanzamtsnummer_of_the_steuernummer(self):
+		(empfaenger,) = parse(self.envelope(anmeldung())).iter("{*}Empfaenger")
+		self.assertEqual((empfaenger.get("id"), empfaenger.text), ("F", "9198"))
+
+	def test_carries_the_nutzdaten_of_the_form(self):
+		(nutzdaten,) = parse(self.envelope(anmeldung())).iter("{*}Nutzdaten")
+		(anmeldungssteuern,) = nutzdaten
+		ours = ust1h_xml.build(filer(**CONTACT), anmeldung(), CREATED, "12345")
+		self.assertEqual(
+			etree.tostring(anmeldungssteuern, method="c14n2", strip_text=True),
+			etree.tostring(ours, method="c14n2", strip_text=True),
+		)
+
+	def test_refuses_an_hersteller_id_of_another_shape(self):
+		nutzdaten = ust1h_xml.build(filer(), antrag(), CREATED, "12345")
+		with self.assertRaises(XmlError) as raised:
+			envelope_of(nutzdaten, filer(), hersteller_id="74931", testmerker=True)
+		self.assertEqual(raised.exception.template, ustva_xml.ILLUSTRATION_HERSTELLER_ID)
 
 
 class TransferDatenlieferantTest(TestCase):

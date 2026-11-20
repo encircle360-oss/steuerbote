@@ -27,6 +27,33 @@ NUTZDATEN = (
 	"\t</Steuerfall>\n"
 	"</Anmeldungssteuern>\n"
 )
+# Form USt 1 H as ERiC takes it in the Datenart UStVA: the Anmeldung der Sondervorauszahlung of a monthly filer and
+# the Antrag auf Dauerfristverlängerung of a quarterly one, each the one context of its Steuerfall.
+ANMELDUNG = (
+	f'<Anmeldungssteuern xmlns="{NAMESPACE}" version="2026">\n'
+	"\t<Erstellungsdatum>20261118</Erstellungsdatum>\n"
+	"\t<Steuerfall>\n"
+	"\t\t<Umsatzsteuersondervorauszahlung>\n"
+	"\t\t\t<Jahr>2026</Jahr>\n"
+	"\t\t\t<Steuernummer>9198011310010</Steuernummer>\n"
+	"\t\t\t<Kz09>00000</Kz09>\n"
+	"\t\t\t<Kz38>4000</Kz38>\n"
+	"\t\t</Umsatzsteuersondervorauszahlung>\n"
+	"\t</Steuerfall>\n"
+	"</Anmeldungssteuern>\n"
+)
+ANTRAG = (
+	f'<Anmeldungssteuern xmlns="{NAMESPACE}" version="2026">\n'
+	"\t<Erstellungsdatum>20261118</Erstellungsdatum>\n"
+	"\t<Steuerfall>\n"
+	"\t\t<Dauerfristverlaengerung>\n"
+	"\t\t\t<Jahr>2026</Jahr>\n"
+	"\t\t\t<Steuernummer>9198011310010</Steuernummer>\n"
+	"\t\t\t<Kz09>00000</Kz09>\n"
+	"\t\t</Dauerfristverlaengerung>\n"
+	"\t</Steuerfall>\n"
+	"</Anmeldungssteuern>\n"
+)
 HEADER = EnvelopeHeader(
 	hersteller_id="00000",
 	datenlieferant="Beispiel GmbH",
@@ -51,7 +78,7 @@ SCHEMA = f"""<?xml version="1.0" encoding="UTF-8"?>
 				<xs:element name="Steuerfall">
 					<xs:complexType>
 						<xs:sequence>
-							<xs:element name="Umsatzsteuervoranmeldung">
+							<xs:element name="Umsatzsteuervoranmeldung" minOccurs="0">
 								<xs:complexType>
 									<xs:sequence>
 										<xs:element name="Jahr" type="xs:gYear"/>
@@ -59,6 +86,25 @@ SCHEMA = f"""<?xml version="1.0" encoding="UTF-8"?>
 										<xs:element name="Steuernummer" type="xs:string"/>
 										<xs:element name="Kz81" type="xs:integer" minOccurs="0"/>
 										<xs:element name="Kz83" type="xs:decimal" minOccurs="0"/>
+									</xs:sequence>
+								</xs:complexType>
+							</xs:element>
+							<xs:element name="Dauerfristverlaengerung" minOccurs="0">
+								<xs:complexType>
+									<xs:sequence>
+										<xs:element name="Jahr" type="xs:gYear"/>
+										<xs:element name="Steuernummer" type="xs:string"/>
+										<xs:element name="Kz09" type="xs:string"/>
+									</xs:sequence>
+								</xs:complexType>
+							</xs:element>
+							<xs:element name="Umsatzsteuersondervorauszahlung" minOccurs="0">
+								<xs:complexType>
+									<xs:sequence>
+										<xs:element name="Jahr" type="xs:gYear"/>
+										<xs:element name="Steuernummer" type="xs:string"/>
+										<xs:element name="Kz09" type="xs:string"/>
+										<xs:element name="Kz38" type="xs:nonNegativeInteger" minOccurs="0"/>
 									</xs:sequence>
 								</xs:complexType>
 							</xs:element>
@@ -190,6 +236,95 @@ class SchemaTest(SimulationTestCase):
 		result = simulation.run(Operation.VALIDATE, nutzdaten, HEADER)
 		self.assertIs(result.outcome, Outcome.INVALID)
 		self.assertNotIn("geheim", " ".join(message.text for message in result.messages))
+
+
+class Ust1HTest(SimulationTestCase):
+	"""Form USt 1 H, which the Datenart UStVA holds next to the Voranmeldung, with the rules of the
+	Jahresdokumentation UStVA 2026 on the contexts of its Steuerfall."""
+
+	def errors(self, result) -> list[tuple[str, str | None]]:
+		return [(message.code, message.field) for message in result.messages if message.severity == ERROR]
+
+	def test_both_contexts_are_valid(self):
+		for nutzdaten in (ANMELDUNG, ANTRAG):
+			with self.subTest(nutzdaten=nutzdaten[120:190]):
+				result = Simulation().run(Operation.VALIDATE, nutzdaten, HEADER)
+				self.assertIs(result.outcome, Outcome.VALID)
+				self.assertEqual(codes(result), ["SIM-000", "SIM-001"])
+
+	def test_validates_both_contexts_against_the_schema_of_the_documentation(self):
+		simulation = Simulation(self.documentation(self.directory / "Dokumentation"))
+		for nutzdaten in (ANMELDUNG, ANTRAG):
+			with self.subTest(nutzdaten=nutzdaten[120:190]):
+				self.assertEqual(codes(simulation.run(Operation.VALIDATE, nutzdaten, HEADER)), ["SIM-000"])
+		invalid = simulation.run(
+			Operation.VALIDATE, ANMELDUNG.replace("<Kz38>4000</Kz38>", "<Kz38>-4000</Kz38>"), HEADER
+		)
+		self.assertEqual(self.errors(invalid), [("SIM-005", None)])
+
+	def test_110085099_the_steuerfall_holds_exactly_one_context(self):
+		(antrag,) = re.findall(
+			r"\t\t<Dauerfristverlaengerung>.*</Dauerfristverlaengerung>\n", ANTRAG, re.DOTALL
+		)
+		cases = {
+			"two contexts": ANMELDUNG.replace(
+				"\t\t<Umsatzsteuersondervorauszahlung>", antrag + "\t\t<Umsatzsteuersondervorauszahlung>"
+			),
+			"no context": ANTRAG.replace(antrag, ""),
+			"no Steuerfall": NUTZDATEN.split("\t<Steuerfall>")[0] + "</Anmeldungssteuern>\n",
+		}
+		for case, nutzdaten in cases.items():
+			with self.subTest(case):
+				result = Simulation().run(Operation.VALIDATE, nutzdaten, HEADER)
+				self.assertIs(result.outcome, Outcome.INVALID)
+				self.assertEqual(self.errors(result), [("SIM-006", "Steuerfall")])
+				self.assertIn("110085099", result.messages[-1].text)
+
+	def test_110085143_kz38_is_mandatory_in_the_anmeldung(self):
+		missing = ANMELDUNG.replace("\t\t\t<Kz38>4000</Kz38>\n", "")
+		result = Simulation().run(Operation.VALIDATE, missing, HEADER)
+		self.assertIs(result.outcome, Outcome.INVALID)
+		self.assertEqual(self.errors(result), [("SIM-004", "Kz38")])
+		self.assertIn("110085143", result.messages[-1].text)
+		zero = ANMELDUNG.replace("<Kz38>4000</Kz38>", "<Kz38>0</Kz38>")
+		self.assertTrue(Simulation().run(Operation.VALIDATE, zero, HEADER).ok)
+
+	def test_jahr_steuernummer_and_kz09_are_mandatory_in_both_contexts(self):
+		for field, code in (("Jahr", "110085048"), ("Steuernummer", "110085044"), ("Kz09", "110085045")):
+			for nutzdaten in (ANMELDUNG, ANTRAG):
+				with self.subTest(field=field, nutzdaten=nutzdaten[120:190]):
+					missing = re.sub(rf"\t\t\t<{field}>[^<]*</{field}>\n", "", nutzdaten)
+					result = Simulation().run(Operation.VALIDATE, missing, HEADER)
+					self.assertIs(result.outcome, Outcome.INVALID)
+					self.assertEqual(self.errors(result), [("SIM-004", field)])
+					self.assertIn(code, result.messages[-1].text)
+
+	def test_jahr_is_the_year_of_the_datenart(self):
+		for nutzdaten, code in ((ANTRAG, "110085130"), (ANMELDUNG, "110085131"), (NUTZDATEN, "110085047")):
+			with self.subTest(code=code):
+				result = Simulation().run(
+					Operation.VALIDATE, nutzdaten.replace("<Jahr>2026</Jahr>", "<Jahr>2025</Jahr>"), HEADER
+				)
+				self.assertIs(result.outcome, Outcome.INVALID)
+				self.assertEqual(self.errors(result), [("SIM-007", "Jahr")])
+				self.assertIn(code, result.messages[-1].text)
+
+	def test_a_test_send_of_the_anmeldung_names_the_form_and_kz38_in_its_protocol(self):
+		result = Simulation().run(Operation.TEST_SEND, ANMELDUNG, TEST_HEADER)
+		self.assertIs(result.outcome, Outcome.ACCEPTED)
+		self.assertEqual(result.transferticket, "SIM-" + hashlib.sha256(ANMELDUNG.encode()).hexdigest()[:28])
+		self.assertIn(b"Vordruck: Anmeldung der Sondervorauszahlung 2026", result.protocol_pdf)
+		self.assertIn(b"Kennzahl 38: 4000", result.protocol_pdf)
+		self.assertIn(b"Vorgang: Testsenden", result.protocol_pdf)
+		self.assertNotIn(b"Zeitraum", result.protocol_pdf)
+
+	def test_a_send_of_the_antrag_names_the_form_in_its_protocol(self):
+		result = Simulation().run(Operation.SEND, ANTRAG, HEADER)
+		self.assertIs(result.outcome, Outcome.ACCEPTED)
+		self.assertIn(
+			"Vordruck: Antrag auf Dauerfristverlängerung 2026".encode("cp1252"), result.protocol_pdf
+		)
+		self.assertNotIn(b"Kennzahl", result.protocol_pdf)
 
 
 class SendTest(SimulationTestCase):

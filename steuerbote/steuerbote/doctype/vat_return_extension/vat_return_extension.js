@@ -1,12 +1,16 @@
+{% include "steuerbote/public/js/elster_transmission.js" %}
+
 frappe.ui.form.on("VAT Return Extension", {
 	setup(frm) {
+		listen_for_transmissions(frm);
 		// Frappe asks to submit a draft, but Buchen alone files nothing: show_ready_note says how to file.
 		frm.show_submit_message = () => {};
 	},
 
 	refresh(frm) {
+		release_stale_transmission(frm);
+		offer_buchen_only_for_an_accepted_send(frm);
 		if (frm.doc.docstatus === 0 && !frm.is_new()) {
-			frm.page.clear_primary_action();
 			frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
 		}
 		show_intro(frm);
@@ -15,14 +19,32 @@ frappe.ui.form.on("VAT Return Extension", {
 	},
 });
 
+// What the transmission says about a form, see elster_transmission.js.
+function form_texts() {
+	return {
+		unsaved: __("Save the form before transmitting it."),
+		send: __("The form goes to the Finanzamt and is filed with it."),
+		test_send: __(
+			"The form goes to the ELSTER server as a test case with the Testmerker and is deleted there on receipt. It stays a draft."
+		),
+		sent: __(
+			"ELSTER accepted this form, but it could not be submitted afterwards. Do not send it again; submit it with Buchen once the cause is resolved."
+		),
+		running: __("A transmission of this form is running. The form reloads when it has finished."),
+	};
+}
+
+// Without ERiC, Senden is not possible, and Mein ELSTER takes no file for form USt 1 H.
 function show_intro(frm) {
-	const intro =
-		frm.doc.docstatus === 0
-			? __(
-					"Mein ELSTER has no upload for form USt 1 H, and Steuerbote does not transmit it through ERiC yet. Calculate the form, enter it in Mein ELSTER by hand, with Kz 38 as the Sondervorauszahlung if the company files monthly, and then note the filing here with Entered in Mein ELSTER."
-			  )
-			: "";
-	frm.set_intro(intro, "blue");
+	const notes = elster_notes(frm, form_texts());
+	if (!frm.is_new() && frm.doc.docstatus === 0 && eric_simulates(frm)) {
+		notes.push(
+			__(
+				"Mein ELSTER has no upload for form USt 1 H. Until Senden runs with an installed ERiC runtime and a Hersteller-ID, calculate the form, enter it in Mein ELSTER by hand, with Kz 38 as the Sondervorauszahlung if the company files monthly, and then note the filing here with Entered in Mein ELSTER."
+			)
+		);
+	}
+	frm.set_intro(notes.join("<br>"), "orange");
 }
 
 function show_ready_note(frm) {
@@ -30,9 +52,12 @@ function show_ready_note(frm) {
 		frm.$ready_note.remove();
 		frm.$ready_note = null;
 	}
-	if (!frm.is_new() && frm.doc.docstatus === 0 && frm.doc.status === "Bereit") {
+	const ready = frm.doc.docstatus === 0 && frm.doc.status === "Bereit" && !transmission_blocked(frm);
+	if (!frm.is_new() && ready) {
 		frm.$ready_note = frm.dashboard.set_headline_alert(
-			__("Ready to file: enter the form in Mein ELSTER, then note it with Entered in Mein ELSTER."),
+			__(
+				"Ready to file: transmit the form through ELSTER, or enter it in Mein ELSTER and note it with Entered in Mein ELSTER."
+			),
 			"blue"
 		);
 	}
@@ -40,10 +65,11 @@ function show_ready_note(frm) {
 
 function add_filing_buttons(frm) {
 	const calculated = ["Berechnet", "Bereit"].includes(frm.doc.status);
-	if (frm.is_new() || frm.doc.docstatus !== 0 || !calculated) {
+	if (frm.is_new() || frm.doc.docstatus !== 0 || transmission_blocked(frm) || !calculated) {
 		return;
 	}
 	const group = __("ELSTER");
+	add_transmission_buttons(frm, group, form_texts());
 	frm.add_custom_button(__("Entered in Mein ELSTER"), () => ask_for_filing_note(frm, "mein_elster"), group);
 	frm.add_custom_button(__("Mark as Filed Outside"), () => ask_for_filing_note(frm, "other_way"), group);
 }
