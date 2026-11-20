@@ -146,6 +146,7 @@ Einreichbar, Nummernkreis `ZM-.YYYY.-.#####`. Wie die Meldung arbeitet, steht in
 | `meldeart`, `corrects` | Meldeart, Berichtigt | Erstmeldung oder Berichtigung, gesetzt von „Berichtigung anlegen“ mit der Meldung, die sie berichtigt |
 | `anzeige`, `widerruf` | Anzeige der monatlichen Abgabe, Widerruf der Anzeige | Kennzeichen im Formular von Mein ELSTER, geprüft mit `check_notices()` |
 | `period_label`, `quart`, `from_date`, `to_date`, `deadline` | Meldezeitraum, Zeitraumcode, Von-Datum, Bis-Datum, Fälligkeitsdatum | berechnet, etwa „März 2026“ und 23; fällig am 25. Tag nach Ablauf, sonst am nächsten Werktag nach der Feiertagsliste des Unternehmens |
+| `goods_from`, `goods_to`, `services_from`, `services_to` | Lieferungen von, Lieferungen bis, Sonstige Leistungen von, Sonstige Leistungen bis | berechnet: erster und letzter Tag der Monate, deren Lieferungen und deren sonstige Leistungen die Meldung meldet (`coverage()`); eine abgegebene Meldung behält sie |
 | `status` | Status | Entwurf, Berechnet, Bereit, Abgegeben oder Ersetzt |
 | `confirmation_in_progress` | Prüfung läuft | gesetzt, solange „USt-IdNrn. prüfen“ läuft; so lange lässt sich die Meldung nicht ändern |
 | `lines` | Meldezeilen | Tabelle „Zeile der Zusammenfassenden Meldung“: USt-IdNr., Art der Leistung, Kunde, Betrag laut Hauptbuch, Korrigierter Betrag mit Begründung, Gemeldeter Betrag, Hält die Meldung an, Bisher gemeldet, In der Datei und die letzte Prüfung der Nummer (Geprüft am, Dienst, Ergebnis der Prüfung, Code, Nummer der Abfrage, USt-IdNr.-Bestätigung) |

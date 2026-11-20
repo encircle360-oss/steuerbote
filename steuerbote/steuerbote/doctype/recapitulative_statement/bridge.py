@@ -46,6 +46,7 @@ from steuerbote.zm.lines import (
 )
 from steuerbote.zm.period import Kind, ReportingPeriod
 from steuerbote.zm.reconciliation import Filed, Reconciliation, Share
+from steuerbote.zm.rhythm import Coverage
 from steuerbote.zm.ustid import normalize
 
 BERICHTIGUNG = "Berichtigung"
@@ -77,6 +78,7 @@ VALIDITY: ReadOnlyMapping[str, Validity] = MappingProxyType(
 TOTAL_FIELDS: ReadOnlyMapping[Art, str] = MappingProxyType(
 	{Art.L: "total_l", Art.D: "total_d", Art.S: "total_s"}
 )
+COVERAGE_FIELDS = ("goods_from", "goods_to", "services_from", "services_to")
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +112,67 @@ def reporting_period(kind: str, year: int, index: int) -> ReportingPeriod:
 		case Kind.QUARTER:
 			return ReportingPeriod.quarter(year, index)
 	return ReportingPeriod.calendar_year(year)
+
+
+def coverage_fields(covered: Coverage) -> dict[str, date | None]:
+	"""The first and last day of the months whose Lieferungen and whose sonstige Leistungen a statement reports,
+	as its fields keep them."""
+	goods_from, goods_to = covered.goods_span
+	services_from, services_to = covered.services_span or (None, None)
+	return {
+		"goods_from": goods_from,
+		"goods_to": goods_to,
+		"services_from": services_from,
+		"services_to": services_to,
+	}
+
+
+def kept_coverage(period: ReportingPeriod, row: Row) -> Coverage | None:
+	"""The months a statement of ``period`` keeps in its fields, None where it keeps none."""
+	goods = _kept_months(row.get("goods_from"), row.get("goods_to"))
+	if not goods:
+		return None
+	return Coverage(period, goods, _kept_months(row.get("services_from"), row.get("services_to")))
+
+
+def overlapping(covered: Coverage, filings: Iterable[Row]) -> Row | None:
+	"""The first of the filed statements that reports the Lieferungen of a month whose Lieferungen ``covered``
+	reports, or the sonstige Leistungen of a month whose sonstige Leistungen it reports. A statement that keeps
+	no months counts with all the months of its Meldezeitraum, for both."""
+	for row in filings:
+		goods, services = _kept_spans(row)
+		if _overlap(covered.goods_span, goods) or _overlap(covered.services_span, services):
+			return row
+	return None
+
+
+def _kept_months(first: object, last: object) -> tuple[int, ...]:
+	start, end = _day(first), _day(last)
+	return tuple(range(start.month, end.month + 1)) if start and end else ()
+
+
+def _kept_spans(row: Row) -> tuple[tuple[date, date] | None, tuple[date, date] | None]:
+	goods = _span_of(row.get("goods_from"), row.get("goods_to"))
+	if goods is None:
+		period = _span_of(row.get("from_date"), row.get("to_date"))
+		return period, period
+	return goods, _span_of(row.get("services_from"), row.get("services_to"))
+
+
+def _span_of(first: object, last: object) -> tuple[date, date] | None:
+	start, end = _day(first), _day(last)
+	return (start, end) if start and end else None
+
+
+def _overlap(one: tuple[date, date] | None, other: tuple[date, date] | None) -> bool:
+	return one is not None and other is not None and one[0] <= other[1] and other[0] <= one[1]
+
+
+def _day(value: object) -> date | None:
+	"""A Date field as Frappe gives it: a date from the database, an ISO string from the form, or empty."""
+	if isinstance(value, date):
+		return value
+	return date.fromisoformat(str(value)) if value else None
 
 
 def csv_file_name(period: ReportingPeriod, correction: bool) -> str:

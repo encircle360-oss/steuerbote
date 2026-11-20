@@ -12,6 +12,7 @@ from steuerbote.zm.findings import Code, Finding
 from steuerbote.zm.lines import Art, Meldezeile, Override, Validity, build
 from steuerbote.zm.period import ReportingPeriod
 from steuerbote.zm.reconciliation import Filed, reconcile
+from steuerbote.zm.rhythm import Coverage
 from steuerbote.zm.tests.support import AUSTRIA, FIGURES, FRANCE, SPAIN, d, invoice
 
 MARCH = ReportingPeriod.month(2026, 3)
@@ -566,3 +567,85 @@ class NumbersToConfirmTest(TestCase):
 		self.assertEqual(bridge.customer_of(rows, AUSTRIA), "CUST-1")
 		self.assertIsNone(bridge.customer_of(rows, FRANCE))
 		self.assertEqual(bridge.customer_of(rows, "XI123456789"), "CUST-XI")
+
+
+class CoverageFieldsTest(TestCase):
+	"""A statement keeps the months it reports, so that what checks it later reads the same months, whatever the
+	rules say by then."""
+
+	JUNE = Coverage(ReportingPeriod.month(2026, 6), (6,), (4, 5, 6))
+	APRIL = Coverage(ReportingPeriod.month(2026, 4), (4,), ())
+
+	def test_the_first_and_last_day_of_the_goods_and_of_the_services_months(self):
+		self.assertEqual(
+			bridge.coverage_fields(self.JUNE),
+			{
+				"goods_from": date(2026, 6, 1),
+				"goods_to": date(2026, 6, 30),
+				"services_from": date(2026, 4, 1),
+				"services_to": date(2026, 6, 30),
+			},
+		)
+		self.assertEqual(
+			bridge.coverage_fields(self.APRIL),
+			{
+				"goods_from": date(2026, 4, 1),
+				"goods_to": date(2026, 4, 30),
+				"services_from": None,
+				"services_to": None,
+			},
+		)
+
+	def test_the_months_kept_read_back_also_as_frappe_sends_them(self):
+		for covered in (self.JUNE, self.APRIL):
+			with self.subTest(period=covered.period):
+				self.assertEqual(
+					bridge.kept_coverage(covered.period, bridge.coverage_fields(covered)), covered
+				)
+		sent = {name: str(day) if day else None for name, day in bridge.coverage_fields(self.JUNE).items()}
+		self.assertEqual(bridge.kept_coverage(self.JUNE.period, sent), self.JUNE)
+		self.assertIsNone(bridge.kept_coverage(self.JUNE.period, dict.fromkeys(bridge.COVERAGE_FIELDS)))
+
+
+class OverlappingTest(TestCase):
+	"""The Lieferungen and the sonstige Leistungen of a month are filed once each."""
+
+	@staticmethod
+	def filing(name: str, covered: Coverage) -> dict:
+		period = covered.period
+		return {
+			"name": name,
+			"from_date": period.start,
+			"to_date": period.end,
+			**bridge.coverage_fields(covered),
+		}
+
+	def test_the_first_filing_that_reports_a_month_of_the_same_kind(self):
+		quarter = self.filing("ZM-1", Coverage(ReportingPeriod.quarter(2026, 1), (1, 2, 3), (1, 2, 3)))
+		march = self.filing("ZM-2", Coverage(ReportingPeriod.month(2026, 3), (3,), (1, 2, 3)))
+		january = Coverage(ReportingPeriod.month(2026, 1), (1,), ())
+		self.assertEqual(bridge.overlapping(january, [quarter, march]), quarter)
+		services = Coverage(ReportingPeriod.month(2026, 2), (2,), (2,))
+		self.assertEqual(bridge.overlapping(services, [march]), march)
+
+	def test_months_of_another_kind_or_another_month_do_not_clash(self):
+		april = self.filing("ZM-4", Coverage(ReportingPeriod.month(2026, 4), (4,), ()))
+		may = self.filing("ZM-5", Coverage(ReportingPeriod.month(2026, 5), (5,), ()))
+		june = Coverage(ReportingPeriod.month(2026, 6), (6,), (4, 5, 6))
+		self.assertIsNone(bridge.overlapping(june, [april, may]))
+		self.assertIsNone(bridge.overlapping(june, []))
+
+	def test_a_filing_that_keeps_no_months_counts_with_all_months_of_its_period(self):
+		kept_nothing = {
+			"name": "ZM-0",
+			"from_date": "2026-04-01",
+			"to_date": "2026-06-30",
+			**dict.fromkeys(bridge.COVERAGE_FIELDS),
+		}
+		self.assertEqual(
+			bridge.overlapping(Coverage(ReportingPeriod.month(2026, 6), (6,), ()), [kept_nothing]),
+			kept_nothing,
+		)
+		self.assertIsNone(
+			bridge.overlapping(Coverage(ReportingPeriod.month(2026, 7), (7,), (7,)), [kept_nothing])
+		)

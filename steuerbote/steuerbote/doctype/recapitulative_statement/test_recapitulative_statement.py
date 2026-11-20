@@ -524,6 +524,47 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "latest filed Zusammenfassende Meldung"):
 			doc.make_correction()
 
+	def test_a_month_is_filed_once_also_when_the_rhythm_changes_afterwards(self):
+		"""The I. Kalendervierteljahr filed quarterly holds the Lieferungen of January; after the rules turn
+		monthly from January, a ZM for January would file them again under another quart."""
+		company = make_company("Steuerbote Test ZM Rhythmuswechsel GmbH", "STZW")
+		account = {
+			number: make_account(company, number, name, root_type)
+			for number, (name, root_type) in ACCOUNTS.items()
+		}
+		settings = make_settings(
+			company,
+			[(2026, "monthly", 1)],
+			ust_idnr=OWN_VAT_ID,
+			zm_rules=[{"year": 2026, "valid_from_month": 1, "rhythm": "quarterly"}],
+		)
+		make_mapping(company)
+		post_sales_invoice(
+			company,
+			"SINV-STZW-01-1",
+			ALPEN,
+			"2026-01-15",
+			[(account["1400"], 1000, 0), (account["8125"], 0, 1000)],
+		)
+		quarter = self.statement(1, company=company, kind="quarter")
+		self.assertEqual(
+			(quarter.goods_from, quarter.goods_to, quarter.services_from, quarter.services_to),
+			(date(2026, 1, 1), date(2026, 3, 31), date(2026, 1, 1), date(2026, 3, 31)),
+		)
+		quarter.calculate()
+		quarter.reload()
+		quarter.remarks = "Die USt-IdNr. ist am Liefertag bestätigt worden."
+		quarter.save()
+		quarter.mark_filed_outside(filed_via="mein_elster")
+		settings.reload()
+		settings.zm_rules[0].rhythm = "monthly"
+		settings.save()
+		with self.assertRaisesRegex(
+			frappe.ValidationError,
+			f"Januar 2026 reports months whose Lieferungen or sonstige Leistungen {quarter.name}",
+		):
+			self.statement(1, company=company)
+
 	def test_a_statement_is_filed_only_through_the_filing_marks(self):
 		doc = self.statement(8)
 		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the statement before filing it"):

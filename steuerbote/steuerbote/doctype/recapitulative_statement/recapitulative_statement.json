@@ -20,6 +20,10 @@
   "quart",
   "from_date",
   "to_date",
+  "goods_from",
+  "goods_to",
+  "services_from",
+  "services_to",
   "deadline",
   "status",
   "confirmation_in_progress",
@@ -156,6 +160,32 @@
    "fieldname": "to_date",
    "fieldtype": "Date",
    "label": "To Date",
+   "read_only": 1
+  },
+  {
+   "description": "The first and last day of the months whose Lieferungen (Art L and D) the statement reports, as the rhythm of the settings gives them.",
+   "fieldname": "goods_from",
+   "fieldtype": "Date",
+   "label": "Deliveries From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "goods_to",
+   "fieldtype": "Date",
+   "label": "Deliveries To",
+   "read_only": 1
+  },
+  {
+   "description": "The first and last day of the months whose sonstige Leistungen (Art S) the statement reports; empty when another statement reports them.",
+   "fieldname": "services_from",
+   "fieldtype": "Date",
+   "label": "Services From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "services_to",
+   "fieldtype": "Date",
+   "label": "Services To",
    "read_only": 1
   },
   {
@@ -363,7 +393,7 @@
    "link_fieldname": "recapitulative_statement"
   }
  ],
- "modified": "2026-11-20 18:00:00.000000",
+ "modified": "2026-11-20 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Recapitulative Statement",

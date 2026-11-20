@@ -113,6 +113,8 @@ class RecapitulativeStatement(Document):
 		filed_via: DF.Literal["", "mein_elster", "other_way"]
 		filing_note: DF.SmallText | None
 		from_date: DF.Date | None
+		goods_from: DF.Date | None
+		goods_to: DF.Date | None
 		hints: DF.Table[RecapitulativeStatementHint]
 		lines: DF.Table[RecapitulativeStatementLine]
 		meldeart: DF.Literal["Erstmeldung", "Berichtigung"]
@@ -124,6 +126,8 @@ class RecapitulativeStatement(Document):
 		ready: DF.Check
 		reconciliation: DF.Table[RecapitulativeStatementReconciliation]
 		remarks: DF.SmallText | None
+		services_from: DF.Date | None
+		services_to: DF.Date | None
 		status: DF.Literal["Entwurf", "Berechnet", "Bereit", "Abgegeben", "Ersetzt"]
 		to_date: DF.Date | None
 		total_d: DF.Currency
@@ -144,9 +148,10 @@ class RecapitulativeStatement(Document):
 		self._refuse_changes_while_confirming()
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
-		period = self._set_period()
+		covered = self._set_period()
+		period = covered.period
 		self._check_correction()
-		self._refuse_second_statement()
+		self._refuse_second_statement(covered)
 		self._discard_calculation_of_another_period()
 		with zm_errors():
 			check_notices(period, bool(cint(self.anzeige)), bool(cint(self.widerruf)))
@@ -184,13 +189,13 @@ class RecapitulativeStatement(Document):
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft Zusammenfassende Meldung can be calculated."))
 		self._refuse_changes_while_confirming()
-		period = self._set_period()
+		covered = self._set_period()
+		period = covered.period
 		settings = settings_for(self.company)
 		rules = settings.get_zm_rules()
 		mapping = mapping_for(self.company, cint(self.year))
 		figures = self._figures()
 		with zm_errors():
-			covered = coverage(rules, period)
 			overrides = bridge.overrides_of(self.lines)
 			shares = zm_sources.shares(self.company, covered, mapping)
 			previous_period = period.previous()
@@ -372,18 +377,11 @@ class RecapitulativeStatement(Document):
 			or any(not row.art for row in self.lines)
 		)
 
-	def _set_period(self) -> ReportingPeriod:
-		settings = settings_for(self.company)
-		period = self._chosen_period()
-		rules = settings.get_zm_rules()
-		if not rules:
-			frappe.throw(
-				_(
-					"The VAT Return Settings of {0} have no rhythm of the Zusammenfassende Meldung yet. Enter it before the first statement."
-				).format(self.company)
-			)
-		with zm_errors():
-			coverage(rules, period)
+	def _set_period(self) -> Coverage:
+		"""Meldezeitraum, code, dates and deadline, and the months whose lines the statement reports, as the rhythm
+		in the settings gives them; the statement keeps the months, so that checks after its filing read them."""
+		covered = self._coverage()
+		period = covered.period
 		self.update(
 			{
 				"quart": period.quart,
@@ -391,9 +389,23 @@ class RecapitulativeStatement(Document):
 				"from_date": period.start,
 				"to_date": period.end,
 				"deadline": period.deadline(holiday_list.holidays(self.company)),
+				**bridge.coverage_fields(covered),
 			}
 		)
-		return period
+		return covered
+
+	def _coverage(self) -> Coverage:
+		"""The months the rhythm in the settings gives the chosen Meldezeitraum."""
+		period = self._chosen_period()
+		rules = settings_for(self.company).get_zm_rules()
+		if not rules:
+			frappe.throw(
+				_(
+					"The VAT Return Settings of {0} have no rhythm of the Zusammenfassende Meldung yet. Enter it before the first statement."
+				).format(self.company)
+			)
+		with zm_errors():
+			return coverage(rules, period)
 
 	def _chosen_period(self) -> ReportingPeriod:
 		try:
@@ -441,21 +453,45 @@ class RecapitulativeStatement(Document):
 				)
 			)
 
-	def _refuse_second_statement(self) -> None:
-		"""A Meldezeitraum is filed once; every further statement for it is a Berichtigung."""
-		if self.meldeart == bridge.BERICHTIGUNG:
-			return
-		filed = self._other_filings()
-		if filed:
-			frappe.throw(
-				_("{0} of {1} is filed already as {2}. Make a Berichtigung of it.").format(
-					self.period_label, self.company, filed[0]
+	def _refuse_second_statement(self, covered: Coverage) -> None:
+		"""A Meldezeitraum is filed once, and every further statement for it is a Berichtigung. The months are
+		filed once as well: a change of the rules can give a month to two Meldezeiträume, such as January to the
+		quarter filed before and to a monthly ZM after, so no statement reports the Lieferungen or the sonstige
+		Leistungen of a month that the filing of another Meldezeitraum reported."""
+		if self.meldeart != bridge.BERICHTIGUNG:
+			filed = self._other_filings()
+			if filed:
+				frappe.throw(
+					_("{0} of {1} is filed already as {2}. Make a Berichtigung of it.").format(
+						self.period_label, self.company, filed[0]
+					)
 				)
+		clash = bridge.overlapping(covered, self._filings_of_other_periods())
+		if clash:
+			frappe.throw(
+				_(
+					"{0} reports months whose Lieferungen or sonstige Leistungen {1} filed already for {2}, and a month is filed once. Check the rhythm of the Zusammenfassende Meldung in the VAT Return Settings."
+				).format(self.period_label, clash.name, clash.period_label)
 			)
+
+	def _filings_of_other_periods(self) -> list[frappe._dict]:
+		"""The statements that hold the current filing of another Meldezeitraum of the company in the year."""
+		return frappe.get_all(
+			DOCTYPE,
+			filters={
+				"company": self.company,
+				"year": cint(self.year),
+				"docstatus": 1,
+				"status": FILED,
+				"quart": ["!=", cint(self.quart)],
+			},
+			fields=["name", "period_label", "from_date", "to_date", *bridge.COVERAGE_FIELDS],
+			order_by="creation asc",
+		)
 
 	def _refuse_second_filing(self) -> None:
 		"""A Berichtigung reports what changed against the filings when it was made, so none may follow."""
-		self._refuse_second_statement()
+		self._refuse_second_statement(self._coverage())
 		if self.meldeart != bridge.BERICHTIGUNG:
 			return
 		later = frappe.get_all(
