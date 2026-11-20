@@ -546,6 +546,72 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			("Bereit", "Die Nummer war am Leistungstag laut Bestätigung vom 2. Juni 2026 gültig."),
 		)
 
+	def test_a_credit_note_reduces_the_line_of_its_customer(self):
+		"""A credit note is a Sales Invoice with is_return that ERPNext posts against the income of the invoice it
+		returns: its share of Kz 41 is negative and reduces the line of the customer in its Meldezeitraum (§ 18a
+		Absatz 7 Satz 2 with § 17 UStG)."""
+		a = self.confirming_account
+		invoice = post_sales_invoice(
+			CONFIRMING_COMPANY,
+			"SINV-STZP-09-1",
+			ALPEN,
+			"2026-09-03",
+			[(a["1400"], 5000, 0), (a["8125"], 0, 5000)],
+			customer_address=self.alpen_address,
+		)
+		post_sales_invoice(
+			CONFIRMING_COMPANY,
+			"SINV-STZP-09-2",
+			ALPEN,
+			"2026-09-21",
+			[(a["8125"], 1200, 0), (a["1400"], 0, 1200)],
+			customer_address=self.alpen_address,
+			is_return=1,
+			return_against=invoice,
+		)
+		doc = self.calculated(9, company=CONFIRMING_COMPANY)
+		self.assertEqual(
+			[(row.voucher_no, row.kennzahl, money(row.amount), row.vat_id) for row in doc.vouchers],
+			[
+				("SINV-STZP-09-1", "41", money(5000), AUSTRIAN),
+				("SINV-STZP-09-2", "41", money(-1200), AUSTRIAN),
+			],
+		)
+		self.assertEqual(
+			[(row.vat_id, row.art, money(row.amount), money(row.reported)) for row in doc.lines],
+			[(AUSTRIAN, "L", money(3800), money(3800))],
+		)
+
+	def test_a_cancellation_in_a_later_month_gives_that_month_a_negative_line_with_the_immutable_ledger(self):
+		"""With „Unveränderliches Hauptbuch aktivieren“ ERPNext posts the reversal of a cancelled invoice on the day
+		of the cancellation, as the Anleitung zur ZM wants „Stornierungen von Rechnungen“ in the Meldezeitraum of
+		the change (IV.10): the month filed stays as filed, and the month of the cancellation reports the amount
+		with a minus sign under the customer of the invoice."""
+		a = self.account
+		post_sales_invoice(
+			COMPANY,
+			"SINV-STZM-11-1",
+			ALPEN,
+			"2026-11-04",
+			[(a["1400"], 2500, 0), (a["8125"], 0, 2500)],
+			customer_address=self.alpen_address,
+		)
+		november = self.calculated(11, remarks="Die USt-IdNr. ist am Liefertag bestätigt worden.")
+		november.mark_filed_outside(filed_via="mein_elster")
+		november.reload()
+		cancel_voucher("Sales Invoice", "SINV-STZM-11-1", immutable_on="2026-12-03")
+		self.assertEqual(november.ledger_changes_since_filing(), [])
+		december = self.calculated(12, remarks="Stornierung der Rechnung SINV-STZM-11-1 vom 3. Dezember 2026")
+		self.assertEqual(
+			[(row.voucher_no, money(row.amount), row.customer, row.vat_id) for row in december.vouchers],
+			[("SINV-STZM-11-1", money(-2500), ALPEN, AUSTRIAN)],
+		)
+		self.assertEqual(
+			[(row.vat_id, row.art, row.party, money(row.reported)) for row in december.lines],
+			[(AUSTRIAN, "L", ALPEN, money(-2500))],
+		)
+		self.assertEqual(contents(december.make_csv_file()), HEADER + b"ATU12345678,-2500,L")
+
 	def test_a_filed_statement_says_when_the_ledger_of_its_months_changed_since_the_filing(self):
 		"""Without „Unveränderliches Hauptbuch aktivieren“ ERPNext takes a cancelled invoice out of its own month,
 		so the ledger of a filed month changes and no later ZM shows the cancellation: the filed statement names
