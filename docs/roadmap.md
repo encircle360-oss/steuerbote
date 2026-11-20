@@ -48,7 +48,7 @@ Quelle für die Dauerfristverlängerung ist dasselbe BMF-Schreiben wie für die 
 
 | Paket | Inhalt | Ergebnis/Abnahme |
 |---|---|---|
-| Dauerfristverlängerung | Antrag auf Dauerfristverlängerung und Anmeldung der Sondervorauszahlung (Vordruck USt 1 H) als XML über ERiC. Bei monatlicher Abgabe beträgt die Sondervorauszahlung ein Elftel der Vorauszahlungen des Vorjahres zuzüglich der dort berücksichtigten Sondervorauszahlung (Kz 38). | Die Sondervorauszahlung ist gebucht und wird grundsätzlich in der Voranmeldung für Dezember über Kz 39 abgezogen. Der Rechenkern nimmt Kz 39 schon heute an. |
+| Dauerfristverlängerung (in Arbeit) | Antrag auf Dauerfristverlängerung und Anmeldung der Sondervorauszahlung (Vordruck USt 1 H) als XML über ERiC. Bei monatlicher Abgabe beträgt die Sondervorauszahlung ein Elftel der Vorauszahlungen des Vorjahres zuzüglich der dort berücksichtigten Sondervorauszahlung (Kz 38). Vorhanden: der Rechenkern `steuerbote/dauerfrist` mit Sondervorauszahlung, Fristen, Zeitraum der Anrechnung und dem Vordruck mit Feldern und Regeln der ERiC-Dokumentation, siehe [Dauerfristverlängerung](dauerfristverlaengerung.md). Offen: der Beleg in Frappe und das XML über ERiC, das das Schema 2027 und die Hersteller-ID braucht. | Die Sondervorauszahlung ist gebucht und wird grundsätzlich in der Voranmeldung für Dezember über Kz 39 abgezogen. Der Rechenkern nimmt Kz 39 schon heute an. |
 | Zusammenfassende Meldung | Zusammenfassende Meldung aus ERPNext als Datei für die Abgabe beim Bundeszentralamt für Steuern (BZSt). | Die Datei lässt sich beim BZSt hochladen. |
 
 ## Stufe 3: Jahresmeldungen
