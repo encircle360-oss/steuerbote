@@ -11,9 +11,6 @@ from frappe.tests import IntegrationTestCase
 
 from steuerbote.permissions import APP_ROLES
 
-# The users of the tests are made by the tests themselves.
-IGNORE_TEST_RECORD_DEPENDENCIES = ["User"]
-
 ACCOUNTANT = "steuerbote-desk-buchhaltung@example.com"
 SALES = "steuerbote-desk-vertrieb@example.com"
 WORKSPACE = "Steuern"
