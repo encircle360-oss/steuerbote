@@ -7,7 +7,7 @@ Diese Seite beschreibt Aufbau, Einrichtung, Tests, Stil und CI. Wie ein Beitrag 
 ```text
 steuerbote/                    Repository
 ├── steuerbote/                Python-Paket der Frappe-App
-│   ├── hooks.py               App-Metadaten, setzt ERPNext voraus, Eintrag in der App-Übersicht, nennt die Fixtures der App
+│   ├── hooks.py               App-Metadaten, setzt ERPNext voraus, Eintrag in der App-Übersicht, nennt die Fixtures der App und nimmt die Meldungen vom Löschen der Transaktionen aus
 │   ├── permissions.py         wem die App-Übersicht Steuerbote zeigt
 │   ├── ustva/                 Rechenkern der Umsatzsteuer-Voranmeldung, reines Python ohne Frappe-Import
 │   │   ├── kennzahlen.py      Katalog der Kennzahlen des Vordrucks USt 1 A je Jahrgang, bisher 2026

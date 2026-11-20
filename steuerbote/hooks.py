@@ -27,6 +27,17 @@ app_include_icons = ["/assets/steuerbote/icons/module-icons.svg"]
 
 fixtures = [{"dt": "Custom Field", "filters": [["module", "=", "Steuerbote"]]}]
 
+# ERPNext's "Delete Company Transactions" (Transaction Deletion Record) deletes the documents of every DocType
+# linked to the company with frappe.db.delete, past on_trash, unless the DocType is listed here: the filings and
+# the proof of the confirmations of USt-IdNrn. record what went to the tax authorities.
+company_data_to_be_ignored = [
+	"VAT ID Confirmation",
+	"Recapitulative Statement",
+	"VAT Return Extension",
+	"VAT Return",
+	"ELSTER Transmission",
+]
+
 # The answer kept with a VAT ID Confirmation is part of the proof of its query.
 doc_events = {
 	"File": {

@@ -106,7 +106,7 @@ Jeder Vorgang und jeder Vermerk ist eine ELSTER-Übermittlung. Die Liste steht u
 | Nachrichten | Fehler und Hinweise von ERiC, von der Simulation oder von Steuerbote mit Code, Nachricht und Feld |
 | Nutzdaten (XML), Protokoll (PDF), Antwort des ELSTER-Servers (XML) | die Dateien des Laufs, siehe unten |
 
-Eine ELSTER-Übermittlung schreibt nur der Server, danach lässt sie sich nicht mehr ändern. Eine Übermittlung, die eine Abgabe festhält (ein erfolgreiches Senden außerhalb der Simulation oder ein Vermerk), lässt sich nicht löschen. Andere darf nur der System Manager löschen. Eine Meldung mit ELSTER-Übermittlungen lässt sich nicht löschen.
+Eine ELSTER-Übermittlung schreibt nur der Server, danach lässt sie sich nicht mehr ändern. Eine Übermittlung, die eine Abgabe festhält (ein erfolgreiches Senden außerhalb der Simulation oder ein Vermerk), lässt sich nicht löschen. Andere darf nur der System Manager löschen. Eine Meldung mit ELSTER-Übermittlungen lässt sich nicht löschen. „Transaktionen löschen“ am Unternehmen in ERPNext lässt Meldungen und Übermittlungen aus, solange niemand sie von Hand in die Liste der zu löschenden DocTypes einträgt, siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
 
 ## Wo XML und Protokoll liegen
 

@@ -162,7 +162,7 @@ An der Meldung stehen unter „Verknüpfungen“ ihre USt-IdNr.-Bestätigungen.
 
 ### USt-IdNr.-Bestätigung (`VAT ID Confirmation`)
 
-Ein Dokument je Abfrage beim BZSt oder bei VIES, Nummernkreis `USTID-{YYYY}-{#####}`. Nur der Server legt es an, niemand ändert oder löscht es, auch nicht seine Antwort, die als private Datei daran hängt. Es hält angefragte und anfragende USt-IdNr., Unternehmen, Dienst, Ergebnis der Abfrage und der Prüfung, Code, Nachricht, Nummer der Abfrage, Name und Anschrift einer qualifizierten Abfrage mit den Vergleichsergebnissen, Zeitpunkte, Gültigkeit, HTTP-Status, die vorherige Abfrage und die Meldung, aus der die Prüfung kam. Die Felder stehen in [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
+Ein Dokument je Abfrage beim BZSt oder bei VIES, Nummernkreis `USTID-{YYYY}-{#####}`. Nur der Server legt es an, über den Beleg ändert oder löscht es niemand, auch nicht seine Antwort, die als private Datei daran hängt, und „Transaktionen löschen“ am Unternehmen lässt es aus wie die Meldungen (`company_data_to_be_ignored` in `hooks.py`). Es hält angefragte und anfragende USt-IdNr., Unternehmen, Dienst, Ergebnis der Abfrage und der Prüfung, Code, Nachricht, Nummer der Abfrage, Name und Anschrift einer qualifizierten Abfrage mit den Vergleichsergebnissen, Zeitpunkte, Gültigkeit, HTTP-Status, die vorherige Abfrage und die Meldung, aus der die Prüfung kam. Die Felder stehen in [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
 
 ### Feld an der Journalbuchung
 
