@@ -27,7 +27,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, escape_html, formatdate, getdate
 
-from steuerbote import dauerfrist, dauerfrist_sources
+from steuerbote import dauerfrist, dauerfrist_sources, holiday_list
 from steuerbote.dauerfrist import Context, FormError, layout_for
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import FILED_VIA, OTHER_WAY
 from steuerbote.steuerbote.doctype.vat_return import bridge as vat_return_bridge
@@ -160,6 +160,7 @@ class VATReturnExtension(Document):
 	def calculate(self) -> None:
 		"""Berechnen: read the VAT Returns filed for the previous year and the start of the company, and save
 		the form with the base, Kz 38 and the deadline."""
+		frappe.has_permission(DOCTYPE, "write", self, throw=True)
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft form can be calculated."))
 		settings = settings_for(self.company)
@@ -225,7 +226,7 @@ class VATReturnExtension(Document):
 		month = cint(self.first_month) if antrag else 1
 		rhythm = settings.rhythm_for(year, month)
 		first_period = Period.containing(date(year, month, 1), rhythm) if antrag else None
-		holidays = dauerfrist_sources.holidays(self.company)
+		holidays = holiday_list.holidays(self.company)
 		obligation = dauerfrist.obligation(year, rhythm, first_period, holidays)
 		if obligation is None:
 			frappe.throw(
@@ -287,12 +288,32 @@ class VATReturnExtension(Document):
 			)
 
 	def _require_correction_of_a_filed_form(self) -> None:
-		"""The Finanzamt has the form an amendment amends, so the amendment goes to it as a correction."""
-		if self.amended_from and not cint(self.is_correction):
+		"""The Finanzamt keeps every form filed for the year, also one cancelled in Steuerbote since, so a further
+		form goes to it as a corrected Anmeldung (Kz 10), whether it amends the filed form or is made anew."""
+		if cint(self.is_correction):
+			return
+		if self.amended_from:
 			frappe.throw(
 				_(
 					"{0} amends {1}, which is filed with the Finanzamt: mark it as a corrected Anmeldung (Kz 10)."
 				).format(self.name, self.amended_from)
+			)
+		filed = frappe.get_all(
+			DOCTYPE,
+			filters={
+				"company": self.company,
+				"year": cint(self.year),
+				"name": ["!=", self.name or ""],
+				"filed_via": ["is", "set"],
+			},
+			order_by="creation desc",
+			pluck="name",
+		)
+		if filed:
+			frappe.throw(
+				_(
+					"{0} filed {1} for {2} already, which the Finanzamt keeps: a further form for the year is a corrected Anmeldung der Sondervorauszahlung (Kz 10)."
+				).format(self.company, filed[0], cint(self.year))
 			)
 
 	def _discard_calculation_of_another_form(self) -> None:

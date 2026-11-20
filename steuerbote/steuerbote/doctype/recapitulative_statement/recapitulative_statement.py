@@ -4,10 +4,11 @@
 each voucher adds to Kz 41, 42 and 21 in its months through steuerbote.zm_sources, and leaves every line, amount
 and rule to the core in steuerbote.zm: the lines per USt-IdNr. and Art (lines.build), the threshold of
 50,000 euros (rhythm.threshold_findings), the reconciliation with the ledger and the filed Voranmeldungen
-(reconciliation.reconcile) and the previous Meldezeitraum (comparison). bridge.py maps the results onto the
-tables. Every save rebuilds the lines from the rows of vouchers and lines, so an override with a Begründung
-lifts the block of its line at once; the threshold and the reconciliation with the ledger hold the statement
-back until "Berechnen" finds them gone.
+(reconciliation.reconcile) and the earlier Meldezeiträume (comparison). bridge.py maps the results onto the
+tables. Every save rebuilds the lines from the vouchers Berechnen stored, the overrides of the lines and the
+latest confirmations, so an override with a Begründung lifts the block of its line at once; the threshold and
+the reconciliation with the ledger hold the statement back until "Berechnen" finds them gone. The file for Mein
+ELSTER and the filing read the ledger again and wait for Berechnen when it books other vouchers by then.
 
 "USt-IdNrn. prüfen" (confirm_vat_ids) asks the BZSt about each USt-IdNr. the lines report, in a background job,
 one query after the other and none repeated (steuerbote.vatid), and keeps every query as a VAT ID Confirmation.
@@ -20,9 +21,9 @@ starts a statement for the same Meldezeitraum that reports only what changed aga
 statement cannot be cancelled, since a change goes to the BZSt as a Berichtigung.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import frappe
@@ -32,7 +33,7 @@ from frappe.model.document import Document
 from frappe.utils import cint, escape_html, getdate, strip_html
 from frappe.utils.background_jobs import is_job_enqueued
 
-from steuerbote import vatid, zm_sources
+from steuerbote import holiday_list, vatid, zm_sources
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import FILED_VIA, OTHER_WAY
 from steuerbote.steuerbote.doctype.recapitulative_statement import bridge
 from steuerbote.steuerbote.doctype.vat_id_confirmation import vat_id_confirmation
@@ -44,14 +45,22 @@ from steuerbote.steuerbote.doctype.vat_return.vat_return import (
 )
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
 from steuerbote.vatid import UrllibFetch
-from steuerbote.zm.comparison import compare, comparison_hints
+from steuerbote.zm.comparison import compare, comparison_hints, earlier
 from steuerbote.zm.correction import as_filed
 from steuerbote.zm.csv_file import csv_file
 from steuerbote.zm.errors import ZmError
-from steuerbote.zm.lines import Art, Statement, build
+from steuerbote.zm.findings import Finding
+from steuerbote.zm.lines import Art, Override, Statement, VoucherAmount, build
 from steuerbote.zm.period import ReportingPeriod
-from steuerbote.zm.reconciliation import Filed, reconcile
-from steuerbote.zm.rhythm import Coverage, Rule, check_notices, coverage, threshold_findings, threshold_window
+from steuerbote.zm.reconciliation import Filed, ledger_changes, reconcile
+from steuerbote.zm.rhythm import (
+	Coverage,
+	check_notices,
+	coverage,
+	coverage_or_months,
+	threshold_findings,
+	threshold_window,
+)
 
 DOCTYPE = "Recapitulative Statement"
 
@@ -113,6 +122,8 @@ class RecapitulativeStatement(Document):
 		filed_via: DF.Literal["", "mein_elster", "other_way"]
 		filing_note: DF.SmallText | None
 		from_date: DF.Date | None
+		goods_from: DF.Date | None
+		goods_to: DF.Date | None
 		hints: DF.Table[RecapitulativeStatementHint]
 		lines: DF.Table[RecapitulativeStatementLine]
 		meldeart: DF.Literal["Erstmeldung", "Berichtigung"]
@@ -124,6 +135,8 @@ class RecapitulativeStatement(Document):
 		ready: DF.Check
 		reconciliation: DF.Table[RecapitulativeStatementReconciliation]
 		remarks: DF.SmallText | None
+		services_from: DF.Date | None
+		services_to: DF.Date | None
 		status: DF.Literal["Entwurf", "Berechnet", "Bereit", "Abgegeben", "Ersetzt"]
 		to_date: DF.Date | None
 		total_d: DF.Currency
@@ -140,18 +153,26 @@ class RecapitulativeStatement(Document):
 		draft = self.docstatus == 0 and not self.is_new()
 		self.set_onload("confirmation", {"stale": draft and self._has_stale_confirmation()})
 
+	def before_insert(self) -> None:
+		"""A new statement starts as a draft that Berechnen has not read yet, whatever the rows it was made with
+		say; only the lines of its own and the overrides stay."""
+		for table in ("vouchers", "reconciliation", "comparison", "hints"):
+			self.set(table, [])
+		self.update({"ready": 0, "status": DRAFT, **dict.fromkeys(TOTALS, 0)})
+
 	def validate(self) -> None:
 		self._refuse_changes_while_confirming()
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
-		period = self._set_period()
+		covered = self._set_period()
+		period = covered.period
 		self._check_correction()
-		self._refuse_second_statement()
+		self._refuse_second_statement(covered)
 		self._discard_calculation_of_another_period()
 		with zm_errors():
 			check_notices(period, bool(cint(self.anzeige)), bool(cint(self.widerruf)))
 		if not self.flags.calculating:
-			self._apply_lines(period)
+			self._apply_lines(covered)
 
 	def before_submit(self) -> None:
 		if not self.flags.filed_outside:
@@ -180,35 +201,37 @@ class RecapitulativeStatement(Document):
 		"""Berechnen: the lines of the Meldezeitraum from the ledger, with their vouchers and the latest
 		confirmation of each USt-IdNr., the threshold, the reconciliation and the previous period; overrides
 		with a Begründung stay."""
+		frappe.has_permission(DOCTYPE, "write", self, throw=True)
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft Zusammenfassende Meldung can be calculated."))
 		self._refuse_changes_while_confirming()
-		period = self._set_period()
+		covered = self._set_period()
+		period = covered.period
 		settings = settings_for(self.company)
 		rules = settings.get_zm_rules()
 		mapping = mapping_for(self.company, cint(self.year))
 		figures = self._figures()
 		with zm_errors():
-			covered = coverage(rules, period)
 			overrides = bridge.overrides_of(self.lines)
 			shares = zm_sources.shares(self.company, covered, mapping)
-			previous_period = period.previous()
-			previous_shares = zm_sources.shares(
-				self.company, _coverage_or_months(rules, previous_period), mapping
-			)
+			before = earlier(rules, covered)
+			previous_shares = [
+				*zm_sources.goods_shares(self.company, before.goods, mapping),
+				*(
+					zm_sources.services_shares(self.company, before.services, mapping)
+					if before.services
+					else ()
+				),
+			]
 			parties = zm_sources.parties(item.voucher for item in (*shares, *previous_shares))
 			amounts = bridge.voucher_amounts_of(shares, parties)
-			vat_ids = bridge.line_vat_ids(amounts, overrides)
-			latest = vat_id_confirmation.latest(self.company, vat_ids)
-			outcomes = {vat_id: record.result for vat_id, record in latest.items()}
-			statement = build(amounts, figures, bridge.validity_for(vat_ids, outcomes), overrides)
+			statement, confirmations = self._build(amounts, overrides, covered, figures)
 			previous = build(bridge.voucher_amounts_of(previous_shares, parties), figures)
-			compared = compare(statement, previous, _thresholds(settings).exceeded)
+			compared = compare(statement, previous, _thresholds(settings).exceeded, before.arts)
 			deliveries = zm_sources.deliveries(self.company, threshold_window(period), mapping)
 			threshold = threshold_findings(rules, period, deliveries, figures)
 			reconciliation = reconcile(statement, shares, figures, self._filed(covered))
 			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
-			confirmations = {vat_id: bridge.confirmation_fields(record) for vat_id, record in latest.items()}
 			lines = bridge.line_rows(statement, confirmations, period, held)
 		self.set("lines", lines)
 		self.set("vouchers", bridge.voucher_rows(amounts, parties))
@@ -218,7 +241,7 @@ class RecapitulativeStatement(Document):
 			*statement.findings,
 			*threshold,
 			*reconciliation.findings,
-			*comparison_hints(compared, previous_period, figures),
+			*comparison_hints(compared, before, figures),
 		]
 		self.set("hints", bridge.hint_rows(findings))
 		self._set_totals_and_status(statement)
@@ -290,6 +313,7 @@ class RecapitulativeStatement(Document):
 					drafts[0], self.period_label
 				)
 			)
+		changes = self._changes_since_filing()
 		correction = frappe.get_doc(
 			{
 				"doctype": DOCTYPE,
@@ -307,7 +331,32 @@ class RecapitulativeStatement(Document):
 			}
 		).insert()
 		correction.calculate()
+		if changes:
+			frappe.msgprint(
+				"<br>".join(
+					(
+						_(
+							"The ledger of {0} has changed since {1} was filed. The Berichtigung takes in these changes:"
+						).format(self.period_label, self.name),
+						*(escape_html(finding.text) for finding in changes),
+					)
+				),
+				title=_("Make Berichtigung"),
+			)
 		return correction.name
+
+	@frappe.whitelist(methods=["POST"])
+	def ledger_changes_since_filing(self) -> list[str]:
+		"""The form asks this when it shows the filing of a Meldezeitraum: the vouchers whose share in the ledger of
+		its months now differs from the one it filed, as sentences, none while the ledger books what it filed.
+
+		Without the immutable ledger of the Accounts Settings, a cancellation takes an invoice out of its own
+		month, so that the filed month changes and no later ZM reports the cancellation, which the Anleitung zur
+		ZM wants in the Meldezeitraum of the change (IV.10); a Berichtigung then reports it.
+		"""
+		if self.docstatus != 1 or self.status != FILED:
+			return []
+		return [finding.text for finding in self._changes_since_filing()]
 
 	@frappe.whitelist(methods=["POST"])
 	def mark_filed_outside(
@@ -354,15 +403,6 @@ class RecapitulativeStatement(Document):
 		finally:
 			self.flags.filed_outside = False
 
-	def refresh_confirmations(self) -> None:
-		"""Show on each line the latest confirmation of its USt-IdNr."""
-		latest = vat_id_confirmation.latest(self.company, (row.vat_id for row in self.lines))
-		for row in self.lines:
-			record = latest.get(row.vat_id)
-			row.update(
-				bridge.confirmation_fields(record) if record else dict.fromkeys(bridge.CONFIRMATION_FIELDS)
-			)
-
 	def _lacks_mandatory_values(self) -> bool:
 		return (
 			not self.company
@@ -371,10 +411,27 @@ class RecapitulativeStatement(Document):
 			or any(not row.art for row in self.lines)
 		)
 
-	def _set_period(self) -> ReportingPeriod:
-		settings = settings_for(self.company)
+	def _set_period(self) -> Coverage:
+		"""Meldezeitraum, code, dates and deadline, and the months whose lines the statement reports, as the rhythm
+		in the settings gives them; the statement keeps the months, so that checks after its filing read them."""
+		covered = self._coverage()
+		period = covered.period
+		self.update(
+			{
+				"quart": period.quart,
+				"period_label": period.label,
+				"from_date": period.start,
+				"to_date": period.end,
+				"deadline": period.deadline(holiday_list.holidays(self.company)),
+				**bridge.coverage_fields(covered),
+			}
+		)
+		return covered
+
+	def _coverage(self) -> Coverage:
+		"""The months the rhythm in the settings gives the chosen Meldezeitraum."""
 		period = self._chosen_period()
-		rules = settings.get_zm_rules()
+		rules = settings_for(self.company).get_zm_rules()
 		if not rules:
 			frappe.throw(
 				_(
@@ -382,17 +439,7 @@ class RecapitulativeStatement(Document):
 				).format(self.company)
 			)
 		with zm_errors():
-			coverage(rules, period)
-		self.update(
-			{
-				"quart": period.quart,
-				"period_label": period.label,
-				"from_date": period.start,
-				"to_date": period.end,
-				"deadline": period.deadline(holidays(self.company)),
-			}
-		)
-		return period
+			return coverage(rules, period)
 
 	def _chosen_period(self) -> ReportingPeriod:
 		try:
@@ -440,21 +487,45 @@ class RecapitulativeStatement(Document):
 				)
 			)
 
-	def _refuse_second_statement(self) -> None:
-		"""A Meldezeitraum is filed once; every further statement for it is a Berichtigung."""
-		if self.meldeart == bridge.BERICHTIGUNG:
-			return
-		filed = self._other_filings()
-		if filed:
-			frappe.throw(
-				_("{0} of {1} is filed already as {2}. Make a Berichtigung of it.").format(
-					self.period_label, self.company, filed[0]
+	def _refuse_second_statement(self, covered: Coverage) -> None:
+		"""A Meldezeitraum is filed once, and every further statement for it is a Berichtigung. The months are
+		filed once as well: a change of the rules can give a month to two Meldezeiträume, such as January to the
+		quarter filed before and to a monthly ZM after, so no statement reports the Lieferungen or the sonstige
+		Leistungen of a month that the filing of another Meldezeitraum reported."""
+		if self.meldeart != bridge.BERICHTIGUNG:
+			filed = self._other_filings()
+			if filed:
+				frappe.throw(
+					_("{0} of {1} is filed already as {2}. Make a Berichtigung of it.").format(
+						self.period_label, self.company, filed[0]
+					)
 				)
+		clash = bridge.overlapping(covered, self._filings_of_other_periods())
+		if clash:
+			frappe.throw(
+				_(
+					"{0} reports months whose Lieferungen or sonstige Leistungen {1} filed already for {2}, and a month is filed once. Check the rhythm of the Zusammenfassende Meldung in the VAT Return Settings."
+				).format(self.period_label, clash.name, clash.period_label)
 			)
+
+	def _filings_of_other_periods(self) -> list[frappe._dict]:
+		"""The statements that hold the current filing of another Meldezeitraum of the company in the year."""
+		return frappe.get_all(
+			DOCTYPE,
+			filters={
+				"company": self.company,
+				"year": cint(self.year),
+				"docstatus": 1,
+				"status": FILED,
+				"quart": ["!=", cint(self.quart)],
+			},
+			fields=["name", "period_label", "from_date", "to_date", *bridge.COVERAGE_FIELDS],
+			order_by="creation asc",
+		)
 
 	def _refuse_second_filing(self) -> None:
 		"""A Berichtigung reports what changed against the filings when it was made, so none may follow."""
-		self._refuse_second_statement()
+		self._refuse_second_statement(self._coverage())
 		if self.meldeart != bridge.BERICHTIGUNG:
 			return
 		later = frappe.get_all(
@@ -478,18 +549,51 @@ class RecapitulativeStatement(Document):
 				self.set(table, [])
 			self.update({"ready": 0, "status": DRAFT, **dict.fromkeys(TOTALS, 0)})
 
-	def _apply_lines(self, period: ReportingPeriod) -> None:
-		"""Rebuild the lines from the rows of vouchers and lines, so that an override lifts its block at once and
-		a confirmation counts as soon as the lines show it."""
+	def _apply_lines(self, covered: Coverage) -> None:
+		"""Rebuild the lines on every save, so that an override lifts its block at once and a confirmation counts
+		as soon as it is stored.
+
+		Frappe keeps no read-only field from a save through the API, so a save takes only the overrides and the
+		lines of its own from the rows it sends: the status is the stored one unless the calculation was just
+		discarded, the vouchers and the findings of the threshold, the reconciliation and the comparison stay as
+		Berechnen stored them, and each USt-IdNr. counts with its latest VAT ID Confirmation. A new statement is a
+		draft (before_insert), so a calculated one was saved.
+		"""
+		before = self.get_doc_before_save()
+		if before is None:
+			return
+		if self.status != DRAFT:
+			self.update({"status": before.status, "ready": before.ready})
 		if self.status not in (CALCULATED, READY):
 			return
+		self.set(
+			"vouchers",
+			[row.as_dict(no_default_fields=True, no_child_table_fields=True) for row in before.vouchers],
+		)
 		with zm_errors():
-			statement = bridge.statement_of(self.vouchers, self.lines, self._figures())
+			amounts = bridge.voucher_amounts(self.vouchers)
+			overrides = bridge.overrides_of(self.lines)
+			statement, confirmations = self._build(amounts, overrides, covered, self._figures())
 			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
-			rows = bridge.line_rows(statement, bridge.confirmations_of(self.lines), period, held)
+			rows = bridge.line_rows(statement, confirmations, covered.period, held)
 		self.set("lines", rows)
-		self.set("hints", bridge.merged_hints(statement, self.hints))
+		self.set("hints", bridge.merged_hints(statement, before.hints))
 		self._set_totals_and_status(statement)
+
+	def _build(
+		self,
+		amounts: list[VoucherAmount],
+		overrides: dict[tuple[str, Art], Override],
+		covered: Coverage,
+		figures: SiteFigures,
+	) -> tuple[Statement, dict[str, dict]]:
+		"""The lines of the voucher amounts and the overrides, each USt-IdNr. with its latest confirmation for the
+		months the statement reports, and that confirmation as the lines show it."""
+		vat_ids = bridge.line_vat_ids(amounts, overrides)
+		latest = vat_id_confirmation.latest(self.company, vat_ids)
+		validity = bridge.validity_for(vat_ids, latest, bridge.covered_span(covered))
+		statement = build(amounts, figures, validity, overrides, bridge.asked_on(latest))
+		return statement, {vat_id: bridge.confirmation_fields(record) for vat_id, record in latest.items()}
 
 	def _set_totals_and_status(self, statement: Statement) -> None:
 		self.update(bridge.totals(statement.meldezeilen))
@@ -531,7 +635,9 @@ class RecapitulativeStatement(Document):
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the statement before filing it."))
 		self._require_explanation()
-		period = self._chosen_period()
+		covered = self._coverage()
+		self._require_unchanged_ledger(covered)
+		period = covered.period
 		with zm_errors():
 			rows, correction = self._file_lines(period)
 			if correction and not rows:
@@ -555,6 +661,43 @@ class RecapitulativeStatement(Document):
 			frappe.throw(_("Calculate the statement before making the file for Mein ELSTER."))
 		self._refuse_second_filing()
 		self._require_explanation()
+		self._require_unchanged_ledger(self._coverage())
+
+	def _require_unchanged_ledger(self, covered: Coverage) -> None:
+		"""Berechnen reads the ledger once: a file or a filing goes with the lines only while the ledger of their
+		months still books the vouchers they were made from."""
+		changes = self._ledger_changes(covered, self.vouchers)
+		if changes:
+			frappe.throw(
+				"<br>".join(
+					(
+						_(
+							"The ledger of {0} has changed since the statement was calculated. Calculate it again before making its file or filing it."
+						).format(self.period_label),
+						*(escape_html(finding.text) for finding in changes),
+					)
+				),
+				title=_("Recapitulative Statement"),
+			)
+
+	def _changes_since_filing(self) -> tuple[Finding, ...]:
+		"""What the ledger of the months the statement filed books now against the vouchers it filed."""
+		period = self._chosen_period()
+		covered = bridge.kept_coverage(period, self) or coverage_or_months(
+			settings_for(self.company).get_zm_rules(), period
+		)
+		return self._ledger_changes(covered, self.vouchers)
+
+	def _ledger_changes(self, covered: Coverage, vouchers: Iterable[Document]) -> tuple[Finding, ...]:
+		"""The vouchers whose share of Kz 41, 42 or 21 in the ledger of the months now differs from ``vouchers``,
+		the rows the lines were made from: in amount, on one side only or in the USt-IdNr."""
+		mapping = mapping_for(self.company, cint(self.year))
+		shares = zm_sources.shares(self.company, covered, mapping)
+		parties = zm_sources.parties(item.voucher for item in shares)
+		with zm_errors():
+			return ledger_changes(
+				bridge.voucher_amounts(vouchers), bridge.voucher_amounts_of(shares, parties), self._figures()
+			)
 
 	def _attach(self, file_name: str, content: bytes) -> str:
 		"""Attach the file privately; a file of the same content attached before is kept instead."""
@@ -635,17 +778,6 @@ def requester(company: str) -> str:
 	return vatid.normalize(ust_idnr)
 
 
-def holidays(company: str) -> list[date]:
-	"""The days of the holiday list of the company, on which no deadline ends (§ 108 Absatz 3 AO)."""
-	holiday_list = frappe.get_cached_value("Company", company, "default_holiday_list")
-	if not holiday_list:
-		return []
-	days = frappe.get_all(
-		"Holiday", filters={"parent": holiday_list, "parenttype": "Holiday List"}, pluck="holiday_date"
-	)
-	return [getdate(day) for day in days]
-
-
 def confirmation_job_id(name: str) -> str:
 	return f"steuerbote:ustid:{name}"
 
@@ -678,7 +810,6 @@ def run_confirmation(name: str) -> None:
 				frappe.log_error(title=_("Confirmation of a USt-IdNr. failed"))
 				failed.append(vat_id)
 		doc.reload()
-		doc.refresh_confirmations()
 		doc.flags.confirming = True
 		doc.save()
 	except Exception as error:
@@ -704,15 +835,6 @@ def _failure_text(error: Exception) -> str:
 		return strip_html(str(error)).strip()
 	frappe.log_error(title=_("Confirmation of the USt-IdNrn. failed"))
 	return _("An unexpected error stopped the confirmation. The Error Log has the details.")
-
-
-def _coverage_or_months(rules: list[Rule], period: ReportingPeriod) -> Coverage:
-	"""The months of a Meldezeitraum to compare with: those the rules give, or all of its months where the
-	rules give no ZM for it, such as before their first rule."""
-	try:
-		return coverage(rules, period)
-	except ZmError:
-		return Coverage(period, period.months, period.months)
 
 
 def _thresholds(settings: Document) -> Thresholds:

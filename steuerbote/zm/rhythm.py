@@ -180,6 +180,15 @@ def coverage(rules: Iterable[Rule], period: ReportingPeriod) -> Coverage:
 	return Coverage(period, goods, services)
 
 
+def coverage_or_months(rules: Iterable[Rule], period: ReportingPeriod) -> Coverage:
+	"""The months of ``period`` a comparison reads: those the rules give it, or all of its months where the rules
+	give no ZM for it, such as before their first rule."""
+	try:
+		return coverage(rules, period)
+	except ZmError:
+		return Coverage(period, period.months, period.months)
+
+
 def check_notices(period: ReportingPeriod, anzeige: bool, widerruf: bool) -> None:
 	"""Refuse an Anzeige or a Widerruf after § 18a Absatz 1 UStG that the ZM for ``period`` cannot carry.
 
@@ -225,9 +234,10 @@ def threshold_findings(
 
 	A quarterly rule breaks the threshold when its quarter exceeds it before its last month, since the first
 	monthly ZM is then due for fewer months; an excess in the last month gives the same months and deadline as the
-	quarter. A yearly rule breaks it with any excess: § 18a Absatz 9 Nummer 2 UStG allows the yearly ZM only up to
-	15,000 euros a year. Either breaks it when one of the four previous quarters exceeded it. One finding per
-	quarter, in their order.
+	quarter. A yearly rule breaks it with any excess, since § 18a Absatz 1 Satz 2 and 3 UStG then wants the ZM
+	monthly from the month of the excess on; the narrower limits of the yearly ZM itself, such as the 15,000 euros
+	a year of Absatz 9 Nummer 2, are not checked here. Either breaks it when one of the four previous quarters
+	exceeded it (Absatz 1 Satz 2). One finding per quarter, in their order.
 	"""
 	rules = tuple(rules)
 	found: dict[tuple[int, int], Finding] = {}

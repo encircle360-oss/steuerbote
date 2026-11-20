@@ -17,7 +17,7 @@ The ZM takes whole euros (ZMDO: betrag, GeldBetragOhneCent). How to round is wri
 the cents towards zero, as for the Bemessungsgrundlagen of the Voranmeldung (rounding.to_full_euros), and a line
 of zero euros is not reported: „Sog. „Nullmeldungen“ sind nicht abzugeben“ (Anleitung zur ZM, III.1).
 
-A line holds the ZM back from „Bereit“ when a voucher names no customer or the customer no USt-IdNr., when the
+A line holds the ZM back from „Bereit“ when a voucher names no customer or no USt-IdNr. of it, when the
 USt-IdNr. is not one the ZM takes (steuerbote.zm.ustid), when the confirmation of § 18e UStG found it invalid or
 has not confirmed it (the outcome is an input), or when the USt-IdNr. of a Dreiecksgeschäft was not issued in
 the country where the goods arrive (§ 18a Absatz 7 Satz 1 Nummer 4 Buchstabe a UStG). An override with a
@@ -30,11 +30,13 @@ state (§ 18a Absatz 7 Satz 1 Nummer 2 UStG).
 from collections.abc import Iterable
 from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from enum import Enum, StrEnum
 from types import MappingProxyType
 
 from steuerbote.ustva.calculation import require_cents
+from steuerbote.ustva.period import MONTH_NAMES
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import EURO, ZERO, require_decimal, to_full_euros
 from steuerbote.zm.errors import ZmError
@@ -202,11 +204,15 @@ def build(
 	figures: Figures,
 	validity: ReadOnlyMapping[str, Validity] | None = None,
 	overrides: ReadOnlyMapping[tuple[str, Art], Override] | None = None,
+	asked: ReadOnlyMapping[str, date] | None = None,
 ) -> Statement:
 	"""The lines of the voucher amounts of a Meldezeitraum.
 
 	``validity`` holds the outcome of the confirmation by USt-IdNr. as the ZM writes it; a USt-IdNr. without an
-	outcome passes. ``overrides`` are keyed by USt-IdNr. and Art as the lines show them.
+	outcome passes. ``overrides`` are keyed by USt-IdNr. and Art as the lines show them. ``asked`` holds the day
+	the confirmation of each USt-IdNr. was asked, which the findings on it name: a confirmation holds for the
+	moment of its query („Bestätigungen für zurückliegende Zeitpunkte oder Zeiträume sind nicht möglich.“, BZSt,
+	„Fragen und Antworten“ zur USt-IdNr.).
 	"""
 	vouchers: dict[tuple[str, Art], list[VoucherAmount]] = {}
 	for item in amounts:
@@ -218,7 +224,7 @@ def build(
 			raise ZmError(OVERRIDDEN_TWICE, *key)
 		overridden[key] = override
 	lines = (
-		_line(key, tuple(vouchers.get(key, ())), overridden.get(key), validity or {}, figures)
+		_line(key, tuple(vouchers.get(key, ())), overridden.get(key), validity or {}, asked or {}, figures)
 		for key in sorted(vouchers.keys() | overridden.keys(), key=line_order)
 	)
 	return Statement(tuple(lines))
@@ -239,19 +245,23 @@ def _line(
 	vouchers: tuple[VoucherAmount, ...],
 	override: Override | None,
 	validity: ReadOnlyMapping[str, Validity],
+	asked: ReadOnlyMapping[str, date],
 	figures: Figures,
 ) -> Line:
 	vat_id, art = key
 	party = next((name for item in vouchers if (name := (item.party or "").strip())), "")
 	findings: list[Finding] = []
 	problem = refusal(vat_id, services=art is Art.S)
+	day = asked.get(vat_id)
 	if vat_id and problem is not None:
 		findings.append(Finding(Code.MALFORMED_VAT_ID, _MALFORMED[problem].format(vat_id), party=party))
 	elif vat_id and validity.get(vat_id) is Validity.INVALID:
-		text = f"Die USt-IdNr. {vat_id} ist laut Bestätigungsabfrage ungültig."
+		query = f"Bestätigungsabfrage vom {_day_text(day)}" if day else "Bestätigungsabfrage"
+		text = f"Die USt-IdNr. {vat_id} ist laut {query} ungültig."
 		findings.append(Finding(Code.INVALID_VAT_ID, text, party=party))
 	elif vat_id and validity.get(vat_id) is Validity.UNCONFIRMED:
-		text = f"Die USt-IdNr. {vat_id} ist nicht bestätigt."
+		unanswered = f"; die Bestätigungsabfrage vom {_day_text(day)} ergab kein Ergebnis" if day else ""
+		text = f"Die USt-IdNr. {vat_id} ist nicht bestätigt{unanswered}."
 		findings.append(Finding(Code.UNCONFIRMED_VAT_ID, text, party=party))
 	for item in vouchers:
 		findings.extend(_voucher_findings(item, vat_id, problem is None, figures))
@@ -280,7 +290,7 @@ def _voucher_findings(item: VoucherAmount, vat_id: str, valid: bool, figures: Fi
 	if not party:
 		return [Finding(Code.NO_PARTY, f"{booked}, nennt aber keinen Kunden.", item.voucher)]
 	if not vat_id:
-		text = f"{booked}, aber der Kunde {party} hat keine USt-IdNr."
+		text = f"{booked}, nennt aber keine USt-IdNr. des Kunden {party}."
 		return [Finding(Code.NO_VAT_ID, text, item.voucher, party)]
 	if item.art is not Art.D or not valid or country_prefix(item.destination) == vat_id[:2]:
 		return []
@@ -292,6 +302,10 @@ def _voucher_findings(item: VoucherAmount, vat_id: str, valid: bool, figures: Fi
 			"letzten Abnehmers ist nicht in diesem Land erteilt."
 		)
 	return [Finding(Code.DESTINATION, text, item.voucher, party)]
+
+
+def _day_text(day: date) -> str:
+	return f"{day.day}. {MONTH_NAMES[day.month - 1]} {day.year}"
 
 
 def _reportable(vat_id: str, art: Art) -> bool:

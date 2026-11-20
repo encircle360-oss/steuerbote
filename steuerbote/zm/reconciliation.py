@@ -13,7 +13,9 @@ the services months for Kz 21.
 
 1. The exact amounts of the vouchers in the lines against those the ledger gives each Kennzahl, voucher by voucher.
    They agree unless a voucher is missing on one side or carries another amount; such a voucher is named and holds
-   the ZM back.
+   the ZM back. Made from the same shares, the lines agree with the ledger when Berechnen reads it; the file and
+   the filing check them against what the ledger books by then (ledger_changes), with the USt-IdNr. of each
+   voucher besides.
 2. The Meldezeilen against the Kennzahlen of the Voranmeldungen filed for these months. Each line and each
    Voranmeldung drops less than a euro (steuerbote.zm.lines, rounding.to_full_euros), so they part by less than
    one euro per line of the Art and per Voranmeldung. A larger difference, such as one from an override, gets a
@@ -30,7 +32,16 @@ from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import ZERO
 from steuerbote.zm.errors import ZmError
 from steuerbote.zm.findings import Code, Finding, voucher_no
-from steuerbote.zm.lines import ART_KENNZAHL, ART_ORDER, KENNZAHL_ART, Art, Statement, require_whole_euros
+from steuerbote.zm.lines import (
+	ART_KENNZAHL,
+	ART_ORDER,
+	KENNZAHL_ART,
+	Art,
+	Statement,
+	VoucherAmount,
+	line_vat_id,
+	require_whole_euros,
+)
 
 NO_RETURN = "Kennzahlen of filed Voranmeldungen come from at least one Voranmeldung, not from {0}."
 
@@ -172,6 +183,50 @@ def _tolerance(statement: Statement, art: Art, returns: Filed) -> int:
 	"""A difference of this many euros or more is no rounding: each line of the Art and each Voranmeldung drops
 	less than one euro."""
 	return sum(1 for line in statement.lines if line.art is art and line.valid) + returns.returns
+
+
+def ledger_changes(
+	held: Iterable[VoucherAmount], ledger: Iterable[VoucherAmount], figures: Figures
+) -> tuple[Finding, ...]:
+	"""What the ledger books now against the voucher amounts the lines were made from: each voucher whose share of
+	Kz 41, 42 or 21 differs in amount, is on one side only, or stands under another USt-IdNr. than in ``held``,
+	in the order of ``held`` and then of ``ledger``.
+
+	The lines are made when Berechnen reads the ledger. What the ledger books after that, such as another invoice,
+	a Skonto or a cancellation, the lines lack until Berechnen runs again, so the file and the filing hold back
+	the ZM until they do.
+	"""
+	before, now = _by_voucher(held), _by_voucher(ledger)
+	findings: list[Finding] = []
+	for key in [*before, *(key for key in now if key not in before)]:
+		voucher, kennzahl = key
+		was_amount, was_vat_id = before.get(key, (ZERO, ""))
+		amount, vat_id = now.get(key, (ZERO, ""))
+		if amount != was_amount:
+			findings.append(
+				_ledger_finding(kennzahl, VoucherDifference(voucher, amount, was_amount), figures)
+			)
+		elif vat_id != was_vat_id:
+			text = (
+				f"Beleg {voucher_no(voucher)} steht in der ZM {_under(was_vat_id)}, laut ERPNext jetzt "
+				f"{_under(vat_id)}"
+			)
+			findings.append(Finding(Code.LEDGER, text if text.endswith(".") else f"{text}.", voucher))
+	return tuple(findings)
+
+
+def _by_voucher(amounts: Iterable[VoucherAmount]) -> dict[tuple[str, str], tuple[Decimal, str]]:
+	"""The amount of each voucher in each Kennzahl and the USt-IdNr. of the line it goes into."""
+	found: dict[tuple[str, str], tuple[Decimal, str]] = {}
+	for item in amounts:
+		key = (item.voucher, item.kennzahl)
+		amount, _vat_id = found.get(key, (ZERO, ""))
+		found[key] = (amount + item.amount, line_vat_id(item.vat_id, item.art))
+	return found
+
+
+def _under(vat_id: str) -> str:
+	return f"unter {vat_id}" if vat_id else "ohne USt-IdNr."
 
 
 def _ledger_finding(kennzahl: str, difference: VoucherDifference, figures: Figures) -> Finding:

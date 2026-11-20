@@ -7,7 +7,7 @@ Diese Seite beschreibt Aufbau, Einrichtung, Tests, Stil und CI. Wie ein Beitrag 
 ```text
 steuerbote/                    Repository
 ├── steuerbote/                Python-Paket der Frappe-App
-│   ├── hooks.py               App-Metadaten, setzt ERPNext voraus, Eintrag in der App-Übersicht, nennt die Fixtures der App
+│   ├── hooks.py               App-Metadaten, setzt ERPNext voraus, Eintrag in der App-Übersicht, nennt die Fixtures der App und nimmt die Meldungen vom Löschen der Transaktionen aus
 │   ├── permissions.py         wem die App-Übersicht Steuerbote zeigt
 │   ├── ustva/                 Rechenkern der Umsatzsteuer-Voranmeldung, reines Python ohne Frappe-Import
 │   │   ├── kennzahlen.py      Katalog der Kennzahlen des Vordrucks USt 1 A je Jahrgang, bisher 2026
@@ -42,13 +42,15 @@ steuerbote/                    Repository
 │   ├── invoices.py            liest die Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns, reines Python
 │   ├── zm_sources.py          liest für die Zusammenfassende Meldung Hauptbuch, Kunden, Adressen und abgegebene Voranmeldungen
+│   ├── dauerfrist_sources.py  liest für die Dauerfristverlängerung die abgegebenen Voranmeldungen eines Jahres und das Gründungsdatum
+│   ├── holiday_list.py        liest die Feiertage der Fristen aus der Feiertagsliste des Unternehmens
 │   ├── steuerbote/            Frappe-Modul „Steuerbote“, siehe Architektur
-│   │   ├── doctype/           Einstellungen, Kontenzuordnung, Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung und USt-IdNr.-Bestätigung samt Tabellen
+│   │   ├── doctype/           Einstellungen, Kontenzuordnung, Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung, Dauerfristverlängerung und USt-IdNr.-Bestätigung samt Tabellen
 │   │   ├── report/            Bericht „UStVA Kennzahlen“ mit den Belegen hinter jeder Kennzahl
 │   │   ├── workspace/         Arbeitsbereich „Steuern“
 │   │   ├── sidebar/           Seitenleiste des Moduls mit kurzen Bezeichnungen
 │   │   ├── number_card/       Zahlenkarte „Offene Voranmeldungen“
-│   │   └── print_format/      Druckformate „Umsatzsteuer-Voranmeldung“ und „Zusammenfassende Meldung“
+│   │   └── print_format/      Druckformate „Umsatzsteuer-Voranmeldung“, „Zusammenfassende Meldung“ und „Dauerfristverlängerung“
 │   ├── dock/                  Eintrag „Steuern“ in der Leiste von ERPNext
 │   ├── fixtures/              Feld „Nicht in der Umsatzsteuer-Voranmeldung“ an der Journalbuchung
 │   ├── public/                Logo (images/) und Symbol der Leiste (icons/)

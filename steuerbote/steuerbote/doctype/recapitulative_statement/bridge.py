@@ -2,10 +2,10 @@
 
 Nothing here imports Frappe. The module turns the voucher shares of the ledger into the voucher amounts of the
 core, the core's lines, reconciliation, comparison and findings into the rows of the statement's tables, and the
-rows back into the core's values: the voucher amounts, the overrides with their Begründung and the outcome of
-the latest confirmation of each USt-IdNr. So every save rebuilds the lines from the rows with
-steuerbote.zm.lines.build, and an override lifts its block at once, while the controller only moves data. Every
-amount and every rule is the core's.
+rows back into the core's values: the voucher amounts and the overrides with their Begründung. So every save
+rebuilds the lines with steuerbote.zm.lines.build, from the vouchers Berechnen stored, the overrides of the rows
+and the latest confirmation of each USt-IdNr., which the controller reads from its records, and an override
+lifts its block at once, while the controller only moves data. Every amount and every rule is the core's.
 
 A number that was never confirmed counts as unconfirmed, as does one whose confirmation got no answer: both
 hold the statement back from „Bereit“ until the BZSt confirms the number or the line is overridden with a
@@ -46,6 +46,7 @@ from steuerbote.zm.lines import (
 )
 from steuerbote.zm.period import Kind, ReportingPeriod
 from steuerbote.zm.reconciliation import Filed, Reconciliation, Share
+from steuerbote.zm.rhythm import Coverage
 from steuerbote.zm.ustid import normalize
 
 BERICHTIGUNG = "Berichtigung"
@@ -77,6 +78,7 @@ VALIDITY: ReadOnlyMapping[str, Validity] = MappingProxyType(
 TOTAL_FIELDS: ReadOnlyMapping[Art, str] = MappingProxyType(
 	{Art.L: "total_l", Art.D: "total_d", Art.S: "total_s"}
 )
+COVERAGE_FIELDS = ("goods_from", "goods_to", "services_from", "services_to")
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +112,67 @@ def reporting_period(kind: str, year: int, index: int) -> ReportingPeriod:
 		case Kind.QUARTER:
 			return ReportingPeriod.quarter(year, index)
 	return ReportingPeriod.calendar_year(year)
+
+
+def coverage_fields(covered: Coverage) -> dict[str, date | None]:
+	"""The first and last day of the months whose Lieferungen and whose sonstige Leistungen a statement reports,
+	as its fields keep them."""
+	goods_from, goods_to = covered.goods_span
+	services_from, services_to = covered.services_span or (None, None)
+	return {
+		"goods_from": goods_from,
+		"goods_to": goods_to,
+		"services_from": services_from,
+		"services_to": services_to,
+	}
+
+
+def kept_coverage(period: ReportingPeriod, row: Row) -> Coverage | None:
+	"""The months a statement of ``period`` keeps in its fields, None where it keeps none."""
+	goods = _kept_months(row.get("goods_from"), row.get("goods_to"))
+	if not goods:
+		return None
+	return Coverage(period, goods, _kept_months(row.get("services_from"), row.get("services_to")))
+
+
+def overlapping(covered: Coverage, filings: Iterable[Row]) -> Row | None:
+	"""The first of the filed statements that reports the Lieferungen of a month whose Lieferungen ``covered``
+	reports, or the sonstige Leistungen of a month whose sonstige Leistungen it reports. A statement that keeps
+	no months counts with all the months of its Meldezeitraum, for both."""
+	for row in filings:
+		goods, services = _kept_spans(row)
+		if _overlap(covered.goods_span, goods) or _overlap(covered.services_span, services):
+			return row
+	return None
+
+
+def _kept_months(first: object, last: object) -> tuple[int, ...]:
+	start, end = _day(first), _day(last)
+	return tuple(range(start.month, end.month + 1)) if start and end else ()
+
+
+def _kept_spans(row: Row) -> tuple[tuple[date, date] | None, tuple[date, date] | None]:
+	goods = _span_of(row.get("goods_from"), row.get("goods_to"))
+	if goods is None:
+		period = _span_of(row.get("from_date"), row.get("to_date"))
+		return period, period
+	return goods, _span_of(row.get("services_from"), row.get("services_to"))
+
+
+def _span_of(first: object, last: object) -> tuple[date, date] | None:
+	start, end = _day(first), _day(last)
+	return (start, end) if start and end else None
+
+
+def _overlap(one: tuple[date, date] | None, other: tuple[date, date] | None) -> bool:
+	return one is not None and other is not None and one[0] <= other[1] and other[0] <= one[1]
+
+
+def _day(value: object) -> date | None:
+	"""A Date field as Frappe gives it: a date from the database, an ISO string from the form, or empty."""
+	if isinstance(value, date):
+		return value
+	return date.fromisoformat(str(value)) if value else None
 
 
 def csv_file_name(period: ReportingPeriod, correction: bool) -> str:
@@ -211,19 +274,57 @@ def line_vat_ids(
 	return {line_vat_id(item.vat_id, item.art) for item in amounts} | {vat_id for vat_id, _art in overrides}
 
 
-def validity_for(vat_ids: Iterable[str], outcomes: ReadOnlyMapping[str, str | None]) -> dict[str, Validity]:
-	"""The validity of each USt-IdNr. after the result of its latest confirmation; without one, unconfirmed."""
-	return {
-		vat_id: VALIDITY.get(outcomes.get(vat_id) or "", Validity.UNCONFIRMED) for vat_id in vat_ids if vat_id
-	}
+def validity_for(
+	vat_ids: Iterable[str], records: ReadOnlyMapping[str, Row], span: tuple[date, date] | None = None
+) -> dict[str, Validity]:
+	"""The validity of each USt-IdNr. after the result of its latest confirmation; without one, unconfirmed.
+
+	The BZSt answers for the moment of the query. A number it finds not valid then counts as valid for the months
+	of ``span`` when the answer says it was valid all through them, as evatr-2006 does with gueltigAb and
+	gueltigBis („Sie war gültig im Zeitraum, der durch die Werte in den Feldern gueltigAb und gueltigBis
+	beschrieben ist.“) and evatr-2002 with gueltigAb („Sie ist erst gültig ab dem Datum im Feld gueltigAb.“),
+	statuses of the eVatR API.
+	"""
+	return {vat_id: _validity(records.get(vat_id), span) for vat_id in vat_ids if vat_id}
+
+
+def _validity(record: Row | None, span: tuple[date, date] | None) -> Validity:
+	validity = VALIDITY.get((record or {}).get("result") or "", Validity.UNCONFIRMED)
+	if validity is Validity.INVALID and span is not None and _valid_through(record, span):
+		return Validity.CONFIRMED
+	return validity
+
+
+def _valid_through(record: Row, span: tuple[date, date]) -> bool:
+	valid_from, valid_until = _day(record.get("valid_from")), _day(record.get("valid_until"))
+	if valid_from is None and valid_until is None:
+		return False
+	return (valid_from is None or valid_from <= span[0]) and (valid_until is None or span[1] <= valid_until)
+
+
+def asked_on(records: ReadOnlyMapping[str, Row]) -> dict[str, date]:
+	"""The day each USt-IdNr. was last asked about, as its latest confirmation keeps it."""
+	found = {}
+	for vat_id, record in records.items():
+		day = confirmation_fields(record)["confirmation_date"]
+		if day:
+			found[vat_id] = day
+	return found
+
+
+def covered_span(covered: Coverage) -> tuple[date, date]:
+	"""The first and the last day of the months whose lines a statement reports."""
+	goods_from, goods_to = covered.goods_span
+	services_from, services_to = covered.services_span or covered.goods_span
+	return min(goods_from, services_from), max(goods_to, services_to)
 
 
 def statement_of(voucher_rows: Iterable[Row], line_rows: Sequence[Row], figures: Figures) -> Statement:
 	"""The lines of the statement as its rows hold them: the vouchers, the overrides and the confirmations."""
 	amounts = voucher_amounts(voucher_rows)
 	overrides = overrides_of(line_rows)
-	outcomes = {str(row.get("vat_id") or ""): row.get("confirmation_outcome") for row in line_rows}
-	return build(amounts, figures, validity_for(line_vat_ids(amounts, overrides), outcomes), overrides)
+	records = {str(row.get("vat_id") or ""): {"result": row.get("confirmation_outcome")} for row in line_rows}
+	return build(amounts, figures, validity_for(line_vat_ids(amounts, overrides), records), overrides)
 
 
 def confirmation_fields(record: Row) -> dict[str, Any]:
@@ -236,15 +337,6 @@ def confirmation_fields(record: Row) -> dict[str, Any]:
 		"confirmation_outcome": record.get("result"),
 		"confirmation_status": record.get("status_code"),
 		"consultation_id": record.get("consultation_id"),
-	}
-
-
-def confirmations_of(rows: Iterable[Row]) -> dict[str, dict[str, Any]]:
-	"""The confirmation that the rows of the lines show for each USt-IdNr., to carry it over a new build."""
-	return {
-		vat_id: {name: row.get(name) for name in CONFIRMATION_FIELDS}
-		for row in rows
-		if (vat_id := str(row.get("vat_id") or ""))
 	}
 
 

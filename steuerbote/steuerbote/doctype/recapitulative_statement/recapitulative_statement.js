@@ -29,6 +29,7 @@ frappe.ui.form.on("Recapitulative Statement", {
 		}
 		if (frm.doc.docstatus === 1 && frm.doc.status === "Abgegeben") {
 			frm.add_custom_button(__("Make Berichtigung"), () => make_correction(frm));
+			show_ledger_changes(frm);
 		}
 		if (free && calculated) {
 			const group = __("ELSTER");
@@ -168,6 +169,24 @@ function ask_for_filing_note(frm, filed_via) {
 		in_mein_elster ? __("Filed in Mein ELSTER") : __("Mark as Filed Outside"),
 		__("Mark as Filed")
 	);
+}
+
+// Without the immutable ledger of the Accounts Settings, a cancellation changes the ledger of a month filed already.
+function show_ledger_changes(frm) {
+	const name = frm.doc.name;
+	frm.call("ledger_changes_since_filing").then((response) => {
+		const changes = response.message || [];
+		if (!changes.length || frm.doc.name !== name) {
+			return;
+		}
+		frm.dashboard.set_headline_alert(
+			[
+				__("The ledger of these months has changed since the filing; make a Berichtigung"),
+				...changes.map((change) => frappe.utils.escape_html(change)),
+			].join("<br>"),
+			"orange"
+		);
+	});
 }
 
 function show_ready_note(frm) {

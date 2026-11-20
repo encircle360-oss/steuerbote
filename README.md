@@ -2,7 +2,7 @@
 
 Steuermeldungen aus ERPNext an ELSTER. Zuerst die Umsatzsteuer-Voranmeldung, danach Dauerfristverlängerung, Zusammenfassende Meldung und die Jahresmeldungen (E-Bilanz, Umsatzsteuer-, Körperschaftsteuer- und Gewerbesteuererklärung).
 
-> **Status: in Entwicklung, noch nicht einsatzfähig.** Rechenkern, Einstellungen, Kontenzuordnung, Meldung, Bericht, Druckformat und die XML-Datei für Mein ELSTER sind da, ebenso die Anbindung an ERiC. Die Zusammenfassende Meldung lässt sich berechnen, ihre USt-IdNrn. beim BZSt bestätigen und als CSV-Datei in Mein ELSTER abgeben. Ohne eigene Hersteller-ID läuft die Übermittlung nur als Simulation; die echte Übermittlung folgt mit der Hersteller-ID, siehe [Roadmap](docs/roadmap.md).
+> **Status: in Entwicklung, noch nicht einsatzfähig.** Rechenkern, Einstellungen, Kontenzuordnung, Meldung, Bericht, Druckformat und die XML-Datei für Mein ELSTER sind da, ebenso die Anbindung an ERiC. Die Zusammenfassende Meldung lässt sich berechnen, ihre USt-IdNrn. beim BZSt bestätigen und als CSV-Datei in Mein ELSTER abgeben. Die Dauerfristverlängerung berechnet die Sondervorauszahlung aus den abgegebenen Voranmeldungen des Vorjahres; den Vordruck USt 1 H trägt man in Mein ELSTER von Hand ein. Ohne eigene Hersteller-ID läuft die Übermittlung nur als Simulation; die echte Übermittlung folgt mit der Hersteller-ID, siehe [Roadmap](docs/roadmap.md).
 
 ## Was Steuerbote macht
 
@@ -15,6 +15,7 @@ Steuermeldungen aus ERPNext an ELSTER. Zuerst die Umsatzsteuer-Voranmeldung, dan
 - **Übermittlung über ERiC** (Simulation; echte Übermittlung mit Hersteller-ID). Prüfen gegen die ELSTER-Prüfregeln vor der Abgabe, Testsenden und Senden mit Organisationszertifikat, Übermittlungsprotokoll als PDF an der ELSTER-Übermittlung des Belegs, siehe [Übermittlung an ELSTER](docs/uebermittlung.md).
 - **Abgabe ohne Hersteller-ID.** Die Voranmeldung als XML-Datei für den Import in Mein ELSTER, mit nachgerechneter Kz 83 und dem Zeichensatz von ELSTER; geprüft und abgesendet wird sie in Mein ELSTER, siehe [Abgabe über Mein ELSTER](docs/abgabe-mein-elster.md).
 - **Zusammenfassende Meldung.** Meldezeilen je USt-IdNr. und Art aus den Belegen hinter Kz 41, 42 und 21, im Abgaberhythmus aus den Einstellungen samt Schwelle von 50.000 € und abgeglichen mit den abgegebenen Voranmeldungen. Jede USt-IdNr. lässt sich beim Bundeszentralamt für Steuern (BZSt) bestätigen, VIES antwortet, wenn das BZSt nicht kann. Jede Abfrage bleibt als Nachweis gespeichert, und eine ungültige oder unbestätigte Nummer hält die Meldung an, bis eine Korrektur mit Begründung sie freigibt. Abgegeben wird über eine CSV-Datei für den Import in Mein ELSTER, siehe [Zusammenfassende Meldung](docs/zm.md).
+- **Dauerfristverlängerung und Sondervorauszahlung.** Der Beleg „Dauerfristverlängerung“ hält den Vordruck USt 1 H eines Unternehmens für ein Jahr: den Antrag und bei monatlicher Abgabe die Anmeldung der Sondervorauszahlung. „Berechnen“ bildet aus den abgegebenen Voranmeldungen des Vorjahres die Grundlage und ein Elftel davon als Sondervorauszahlung (Kz 38), mit Fälligkeit; eine Grundlage von Hand mit Begründung ersetzt sie, etwa nach einer Gründung im laufenden Jahr. Bis es das Schema 2027 und eine Hersteller-ID für ERiC gibt, trägt man den Vordruck in Mein ELSTER von Hand ein, mit dem Druckformat als Vorlage. „In Mein ELSTER eingetragen“ oder „Als außerhalb abgegeben vermerken“ vermerkt die Abgabe und schreibt Kz 38 in die Einstellungen, aus denen die letzte Voranmeldung des Jahres die Sondervorauszahlung in Kz 39 abzieht, siehe [Dauerfristverlängerung](docs/dauerfristverlaengerung.md).
 
 ## Einblick
 
@@ -63,7 +64,7 @@ bench --site <site> install-app steuerbote
 
 ### Wo finde ich Steuerbote?
 
-In der Leiste links, bei den Bereichen von ERPNext wie Rechnungswesen und Vertrieb, steht „Steuern“. Der Eintrag öffnet den Arbeitsbereich „Steuern“ mit den Voranmeldungen, den Zusammenfassenden Meldungen, dem Bericht „UStVA Kennzahlen“ und den Einstellungen. Ihn sehen Benutzer mit einer der Rollen Accounts User, Accounts Manager oder System Manager.
+In der Leiste links, bei den Bereichen von ERPNext wie Rechnungswesen und Vertrieb, steht „Steuern“. Der Eintrag öffnet den Arbeitsbereich „Steuern“ mit den Voranmeldungen, den Dauerfristverlängerungen, den Zusammenfassenden Meldungen, dem Bericht „UStVA Kennzahlen“ und den Einstellungen. Ihn sehen Benutzer mit einer der Rollen Accounts User, Accounts Manager oder System Manager.
 
 - Wer die Leiste für alle oder für sich angeordnet hat, bekommt „Steuern“ nicht von selbst dazu, sondern nimmt den Eintrag im Benutzermenü über „Dock verwalten“ auf.
 - In der App-Übersicht steht Steuerbote nicht als eigene Kachel, weil es sich in die Leiste von ERPNext einhängt. Als Standard-App eines Benutzers lässt es sich trotzdem wählen. Mehr dazu in [Architektur](docs/architektur.md#platz-im-desk).
@@ -75,7 +76,7 @@ In der Leiste links, bei den Bereichen von ERPNext wie Rechnungswesen und Vertri
 - [Abgabe über Mein ELSTER](docs/abgabe-mein-elster.md): XML-Datei erzeugen und in Mein ELSTER importieren
 - [Zusammenfassende Meldung](docs/zm.md): Meldezeiträume, Abgaberhythmus, Meldezeilen, Abgleich mit der Voranmeldung, Berichtigung, CSV-Datei für Mein ELSTER und der Beleg in ERPNext
 - [Prüfung ausländischer USt-IdNrn.](docs/ust-idnr-pruefung.md): Bestätigung beim BZSt, VIES als Ausweichdienst und die gespeicherten Abfragen
-- [Dauerfristverlängerung und Sondervorauszahlung](docs/dauerfristverlaengerung.md): Regeln, Fristen und Vordruck USt 1 H
+- [Dauerfristverlängerung und Sondervorauszahlung](docs/dauerfristverlaengerung.md): Regeln, Fristen, Vordruck USt 1 H, der Beleg in ERPNext und der Eintrag in Mein ELSTER
 - [Architektur](docs/architektur.md): Rechenkern und Frappe-Schicht, DocTypes, Bericht, Arbeitsbereich, Platz im Desk und Druckformat
 - [Übermittlung an ELSTER](docs/uebermittlung.md): Prüfen, Testsenden, Senden, Simulationsmodus, ERiC-Einstellungen und Übermittlungsprotokoll
 - [Entwicklung](docs/entwicklung.md): Einrichtung, Tests, Stil

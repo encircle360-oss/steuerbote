@@ -12,7 +12,7 @@ the months, 41 to 44 for the quarters. They are re-checked against the ERiC sche
 """
 
 import calendar
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import Enum
@@ -130,6 +130,16 @@ def next_working_day(day: date, holidays: Collection[date] = ()) -> date:
 	while day.weekday() >= SATURDAY or day in holidays:
 		day += timedelta(days=1)
 	return day
+
+
+def deadline_holidays(days: Iterable[tuple[date, bool | int]]) -> frozenset[date]:
+	"""The days of a holiday list, each with whether the list marks it as a weekly day off, on which no deadline
+	ends: its holidays without the weekly days off.
+
+	next_working_day moves a deadline off a Saturday and a Sunday itself, and another weekly day off of the company,
+	such as a Friday, is no gesetzlicher Feiertag of § 108 Absatz 3 AO, so it moves no deadline.
+	"""
+	return frozenset(day for day, weekly_off in days if not weekly_off)
 
 
 def _is_int(value: object) -> bool:

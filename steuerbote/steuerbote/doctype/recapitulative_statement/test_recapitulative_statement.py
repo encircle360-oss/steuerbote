@@ -16,14 +16,17 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, getdate, today
 from frappe.utils.data import convert_utc_to_system_timezone
 
+from steuerbote import zm_sources
 from steuerbote.steuerbote.doctype.recapitulative_statement import recapitulative_statement as controller
 from steuerbote.steuerbote.doctype.recapitulative_statement.recapitulative_statement import run_confirmation
 from steuerbote.tests.helpers import (
+	cancel_voucher,
 	make_account,
 	make_company,
 	make_customer,
 	make_mapping,
 	make_settings,
+	make_user,
 	post_payment_entry,
 	post_sales_invoice,
 )
@@ -54,9 +57,12 @@ AUSTRIAN = "ATU12345678"
 FRENCH = "FR12345678901"
 ALPEN = "Alpen Handel GmbH (ZM)"
 PARIS = "Paris Services SA (ZM)"
+# May read nothing of the Zusammenfassende Meldung, let alone change it.
+SALES_USER = "steuerbote-zm-vertrieb@example.com"
 # The form of TransferTicketSType in headerbasis_datentypen.xsd, invented.
 TICKET = "ab123cdefghijkmnopqrstuvwxyz0123"
 HEADER = b"#v3.0\n#ve3.2.1\nUmsatzsteuer-Identifikationsnummer (USt-IdNr.),Summe (Euro),Art der Leistung\n"
+VOUCHER_KEYS = ("voucher_type", "voucher_no", "customer", "party", "vat_id", "kennzahl", "art", "amount")
 
 # SKR03: intra-community deliveries, their Skonti, Dreiecksgeschäfte, EU services, receivables and a bank.
 ACCOUNTS = {
@@ -287,6 +293,93 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[(AUSTRIAN, "L", money(9800), money(0), 1), (FRENCH, "S", money(3000), money(0), 1)],
 		)
 
+	def test_sonstige_leistungen_compare_with_the_last_zm_that_reports_them(self):
+		"""Without „sonstige Leistungen monatlich“ the ZM for June holds the sonstige Leistungen of April to June,
+		which compare with those of January to March in the ZM for March, and the ZM for July holds and compares
+		none (§ 18a Absatz 2 Satz 2 UStG)."""
+		company = "Steuerbote Test ZM Quartalsleistungen GmbH"
+		make_company(company, "STZL")
+		a = {
+			number: make_account(company, number, name, root_type)
+			for number, (name, root_type) in ACCOUNTS.items()
+		}
+		make_settings(
+			company,
+			[(2026, "monthly", 1)],
+			ust_idnr=OWN_VAT_ID,
+			zm_rules=[{"year": 2026, "valid_from_month": 1, "rhythm": "monthly"}],
+		)
+		make_mapping(company)
+		for number in (2, 5):
+			post_sales_invoice(
+				company,
+				f"SINV-STZL-{number:02d}-1",
+				PARIS,
+				f"2026-{number:02d}-12",
+				[(a["1400"], 3000, 0), (a["8336"], 0, 3000)],
+				customer_address=self.paris_address,
+			)
+		for number in (6, 7):
+			post_sales_invoice(
+				company,
+				f"SINV-STZL-{number:02d}-2",
+				ALPEN,
+				f"2026-{number:02d}-03",
+				[(a["1400"], 1000, 0), (a["8125"], 0, 1000)],
+				customer_address=self.alpen_address,
+			)
+		june = self.calculated(6, company=company)
+		self.assertEqual(
+			[
+				(row.vat_id, row.art, money(row.current), money(row.previous), row.flagged)
+				for row in june.comparison
+			],
+			[(AUSTRIAN, "L", money(1000), money(0), 1), (FRENCH, "S", money(3000), money(3000), 0)],
+		)
+		(hint,) = (row.text for row in june.hints if row.code == "ZM-ABWEICHUNG-VORPERIODE")
+		self.assertIn(f"Die Zeile {AUSTRIAN} (L) liegt mit", hint)
+		self.assertIn("der Vorperiode Mai 2026", hint)
+		july = self.calculated(7, company=company)
+		self.assertEqual(
+			[
+				(row.vat_id, row.art, money(row.current), money(row.previous), row.flagged)
+				for row in july.comparison
+			],
+			[(AUSTRIAN, "L", money(1000), money(1000), 0)],
+		)
+		self.assertNotIn("ZM-ABWEICHUNG-VORPERIODE", [row.code for row in july.hints])
+
+	def test_the_file_and_the_filing_wait_for_berechnen_after_the_ledger_changed(self):
+		"""Berechnen reads the ledger once, and an invoice posted afterwards is in no line until it runs again, so
+		the file and the filing read the ledger of the months anew and name the voucher."""
+		a = self.account
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-10-1", ALPEN, "2026-10-05", [(a["1400"], 4000, 0), (a["8125"], 0, 4000)]
+		)
+		doc = self.calculated(10, remarks="Die USt-IdNr. ist am Liefertag bestätigt worden.")
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-10-2", ALPEN, "2026-10-20", [(a["1400"], 1500, 0), (a["8125"], 0, 1500)]
+		)
+		attempts = {
+			"CSV für Mein ELSTER": doc.make_csv_file,
+			"In Mein ELSTER abgegeben": lambda: doc.mark_filed_outside(filed_via="mein_elster"),
+		}
+		for button, attempt in attempts.items():
+			with (
+				self.subTest(button=button),
+				self.assertRaisesRegex(
+					frappe.ValidationError, "Beleg SINV-STZM-10-2 geht laut Hauptbuch mit .* in Kz 41 ein"
+				),
+			):
+				attempt()
+			doc.reload()
+		self.assertEqual(doc.docstatus, 0)
+		doc.calculate()
+		doc.reload()
+		self.assertEqual(contents(doc.make_csv_file()), HEADER + b"ATU12345678,5500,L")
+		doc.mark_filed_outside(filed_via="mein_elster")
+		self.assertEqual(frappe.db.get_value(DOCTYPE, doc.name, "status"), "Abgegeben")
+
 	def test_the_lines_agree_with_the_voranmeldung_and_go_into_the_csv_file(self):
 		vat_return = frappe.get_doc(
 			{
@@ -453,6 +546,104 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			("Bereit", "Die Nummer war am Leistungstag laut Bestätigung vom 2. Juni 2026 gültig."),
 		)
 
+	def test_a_credit_note_reduces_the_line_of_its_customer(self):
+		"""A credit note is a Sales Invoice with is_return that ERPNext posts against the income of the invoice it
+		returns: its share of Kz 41 is negative and reduces the line of the customer in its Meldezeitraum (§ 18a
+		Absatz 7 Satz 2 with § 17 UStG)."""
+		a = self.confirming_account
+		invoice = post_sales_invoice(
+			CONFIRMING_COMPANY,
+			"SINV-STZP-09-1",
+			ALPEN,
+			"2026-09-03",
+			[(a["1400"], 5000, 0), (a["8125"], 0, 5000)],
+			customer_address=self.alpen_address,
+		)
+		post_sales_invoice(
+			CONFIRMING_COMPANY,
+			"SINV-STZP-09-2",
+			ALPEN,
+			"2026-09-21",
+			[(a["8125"], 1200, 0), (a["1400"], 0, 1200)],
+			customer_address=self.alpen_address,
+			is_return=1,
+			return_against=invoice,
+		)
+		doc = self.calculated(9, company=CONFIRMING_COMPANY)
+		self.assertEqual(
+			[(row.voucher_no, row.kennzahl, money(row.amount), row.vat_id) for row in doc.vouchers],
+			[
+				("SINV-STZP-09-1", "41", money(5000), AUSTRIAN),
+				("SINV-STZP-09-2", "41", money(-1200), AUSTRIAN),
+			],
+		)
+		self.assertEqual(
+			[(row.vat_id, row.art, money(row.amount), money(row.reported)) for row in doc.lines],
+			[(AUSTRIAN, "L", money(3800), money(3800))],
+		)
+
+	def test_a_cancellation_in_a_later_month_gives_that_month_a_negative_line_with_the_immutable_ledger(self):
+		"""With „Unveränderliches Hauptbuch aktivieren“ ERPNext posts the reversal of a cancelled invoice on the day
+		of the cancellation, as the Anleitung zur ZM wants „Stornierungen von Rechnungen“ in the Meldezeitraum of
+		the change (IV.10): the month filed stays as filed, and the month of the cancellation reports the amount
+		with a minus sign under the customer of the invoice."""
+		a = self.account
+		post_sales_invoice(
+			COMPANY,
+			"SINV-STZM-11-1",
+			ALPEN,
+			"2026-11-04",
+			[(a["1400"], 2500, 0), (a["8125"], 0, 2500)],
+			customer_address=self.alpen_address,
+		)
+		november = self.calculated(11, remarks="Die USt-IdNr. ist am Liefertag bestätigt worden.")
+		november.mark_filed_outside(filed_via="mein_elster")
+		november.reload()
+		cancel_voucher("Sales Invoice", "SINV-STZM-11-1", immutable_on="2026-12-03")
+		self.assertEqual(november.ledger_changes_since_filing(), [])
+		december = self.calculated(12, remarks="Stornierung der Rechnung SINV-STZM-11-1 vom 3. Dezember 2026")
+		self.assertEqual(
+			[(row.voucher_no, money(row.amount), row.customer, row.vat_id) for row in december.vouchers],
+			[("SINV-STZM-11-1", money(-2500), ALPEN, AUSTRIAN)],
+		)
+		self.assertEqual(
+			[(row.vat_id, row.art, row.party, money(row.reported)) for row in december.lines],
+			[(AUSTRIAN, "L", ALPEN, money(-2500))],
+		)
+		self.assertEqual(contents(december.make_csv_file()), HEADER + b"ATU12345678,-2500,L")
+
+	def test_a_filed_statement_says_when_the_ledger_of_its_months_changed_since_the_filing(self):
+		"""Without „Unveränderliches Hauptbuch aktivieren“ ERPNext takes a cancelled invoice out of its own month,
+		so the ledger of a filed month changes and no later ZM shows the cancellation: the filed statement names
+		the voucher, and so does the Berichtigung made from it, which takes the change in."""
+		a = self.account
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-09-1", ALPEN, "2026-09-08", [(a["1400"], 6000, 0), (a["8125"], 0, 6000)]
+		)
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-09-2", ALPEN, "2026-09-18", [(a["1400"], 1000, 0), (a["8125"], 0, 1000)]
+		)
+		doc = self.calculated(9, remarks="Die USt-IdNr. ist am Liefertag bestätigt worden.")
+		self.assertEqual(doc.ledger_changes_since_filing(), [])
+		doc.mark_filed_outside(filed_via="mein_elster")
+		doc.reload()
+		self.assertEqual(doc.ledger_changes_since_filing(), [])
+		cancel_voucher("Sales Invoice", "SINV-STZM-09-2")
+		(change,) = doc.ledger_changes_since_filing()
+		self.assertRegex(
+			change, r"^Beleg SINV-STZM-09-2 geht laut Hauptbuch mit .* in Kz 41 ein, in die ZM mit "
+		)
+		with patch.object(controller.frappe, "msgprint") as msgprint:
+			correction = frappe.get_doc(DOCTYPE, doc.make_correction())
+		self.assertTrue(any(change in str(call.args[0]) for call in msgprint.call_args_list))
+		self.assertEqual(
+			[
+				(row.vat_id, money(row.reported), money(row.filed_amount), row.in_file)
+				for row in correction.lines
+			],
+			[(AUSTRIAN, money(6000), money(7000), 1)],
+		)
+
 	def test_a_line_of_its_own_with_a_reason_is_reported_and_kept(self):
 		"""A Verbringen (§ 6a Absatz 2 UStG) is reported under the company's own USt-IdNr. in the other member
 		state, with an override for a line without vouchers."""
@@ -520,6 +711,88 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "latest filed Zusammenfassende Meldung"):
 			doc.make_correction()
 
+	def test_a_month_is_filed_once_also_when_the_rhythm_changes_afterwards(self):
+		"""The I. Kalendervierteljahr filed quarterly holds the Lieferungen of January; after the rules turn
+		monthly from January, a ZM for January would file them again under another quart."""
+		company = make_company("Steuerbote Test ZM Rhythmuswechsel GmbH", "STZW")
+		account = {
+			number: make_account(company, number, name, root_type)
+			for number, (name, root_type) in ACCOUNTS.items()
+		}
+		settings = make_settings(
+			company,
+			[(2026, "monthly", 1)],
+			ust_idnr=OWN_VAT_ID,
+			zm_rules=[{"year": 2026, "valid_from_month": 1, "rhythm": "quarterly"}],
+		)
+		make_mapping(company)
+		post_sales_invoice(
+			company,
+			"SINV-STZW-01-1",
+			ALPEN,
+			"2026-01-15",
+			[(account["1400"], 1000, 0), (account["8125"], 0, 1000)],
+		)
+		quarter = self.statement(1, company=company, kind="quarter")
+		self.assertEqual(
+			(quarter.goods_from, quarter.goods_to, quarter.services_from, quarter.services_to),
+			(date(2026, 1, 1), date(2026, 3, 31), date(2026, 1, 1), date(2026, 3, 31)),
+		)
+		quarter.calculate()
+		quarter.reload()
+		quarter.remarks = "Die USt-IdNr. ist am Liefertag bestätigt worden."
+		quarter.save()
+		quarter.mark_filed_outside(filed_via="mein_elster")
+		settings.reload()
+		settings.zm_rules[0].rhythm = "monthly"
+		settings.save()
+		with self.assertRaisesRegex(
+			frappe.ValidationError,
+			f"Januar 2026 reports months whose Lieferungen or sonstige Leistungen {quarter.name}",
+		):
+			self.statement(1, company=company)
+
+	def test_a_save_takes_only_overrides_and_lines_of_its_own_from_the_rows_it_sends(self):
+		"""Frappe keeps no read-only field from a save through the API, so the rows of a save cannot confirm a
+		number, drop the threshold, change a voucher or make a new statement ready: confirmations come from their
+		records, vouchers and the other findings from what Berechnen stored."""
+		doc = self.calculated(3)
+		for row in doc.lines:
+			row.confirmation_outcome = "valid"
+		doc.vouchers[0].amount = 1
+		doc.save()
+		doc.reload()
+		self.assertEqual(doc.status, "Berechnet")
+		self.assertEqual(
+			[row.code for row in doc.hints if row.code == "ZM-USTID-UNBESTAETIGT"],
+			["ZM-USTID-UNBESTAETIGT"] * 2,
+		)
+		self.assertEqual({row.confirmation_outcome for row in doc.lines}, {None})
+		self.assertEqual(money(doc.vouchers[0].amount), money(10000))
+
+		quarter = self.statement(1, company=QUARTERLY_COMPANY, kind="quarter")
+		quarter.calculate()
+		quarter.reload()
+		row = self.line(quarter, AUSTRIAN)
+		row.override = 60000
+		row.override_reason = "Die Nummer ist bestätigt."
+		quarter.set("hints", [hint for hint in quarter.hints if hint.code != "ZM-SCHWELLE"])
+		quarter.save()
+		quarter.reload()
+		self.assertEqual(quarter.status, "Berechnet")
+		self.assertIn("ZM-SCHWELLE", [hint.code for hint in quarter.hints])
+
+		forged = self.statement(
+			4,
+			status="Bereit",
+			ready=1,
+			vouchers=[{key: row.get(key) for key in VOUCHER_KEYS} for row in doc.vouchers],
+		)
+		self.assertEqual((forged.status, forged.ready, forged.vouchers), ("Entwurf", 0, []))
+		forged.update({"status": "Berechnet", "ready": 1})
+		forged.save()
+		self.assertEqual(frappe.db.get_value(DOCTYPE, forged.name, ["status", "ready"]), ("Entwurf", 0))
+
 	def test_a_statement_is_filed_only_through_the_filing_marks(self):
 		doc = self.statement(8)
 		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the statement before filing it"):
@@ -558,6 +831,50 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			doc.cancel()
 		self.assertTrue(doc.make_csv_file())
 
+	def test_a_number_valid_all_through_the_months_counts_for_them_and_a_finding_says_how_old_it_is(self):
+		"""The BZSt answers for the moment of the query. A number that lost its validity after the months of the
+		statement (evatr-2006 with gueltigBis after them) was valid for them; one that lost it within them was not,
+		and the finding names the day of the query it rests on."""
+		company = "Steuerbote Test ZM Gültigkeit GmbH"
+		a = self.make_monthly_company(company, "STZG")
+		post_sales_invoice(
+			company,
+			"SINV-STZG-06-1",
+			ALPEN,
+			"2026-06-10",
+			[(a["1400"], 2000, 0), (a["8125"], 0, 2000)],
+			customer_address=self.alpen_address,
+		)
+		post_sales_invoice(
+			company,
+			"SINV-STZG-06-2",
+			PARIS,
+			"2026-06-12",
+			[(a["1400"], 700, 0), (a["8336"], 0, 700)],
+			customer_address=self.paris_address,
+		)
+		doc = self.calculated(6, company=company)
+		service = FakeBzst(
+			{
+				AUSTRIAN: [answer("evatr-2006", gueltigAb="2019-01-01", gueltigBis="2026-07-15")],
+				FRENCH: [answer("evatr-2006", gueltigAb="2019-01-01", gueltigBis="2026-06-15")],
+			}
+		)
+		self.confirm(doc, service)
+		self.assertEqual(
+			[(row.vat_id, row.confirmation_outcome, row.blocked) for row in doc.lines],
+			[(AUSTRIAN, "invalid", 0), (FRENCH, "invalid", 1)],
+		)
+		self.assertEqual(
+			[(row.code, row.text) for row in doc.hints if row.code.startswith("ZM-USTID")],
+			[
+				(
+					"ZM-USTID-UNGUELTIG",
+					f"Die USt-IdNr. {FRENCH} ist laut Bestätigungsabfrage vom 20. November 2026 ungültig.",
+				)
+			],
+		)
+
 	def test_a_quarterly_rhythm_above_the_threshold_holds_the_statement(self):
 		doc = self.statement(1, company=QUARTERLY_COMPANY, kind="quarter")
 		self.assertEqual(
@@ -590,6 +907,23 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		):
 			self.statement(1, company=QUARTERLY_COMPANY, kind="quarter", anzeige=1)
 
+	def test_a_weekly_day_off_of_the_holiday_list_moves_no_deadline(self):
+		"""The Pfingstmontag of COMPANY moves the deadline of April to 26 May; a Monday the list of another company
+		only marks as its weekly day off does not."""
+		mondays_off = frappe.get_doc(
+			{
+				"doctype": "Holiday List",
+				"holiday_list_name": "Steuerbote Test Montags frei 2026",
+				"from_date": "2026-01-01",
+				"to_date": "2026-12-31",
+				"holidays": [{"holiday_date": "2026-05-25", "description": "Montag", "weekly_off": 1}],
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.set_value("Company", CONFIRMING_COMPANY, "default_holiday_list", mondays_off.name)
+		self.addCleanup(frappe.db.set_value, "Company", CONFIRMING_COMPANY, "default_holiday_list", None)
+		self.assertEqual(self.statement(4, company=CONFIRMING_COMPANY).deadline, date(2026, 5, 25))
+		self.assertEqual(self.statement(4).deadline, date(2026, 5, 26))
+
 	def test_a_company_needs_the_rhythm_of_the_zm_and_its_own_ust_idnr(self):
 		company = make_company("Steuerbote Test ZM ohne Regeln GmbH", "STZO")
 		make_settings(company, [(2026, "monthly", 1)])
@@ -604,6 +938,16 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			doc.confirm_vat_ids()
 		enqueue.assert_not_called()
 		frappe.db.set_value("VAT Return Settings", COMPANY, "ust_idnr", OWN_VAT_ID)
+
+	def test_berechnen_reads_nothing_for_a_user_who_may_not_change_the_statement(self):
+		doc = self.statement(3)
+		with (
+			self.set_user(make_user(SALES_USER, "Sales User")),
+			patch.object(zm_sources, "shares") as shares,
+			self.assertRaises(frappe.PermissionError),
+		):
+			doc.calculate()
+		shares.assert_not_called()
 
 	def test_a_running_confirmation_keeps_the_statement_as_it_is(self):
 		doc = self.calculated(3)

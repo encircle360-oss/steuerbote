@@ -1,17 +1,65 @@
 from unittest import TestCase
 
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
-from steuerbote.zm.comparison import compare, comparison_hints
+from steuerbote.zm.comparison import Earlier, compare, comparison_hints, earlier
 from steuerbote.zm.findings import Code
 from steuerbote.zm.lines import Art, Override, build
 from steuerbote.zm.period import ReportingPeriod
+from steuerbote.zm.rhythm import Coverage, Rhythm, Rule, coverage
 from steuerbote.zm.tests.support import AUSTRIA, FIGURES, FRANCE, SPAIN, d, invoice
 
 MARCH = ReportingPeriod.month(2026, 3)
+MAY = ReportingPeriod.month(2026, 5)
+BEFORE_APRIL = Earlier(Coverage(MARCH, (3,), (3,)), Coverage(MARCH, (3,), (3,)))
 
 
 def statement(*amounts, overrides=None):
 	return build(amounts, FIGURES, overrides=overrides)
+
+
+def month(number: int, year: int = 2026) -> ReportingPeriod:
+	return ReportingPeriod.month(year, number)
+
+
+class EarlierTest(TestCase):
+	"""The Lieferungen compare with the previous Meldezeitraum of the same kind, the sonstige Leistungen with the
+	last earlier one that reports them (§ 18a Absatz 2 Satz 2 UStG)."""
+
+	MONTHLY = (Rule(2026, 1, Rhythm.MONTHLY),)
+
+	def test_june_compares_the_sonstige_leistungen_of_its_quarter_with_march(self):
+		before = earlier(self.MONTHLY, coverage(self.MONTHLY, month(6)))
+		self.assertEqual(before.goods, Coverage(MAY, (5,), ()))
+		self.assertEqual(before.services, Coverage(MARCH, (3,), (1, 2, 3)))
+		self.assertEqual(before.arts, (Art.L, Art.D, Art.S))
+		self.assertEqual([before.period(art) for art in (Art.L, Art.D, Art.S)], [MAY, MAY, MARCH])
+
+	def test_july_holds_no_sonstige_leistungen_and_compares_none(self):
+		before = earlier(self.MONTHLY, coverage(self.MONTHLY, month(7)))
+		self.assertEqual((before.goods, before.services), (Coverage(month(6), (6,), (4, 5, 6)), None))
+		self.assertEqual(before.arts, (Art.L, Art.D))
+		self.assertEqual(before.period(Art.S), month(6))
+
+	def test_each_month_with_its_own_sonstige_leistungen(self):
+		rules = (Rule(2026, 1, Rhythm.MONTHLY, services_monthly=True),)
+		before = earlier(rules, coverage(rules, month(6)))
+		self.assertEqual(
+			(before.goods, before.services), (Coverage(MAY, (5,), (5,)), Coverage(MAY, (5,), (5,)))
+		)
+
+	def test_a_quarter_and_the_months_before_the_first_rule(self):
+		rules = (Rule(2026, 1, Rhythm.QUARTERLY),)
+		first, second = ReportingPeriod.quarter(2026, 1), ReportingPeriod.quarter(2026, 2)
+		self.assertEqual(
+			earlier(rules, coverage(rules, second)).services, Coverage(first, (1, 2, 3), (1, 2, 3))
+		)
+		fourth = ReportingPeriod.quarter(2025, 4)
+		self.assertEqual(
+			earlier(rules, coverage(rules, first)).services, Coverage(fourth, (10, 11, 12), (10, 11, 12))
+		)
+		before = earlier(self.MONTHLY, coverage(self.MONTHLY, MARCH))
+		self.assertEqual(before.goods, Coverage(month(2), (2,), ()))
+		self.assertEqual(before.services, Coverage(month(12, 2025), (12,), (12,)))
 
 
 class CompareTest(TestCase):
@@ -33,6 +81,12 @@ class CompareTest(TestCase):
 		self.assertEqual([row.flagged for row in rows], [True, True, True])
 		self.assertEqual([row.difference for row in rows], [d("7000"), d("300"), d("-800")])
 		self.assertEqual([row.difference_percent for row in rows], [d("140.00"), None, d("-100.00")])
+
+	def test_only_the_arts_with_an_earlier_meldezeitraum(self):
+		current = statement(invoice("1", "100.00"), invoice("2", "300.00", kennzahl="21", vat_id=SPAIN))
+		previous = statement(invoice("9", "900.00", kennzahl="21", vat_id=FRANCE))
+		rows = compare(current, previous, Thresholds().exceeded, (Art.L, Art.D))
+		self.assertEqual([(row.vat_id, row.art) for row in rows], [(AUSTRIA, Art.L)])
 
 	def test_small_changes_are_not_flagged(self):
 		rows = compare(
@@ -76,7 +130,7 @@ class HintsTest(TestCase):
 			invoice("3", "100.00", vat_id=FRANCE),
 		)
 		previous = statement(invoice("0", "5000.00"), invoice("9", "100.00", vat_id=FRANCE))
-		hints = comparison_hints(compare(current, previous, Thresholds().exceeded), MARCH, FIGURES)
+		hints = comparison_hints(compare(current, previous, Thresholds().exceeded), BEFORE_APRIL, FIGURES)
 		self.assertEqual([hint.code for hint in hints], [Code.PREVIOUS_PERIOD, Code.PREVIOUS_PERIOD])
 		self.assertEqual(
 			[hint.text for hint in hints],
@@ -90,6 +144,23 @@ class HintsTest(TestCase):
 	def test_a_line_that_falls(self):
 		rows = compare(statement(), statement(invoice("0", "800.00")), Thresholds().exceeded)
 		self.assertEqual(
-			comparison_hints(rows, MARCH, FIGURES)[0].text,
+			comparison_hints(rows, BEFORE_APRIL, FIGURES)[0].text,
 			f"Die Zeile {AUSTRIA} (L) liegt mit 0,00 € um 100,0 % unter der Vorperiode März 2026 (800,00 €).",
+		)
+
+	def test_each_art_names_the_meldezeitraum_it_is_set_against(self):
+		before = Earlier(Coverage(MAY, (5,), ()), Coverage(MARCH, (3,), (1, 2, 3)))
+		current = statement(invoice("1", "900.00"), invoice("2", "300.00", kennzahl="21", vat_id=SPAIN))
+		texts = [
+			hint.text
+			for hint in comparison_hints(
+				compare(current, statement(), Thresholds().exceeded), before, FIGURES
+			)
+		]
+		self.assertEqual(
+			texts,
+			[
+				f"Die Zeile {AUSTRIA} (L) liegt mit 900,00 € über der Vorperiode Mai 2026 (0,00 €).",
+				f"Die Zeile {SPAIN} (S) liegt mit 300,00 € über der Vorperiode März 2026 (0,00 €).",
+			],
 		)

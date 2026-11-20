@@ -3,7 +3,7 @@ from unittest import TestCase
 from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import Contribution
 from steuerbote.zm.findings import Code
 from steuerbote.zm.lines import Art, Override, build
-from steuerbote.zm.reconciliation import Filed, reconcile
+from steuerbote.zm.reconciliation import Filed, ledger_changes, reconcile
 from steuerbote.zm.tests.support import AUSTRIA, FIGURES, FRANCE, SPAIN, d, invoice
 
 
@@ -152,3 +152,72 @@ class FiledReturnsTest(TestCase):
 			Filed(d("10.50"), 1)
 		with self.assertRaises(ValueError):
 			Filed(d("10"), 0)
+
+
+class LedgerChangesTest(TestCase):
+	"""The lines are made when Berechnen reads the ledger; what the ledger books after that, the lines lack until
+	Berechnen runs again, so the file and the filing read the ledger once more, voucher by voucher."""
+
+	HELD = (
+		invoice("SINV-1", "1000.00"),
+		invoice("SINV-1", "50.00"),
+		invoice("PE-1", "-20.00", voucher_type="Payment Entry"),
+		invoice("SINV-2", "300.00", kennzahl="21", vat_id=FRANCE),
+	)
+
+	def test_nothing_while_the_ledger_gives_the_same_vouchers(self):
+		now = (
+			invoice("SINV-2", "300.00", kennzahl="21", vat_id=FRANCE),
+			invoice("SINV-1", "1050.00", vat_id="ATU 123 456 78"),
+			invoice("PE-1", "-20.00", voucher_type="Payment Entry"),
+		)
+		self.assertEqual(ledger_changes(self.HELD, now, FIGURES), ())
+
+	def test_names_each_voucher_with_another_amount_on_one_side_only_or_under_another_number(self):
+		now = (
+			invoice("SINV-1", "1050.00"),
+			invoice("PE-1", "-20.00", voucher_type="Payment Entry", vat_id=SPAIN),
+			invoice("SINV-2", "250.00", kennzahl="21", vat_id=FRANCE),
+			invoice("SINV-3", "500.00"),
+			invoice("JE-1", "-10.00", voucher_type="Journal Entry", vat_id=None),
+		)
+		findings = ledger_changes((*self.HELD, invoice("SINV-0", "70.00", vat_id=None)), now, FIGURES)
+		self.assertEqual({finding.code for finding in findings}, {Code.LEDGER})
+		self.assertTrue(all(finding.blocking for finding in findings))
+		self.assertEqual(
+			[(finding.voucher, finding.text) for finding in findings],
+			[
+				(
+					"Payment Entry:PE-1",
+					f"Beleg PE-1 steht in der ZM unter {AUSTRIA}, laut ERPNext jetzt unter {SPAIN}.",
+				),
+				(
+					"Sales Invoice:SINV-2",
+					"Beleg SINV-2 geht laut Hauptbuch mit 250,00 € in Kz 21 ein, in die ZM mit 300,00 €.",
+				),
+				(
+					"Sales Invoice:SINV-0",
+					"Beleg SINV-0 geht laut Hauptbuch mit 0,00 € in Kz 41 ein, in die ZM mit 70,00 €.",
+				),
+				(
+					"Sales Invoice:SINV-3",
+					"Beleg SINV-3 geht laut Hauptbuch mit 500,00 € in Kz 41 ein, in die ZM mit 0,00 €.",
+				),
+				(
+					"Journal Entry:JE-1",
+					"Beleg JE-1 geht laut Hauptbuch mit -10,00 € in Kz 41 ein, in die ZM mit 0,00 €.",
+				),
+			],
+		)
+
+	def test_a_number_that_comes_or_goes(self):
+		held = (invoice("PE-1", "-20.00", voucher_type="Payment Entry", vat_id=None),)
+		now = (invoice("PE-1", "-20.00", voucher_type="Payment Entry"),)
+		(gained,) = ledger_changes(held, now, FIGURES)
+		self.assertEqual(
+			gained.text, f"Beleg PE-1 steht in der ZM ohne USt-IdNr., laut ERPNext jetzt unter {AUSTRIA}."
+		)
+		(lost,) = ledger_changes(now, held, FIGURES)
+		self.assertEqual(
+			lost.text, f"Beleg PE-1 steht in der ZM unter {AUSTRIA}, laut ERPNext jetzt ohne USt-IdNr."
+		)

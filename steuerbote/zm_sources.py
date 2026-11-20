@@ -13,8 +13,10 @@ ERPNext knows the customer of a voucher in three ways, and reads each with one q
   made; its shipping address, or else its billing address, gives the country where the goods arrive;
 - a Payment Entry, such as one with a Skonto, names its customer, and the Sales Invoices it pays give the
   USt-IdNr. and the country, the first of them that has one; without it, the customer's tax_id counts;
-- a Journal Entry names a customer in its accounts, and counts only when it names a single one; its USt-IdNr. is
-  the customer's tax_id.
+- a Journal Entry names a customer in its accounts, and counts only when it names a single one; the Sales
+  Invoices its rows refer to give the USt-IdNr. and the country, as for a Payment Entry, so that a credit note
+  entered as a Journal Entry counts under the number of the invoice it reduces; without one, the customer's tax_id
+  counts.
 
 ERPNext has no field for a Dreiecksgeschäft: it is a voucher on an account of Kz 42 in the mapping. Other
 vouchers name no customer, and the ZM says so of each of them.
@@ -53,10 +55,19 @@ ADDRESS_FIELDS = ("name", "address_line1", "pincode", "city")
 
 def shares(company: str, coverage: Coverage, mapping: Mapping) -> list[Contribution]:
 	"""What each voucher adds to Kz 41 and 42 in the goods months and to Kz 21 in the services months."""
-	found = _shares(company, coverage.goods_span, mapping, GOODS)
-	if coverage.services_span is not None:
-		found += _shares(company, coverage.services_span, mapping, SERVICES)
-	return found
+	return [*goods_shares(company, coverage, mapping), *services_shares(company, coverage, mapping)]
+
+
+def goods_shares(company: str, coverage: Coverage, mapping: Mapping) -> list[Contribution]:
+	"""What each voucher adds to Kz 41 and 42 in the goods months."""
+	return _shares(company, coverage.goods_span, mapping, GOODS)
+
+
+def services_shares(company: str, coverage: Coverage, mapping: Mapping) -> list[Contribution]:
+	"""What each voucher adds to Kz 21 in the services months, nothing without them."""
+	if coverage.services_span is None:
+		return []
+	return _shares(company, coverage.services_span, mapping, SERVICES)
 
 
 def _shares(
@@ -147,25 +158,14 @@ def _payment_entries(names: list[str]) -> dict[str, Party]:
 		fields=["parent", "reference_name"],
 		order_by="idx asc",
 	)
-	invoices = _sales_invoices(sorted({reference.reference_name for reference in references}))
-	paid: dict[str, list[Party]] = {}
-	for reference in references:
-		invoice = invoices.get(f"{SALES_INVOICE}:{reference.reference_name}")
-		if invoice is not None:
-			paid.setdefault(reference.parent, []).append(invoice)
+	paid = _invoices_referred_to(references)
 	tax_ids = _tax_ids(payment.party for payment in payments)
-	found = {}
-	for payment in payments:
-		invoices_paid = paid.get(payment.name, [])
-		vat_id = next((invoice.vat_id for invoice in invoices_paid if invoice.vat_id), None)
-		destination = next((invoice.destination for invoice in invoices_paid if invoice.destination), None)
-		found[f"{PAYMENT_ENTRY}:{payment.name}"] = Party(
-			payment.party,
-			payment.party_name or payment.party,
-			vat_id or tax_ids.get(payment.party),
-			destination,
+	return {
+		f"{PAYMENT_ENTRY}:{payment.name}": _party(
+			payment.party, payment.party_name, paid.get(payment.name, []), tax_ids.get(payment.party)
 		)
-	return found
+		for payment in payments
+	}
 
 
 def _journal_entries(names: list[str]) -> dict[str, Party]:
@@ -174,19 +174,45 @@ def _journal_entries(names: list[str]) -> dict[str, Party]:
 	rows = frappe.get_all(
 		"Journal Entry Account",
 		filters={"parent": ["in", names], "parenttype": JOURNAL_ENTRY, "party_type": CUSTOMER},
-		fields=["parent", "party"],
+		fields=["parent", "party", "reference_type", "reference_name"],
+		order_by="idx asc",
 	)
 	customers: dict[str, set[str]] = {}
 	for row in rows:
 		if row.party:
 			customers.setdefault(row.parent, set()).add(row.party)
 	single = {entry: next(iter(named)) for entry, named in customers.items() if len(named) == 1}
+	referred = _invoices_referred_to(
+		row for row in rows if row.parent in single and row.reference_type == SALES_INVOICE
+	)
 	records = _customers(single.values())
 	found = {}
 	for entry, customer in single.items():
 		record = records.get(customer, frappe._dict())
-		found[f"{JOURNAL_ENTRY}:{entry}"] = Party(customer, record.customer_name or customer, record.tax_id)
+		found[f"{JOURNAL_ENTRY}:{entry}"] = _party(
+			customer, record.customer_name, referred.get(entry, []), record.tax_id
+		)
 	return found
+
+
+def _invoices_referred_to(references: Iterable[frappe._dict]) -> dict[str, list[Party]]:
+	"""The Sales Invoices that rows with a parent and a reference_name refer to, by parent, in their order."""
+	references = [reference for reference in references if reference.reference_name]
+	invoices = _sales_invoices(sorted({reference.reference_name for reference in references}))
+	referred: dict[str, list[Party]] = {}
+	for reference in references:
+		invoice = invoices.get(f"{SALES_INVOICE}:{reference.reference_name}")
+		if invoice is not None:
+			referred.setdefault(reference.parent, []).append(invoice)
+	return referred
+
+
+def _party(customer: str, name: str | None, invoices: list[Party], tax_id: str | None) -> Party:
+	"""The customer of a payment or a journal entry, with the USt-IdNr. and the country of the first Sales
+	Invoice it refers to that names them; without such an invoice the customer's tax_id counts."""
+	vat_id = next((invoice.vat_id for invoice in invoices if invoice.vat_id), None)
+	destination = next((invoice.destination for invoice in invoices if invoice.destination), None)
+	return Party(customer, name or customer, vat_id or tax_id, destination)
 
 
 def _customers(names: Iterable[str]) -> dict[str, frappe._dict]:
