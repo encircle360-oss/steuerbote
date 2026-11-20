@@ -1,9 +1,10 @@
 """Form USt 1 H as ELSTER takes it: the two contexts of the Datenart UStVA for the Dauerfristverlängerung.
 
 Sources are form USt 1 H 2026 of the BMF letter of 29 December 2025 (GZ III C 3 - S 7344/00039/007/036) and the
-ERiC documentation 44.3.6.0 (https://download.elster.de/download/eric/eric_44/): UStVA-2026.xsd, cited as JD
-Jahresdokumentation_UStVA_2026.ods with its sheets "Anmeldungssteuern - Felder", "Anmeldungssteuern - Regeln"
-and "Allg. Information" and its rules by Fehlercode, and as HB the ERiC-Entwicklerhandbuch.
+ERiC documentation 44.3.6.0 (https://download.elster.de/download/eric/eric_44/): the schema UStVA-2026.xsd,
+Jahresdokumentation_UStVA_2026.ods, cited as JD, with its sheets "Anmeldungssteuern - Felder",
+"Anmeldungssteuern - Regeln" and "Allg. Information" and its rules by Fehlercode, and the
+ERiC-Entwicklerhandbuch, cited as HB.
 
 The Datenart UStVA holds form USt 1 H as two contexts next to the Umsatzsteuervoranmeldung, and a filing holds
 exactly one of the three (JD 110085099):

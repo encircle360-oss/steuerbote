@@ -17,7 +17,7 @@
   Period.deadline does that with the holidays the caller passes in, as they differ by state.
 - „Die festgesetzte Sondervorauszahlung ist bei der Festsetzung der Vorauszahlung für den letzten
   Voranmeldungszeitraum des Besteuerungszeitraums zu berücksichtigen, für den die Fristverlängerung gilt.“
-  (§ 48 Absatz 4 Satz 1 UStDV) The Anleitung to USt 1 A 2026 (Zeile 49) puts it in the Voranmeldung for
+  (§ 48 Absatz 4 Satz 1 UStDV) The Anleitung USt 1 E 2026 (Zeile 49) puts it in the Voranmeldung for
   December, and for a company that ended its business or gave up the extension during the year in the last
   Voranmeldungszeitraum the extension covers.
 
