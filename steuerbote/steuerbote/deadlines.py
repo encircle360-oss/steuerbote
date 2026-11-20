@@ -34,8 +34,8 @@ from steuerbote import deadlines, holiday_list, zm_sources
 from steuerbote.deadlines import Deadline, Filing, Kind, Status
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import DOCTYPE as REMINDER
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import reminder_name
-from steuerbote.steuerbote.doctype.recapitulative_statement.bridge import reporting_period
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import filings
+from steuerbote.steuerbote.doctype.recapitulative_statement.bridge import reporting_period
 from steuerbote.steuerbote.doctype.vat_return.vat_return import DOCTYPE as VAT_RETURN
 from steuerbote.ustva import Mapping
 from steuerbote.ustva.period import Period, Rhythm
