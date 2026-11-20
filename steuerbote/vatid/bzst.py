@@ -67,158 +67,154 @@ _LATER = (
 	"Eine Bearbeitung Ihrer Anfrage ist zurzeit nicht möglich. Bitte versuchen Sie es später noch einmal."
 )
 
-STATUSES: MappingProxyType[str, Status] = MappingProxyType(
-	{
-		status.code: status
-		for status in (
-			Status(
-				"evatr-0000",
-				200,
-				"Ergebnis",
-				None,
-				"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt gültig.",
-				Outcome.VALID,
-			),
-			Status(
-				"evatr-0001",
-				None,
-				"Hinweis",
-				"datenschutz",
-				"Bitte bestätigen Sie den Datenschutzhinweis.",
-				Outcome.UNKNOWN,
-			),
-			Status(
-				"evatr-0002",
-				400,
-				"Hinweis",
-				"angefragteUstid",
-				"Mindestens eins der Pflichtfelder ist nicht besetzt.",
-				Outcome.UNKNOWN,
-			),
-			Status(
-				"evatr-0003",
-				400,
-				"Hinweis",
-				"firmenname,ort",
-				"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt gültig. Mindestens eines der Pflichtfelder für "
-				"eine qualifizierte Bestätigungsanfrage ist nicht besetzt.",
-				Outcome.VALID,
-			),
-			Status(
-				"evatr-0004",
-				400,
-				"Fehler",
-				"anfragendeUstid",
-				"Die anfragende DE USt-IdNr. ist syntaktisch falsch. Sie passt nicht in das deutsche "
-				"Erzeugungsschema.",
-				Outcome.UNKNOWN,
-			),
-			Status(
-				"evatr-0005",
-				400,
-				"Fehler",
-				"angefragteUstid",
-				"Die angegebene angefragte USt-IdNr. ist syntaktisch falsch.",
-				Outcome.INVALID,
-			),
-			Status(
-				"evatr-0006",
-				403,
-				"Hinweis",
-				"anfragendeUstid",
-				"Die anfragende DE USt-IdNr. ist nicht berechtigt eine DE USt-IdNr. anzufragen.",
-				Outcome.UNKNOWN,
-			),
-			Status("evatr-0007", 403, "Hinweis", None, "Fehlerhafter Aufruf.", Outcome.UNKNOWN),
-			Status(
-				"evatr-0008",
-				403,
-				"Hinweis",
-				None,
-				"Die maximale Anzahl von qualifizierten Bestätigungsabfragen für diese Session wurde erreicht. "
-				"Bitte starten Sie erneut mit einer einfachen Bestätigungsabfrage.",
-				Outcome.UNKNOWN,
-			),
-			Status("evatr-0011", 503, "Fehler", None, _LATER, Outcome.UNKNOWN),
-			Status(
-				"evatr-0012",
-				400,
-				"Fehler",
-				"angefragteUstid",
-				"Die angefragte USt-IdNr. ist syntaktisch falsch. Sie passt nicht in das Erzeugungsschema.",
-				Outcome.INVALID,
-			),
-			Status("evatr-0013", 503, "Fehler", None, _LATER, Outcome.UNKNOWN),
-			Status("evatr-1001", 503, "Fehler", None, _LATER, Outcome.UNKNOWN),
-			Status("evatr-1002", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
-			Status("evatr-1003", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
-			Status("evatr-1004", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
-			Status(
-				"evatr-2001",
-				404,
-				"Hinweis",
-				"angefragteUstid",
-				"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt nicht vergeben.",
-				Outcome.INVALID,
-			),
-			Status(
-				"evatr-2002",
-				200,
-				"Hinweis",
-				"angefragteUstid",
-				"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt nicht gültig. Sie ist erst gültig ab dem Datum "
-				"im Feld gueltigAb.",
-				Outcome.INVALID,
-			),
-			Status(
-				"evatr-2003",
-				400,
-				"Fehler",
-				"angefragteUstid",
-				"Das angegebene Länderkennzeichen der angefragten USt-IdNr. ist nicht gültig.",
-				Outcome.INVALID,
-			),
-			Status("evatr-2004", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
-			Status(
-				"evatr-2005",
-				404,
-				"Fehler",
-				"anfragendeUstid",
-				"Die angegebene eigene DE USt-IdNr. ist zum Anfragezeitpunkt nicht gültig.",
-				Outcome.UNKNOWN,
-			),
-			Status(
-				"evatr-2006",
-				200,
-				"Hinweis",
-				"angefragteUstid",
-				"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt nicht gültig. Sie war gültig im Zeitraum, der "
-				"durch die Werte in den Feldern gueltigAb und gueltigBis beschrieben ist.",
-				Outcome.INVALID,
-			),
-			Status(
-				"evatr-2007",
-				500,
-				"Fehler",
-				None,
-				"Bei der Verarbeitung der Daten aus dem angefragten EU-Mitgliedstaat ist ein Fehler aufgetreten. "
-				"Ihre Anfrage kann deshalb nicht bearbeitet werden.",
-				Outcome.UNKNOWN,
-			),
-			Status(
-				"evatr-2008",
-				200,
-				"Hinweis",
-				None,
-				"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt gültig. Für die qualifizierte "
-				"Bestätigungsanfrage liegt einer Besonderheit vor. Für Rückfragen wenden Sie sich an das BZSt.",
-				Outcome.VALID,
-			),
-			Status("evatr-2011", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
-			Status("evatr-3011", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
-		)
-	}
+_CATALOGUE = (
+	Status(
+		"evatr-0000",
+		200,
+		"Ergebnis",
+		None,
+		"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt gültig.",
+		Outcome.VALID,
+	),
+	Status(
+		"evatr-0001",
+		None,
+		"Hinweis",
+		"datenschutz",
+		"Bitte bestätigen Sie den Datenschutzhinweis.",
+		Outcome.UNKNOWN,
+	),
+	Status(
+		"evatr-0002",
+		400,
+		"Hinweis",
+		"angefragteUstid",
+		"Mindestens eins der Pflichtfelder ist nicht besetzt.",
+		Outcome.UNKNOWN,
+	),
+	Status(
+		"evatr-0003",
+		400,
+		"Hinweis",
+		"firmenname,ort",
+		"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt gültig. Mindestens eines der Pflichtfelder für "
+		"eine qualifizierte Bestätigungsanfrage ist nicht besetzt.",
+		Outcome.VALID,
+	),
+	Status(
+		"evatr-0004",
+		400,
+		"Fehler",
+		"anfragendeUstid",
+		"Die anfragende DE USt-IdNr. ist syntaktisch falsch. Sie passt nicht in das deutsche "
+		"Erzeugungsschema.",
+		Outcome.UNKNOWN,
+	),
+	Status(
+		"evatr-0005",
+		400,
+		"Fehler",
+		"angefragteUstid",
+		"Die angegebene angefragte USt-IdNr. ist syntaktisch falsch.",
+		Outcome.INVALID,
+	),
+	Status(
+		"evatr-0006",
+		403,
+		"Hinweis",
+		"anfragendeUstid",
+		"Die anfragende DE USt-IdNr. ist nicht berechtigt eine DE USt-IdNr. anzufragen.",
+		Outcome.UNKNOWN,
+	),
+	Status("evatr-0007", 403, "Hinweis", None, "Fehlerhafter Aufruf.", Outcome.UNKNOWN),
+	Status(
+		"evatr-0008",
+		403,
+		"Hinweis",
+		None,
+		"Die maximale Anzahl von qualifizierten Bestätigungsabfragen für diese Session wurde erreicht. "
+		"Bitte starten Sie erneut mit einer einfachen Bestätigungsabfrage.",
+		Outcome.UNKNOWN,
+	),
+	Status("evatr-0011", 503, "Fehler", None, _LATER, Outcome.UNKNOWN),
+	Status(
+		"evatr-0012",
+		400,
+		"Fehler",
+		"angefragteUstid",
+		"Die angefragte USt-IdNr. ist syntaktisch falsch. Sie passt nicht in das Erzeugungsschema.",
+		Outcome.INVALID,
+	),
+	Status("evatr-0013", 503, "Fehler", None, _LATER, Outcome.UNKNOWN),
+	Status("evatr-1001", 503, "Fehler", None, _LATER, Outcome.UNKNOWN),
+	Status("evatr-1002", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
+	Status("evatr-1003", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
+	Status("evatr-1004", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
+	Status(
+		"evatr-2001",
+		404,
+		"Hinweis",
+		"angefragteUstid",
+		"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt nicht vergeben.",
+		Outcome.INVALID,
+	),
+	Status(
+		"evatr-2002",
+		200,
+		"Hinweis",
+		"angefragteUstid",
+		"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt nicht gültig. Sie ist erst gültig ab dem Datum "
+		"im Feld gueltigAb.",
+		Outcome.INVALID,
+	),
+	Status(
+		"evatr-2003",
+		400,
+		"Fehler",
+		"angefragteUstid",
+		"Das angegebene Länderkennzeichen der angefragten USt-IdNr. ist nicht gültig.",
+		Outcome.INVALID,
+	),
+	Status("evatr-2004", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
+	Status(
+		"evatr-2005",
+		404,
+		"Fehler",
+		"anfragendeUstid",
+		"Die angegebene eigene DE USt-IdNr. ist zum Anfragezeitpunkt nicht gültig.",
+		Outcome.UNKNOWN,
+	),
+	Status(
+		"evatr-2006",
+		200,
+		"Hinweis",
+		"angefragteUstid",
+		"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt nicht gültig. Sie war gültig im Zeitraum, der "
+		"durch die Werte in den Feldern gueltigAb und gueltigBis beschrieben ist.",
+		Outcome.INVALID,
+	),
+	Status(
+		"evatr-2007",
+		500,
+		"Fehler",
+		None,
+		"Bei der Verarbeitung der Daten aus dem angefragten EU-Mitgliedstaat ist ein Fehler aufgetreten. "
+		"Ihre Anfrage kann deshalb nicht bearbeitet werden.",
+		Outcome.UNKNOWN,
+	),
+	Status(
+		"evatr-2008",
+		200,
+		"Hinweis",
+		None,
+		"Die angefragte USt-IdNr. ist zum Anfragezeitpunkt gültig. Für die qualifizierte "
+		"Bestätigungsanfrage liegt einer Besonderheit vor. Für Rückfragen wenden Sie sich an das BZSt.",
+		Outcome.VALID,
+	),
+	Status("evatr-2011", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
+	Status("evatr-3011", 500, "Fehler", None, _LATER, Outcome.UNKNOWN),
 )
+STATUSES: MappingProxyType[str, Status] = MappingProxyType({status.code: status for status in _CATALOGUE})
 
 
 class _Unreadable(ValueError):

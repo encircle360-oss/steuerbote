@@ -58,52 +58,48 @@ class Fault:
 	"""The meaning the WSDL gives, in German."""
 
 
-FAULTS: MappingProxyType[str, Fault] = MappingProxyType(
-	{
-		fault.code: fault
-		for fault in (
-			Fault(
-				"INVALID_INPUT",
-				Outcome.INVALID,
-				False,
-				"Laut VIES ist das Länderkennzeichen ungültig oder die USt-IdNr. leer.",
-			),
-			Fault(
-				"GLOBAL_MAX_CONCURRENT_REQ",
-				Outcome.UNKNOWN,
-				True,
-				"VIES hat die Anfrage nicht bearbeitet, weil die Höchstzahl gleichzeitiger Anfragen erreicht ist. "
-				"Bitte später erneut versuchen.",
-			),
-			Fault(
-				"MS_MAX_CONCURRENT_REQ",
-				Outcome.UNKNOWN,
-				True,
-				"VIES hat die Anfrage nicht bearbeitet, weil die Höchstzahl gleichzeitiger Anfragen an diesen "
-				"Mitgliedstaat erreicht ist. Bitte später erneut versuchen.",
-			),
-			Fault(
-				"SERVICE_UNAVAILABLE",
-				Outcome.UNKNOWN,
-				True,
-				"Bei VIES ist ein Fehler im Netz oder in der Anwendung aufgetreten. Bitte später erneut versuchen.",
-			),
-			Fault(
-				"MS_UNAVAILABLE",
-				Outcome.UNKNOWN,
-				True,
-				"Der Dienst des Mitgliedstaats antwortet nicht oder ist nicht verfügbar. Bitte später erneut "
-				"versuchen.",
-			),
-			Fault(
-				"TIMEOUT",
-				Outcome.UNKNOWN,
-				True,
-				"VIES hat in der vorgesehenen Zeit keine Antwort erhalten. Bitte später erneut versuchen.",
-			),
-		)
-	}
+_FAULTS = (
+	Fault(
+		"INVALID_INPUT",
+		Outcome.INVALID,
+		False,
+		"Laut VIES ist das Länderkennzeichen ungültig oder die USt-IdNr. leer.",
+	),
+	Fault(
+		"GLOBAL_MAX_CONCURRENT_REQ",
+		Outcome.UNKNOWN,
+		True,
+		"VIES hat die Anfrage nicht bearbeitet, weil die Höchstzahl gleichzeitiger Anfragen erreicht ist. "
+		"Bitte später erneut versuchen.",
+	),
+	Fault(
+		"MS_MAX_CONCURRENT_REQ",
+		Outcome.UNKNOWN,
+		True,
+		"VIES hat die Anfrage nicht bearbeitet, weil die Höchstzahl gleichzeitiger Anfragen an diesen "
+		"Mitgliedstaat erreicht ist. Bitte später erneut versuchen.",
+	),
+	Fault(
+		"SERVICE_UNAVAILABLE",
+		Outcome.UNKNOWN,
+		True,
+		"Bei VIES ist ein Fehler im Netz oder in der Anwendung aufgetreten. Bitte später erneut versuchen.",
+	),
+	Fault(
+		"MS_UNAVAILABLE",
+		Outcome.UNKNOWN,
+		True,
+		"Der Dienst des Mitgliedstaats antwortet nicht oder ist nicht verfügbar. Bitte später erneut "
+		"versuchen.",
+	),
+	Fault(
+		"TIMEOUT",
+		Outcome.UNKNOWN,
+		True,
+		"VIES hat in der vorgesehenen Zeit keine Antwort erhalten. Bitte später erneut versuchen.",
+	),
 )
+FAULTS: MappingProxyType[str, Fault] = MappingProxyType({fault.code: fault for fault in _FAULTS})
 
 
 class _Unreadable(ValueError):

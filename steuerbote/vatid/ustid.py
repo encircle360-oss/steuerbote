@@ -19,7 +19,9 @@ nicht mehr im Bestätigungsverfahren nach § 18e UStG geprüft werden.“ (same 
 How each member state builds its numbers comes from the BZSt's Merkblatt "Aufbau der
 Umsatzsteuer-Identifikationsnummer (USt-IdNr.) in den EU-Mitgliedstaaten"
 (https://www.bzst.de/SharedDocs/Downloads/DE/Merkblaetter/ust_idnr_aufbau.pdf?__blob=publicationFile&v=8,
-retrieved 20 November 2026), published on www.bzst.de, where UStAE 18e.2 sends readers for the structure. Where the Merkblatt names no letter for a position, the position is a digit.
+retrieved 20 November 2026), published on www.bzst.de, where UStAE 18e.2 sends readers for the structure.
+Where the Merkblatt names no letter for a position, the position is a digit.
+
 A plausible number without that structure only gets a hint: ERiC reports it as a Hinweis, not as an error
 (rule 17004518, „Unschlüssige Umsatzsteuer-Identifikationsnummer“), and the BZSt checks the structure
 itself and answers with evatr-0005 or evatr-0012, an answer that is kept as proof like any other. For
@@ -57,85 +59,79 @@ class MemberState:
 		return re.fullmatch(self.pattern, number[2:]) is not None
 
 
-MEMBER_STATES: MappingProxyType[str, MemberState] = MappingProxyType(
-	{
-		state.code: state
-		for state in (
-			MemberState(
-				"AT", "Österreich", "neun, die erste Stelle muss der Buchstabe „U“ sein", r"U[0-9]{8}"
-			),
-			MemberState(
-				"BE",
-				"Belgien",
-				"zehn, nur Ziffern; alte neunstellige USt-IdNrn. werden durch Voranstellen der Ziffer 0 ergänzt",
-				r"[0-9]{10}",
-			),
-			MemberState("BG", "Bulgarien", "neun oder zehn, nur Ziffern", r"[0-9]{9,10}"),
-			MemberState("CY", "Zypern", "neun, die letzte Stelle muss ein Buchstabe sein", r"[0-9]{8}[A-Z]"),
-			MemberState("CZ", "Tschechien", "acht, neun oder zehn, nur Ziffern", r"[0-9]{8,10}"),
-			MemberState("DK", "Dänemark", "acht, nur Ziffern", r"[0-9]{8}"),
-			MemberState("EE", "Estland", "neun, nur Ziffern", r"[0-9]{9}"),
-			MemberState("EL", "Griechenland", "neun, nur Ziffern", r"[0-9]{9}"),
-			MemberState(
-				"ES",
-				"Spanien",
-				"neun, die erste und die letzte Stelle bzw. die erste oder die letzte Stelle kann ein Buchstabe sein",
-				r"[0-9A-Z][0-9]{7}[0-9A-Z]",
-			),
-			MemberState("FI", "Finnland", "acht, nur Ziffern", r"[0-9]{8}"),
-			MemberState(
-				"FR",
-				"Frankreich",
-				"elf, nur Ziffern bzw. die erste und/oder die zweite Stelle kann ein Buchstabe sein",
-				r"[0-9A-Z]{2}[0-9]{9}",
-			),
-			MemberState("HR", "Kroatien", "elf, nur Ziffern", r"[0-9]{11}"),
-			MemberState("HU", "Ungarn", "acht, nur Ziffern", r"[0-9]{8}"),
-			MemberState(
-				"IE",
-				"Irland",
-				"acht, die zweite Stelle kann und die letzte Stelle muss ein Buchstabe sein, oder neun Stellen "
-				"(ab 01.01.2013): 1. bis 7. Stelle Ziffern, 8. Stelle Buchstaben von A bis W, 9. Stelle "
-				"Buchstaben von A bis I",
-				r"[0-9][0-9A-Z][0-9]{5}[A-Z]|[0-9]{7}[A-W][A-I]",
-			),
-			MemberState("IT", "Italien", "elf, nur Ziffern", r"[0-9]{11}"),
-			MemberState("LT", "Litauen", "neun oder zwölf, nur Ziffern", r"[0-9]{9}|[0-9]{12}"),
-			MemberState("LU", "Luxemburg", "acht, nur Ziffern", r"[0-9]{8}"),
-			MemberState("LV", "Lettland", "elf, nur Ziffern", r"[0-9]{11}"),
-			MemberState("MT", "Malta", "acht, nur Ziffern", r"[0-9]{8}"),
-			MemberState(
-				"NL",
-				"Niederlande",
-				"zwölf, Ziffern, Buchstaben und die Zeichen „+“ und „*“ in zufälliger Reihenfolge",
-				r"[0-9A-Z+*]{12}",
-			),
-			MemberState("PL", "Polen", "zehn, nur Ziffern", r"[0-9]{10}"),
-			MemberState("PT", "Portugal", "neun, nur Ziffern", r"[0-9]{9}"),
-			MemberState(
-				"RO",
-				"Rumänien",
-				"maximal zehn, nur Ziffern, Ziffernfolge nicht mit 0 beginnend",
-				r"[1-9][0-9]{0,9}",
-			),
-			MemberState(
-				"SE",
-				"Schweden",
-				"zwölf, nur Ziffern, die beiden letzten Stellen bestehen immer aus der Ziffernkombination „01“",
-				r"[0-9]{10}01",
-			),
-			MemberState("SI", "Slowenien", "acht, nur Ziffern", r"[0-9]{8}"),
-			MemberState("SK", "Slowakei", "zehn, nur Ziffern", r"[0-9]{10}"),
-			MemberState(
-				"XI",
-				"Nordirland",
-				"neun oder zwölf, nur Ziffern; für Verwaltungen und Gesundheitswesen fünf, die ersten zwei "
-				"Stellen GD oder HA",
-				r"[0-9]{9}|[0-9]{12}|(?:GD|HA)[0-9]{3}",
-			),
-		)
-	}
+_STATES = (
+	MemberState("AT", "Österreich", "neun, die erste Stelle muss der Buchstabe „U“ sein", r"U[0-9]{8}"),
+	MemberState(
+		"BE",
+		"Belgien",
+		"zehn, nur Ziffern; alte neunstellige USt-IdNrn. werden durch Voranstellen der Ziffer 0 ergänzt",
+		r"[0-9]{10}",
+	),
+	MemberState("BG", "Bulgarien", "neun oder zehn, nur Ziffern", r"[0-9]{9,10}"),
+	MemberState("CY", "Zypern", "neun, die letzte Stelle muss ein Buchstabe sein", r"[0-9]{8}[A-Z]"),
+	MemberState("CZ", "Tschechien", "acht, neun oder zehn, nur Ziffern", r"[0-9]{8,10}"),
+	MemberState("DK", "Dänemark", "acht, nur Ziffern", r"[0-9]{8}"),
+	MemberState("EE", "Estland", "neun, nur Ziffern", r"[0-9]{9}"),
+	MemberState("EL", "Griechenland", "neun, nur Ziffern", r"[0-9]{9}"),
+	MemberState(
+		"ES",
+		"Spanien",
+		"neun, die erste und die letzte Stelle bzw. die erste oder die letzte Stelle kann ein Buchstabe sein",
+		r"[0-9A-Z][0-9]{7}[0-9A-Z]",
+	),
+	MemberState("FI", "Finnland", "acht, nur Ziffern", r"[0-9]{8}"),
+	MemberState(
+		"FR",
+		"Frankreich",
+		"elf, nur Ziffern bzw. die erste und/oder die zweite Stelle kann ein Buchstabe sein",
+		r"[0-9A-Z]{2}[0-9]{9}",
+	),
+	MemberState("HR", "Kroatien", "elf, nur Ziffern", r"[0-9]{11}"),
+	MemberState("HU", "Ungarn", "acht, nur Ziffern", r"[0-9]{8}"),
+	MemberState(
+		"IE",
+		"Irland",
+		"acht, die zweite Stelle kann und die letzte Stelle muss ein Buchstabe sein, oder neun Stellen "
+		"(ab 01.01.2013): 1. bis 7. Stelle Ziffern, 8. Stelle Buchstaben von A bis W, 9. Stelle "
+		"Buchstaben von A bis I",
+		r"[0-9][0-9A-Z][0-9]{5}[A-Z]|[0-9]{7}[A-W][A-I]",
+	),
+	MemberState("IT", "Italien", "elf, nur Ziffern", r"[0-9]{11}"),
+	MemberState("LT", "Litauen", "neun oder zwölf, nur Ziffern", r"[0-9]{9}|[0-9]{12}"),
+	MemberState("LU", "Luxemburg", "acht, nur Ziffern", r"[0-9]{8}"),
+	MemberState("LV", "Lettland", "elf, nur Ziffern", r"[0-9]{11}"),
+	MemberState("MT", "Malta", "acht, nur Ziffern", r"[0-9]{8}"),
+	MemberState(
+		"NL",
+		"Niederlande",
+		"zwölf, Ziffern, Buchstaben und die Zeichen „+“ und „*“ in zufälliger Reihenfolge",
+		r"[0-9A-Z+*]{12}",
+	),
+	MemberState("PL", "Polen", "zehn, nur Ziffern", r"[0-9]{10}"),
+	MemberState("PT", "Portugal", "neun, nur Ziffern", r"[0-9]{9}"),
+	MemberState(
+		"RO",
+		"Rumänien",
+		"maximal zehn, nur Ziffern, Ziffernfolge nicht mit 0 beginnend",
+		r"[1-9][0-9]{0,9}",
+	),
+	MemberState(
+		"SE",
+		"Schweden",
+		"zwölf, nur Ziffern, die beiden letzten Stellen bestehen immer aus der Ziffernkombination „01“",
+		r"[0-9]{10}01",
+	),
+	MemberState("SI", "Slowenien", "acht, nur Ziffern", r"[0-9]{8}"),
+	MemberState("SK", "Slowakei", "zehn, nur Ziffern", r"[0-9]{10}"),
+	MemberState(
+		"XI",
+		"Nordirland",
+		"neun oder zwölf, nur Ziffern; für Verwaltungen und Gesundheitswesen fünf, die ersten zwei "
+		"Stellen GD oder HA",
+		r"[0-9]{9}|[0-9]{12}|(?:GD|HA)[0-9]{3}",
+	),
 )
+MEMBER_STATES: MappingProxyType[str, MemberState] = MappingProxyType({state.code: state for state in _STATES})
 
 REFUSED: MappingProxyType[str, str] = MappingProxyType(
 	{
