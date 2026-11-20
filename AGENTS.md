@@ -5,7 +5,7 @@ Der Einsatz von KI-Werkzeugen und Coding-Agenten ist in diesem Projekt ausdrück
 ## Was ein Agent wissen muss
 
 - **Projekt:** Frappe-App für ERPNext, nur die aktuelle Hauptversion (derzeit 16), Python 3.14, Tabs, `ruff`.
-- **Struktur:** `steuerbote/ustva` ist der reine Python-Kern ohne Frappe-Import (Tests mit `pytest`). `steuerbote/steuerbote` ist das Frappe-Modul mit DocTypes und Reports. `steuerbote/tests` enthält Frappe-Integrationstests (`bench run-tests`).
+- **Struktur:** `steuerbote/ustva` (Umsatzsteuer-Voranmeldung), `steuerbote/zm` (Zusammenfassende Meldung), `steuerbote/vatid` (Bestätigung der USt-IdNr.) und `steuerbote/dauerfrist` (Dauerfristverlängerung) sind die reinen Python-Kerne ohne Frappe-Import (Tests mit `pytest`); `steuerbote/elster` schreibt das XML, `steuerbote/eric` bindet ERiC an. `steuerbote/steuerbote` ist das Frappe-Modul mit DocTypes und Reports; `steuerbote/ledger.py`, `invoices.py`, `zm_sources.py` und `dauerfrist_sources.py` lesen die Daten der Site für die Kerne. `steuerbote/tests` enthält Frappe-Integrationstests (`bench run-tests`).
 - **Sprache:** Code und Kommentare englisch, Fachbegriffe deutsch (Kennzahl, Voranmeldung, Verprobung, Sondervorauszahlung). Dokumentation, Issues und Pull Requests deutsch.
 - **Quellen:** Die fachlichen Regeln stehen mit Quelle in [docs/ustva-kennzahlen.md](docs/ustva-kennzahlen.md). Was dort nicht steht, wird nicht aus dem Gedächtnis ergänzt, sondern nachgeschlagen und belegt.
 
