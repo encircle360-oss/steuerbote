@@ -1,0 +1,36 @@
+<zm xmlns="http://www.elster.de/elsterxml/schema/v11" version="000005">
+	<unternehmer>
+		<knri>DE123456789</knri>
+		<zulassNr>
+			<zulnr1>N</zulnr1>
+			<zulnr2>1111111</zulnr2>
+		</zulassNr>
+		<anschrift>
+			<name>Beispiel GmbH</name>
+			<strasse>Hauptstraße 1</strasse>
+			<plz>80331</plz>
+			<ort>München</ort>
+			<staat>DE</staat>
+		</anschrift>
+		<zm-zeilen waehrung="1" meldeart="10">
+			<anzeige>false</anzeige>
+			<widerruf>false</widerruf>
+			<mzr>
+				<quart>30</quart>
+				<jahr>2026</jahr>
+			</mzr>
+			<zeile umsatzart="L">
+				<knre>ATU12345678</knre>
+				<betrag>12000</betrag>
+			</zeile>
+			<zeile umsatzart="S">
+				<knre>FR12345678901</knre>
+				<betrag>3500</betrag>
+			</zeile>
+			<zeile umsatzart="L">
+				<knre>XI123456789</knre>
+				<betrag>-250</betrag>
+			</zeile>
+		</zm-zeilen>
+	</unternehmer>
+</zm>
