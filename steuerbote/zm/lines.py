@@ -10,8 +10,8 @@ Umsatzart [...] in je einer Zeile“, at most three lines per Erwerber.
 The lines come from the ledger, voucher by voucher, as the Kennzahlen do: § 18a Absatz 7 Satz 2 UStG applies
 § 17 UStG to the ZM, so a Skonto, a discount or a receivable written off as uncollectable changes the line of the
 Meldezeitraum „in dem die Änderung eingetreten ist“ (BZSt, „Berichtigung einer ZM“, Rabatte; Anleitung zur ZM,
-IV.10). Invoices alone miss these. The caller gives each voucher's exact amount in Kz 41, 42
-or 21 with its party, the party's USt-IdNr. and, for Art D, the country where the goods arrive.
+IV.10). Invoices alone miss these. The caller gives each voucher's exact amount in Kz 41, 42 or 21 with its
+party, the party's USt-IdNr. and, for Art D, the country where the goods arrive.
 
 The ZM takes whole euros (ZMDO: betrag, GeldBetragOhneCent). How to round is written nowhere; Steuerbote drops
 the cents towards zero, as for the Bemessungsgrundlagen of the Voranmeldung (rounding.to_full_euros), and a line
@@ -120,7 +120,7 @@ class Meldezeile:
 
 	def __post_init__(self) -> None:
 		object.__setattr__(self, "art", Art(self.art))
-		if normalize(self.vat_id, services=self.art is Art.S) != self.vat_id:
+		if not _reportable(self.vat_id, self.art):
 			raise ZmError(NOT_A_VAT_ID, self.vat_id, self.art.value)
 		require_whole_euros(self.amount)
 
@@ -155,7 +155,7 @@ class Line:
 	@property
 	def valid(self) -> bool:
 		"""The ZM can report the line under its USt-IdNr."""
-		return normalize(self.vat_id, services=self.art is Art.S) == self.vat_id
+		return _reportable(self.vat_id, self.art)
 
 	@property
 	def computed(self) -> Decimal:
@@ -292,6 +292,11 @@ def _voucher_findings(item: VoucherAmount, vat_id: str, valid: bool, figures: Fi
 			"letzten Abnehmers ist nicht in diesem Land erteilt."
 		)
 	return [Finding(Code.DESTINATION, text, item.voucher, party)]
+
+
+def _reportable(vat_id: str, art: Art) -> bool:
+	"""The ZM can report a line of ``art`` under ``vat_id`` as it stands."""
+	return isinstance(vat_id, str) and normalize(vat_id, services=art is Art.S) == vat_id
 
 
 def require_whole_euros(amount: Decimal) -> None:

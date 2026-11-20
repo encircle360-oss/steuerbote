@@ -315,6 +315,15 @@ class MeldezeileTest(TestCase):
 			Meldezeile("atu12345678", Art.L, d("10"))
 		with self.assertRaisesRegex(ZmError, "not a USt-IdNr."):
 			Meldezeile("XI123456789", Art.S, d("10"))
+		with self.assertRaisesRegex(ZmError, "not a USt-IdNr."):
+			Meldezeile(None, Art.L, d("10"))  # type: ignore[arg-type]
+
+	def test_a_line_without_a_vat_id_reports_nothing(self):
+		for vat_id in (None, "", " "):
+			with self.subTest(vat_id):
+				line = Line(vat_id, Art.L, (invoice("1", "10.00", vat_id=vat_id),))  # type: ignore[arg-type]
+				self.assertFalse(line.valid)
+				self.assertIsNone(line.meldezeile)
 
 	def test_a_meldezeile_holds_whole_euros(self):
 		with self.assertRaisesRegex(ZmError, "whole euros"):
