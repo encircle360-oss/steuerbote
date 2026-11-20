@@ -24,7 +24,8 @@ the country where the goods arrive (§ 18a Absatz 7 Satz 1 Nummer 4 Buchstabe a 
 Begründung lifts the block of its line and replaces its amount. A line without a USt-IdNr. the ZM takes cannot
 be reported, so its override can only drop it, with 0. An override without vouchers is a line of its own, such
 as a Verbringen (§ 6a Absatz 2 UStG), which the ZM reports under the company's own USt-IdNr. in the other member
-state (§ 18a Absatz 7 Satz 1 Nummer 2 UStG).
+state (§ 18a Absatz 7 Satz 1 Nummer 2 UStG). It reports an amount only under a USt-IdNr., and a hint names it
+with its Begründung, which explains why no voucher of the ledger stands behind it.
 """
 
 from collections.abc import Iterable
@@ -47,6 +48,10 @@ NOT_WHOLE_EUROS = "A line of the Zusammenfassende Meldung takes whole euros, not
 NO_REASON = "An override of a line of the Zusammenfassende Meldung needs a Begründung."
 NOT_A_VAT_ID = "{0} is not a USt-IdNr. that the Zusammenfassende Meldung takes for Art {1}."
 OVERRIDDEN_TWICE = "The line {0} {1} of the Zusammenfassende Meldung is overridden twice."
+OWN_LINE_WITHOUT_VAT_ID = (
+	"A line of the Zusammenfassende Meldung entered by hand needs the USt-IdNr. it reports, for a Verbringen "
+	"the company's own USt-IdNr. in the member state of arrival."
+)
 
 
 class Art(StrEnum):
@@ -160,6 +165,11 @@ class Line:
 		return _reportable(self.vat_id, self.art)
 
 	@property
+	def manual(self) -> bool:
+		"""The line is entered by hand: no voucher stands behind it, only the override and its Begründung."""
+		return not self.vouchers and self.override is not None
+
+	@property
 	def computed(self) -> Decimal:
 		return to_full_euros(self.amount)
 
@@ -249,6 +259,8 @@ def _line(
 	figures: Figures,
 ) -> Line:
 	vat_id, art = key
+	if not (vouchers or vat_id) and override is not None and override.amount:
+		raise ZmError(OWN_LINE_WITHOUT_VAT_ID)
 	party = next((name for item in vouchers if (name := (item.party or "").strip())), "")
 	findings: list[Finding] = []
 	problem = refusal(vat_id, services=art is Art.S)
@@ -265,6 +277,12 @@ def _line(
 		findings.append(Finding(Code.UNCONFIRMED_VAT_ID, text, party=party))
 	for item in vouchers:
 		findings.extend(_voucher_findings(item, vat_id, problem is None, figures))
+	if not vouchers and override is not None and vat_id:
+		text = (
+			f"Die Zeile {vat_id} ({art.value}) ist von Hand eingetragen und steht ohne Beleg im Hauptbuch mit "
+			f"{figures.money(override.amount)} in der ZM; Begründung: {override.reason.strip()}"
+		)
+		findings.append(Finding(Code.OWN_LINE, text if text.endswith((".", "!", "?")) else f"{text}."))
 	return Line(vat_id, art, vouchers, override, tuple(findings))
 
 

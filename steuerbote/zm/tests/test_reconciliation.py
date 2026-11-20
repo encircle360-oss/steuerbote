@@ -137,6 +137,43 @@ class FiledReturnsTest(TestCase):
 			"Die abgegebenen Voranmeldungen melden in Kz 41 1.000,00 €, die Zeilen L der ZM 900,00 €.",
 		)
 
+	def test_lines_of_their_own_are_a_difference_to_the_ledger_their_begruendung_explains(self):
+		"""A Verbringen has no voucher, so the lines leave the ledger alone and count it apart; a Voranmeldung that
+		reports it in Kz 41 as well, as § 18b Satz 1 Nummer 1 with § 6a Absatz 2 UStG asks, agrees."""
+		zm = statement(
+			invoice("1", "1000.00"),
+			overrides={("ATU99999999", Art.L): Override(d("2500"), "Verbringen in das Lager Wien")},
+		)
+		result = reconcile(
+			zm, [share("Sales Invoice:1", "41", "1000.00")], FIGURES, filed={"41": Filed(d("3500"), 1)}
+		)
+		row = result.rows[0]
+		self.assertEqual(
+			(row.ledger, row.statement, row.manual, row.reported, row.filed),
+			(d("1000.00"), d("1000.00"), d("2500"), d("3500"), d("3500")),
+		)
+		self.assertTrue(result.balanced)
+		self.assertEqual(result.findings, ())
+		self.assertEqual([other.manual for other in result.rows[1:]], [d("0"), d("0")])
+
+	def test_a_voranmeldung_without_the_lines_of_their_own_gets_a_hint_that_names_them(self):
+		zm = statement(
+			invoice("1", "1000.00"),
+			overrides={("ATU99999999", Art.L): Override(d("2500"), "Verbringen in das Lager Wien")},
+		)
+		result = reconcile(
+			zm, [share("Sales Invoice:1", "41", "1000.00")], FIGURES, filed={"41": Filed(d("1000"), 1)}
+		)
+		(finding,) = result.findings
+		self.assertEqual(
+			(finding.code, finding.text),
+			(
+				Code.FILED_RETURNS,
+				"Die abgegebenen Voranmeldungen melden in Kz 41 1.000,00 €, die Zeilen L der ZM 3.500,00 €, "
+				"davon 2.500,00 € in Zeilen von Hand.",
+			),
+		)
+
 	def test_only_the_kennzahlen_given(self):
 		result = reconcile(
 			statement(invoice("1", "10.00")),

@@ -3,7 +3,7 @@ from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.zm.errors import ZmError
-from steuerbote.zm.findings import Code
+from steuerbote.zm.findings import Code, Severity
 from steuerbote.zm.lines import (
 	ART_KENNZAHL,
 	KENNZAHL_ART,
@@ -309,6 +309,41 @@ class OverrideTest(TestCase):
 			(line.vat_id, line.amount, line.vouchers, line.reported), (own, d("0"), (), d("2500"))
 		)
 		self.assertEqual(result.meldezeilen, (Meldezeile(own, Art.L, d("2500")),))
+
+	def test_a_line_of_its_own_says_that_it_was_entered_by_hand_and_why(self):
+		"""No voucher in the ledger stands behind a Verbringen, so its Begründung explains the line: a hint names
+		both, and the line holds nothing back."""
+		own = "ATU99999999"
+		result = statement(overrides={(own, Art.L): Override(d("2500"), "Verbringen in das Lager Wien")})
+		line = result.lines[0]
+		self.assertTrue(line.manual)
+		self.assertEqual(
+			[(finding.code, finding.severity, finding.text) for finding in line.findings],
+			[
+				(
+					Code.OWN_LINE,
+					Severity.HINT,
+					"Die Zeile ATU99999999 (L) ist von Hand eingetragen und steht ohne Beleg im Hauptbuch mit "
+					"2.500,00 € in der ZM; Begründung: Verbringen in das Lager Wien.",
+				)
+			],
+		)
+		self.assertEqual((line.blocked, result.ready), (False, True))
+
+	def test_a_line_with_vouchers_is_no_line_of_its_own_even_with_an_override(self):
+		result = statement(
+			invoice("1", "999.99"), overrides={(AUSTRIA, Art.L): Override(d("1000"), "Nachweis liegt vor.")}
+		)
+		self.assertFalse(result.lines[0].manual)
+		self.assertNotIn(Code.OWN_LINE, codes(result.lines[0]))
+
+	def test_a_line_of_its_own_needs_the_vat_id_it_reports(self):
+		"""§ 18a Absatz 7 Satz 1 Nummer 2 UStG: a Verbringen is reported under „die Umsatzsteuer-
+		Identifikationsnummer des Unternehmers in den Mitgliedstaaten, in die er Gegenstände verbracht hat“."""
+		with self.assertRaisesRegex(ZmError, "needs the USt-IdNr. it reports"):
+			statement(overrides={("", Art.L): Override(d("2500"), "Verbringen")})
+		left_over = statement(overrides={("", Art.L): Override(d("0"), "Verbringen")})
+		self.assertEqual((left_over.meldezeilen, left_over.findings, left_over.ready), ((), (), True))
 
 	def test_two_overrides_of_one_line(self):
 		overrides = {(AUSTRIA, Art.L): Override(d("1"), "a"), ("ATU 12345678", Art.L): Override(d("2"), "b")}

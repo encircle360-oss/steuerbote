@@ -1,5 +1,7 @@
+import json
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from types import MappingProxyType
 from unittest import TestCase
 
@@ -16,6 +18,12 @@ from steuerbote.zm.rhythm import Coverage
 from steuerbote.zm.tests.support import AUSTRIA, FIGURES, FRANCE, SPAIN, d, invoice
 
 MARCH = ReportingPeriod.month(2026, 3)
+DOCTYPES = Path(__file__).parents[1]
+
+
+def fields_of(doctype: str) -> dict[str, dict]:
+	definition = json.loads((DOCTYPES / doctype / f"{doctype}.json").read_text(encoding="utf-8"))
+	return {field["fieldname"]: field for field in definition["fields"]}
 
 
 def share(voucher: str | None, amount: str, kennzahl: str = "41") -> Contribution:
@@ -354,6 +362,7 @@ class LineRowsTest(TestCase):
 			(rows[1]["override_reason"], rows[1]["confirmation"], rows[1]["confirmation_outcome"]),
 			("Verbringen nach Spanien", None, None),
 		)
+		self.assertEqual([row["manual"] for row in rows], [0, 1, 0])
 		self.assertEqual(
 			[(row["filed_amount"], row["in_file"]) for row in rows], [(d("0"), 1), (d("0"), 1), (d("0"), 1)]
 		)
@@ -466,12 +475,37 @@ class ReconciliationRowsTest(TestCase):
 				"filed_known": 1,
 				"deviating_vouchers": 1,
 				"balanced": 0,
+				"manual": d("0"),
 			},
 		)
 		self.assertEqual(
 			[(row["art"], row["filed"], row["filed_known"], row["balanced"]) for row in rows[1:]],
 			[("D", d("0"), 0, 1), ("S", d("0"), 0, 1)],
 		)
+
+	def test_the_lines_entered_by_hand_have_a_column_of_their_own(self):
+		lines = statement(
+			invoice("SINV-1", "1000.00"),
+			overrides={("ATU99999999", Art.L): Override(d("2500"), "Verbringen in das Lager Wien")},
+		)
+		rows = bridge.reconciliation_rows(
+			reconcile(lines, [share("Sales Invoice:SINV-1", "1000.00")], FIGURES)
+		)
+		self.assertEqual(
+			(rows[0]["statement"], rows[0]["manual"], rows[0]["reported"]),
+			(d("1000.00"), d("2500"), d("3500")),
+		)
+
+	def test_every_value_of_a_row_has_a_field_in_its_table(self):
+		lines = statement(invoice("SINV-1", "1000.00"))
+		reconciliation = bridge.reconciliation_rows(reconcile(lines, [], FIGURES))[0]
+		(line,) = bridge.line_rows(lines, {}, MARCH)
+		for doctype, row in (
+			("recapitulative_statement_reconciliation", reconciliation),
+			("recapitulative_statement_line", line),
+		):
+			with self.subTest(doctype=doctype):
+				self.assertEqual(set(row) - set(fields_of(doctype)), set())
 
 
 class ComparisonRowsTest(TestCase):

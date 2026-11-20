@@ -18,6 +18,7 @@ class RecapitulativeStatementReconciliation(Document):
 		filed_known: DF.Check
 		kennzahl: DF.Data | None
 		ledger: DF.Currency
+		manual: DF.Currency
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data

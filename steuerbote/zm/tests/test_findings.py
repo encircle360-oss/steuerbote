@@ -10,9 +10,9 @@ class FindingTest(TestCase):
 				expected = Severity.ERROR if code in BLOCKING else Severity.HINT
 				self.assertIs(Finding(code, "Text.").severity, expected)
 
-	def test_only_the_comparison_and_the_filed_returns_give_hints(self):
+	def test_only_the_comparison_the_filed_returns_and_the_lines_by_hand_give_hints(self):
 		hints = {code for code in Code if not Finding(code, "Text.").blocking}
-		self.assertEqual(hints, {Code.FILED_RETURNS, Code.PREVIOUS_PERIOD})
+		self.assertEqual(hints, {Code.FILED_RETURNS, Code.PREVIOUS_PERIOD, Code.OWN_LINE})
 
 	def test_codes_are_distinct_from_those_of_the_voranmeldung(self):
 		self.assertTrue(all(code.value.startswith("ZM-") for code in Code))

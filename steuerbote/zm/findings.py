@@ -26,11 +26,12 @@ class Code(StrEnum):
 	LEDGER = "ZM-ABGLEICH-HAUPTBUCH"
 	FILED_RETURNS = "ZM-ABGLEICH-VORANMELDUNG"
 	PREVIOUS_PERIOD = "ZM-ABWEICHUNG-VORPERIODE"
+	OWN_LINE = "ZM-ZEILE-VON-HAND"
 
 
-# The rounding of a ZM may part from the filed Voranmeldungen by some euros, and a quieter period explains a
-# change; neither holds the ZM back.
-BLOCKING: frozenset[Code] = frozenset(set(Code) - {Code.FILED_RETURNS, Code.PREVIOUS_PERIOD})
+# The rounding of a ZM may part from the filed Voranmeldungen by some euros, a quieter period explains a change,
+# and the Begründung of a line entered by hand explains why no voucher stands behind it; none holds the ZM back.
+BLOCKING: frozenset[Code] = frozenset(set(Code) - {Code.FILED_RETURNS, Code.PREVIOUS_PERIOD, Code.OWN_LINE})
 
 
 @dataclass(frozen=True, slots=True)

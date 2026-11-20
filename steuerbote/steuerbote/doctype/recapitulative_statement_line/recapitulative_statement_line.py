@@ -21,6 +21,7 @@ class RecapitulativeStatementLine(Document):
 		consultation_id: DF.Data | None
 		filed_amount: DF.Currency
 		in_file: DF.Check
+		manual: DF.Check
 		override: DF.Currency
 		override_reason: DF.SmallText | None
 		parent: DF.Data
