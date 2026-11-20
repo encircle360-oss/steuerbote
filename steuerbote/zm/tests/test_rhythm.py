@@ -301,8 +301,8 @@ class ThresholdTest(TestCase):
 		self.assertEqual(threshold_findings([Rule(2025, 1, MONTHLY)], month(2026, 4), amounts, FIGURES), ())
 
 	def test_a_yearly_rule_against_any_excess(self):
-		"""§ 18a Absatz 9 Nummer 2 UStG allows the yearly ZM only up to 15,000 euros a year, so an excess of 50,000
-		euros in a quarter rules it out, also in the third month of the quarter."""
+		"""An excess of 50,000 euros in a quarter makes the ZM monthly after § 18a Absatz 1 Satz 2 and 3 UStG, so it
+		rules a yearly rule out, also in the third month of the quarter."""
 		amounts = deliveries(m2026_03="60000.00")
 		found = threshold_findings(
 			[Rule(2026, 1, YEARLY)], ReportingPeriod.calendar_year(2026), amounts, FIGURES

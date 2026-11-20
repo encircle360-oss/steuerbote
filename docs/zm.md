@@ -47,7 +47,7 @@ Beispiele aus den Tests: Januar 2026 ist am 25. Februar 2026 fällig. April und 
 **Schwelle.** `threshold_findings()` prüft die Regeln gegen das Hauptbuch: Kz 41 und Kz 42 zusammen, je Monat und genau in Cent, für den Meldezeitraum und die vier Quartale davor (`threshold_window()`). „Mehr als 50 000 Euro“ heißt: 50.000,00 € sind nicht mehr. Ein Fehler (`ZM-SCHWELLE`) entsteht,
 
 - bei einer vierteljährlichen Regel, wenn das Quartal die Schwelle vor seinem letzten Monat überschreitet; im letzten Monat ergibt die erste monatliche ZM dieselben Monate und dieselbe Frist wie das Quartal;
-- bei einer jährlichen Regel, sobald ein Quartal die Schwelle überschreitet, denn § 18a Absatz 9 Nummer 2 UStG lässt die jährliche ZM nur bis 15.000 € im Jahr zu;
+- bei einer jährlichen Regel, sobald ein Quartal die Schwelle überschreitet, denn dann ist die ZM nach § 18a Absatz 1 Satz 2 und 3 UStG ab dem Monat der Überschreitung monatlich abzugeben; die engeren Grenzen der jährlichen ZM selbst, etwa 15.000 € im Jahr nach Absatz 9 Nummer 2, prüft Steuerbote nicht, siehe oben;
 - bei beiden, wenn eines der vier vorangegangenen Quartale mehr als 50.000 € hatte (§ 18a Absatz 1 Satz 2 UStG).
 
 Ein Hinweis des BZSt: „Der Wechsel zur monatlichen Abgabe erfolgt automatisch. Das Unternehmen hat auf seine Abgabepflichten zu achten; es erfolgt keine Mitteilung des BZSt über die Änderung des Meldezeitraums.“ [Q9]
@@ -92,7 +92,7 @@ Jeder Befund ist ein Satz mit Beleg und Kunde, wo es sie gibt (`findings.py`). F
 | `ZM-USTID-UNGUELTIG` | Fehler | Die Bestätigung hat die Nummer als ungültig gemeldet. | § 6a Absatz 1 Satz 1 Nummer 4 UStG [Q3]; Entscheidung des Maintainers [Q16] |
 | `ZM-USTID-UNBESTAETIGT` | Fehler | Die Nummer ist nicht bestätigt. | Entscheidung des Maintainers [Q16] |
 | `ZM-DREIECK-LAND` | Fehler | Bei einem Dreiecksgeschäft stammt die USt-IdNr. nicht aus dem Land, in dem die Lieferung endet, oder der Beleg nennt kein Land. | § 18a Absatz 7 Satz 1 Nummer 4 Buchstabe a UStG |
-| `ZM-SCHWELLE` | Fehler | Die Regeln geben eine vierteljährliche oder jährliche ZM, obwohl L und D mehr als 50.000 € im Quartal ergeben. | § 18a Absatz 1 und 9 UStG |
+| `ZM-SCHWELLE` | Fehler | Die Regeln geben eine vierteljährliche oder jährliche ZM, obwohl L und D mehr als 50.000 € im Quartal ergeben. | § 18a Absatz 1 UStG |
 | `ZM-ABGLEICH-HAUPTBUCH` | Fehler | Ein Beleg steht mit anderem Betrag im Hauptbuch als in den Zeilen. | siehe Abgleich |
 | `ZM-ABGLEICH-VORANMELDUNG` | Hinweis | Die Meldezeilen weichen weiter von den abgegebenen Voranmeldungen ab, als die Rundung erklärt. | siehe Abgleich |
 | `ZM-ABWEICHUNG-VORPERIODE` | Hinweis | Eine Zeile ist im Vorperiodenvergleich auffällig. | siehe Vorperiodenvergleich |
