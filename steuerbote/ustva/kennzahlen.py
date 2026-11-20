@@ -3,7 +3,8 @@
 The BMF publishes the form for the coming year every December; ELSTER accepts a filing only in the
 Datenart of the period's year and keeps the current year and the three years before it open. The
 catalogue is therefore chosen by the year of the period, so earlier periods and corrections keep
-their own Kennzahlen and a new year's catalogue can be added whenever it is published.
+their own Kennzahlen and a new year's catalogue can be added whenever it is published. CATALOGUES
+holds the years of YEARS in steuerbote/ustva/years.py, which names what else a year needs.
 
 2026: BMF letter of 29 December 2025 (GZ III C 3 - S 7344/00039/007/036), Vordruckmuster USt 1 A 2026
 and its Anleitung. Line numbers (Zeile) and labels follow that form. Lines 37, 45 and 48 are sums the
@@ -16,6 +17,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 from types import MappingProxyType
+
+from steuerbote.ustva.years import UnknownYearError
 
 
 class Kind(Enum):
@@ -367,10 +370,6 @@ _FORM_2026 = (
 	),
 	Kennzahl("500", 55, "Ergänzende Angaben zur Steueranmeldung (1 bis 4)", Kind.CODE),
 )
-
-
-class UnknownYearError(ValueError):
-	"""No catalogue for the year of the period; the app needs the form of that year first."""
 
 
 BALANCE_KENNZAHL = "83"
