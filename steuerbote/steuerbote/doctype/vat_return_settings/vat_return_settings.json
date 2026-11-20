@@ -22,6 +22,7 @@
   "elster_tax_number",
   "tax_office",
   "wid_nr",
+  "ust_idnr",
   "datenlieferant_section",
   "filer_name",
   "street",
@@ -33,7 +34,9 @@
   "period_rules_section",
   "period_rules",
   "prepayments_section",
-  "prepayments"
+  "prepayments",
+  "zm_rules_section",
+  "zm_rules"
  ],
  "fields": [
   {
@@ -148,6 +151,13 @@
    "length": 11
   },
   {
+   "description": "The company's own German USt-IdNr., DE and nine digits, with which the USt-IdNrn. of its customers are confirmed. Empty: the Tax ID of the company, if it is one.",
+   "fieldname": "ust_idnr",
+   "fieldtype": "Data",
+   "label": "VAT ID",
+   "length": 11
+  },
+  {
    "description": "Who files: the name, address and contact the files for ELSTER carry as Datenlieferant.",
    "fieldname": "datenlieferant_section",
    "fieldtype": "Section Break",
@@ -218,11 +228,22 @@
    "fieldtype": "Table",
    "label": "Dauerfristverlängerung and Sondervorauszahlung",
    "options": "VAT Return Prepayment"
+  },
+  {
+   "fieldname": "zm_rules_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "Monthly, quarterly or yearly from a year and month on until the next rule (§ 18a UStG). The company follows the threshold of 50,000 euros and its Anzeigen to the BZSt; Calculate checks the threshold against the ledger.",
+   "fieldname": "zm_rules",
+   "fieldtype": "Table",
+   "label": "Rhythm of the Zusammenfassende Meldung",
+   "options": "ZM Rule"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-18 14:00:00.000000",
+ "modified": "2026-11-20 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",

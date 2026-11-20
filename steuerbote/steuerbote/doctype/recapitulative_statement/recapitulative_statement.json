@@ -1,0 +1,421 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-11-20 18:00:00.000000",
+ "description": "One Zusammenfassende Meldung of a company for one Meldezeitraum, computed from the general ledger.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "year",
+  "period_kind",
+  "period_index",
+  "meldeart",
+  "corrects",
+  "anzeige",
+  "widerruf",
+  "column_break_period",
+  "period_label",
+  "quart",
+  "from_date",
+  "to_date",
+  "deadline",
+  "status",
+  "confirmation_in_progress",
+  "amended_from",
+  "lines_section",
+  "lines",
+  "totals_section",
+  "total_l",
+  "total_d",
+  "column_break_totals",
+  "total_s",
+  "ready",
+  "hints_section",
+  "hints",
+  "reconciliation_section",
+  "reconciliation",
+  "comparison_section",
+  "comparison",
+  "vouchers_section",
+  "vouchers",
+  "filing_section",
+  "filed_via",
+  "filed_on",
+  "transferticket",
+  "column_break_filing",
+  "filed_by",
+  "filing_note",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "default": "ZM-.YYYY.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "ZM-.YYYY.-.#####",
+   "print_hide": 1,
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "remember_last_selected_value": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_standard_filter": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "default": "month",
+   "description": "As the rhythm of the Zusammenfassende Meldung in the VAT Return Settings gives it: a month, the first two months of a quarter when the threshold is exceeded in its second month, a quarter or the year.",
+   "fieldname": "period_kind",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Reporting Period Kind",
+   "options": "month\ntwo_months\nquarter\nyear",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.period_kind != 'year'",
+   "description": "Month 1 to 12, or quarter 1 to 4 for two months and for a quarter.",
+   "fieldname": "period_index",
+   "fieldtype": "Int",
+   "label": "Period Number"
+  },
+  {
+   "default": "Erstmeldung",
+   "fieldname": "meldeart",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Statement Type",
+   "options": "Erstmeldung\nBerichtigung",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.meldeart == 'Berichtigung'",
+   "description": "The filed Zusammenfassende Meldung that this Berichtigung corrects.",
+   "fieldname": "corrects",
+   "fieldtype": "Link",
+   "label": "Corrects",
+   "options": "Recapitulative Statement",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Set in the form of Mein ELSTER with the first monthly ZM of a company that could file quarterly (§ 18a Absatz 1 Satz 4 UStG). Only with a monthly ZM.",
+   "fieldname": "anzeige",
+   "fieldtype": "Check",
+   "label": "Anzeige of Monthly Filing"
+  },
+  {
+   "default": "0",
+   "description": "Set in the form of Mein ELSTER to file quarterly again. Only with the ZM of a quarter or of the third month of a quarter.",
+   "fieldname": "widerruf",
+   "fieldtype": "Check",
+   "label": "Withdrawal of the Anzeige"
+  },
+  {
+   "fieldname": "column_break_period",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "fieldname": "period_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Reporting Period",
+   "read_only": 1
+  },
+  {
+   "description": "The quart code of ELSTER: 21 to 32 for a month, 11 to 14 for two months, 1 to 4 for a quarter, 5 for the year.",
+   "fieldname": "quart",
+   "fieldtype": "Int",
+   "label": "Period Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "read_only": 1
+  },
+  {
+   "description": "The 25th day after the Meldezeitraum or the next working day after it, by the holiday list of the company; the Dauerfristverlängerung does not apply.",
+   "fieldname": "deadline",
+   "fieldtype": "Date",
+   "label": "Due Date",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Entwurf",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Entwurf\nBerechnet\nBereit\nAbgegeben\nErsetzt",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Set while the USt-IdNrn. are being confirmed; the statement cannot change until it ends.",
+   "fieldname": "confirmation_in_progress",
+   "fieldtype": "Check",
+   "label": "Confirmation Running",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Recapitulative Statement",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "lines_section",
+   "fieldtype": "Section Break",
+   "label": "Lines"
+  },
+  {
+   "description": "One line per USt-IdNr. and Art, filled by Calculate. A line of your own with an override amount and a reason stays, such as a Verbringen under the company's USt-IdNr. in another member state.",
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Lines",
+   "options": "Recapitulative Statement Line"
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "total_l",
+   "fieldtype": "Currency",
+   "label": "Total L (Lieferungen)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_d",
+   "fieldtype": "Currency",
+   "label": "Total D (Dreiecksgeschäfte)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_s",
+   "fieldtype": "Currency",
+   "label": "Total S (sonstige Leistungen)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "ready",
+   "fieldtype": "Check",
+   "label": "Ready to File",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:(doc.hints || []).length",
+   "fieldname": "hints_section",
+   "fieldtype": "Section Break",
+   "label": "Findings"
+  },
+  {
+   "description": "An error holds the statement back from Bereit until it is resolved or its line is overridden with a reason; the threshold and the ledger cannot be overridden. A hint changes nothing. Filled by Calculate.",
+   "fieldname": "hints",
+   "fieldtype": "Table",
+   "label": "Findings",
+   "options": "Recapitulative Statement Hint",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:(doc.reconciliation || []).length",
+   "fieldname": "reconciliation_section",
+   "fieldtype": "Section Break",
+   "label": "Reconciliation with the Voranmeldung"
+  },
+  {
+   "description": "The vouchers of the lines against the ledger of Kz 41, 42 and 21, and the lines against the filed Voranmeldungen of the same months, filled by Calculate.",
+   "fieldname": "reconciliation",
+   "fieldtype": "Table",
+   "label": "Reconciliation with the Voranmeldung",
+   "options": "Recapitulative Statement Reconciliation",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:(doc.comparison || []).length",
+   "fieldname": "comparison_section",
+   "fieldtype": "Section Break",
+   "label": "Previous Period Comparison"
+  },
+  {
+   "description": "Each line against the line of the previous Meldezeitraum, both from the ledger, filled by Calculate.",
+   "fieldname": "comparison",
+   "fieldtype": "Table",
+   "label": "Previous Period Comparison",
+   "options": "Recapitulative Statement Comparison",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:(doc.vouchers || []).length",
+   "fieldname": "vouchers_section",
+   "fieldtype": "Section Break",
+   "label": "Vouchers of the Lines"
+  },
+  {
+   "fieldname": "vouchers",
+   "fieldtype": "Table",
+   "label": "Vouchers of the Lines",
+   "options": "Recapitulative Statement Voucher",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_section",
+   "fieldtype": "Section Break",
+   "label": "Filing"
+  },
+  {
+   "fieldname": "filed_via",
+   "fieldtype": "Select",
+   "label": "Filed Via",
+   "no_copy": 1,
+   "options": "\nmein_elster\nother_way",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filed_on",
+   "fieldtype": "Date",
+   "label": "Filed On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "transferticket",
+   "fieldtype": "Data",
+   "label": "Transferticket",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_filing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filed_by",
+   "fieldtype": "Link",
+   "label": "Noted By",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_note",
+   "fieldtype": "Small Text",
+   "label": "How and When Filed",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Required to file a statement that is not ready: why it is correct nonetheless.",
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "is_submittable": 1,
+ "links": [
+  {
+   "link_doctype": "VAT ID Confirmation",
+   "link_fieldname": "recapitulative_statement"
+  }
+ ],
+ "modified": "2026-11-20 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Recapitulative Statement",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 0,
+ "row_format": "Dynamic",
+ "search_fields": "company,period_label",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "period_label",
+ "track_changes": 1
+}

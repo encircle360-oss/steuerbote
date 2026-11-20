@@ -12,6 +12,9 @@ MODULE = "Steuerbote"
 SIDEBAR_LINKS = [
 	("Workspace", "Steuern", "Steuern"),
 	("DocType", "VAT Return", "VAT Returns"),
+	("DocType", "VAT Return Extension", "VAT Return Extensions"),
+	("DocType", "Recapitulative Statement", "Recapitulative Statements"),
+	("DocType", "VAT ID Confirmation", "VAT ID Confirmations"),
 	("DocType", "VAT Return Mapping", "Account Mapping"),
 	("DocType", "VAT Return Settings", "Settings"),
 	("DocType", "ERiC Settings", "ERiC Settings"),
@@ -49,8 +52,12 @@ class WorkspaceTest(IntegrationTestCase):
 		self.assertEqual(
 			sorted((shortcut.type, shortcut.link_to) for shortcut in workspace.shortcuts),
 			[
+				("DocType", "Recapitulative Statement"),
+				("DocType", "Recapitulative Statement"),
+				("DocType", "VAT ID Confirmation"),
 				("DocType", "VAT Return"),
 				("DocType", "VAT Return"),
+				("DocType", "VAT Return Extension"),
 				("DocType", "VAT Return Mapping"),
 				("DocType", "VAT Return Settings"),
 				("Report", "UStVA Kennzahlen"),

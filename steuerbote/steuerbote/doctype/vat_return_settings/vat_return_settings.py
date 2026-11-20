@@ -11,6 +11,7 @@ from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
 from steuerbote.ustva import Rhythm
+from steuerbote.zm.rhythm import Rule as ZmRule
 
 
 class VATReturnSettings(Document):
@@ -28,6 +29,7 @@ class VATReturnSettings(Document):
 		from steuerbote.steuerbote.doctype.vat_return_prepayment.vat_return_prepayment import (
 			VATReturnPrepayment,
 		)
+		from steuerbote.steuerbote.doctype.zm_rule.zm_rule import ZMRule
 
 		chart: DF.Literal["SKR03", "SKR04", "Eigener Kontenrahmen"]
 		city: DF.Data | None
@@ -65,16 +67,21 @@ class VATReturnSettings(Document):
 		tax_office: DF.Data | None
 		taxation_type: DF.Literal["Soll"]
 		tolerance: DF.Currency
+		ust_idnr: DF.Data | None
 		wid_nr: DF.Data | None
+		zm_rules: DF.Table[ZMRule]
 	# end: auto-generated types
 
 	def validate(self) -> None:
 		self.set_elster_tax_number()
 		self.check_for_elster()
+		self.set_ust_idnr()
 		self.sort_period_rules()
+		self.sort_zm_rules()
 		with settings_errors():
 			rules.check_period_rules(self.get_period_rules())
 			rules.check_prepayments(self.get_prepayments())
+			rules.check_zm_rules(self.get_zm_rules())
 
 	def set_elster_tax_number(self) -> None:
 		"""A missing state or number is reported by the mandatory check, which runs after validate."""
@@ -101,9 +108,20 @@ class VATReturnSettings(Document):
 					self.get(bridge.DATENLIEFERANT_FIELDS[attribute]), field.label, field.length
 				)
 
+	def set_ust_idnr(self) -> None:
+		"""The company's own USt-IdNr., or else its Tax ID when that is a German USt-IdNr."""
+		tax_id = frappe.db.get_value("Company", self.company, "tax_id") if self.company else None
+		with settings_errors():
+			self.ust_idnr = rules.own_vat_id(self.ust_idnr, tax_id)
+
 	def sort_period_rules(self) -> None:
 		self.period_rules.sort(key=lambda row: (cint(row.year), cint(row.valid_from_month)))
 		for index, row in enumerate(self.period_rules, start=1):
+			row.idx = index
+
+	def sort_zm_rules(self) -> None:
+		self.zm_rules.sort(key=lambda row: (cint(row.year), cint(row.valid_from_month)))
+		for index, row in enumerate(self.zm_rules, start=1):
 			row.idx = index
 
 	def rhythm_for(self, year: int, month: int) -> Rhythm:
@@ -126,6 +144,16 @@ class VATReturnSettings(Document):
 			rules.PeriodRule(cint(row.year), row.rhythm, cint(row.valid_from_month))
 			for row in self.period_rules
 		]
+
+	def get_zm_rules(self) -> list[ZmRule]:
+		"""The rhythm of the Zusammenfassende Meldung as the rules of steuerbote.zm.rhythm."""
+		with settings_errors():
+			return [
+				rules.zm_rule(
+					cint(row.year), cint(row.valid_from_month), row.rhythm, bool(cint(row.services_monthly))
+				)
+				for row in self.zm_rules
+			]
 
 	def get_prepayments(self) -> list[rules.Prepayment]:
 		return [

@@ -1,0 +1,138 @@
+{#-
+	Zusammenfassende Meldung (§ 18a UStG): the lines of its file for Mein ELSTER, per USt-IdNr. and Art, in
+	whole euros, with the sum of each Art. A Berichtigung prints the lines that change what was filed, a
+	cancelled line with 0. Every amount is the amount filed of a line of the statement; the sums only add them.
+	Text fields print as Frappe formats them, since Frappe sanitises their markup when a document is saved.
+-#}
+{%- set settings = frappe.db.get_value("VAT Return Settings", doc.company, ["ust_idnr"], as_dict=True) or {} -%}
+{%- set correction = doc.meldeart == "Berichtigung" -%}
+{%- set filed = (doc.lines or []) | selectattr("in_file") | list -%}
+{%- set overrides = (doc.lines or []) | selectattr("override_reason") | list -%}
+{%- set arts = [
+	("L", "Innergemeinschaftliche Warenlieferungen"),
+	("D", "Lieferungen im Dreiecksgeschäft (§ 25b Absatz 2 UStG)"),
+	("S", "Sonstige Leistungen (§ 3a Absatz 2 UStG)"),
+] -%}
+
+{%- macro euros(value) -%}{{ frappe.utils.fmt_money(value, 0, None, "#.###,##") }}{%- endmacro -%}
+{%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
+
+<div class="sb-zm">
+	<h1>Zusammenfassende Meldung {{ (doc.period_label or "") | e }}</h1>
+	{%- if correction %}
+	<p class="sb-subtitle">Berichtigte Meldung zu {{ (doc.corrects or "") | e }}</p>
+	{%- endif %}
+
+	<table class="sb-head">
+		<tr><td class="sb-label">Unternehmen</td><td class="sb-value">{{ doc.company | e }}</td></tr>
+		<tr><td class="sb-label">USt-IdNr.</td><td class="sb-value">{{ (settings.ust_idnr or "") | e }}</td></tr>
+		<tr><td class="sb-label">Meldezeitraum</td><td class="sb-value">{{ (doc.period_label or "") | e }}</td></tr>
+		<tr><td class="sb-label">Fällig am</td><td class="sb-value">{{ day(doc.deadline) }}</td></tr>
+		<tr><td class="sb-label">Meldeart</td><td class="sb-value">{{ doc.meldeart | e }}</td></tr>
+		<tr><td class="sb-label">Meldung</td><td class="sb-value">{{ doc.name | e }}, {{ doc.status | e }}</td></tr>
+		{%- if doc.filed_on %}
+		<tr><td class="sb-label">Abgegeben am</td><td class="sb-value">{{ day(doc.filed_on) }}</td></tr>
+		{%- endif %}
+	</table>
+
+	{%- if doc.anzeige or doc.widerruf %}
+	<p class="sb-note">
+		{%- if doc.anzeige %}Anzeige nach § 18a Absatz 1 Satz 4 UStG: Die Zusammenfassenden Meldungen werden monatlich übermittelt.{% endif -%}
+		{%- if doc.widerruf %}Widerruf der Anzeige nach § 18a Absatz 1 Satz 4 UStG.{% endif -%}
+	</p>
+	{%- endif %}
+
+	<table class="sb-lines">
+		<colgroup>
+			<col class="sb-id">
+			<col>
+			<col class="sb-art">
+			{%- if correction %}
+			<col class="sb-num">
+			{%- endif %}
+			<col class="sb-num">
+		</colgroup>
+		<thead>
+			<tr>
+				<th class="sb-id">USt-IdNr.</th>
+				<th>Kunde</th>
+				<th class="sb-art">Art</th>
+				{%- if correction %}
+				<th class="sb-num">Bisher gemeldet<br>Euro</th>
+				{%- endif %}
+				<th class="sb-num">Summe der Bemessungsgrundlagen<br>Euro</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in filed %}
+			<tr>
+				<td class="sb-id">{{ (row.vat_id or "") | e }}</td>
+				<td>{{ (row.party or "") | e }}</td>
+				<td class="sb-art">{{ row.art }}</td>
+				{%- if correction %}
+				<td class="sb-num">{{ euros(row.filed_amount) }}</td>
+				{%- endif %}
+				<td class="sb-num">{{ euros(row.reported) }}</td>
+			</tr>
+			{%- else %}
+			<tr class="sb-empty"><td colspan="{{ 5 if correction else 4 }}">Keine Meldezeilen</td></tr>
+			{%- endfor %}
+		</tbody>
+		<tbody class="sb-group">
+			<tr class="sb-section"><td colspan="{{ 5 if correction else 4 }}">{{ "Summen der berichtigten Zeilen je Art" if correction else "Summen je Art" }}</td></tr>
+			{%- for art, label in arts %}
+			<tr class="sb-sum">
+				<td colspan="2">{{ label }}</td>
+				<td class="sb-art">{{ art }}</td>
+				{%- if correction %}
+				<td class="sb-num"></td>
+				{%- endif %}
+				<td class="sb-num">{{ euros(filed | selectattr("art", "equalto", art) | sum(attribute="reported")) }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+
+	{%- if overrides %}
+	<h2>Korrekturen gegenüber dem Hauptbuch</h2>
+	<table class="sb-lines">
+		<colgroup>
+			<col class="sb-id">
+			<col class="sb-art">
+			<col class="sb-num">
+			<col class="sb-num">
+			<col>
+		</colgroup>
+		<thead>
+			<tr>
+				<th class="sb-id">USt-IdNr.</th>
+				<th class="sb-art">Art</th>
+				<th class="sb-num">Betrag laut Hauptbuch</th>
+				<th class="sb-num">Gemeldeter Betrag</th>
+				<th>Begründung</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in overrides %}
+			<tr>
+				<td class="sb-id">{{ (row.vat_id or "") | e }}</td>
+				<td class="sb-art">{{ row.art }}</td>
+				<td class="sb-num">{{ frappe.utils.fmt_money(row.amount, 2, None, "#.###,##") }}</td>
+				<td class="sb-num">{{ euros(row.reported) }}</td>
+				<td>{{ row.get_formatted("override_reason") }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+	{%- endif %}
+
+	{%- if doc.remarks %}
+	<h2>Bemerkungen</h2>
+	<p>{{ doc.get_formatted("remarks") }}</p>
+	{%- endif %}
+
+	<div class="sb-footer">
+		<p>Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.</p>
+		<p>Dieser Ausdruck ist keine Abgabe. Abgegeben ist die Zusammenfassende Meldung erst, wenn sie elektronisch an das Bundeszentralamt für Steuern übermittelt ist.</p>
+	</div>
+</div>

@@ -24,6 +24,8 @@ WORKSPACE = MODULE / "workspace" / "steuern" / "steuern.json"
 SIDEBAR = MODULE / "sidebar" / "steuerbote" / "steuerbote.json"
 NUMBER_CARDS = MODULE / "number_card"
 PRINT_FORMAT = MODULE / "print_format" / "umsatzsteuer_voranmeldung"
+ZM_PRINT_FORMAT = MODULE / "print_format" / "zusammenfassende_meldung"
+ZM_SCRIPT = MODULE / "doctype" / "recapitulative_statement" / "recapitulative_statement.js"
 VAT_RETURN_SCRIPT = MODULE / "doctype" / "vat_return" / "vat_return.js"
 MAPPING = MODULE / "doctype" / "vat_return_mapping"
 MAPPING_RULE = MODULE / "doctype" / "vat_return_mapping_rule" / "vat_return_mapping_rule.json"
@@ -64,6 +66,9 @@ FRAMEWORK_LABELS = frozenset(
 )
 # The desk cuts a label after about 22 characters, in the sidebar as on a shortcut card.
 LONGEST_LABEL = 20
+# The DocType of the Dauerfristverlängerung, which comes with its own package of the module; the workspace and
+# the sidebar lead to it.
+DAUERFRIST_DOCTYPE = "VAT Return Extension"
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
 CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')
@@ -206,7 +211,7 @@ class WorkspaceFilesTest(TestCase):
 		self.assertEqual(sorted(named["number_card"]), sorted(cards))
 		self.assertEqual(len({block["id"] for block in self.blocks}), len(self.blocks))
 
-	def test_the_shortcuts_open_the_vat_return_its_setup_and_the_report(self):
+	def test_the_shortcuts_open_the_returns_the_statements_their_setup_and_the_report(self):
 		targets = {
 			(shortcut["type"], shortcut["link_to"], shortcut.get("doc_view", ""))
 			for shortcut in self.workspace["shortcuts"]
@@ -216,12 +221,16 @@ class WorkspaceFilesTest(TestCase):
 			{
 				("DocType", "VAT Return", "New"),
 				("DocType", "VAT Return", "List"),
+				("DocType", DAUERFRIST_DOCTYPE, "List"),
+				("DocType", "Recapitulative Statement", "New"),
+				("DocType", "Recapitulative Statement", "List"),
+				("DocType", "VAT ID Confirmation", "List"),
 				("DocType", "VAT Return Settings", "List"),
 				("DocType", "VAT Return Mapping", "List"),
 				("Report", "UStVA Kennzahlen", ""),
 			},
 		)
-		doctypes = doctype_names()
+		doctypes = doctype_names() | {DAUERFRIST_DOCTYPE}
 		for kind, target, _view in targets:
 			with self.subTest(target=target):
 				if kind == "DocType":
@@ -269,6 +278,10 @@ class WorkspaceFilesTest(TestCase):
 				("VAT Return", "New"): "Neue Voranmeldung",
 				("VAT Return", "List"): "Voranmeldungen",
 				("UStVA Kennzahlen", ""): "Kennzahlen (Bericht)",
+				(DAUERFRIST_DOCTYPE, "List"): "Dauerfristanträge",
+				("Recapitulative Statement", "New"): "Neue ZM",
+				("Recapitulative Statement", "List"): "Zusammenf. Meldungen",
+				("VAT ID Confirmation", "List"): "USt-IdNr.-Prüfungen",
 				("VAT Return Settings", "List"): "Einstellungen",
 				("VAT Return Mapping", "List"): "Kontenzuordnung",
 			},
@@ -306,7 +319,7 @@ class SidebarFilesTest(TestCase):
 				("Workspace", read_json(WORKSPACE)["name"]),
 				("Report", read_json(REPORT / "ustva_kennzahlen.json")["name"]),
 			}
-			| {("DocType", name) for name in doctypes_with_a_list()},
+			| {("DocType", name) for name in doctypes_with_a_list() | {DAUERFRIST_DOCTYPE}},
 		)
 
 	def test_the_sidebar_reads_short_in_german(self):
@@ -318,6 +331,9 @@ class SidebarFilesTest(TestCase):
 			[
 				"Steuern",
 				"Voranmeldungen",
+				"Dauerfristanträge",
+				"Zusammenf. Meldungen",
+				"USt-IdNr.-Prüfungen",
 				"Kontenzuordnung",
 				"Einstellungen",
 				"ERiC-Einstellungen",
@@ -509,6 +525,95 @@ class PrintFormatFilesTest(TestCase):
 			+ "} -%}",
 			self.template,
 		)
+
+
+class ZmPrintFormatFilesTest(TestCase):
+	"""The print format of the Zusammenfassende Meldung keeps to the style of the Umsatzsteuer-Voranmeldung."""
+
+	def setUp(self):
+		self.record = read_json(ZM_PRINT_FORMAT / "zusammenfassende_meldung.json")
+		self.template = (ZM_PRINT_FORMAT / "zusammenfassende_meldung.html").read_text(encoding="utf-8")
+
+	def test_the_print_format_is_a_standard_jinja_format_of_the_statement(self):
+		self.assertEqual(
+			{
+				key: self.record[key]
+				for key in ("name", "doc_type", "print_format_type", "standard", "module", "custom_format")
+			},
+			{
+				"name": "Zusammenfassende Meldung",
+				"doc_type": "Recapitulative Statement",
+				"print_format_type": "Jinja",
+				"standard": "Yes",
+				"module": "Steuerbote",
+				"custom_format": 0,
+			},
+		)
+		self.assertIn("Recapitulative Statement", doctype_names())
+
+	def test_prints_on_a4_in_black_and_grey(self):
+		css = self.record["css"] + self.template
+		self.assertIn("size: A4 portrait", self.record["css"])
+		colours = HEX_COLOUR.findall(css)
+		self.assertTrue(colours)
+		for colour in colours:
+			with self.subTest(colour=colour):
+				channels = colour if len(colour) == 3 else (colour[0:2], colour[2:4], colour[4:6])
+				self.assertEqual(len(set(channels)), 1)
+		self.assertNotIn("<img", self.template)
+		self.assertNotRegex(css, r"\b(rgb|hsl)a?\(")
+
+	def test_keeps_to_classes_of_its_own(self):
+		used = {name for value in CLASS_ATTRIBUTE.findall(self.template) for name in value.split()}
+		styled = set(CLASS_SELECTOR.findall(self.record["css"]))
+		self.assertNotIn("label", used | styled)
+		self.assertEqual(
+			sorted(name for name in used | styled if not name.startswith(PRINT_CLASS_PREFIX)), []
+		)
+		self.assertEqual(sorted(used), sorted(styled))
+
+	def test_the_header_pairs_each_label_with_its_value(self):
+		labels = re.findall(r'<tr><td class="sb-label">([^<]+)</td><td class="sb-value">', self.template)
+		self.assertEqual(
+			labels,
+			["Unternehmen", "USt-IdNr.", "Meldezeitraum", "Fällig am", "Meldeart", "Meldung", "Abgegeben am"],
+		)
+
+	def test_prints_the_lines_of_the_file(self):
+		self.assertIn('selectattr("in_file")', self.template)
+
+
+class ZmFormFilesTest(TestCase):
+	"""A draft statement is filed through a note of its filing, never by Buchen alone."""
+
+	def setUp(self):
+		self.script = ZM_SCRIPT.read_text(encoding="utf-8")
+
+	def test_a_draft_gets_no_hint_to_submit_it(self):
+		setup = re.search(r"\n\tsetup\(frm\) \{\n(?P<body>.*?)\n\t\},\n", self.script, re.DOTALL)
+		self.assertIsNotNone(setup)
+		self.assertIn("frm.show_submit_message = () => {};", setup["body"])
+		self.assertIn("frm.page.clear_primary_action();", self.script)
+
+	def test_the_buttons_read_as_the_steps_of_the_zm(self):
+		buttons = re.findall(r'frm\.add_custom_button\(__\("([^"]+)"\)', self.script)
+		self.assertEqual(
+			[german(label) for label in buttons],
+			[
+				"Berechnen",
+				"USt-IdNrn. prüfen",
+				"CSV für Mein ELSTER",
+				"Berichtigung anlegen",
+				"In Mein ELSTER abgegeben",
+				"Als außerhalb abgegeben vermerken",
+			],
+		)
+
+	def test_the_methods_the_form_calls_are_whitelisted_for_post(self):
+		source = (ZM_SCRIPT.parent / "recapitulative_statement.py").read_text(encoding="utf-8")
+		for method in sorted(set(re.findall(r'frm\.call\("(\w+)"', self.script))):
+			with self.subTest(method=method):
+				self.assertRegex(source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
 
 
 class VatReturnFormFilesTest(TestCase):

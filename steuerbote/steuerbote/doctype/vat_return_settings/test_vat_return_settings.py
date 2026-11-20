@@ -6,6 +6,8 @@ from frappe.tests import IntegrationTestCase
 from frappe.translate import clear_cache as clear_translation_cache
 
 from steuerbote.ustva import Rhythm
+from steuerbote.zm.rhythm import Rhythm as ZmRhythm
+from steuerbote.zm.rhythm import Rule as ZmRule
 
 # ERPNext's test records for Company expect its setup wizard, which the app's test site never runs.
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Company"]
@@ -196,3 +198,57 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "has 31 characters, ELSTER takes at most 30"):
 			self.make_settings(street="x" * 31).insert()
 		self.assertFalse(frappe.db.exists("VAT Return Settings", COMPANY))
+
+	def test_takes_the_ust_idnr_from_the_tax_id_of_the_company_when_it_is_one(self):
+		frappe.db.set_value("Company", COMPANY, "tax_id", "de 987 654 321")
+		try:
+			self.assertEqual(self.make_settings().insert().ust_idnr, "DE987654321")
+			frappe.delete_doc("VAT Return Settings", COMPANY)
+			self.assertEqual(self.make_settings(ust_idnr="DE123456789").insert().ust_idnr, "DE123456789")
+			frappe.delete_doc("VAT Return Settings", COMPANY)
+			frappe.db.set_value("Company", COMPANY, "tax_id", "123/456/78901")
+			self.assertIsNone(self.make_settings().insert().ust_idnr)
+		finally:
+			frappe.db.set_value("Company", COMPANY, "tax_id", None)
+
+	def test_refuses_an_ust_idnr_that_is_not_german(self):
+		with self.assertRaisesRegex(frappe.ValidationError, r"ATU12345678 is not a German USt-IdNr\."):
+			self.make_settings(ust_idnr="ATU12345678").insert()
+
+	def test_sorts_and_reads_the_rhythm_of_the_zusammenfassende_meldung(self):
+		self.make_settings(
+			zm_rules=[
+				{"year": 2026, "valid_from_month": 5, "rhythm": "monthly", "services_monthly": 1},
+				{"year": 2026, "valid_from_month": 1, "rhythm": "quarterly", "reason": "Unter 50.000 Euro"},
+			]
+		).insert()
+		settings = frappe.get_doc("VAT Return Settings", COMPANY)
+		self.assertEqual(
+			[(row.idx, row.valid_from_month, row.rhythm) for row in settings.zm_rules],
+			[(1, 1, "quarterly"), (2, 5, "monthly")],
+		)
+		self.assertEqual(
+			settings.get_zm_rules(),
+			[
+				ZmRule(2026, 1, ZmRhythm.QUARTERLY),
+				ZmRule(2026, 5, ZmRhythm.MONTHLY, services_monthly=True),
+			],
+		)
+
+	def test_refuses_a_rhythm_of_the_zusammenfassende_meldung_the_core_refuses(self):
+		for rules, message in (
+			([{"year": 2026, "valid_from_month": 5, "rhythm": "quarterly"}], "in month 1, 4, 7 or 10"),
+			(
+				[{"year": 2026, "valid_from_month": 1, "rhythm": "quarterly", "services_monthly": 1}],
+				"only when it is filed monthly",
+			),
+			(
+				[
+					{"year": 2026, "valid_from_month": 1, "rhythm": "yearly"},
+					{"year": 2026, "valid_from_month": 7, "rhythm": "monthly"},
+				],
+				"covers the calendar year 2026",
+			),
+		):
+			with self.subTest(message=message), self.assertRaisesRegex(frappe.ValidationError, message):
+				self.make_settings(zm_rules=rules).insert()

@@ -179,3 +179,166 @@ def _ensure_fiscal_year(company: str, posting_date: date | str) -> None:
 			"year_end_date": date(year, 12, 31),
 		}
 	).insert(ignore_permissions=True)
+
+
+def insert_record(doctype: str, **fields) -> str:
+	"""A record written as ERPNext keeps it once submitted, without the validations of its form.
+
+	Submitting real invoices and payments needs items, price lists and a chart of accounts with receivables that
+	neither the ledger nor the Zusammenfassende Meldung reads, so their rows are written as ERPNext stores them.
+	"""
+	doc = frappe.get_doc({"doctype": doctype, **fields})
+	doc.db_insert()
+	return doc.name
+
+
+def make_customer(
+	name: str, country: str, tax_id: str | None = None, city: str = "Teststadt", primary: bool = True
+) -> str:
+	"""A customer with an address in the country, which is its primary address or, without ``primary``, only
+	linked to it; returns the address."""
+	address = insert_record(
+		"Address",
+		name=f"{name}-Billing",
+		address_title=name,
+		address_type="Billing",
+		address_line1="Teststraße 1",
+		pincode="12345",
+		city=city,
+		country=country,
+		is_primary_address=1,
+	)
+	insert_record(
+		"Dynamic Link",
+		name=f"{address}-Link",
+		parent=address,
+		parenttype="Address",
+		parentfield="links",
+		idx=1,
+		link_doctype="Customer",
+		link_name=name,
+	)
+	insert_record(
+		"Customer",
+		name=name,
+		customer_name=name,
+		tax_id=tax_id,
+		customer_primary_address=address if primary else None,
+	)
+	return address
+
+
+def post_ledger(
+	company: str,
+	voucher_type: str,
+	voucher_no: str,
+	posting_date: str,
+	rows: Iterable[tuple[str, Amount, Amount]],
+) -> None:
+	"""The GL Entries of a voucher, one per (account, debit, credit)."""
+	for account, debit, credit in rows:
+		insert_record(
+			"GL Entry",
+			company=company,
+			posting_date=posting_date,
+			account=account,
+			debit=debit,
+			credit=credit,
+			voucher_type=voucher_type,
+			voucher_no=voucher_no,
+			is_cancelled=0,
+			is_opening="No",
+			docstatus=1,
+		)
+
+
+def post_sales_invoice(
+	company: str,
+	name: str,
+	customer: str,
+	posting_date: str,
+	rows: Iterable[tuple[str, Amount, Amount]],
+	**fields,
+) -> str:
+	"""A submitted Sales Invoice with the customer's tax_id, as ERPNext fetches it, and its GL Entries; ``fields``
+	go to the invoice, such as its addresses."""
+	insert_record(
+		"Sales Invoice",
+		name=name,
+		company=company,
+		posting_date=posting_date,
+		customer=customer,
+		customer_name=customer,
+		tax_id=frappe.db.get_value("Customer", customer, "tax_id"),
+		docstatus=1,
+		is_opening="No",
+		**fields,
+	)
+	post_ledger(company, "Sales Invoice", name, posting_date, rows)
+	return name
+
+
+def post_payment_entry(
+	company: str,
+	name: str,
+	customer: str,
+	posting_date: str,
+	invoices: Iterable[str],
+	rows: Iterable[tuple[str, Amount, Amount]],
+) -> str:
+	"""A submitted Payment Entry of a customer that pays the Sales Invoices, with its GL Entries."""
+	insert_record(
+		"Payment Entry",
+		name=name,
+		company=company,
+		posting_date=posting_date,
+		payment_type="Receive",
+		party_type="Customer",
+		party=customer,
+		party_name=customer,
+		docstatus=1,
+	)
+	for index, invoice in enumerate(invoices, start=1):
+		insert_record(
+			"Payment Entry Reference",
+			name=f"{name}-{index}",
+			parent=name,
+			parenttype="Payment Entry",
+			parentfield="references",
+			idx=index,
+			reference_doctype="Sales Invoice",
+			reference_name=invoice,
+		)
+	post_ledger(company, "Payment Entry", name, posting_date, rows)
+	return name
+
+
+def post_customer_journal_entry(
+	company: str, name: str, posting_date: str, rows: Iterable[tuple[str, Amount, Amount, str | None]]
+) -> str:
+	"""A submitted Journal Entry with one row per (account, debit, credit, customer or None) and its GL Entries."""
+	rows = list(rows)
+	insert_record(
+		"Journal Entry",
+		name=name,
+		company=company,
+		posting_date=posting_date,
+		voucher_type="Journal Entry",
+		docstatus=1,
+	)
+	for index, (account, debit, credit, customer) in enumerate(rows, start=1):
+		insert_record(
+			"Journal Entry Account",
+			name=f"{name}-{index}",
+			parent=name,
+			parenttype="Journal Entry",
+			parentfield="accounts",
+			idx=index,
+			account=account,
+			debit=debit,
+			credit=credit,
+			party_type="Customer" if customer else None,
+			party=customer,
+		)
+	post_ledger(company, "Journal Entry", name, posting_date, [row[:3] for row in rows])
+	return name

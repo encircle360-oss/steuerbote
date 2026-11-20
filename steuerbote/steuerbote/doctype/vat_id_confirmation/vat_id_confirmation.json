@@ -1,0 +1,342 @@
+{
+ "actions": [],
+ "autoname": "format:USTID-{YYYY}-{#####}",
+ "creation": "2026-11-20 18:00:00.000000",
+ "description": "One query to confirm a USt-IdNr. at the BZSt or at VIES, with what was asked and the answer as it came. Recorded by the server and kept unchanged as the proof.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "requested",
+  "requester",
+  "company",
+  "service",
+  "outcome",
+  "result",
+  "column_break_status",
+  "status_code",
+  "message",
+  "consultation_id",
+  "qualified",
+  "unavailable",
+  "times_section",
+  "requested_at",
+  "answered_at",
+  "column_break_times",
+  "service_time",
+  "service_date",
+  "valid_from",
+  "valid_until",
+  "details_section",
+  "details_name",
+  "details_street",
+  "details_postcode",
+  "details_city",
+  "column_break_details",
+  "name_match",
+  "street_match",
+  "postcode_match",
+  "city_match",
+  "record_section",
+  "recapitulative_statement",
+  "user",
+  "previous",
+  "fallback_reason",
+  "column_break_record",
+  "http_status",
+  "response_file"
+ ],
+ "fields": [
+  {
+   "fieldname": "requested",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Requested VAT ID",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "requester",
+   "fieldtype": "Data",
+   "label": "Requesting VAT ID",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "service",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Service",
+   "options": "bzst\nvies",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "description": "What the service answered about the number at the time of the query.",
+   "fieldname": "outcome",
+   "fieldtype": "Select",
+   "label": "Outcome of the Query",
+   "options": "valid\ninvalid\nunknown",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "description": "What the confirmation says about the number up to this query: a qualified query that fails after the simple one confirmed the number leaves it confirmed.",
+   "fieldname": "result",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Confirmation Result",
+   "options": "valid\ninvalid\nunknown",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Message",
+   "read_only": 1
+  },
+  {
+   "fieldname": "consultation_id",
+   "fieldtype": "Data",
+   "label": "Consultation Number",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "qualified",
+   "fieldtype": "Check",
+   "label": "Qualified Query",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "unavailable",
+   "fieldtype": "Check",
+   "label": "Service Unavailable",
+   "read_only": 1
+  },
+  {
+   "fieldname": "times_section",
+   "fieldtype": "Section Break",
+   "label": "Time of the Query"
+  },
+  {
+   "fieldname": "requested_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Requested At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "answered_at",
+   "fieldtype": "Datetime",
+   "label": "Answered At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_times",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "service_time",
+   "fieldtype": "Datetime",
+   "label": "Time of the Service",
+   "read_only": 1
+  },
+  {
+   "fieldname": "service_date",
+   "fieldtype": "Date",
+   "label": "Day of the Service",
+   "read_only": 1
+  },
+  {
+   "fieldname": "valid_from",
+   "fieldtype": "Date",
+   "label": "Valid From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "valid_until",
+   "fieldtype": "Date",
+   "label": "Valid Until",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.qualified",
+   "fieldname": "details_section",
+   "fieldtype": "Section Break",
+   "label": "Name and Address"
+  },
+  {
+   "fieldname": "details_name",
+   "fieldtype": "Data",
+   "label": "Company Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "details_street",
+   "fieldtype": "Data",
+   "label": "Street and House Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "details_postcode",
+   "fieldtype": "Data",
+   "label": "Postal Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "details_city",
+   "fieldtype": "Data",
+   "label": "Town",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_details",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "A matches the registered data, B does not match, C was not asked, D was not given by the member state.",
+   "fieldname": "name_match",
+   "fieldtype": "Select",
+   "label": "Result Name",
+   "options": "\nA\nB\nC\nD",
+   "read_only": 1
+  },
+  {
+   "fieldname": "street_match",
+   "fieldtype": "Select",
+   "label": "Result Street",
+   "options": "\nA\nB\nC\nD",
+   "read_only": 1
+  },
+  {
+   "fieldname": "postcode_match",
+   "fieldtype": "Select",
+   "label": "Result Postal Code",
+   "options": "\nA\nB\nC\nD",
+   "read_only": 1
+  },
+  {
+   "fieldname": "city_match",
+   "fieldtype": "Select",
+   "label": "Result Town",
+   "options": "\nA\nB\nC\nD",
+   "read_only": 1
+  },
+  {
+   "fieldname": "record_section",
+   "fieldtype": "Section Break",
+   "label": "Proof"
+  },
+  {
+   "fieldname": "recapitulative_statement",
+   "fieldtype": "Link",
+   "label": "Recapitulative Statement",
+   "options": "Recapitulative Statement",
+   "read_only": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "previous",
+   "fieldtype": "Link",
+   "label": "Previous Query",
+   "options": "VAT ID Confirmation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fallback_reason",
+   "fieldtype": "Small Text",
+   "label": "Why VIES Answered",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_record",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "http_status",
+   "fieldtype": "Int",
+   "label": "HTTP Status",
+   "read_only": 1
+  },
+  {
+   "description": "The answer as it came, kept as the proof of the query (UStAE 18e.1 Abs. 2).",
+   "fieldname": "response_file",
+   "fieldtype": "Attach",
+   "label": "Answer",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "links": [],
+ "modified": "2026-11-20 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT ID Confirmation",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "search_fields": "requested,company",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "requested"
+}
