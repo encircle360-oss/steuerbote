@@ -36,7 +36,11 @@
   "prepayments_section",
   "prepayments",
   "zm_rules_section",
-  "zm_rules"
+  "zm_rules",
+  "deadlines_section",
+  "deadline_recipients",
+  "column_break_deadlines",
+  "reminder_days"
  ],
  "fields": [
   {
@@ -239,11 +243,35 @@
    "fieldtype": "Table",
    "label": "Rhythm of the Zusammenfassende Meldung",
    "options": "ZM Rule"
+  },
+  {
+   "description": "The daily reminder of the deadlines not filed; the report Offene Fristen shows all of them.",
+   "fieldname": "deadlines_section",
+   "fieldtype": "Section Break",
+   "label": "Deadlines"
+  },
+  {
+   "description": "E-mail addresses that get the reminder, one per line. Empty: no reminder is sent.",
+   "fieldname": "deadline_recipients",
+   "fieldtype": "Small Text",
+   "label": "Reminder Recipients"
+  },
+  {
+   "fieldname": "column_break_deadlines",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "7",
+   "description": "The reminder names a deadline from this many days before it is due, and every day after until it is filed, also once it is overdue.",
+   "fieldname": "reminder_days",
+   "fieldtype": "Int",
+   "label": "Days of Notice",
+   "non_negative": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-20 18:00:00.000000",
+ "modified": "2026-11-20 23:50:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",

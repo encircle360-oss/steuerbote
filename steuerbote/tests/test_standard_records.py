@@ -44,7 +44,7 @@ NOT_A_SHAPE = frozenset(
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 # Names of the app that read the same in every language.
-GERMAN_NAMES = frozenset({"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen"})
+GERMAN_NAMES = frozenset({"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen", "Offene Fristen"})
 # The German that Frappe shows for the framework labels of the shortcuts and the sidebar.
 FRAMEWORK_GERMAN = {"Reports": "Berichte", "Settings": "Einstellungen"}
 # Labels Frappe and ERPNext translate themselves; the app keeps out of their translations.
@@ -97,6 +97,10 @@ def german(text: str) -> str:
 
 def doctype_names() -> set[str]:
 	return {read_json(path)["name"] for path in (MODULE / "doctype").glob("*/*.json")}
+
+
+def report_names() -> set[str]:
+	return {read_json(path)["name"] for path in (MODULE / "report").glob("*/*.json")}
 
 
 def doctypes_with_a_list() -> set[str]:
@@ -228,6 +232,7 @@ class WorkspaceFilesTest(TestCase):
 				("DocType", "VAT Return Settings", "List"),
 				("DocType", "VAT Return Mapping", "List"),
 				("Report", "UStVA Kennzahlen", ""),
+				("Report", "Offene Fristen", ""),
 			},
 		)
 		doctypes = doctype_names() | {DAUERFRIST_DOCTYPE}
@@ -236,7 +241,7 @@ class WorkspaceFilesTest(TestCase):
 				if kind == "DocType":
 					self.assertIn(target, doctypes)
 				else:
-					self.assertEqual(read_json(REPORT / "ustva_kennzahlen.json")["name"], target)
+					self.assertIn(target, report_names())
 
 	def test_the_number_card_counts_vat_returns_in_draft(self):
 		(row,) = self.workspace["number_cards"]
@@ -284,6 +289,7 @@ class WorkspaceFilesTest(TestCase):
 				("VAT ID Confirmation", "List"): "USt-IdNr.-Prüfungen",
 				("VAT Return Settings", "List"): "Einstellungen",
 				("VAT Return Mapping", "List"): "Kontenzuordnung",
+				("Offene Fristen", ""): "Offene Fristen",
 			},
 		)
 		self.assertEqual([label for label in labels.values() if len(label) > LONGEST_LABEL], [])
@@ -318,6 +324,7 @@ class SidebarFilesTest(TestCase):
 			{
 				("Workspace", read_json(WORKSPACE)["name"]),
 				("Report", read_json(REPORT / "ustva_kennzahlen.json")["name"]),
+				("Report", "Offene Fristen"),
 			}
 			| {("DocType", name) for name in doctypes_with_a_list() | {DAUERFRIST_DOCTYPE}},
 		)
@@ -338,8 +345,10 @@ class SidebarFilesTest(TestCase):
 				"Einstellungen",
 				"ERiC-Einstellungen",
 				"ELSTER-Übermittlung",
+				"Fristerinnerungen",
 				"Berichte",
 				"UStVA Kennzahlen",
+				"Offene Fristen",
 			],
 		)
 		self.assertEqual([label for label in in_german if len(label) > LONGEST_LABEL], [])

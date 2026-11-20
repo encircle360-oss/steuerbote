@@ -36,6 +36,7 @@ class VATReturnSettings(Document):
 		company: DF.Link
 		comparison_threshold_amount: DF.Currency
 		comparison_threshold_percent: DF.Percent
+		deadline_recipients: DF.SmallText | None
 		elster_tax_number: DF.Data | None
 		email: DF.Data | None
 		filer_name: DF.Data | None
@@ -43,6 +44,7 @@ class VATReturnSettings(Document):
 		phone: DF.Data | None
 		postal_code: DF.Data | None
 		prepayments: DF.Table[VATReturnPrepayment]
+		reminder_days: DF.Int
 		state: DF.Literal[
 			"",
 			"Baden-Württemberg",

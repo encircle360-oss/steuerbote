@@ -19,7 +19,9 @@ SIDEBAR_LINKS = [
 	("DocType", "VAT Return Settings", "Settings"),
 	("DocType", "ERiC Settings", "ERiC Settings"),
 	("DocType", "ELSTER Transmission", "ELSTER Transmission"),
+	("DocType", "Deadline Reminder", "Deadline Reminders"),
 	("Report", "UStVA Kennzahlen", "UStVA Kennzahlen"),
+	("Report", "Offene Fristen", "Offene Fristen"),
 ]
 
 
@@ -60,6 +62,7 @@ class WorkspaceTest(IntegrationTestCase):
 				("DocType", "VAT Return Extension"),
 				("DocType", "VAT Return Mapping"),
 				("DocType", "VAT Return Settings"),
+				("Report", "Offene Fristen"),
 				("Report", "UStVA Kennzahlen"),
 			],
 		)
