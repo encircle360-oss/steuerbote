@@ -75,15 +75,16 @@ FORM_UST_1_A_2026 = {
 	"26": (54, F, NONE, None, None),
 	"500": (55, C, NONE, None, None),
 }
+CATALOGUE_2026 = CATALOGUES[2026]
 
 
 class CatalogueTest(TestCase):
 	def test_covers_exactly_the_kennzahlen_of_form_ust_1_a_2026(self):
-		self.assertEqual(set(KENNZAHLEN), set(FORM_UST_1_A_2026))
+		self.assertEqual(set(CATALOGUE_2026), set(FORM_UST_1_A_2026))
 
 	def test_every_kennzahl_matches_the_form(self):
 		for number, (line, kind, effect, rate, tax_kennzahl) in FORM_UST_1_A_2026.items():
-			kennzahl = KENNZAHLEN[number]
+			kennzahl = CATALOGUE_2026[number]
 			with self.subTest(kennzahl=number):
 				self.assertEqual(kennzahl.number, number)
 				self.assertEqual(kennzahl.line, line)
@@ -94,34 +95,36 @@ class CatalogueTest(TestCase):
 				self.assertTrue(kennzahl.label)
 
 	def test_form_derives_the_tax_only_for_the_19_and_7_percent_bases(self):
-		derived = {number for number, kennzahl in KENNZAHLEN.items() if kennzahl.derives_tax}
+		derived = {number for number, kennzahl in CATALOGUE_2026.items() if kennzahl.derives_tax}
 		self.assertEqual(derived, {"81", "86", "89", "93"})
 
 	def test_bases_with_a_separate_tax_point_to_a_tax_kennzahl_on_the_same_line(self):
-		for kennzahl in KENNZAHLEN.values():
-			if kennzahl.tax_kennzahl is not None:
-				tax = KENNZAHLEN[kennzahl.tax_kennzahl]
-				self.assertIs(tax.kind, Kind.TAX, kennzahl.number)
-				self.assertEqual(tax.line, kennzahl.line, kennzahl.number)
-				self.assertIs(tax.effect, Effect.INCREASES, kennzahl.number)
+		for year, catalogue in CATALOGUES.items():
+			for kennzahl in catalogue.values():
+				if kennzahl.tax_kennzahl is not None:
+					tax = catalogue[kennzahl.tax_kennzahl]
+					with self.subTest(year=year, kennzahl=kennzahl.number):
+						self.assertIs(tax.kind, Kind.TAX)
+						self.assertEqual(tax.line, kennzahl.line)
+						self.assertIs(tax.effect, Effect.INCREASES)
 
 	def test_holds_amount(self):
-		self.assertTrue(KENNZAHLEN["81"].holds_amount)
-		self.assertTrue(KENNZAHLEN["66"].holds_amount)
+		self.assertTrue(CATALOGUE_2026["81"].holds_amount)
+		self.assertTrue(CATALOGUE_2026["66"].holds_amount)
 		for number in ("10", "70", "500"):
-			self.assertFalse(KENNZAHLEN[number].holds_amount, number)
+			self.assertFalse(CATALOGUE_2026[number].holds_amount, number)
 
 	def test_the_sums_of_the_form(self):
 		self.assertEqual(BALANCE_KENNZAHL, "83")
 		self.assertEqual(SONDERVORAUSZAHLUNG_KENNZAHL, "39")
-		increases = {k.line for k in KENNZAHLEN.values() if k.effect is Effect.INCREASES}
-		reduces = {k.line for k in KENNZAHLEN.values() if k.effect is Effect.REDUCES}
+		increases = {k.line for k in CATALOGUE_2026.values() if k.effect is Effect.INCREASES}
+		reduces = {k.line for k in CATALOGUE_2026.values() if k.effect is Effect.REDUCES}
 		self.assertEqual(increases - set(OUTPUT_TAX_LINES), set(OTHER_TAX_LINES))
-		self.assertEqual(reduces - set(INPUT_TAX_LINES), {KENNZAHLEN["39"].line})
+		self.assertEqual(reduces - set(INPUT_TAX_LINES), {CATALOGUE_2026["39"].line})
 
 	def test_catalogue_is_read_only(self):
 		with self.assertRaises(TypeError):
-			KENNZAHLEN["81"] = KENNZAHLEN["86"]  # type: ignore[index]
+			CATALOGUE_2026["81"] = CATALOGUE_2026["86"]  # type: ignore[index]
 
 	def test_duplicate_numbers_are_rejected(self):
 		kennzahl = Kennzahl("81", 13, "x", Kind.BASE, Effect.INCREASES, Decimal("19"))
@@ -149,7 +152,7 @@ class FormSumsTest(TestCase):
 				self.assertEqual(dict(_index(tuple(catalogue.values()))), dict(catalogue))
 
 	def test_catalogue_with_a_kennzahl_outside_the_sums_is_rejected(self):
-		moved = tuple(replace(k, line=37) if k.number == "66" else k for k in KENNZAHLEN.values())
+		moved = tuple(replace(k, line=37) if k.number == "66" else k for k in CATALOGUE_2026.values())
 		with self.assertRaisesRegex(ValueError, "Kennzahl 66 on line 37 changes the amount owed"):
 			_index(moved)
 

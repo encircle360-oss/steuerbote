@@ -756,7 +756,7 @@ class DefaultsTest(TestCase):
 		self.assertEqual(SKR04.year, LATEST_YEAR)
 
 	def test_default_mapping_by_chart_and_year(self):
-		self.assertEqual(default_mapping("SKR03", 2026), SKR03)
+		self.assertEqual(default_mapping("SKR03", LATEST_YEAR), SKR03)
 		self.assertEqual(default_mapping("SKR04", 2026).year, 2026)
 		with self.assertRaisesRegex(UnknownYearError, "2025"):
 			default_mapping("SKR03", 2025)

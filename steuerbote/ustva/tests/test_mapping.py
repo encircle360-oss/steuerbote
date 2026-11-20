@@ -2,7 +2,7 @@ from decimal import Decimal
 from typing import ClassVar
 from unittest import TestCase
 
-from steuerbote.ustva.kennzahlen import KENNZAHLEN, LATEST_YEAR, UnknownYearError
+from steuerbote.ustva.kennzahlen import LATEST_YEAR, UnknownYearError, catalogue_for
 from steuerbote.ustva.mapping import AccountRule, Mapping, MappingError, Side, TaxCheck
 
 
@@ -177,7 +177,9 @@ class ReportedTaxValidationTest(TestCase):
 	}
 
 	def test_the_pairs_are_those_of_the_form(self):
-		pairs = {number: k.tax_kennzahl for number, k in KENNZAHLEN.items() if k.tax_kennzahl is not None}
+		pairs = {
+			number: k.tax_kennzahl for number, k in catalogue_for(2026).items() if k.tax_kennzahl is not None
+		}
 		self.assertEqual(pairs, self.PAIRS)
 
 	def test_reverse_charge_base_without_tax_is_rejected(self):
@@ -322,8 +324,8 @@ class YearTest(TestCase):
 	def test_year_without_catalogue_is_refused(self):
 		with self.assertRaisesRegex(UnknownYearError, "2019"):
 			Mapping("test", (rule("8400", "81"),), year=2019)
-		with self.assertRaisesRegex(UnknownYearError, "2027"):
-			Mapping("test", (rule("8400", "81"),)).for_year(2027)
+		with self.assertRaisesRegex(UnknownYearError, str(LATEST_YEAR + 1)):
+			Mapping("test", (rule("8400", "81"),)).for_year(LATEST_YEAR + 1)
 
 	def test_year_must_be_an_int(self):
 		for year in ("2026", 2026.0, Decimal("2026"), True, None):

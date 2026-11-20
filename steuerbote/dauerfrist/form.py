@@ -17,8 +17,9 @@ exactly one of the three (JD 110085099):
 
 Kz 09 is the Hersteller-ID, which ERiC requires in both contexts (JD 110085045). The XML writer adds it, as it
 adds the Steuernummer and the Wirtschafts-Identifikationsnummer of the filer; Ust1H holds what the form itself
-says. The fields and rules of a year are data, taken from the JD of that year, and the tests compare them with
-it: the JD of 2025 still had Kz 23 where 2026 has Kz 500.
+says. The fields and rules of a year are data, taken from the JD of that year: the JD of 2025 still had Kz 23 where
+2026 has Kz 500. LAYOUTS holds one layout for each year of YEARS in steuerbote/ustva/years.py, and
+python -m steuerbote.ustva.yearcheck compares it with the JD and the schema of its year.
 """
 
 import re
@@ -257,22 +258,17 @@ _RULES_2026 = (
 	Rule("110085049", "Kz500_Hinweis", Severity.HINT, SVZ),
 )
 
-LAYOUTS: MappingProxyType[int, Layout] = MappingProxyType(
-	{
-		2026: Layout(
-			year=2026,
-			fields={
-				DF: (*_FIELDS_OF_THE_FILER_2026, *_SUPPLEMENTARY_FIELDS_2026),
-				SVZ: (
-					*_FIELDS_OF_THE_FILER_2026,
-					*_SONDERVORAUSZAHLUNG_FIELDS_2026,
-					*_SUPPLEMENTARY_FIELDS_2026,
-				),
-			},
-			rules=_RULES_2026,
-		)
-	}
+_LAYOUT_2026 = Layout(
+	year=2026,
+	fields={
+		DF: (*_FIELDS_OF_THE_FILER_2026, *_SUPPLEMENTARY_FIELDS_2026),
+		SVZ: (*_FIELDS_OF_THE_FILER_2026, *_SONDERVORAUSZAHLUNG_FIELDS_2026, *_SUPPLEMENTARY_FIELDS_2026),
+	},
+	rules=_RULES_2026,
 )
+
+# Each layout under the year it names, so that a year cannot carry the layout of another.
+LAYOUTS: MappingProxyType[int, Layout] = MappingProxyType({layout.year: layout for layout in (_LAYOUT_2026,)})
 LATEST_YEAR = max(LAYOUTS)
 
 

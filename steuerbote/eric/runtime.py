@@ -11,8 +11,9 @@ Each version gets a directory of its own, because libraries of different package
 (Kap. 3.1.6.2), with its manifest steuerbote-runtime.json: the hashes of archive and files, the years of
 its UStVA plugins and whether it is a beta. A version directory appears only complete, by renaming it
 into place. The plugin commonData is always required (Kap. 3.1.6.1), the plugin of a year is
-checkUStVA_<Jahr> (Datenartversionmatrix.ods), and EricInitialisiere searches the library directory for
-plugins recursively (Kap. 4.1.1). ERiC runs on Linux x86_64 with glibc 2.28 or newer (Kap. 2.4.4.5).
+checkUStVA_<Jahr> (Datenartversionmatrix.ods) as the year table steuerbote/ustva/years.py names it, and
+EricInitialisiere searches the library directory for plugins recursively (Kap. 4.1.1). ERiC runs on Linux x86_64
+with glibc 2.28 or newer (Kap. 2.4.4.5).
 
 A main release in November starts with a beta, from which no real case can be sent; its major number is
 odd and the beta is its first delivery, <major>.1 (Kap. 2.3 with the graphic of the release cycle, and
@@ -42,6 +43,7 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
 from steuerbote.eric.header import ILLUSTRATION_HERSTELLER_ID
+from steuerbote.ustva.years import plugin_library, plugin_year
 
 MANIFEST = "steuerbote-runtime.json"
 PLATFORM = "Linux-x86_64"
@@ -56,7 +58,6 @@ MAX_EXTRACTED_BYTES = 4 << 30
 _CHUNK = 1 << 20
 _VERSION = re.compile(r"\d+\.\d+\.\d+\.\d+")
 _PACKAGE = re.compile(r"ERiC-(?P<version>\d+\.\d+\.\d+\.\d+)(?:-.*)?")
-_PLUGIN_YEAR = re.compile(r"libcheckUStVA_(?P<year>\d{4})\.so")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _GLIBC = re.compile(r"glibc (?P<major>\d+)\.(?P<minor>\d+)")
 
@@ -343,9 +344,7 @@ def _install(
 			"archive_sha256": archive_sha256,
 			"beta": is_beta(version),
 			"years": sorted(
-				int(match["year"])
-				for name in files
-				if (match := _PLUGIN_YEAR.fullmatch(PurePosixPath(name).name))
+				year for name in files if (year := plugin_year(PurePosixPath(name).name)) is not None
 			),
 			"files": files,
 			"installed_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -449,7 +448,7 @@ def _read_manifest(path: Path) -> Installation | None:
 
 
 def _plugin_check(installed: tuple[Installation, ...], year: int) -> Check:
-	plugin = f"libcheckUStVA_{year}.so"
+	plugin = plugin_library(year)
 	with_plugin = [installation for installation in installed if year in installation.years]
 	released = next((installation for installation in with_plugin if not installation.beta), None)
 	if released is not None:

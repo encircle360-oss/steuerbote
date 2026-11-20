@@ -71,15 +71,17 @@ class ContextTest(TestCase):
 
 class LayoutTest(TestCase):
 	def test_knows_2026(self):
-		self.assertEqual(LATEST_YEAR, 2026)
+		self.assertEqual(LATEST_YEAR, max(LAYOUTS))
 		self.assertEqual(layout_for(2026).year, 2026)
 		self.assertIs(layout_for(2026), LAYOUTS[2026])
 
 	def test_refuses_a_year_without_layout(self):
 		with self.assertRaises(FormError) as caught:
-			layout_for(2027)
+			layout_for(LATEST_YEAR + 1)
 		self.assertEqual(caught.exception.template, NO_LAYOUT)
-		self.assertEqual(str(caught.exception), "Steuerbote does not know form USt 1 H for 2027 yet.")
+		self.assertEqual(
+			str(caught.exception), f"Steuerbote does not know form USt 1 H for {LATEST_YEAR + 1} yet."
+		)
 
 	def test_refuses_what_is_no_year(self):
 		for year in ("2026", True, 2026.0):

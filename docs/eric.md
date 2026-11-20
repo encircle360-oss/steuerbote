@@ -35,9 +35,10 @@ Das Archiv nennt seine Version im Stammverzeichnis `ERiC-<version>/`; fehlt es, 
 
 - Mitte November erscheint das Hauptrelease mit dem neuen Jahr, zuerst als Beta, mit der keine Echtfälle gesendet werden können (Kap. 2.3, 5.4.3); ERiC weist sie mit dem Fehler 610001020 ab. Das Hauptrelease hat eine ungerade Hauptversion, die Beta ist seine erste Auslieferung `<major>.1` (Kap. 3.1.1 und die Grafik zum Releasezyklus), etwa ERiC 45.1 mit `UStVA_2027` (Releasenotes 45.1.5.0, Kap. 3). Anfang Mai folgt ein technisches Release mit gerader Hauptversion.
 - Im April steigt die Mindestversion; ältere Releases weisen die Annahmeserver dann ab (Kap. 5.4.2, § 5 Abs. 6 des Lizenzvertrags).
-- Die datenartVersion `UStVA_<Jahr>` braucht das Plugin `checkUStVA_<Jahr>`, unter Linux `libcheckUStVA_<Jahr>.so` (`Datenartversionmatrix.ods`, Kap. 3.1.6.1). ERiC 44 kennt die Jahre 2016 bis 2026 (Tabelle 2-13).
+- Die datenartVersion `UStVA_<Jahr>` braucht das Plugin `checkUStVA_<Jahr>`, unter Linux `libcheckUStVA_<Jahr>.so` (`Datenartversionmatrix.ods`, Kap. 3.1.6.1). ERiC 44 kennt die Jahre 2016 bis 2026 (Tabelle 2-13). Beide Namen bildet die Jahrestabelle [`steuerbote/ustva/years.py`](../steuerbote/ustva/years.py) aus dem Jahr (`datenart_version`, `plugin`, `plugin_library`), und die Einrichtung liest mit `plugin_year` die Jahre der Plugins eines Archivs ins Manifest. Ein neues Jahr braucht dafür keinen Eintrag, solange die Datenartversionmatrix die Plugins so benennt; die Jahresprüfung vergleicht das jedes Jahr, siehe [Entwicklung, Jahreswechsel](entwicklung.md#jahreswechsel). Die Zusammenfassende Meldung hat ein Plugin für alle Jahre, `checkZMDO`.
 - Steuerbote nimmt für das Jahr einer Voranmeldung die neueste eingerichtete Laufzeit mit diesem Plugin, die keine Beta ist. Kennt nur eine Beta das Jahr, prüft und testsendet Steuerbote mit ihr, denn eine Beta weist nur Echtfälle ab (Kap. 5.4.3); Senden braucht immer eine freigegebene Laufzeit. Fehlt das Plugin, nennt die Statusprüfung das Jahr.
 - Für den Betrieb heißt das: im November die neue Version einrichten und mit ihr testen, die freigegebene Folgeversion einrichten, sobald sie erscheint, und vor April prüfen, ob die eingerichtete Version die Mindestversion erreicht.
+- Die Dokumentation des Hauptrelease enthält schon mit der Beta Jahresdokumentation und Schema des neuen Jahres, die Dokumentation 45.1.5.0 etwa `Jahresdokumentation_UStVA_2027.ods` und `UStVA-2027.xsd`. Mit ihr beginnt der Jahreswechsel im Code; ein Plugin für ein Jahr, dessen Daten Steuerbote noch nicht hat, bleibt ungenutzt, denn Berechnen und XML brauchen erst Katalog, Schema und Vordruck des Jahres.
 
 ## Simulation
 
@@ -98,7 +99,7 @@ Die Meldungen tragen den Code von ERiC, den Fehler- oder Hinweiscode der Regel o
 | `result.py` | `Operation`, `Outcome`, `Message`, `TransmissionResult`, Exitcodes des Workers |
 | `header.py` | `EnvelopeHeader`, der DatenTeil für `EricCreateTH`, Prüfung des Kopfs |
 | `api.py` | ctypes-Anbindung von ERiC 44, Druckparameter Version 4, Verschlüsselungsparameter Version 3 |
-| `runtime.py` | Einrichtung aus dem Archiv, Auswahl der Laufzeit je Jahr, Statusprüfung |
+| `runtime.py` | Einrichtung aus dem Archiv, Auswahl der Laufzeit je Jahr nach den Plugins, die `steuerbote/ustva/years.py` benennt, Statusprüfung |
 | `worker.py` | der Worker-Prozess, der ERiC einmal aufruft |
 | `fake.py` | die Simulation |
 | `service.py` | `run` und `library_versions` für die Frappe-Schicht |
