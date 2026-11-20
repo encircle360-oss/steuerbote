@@ -31,6 +31,7 @@ from steuerbote.eric import secrets
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import TESTMERKER, Operation, Outcome
 from steuerbote.eric.service import PIN
+from steuerbote.steuerbote.doctype.elster_transmission import messages
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	DOCUMENT_TYPES,
 	EXTERN,
@@ -182,6 +183,34 @@ class Transmittable:
 		return next(
 			(row for row in self.filings() if row.operation == SEND and row.status == SUCCEEDED), None
 		)
+
+	def latest_run(self) -> dict | None:
+		"""For the form: the latest Prüfen, Testsenden or Senden of the document that has finished, with how many
+		errors and hints ERiC or the simulation gave and the first of each (messages.summary)."""
+		if self.is_new():
+			return None
+		latest = frappe.get_all(
+			TRANSMISSION,
+			filters={
+				"document_type": self.doctype,
+				"document": self.name,
+				"operation": ["in", OPERATIONS],
+				"status": ["!=", RUNNING],
+			},
+			order_by="creation desc",
+			limit=1,
+			pluck="name",
+		)
+		if not latest:
+			return None
+		transmission = frappe.get_doc(TRANSMISSION, latest[0])
+		return {
+			"name": transmission.name,
+			"operation": transmission.operation,
+			"status": transmission.status,
+			"simulated": cint(transmission.simulated),
+			**messages.summary(transmission.messages),
+		}
 
 	def new_transmission(
 		self,

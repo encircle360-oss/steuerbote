@@ -137,6 +137,7 @@ class VATReturnExtension(Transmittable, Document):
 
 	def onload(self) -> None:
 		self.set_onload("elster", self.elster_state())
+		self.set_onload("elster_run", self.latest_run())
 
 	def validate(self) -> None:
 		self.refuse_changes_while_transmitting()

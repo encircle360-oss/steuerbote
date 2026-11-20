@@ -31,6 +31,7 @@ frappe.ui.form.on("VAT Return", {
 			);
 		}
 		show_ready_note(frm);
+		show_latest_run(frm);
 		frm.set_intro(elster_notes(frm, return_texts()).join("<br>"), "orange");
 		add_elster_buttons(frm);
 	},

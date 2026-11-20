@@ -23,8 +23,9 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 | `vat_id_confirmation/records.py` | macht aus jeder Abfrage einer Bestätigung die Felder einer USt-IdNr.-Bestätigung und das Ergebnis der Prüfung bis zu ihr |
 | `steuerbote/dauerfrist_sources.py` | liest für die Dauerfristverlängerung die abgegebenen Voranmeldungen eines Jahres mit Kz 83 und Kz 39 und das Gründungsdatum des Unternehmens, mit Frappe |
 | `vat_return_extension/bridge.py` | wählt die abgegebenen Voranmeldungen des Vorjahres, deren Kz 83 und Kz 39 die Grundlage bilden, nennt die Voranmeldungszeiträume, die ihr fehlen, gibt Grundlage, Grundlage von Hand und Monate der Tätigkeit an den Kern und bildet den Vordruck USt 1 H aus den Feldern des Belegs |
-| `elster_transmission/transmission.py` | Prüfen, Testsenden und Senden eines Belegs über ERiC: `Transmittable`, von dem Voranmeldung und Dauerfristverlängerung erben, den Hintergrundjob `run_transmission`, `stash_certificate`, den Kopf der Lieferung und die Verknüpfungen eines Belegs zu seinen ELSTER-Übermittlungen, siehe [Übermittlung an ELSTER](#übermittlung-an-elster) |
-| `public/js/elster_transmission.js` | Schaltflächen, Dialog für Zertifikat und Passwort und Hinweise der Übermittlung, die die Formulare von Voranmeldung und Dauerfristverlängerung mit `{% include %}` einbinden |
+| `elster_transmission/transmission.py` | Prüfen, Testsenden und Senden eines Belegs über ERiC: `Transmittable`, von dem Voranmeldung und Dauerfristverlängerung erben, den Hintergrundjob `run_transmission`, `stash_certificate`, den Kopf der Lieferung, die Verknüpfungen eines Belegs zu seinen ELSTER-Übermittlungen und seinen letzten abgeschlossenen Lauf (`latest_run`), siehe [Übermittlung an ELSTER](#übermittlung-an-elster) |
+| `elster_transmission/messages.py` | zählt die Fehler und Hinweise einer ELSTER-Übermittlung und gibt die ersten jeder Art an das Formular ihres Belegs |
+| `public/js/elster_transmission.js` | Schaltflächen, Dialog für Zertifikat und Passwort, Hinweise der Übermittlung und die Fehler und Hinweise des letzten Laufs, die die Formulare von Voranmeldung und Dauerfristverlängerung mit `{% include %}` einbinden |
 | `steuerbote/steuerbote/deadlines.py` | liest Einstellungen, Belege, Feiertage und Hauptbuch jedes Unternehmens für die Fristen, die der Kern unter `steuerbote/deadlines` bildet, für den Bericht „Offene Fristen“ und die tägliche Erinnerung mit ihren Fristerinnerungen, mit Frappe, siehe [Fristen](fristen.md) |
 
 So läuft „Berechnen“ an einer Meldung:
@@ -107,7 +108,7 @@ Einreichbar, Nummernkreis `UStVA-.YYYY.-.#####`.
 | `remarks` | Anmerkungen | Pflicht, wenn eine Meldung abgegeben wird, die nicht bereit ist |
 | `transmission_in_progress` | Übermittlung läuft | gesetzt, solange Prüfen, Testsenden oder Senden läuft; so lange lässt sich die Meldung nicht ändern |
 
-An der Meldung stehen unter „Verknüpfungen“ ihre ELSTER-Übermittlungen.
+An der Meldung stehen unter „Verknüpfungen“ ihre ELSTER-Übermittlungen. Über dem Formular nennt sie die Fehler und Hinweise ihres letzten abgeschlossenen Prüfens, Testsendens oder Sendens, siehe [Übermittlung an ELSTER](#übermittlung-an-elster).
 
 ### ERiC-Einstellungen (`ERiC Settings`)
 
@@ -267,6 +268,8 @@ Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in ei
 `vat_return/transmission_adapter.py` enthält die Aufrufe, die ein eingerichtetes ERiC brauchen: Worker, Laufzeit des Jahres und Installation, mit den Pfaden und dem Benutzer der Site. Die Tests ersetzen nur diese Aufrufe (`FakeEric` in `steuerbote/tests/transmitting.py`) und lassen XML, Kopf, Ablage von Zertifikat und Passwort und Simulation wirklich laufen. Mit der Stub-Bibliothek der ERiC-Tests richtet ein Test eine Laufzeit aus einem Archiv ein und sendet durch den Worker.
 
 Das Ereignis `steuerbote_elster_transmission` nennt `document_type` und `document` des Laufs; jedes Formular reagiert nur auf die Läufe seines DocTypes. Beide Formulare binden dieselben Schaltflächen und denselben Dialog aus `public/js/elster_transmission.js` ein und geben ihm nur die Texte, die ihren Beleg nennen.
+
+Über dem Formular nennen beide Belege die Fehler und Hinweise ihres letzten abgeschlossenen Prüfens, Testsendens oder Sendens, denn ein Prüfen mit Hinweisen ist erfolgreich (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.2.4.1): `onload` gibt dem Formular `latest_run` von `Transmittable`, `elster_transmission/messages.py` zählt die Nachrichten des Laufs je Art und gibt die ersten drei jeder Art weiter, und `show_latest_run` in `public/js/elster_transmission.js` zeigt sie mit dem Link auf die ELSTER-Übermittlung, die alle hält. Ein Vorgang, der noch läuft, zählt erst, wenn er beendet ist.
 
 ## Die Zusammenfassende Meldung
 

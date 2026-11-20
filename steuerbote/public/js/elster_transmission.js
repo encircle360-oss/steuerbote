@@ -63,6 +63,38 @@ function elster_notes(frm, texts) {
 	return notes;
 }
 
+// A check with hints and no errors succeeds, so the form names the errors and hints of the latest finished run,
+// which latest_run in transmission.py reads; its ELSTER Transmission holds them all.
+function show_latest_run(frm) {
+	if (frm.$run_note) {
+		frm.$run_note.remove();
+		frm.$run_note = null;
+	}
+	const run = frm.doc.__onload && frm.doc.__onload.elster_run;
+	if (!run || !(run.errors || run.hints)) {
+		return;
+	}
+	const procedure = run.simulated ? __("{0} (Simulation)", [__(run.operation)]) : __(run.operation);
+	const link = frappe.utils.get_form_link("ELSTER Transmission", run.name, true);
+	const lines = [
+		__("Latest run {0}, {1}, {2}: errors {3}, hints {4}.", [
+			link,
+			procedure,
+			frappe.utils.escape_html(run.status),
+			run.errors,
+			run.hints,
+		]),
+		...run.first_errors.map((message) => message_line(__("error"), message)),
+		...run.first_hints.map((message) => message_line(__("hint"), message)),
+	];
+	frm.$run_note = frm.dashboard.set_headline_alert(lines.join("<br>"), run.errors ? "red" : "blue");
+}
+
+function message_line(kind, message) {
+	const code = message.code ? `${frappe.utils.escape_html(message.code)}: ` : "";
+	return `${kind} ${code}${frappe.utils.escape_html(message.text)}`;
+}
+
 function add_transmission_buttons(frm, group, texts) {
 	if (eric_simulates(frm)) {
 		frm.add_custom_button(__("Validate with ERiC (Simulation)"), () => start(frm, "validate", texts), group);

@@ -15,6 +15,7 @@ frappe.ui.form.on("VAT Return Extension", {
 		}
 		show_intro(frm);
 		show_ready_note(frm);
+		show_latest_run(frm);
 		add_filing_buttons(frm);
 	},
 });

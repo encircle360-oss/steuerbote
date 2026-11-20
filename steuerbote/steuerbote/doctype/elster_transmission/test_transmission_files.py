@@ -48,6 +48,16 @@ class SharedScriptTest(TestCase):
 			constant(self.script, "TRANSMISSION_EVENT"), constant(self.server, "TRANSMISSION_EVENT")
 		)
 
+	def test_each_form_names_the_errors_and_hints_of_its_latest_run(self):
+		"""The controller hands latest_run() of the shared transmission to its form, which shows it."""
+		self.assertIn("def latest_run(self) -> dict | None:", self.server)
+		self.assertIn("const run = frm.doc.__onload && frm.doc.__onload.elster_run;", self.script)
+		for doctype, path in FORMS.items():
+			controller = path.with_suffix(".py").read_text(encoding="utf-8")
+			with self.subTest(doctype=doctype):
+				self.assertIn('self.set_onload("elster_run", self.latest_run())', controller)
+				self.assertIn("show_latest_run(frm);", path.read_text(encoding="utf-8"))
+
 	def test_a_form_reacts_only_to_the_runs_of_its_own_documents(self):
 		self.assertIn("if (data.document_type === frm.doctype) {", self.script)
 		self.assertIn("if (frm.doc && frm.doc.name === data.document) {", self.script)
