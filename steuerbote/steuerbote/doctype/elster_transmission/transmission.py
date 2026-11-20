@@ -240,7 +240,7 @@ def filings(doctype: str, names: list[str]) -> list[dict]:
 			"status": ["in", (SUCCEEDED, UNKNOWN)],
 			"simulated": 0,
 		},
-		fields=["name", "document", "operation", "status", "transferticket"],
+		fields=["name", "document", "operation", "status", "transferticket", "finished_at"],
 		order_by="creation desc",
 	)
 

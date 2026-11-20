@@ -13,7 +13,7 @@
 	"3": "sollen Sachverhalte personell vertieft geprüft werden.",
 	"4": "liegen mehrere der vorgenannten Gründe vor (Mehrfachauswahl).",
 } -%}
-{%- set filed_via = {"mein_elster": "Mein ELSTER", "other_way": "Auf anderem Weg"} -%}
+{%- set filed_via = {"mein_elster": "Mein ELSTER", "other_way": "Auf anderem Weg", "eric": "ERiC"} -%}
 
 {%- macro euros(value) -%}{{ frappe.utils.fmt_money(value, 0, None, "#.###,##") }}{%- endmacro -%}
 {%- macro cents(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}

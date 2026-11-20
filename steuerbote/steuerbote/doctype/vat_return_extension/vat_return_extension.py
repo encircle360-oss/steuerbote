@@ -9,13 +9,19 @@ previous year and the date of establishment of the company through steuerbote.da
 computes the base and Kz 38 from them, and bridge.py moves the values. A base by hand with a reason replaces
 the base from the Voranmeldungen, and Kz 38 follows it on every save.
 
-Mein ELSTER takes no file for form USt 1 H, and Steuerbote does not transmit it through ERiC yet, so the form
-is entered in Mein ELSTER by hand: "In Mein ELSTER eingetragen" and "Als außerhalb abgegeben vermerken"
-(mark_filed_outside) submit it with a note of the filing, and the submission writes the Sondervorauszahlung
-into the row of its year in the VAT Return Settings, from which the last Voranmeldung of the year deducts it in
-Kz 39. Submitting alone ("Buchen") files nothing and is refused. A company files one form a year; a filed
-Anmeldung der Sondervorauszahlung is corrected by cancelling it and amending it into a corrected Anmeldung
-(Kz 10), which the Antrag alone does not allow.
+"Prüfen", "Testsenden" and "Senden" (transmit) run in a background job, as for every document that goes to
+ELSTER through ERiC (elster_transmission/transmission.py): the job writes form USt 1 H with the Hersteller-ID in
+Kz 09 (nutzdaten, steuerbote.elster.ust1h_xml) and hands it to steuerbote.eric, through the worker of an installed
+runtime or the simulation; every run is recorded as an ELSTER Transmission. Only a Senden that ELSTER accepted
+submits the form, which files it through ERiC with its Transferticket. Mein ELSTER takes no file for form USt 1 H,
+so without ERiC the form is entered there by hand: "In Mein ELSTER eingetragen" and "Als außerhalb abgegeben
+vermerken" (mark_filed_outside) submit it with a note of the filing, recorded as an ELSTER Transmission as well.
+The submission writes the Sondervorauszahlung into the row of its year in the VAT Return Settings, from which the
+last Voranmeldung of the year deducts it in Kz 39. Submitting alone ("Buchen") files nothing and is refused,
+except for a form that ELSTER accepted while its submission failed. A company files one form a year: once a form
+of the year is filed or sent through Steuerbote, cancelled or not, a further one is a corrected Anmeldung (Kz 10).
+A filed Anmeldung der Sondervorauszahlung is corrected by cancelling it and amending it into a corrected
+Anmeldung, which the Antrag alone does not allow.
 """
 
 from collections.abc import Iterator
@@ -29,12 +35,20 @@ from frappe.utils import cint, escape_html, formatdate, getdate
 
 from steuerbote import dauerfrist, dauerfrist_sources, holiday_list
 from steuerbote.dauerfrist import Context, FormError, layout_for
-from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import FILED_VIA, OTHER_WAY
+from steuerbote.elster import ust1h_xml, ustva_xml
+from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
+	EXTERN,
+	FILED_VIA,
+	OTHER_WAY,
+	SUCCEEDED,
+	UNKNOWN,
+)
+from steuerbote.steuerbote.doctype.elster_transmission.transmission import Transmittable, filings
 from steuerbote.steuerbote.doctype.vat_return import bridge as vat_return_bridge
 from steuerbote.steuerbote.doctype.vat_return.vat_return import TRANSFERTICKET, settings_for
 from steuerbote.steuerbote.doctype.vat_return_extension import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
-from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import settings_errors
+from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import settings_errors, xml_errors
 from steuerbote.ustva import Period
 
 DOCTYPE = "VAT Return Extension"
@@ -60,9 +74,11 @@ CALCULATED_VALUES = {
 	"findings": None,
 }
 FILING_FIELDS = ("filed_via", "filed_on", "transferticket", "filing_note")
+# How the form went to the Finanzamt when ELSTER accepted its Senden.
+FILED_THROUGH_ERIC = "eric"
 
 
-class VATReturnExtension(Document):
+class VATReturnExtension(Transmittable, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -88,7 +104,7 @@ class VATReturnExtension(Document):
 		deadline: DF.Date | None
 		established_on: DF.Date | None
 		filed_on: DF.Date | None
-		filed_via: DF.Literal["", "mein_elster", "other_way"]
+		filed_via: DF.Literal["", "mein_elster", "other_way", "eric"]
 		filing_note: DF.SmallText | None
 		findings: DF.SmallText | None
 		first_month: DF.Int
@@ -108,6 +124,7 @@ class VATReturnExtension(Document):
 		status: DF.Literal["Entwurf", "Berechnet", "Bereit", "Abgegeben"]
 		supplementary_code: DF.Literal["", "1", "2", "3", "4"]
 		transferticket: DF.Data | None
+		transmission_in_progress: DF.Check
 		year: DF.Int
 	# end: auto-generated types
 
@@ -118,7 +135,11 @@ class VATReturnExtension(Document):
 		for field in FILING_FIELDS:
 			self.set(field, None)
 
+	def onload(self) -> None:
+		self.set_onload("elster", self.elster_state())
+
 	def validate(self) -> None:
+		self.refuse_changes_while_transmitting()
 		if not self.company or self.year is None:
 			return  # the mandatory check that follows names the missing field
 		self._set_form(settings_for(self.company))
@@ -129,19 +150,22 @@ class VATReturnExtension(Document):
 		self._set_status(self._check_form())
 
 	def before_submit(self) -> None:
-		if not self.flags.filed_outside:
+		sent = None if self.flags.filed_outside else self.accepted_send()
+		if not (self.flags.filed_outside or sent):
 			frappe.throw(
 				_(
-					"A Dauerfristverlängerung is filed by noting its filing in Mein ELSTER or outside Steuerbote, not by Buchen alone."
+					"A Dauerfristverlängerung is filed through Senden or by noting its filing in Mein ELSTER or outside Steuerbote, not by Buchen alone."
 				)
 			)
-		if self.status not in (CALCULATED, READY):
-			frappe.throw(_("Calculate the form before filing it."))
-		if self.status != READY and not (self.remarks or "").strip():
-			frappe.throw(
-				_(
-					"The form is not ready, see the open points. Explain in the remarks why it is filed nonetheless."
-				)
+		self._check_fit_for_filing()
+		if sent:
+			self.update(
+				{
+					"filed_via": FILED_THROUGH_ERIC,
+					"filed_on": getdate(sent.finished_at),
+					"transferticket": sent.transferticket,
+					"filing_note": None,
+				}
 			)
 		self.status = FILED
 
@@ -181,10 +205,10 @@ class VATReturnExtension(Document):
 		note: str | None = None,
 		transferticket: str | None = None,
 		filed_on: str | None = None,
-	) -> None:
+	) -> str:
 		"""In Mein ELSTER eingetragen, or Als außerhalb abgegeben vermerken: the form went to the Finanzamt by
 		hand in Mein ELSTER or another way. Submits it with the note how and when it was filed, and with the
-		Transferticket if there is one."""
+		Transferticket if there is one, and returns the name of the ELSTER Transmission that records it."""
 		self.check_permission("submit")
 		note = (note or "").strip()
 		ticket = (transferticket or "").strip()
@@ -201,10 +225,17 @@ class VATReturnExtension(Document):
 		filed_date = getdate(filed_on) if filed_on else getdate()
 		if filed_date > getdate():
 			frappe.throw(_("A return cannot be filed in the future."))
-		frappe.db.get_value(DOCTYPE, self.name, "name", for_update=True)
-		self.reload()
+		self.lock_for_transmission()
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft form can be marked as filed."))
+		accepted = self.accepted_send()
+		if accepted:
+			frappe.throw(
+				_(
+					"ELSTER accepted {0} with Transferticket {1}, so it was not filed outside Steuerbote: submit it with Buchen."
+				).format(self.name, accepted.transferticket)
+			)
+		self._refuse_second_filing()
 		self.update(
 			{
 				"filed_via": filed_via,
@@ -215,6 +246,76 @@ class VATReturnExtension(Document):
 		)
 		self.flags.filed_outside = True
 		self.submit()
+		return self.new_transmission(
+			EXTERN,
+			simulated=False,
+			status=SUCCEEDED,
+			remarks=note or None,
+			filed_via=filed_via,
+			transferticket=ticket or None,
+			filed_on=filed_date,
+		).name
+
+	def nutzdaten(self, hersteller_id: str) -> str:
+		"""The Nutzdaten for ERiC: form USt 1 H as the form holds it, with the Hersteller-ID in Kz 09."""
+		with xml_errors(_("ELSTER Transmission")), self._form_errors():
+			filer = vat_return_bridge.filer(settings_for(self.company))
+			return ust1h_xml.to_nutzdaten(filer, bridge.form(self), getdate(), hersteller_id)
+
+	def check_transmittable(self) -> None:
+		"""A calculated draft of a year whose form and schema Steuerbote knows."""
+		if self.docstatus != 0:
+			frappe.throw(_("Only a draft form can be transmitted."))
+		if self.status not in (CALCULATED, READY):
+			frappe.throw(_("Calculate the form before transmitting it."))
+		with xml_errors(_("ELSTER Transmission")), self._form_errors():
+			layout_for(cint(self.year))
+			ustva_xml.schema_for(cint(self.year))
+
+	def check_can_be_sent(self) -> None:
+		"""Senden files the form, once: it needs the form fit for filing and no earlier filing of the year."""
+		self._check_fit_for_filing()
+		sent = self.filings()
+		if sent and sent[0].status == UNKNOWN:
+			frappe.throw(
+				_(
+					"Whether {0} reached ELSTER is unknown. Check in Mein ELSTER whether the form arrived: if it did, note it with Entered in Mein ELSTER; if not, a System Manager deletes {0}, then the form can be sent again."
+				).format(sent[0].name)
+			)
+		if sent:
+			frappe.throw(
+				_("This form was transmitted already with Transferticket {0}.").format(sent[0].transferticket)
+			)
+		self._refuse_second_filing()
+
+	def _check_fit_for_filing(self) -> None:
+		if self.status not in (CALCULATED, READY):
+			frappe.throw(_("Calculate the form before filing it."))
+		if self.status != READY and not (self.remarks or "").strip():
+			frappe.throw(
+				_(
+					"The form is not ready, see the open points. Explain in the remarks why it is filed nonetheless."
+				)
+			)
+
+	def _refuse_second_filing(self) -> None:
+		"""The Finanzamt keeps every form filed for the year, also one sent through Steuerbote whose outcome is
+		unknown or that was cancelled since: a further form is a corrected Anmeldung (Kz 10), and the Antrag alone
+		cannot be corrected (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 8.5.1)."""
+		if cint(self.is_correction):
+			return
+		others = frappe.get_all(
+			DOCTYPE,
+			filters={"company": self.company, "year": cint(self.year), "name": ["!=", self.name]},
+			pluck="name",
+		)
+		sent = filings(DOCTYPE, others)
+		if sent:
+			frappe.throw(
+				_(
+					"{0} filed {1} for {2} already, which the Finanzamt keeps: a further form for the year is a corrected Anmeldung der Sondervorauszahlung (Kz 10)."
+				).format(self.company, sent[0].document, cint(self.year))
+			)
 
 	def _set_form(self, settings: Document) -> None:
 		"""Form, rhythm, deadline and the period crediting the Sondervorauszahlung, from the settings and the
@@ -327,16 +428,22 @@ class VATReturnExtension(Document):
 
 	def _check_form(self) -> str | None:
 		"""Refuse what form USt 1 H does not take. A year whose form Steuerbote does not know yet is an open
-		point instead, since the form is entered in Mein ELSTER by hand."""
+		point instead, since the form can still be entered in Mein ELSTER by hand."""
 		try:
 			layout_for(cint(self.year))
 		except FormError as error:
 			return _(error.template).format(*error.values)
-		try:
+		with self._form_errors():
 			bridge.form(self)
+		return None
+
+	@contextmanager
+	def _form_errors(self) -> Iterator[None]:
+		"""Show a form that ELSTER does not take as a message in the language of the user."""
+		try:
+			yield
 		except FormError as error:
 			frappe.throw(_(error.template).format(*error.values))
-		return None
 
 	def _set_sondervorauszahlung(self) -> None:
 		"""Base and Kz 38 from the table of the base and the base by hand, through the core."""

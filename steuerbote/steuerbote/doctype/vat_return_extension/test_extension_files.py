@@ -1,6 +1,6 @@
 """The Dauerfristverlängerung read from its files without a bench: every text has a German translation in
-translations/de.csv, the form never offers Buchen alone, and the print format keeps to the wording of form
-USt 1 H and to the style of the app."""
+translations/de.csv, the form never offers Buchen alone and transmits through the script it shares with the VAT
+Return, and the print format keeps to the wording of form USt 1 H and to the style of the app."""
 
 import ast
 import csv
@@ -18,6 +18,9 @@ TRANSLATIONS = APP / "translations" / "de.csv"
 FOLDER = DOCTYPES / "vat_return_extension"
 CONTROLLER = FOLDER / "vat_return_extension.py"
 SCRIPT = FOLDER / "vat_return_extension.js"
+# The transmission through ERiC, in the browser and on the server, which the VAT Return shares.
+SHARED_SCRIPT = APP / "public" / "js" / "elster_transmission.js"
+TRANSMITTABLE = DOCTYPES / "elster_transmission" / "transmission.py"
 SOURCES = (CONTROLLER, SCRIPT, APP / "dauerfrist_sources.py")
 TABLES = ("vat_return_extension", "vat_return_extension_base")
 PRINT_FORMAT = APP / "steuerbote" / "print_format" / "dauerfristverlängerung"
@@ -76,14 +79,17 @@ def texts_of_the_dauerfrist() -> set[str]:
 
 
 def whitelisted_methods() -> set[str]:
-	(controller,) = (
+	"""The whitelisted methods of the controller and of Transmittable, from which it inherits."""
+	classes = (
 		node
-		for node in ast.parse(CONTROLLER.read_text(encoding="utf-8")).body
+		for source in (CONTROLLER, TRANSMITTABLE)
+		for node in ast.parse(source.read_text(encoding="utf-8")).body
 		if isinstance(node, ast.ClassDef)
 	)
 	return {
 		method.name
-		for method in controller.body
+		for cls in classes
+		for method in cls.body
 		if isinstance(method, ast.FunctionDef)
 		and any("whitelist" in ast.unparse(decorator) for decorator in method.decorator_list)
 	}
@@ -169,6 +175,24 @@ class DocumentTest(TestCase):
 					(self.fields[fieldname]["read_only"], self.fields[fieldname]["no_copy"]), (1, 1)
 				)
 
+	def test_the_lock_of_a_transmission_is_read_only_and_not_copied(self):
+		lock = self.fields["transmission_in_progress"]
+		self.assertEqual(
+			(lock["fieldtype"], lock["read_only"], lock["no_copy"], lock["label"]),
+			("Check", 1, 1, "Transmission Running"),
+		)
+		self.assertEqual(
+			self.definition["field_order"].index("transmission_in_progress"),
+			self.definition["field_order"].index("status") + 1,
+		)
+
+	def test_a_form_is_filed_through_eric_mein_elster_or_another_way(self):
+		self.assertEqual(
+			self.fields["filed_via"]["options"].split("\n"), ["", "mein_elster", "other_way", "eric"]
+		)
+		source = CONTROLLER.read_text(encoding="utf-8")
+		self.assertIn('FILED_THROUGH_ERIC = "eric"', source)
+
 	def test_the_base_lists_the_filed_vat_returns(self):
 		base = fields("vat_return_extension_base")
 		self.assertEqual(self.fields["base_rows"]["options"], "VAT Return Extension Base")
@@ -177,21 +201,33 @@ class DocumentTest(TestCase):
 
 
 class FormScriptTest(TestCase):
-	"""A draft is filed by a note of its filing, never by Buchen alone."""
+	"""A draft is filed through ELSTER or a note of its filing, never by Buchen alone."""
 
 	def setUp(self):
 		self.script = SCRIPT.read_text(encoding="utf-8")
+		self.shared = SHARED_SCRIPT.read_text(encoding="utf-8")
 
 	def test_a_draft_gets_no_hint_to_submit_it(self):
 		setup = re.search(r"\n\tsetup\(frm\) \{\n(?P<body>.*?)\n\t\},\n", self.script, re.DOTALL)
 		self.assertIsNotNone(setup)
 		self.assertIn("frm.show_submit_message = () => {};", setup["body"])
-		self.assertIn("frm.page.clear_primary_action();", self.script)
+		self.assertIn("offer_buchen_only_for_an_accepted_send(frm);", self.script)
+		self.assertIn("frm.page.clear_primary_action();", self.shared)
 
 	def test_the_buttons_call_whitelisted_methods(self):
-		called = set(re.findall(r'frm\s*\.call\("(\w+)"', self.script))
-		self.assertEqual(called, {"calculate", "mark_filed_outside"})
+		called = set(re.findall(r'frm\s*\.call\("(\w+)"', self.script + self.shared))
+		self.assertEqual(
+			called, {"calculate", "mark_filed_outside", "transmit", "release_stale_transmission"}
+		)
 		self.assertEqual(called - whitelisted_methods(), set())
+
+	def test_the_form_offers_the_transmission_beside_the_notes_of_a_filing(self):
+		(buttons,) = re.findall(r"function add_filing_buttons\(frm\) \{\n(.*?)\n\}\n", self.script, re.DOTALL)
+		self.assertIn("add_transmission_buttons(frm, group, form_texts());", buttons)
+		self.assertEqual(
+			re.findall(r'frm\.add_custom_button\(__\("([^"]+)"\)', buttons),
+			["Entered in Mein ELSTER", "Mark as Filed Outside"],
+		)
 
 	def test_the_intro_says_the_form_is_entered_in_mein_elster_by_hand(self):
 		(intro,) = (
