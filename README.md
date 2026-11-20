@@ -19,27 +19,37 @@ Steuermeldungen aus ERPNext an ELSTER. Zuerst die Umsatzsteuer-Voranmeldung, dan
 
 ## Einblick
 
-Die Bilder stammen aus einer Testumgebung. Firma, Anschrift, Steuernummern und Geschäftspartner sind Beispielwerte. Ein Klick auf ein Bild öffnet es in voller Größe.
+Die Bilder zeigen Steuerbote 0.2.0 in einer Testumgebung mit ERPNext 16. Firma, Anschrift, Steuernummern, USt-IdNrn., Belegnummern und Geschäftspartner sind Beispielwerte. Ein Klick auf ein Bild öffnet es in voller Größe.
 
 <table>
   <tr>
     <td align="center" valign="top">
-      <a href="docs/bilder/workspace-steuern.png"><img src="docs/bilder/workspace-steuern.png" width="280" alt="Arbeitsbereich Steuern mit offenen Voranmeldungen, Bericht und Einrichtung"></a><br>
+      <a href="docs/bilder/workspace-steuern.png"><img src="docs/bilder/workspace-steuern.png" width="280" alt="ERPNext mit „Steuern“ in der Leiste links und dem Arbeitsbereich Steuern mit Voranmeldungen, Dauerfristanträgen, Zusammenfassenden Meldungen, USt-IdNr.-Prüfungen und Einrichtung"></a><br>
       Arbeitsbereich Steuern
     </td>
     <td align="center" valign="top">
-      <a href="docs/bilder/bericht-kennzahlen.png"><img src="docs/bilder/bericht-kennzahlen.png" width="280" alt="Bericht UStVA Kennzahlen mit aufgeklappter Kennzahl 81 und dem Beleg dahinter"></a><br>
-      Bericht mit Drill-down
+      <a href="docs/bilder/voranmeldung.png"><img src="docs/bilder/voranmeldung.png" width="280" alt="Umsatzsteuer-Voranmeldung mit Hinweisen zu Rechnungen und Vorperiode und dem Vorperiodenvergleich der Kennzahlen"></a><br>
+      Voranmeldung mit Hinweisen und Vorperiodenvergleich
     </td>
   </tr>
   <tr>
     <td align="center" valign="top">
-      <a href="docs/bilder/voranmeldung.png"><img src="docs/bilder/voranmeldung.png" width="280" alt="Umsatzsteuer-Voranmeldung mit Kennzahlen, Summen und Verprobung"></a><br>
-      Voranmeldung mit Verprobung
+      <a href="docs/bilder/bericht-kennzahlen.png"><img src="docs/bilder/bericht-kennzahlen.png" width="280" alt="Bericht UStVA Kennzahlen mit den Belegen hinter jeder Kennzahl, eine stornierte Eingangsrechnung darunter"></a><br>
+      Bericht mit den Belegen je Kennzahl
     </td>
     <td align="center" valign="top">
-      <a href="docs/bilder/druckformat.png"><img src="docs/bilder/druckformat.png" width="200" alt="Druckformat der Umsatzsteuer-Voranmeldung nach dem Vordruck USt 1 A"></a><br>
-      Druckformat nach Vordruck USt 1 A
+      <a href="docs/bilder/zusammenfassende-meldung.png"><img src="docs/bilder/zusammenfassende-meldung.png" width="280" alt="Zusammenfassende Meldung mit Meldezeile, Summen und Befunden; die USt-IdNr. der Zeile ist laut Bestätigungsabfrage ungültig und hält die Meldung an"></a><br>
+      Zusammenfassende Meldung mit Befunden
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <a href="docs/bilder/ust-idnr-bestaetigung.png"><img src="docs/bilder/ust-idnr-bestaetigung.png" width="280" alt="USt-IdNr.-Bestätigung mit angefragter und anfragender USt-IdNr., Dienst, Ergebnis und Zeitpunkt der Abfrage"></a><br>
+      USt-IdNr.-Bestätigung als Nachweis
+    </td>
+    <td align="center" valign="top">
+      <a href="docs/bilder/dauerfristverlaengerung.png"><img src="docs/bilder/dauerfristverlaengerung.png" width="280" alt="Dauerfristverlängerung für 2027; Berechnen meldet, dass keine Voranmeldung des Vorjahres abgegeben ist und die Grundlage von Hand einzutragen ist"></a><br>
+      Dauerfristverlängerung
     </td>
   </tr>
 </table>
