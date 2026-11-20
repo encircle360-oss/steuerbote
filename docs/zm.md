@@ -1,6 +1,6 @@
 # Zusammenfassende Meldung
 
-Diese Seite ist die fachliche Grundlage des Kerns unter `steuerbote/zm`: Meldezeiträume und Fristen, Abgaberhythmus, Meldezeilen aus dem Hauptbuch, USt-IdNrn., Sperren und Übersteuern, Abgleich mit der Voranmeldung, Berichtigung und die CSV-Datei für Mein ELSTER. Der Kern ist reines Python ohne Frappe-Import. Formular, Bericht und Übermittlung in ERPNext folgen in eigenen Schritten, siehe [Roadmap](roadmap.md). Die Seite ersetzt keine Steuerberatung. Die Quellen stehen am Ende als [Q1] bis [Q16], alle am 20. November 2026 gelesen.
+Diese Seite ist die fachliche Grundlage des Kerns unter `steuerbote/zm`: Meldezeiträume und Fristen, Abgaberhythmus, Meldezeilen aus dem Hauptbuch, USt-IdNrn., Sperren und Übersteuern, Abgleich mit der Voranmeldung, Berichtigung und die CSV-Datei für Mein ELSTER. Der Kern ist reines Python ohne Frappe-Import. Wie der Beleg „Zusammenfassende Meldung“ in ERPNext mit ihm arbeitet, steht unter [Die Zusammenfassende Meldung in ERPNext](#die-zusammenfassende-meldung-in-erpnext); die Übermittlung über ERiC folgt mit der Hersteller-ID, siehe [Roadmap](roadmap.md). Die Seite ersetzt keine Steuerberatung. Die Quellen stehen am Ende als [Q1] bis [Q16], alle am 20. November 2026 gelesen.
 
 ## Was die ZM ist
 
@@ -71,14 +71,14 @@ Die ZM meldet ganze Euro: Feld `betrag` in ZMDO als „GeldBetragOhneCent“ [Q1
 
 ## USt-IdNr.
 
-[`ustid.py`](../steuerbote/zm/ustid.py) legt fest, welche USt-IdNr. die ZM nimmt. Die Regel ist klein gehalten, damit auch die Bestätigung der USt-IdNrn. nach § 18e UStG sie verwenden kann; dort gilt XI ohne Einschränkung.
+[`ustid.py`](../steuerbote/zm/ustid.py) legt fest, welche USt-IdNr. die ZM nimmt. Form und Länderkennzeichen sind die Regel der Bestätigung nach § 18e UStG in [`vatid/ustid.py`](../steuerbote/vatid/ustid.py), damit Steuerbote genau die Nummer bestätigen lässt, die die ZM meldet. Die ZM ergänzt nur, dass XI nicht für sonstige Leistungen gilt; für die Bestätigung gilt XI ohne Einschränkung.
 
 - **Form:** Länderkennzeichen aus zwei Großbuchstaben, danach Buchstaben, Ziffern, + und *, „mindestens 7 Zeichen“, höchstens 14 (AN 7,14) [Q13]; ZMDO-Feld `knre_UstIdNr_Erwerber` ebenso [Q11]. `normalize()` behält von einem Wert aus ERPNext Buchstaben, Ziffern, + und *, schreibt Buchstaben groß und nimmt das Ergebnis, wenn es diese Form hat.
 - **Länderkennzeichen:** die 26 anderen Mitgliedstaaten nach der Liste der Hilfe [Q13]: AT, BE, BG, CY, CZ, DK, EE, EL, ES, FI, FR, HR, HU, IE, IT, LT, LU, LV, MT, NL, PL, PT, RO, SE, SI, SK. Griechenland heißt EL, nicht GR.
 - **XI** (Nordirland) gilt nur für Lieferungen (L und D): „Nordirische UStIDs (Präfix XI) dürfen nicht für sonstige Leistungen verwendet werden“ (ZMDO-Regel 170045021 [Q11]). Grund ist Artikel 8 des Protokolls zu Irland/Nordirland zum Austrittsabkommen: „The provisions of Union law listed in Annex 3 to this Protocol concerning goods shall apply to and in the United Kingdom in respect of Northern Ireland.“ [Q12] Für Waren gelten in Nordirland also die Regeln des innergemeinschaftlichen Handels, Dienstleistungen nach Nordirland sind Drittlandsumsätze und gehören nicht in die ZM [Q9, Fragen zum Brexit].
 - **Abgelehnt:** DE, „Es dürfen keine inländischen UstId-Nummern angegeben werden“ (170045014); GB, „nur für die Meldezeiträume bis zum Ablauf des Übergangszeitraumes am 31.12.2020“ [Q9] (170045017).
 - **Rumänische Nummern** mit zwei bis vier Ziffern sind mit führenden Nullen auf fünf Ziffern aufzufüllen, so der Fehlertext des ZMDO-Feldes [Q11]. Steuerbote ergänzt nichts: Die Nummer gehört so in den Kunden.
-- **Gültigkeit:** Ob eine Nummer erteilt ist, klärt die Bestätigung nach § 18e UStG in einem eigenen Paket. Ihr Ergebnis (bestätigt, ungültig, nicht bestätigt) ist eine Eingabe von `build()`; eine Nummer ohne Ergebnis gilt als nicht geprüft und hält nichts an.
+- **Gültigkeit:** Ob eine Nummer erteilt ist, klärt die Bestätigung nach § 18e UStG, siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md). Ihr Ergebnis (bestätigt, ungültig, nicht bestätigt) ist eine Eingabe von `build()`; eine Nummer ohne Ergebnis lässt `build()` durch. Der Beleg in ERPNext übergibt für jede Nummer ein Ergebnis, eine nie bestätigte Nummer als nicht bestätigt, siehe [Berechnen](#berechnen).
 
 ## Sperren und Übersteuern
 
@@ -155,17 +155,86 @@ Eine Berichtigung schreibt nur ihre geänderten Zeilen (`csv_file(correction.lin
 5. Nach dem Import prüfen, „dass die Anzahl der Datensätze in der CSV-Datei mit der Anzahl der importierten Datensätze übereinstimmt“ [Q14].
 6. Die ZM in Mein ELSTER absenden.
 
+## Die Zusammenfassende Meldung in ERPNext
+
+Der Beleg „Zusammenfassende Meldung“ (`Recapitulative Statement`) bringt den Kern in ERPNext. Er rechnet nichts selbst: Jede Zeile, jeder Betrag und jede Regel kommt aus `steuerbote/zm`, die Frappe-Schicht liest die Daten und hält das Ergebnis fest. Wie die Teile zusammenspielen, beschreibt [Architektur](architektur.md#die-zusammenfassende-meldung).
+
+### Einstellungen
+
+In den Einstellungen Umsatzsteuer-Voranmeldung des Unternehmens stehen dazu:
+
+| Feld | Inhalt |
+|---|---|
+| USt-IdNr. | die eigene deutsche USt-IdNr., DE und neun Ziffern; mit ihr fragt Steuerbote das BZSt nach den USt-IdNrn. der Kunden. Bleibt das Feld leer, übernimmt Steuerbote beim Speichern das Feld „Steuernummer“ (`tax_id`) des Unternehmens, wenn es eine deutsche USt-IdNr. enthält. |
+| Abgaberhythmus der Zusammenfassenden Meldung | Tabelle „Regel zur Zusammenfassenden Meldung“ mit Jahr, Gültig ab Monat, Abgaberhythmus (monatlich, vierteljährlich oder jährlich), Sonstige Leistungen monatlich und Grund. Jede Regel gilt bis zur nächsten, wie unter [Abgaberhythmus](#abgaberhythmus) beschrieben; der Kern prüft die Regeln beim Speichern. |
+
+Ohne Abgaberhythmus lässt sich keine Zusammenfassende Meldung anlegen, ohne Kontenzuordnung keine berechnen.
+
+### Der Beleg
+
+Eine Meldung gilt einem Unternehmen und einem Meldezeitraum: Jahr, Art des Meldezeitraums (Kalendermonat, zwei Monate eines Quartals, Kalendervierteljahr oder Kalenderjahr) und Nummer (Monat 1 bis 12 oder Quartal 1 bis 4, beim Kalenderjahr keine). Beim Speichern prüft sie, dass der Abgaberhythmus diesen Meldezeitraum ergibt, und setzt Meldezeitraum, Code `quart`, Von- und Bis-Datum und Fälligkeit. Fällig ist sie am 25. Tag nach Ablauf des Meldezeitraums; fällt er auf ein Wochenende oder einen Tag der Standard-Feiertagsliste des Unternehmens, am nächsten Werktag (Entscheidung des Maintainers). Die Liste sollte deshalb nur gesetzliche Feiertage enthalten, sonst verschiebt sich die Frist zu weit. „Anzeige der monatlichen Abgabe“ und „Widerruf der Anzeige“ sind Felder im Kopf des Formulars in Mein ELSTER; Steuerbote prüft sie mit `check_notices()` und hält fest, was dort anzukreuzen ist.
+
+| Status | Bedeutung |
+|---|---|
+| Entwurf | angelegt und noch nicht berechnet, oder Unternehmen, Jahr oder Meldezeitraum haben sich geändert; das verwirft die Berechnung |
+| Berechnet | berechnet, aber ein Fehler der Befunde hält die Meldung an |
+| Bereit | berechnet, kein Fehler hält die Meldung an |
+| Abgegeben | als abgegeben vermerkt und damit eingereicht |
+| Ersetzt | für denselben Meldezeitraum ist später eine Berichtigung abgegeben worden |
+
+### Berechnen
+
+„Berechnen“ nimmt die Monate, die der Abgaberhythmus dem Meldezeitraum gibt (`coverage()`), und liest:
+
+1. **Belege:** die Buchungen (GL Entry) auf den Konten, denen die Kontenzuordnung Kz 41, 42 oder 21 gibt, mit den Ausschlüssen der Voranmeldung (`steuerbote/ledger.py`), je Beleg aufgeteilt wie im Bericht „UStVA Kennzahlen“: Kz 41 und 42 aus den Lieferungsmonaten, Kz 21 aus den Leistungsmonaten, jeweils nach Buchungsdatum. Ein Dreiecksgeschäft ist ein Beleg auf einem Konto der Kz 42.
+2. **Kunden:** Eine Ausgangsrechnung nennt ihren Kunden und hält dessen USt-IdNr. (`tax_id`) fest, wie sie beim Anlegen war; das Bestimmungsland eines Dreiecksgeschäfts ist das Land der Lieferanschrift der Rechnung, ohne sie das der Rechnungsanschrift. Eine Zahlung, etwa mit Skonto, nennt ihren Kunden; USt-IdNr. und Land kommen aus der ersten bezahlten Rechnung, die sie hat, sonst die USt-IdNr. aus dem Kunden. Eine Journalbuchung zählt mit dem einzigen Kunden, den ihre Zeilen nennen, und dessen USt-IdNr. Andere Belege nennen keinen Kunden, und der Kern meldet das je Beleg (`ZM-OHNE-KUNDE`).
+3. **Bestätigungen:** je USt-IdNr. das Ergebnis der letzten USt-IdNr.-Bestätigung des Unternehmens. Eine Nummer, die nie bestätigt wurde oder deren Prüfung keine Antwort bekam, gilt als nicht bestätigt und hält die Meldung an (`ZM-USTID-UNBESTAETIGT`).
+4. **Schwelle:** Kz 41 und 42 je Monat für die vier Quartale vor dem Meldezeitraum und den Meldezeitraum selbst (`threshold_window()`), mit einer Abfrage je Monat und der Kontenzuordnung auch für Monate des Vorjahres.
+5. **Abgegebene Voranmeldungen:** Kz 41, 42 und 21 der abgegebenen, nicht ersetzten Voranmeldungen, deren Zeiträume zusammen genau die Monate der Meldung ergeben. Fehlt ein Monat, unterbleibt dieser Abgleich.
+6. **Vorperiode:** die Zeilen des vorigen Meldezeitraums derselben Art, ebenso aus dem Hauptbuch.
+
+Daraus füllt der Kern die Tabellen der Meldung: Meldezeilen (`build()`), Belege der Meldezeilen, Abgleich mit der Voranmeldung (`reconcile()`), Vorperiodenvergleich (`compare()`) und Befunde. Die Summen L, D und S sind die Summen der Meldezeilen. Bereit ist eine Meldung, wenn keine Zeile gesperrt ist (`Statement.ready`) und weder `ZM-SCHWELLE` noch `ZM-ABGLEICH-HAUPTBUCH` vorliegt.
+
+### Korrekturen und eigene Zeilen
+
+Eine Zeile bekommt einen korrigierten Betrag in ganzen Euro mit Begründung. Die Korrektur ersetzt den gemeldeten Betrag und hebt die Sperre der Zeile auf, sobald die Meldung gespeichert ist; einen Betrag ohne Begründung lehnt Steuerbote ab. Ebenso bleibt eine eigene Zeile ohne Belege mit USt-IdNr., Art, Betrag und Begründung, etwa ein Verbringen unter der eigenen USt-IdNr. im anderen Mitgliedstaat. „Berechnen“ übernimmt Korrekturen und eigene Zeilen.
+
+### USt-IdNrn. prüfen
+
+Die Schaltfläche fragt das BZSt im Hintergrund nach jeder USt-IdNr., die die Meldung meldet, eine nach der anderen und ohne Wiederholung, für die qualifizierte Abfrage mit Name und Ort des Kunden, wo sie bekannt sind. Jede Abfrage bleibt als USt-IdNr.-Bestätigung erhalten, und jede Zeile zeigt die letzte Prüfung ihrer Nummer. Einzelheiten stehen in [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
+
+### CSV für Mein ELSTER und Abgabe
+
+„CSV für Mein ELSTER“ schreibt die Zeilen der gespeicherten Meldung mit `csv_file()` und hängt die Datei privat an die Meldung, etwa `ZM-2026-03.csv`, für eine Berichtigung `ZM-2026-03-berichtigt.csv`. Die Datei gibt es für eine Meldung, die bereit ist oder deren Anmerkungen begründen, warum sie trotzdem abgegeben wird, und für jede abgegebene Meldung. So geht sie an das BZSt:
+
+1. In Steuerbote „Berechnen“ und „USt-IdNrn. prüfen“, bis die Meldung „Bereit“ ist oder die Anmerkungen begründen, warum sie trotzdem abgegeben wird.
+2. „CSV für Mein ELSTER“ und die Datei speichern.
+3. In Mein ELSTER das Formular „Zusammenfassende Meldung“ öffnen und den Kopf ausfüllen, wie unter [Import in Mein ELSTER](#csv-datei-für-mein-elster) beschrieben: eigene USt-IdNr., Meldezeitraum, bei einer Berichtigung „Berichtigte Meldung“ und, wenn die Meldung sie trägt, Anzeige oder Widerruf.
+4. Unter „Import von Daten (CSV-Format)“ die Datei importieren und prüfen, dass das Formular so viele Zeilen zeigt wie die Datei.
+5. Die ZM in Mein ELSTER absenden.
+6. In Steuerbote „In Mein ELSTER abgegeben“ mit dem Tag der Abgabe und, wenn vorhanden, dem Transferticket des Protokolls vermerken. Für jeden anderen Weg, etwa das BZSt-Online-Portal oder die Steuerberatung, „Als außerhalb abgegeben vermerken“ mit einer Notiz, wie und wann.
+
+Erst der Vermerk reicht die Meldung ein; „Buchen“ allein lehnt Steuerbote ab. Ein Meldezeitraum wird je Unternehmen einmal abgegeben, und eine abgegebene Meldung lässt sich nicht stornieren: Eine Änderung geht als Berichtigung an das BZSt.
+
+### Berichtigung anlegen
+
+Die Schaltfläche an der zuletzt abgegebenen Meldung legt eine Meldung desselben Meldezeitraums mit der Meldeart „Berichtigung“ an, übernimmt Korrekturen und eigene Zeilen und berechnet sie. Sie vergleicht die Zeilen von heute mit dem, was das BZSt nach den bisherigen Abgaben des Meldezeitraums hält (`as_filed()`, `correct()`): Jede Zeile zeigt „Bisher gemeldet“ und ob sie in der Datei steht. Die Datei meldet nur die geänderten Zeilen mit ihrer neuen Summe und storniert eine weggefallene Zeile mit 0. Ändert sich nichts, lässt sich die Berichtigung nicht abgeben. Wird sie abgegeben, steht die frühere Meldung auf „Ersetzt“. Wurde nach dem Anlegen einer Berichtigung eine andere Abgabe des Meldezeitraums vermerkt, ist die Berichtigung neu anzulegen.
+
+### Druckformat
+
+Das Druckformat „Zusammenfassende Meldung“ zeigt Unternehmen, eigene USt-IdNr., Meldezeitraum, Fälligkeit, Meldeart und Status, dann die Zeilen der Datei je USt-IdNr. und Art mit dem Kunden und die Summen je Art, bei einer Berichtigung mit „Bisher gemeldet“, dazu die Korrekturen mit Begründung und die Anmerkungen. Der Ausdruck ist keine Abgabe.
+
 ## Offene Punkte
 
 - **ZMDO über ERiC** mit Anzeige und Widerruf, sobald es die Hersteller-ID gibt.
-- **Frappe-Schicht:** Formular „Zusammenfassende Meldung“, Regeln in den Einstellungen, Belege mit Kunde, USt-IdNr. und Bestimmungsland aus Ausgangsrechnung, Zahlung und Journalbuchung, Prüfung der USt-IdNrn.
+- **Feiertage:** Die Fälligkeit folgt der Standard-Feiertagsliste des Unternehmens. Welche Feiertage für eine Frist beim BZSt gelten, sagt keine der Quellen.
 - **Rundung:** Das Abschneiden der Cent ist eine Annahme; eine Bestätigung des BZSt oder der ELSTER-Hotline steht aus.
 - **Zeile `#ve3.2.1`:** Das Beispiel der Hilfe hat sie, die allgemeine Anleitung nennt nur die Zeile `#v`. Ob der Import sie verlangt, ist nicht belegt; Steuerbote schreibt sie wie das Beispiel. Bringt die Versionstabelle eine neue Version, ändern sich `VERSION` und `EXCEL_VERSION`.
 - **Zeilenende:** Die Hilfe schreibt keines vor. Steuerbote folgt dem Beispiel: Zeilenvorschub, keiner nach der letzten Zeile.
 - **Verbringen** (§ 6a Absatz 2 UStG) braucht eine Zeile von Hand, siehe Übersteuern.
 - **Konsignationslager** (§ 6b UStG): Die Angaben lassen sich derzeit nicht im Verfahren der ZM übermitteln; das BZSt hält dafür ein eigenes Formular bereit [Q7, Q9]. Steuerbote meldet sie nicht.
 - **Nordirland als Bestimmungsland:** ERPNext kennt Nordirland nicht als Land. Ein Dreiecksgeschäft mit einer XI-Nummer bekommt `ZM-DREIECK-LAND`, wenn die Frappe-Schicht nicht „XI“ als Land übergibt.
-- **Dreiecksgeschäfte** kennt ERPNext nicht eigens; die Frappe-Schicht soll sie über die Konten der Kz 42 aus der Kontenzuordnung finden.
+- **Dreiecksgeschäfte** kennt ERPNext nicht eigens; Steuerbote findet sie über die Konten der Kz 42 aus der Kontenzuordnung. Ein Dreiecksgeschäft auf einem anderen Konto erkennt Steuerbote nicht.
 - **Prüfungen von ERiC**, die erst die Übermittlung betreffen, prüft der Kern nicht: kein Meldezeitraum in der Zukunft (170015020), eine ZM für zwei Monate erst ab dem zweiten Monat (170015019), höchstens zehn Jahre zurück (170015016).
 
 ## Quellen
