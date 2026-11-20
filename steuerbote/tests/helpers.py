@@ -276,7 +276,7 @@ def post_sales_invoice(
 	**fields,
 ) -> str:
 	"""A submitted Sales Invoice with the customer's tax_id, as ERPNext fetches it, and its GL Entries; ``fields``
-	go to the invoice, such as its addresses."""
+	go to the invoice, such as its addresses or the tax_id the customer had when the invoice was made."""
 	insert_record(
 		"Sales Invoice",
 		name=name,
@@ -284,10 +284,9 @@ def post_sales_invoice(
 		posting_date=posting_date,
 		customer=customer,
 		customer_name=customer,
-		tax_id=frappe.db.get_value("Customer", customer, "tax_id"),
 		docstatus=1,
 		is_opening="No",
-		**fields,
+		**{"tax_id": frappe.db.get_value("Customer", customer, "tax_id"), **fields},
 	)
 	post_ledger(company, "Sales Invoice", name, posting_date, rows)
 	return name
@@ -329,9 +328,16 @@ def post_payment_entry(
 
 
 def post_customer_journal_entry(
-	company: str, name: str, posting_date: str, rows: Iterable[tuple[str, Amount, Amount, str | None]]
+	company: str,
+	name: str,
+	posting_date: str,
+	rows: Iterable[tuple[str, Amount, Amount, str | None] | tuple[str, Amount, Amount, str | None, str]],
 ) -> str:
-	"""A submitted Journal Entry with one row per (account, debit, credit, customer or None) and its GL Entries."""
+	"""A submitted Journal Entry with one row per (account, debit, credit, customer or None) and its GL Entries.
+
+	A row may name a fifth value, the Sales Invoice it refers to, as a credit note entered as a Journal Entry
+	does.
+	"""
 	rows = list(rows)
 	insert_record(
 		"Journal Entry",
@@ -341,7 +347,7 @@ def post_customer_journal_entry(
 		voucher_type="Journal Entry",
 		docstatus=1,
 	)
-	for index, (account, debit, credit, customer) in enumerate(rows, start=1):
+	for index, (account, debit, credit, customer, *invoice) in enumerate(rows, start=1):
 		insert_record(
 			"Journal Entry Account",
 			name=f"{name}-{index}",
@@ -354,6 +360,8 @@ def post_customer_journal_entry(
 			credit=credit,
 			party_type="Customer" if customer else None,
 			party=customer,
+			reference_type="Sales Invoice" if invoice else None,
+			reference_name=invoice[0] if invoice else None,
 		)
 	post_ledger(company, "Journal Entry", name, posting_date, [row[:3] for row in rows])
 	return name

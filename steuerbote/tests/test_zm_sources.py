@@ -28,6 +28,8 @@ COMPANY = "Steuerbote Test ZM-Quellen GmbH"
 NORD = "Nord Logistik AB (Quellen)"
 SUD = "Sud Commerce SARL (Quellen)"
 ROMA = "Roma Servizi SRL (Quellen)"
+# The number Sud had when an invoice was made, before its current one; invented.
+EARLIER_NUMBER = "FR98765432109"
 ACCOUNTS = {
 	"8125": ("Steuerfreie innergemeinschaftliche Lieferungen", "Income"),
 	"8743": ("Gewährte Skonti innergemeinschaftliche Lieferungen", "Income"),
@@ -116,6 +118,22 @@ class TestZmSources(IntegrationTestCase):
 		post_sales_invoice(
 			COMPANY, "SINV-STZS-5", NORD, "2026-11-04", [(a["1400"], 1190, 0), (a["8400"], 0, 1190)]
 		)
+		cls.earlier_number = post_sales_invoice(
+			COMPANY,
+			"SINV-STZS-6",
+			SUD,
+			"2026-12-02",
+			[(a["1400"], 4000, 0), (a["8130"], 0, 4000)],
+			customer_address=cls.sud,
+			shipping_address_name=cls.shipped,
+			tax_id=EARLIER_NUMBER,
+		)
+		cls.credit_note = post_customer_journal_entry(
+			COMPANY,
+			"JE-STZS-3",
+			"2026-12-05",
+			[(a["8130"], 400, 0, None), (a["1400"], 0, 400, SUD, cls.earlier_number)],
+		)
 
 	def test_the_shares_of_kz_41_and_42_in_the_goods_months_and_of_kz_21_in_the_services_months(self):
 		october = ReportingPeriod.month(2026, 10)
@@ -158,6 +176,15 @@ class TestZmSources(IntegrationTestCase):
 			},
 		)
 		self.assertEqual(zm_sources.parties([]), {})
+
+	def test_a_journal_entry_takes_the_number_and_country_of_the_invoice_it_refers_to(self):
+		"""A credit note entered as a Journal Entry on a Kz 42 account refers to the Dreiecksgeschäft it reduces, so
+		it counts under the USt-IdNr. that invoice was made with and the country where its goods arrived, as a
+		payment of the invoice does."""
+		self.assertEqual(
+			zm_sources.parties([f"Journal Entry:{self.credit_note}"]),
+			{f"Journal Entry:{self.credit_note}": Party(SUD, SUD, EARLIER_NUMBER, "Belgium")},
+		)
 
 	def test_the_deliveries_of_each_month_of_the_window(self):
 		deliveries = zm_sources.deliveries(COMPANY, (date(2026, 9, 1), date(2026, 11, 30)), self.mapping)
