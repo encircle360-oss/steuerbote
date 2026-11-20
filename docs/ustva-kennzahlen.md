@@ -956,6 +956,103 @@ Kz 63 (Vorsteuer nach allgemeinen Durchschnittssätzen, § 23a UStG) geht auf 15
 
 Wer einen dieser Fälle hat, klärt Konto und Kennzahl mit der Steuerberatung und ergänzt die Zuordnung der eigenen Firma (Einstellungen geplant, Paket 1 der Roadmap). In die Vorgaben kommt eine Kennzahl erst, wenn Konto und Kennzahl bestätigt sind und eine Quelle dafür vorliegt, nach dem Ablauf in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
+## Ist-Versteuerung
+
+Steuerbote rechnet die Voranmeldung nach vereinbarten Entgelten (§ 16 Abs. 1 Satz 1 UStG, Soll-Versteuerung); in den Einstellungen kennt „Besteuerung“ (`taxation_type`) nur „Soll“. Dieser Abschnitt schätzt ein, was die Berechnung nach vereinnahmten Entgelten (Ist-Versteuerung) ändert, wie eine Buchhaltung sie buchen müsste, was ERPNext 16 dafür mitbringt und was Steuerbote bräuchte. Umgesetzt ist davon nichts. Die Quellen stehen am Ende des Abschnitts als [I1] bis [I12], alle am 20. November 2026 gelesen; was sie nicht belegen, steht unter [Offen zur Ist-Versteuerung](#offen-zur-ist-versteuerung).
+
+**Heute ist Steuerbote für Ist-Versteuerer nicht geeignet.** Bucht ein Unternehmen die Steuer seiner Rechnungen auf die nicht fälligen Konten, wie es die Ist-Versteuerung verlangt, hält die Meldung an, denn die Vorgaben beobachten diese Konten (siehe [Beobachtete Konten](#beobachtete-konten)). Bucht es sie gleich auf die fälligen Konten, meldet Steuerbote die Umsätze im Zeitraum der Rechnung statt der Zahlung, ohne es zu bemerken.
+
+### Was § 20 UStG ändert
+
+- **Wer.** Das Finanzamt kann auf Antrag gestatten, die Steuer „nicht nach den vereinbarten Entgelten (§ 16 Abs. 1 Satz 1), sondern nach den vereinnahmten Entgelten“ zu berechnen: wenn der Gesamtumsatz im vorangegangenen Kalenderjahr „nicht mehr als 800 000 Euro betragen hat“, wenn der Unternehmer nach § 148 AO von der Buchführungspflicht befreit ist, soweit er Umsätze aus einem freien Beruf im Sinne des § 18 Abs. 1 Nr. 1 EStG ausführt, oder wenn er eine juristische Person des öffentlichen Rechts ist, soweit sie weder freiwillig noch gesetzlich verpflichtet Bücher führt (§ 20 Satz 1 UStG [I1]). Die Gestattung „erstreckt sich wegen des Prinzips der Abschnittsbesteuerung stets auf das volle Kalenderjahr“; für freie Berufe wird sie nicht erteilt, „wenn der Unternehmer für die in der Vorschrift genannten Umsätze Bücher führt“ (UStAE 20.1 Abs. 1 Satz 4 und 7 [I5]).
+- **Wann die Steuer entsteht.** Statt „mit Ablauf des Voranmeldungszeitraums, in dem die Leistungen ausgeführt worden sind“, entsteht sie „mit Ablauf des Voranmeldungszeitraums, in dem die Entgelte vereinnahmt worden sind“ (§ 13 Abs. 1 Nr. 1 Buchst. a und b UStG [I2]). „Als Zeitpunkt der Vereinnahmung gilt bei Überweisungen auf ein Bankkonto grundsätzlich der Zeitpunkt der Gutschrift.“ (UStAE 13.6 Abs. 1 Satz 3 [I5]) Eine Rechnung vom 20. November, deren Betrag am 8. Januar gutgeschrieben wird, gehört damit in die Voranmeldung für Januar, nicht für November. Bei einer Teilzahlung zählt der vereinnahmte Teil; DATEV rechnet die Steuer dafür aus dem Zahlbetrag [I9].
+- **In der Voranmeldung.** Zu den Zeilen 13 bis 16 (Kz 81, 86, 87 und 35/36) sagt die Anleitung: „Bitte tragen Sie hier die Bemessungsgrundlagen Ihrer Umsätze und die erhaltenen Anzahlungen ein, für die die Umsatzsteuer entstanden ist.“ [I6] Bei Ist-Versteuerung sind das die Entgelte, die im Zeitraum vereinnahmt wurden; eine eigene Regel dafür hat die Anleitung nicht. Ihr einziger Satz zur Ist-Versteuerung betrifft die Steuersätze von 2020: Bei Ist-Versteuerung gehören „im aktuellen Voranmeldungszeitraum vereinnahmte Beträge für nach dem 30. Juni 2020 und vor dem 1. Januar 2021 ausgeführte Umsätze“ in Zeile 16 [I6], also in Kz 35/36, der die Vorgaben kein Konto zuordnen. DATEV schreibt: „Bei der Ist-Versteuerung erfolgt der Ausweis von steuerpflichtigen und steuerfreien inländischen Umsätzen in der Umsatzsteuer-Voranmeldung (UStVA) erst bei der Zahlungseingangsbuchung (Geldfluss).“ [I9]
+- **Was nicht von der Zahlung abhängt.** Eigene Zeitpunkte behalten:
+  - unentgeltliche Wertabgaben nach § 3 Abs. 1b und 9a UStG: „mit Ablauf des Voranmeldungszeitraums, in dem diese Leistungen ausgeführt worden sind“ (§ 13 Abs. 1 Nr. 2 UStG [I2]), ebenso Leistungen an das Personal ohne besonderes Entgelt (UStAE 13.6 Abs. 2 [I5]);
+  - der innergemeinschaftliche Erwerb (Kz 89 und 93): „mit Ausstellung der Rechnung, spätestens jedoch mit Ablauf des dem Erwerb folgenden Kalendermonats“ (§ 13 Abs. 1 Nr. 6 UStG [I2]);
+  - die Steuer des Leistungsempfängers (Kz 46/47 und 84/85): nach § 13b Abs. 1 und 2 UStG [I3];
+  - innergemeinschaftliche Lieferungen (Kz 41), sonstige Leistungen nach § 3a Abs. 2 UStG (Kz 21) und Lieferungen im Dreiecksgeschäft (Kz 42): Die Angaben zu innergemeinschaftlichen Lieferungen sind „in dem Voranmeldungszeitraum zu machen, in dem die Rechnung für diesen Umsatz ausgestellt wird“, spätestens in dem, in dem der Monat nach der Ausführung endet, die zu sonstigen Leistungen und Dreiecksgeschäften in dem, „in dem diese Umsätze ausgeführt worden sind“ (§ 18b Satz 2 und 3 UStG [I3]); die Zusammenfassende Meldung folgt ohnehin § 18a Abs. 8 UStG;
+  - der eigene Vorsteuerabzug: Seine Voraussetzungen „müssen insgesamt erfüllt werden. Das gilt auch für Leistungsempfänger, die die Steuer für ihre Umsätze nach vereinnahmten Entgelten berechnen (§ 20 UStG).“ (UStAE 15.2 Abs. 2 Satz 2 und 3 [I5])
+
+  DATEV fasst es so: „Alle anderen Steuersachverhalte werden unabhängig vom Zuflussprinzip (Ist-Versteuerung) gebucht.“ [I9]
+- **Wechsel.** „Wechselt der Unternehmer die Art der Steuerberechnung, so dürfen Umsätze nicht doppelt erfasst werden oder unversteuert bleiben.“ (§ 20 Satz 3 UStG [I1]) „Im Falle eines bereits sollversteuerten Umsatzes bleibt der Zeitpunkt des Entstehens der Steuer auch dann unverändert, wenn der Unternehmer zur Istversteuerung wechselt und das Entgelt noch nicht vereinnahmt hat.“ Umgekehrt gilt die Ist-Versteuerung für Umsätze aus Jahren mit Gestattung weiter, auch nach einem Wechsel zur Soll-Versteuerung (UStAE 13.6 Abs. 3 [I5]).
+- **Ab 2028 auch beim Leistungsempfänger.** Das Jahressteuergesetz 2024 ändert zum 1. Januar 2028 zwei Vorschriften [I7]: Die Rechnung eines Ist-Versteuerers trägt die Angabe „Versteuerung nach vereinnahmten Entgelten“ (§ 14 Abs. 4 Satz 1 Nr. 6a UStG neu), und ihr Empfänger zieht die Vorsteuer daraus nur ab, „soweit eine Zahlung auf eine ausgeführte Leistung geleistet worden ist“ (§ 15 Abs. 1 Satz 1 Nr. 1 Satz 2 Buchst. b UStG neu), erstmals für Rechnungen, „die nach dem 31. Dezember 2027 ausgestellt werden“ (§ 27 Abs. 41 UStG neu). Das trifft jedes Unternehmen, das Steuerbote nutzt, auch bei Soll-Versteuerung: Kz 66 hängt für solche Rechnungen dann an der Zahlung. Am 20. November 2026 enthält § 15 UStG diese Bedingung noch nicht [I4].
+
+### Buchung der Ist-Versteuerung
+
+DATEV bucht die Ist-Versteuerung über eigene Konten [I9, I10]: „Bei der Rechnungsausgangsbuchung (Umsatzerlös) wird die Umsatzsteuer von steuerpflichtigen inländischen Umsätzen errechnet und automatisch auf Umsatzsteuer nicht fällig gebucht.“ „Bei der Zahlungseingangsbuchung (Geldfluss) erfolgt automatisch eine abgeleitete Umbuchung von „Umsatzsteuer nicht fällig“ auf „Umsatzsteuer fällig“. Bemessungsgrundlage und Umsatzsteuer (bei steuerfreien Umsätzen nur die Bemessungsgrundlage) werden in der UStVA ausgewiesen.“ [I9] Die Konten dafür, geprüft an den Kontenrahmen 2026 [I8]:
+
+| Zweck | SKR03 | SKR04 | Bezeichnung laut Kontenrahmen 2026 |
+|---|---|---|---|
+| Steuer der Rechnung, 19 % | 1766 | 3816 | Umsatzsteuer nicht fällig 19 % |
+| Steuer der Rechnung, 7 % | 1761 | 3811 | Umsatzsteuer nicht fällig 7 % |
+| Steuer bei Zahlung, 19 % | 1776 | 3806 | Umsatzsteuer 19 % |
+| Steuer bei Zahlung, 7 % | 1771 | 3801 | Umsatzsteuer 7 % |
+| Umstellung von Soll auf Ist | 1390 | 1490 | Verrechnungskonto Ist-Versteuerung |
+
+Umgebucht wird von 1766 und 1761 auf 1776 und 1771, in SKR04 von 3816 und 3811 auf 3806 und 3801 [I10]. Dazu führen die Kontenrahmen 1760 „Umsatzsteuer nicht fällig“ und für im Inland steuerpflichtige EU-Lieferungen 1762 und 1764 (SKR04 3810, 3812 und 3814); für 1762 und 1764 nennen die gelesenen DATEV-Dokumente kein Gegenkonto. Das Verrechnungskonto dient „zur Erfassung von Vorgängen im Zusammenhang mit der Umstellung von der Soll- auf die Ist-Versteuerung“ und wird „insbesondere genutzt, um Forderungsausfälle abzubilden, bei denen die Umsatzsteuer bereits im Rahmen der Soll-Versteuerung berücksichtigt wurde“ [I10].
+
+Ein Beispiel in SKR03: eine Rechnung über 1.000 € zuzüglich 19 % vom 20. November, bezahlt am 8. Januar.
+
+| Tag | Soll | Haben | Betrag | Voranmeldung |
+|---|---|---|---|---|
+| 20. November | Forderung | 8400 | 1.000,00 | noch nicht |
+| 20. November | Forderung | 1766 | 190,00 | noch nicht |
+| 8. Januar | Bank | Forderung | 1.190,00 | |
+| 8. Januar | 1766 | 1776 | 190,00 | Januar: Kz 81 mit 1.000 |
+
+Zahlt der Kunde am 8. Januar nur 595 €, werden 95 € umgebucht (595 × 19/119), und Kz 81 erhält 500 €.
+
+**In ERPNext** bucht eine Vorlage für Verkaufssteuern und -abgaben (Sales Taxes and Charges Template) mit dem nicht fälligen Konto statt 1776 die Steuer jeder Ausgangsrechnung so, wie DATEV es tut, denn ERPNext bucht die Steuer einer Rechnung auf das Konto ihrer Steuerzeile [I11]. Dabei ist zu beachten: Die Vorlage SKR03 von ERPNext enthält keine nicht fälligen Konten, die Vorlage SKR04 enthält 3810, 3811, 3812, 3814 und 3816 ohne Kontoart, und als Konto einer Steuerzeile bietet ERPNext nur Konten der Arten Tax, Chargeable und Expense Account an [I11]; die Konten sind also anzulegen oder als Tax zu kennzeichnen. Die Umbuchung bei Zahlung macht ERPNext nicht, siehe unten; ohne sie bleibt eine Journalbuchung je Zahlung von Hand. Für ein Skonto bucht ERPNext mit der Einstellung „Book tax loss on early payment discount“ (`book_tax_discount_loss`) den Steueranteil auf das Steuerkonto der Rechnung [I11], bei Ist-Versteuerung also auf das nicht fällige Konto.
+
+### Was ERPNext 16 mitbringt
+
+Keine Ist-Versteuerung. Geprüft im Quelltext von ERPNext 16.60.0 und des Frappe Framework 16.60.0 und in der App erpnext_germany (Zweig version-16) [I11]:
+
+- Eine Ausgangsrechnung bucht ihre Steuer beim Buchen auf das Konto ihrer Steuerzeile (`sales_invoice.py`, Zeile 2009). Der Abgleich von Zahlungen mit Rechnungen (`reconcile_against_document` in `erpnext/accounts/utils.py`) bucht keine Steuer um. Die Buchhaltungseinstellungen haben kein Feld, das die Steuer an die Zahlung bindet; ihre Steuerfelder betreffen Steuerkategorie und Steuervorlagen, Rundung, Druck und den Steueranteil am Skonto.
+- Die Zahlung (Payment Entry) hat eine Tabelle „Advance Taxes and Charges“. Ihre Beträge rechnet ERPNext aus dem Zahlbetrag (`current_tax_amount = (tax_rate / 100.0) * self.paid_amount_after_tax`, Zeile 2056), nicht aus den bezahlten Rechnungen; keine Zeile verweist auf eine Rechnung, und nichts bucht sie später zurück. Zwei Zeilen mit festem Betrag, „Deduct“ auf dem nicht fälligen und „Add“ auf dem fälligen Konto, ergäben nach dem Code (`add_tax_gl_entries`, ab Zeile 1818) die Umbuchung, wenn jemand den Betrag je Zahlung von Hand einträgt.
+- Über den Hook `regional_overrides` lässt sich ERPNext je Land erweitern, etwa um `add_regional_gl_entries` der Zahlung (Zeile 3855, aufgerufen in Zeile 1504). Für Deutschland trägt ERPNext keinen ein, erpnext_germany auch nicht. Über diesen Hook könnte eine App die Umbuchung in die Buchungen der Zahlung selbst schreiben.
+- Bei ERPNext sind die Issues #42843 „Incorrect Taxes on Advance Payment“ und #34467 „Invoice on Account/Advance Invoice“ offen; der Pull Request #54921 „feat(PE): carry advance tax through invoice consumption“ wurde am 31. Oktober 2026 ohne Merge geschlossen, und #56063 bringt Berichte zur Gewinnermittlung nach Zahlungen, keine Umsatzsteuer [I12].
+
+### Was Steuerbote bräuchte
+
+1. **Besteuerung je Jahr.** „Ist“ als zweite Möglichkeit in den Einstellungen, je Unternehmen und Kalenderjahr, weil die Gestattung immer für ein ganzes Jahr gilt [I5].
+2. **Vorgaben je Besteuerungsart.** Die nicht fälligen Konten 1760, 1761, 1762, 1764 und 1766 (SKR04 3810, 3811, 3812, 3814 und 3816) bleiben bei Soll beobachtet. Bei Ist tragen sie planmäßig die Steuer der offenen Rechnungen: Sie gehen in keine Kennzahl ein und halten die Meldung nicht an.
+3. **Kz 81 und 86 aus den fälligen Konten.** Bei Ist buchen die Erlöskonten (8400 und die übrigen Grundlagen von Kz 81 und 86) mit der Rechnung und dürfen deshalb nicht mehr in Kz 81 und 86 eingehen. An ihre Stelle tritt die Steuer, die im Zeitraum fällig wird: Kz 81 ist der Saldo im Haben von 1776 (SKR04 3806) im Zeitraum geteilt durch 19 %, Kz 86 der von 1771 (3801) geteilt durch 7 %. Das erfasst die Umbuchungen bei Zahlung ebenso wie Umsätze, deren Steuer gleich auf das fällige Konto gebucht wird, etwa unentgeltliche Wertabgaben. Der Kern bräuchte dafür eine Regel, die die Grundlage aus einem Steuerkonto ableitet, das Gegenstück zum Steuersatz einer Regel heute (`AccountRule.tax_rate`). Weil die Steuer jeder Zahlung auf Cent gerundet ist, weicht die abgeleitete Grundlage je Zahlung um wenige Cent von der vereinnahmten ab. Genau wäre die Grundlage aus den Zahlungen selbst, Zahlbetrag abzüglich Steueranteil je bezahlter Rechnung; die bezahlten Rechnungen einer Zahlung liest die Frappe-Schicht schon heute für die Zusammenfassende Meldung (`zm_sources.py`). Steuerfreie inländische Umsätze haben kein fälliges Konto; sind sie bei Ist erst mit der Zahlung zu melden, wie DATEV es tut [I9], geht es für sie nur über die Zahlungen.
+4. **Verprobung bei Ist.** Heute vergleicht sie je Beleg die gebuchte Steuer mit der Steuer auf die Grundlagen. Bei Ist wäre je Zahlung zu prüfen, ob die Umbuchung dem Steueranteil des Zahlbetrags entspricht, und am Ende des Zeitraums, ob der Saldo der nicht fälligen Konten zum Steueranteil der offenen Posten passt.
+5. **Die Umbuchung.** Entweder bucht sie die Buchhaltung von Hand und Steuerbote prüft sie, oder Steuerbote bucht sie selbst, etwa über `add_regional_gl_entries` in der Zahlung. Steuerbote würde damit zum ersten Mal selbst buchen, und Zahlungen, die erst später über den Zahlungsabgleich oder als Journalbuchung einer Rechnung zugeordnet werden, bräuchten einen eigenen Weg.
+6. **Wechsel.** Rechnungen, die vor dem Wechsel zu Ist schon nach Soll gemeldet sind, dürfen bei Zahlung nicht noch einmal in Kz 81 eingehen, und umgekehrt [I5]; DATEV unterbindet dafür die erneute Umbuchung und bucht Forderungsausfälle solcher Rechnungen über das Verrechnungskonto [I10]. In den Vorgaben steht 1490 (SKR04) heute als bewusst ohne Kennzahl; 1390 (SKR03) liegt außerhalb der Bereiche der Vor- und Umsatzsteuer und kommt in den Vorgaben nicht vor.
+7. **Tests.** Wie bei der Soll-Versteuerung ein an echten Buchungen geprüfter Monat (siehe [Beispiel](#beispiel)) und Frappe-Tests für Teilzahlung, Skonto, Gutschrift, Erstattung und Stornierung mit unveränderlichem Hauptbuch.
+
+### Empfehlung für die Roadmap
+
+1. **Nicht in Stufe 2.** „Besteuerung“ bleibt bei „Soll“, bis die Ist-Versteuerung vollständig ist; Ist-Versteuerer können Steuerbote bis dahin nicht einsetzen.
+2. **Ein eigenes Paket „Ist-Versteuerung“ nach der echten Übermittlung**, sobald ein Unternehmen mit Ist-Versteuerung Steuerbote einsetzen will, in dieser Reihenfolge: die Buchungsweise wie bei DATEV mit einer Steuerberatung festlegen; im Kern die Besteuerung je Jahr, Vorgaben je Besteuerungsart und die Grundlage aus den fälligen Konten oder aus den Zahlungen; der Abgleich der nicht fälligen Konten mit den offenen Posten; die Umbuchung zuerst von Hand mit Prüfung durch Steuerbote, eine automatische Umbuchung erst nach Erprobung des Hooks; zuletzt der Wechsel zwischen Soll und Ist.
+3. **Unabhängig davon bis Ende 2027** die Vorsteuer aus Rechnungen Ist-versteuernder Lieferanten: Für ihre Rechnungen ab 2028 hängt Kz 66 an der Zahlung [I7]. Das betrifft jedes Unternehmen und gehört in die Vorbereitung des Jahreswechsels 2028.
+
+### Offen zur Ist-Versteuerung
+
+- Ob das Finanzamt Kz 81 und 86 aus der gerundeten Steuer der Zahlungen gelten lässt oder die vereinnahmten Entgelte auf den Cent verlangt, sagt keine der Quellen; das klärt die Steuerberatung.
+- Steuerfreie inländische Umsätze (etwa Kz 43 und 48) meldet DATEV bei Ist-Versteuerung erst mit der Zahlung [I9]; eine Vorschrift oder Verwaltungsanweisung dazu steht in den gelesenen Quellen nicht.
+- Für 1762 und 1764 (SKR04 3812 und 3814) nennen die gelesenen DATEV-Dokumente kein Gegenkonto der Umbuchung.
+- Die Umbuchung über zwei Zeilen „Advance Taxes and Charges“ und über `add_regional_gl_entries` ist nur aus dem Quelltext gelesen, nicht an einer Site erprobt.
+- Gesetze, die nach Mitte Oktober 2026 verkündet wurden, sind nicht darauf geprüft, ob sie die Änderungen des Jahressteuergesetzes 2024 zum 1. Januar 2028 verschieben oder ändern.
+
+### Quellen zur Ist-Versteuerung
+
+- **[I1]** § 20 UStG „Berechnung der Steuer nach vereinnahmten Entgelten“: <https://www.gesetze-im-internet.de/ustg_1980/__20.html>
+- **[I2]** § 13 UStG „Entstehung der Steuer“: <https://www.gesetze-im-internet.de/ustg_1980/__13.html>
+- **[I3]** § 13b UStG „Leistungsempfänger als Steuerschuldner“: <https://www.gesetze-im-internet.de/ustg_1980/__13b.html>; § 18b UStG: <https://www.gesetze-im-internet.de/ustg_1980/__18b.html>
+- **[I4]** § 15 UStG „Vorsteuerabzug“: <https://www.gesetze-im-internet.de/ustg_1980/__15.html>
+- **[I5]** Umsatzsteuer-Anwendungserlass, Stand 13. November 2026, Abschnitte 13.6, 15.2 Abs. 2 und 20.1: <https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Steuerarten/Umsatzsteuer/Umsatzsteuer-Anwendungserlass/Umsatzsteuer-Anwendungserlass-aktuell.pdf?__blob=publicationFile&v=61> (SHA-256 `406cda32cf956d29f2ffde5079c8a7f963a763aa47615c6652148856a23e4c2e`)
+- **[I6]** Anleitung zur Umsatzsteuer-Voranmeldung 2026 (USt 1 E), Zeilen 13 bis 16, im BMF-Schreiben vom 29. Dezember 2025, siehe [Quelle](#quelle) (SHA-256 `82e7d63a0faec542bb184acb438eaf4ce90a2d7db067bb47f92ae13b4b17613d`)
+- **[I7]** Jahressteuergesetz 2024 vom 2. Dezember 2024, BGBl. 2024 I Nr. 387, Artikel 27 und Artikel 56 Absatz 12 („Die Artikel 27 und 30 treten am 1. Januar 2028 in Kraft.“): <https://www.recht.bund.de/bgbl/1/2024/387/regelungstext.pdf?__blob=publicationFile&v=1> (SHA-256 `5ed5fd277dac16360d53acc403d3a2cb0b2bf798b2e511c5c2917a8a869c8f4c`)
+- **[I8]** DATEV-Kontenrahmen SKR 03 (Art.-Nr. 11174) und SKR 04 (Art.-Nr. 11175), „Gültig für 2026“, siehe [Quelle](#quelle): SKR03 1390 (Funktion F), 1760, 1761, 1762, 1764, 1766, 1771 und 1776 (Funktion S); SKR04 1490 (F), 3801, 3806, 3810, 3811, 3812, 3814 und 3816 (S)
+- **[I9]** DATEV Dok.-Nr. 1080673 „Besondere Regeln und Vereinfachungen für die Buchung der Ist-Versteuerung“, zuletzt aktualisiert am 26. September 2026: <https://wissensplattform.apps.datev.de/help/document/1080673>
+- **[I10]** DATEV Dok.-Nr. 1034841 „Umstellung von Soll-Versteuerung auf Ist-Versteuerung in den DATEV-Rechnungswesen-Programmen“, Stand 4. Juni 2026: <https://apps.datev.de/help-center/documents/1034841>; DATEV Dok.-Nr. 5360294 „Verrechnungskonto Ist-Versteuerung - Kontenerläuterung“ vom 1. Juni 2026: <https://apps.datev.de/knowledge/professional/documents/5360294>
+- **[I11]** ERPNext 16.60.0, <https://github.com/frappe/erpnext/tree/v16.60.0>: `erpnext/accounts/doctype/sales_invoice/sales_invoice.py` (Zeile 2009), `erpnext/accounts/doctype/accounts_settings/accounts_settings.json`, `erpnext/accounts/doctype/payment_entry/payment_entry.json` (Tabelle `taxes`, Zeilen 607 bis 610), `erpnext/accounts/doctype/payment_entry/payment_entry.py` (`add_tax_gl_entries` ab Zeile 1818, Zeile 2056, `split_early_payment_discount_loss` ab Zeile 3659, `add_regional_gl_entries` in den Zeilen 1504 und 3855), `erpnext/accounts/utils.py` (`reconcile_against_document` ab Zeile 510), `erpnext/__init__.py` und `erpnext/hooks.py` (`regional_overrides`, Zeilen 684 bis 697), `erpnext/public/js/controllers/accounts.js` (Zeilen 25 bis 37) und die Vorlagen `de_kontenplan_SKR03.json` und `de_kontenplan_SKR04.json` (dort Zeilen 766 und 1456 bis 1472) unter `erpnext/accounts/doctype/account/chart_of_accounts/verified/`; Frappe Framework 16.60.0; erpnext_germany, Zweig version-16: <https://github.com/alyf-de/erpnext_germany/tree/version-16>
+- **[I12]** frappe/erpnext, Issues <https://github.com/frappe/erpnext/issues/42843> und <https://github.com/frappe/erpnext/issues/34467>, Pull Requests <https://github.com/frappe/erpnext/pull/54921> und <https://github.com/frappe/erpnext/pull/56063>
+
 ## Zeiträume und Fristen
 
 [`period.py`](../steuerbote/ustva/period.py) beschreibt Voranmeldungszeiträume und ihre Fristen:
