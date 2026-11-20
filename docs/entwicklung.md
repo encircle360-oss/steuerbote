@@ -10,6 +10,7 @@ steuerbote/                    Repository
 │   ├── hooks.py               App-Metadaten, setzt ERPNext voraus, Eintrag in der App-Übersicht, nennt die Fixtures der App und nimmt die Meldungen vom Löschen der Transaktionen aus
 │   ├── permissions.py         wem die App-Übersicht Steuerbote zeigt
 │   ├── ustva/                 Rechenkern der Umsatzsteuer-Voranmeldung, reines Python ohne Frappe-Import
+│   │   ├── years.py           Jahrestabelle: welche Jahre Steuerbote abgibt und was jedes Jahr braucht
 │   │   ├── kennzahlen.py      Katalog der Kennzahlen des Vordrucks USt 1 A je Jahrgang, bisher 2026
 │   │   ├── rounding.py        Rundung: Bemessungsgrundlagen in vollen Euro, Steuern in Cent
 │   │   ├── mapping.py         Kontenzuordnung: AccountRule, TaxCheck, Mapping
@@ -17,6 +18,8 @@ steuerbote/                    Repository
 │   │   ├── calculation.py     calculate(): Buchungszeilen zu Kennzahlen, Summen, Kz 83 und Verprobung
 │   │   ├── period.py          Voranmeldungszeiträume, Fristen und ELSTER-Zeitraumcodes
 │   │   ├── plausibility.py    Vorperiodenvergleich und Hinweise aus Rechnungen, Hauptbuch und Vergleich
+│   │   ├── yearcheck.py       Jahresprüfung: Daten eines Jahres gegen Jahresdokumentation, Schema und Datenartversionmatrix
+│   │   ├── documentation.py   liest diese Dateien aus der entpackten ERiC-Dokumentation
 │   │   └── tests/             Unit-Tests des Kerns
 │   ├── elster/                ELSTER, reines Python ohne Frappe-Import
 │   │   ├── steuernummer.py    Steuernummer im 13-stelligen ELSTER-Format
@@ -182,9 +185,53 @@ Bei Tests bricht ein neuer Lauf für denselben Pull Request oder Branch den lauf
 - **Python:** 3.14, in `requires-python`, als `target-version` von ruff und in der CI.
 - **Entwicklungswerkzeuge** sind in `requirements-dev.txt` exakt gepinnt, die pre-commit-Hooks über `rev`, semgrep, gitleaks und zizmor in den Workflows. Einige Versionen stehen an mehreren Stellen: ruff in `requirements-dev.txt` und `.pre-commit-config.yaml`, zizmor zusätzlich in `security.yml`. Ein Update zieht alle Stellen gleich.
 - **lxml** baut das XML für ELSTER. Frappe 16 bringt es selbst mit, ohne eine Version festzulegen. `pyproject.toml` verlangt deshalb nur `lxml>=6.0,<7`, damit die App neben Frappe kein anderes lxml erzwingt, und `requirements-dev.txt` pinnt die Version, mit der die Tests laufen.
-- **ERiC-Dokumentation** für die Schematests: Adresse und SHA-256-Summe der Zip-Datei stehen in `tests.yml`, die Version zusätzlich in `steuerbote/elster/tests/eric_schema.py`.
+- **ERiC-Dokumentation** für die Schematests und die Jahresprüfung: Adresse und SHA-256-Summe der Zip-Datei stehen in `tests.yml`, die Version zusätzlich in `steuerbote/elster/tests/eric_schema.py`. Zum Jahreswechsel kommt eine Version, die das neue Jahr kennt, siehe [Jahreswechsel](#jahreswechsel).
 - **Neue Abhängigkeiten** nur mit Grund, exakt gepinnt und im Pull Request begründet.
 - **Dependabot** meldet jede Woche neue Versionen für pip und GitHub Actions.
+
+## Jahreswechsel
+
+Ein neues Jahr ist eine Änderung an Daten, kein Umbau. ELSTER nimmt eine Voranmeldung und den Vordruck USt 1 H nur in der Datenart ihres Jahres an, deshalb hat jedes Jahr seine Daten, je Teil in einer eigenen Tabelle. Welche Jahre es gibt, sagt `YEARS` in [`steuerbote/ustva/years.py`](../steuerbote/ustva/years.py), mit dem BMF-Schreiben der Vordrucke jedes Jahres. Jede andere Tabelle hält genau diese Jahre: [`test_years.py`](../steuerbote/ustva/tests/test_years.py) schlägt fehl, solange einer Tabelle ein Jahr fehlt oder eine ein Jahr zu viel hat.
+
+| Teil | Tabelle | Quelle | Test |
+|---|---|---|---|
+| Jahr und BMF-Schreiben der Vordrucke | `YEARS` in `steuerbote/ustva/years.py` | BMF-Schreiben „Muster der Vordrucke im Umsatzsteuer-Voranmeldungs- und -Vorauszahlungsverfahren“ | `test_years.py` |
+| Kennzahlen des Vordrucks USt 1 A | `CATALOGUES` in `steuerbote/ustva/kennzahlen.py` | Vordruck USt 1 A und Anleitung USt 1 E | `test_kennzahlen.py`, Jahresprüfung |
+| Schema `Anmeldungssteuern`: Namensraum, Reihenfolge der Elemente, Kennzahlen ohne Vorzeichen | `SCHEMAS` in `steuerbote/elster/ustva_xml.py` | `UStVA-<Jahr>.xsd` der ERiC-Dokumentation | Jahresprüfung, `test_schema.py` |
+| Felder und Regeln des Vordrucks USt 1 H | `LAYOUTS` in `steuerbote/dauerfrist/form.py` | `Jahresdokumentation_UStVA_<Jahr>.ods`, Vordruck USt 1 H | Jahresprüfung, `test_form.py` |
+| datenartVersion und Plugin von ERiC | keine: `years.py` bildet `UStVA_<Jahr>` und `checkUStVA_<Jahr>` aus dem Jahr | `Datenartversionmatrix.ods` | Jahresprüfung, `test_years.py`, `test_runtime.py` |
+| Zusammenfassende Meldung | keine: Die Datenart ZMDO hat für jedes Jahr die datenartVersion `ZMDO`, das Plugin `checkZMDO` und das Schema 000005 (`zm_xml.py`); das Jahr des Meldezeitraums steht in ihren Daten (Feld `jahr`) | `Datenartversionmatrix.ods`, `zm_000005.xsd` | Jahresprüfung, `test_zm_schema.py` |
+
+### Jahresprüfung
+
+`python -m steuerbote.ustva.yearcheck` vergleicht die Daten eines Jahres mit der entpackten ERiC-Dokumentation, im selben Verzeichnis wie bei `STEUERBOTE_ERIC_DOC_DIR` (siehe [Schematests](#schematests)):
+
+```bash
+python -m steuerbote.ustva.yearcheck /tmp/eric-doc 2026
+```
+
+Ohne Jahr prüft der Befehl jedes Jahr von `YEARS`. Er liest `Jahresdokumentation_UStVA_<Jahr>.ods` mit den Blättern „Anmeldungssteuern - Felder“ und „Anmeldungssteuern - Regeln“, `UStVA-<Jahr>.xsd` und `Datenartversionmatrix.ods`, alles mit der Standardbibliothek ([`documentation.py`](../steuerbote/ustva/documentation.py)), und vergleicht ([`yearcheck.py`](../steuerbote/ustva/yearcheck.py)):
+
+- den Katalog mit den Feldern des Kontexts `Umsatzsteuervoranmeldung`: welche Kennzahlen es gibt, ihre Art nach dem Formatkennzeichen und ihre Zeile nach der Vordruckzeile; mit den Regeln: die Paare aus Bemessungsgrundlage und Steuer, die `FelderNichtGemeinsamAngegeben` nur zusammen annimmt, und Kz 83 als einzige Kennzahl, die eine Regel verlangt; dazu mit den Elementen des Schemas und deren Typen;
+- das Schema von `ustva_xml.py` mit dem XSD: Namensraum, Version, Reihenfolge der Elemente und die Kennzahlen ohne Vorzeichen, die auch die Formatkennzeichen U und % der Jahresdokumentation nennen;
+- das Layout des Vordrucks USt 1 H mit Feldern und Regeln seiner beiden Kontexte und mit deren Elementen im Schema;
+- datenartVersion und Plugin des Jahres und die der ZMDO mit der Datenartversionmatrix.
+
+Je Abweichung schreibt er eine Zeile, links die Daten von Steuerbote, rechts die Datei und was sie sagt, etwa `catalogue 2026, Kz 66: line 38; Jahresdokumentation_UStVA_2026.ods: Vordruckzeile 37`. Für 2026 gibt er mit der ERiC-Dokumentation 44.3.6.0 nichts aus. Er endet mit 0, wenn er nichts ausgibt, mit 1 bei einer Abweichung und mit 2, wenn die Dokumentation eines Jahres fehlt. Hat eine Tabelle das Jahr noch nicht, nennt die erste Zeile diese Tabellen, und der Befehl vergleicht an ihrer Stelle die Daten des neuesten Jahres: Seine Zeilen sind dann genau das, was das neue Jahr ändert. In der CI prüft `DocumentationTest` in [`test_yearcheck.py`](../steuerbote/ustva/tests/test_yearcheck.py) jedes Jahr von `YEARS` auf diese Weise.
+
+### Schritt für Schritt
+
+Mitte November erscheint die Beta des neuen Hauptrelease von ERiC; ihre Dokumentation enthält Jahresdokumentation und Schema des neuen Jahres ([ERiC](eric.md#versionen-und-jahreswechsel)). Das BMF-Schreiben mit den Vordruckmustern folgt im Dezember, für 2026 am 29. Dezember 2025. Die ersten Meldungen des neuen Jahres sind am 10. Februar fällig: die Sondervorauszahlung und, ohne Dauerfristverlängerung, die Voranmeldung für Januar. Jeder Schritt beginnt mit dem Test.
+
+1. **BMF-Schreiben.** Das Schreiben zu den Vordruckmustern des neuen Jahres lesen; es nennt die Änderungen in einem eigenen Abschnitt, und die Anleitungen markieren sie mit „Neu!“. Das Jahr mit Datum, Geschäftszeichen und Adresse des Schreibens in `YEARS` eintragen und die Jahre in `test_files_2026` von `test_years.py` nennen. Ab dann schlagen `PartsTest` fehl, bis jede Tabelle das Jahr hat, und `test_the_data_of_each_year_cite_its_bmf_letter`, bis die Docstrings von `kennzahlen.py` und `form.py` das Schreiben zitieren.
+2. **Katalog.** Erst die Tabelle des neuen Vordrucks USt 1 A in `test_kennzahlen.py` nach dem Muster von `FORM_UST_1_A_2026`, dann `_FORM_<Jahr>` in `kennzahlen.py` mit seinem Eintrag in `CATALOGUES`. Der Katalog des Vorjahres bleibt. Was dabei zu vergleichen ist, auch für Rundung, Fälligkeit und die Vorgaben der Kontenrahmen, steht in [Kennzahlen und Kontenzuordnung](ustva-kennzahlen.md#jahreswechsel). Test: `test_kennzahlen.py`.
+3. **Jahresdokumentation.** Die Dokumentation des neuen Release laden und entpacken und `python -m steuerbote.ustva.yearcheck <Verzeichnis> <Jahr>` laufen lassen, gern schon, bevor eine Tabelle das Jahr hat. Jede Zeile wird zu einer Änderung im Katalog, im Schema oder im Layout, bis der Befehl nichts mehr ausgibt. Nennt er ein Formatkennzeichen, das `KINDS_BY_FORMAT` nicht kennt, oder eine weitere Kennzahl, die eine Regel verlangt, muss zuerst der Schreiber des XML lernen, sie zu schreiben. Test: Jahresprüfung, in der CI `DocumentationTest`.
+4. **XSD.** Den Eintrag des Jahres in `SCHEMAS` von `ustva_xml.py` anlegen: Namensraum (`targetNamespace` von `UStVA-<Jahr>.xsd`), Reihenfolge der `xs:sequence` von `Umsatzsteuervoranmeldung` und die Kennzahlen ohne Vorzeichen. Dann die gepinnte ERiC-Dokumentation auf eine Version heben, die das Jahr kennt: Adresse und SHA-256-Summe in beiden Jobs von `.github/workflows/tests.yml`, die Version in `steuerbote/elster/tests/eric_schema.py`. Mit der Beta-Dokumentation 45.1.5.0, die 2027 schon enthält, laufen alle Tests für 2026 so durch wie mit 44.3.6.0. Test: Jahresprüfung; `test_schema.py` prüft das geschriebene XML bisher gegen das Schema von 2026 und bekommt das neue Jahr dazu.
+5. **Plugin.** Nichts zu ändern, solange die Datenartversionmatrix datenartVersion und Plugin nach dem Jahr benennt: `years.py` bildet beide Namen, und die Laufzeit in `steuerbote/eric/runtime.py` liest mit ihnen die Jahre ihrer Plugins und wählt die Laufzeit des Jahres. Im Betrieb die Beta zum Prüfen und Testsenden und die freigegebene Version zum Senden einrichten, siehe [ERiC](eric.md#versionen-und-jahreswechsel). Test: Jahresprüfung, `test_years.py`, `test_runtime.py`.
+6. **USt 1 H.** `_LAYOUT_<Jahr>` in `form.py` aus der Jahresdokumentation anlegen: die Felder jedes Kontexts in der Reihenfolge des Schemas mit regulärem Ausdruck, Formatkennzeichen, Längen und Vordruckzeile, die Regeln beider Kontexte und die Bezeichnungen des Vordrucks USt 1 H, etwa „Davon 1/11 = Sondervorauszahlung <Jahr>“. `LAYOUTS` nimmt es unter seinem Jahr auf. Benennt die Jahresdokumentation eine Regel um, auf die `Ust1H` sich stützt (`Svz_Kz29_ohne_Kz10`, `Svz_Kz38_Pflichtfeld`, `Kz500_Begr_Gemeinsam`, `Kz26_Hinweis`, `Kz500_Hinweis`), braucht `form.py` den neuen Namen. Test: Jahresprüfung, `test_form.py`, `steuerbote/dauerfrist/tests/test_docs.py` mit der Tabelle in [Dauerfristverlängerung](dauerfristverlaengerung.md#vordruck-ust-1-h-in-elster).
+7. **Tests.** `pytest --cov` mit der neuen Dokumentation, 100 % Abdeckung bleiben, und `bench run-tests`. Mit einer Kopie von 2026 als 2027 schlagen unter `pytest` nur `test_files_2026` und `test_a_year_without_its_form_is_refused_by_the_core` in `steuerbote/steuerbote/doctype/vat_return_extension/test_bridge.py` fehl. Dieser Test und die Frappe-Tests in `test_vat_return_extension.py` nehmen 2027 als Jahr, dessen Vordruck USt 1 H Steuerbote nicht kennt, und gehen auf das nächste Jahr. Tests, die den neuesten Katalog nehmen (`KENNZAHLEN`, eine `Mapping` ohne Jahr, die Vorgaben), laufen danach gegen das neue Jahr und zeigen, was es an Berechnung und Vorgaben ändert.
+8. **Zeiträume: Kz 39 und Dauerfristverlängerung.** Mit der neuen Anleitung prüfen, ob die Sondervorauszahlung weiter in Kz 39 der letzten Voranmeldung des Jahres steht (`SONDERVORAUSZAHLUNG_KENNZAHL`, `bridge.sondervorauszahlung_values`, `crediting_period` in `steuerbote/dauerfrist/period.py`) und ob die Fristen bleiben: der 10. Tag nach dem Zeitraum in `steuerbote/ustva/period.py`, der 10. Februar für die Sondervorauszahlung in `steuerbote/dauerfrist/period.py`. Im Betrieb braucht jedes Jahr mit Dauerfristverlängerung eine Zeile in „Dauerfristverlängerung je Jahr“ der Einstellungen: Bei monatlicher Abgabe schreibt sie der Beleg „Dauerfristverlängerung“ des neuen Jahres mit dem Vermerk seiner Abgabe, bei vierteljährlicher Abgabe mit fortgeltender Verlängerung, für die es keinen Beleg gibt, legt sie jemand von Hand an. Ein Wechsel des Voranmeldungszeitraums kommt als neue Regel ab Januar dazu. Test: `steuerbote/dauerfrist/tests/test_period.py`, `steuerbote/ustva/tests/test_period.py`, `vat_return/test_bridge.py`.
+9. **Release.** Die Dokumentation nachziehen ([Kennzahlen](ustva-kennzahlen.md), [Dauerfristverlängerung](dauerfristverlaengerung.md), [ERiC](eric.md), [Roadmap](roadmap.md)), dann die Version in `steuerbote/__init__.py` heben und veröffentlichen, bevor die ersten Meldungen des Jahres fällig sind. Betreiber spielen die neue Version ein und richten die freigegebene ERiC-Version mit dem Plugin des Jahres ein.
 
 ## Commits
 

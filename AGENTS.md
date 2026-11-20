@@ -25,5 +25,5 @@ Der Einsatz von KI-Werkzeugen und Coding-Agenten ist in diesem Projekt ausdrück
 ## Wiederkehrende Aufgaben
 
 - **Neue Kennzahl oder Zuordnung:** Quelle in `docs/ustva-kennzahlen.md` eintragen, Test schreiben, Katalog in `kennzahlen.py` oder Vorgabe in `defaults.py` ergänzen, Dokumentation anpassen.
-- **Jahreswechsel:** Das BMF-Schreiben zu den Vordruckmustern des neuen Jahres lesen, den Katalog Zeile für Zeile gegen den Vordruck prüfen, Tests und Quellenangaben aktualisieren.
+- **Jahreswechsel:** Ablauf in [docs/entwicklung.md](docs/entwicklung.md#jahreswechsel): das BMF-Schreiben zu den Vordruckmustern des neuen Jahres lesen, das Jahr in `steuerbote/ustva/years.py` eintragen, den Katalog Zeile für Zeile gegen den Vordruck prüfen, Schema und Vordruck USt 1 H ergänzen, bis `python -m steuerbote.ustva.yearcheck` nichts mehr meldet, Tests und Quellenangaben aktualisieren.
 - **Neuer Kontenrahmen:** Eine Zuordnung nach dem Muster in `defaults.py` anlegen, jede Kontonummer gegen die offizielle Kontenrahmen-Ausgabe prüfen, Tests nach dem Muster von `test_defaults.py` ergänzen.
