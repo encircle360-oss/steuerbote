@@ -99,6 +99,7 @@ Einreichbar, Nummernkreis `UStVA-.YYYY.-.#####`.
 | `hints` | Hinweise | Tabelle „Hinweis zur Umsatzsteuer-Voranmeldung“: Art (Hinweis oder Warnung), Code, Nachricht, Belegtyp, Belegnr. und Partei; füllt „Berechnen“, hält die Meldung nie an |
 | `comparison` | Vorperiodenvergleich | Tabelle „Vorperiodenvergleich der Umsatzsteuer-Voranmeldung“: Kennzahl, Beschreibung, Dieser Zeitraum, Vorperiode, Vorjahr, Differenz zur Vorperiode, Differenz (%) und Auffällig; füllt „Berechnen“ |
 | `attachments` | Belege beigefügt oder gesondert eingereicht (Kz 22) | Kennzeichen des Vordrucks |
+| `regelbesteuerung_from` | Datum des Wechsels zur Regelbesteuerung (Kz 70) | Zeile 12 des Vordrucks, nur in den Fällen der Anleitung zu Zeile 12 (USt 1 E 2026): der Tag des Umsatzes, mit dem der Gesamtumsatz 100.000 Euro überschritten hat, im Jahr der Gründung 25.000 Euro, oder der 1. Januar nach dem Verzicht auf die Kleinunternehmer-Regelung (§ 19 Absatz 3 UStG). Das Speichern lehnt ein Datum außerhalb des Jahres der Meldung ab (Regel 11085153 der Jahresdokumentation UStVA 2026). Kz 70 trägt keinen Betrag und ändert keine Summe. |
 | `offset_requested` | Verrechnung erwünscht oder Erstattungsbetrag abgetreten (Kz 29) | Kennzeichen des Vordrucks |
 | `no_sepa_mandate` | SEPA-Lastschriftmandat ausnahmsweise nicht verwenden (Kz 26) | Kennzeichen des Vordrucks |
 | `supplementary_code` | Ergänzende Angaben zur Steueranmeldung (Kz 500) | Schlüssel 1 bis 4 |

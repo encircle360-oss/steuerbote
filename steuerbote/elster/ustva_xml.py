@@ -459,11 +459,21 @@ def _further_details(schema: Schema, voranmeldung: Voranmeldung, balance: Decima
 		if balance >= ZERO and not voranmeldung.corrected:
 			raise XmlError(OFFSET_WITHOUT_REFUND)
 		texts["Kz29"] = YES
-	if voranmeldung.regelbesteuerung_from is not None:
-		if voranmeldung.regelbesteuerung_from.year != schema.year:
-			raise XmlError(SWITCH_IN_ANOTHER_YEAR, schema.year, voranmeldung.regelbesteuerung_from.year)
-		texts["Kz70"] = voranmeldung.regelbesteuerung_from.strftime("%d.%m.%Y")
-	return {**texts, **supplementary_details(voranmeldung.supplementary_code, voranmeldung.begruendung)}
+	return {
+		**texts,
+		**regelbesteuerung_details(voranmeldung.regelbesteuerung_from, schema.year),
+		**supplementary_details(voranmeldung.supplementary_code, voranmeldung.begruendung),
+	}
+
+
+def regelbesteuerung_details(day: date | None, year: int) -> dict[str, str]:
+	"""Kz 70, the date of the switch from the Kleinunternehmer-Regelung, as TT.MM.JJJJ in the year of the
+	period (JD 11085153), or nothing without a date."""
+	if day is None:
+		return {}
+	if day.year != year:
+		raise XmlError(SWITCH_IN_ANOTHER_YEAR, year, day.year)
+	return {"Kz70": day.strftime("%d.%m.%Y")}
 
 
 def supplementary_details(code: str | None, begruendung: str | None) -> dict[str, str]:

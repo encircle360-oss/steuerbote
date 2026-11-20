@@ -13,7 +13,7 @@ Ohne eigene Hersteller-ID geht eine Umsatzsteuer-Voranmeldung nicht über ERiC a
 ## Datei erzeugen
 
 1. Die Umsatzsteuer-Voranmeldung öffnen und „Berechnen“.
-2. Kennzahlen prüfen, Korrekturen mit Begründung eintragen und die Kennzeichen setzen (Kz 10, 22, 26 und 29). Wer Kz 500 wählt, trägt die Begründung zu Kz 500 ein: Pflicht, höchstens 180 Zeichen in einer Zeile.
+2. Kennzahlen prüfen, Korrekturen mit Begründung eintragen und die Kennzeichen setzen (Kz 10, 22, 26 und 29). Wer Kz 500 wählt, trägt die Begründung zu Kz 500 ein: Pflicht, höchstens 180 Zeichen in einer Zeile. Wechselt das Unternehmen von der Kleinunternehmer-Regelung zur Regelbesteuerung, steht der Tag des Wechsels in „Datum des Wechsels zur Regelbesteuerung (Kz 70)“, nur in den Fällen, die die Anleitung zu Zeile 12 nennt.
 3. Speichern.
 4. „XML für Mein ELSTER“ klicken. Steuerbote baut die Datei aus der gespeicherten Meldung, hängt sie privat an die Meldung und öffnet sie zum Herunterladen.
 
@@ -60,7 +60,7 @@ Steuerbote schreibt die Datei nur, wenn sie diese Regeln erfüllt. Die Fehlercod
 | Kz 83 wird aus den geschriebenen Werten nachgerechnet: die Steuer der Zeilen 13 bis 32 samt der Steuer, die das Formular aus Kz 81, 86, 89 und 93 selbst berechnet, abzüglich der Zeilen 38 bis 44, zuzüglich der Zeilen 46 und 47, abzüglich Kz 39. Weicht Kz 83 der Meldung davon ab, entsteht keine Datei. ERiC prüft Kz 83 nicht. | keine Regel in ERiC |
 | Kz 29 nur mit einem Überschuss in Kz 83 oder in einer berichtigten Anmeldung. | 11085149 |
 | Kz 500 (1 bis 4) nur mit Begründung und die Begründung nur mit Kz 500, höchstens 180 Zeichen in einer Zeile. Die Meldung prüft das schon beim Speichern. | 11085137 |
-| Das Datum in Kz 70 liegt im Jahr des Zeitraums. Die Meldung hat für Kz 70 noch kein Feld. | 11085153 |
+| Das Datum in Kz 70 liegt im Jahr des Zeitraums, als TT.MM.JJJJ. Die Meldung prüft das schon beim Speichern. | 11085153, Feld Kz70 |
 | Steuernummer mit 13 Ziffern, die fünfte ist 0; Wirtschafts-Identifikationsnummer „DE“ und neun Ziffern. | 110085044, Schema |
 | Datenlieferant: Name bis 45 Zeichen, Straße und Hausnummer bis 30, Postleitzahl bis 12, Ort bis 30, Telefon bis 20, E-Mail bis 70. Name, Straße, Postleitzahl und Ort sind Pflicht. | 110085075 bis 110085078, Schema |
 | Texte nur aus dem Zeichensatz, ohne Leerzeichen am Anfang oder Ende. | Blätter „Zeichensatz“ und „Formale Fehler“ |

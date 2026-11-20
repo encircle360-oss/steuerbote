@@ -121,6 +121,7 @@
 		<tbody>
 			{{ flag_row(10, "10", "Berichtigte Anmeldung", "1 = Ja" if doc.is_correction else "") }}
 			{{ flag_row(11, "22", "Belege (z. B. Verträge, Rechnungen) sind beigefügt bzw. werden gesondert eingereicht", "1 = Ja" if doc.attachments else "") }}
+			{{ flag_row(12, "70", "Wechsel von der Kleinunternehmer-Regelung (§ 19 UStG) zur Regelbesteuerung: Datum des Wechsels", frappe.utils.formatdate(doc.regelbesteuerung_from, "dd.MM.yyyy") if doc.regelbesteuerung_from else "") }}
 		</tbody>
 		{%- for letter, title, first, last in sections %}
 		<tbody class="sb-group">

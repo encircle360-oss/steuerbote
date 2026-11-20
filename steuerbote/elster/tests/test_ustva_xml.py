@@ -395,6 +395,16 @@ class RulesTest(TestCase):
 			(ustva_xml.SWITCH_IN_ANOTHER_YEAR, (2026, 2025)),
 		)
 
+	def test_the_date_of_kz70_can_be_checked_before_the_file_is_made(self):
+		self.assertEqual(ustva_xml.regelbesteuerung_details(None, 2026), {})
+		self.assertEqual(ustva_xml.regelbesteuerung_details(date(2026, 1, 1), 2026), {"Kz70": "01.01.2026"})
+		with self.assertRaises(XmlError) as raised:
+			ustva_xml.regelbesteuerung_details(date(2027, 1, 1), 2026)
+		self.assertEqual(
+			(raised.exception.template, raised.exception.values),
+			(ustva_xml.SWITCH_IN_ANOTHER_YEAR, (2026, 2027)),
+		)
+
 	def test_refuses_kennzahlen_that_are_not_on_the_form(self):
 		with self.assertRaises(XmlError) as raised:
 			write({"99": d("1"), "83": d("0")})

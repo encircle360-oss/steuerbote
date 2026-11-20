@@ -518,7 +518,7 @@ class PrintFormatFilesTest(TestCase):
 		)
 
 	def test_the_labels_of_the_flags_are_those_of_the_catalogue(self):
-		for number in ("10", "22", "29", "26"):
+		for number in ("10", "22", "70", "29", "26"):
 			with self.subTest(kennzahl=number):
 				self.assertIn(f'"{KENNZAHLEN[number].label}"', self.template)
 		self.assertIn(KENNZAHLEN["500"].label, self.template)

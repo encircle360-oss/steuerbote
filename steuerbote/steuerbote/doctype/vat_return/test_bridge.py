@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from unittest import TestCase
@@ -440,6 +441,22 @@ class VoranmeldungTest(TestCase):
 			{**self.doc, "supplementary_code": "", "kz500_begruendung": ""}, Period.month(2026, 3)
 		)
 		self.assertEqual((voranmeldung.supplementary_code, voranmeldung.begruendung), (None, None))
+
+	def test_takes_the_date_of_the_switch_to_the_regelbesteuerung_as_frappe_gives_it(self):
+		for value, expected in (
+			(date(2026, 3, 14), date(2026, 3, 14)),
+			("2026-03-14", date(2026, 3, 14)),
+			("", None),
+			(None, None),
+		):
+			with self.subTest(value=value):
+				voranmeldung = bridge.voranmeldung(
+					{**self.doc, "regelbesteuerung_from": value}, Period.month(2026, 3)
+				)
+				self.assertEqual(voranmeldung.regelbesteuerung_from, expected)
+
+	def test_the_return_keeps_the_date_of_kz70_in_a_date_field(self):
+		self.assertEqual(fields_of("vat_return")["regelbesteuerung_from"]["fieldtype"], "Date")
 
 
 class ReportedTest(TestCase):

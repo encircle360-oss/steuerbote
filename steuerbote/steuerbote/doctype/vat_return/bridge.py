@@ -10,6 +10,7 @@ steuerbote.ustva.plausibility, whose results become the rows of the tables "comp
 from collections.abc import Iterable, Sequence
 from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from enum import Enum
 from types import MappingProxyType
@@ -354,8 +355,16 @@ def voranmeldung(return_: Row, period: Period, reported_before: Iterable[str] = 
 		offset_requested=_checked(return_.get("offset_requested")),
 		supplementary_code=return_.get("supplementary_code") or None,
 		begruendung=return_.get("kz500_begruendung") or None,
+		regelbesteuerung_from=to_date(return_.get("regelbesteuerung_from")),
 		reported_before=frozenset(reported_before) if corrected else frozenset(),
 	)
+
+
+def to_date(value: object) -> date | None:
+	"""The value of a Date field: a date from the database, an ISO date from the form, or nothing."""
+	if isinstance(value, date):
+		return value
+	return date.fromisoformat(str(value)) if value else None
 
 
 def reported(rows: Iterable[Row]) -> frozenset[str]:

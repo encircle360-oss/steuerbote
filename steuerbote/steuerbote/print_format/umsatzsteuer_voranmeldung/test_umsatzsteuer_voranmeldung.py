@@ -143,6 +143,7 @@ class TestUmsatzsteuerVoranmeldung(IntegrationTestCase):
 		doc = self.calculated_return(
 			4,
 			attachments=1,
+			regelbesteuerung_from="2026-04-01",
 			no_sepa_mandate=1,
 			supplementary_code="2",
 			kz500_begruendung="Umsatzsteuer auf Gutscheine, siehe Schreiben vom 10. April",
@@ -151,6 +152,7 @@ class TestUmsatzsteuerVoranmeldung(IntegrationTestCase):
 		for expected in (
 			"10 | Berichtigte Anmeldung | 10 | |",
 			"11 | Belege (z. B. Verträge, Rechnungen) sind beigefügt bzw. werden gesondert eingereicht | 22 | 1 = Ja |",
+			"12 | Wechsel von der Kleinunternehmer-Regelung (§ 19 UStG) zur Regelbesteuerung: Datum des Wechsels | 70 | 01.04.2026 |",
 			"53 | Verrechnung des Erstattungsbetrags erwünscht / Erstattungsbetrag ist abgetreten | 29 | |",
 			"| 26 | 1 = Ja |",
 			"| 500 | 2 |",

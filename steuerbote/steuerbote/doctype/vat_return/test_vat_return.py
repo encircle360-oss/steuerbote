@@ -415,6 +415,18 @@ class TestVATReturn(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "only filed with Kennzahl 500"):
 			doc.save()
 
+	def test_the_date_of_the_switch_to_the_regelbesteuerung_is_filed_in_kz70(self):
+		"""Line 12 of the form USt 1 A 2026 takes the date of the switch from the Kleinunternehmer-Regelung,
+		which ERiC writes as TT.MM.JJJJ (Jahresdokumentation UStVA 2026, Kz70)."""
+		doc = self.calculated(10, regelbesteuerung_from="2026-10-14")
+		self.assertEqual(doc.regelbesteuerung_from, date(2026, 10, 14))
+		self.assertEqual(kennzahlen(contents(doc.make_import_file())), {"Kz70": "14.10.2026", "Kz83": "0.00"})
+
+	def test_a_switch_to_the_regelbesteuerung_in_another_year_is_refused(self):
+		"""Rule 11085153: the year of the date in Kz 70 is the year of the Voranmeldungszeitraum."""
+		with self.assertRaisesRegex(frappe.ValidationError, "has to lie in 2026, not in 2025"):
+			self.new_return(2, regelbesteuerung_from="2025-12-01")
+
 	def test_the_import_file_needs_a_calculation(self):
 		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the return before making the file"):
 			self.new_return(5).make_import_file()
