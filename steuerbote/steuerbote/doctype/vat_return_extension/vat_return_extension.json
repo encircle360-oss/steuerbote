@@ -1,0 +1,419 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-11-20 18:00:00.000000",
+ "description": "Form USt 1 H of a company for one year: the Antrag auf Dauerfristverlängerung and the Anmeldung der Sondervorauszahlung, computed from the VAT Returns filed for the previous year.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "year",
+  "antrag",
+  "first_month",
+  "is_correction",
+  "column_break_form",
+  "context",
+  "rhythm",
+  "first_period_label",
+  "deadline",
+  "crediting_period_label",
+  "status",
+  "amended_from",
+  "base_section",
+  "base_rows",
+  "missing_periods",
+  "column_break_base",
+  "kz83",
+  "kz39",
+  "established_on",
+  "months_active",
+  "computed_base",
+  "base_override",
+  "base_override_reason",
+  "base",
+  "sondervorauszahlung",
+  "further_section",
+  "offset_requested",
+  "no_sepa_mandate",
+  "column_break_further",
+  "supplementary_code",
+  "kz500_begruendung",
+  "filing_section",
+  "findings",
+  "remarks",
+  "column_break_filing",
+  "filed_via",
+  "filed_on",
+  "transferticket",
+  "filing_note"
+ ],
+ "fields": [
+  {
+   "default": "DFV-.YYYY.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "DFV-.YYYY.-.#####",
+   "print_hide": 1,
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "remember_last_selected_value": 1,
+   "reqd": 1
+  },
+  {
+   "description": "The calendar year the form is filed for.",
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Tick in the year the company applies. Without it, the Dauerfristverlängerung granted before holds on: a monthly filer registers the Sondervorauszahlung of the year, a quarterly filer files nothing.",
+   "fieldname": "antrag",
+   "fieldtype": "Check",
+   "label": "Application for the Dauerfristverlängerung"
+  },
+  {
+   "depends_on": "eval:doc.antrag",
+   "description": "The month whose Voranmeldung the Dauerfristverlängerung covers first, 1 to 12; filing quarterly, the first month of the quarter.",
+   "fieldname": "first_month",
+   "fieldtype": "Int",
+   "label": "First Month Covered",
+   "mandatory_depends_on": "eval:doc.antrag"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.context === 'Umsatzsteuersondervorauszahlung'",
+   "description": "The form corrects an Anmeldung der Sondervorauszahlung filed before, as every amendment of a filed form does.",
+   "fieldname": "is_correction",
+   "fieldtype": "Check",
+   "label": "Corrected Return (Kz 10)"
+  },
+  {
+   "fieldname": "column_break_form",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Monthly filers register the Sondervorauszahlung, quarterly filers apply for the Dauerfristverlängerung alone, as the VAT Return Settings prescribe for the first month covered.",
+   "fieldname": "context",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Kind of Form",
+   "options": "\nDauerfristverlaengerung\nUmsatzsteuersondervorauszahlung",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rhythm",
+   "fieldtype": "Select",
+   "label": "Rhythm",
+   "options": "\nmonthly\nquarterly",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.antrag",
+   "fieldname": "first_period_label",
+   "fieldtype": "Data",
+   "label": "First Voranmeldungszeitraum Covered",
+   "read_only": 1
+  },
+  {
+   "description": "With the Antrag, the day the first Voranmeldung it covers is due without the extension, and the Sondervorauszahlung with it; otherwise 10 February. A Saturday, a Sunday or a holiday of the company's Holiday List moves it to the next working day.",
+   "fieldname": "deadline",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Due Date",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.context === 'Umsatzsteuersondervorauszahlung'",
+   "description": "The last Voranmeldung of the year, which deducts the Sondervorauszahlung.",
+   "fieldname": "crediting_period_label",
+   "fieldtype": "Data",
+   "label": "Credited in Kz 39 of",
+   "read_only": 1
+  },
+  {
+   "default": "Entwurf",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Entwurf\nBerechnet\nBereit\nAbgegeben",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "VAT Return Extension",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.context === 'Umsatzsteuersondervorauszahlung'",
+   "fieldname": "base_section",
+   "fieldtype": "Section Break",
+   "label": "Sondervorauszahlung"
+  },
+  {
+   "description": "The latest filing of each Voranmeldungszeitraum, filled by Calculate.",
+   "fieldname": "base_rows",
+   "fieldtype": "Table",
+   "label": "Filed Voranmeldungen of the Previous Year",
+   "no_copy": 1,
+   "options": "VAT Return Extension Base",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.missing_periods",
+   "description": "Voranmeldungszeiträume of the previous year without a filed VAT Return or without a filing period in the VAT Return Settings.",
+   "fieldname": "missing_periods",
+   "fieldtype": "Small Text",
+   "label": "Missing from the Base",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_base",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "kz83",
+   "fieldtype": "Currency",
+   "label": "Sum of Kz 83",
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "kz39",
+   "fieldtype": "Currency",
+   "label": "Sondervorauszahlung Credited (Kz 39)",
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "From the company, read by Calculate. A start in the previous year converts its Vorauszahlungen into an annual sum; a start this year bases the Sondervorauszahlung on the Vorauszahlungen expected.",
+   "fieldname": "established_on",
+   "fieldtype": "Date",
+   "label": "Date of Establishment",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "12 for a whole year; after a start in the previous year its months of that year, after a start this year its months of this year. A month begun counts in full.",
+   "fieldname": "months_active",
+   "fieldtype": "Int",
+   "label": "Months of Activity",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:(doc.base_rows || []).length",
+   "description": "The sum of Kz 83 and Kz 39, converted into an annual sum after a start in the previous year.",
+   "fieldname": "computed_base",
+   "fieldtype": "Currency",
+   "label": "Base from the Voranmeldungen",
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "For what the ledger cannot know, with the reason; for a company that began this year, the Vorauszahlungen it expects for the year. It counts once the reason is entered.",
+   "fieldname": "base_override",
+   "fieldtype": "Currency",
+   "label": "Base by Hand",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "base_override_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Base by Hand"
+  },
+  {
+   "bold": 1,
+   "description": "The base Kz 38 follows from: the one from the Voranmeldungen or the one by hand.",
+   "fieldname": "base",
+   "fieldtype": "Currency",
+   "label": "Base (Line 8)",
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "description": "One eleventh of the base in whole euros, 0 for a surplus; for a company that began this year, the base divided by its months of activity.",
+   "fieldname": "sondervorauszahlung",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Sondervorauszahlung (Kz 38)",
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "further_section",
+   "fieldtype": "Section Break",
+   "label": "Further Details"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.context === 'Umsatzsteuersondervorauszahlung'",
+   "description": "Only with a corrected Anmeldung (Kz 10).",
+   "fieldname": "offset_requested",
+   "fieldtype": "Check",
+   "label": "Offset Requested or Refund Assigned (Kz 29)"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.context === 'Umsatzsteuersondervorauszahlung'",
+   "fieldname": "no_sepa_mandate",
+   "fieldtype": "Check",
+   "label": "Do Not Use the SEPA Direct Debit Mandate (Kz 26)"
+  },
+  {
+   "fieldname": "column_break_further",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "supplementary_code",
+   "fieldtype": "Select",
+   "label": "Supplementary Information (Kz 500)",
+   "options": "\n1\n2\n3\n4"
+  },
+  {
+   "description": "Required with Kz 500: at most 180 characters on one line.",
+   "fieldname": "kz500_begruendung",
+   "fieldtype": "Small Text",
+   "label": "Explanation for Kz 500",
+   "mandatory_depends_on": "eval:doc.supplementary_code"
+  },
+  {
+   "fieldname": "filing_section",
+   "fieldtype": "Section Break",
+   "label": "Filing"
+  },
+  {
+   "depends_on": "eval:doc.findings",
+   "description": "What keeps the form from being ready, found by Calculate. A form that is not ready is filed with remarks only.",
+   "fieldname": "findings",
+   "fieldtype": "Small Text",
+   "label": "Open Points",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Required to file a form that is not ready: why it is correct nonetheless.",
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "column_break_filing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filed_via",
+   "fieldtype": "Select",
+   "label": "Filed Via",
+   "no_copy": 1,
+   "options": "\nmein_elster\nother_way",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filed_on",
+   "fieldtype": "Date",
+   "label": "Filed On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "transferticket",
+   "fieldtype": "Data",
+   "label": "Transferticket",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_note",
+   "fieldtype": "Small Text",
+   "label": "How and When Filed",
+   "no_copy": 1,
+   "read_only": 1
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-11-20 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT Return Extension",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 0,
+ "row_format": "Dynamic",
+ "search_fields": "company,year",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
