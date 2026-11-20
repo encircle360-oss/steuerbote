@@ -87,7 +87,7 @@ Jeder Befund ist ein Satz mit Beleg und Kunde, wo es sie gibt (`findings.py`). F
 | Code | Wirkung | Bedeutung | Grundlage |
 |---|---|---|---|
 | `ZM-OHNE-KUNDE` | Fehler | Ein Beleg geht in Kz 41, 42 oder 21 ein, nennt aber keinen Kunden. | § 18a Absatz 7 UStG |
-| `ZM-OHNE-USTID` | Fehler | Der Kunde hat keine USt-IdNr. | § 18a Absatz 7 UStG |
+| `ZM-OHNE-USTID` | Fehler | Der Beleg nennt keine USt-IdNr. des Kunden, etwa weil die Rechnung ohne sie ausgestellt wurde, auch wenn der Kunde inzwischen eine hat. | § 18a Absatz 7 UStG |
 | `ZM-USTID-FORMAT` | Fehler | Die USt-IdNr. hat nicht die Form der ZM, ist deutsch, britisch, ohne gültiges Länderkennzeichen oder XI bei einer sonstigen Leistung. | [Q13], [Q11], [Q9] |
 | `ZM-USTID-UNGUELTIG` | Fehler | Die Bestätigung hat die Nummer als ungültig gemeldet. | § 6a Absatz 1 Satz 1 Nummer 4 UStG [Q3]; Entscheidung des Maintainers [Q16] |
 | `ZM-USTID-UNBESTAETIGT` | Fehler | Die Nummer ist nicht bestätigt. | Entscheidung des Maintainers [Q16] |

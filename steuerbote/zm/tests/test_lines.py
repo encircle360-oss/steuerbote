@@ -143,13 +143,15 @@ class BlockingTest(TestCase):
 		self.assertEqual((line.vat_id, codes(line)), (AUSTRIA, [Code.NO_PARTY]))
 		self.assertTrue(line.blocked)
 
-	def test_customer_without_vat_id(self):
-		"""§ 18a Absatz 7 Satz 1 UStG: the ZM names „die Umsatzsteuer-Identifikationsnummer jedes Erwerbers“."""
+	def test_voucher_without_vat_id(self):
+		"""§ 18a Absatz 7 Satz 1 UStG: the ZM names „die Umsatzsteuer-Identifikationsnummer jedes Erwerbers“. The
+		number is the one the voucher gives, as an invoice keeps it from when it was made, so the customer may well
+		have one by now."""
 		line = statement(invoice("SINV-1", "1200.50", party="Muster SARL", vat_id=" ")).lines[0]
 		self.assertEqual(codes(line), [Code.NO_VAT_ID])
 		self.assertEqual(
 			line.findings[0].text,
-			"Beleg SINV-1 geht mit 1.200,50 € in Kz 41 ein, aber der Kunde Muster SARL hat keine USt-IdNr.",
+			"Beleg SINV-1 geht mit 1.200,50 € in Kz 41 ein, nennt aber keine USt-IdNr. des Kunden Muster SARL.",
 		)
 		self.assertEqual(line.findings[0].party, "Muster SARL")
 		self.assertTrue(line.blocked)

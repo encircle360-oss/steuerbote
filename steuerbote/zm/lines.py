@@ -17,7 +17,7 @@ The ZM takes whole euros (ZMDO: betrag, GeldBetragOhneCent). How to round is wri
 the cents towards zero, as for the Bemessungsgrundlagen of the Voranmeldung (rounding.to_full_euros), and a line
 of zero euros is not reported: „Sog. „Nullmeldungen“ sind nicht abzugeben“ (Anleitung zur ZM, III.1).
 
-A line holds the ZM back from „Bereit“ when a voucher names no customer or the customer no USt-IdNr., when the
+A line holds the ZM back from „Bereit“ when a voucher names no customer or no USt-IdNr. of it, when the
 USt-IdNr. is not one the ZM takes (steuerbote.zm.ustid), when the confirmation of § 18e UStG found it invalid or
 has not confirmed it (the outcome is an input), or when the USt-IdNr. of a Dreiecksgeschäft was not issued in
 the country where the goods arrive (§ 18a Absatz 7 Satz 1 Nummer 4 Buchstabe a UStG). An override with a
@@ -280,7 +280,7 @@ def _voucher_findings(item: VoucherAmount, vat_id: str, valid: bool, figures: Fi
 	if not party:
 		return [Finding(Code.NO_PARTY, f"{booked}, nennt aber keinen Kunden.", item.voucher)]
 	if not vat_id:
-		text = f"{booked}, aber der Kunde {party} hat keine USt-IdNr."
+		text = f"{booked}, nennt aber keine USt-IdNr. des Kunden {party}."
 		return [Finding(Code.NO_VAT_ID, text, item.voucher, party)]
 	if item.art is not Art.D or not valid or country_prefix(item.destination) == vat_id[:2]:
 		return []
