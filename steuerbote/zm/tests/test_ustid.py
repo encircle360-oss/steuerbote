@@ -1,5 +1,6 @@
 from unittest import TestCase
 
+from steuerbote.vatid import ustid as confirmation
 from steuerbote.zm.ustid import (
 	NORTHERN_IRELAND,
 	OTHER_MEMBER_STATES,
@@ -132,3 +133,38 @@ class CountryPrefixTest(TestCase):
 		self.assertIsNone(country_prefix("United Kingdom"))
 		self.assertIsNone(country_prefix(None))
 		self.assertIsNone(country_prefix(""))
+
+
+class ConfirmationRuleTest(TestCase):
+	"""The ZM takes the numbers that the confirmation of § 18e UStG takes, XI for goods only."""
+
+	VALUES = (
+		"ATU12345678",
+		"atu 123 456 78",
+		"BE12345",
+		"BE1234",
+		"NL123456789B01",
+		"NL123456789B012",
+		"IE1234567*+",
+		"DE123456789",
+		"GB123456789",
+		"GR123456789",
+		"EL123456789",
+		"XI123456789",
+		"CH123456789",
+		"1234567890",
+		"",
+	)
+
+	def test_goods_take_the_numbers_of_the_confirmation_as_it_writes_them(self):
+		for value in self.VALUES:
+			with self.subTest(value=value):
+				expected = confirmation.normalize(value) if confirmation.is_plausible(value) else None
+				self.assertEqual(normalize(value), expected)
+
+	def test_sonstige_leistungen_refuse_northern_ireland_and_nothing_else(self):
+		for value in self.VALUES:
+			with self.subTest(value=value):
+				northern_irish = confirmation.normalize(value).startswith(NORTHERN_IRELAND)
+				expected = confirmation.is_plausible(value) and not northern_irish
+				self.assertEqual(normalize(value, services=True) is not None, expected)
