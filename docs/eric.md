@@ -1,6 +1,6 @@
 # ERiC
 
-ERiC (ELSTER Rich Client) ist die C-Bibliothek der Steuerverwaltung, die ELSTER-Daten prüft, verschlüsselt, signiert und an die Annahmeserver übermittelt. Steuerbote bindet ERiC ab Version 44 über `ctypes` an und ruft es für „Prüfen“, „Testsenden“ und „Senden“ der Umsatzsteuer-Voranmeldung auf. Diese Seite beschreibt Lizenz, Einrichtung, Versionen, Simulation, Vorgänge, Sicherheit und Grenzen.
+ERiC (ELSTER Rich Client) ist die C-Bibliothek der Steuerverwaltung, die ELSTER-Daten prüft, verschlüsselt, signiert und an die Annahmeserver übermittelt. Steuerbote bindet ERiC ab Version 44 über `ctypes` an und ruft es für „Prüfen“, „Testsenden“ und „Senden“ der Umsatzsteuer-Voranmeldung und der Dauerfristverlängerung (Vordruck USt 1 H) auf. Beide gehören zur Datenart UStVA: Das Entwicklerhandbuch führt die „Umsatzsteuer-Dauerfristverlängerung (UStDV)“ und die „Umsatzsteuer-Dauerfristverlängerung mit Sondervorauszahlung (UStSV)“ in Tabelle 2-13 unter der UStVA, und die `Datenartversionmatrix.ods` gibt `UStVA_<Jahr>` mit dem Plugin `checkUStVA_<Jahr>` „Mit UStDV und UStSV“. Diese Seite beschreibt Lizenz, Einrichtung, Versionen, Simulation, Vorgänge, Sicherheit und Grenzen.
 
 Quelle ist die ERiC-Dokumentation 44.3.6.0: Entwicklerhandbuch (zitiert mit Kapitel oder Tabelle), API-Referenz, Releasenotes, Tutorial und der Softwarehersteller-Lizenzvertrag (`lizenz.pdf`, zitiert mit Paragraf). Das Dokumentationspaket ist öffentlich: [ERiC-44.3.6.0-Dokumentation.zip](https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip).
 
@@ -44,9 +44,9 @@ Das Archiv nennt seine Version im Stammverzeichnis `ERiC-<version>/`; fehlt es, 
 
 Ohne Laufzeit antwortet die Simulation (`steuerbote.eric.fake.Simulation`) auf dieselben Vorgänge, ohne etwas zu übermitteln. So lässt sich der ganze Ablauf vom Knopf bis zum Übermittlungsprotokoll nutzen und testen, bevor es eine Hersteller-ID gibt.
 
-- Sie prüft den Kopf der Lieferung, dass die Nutzdaten XML ohne DTD sind, die Wurzel `Anmeldungssteuern` im Namensraum des Jahres und die Kennzahl 83, die die Jahresdokumentation UStVA 2026 als Pflichtfeld führt (Regel 110085064).
+- Sie prüft den Kopf der Lieferung, dass die Nutzdaten XML ohne DTD sind und die Wurzel `Anmeldungssteuern` im Namensraum des Jahres haben, und von den Regeln der Jahresdokumentation UStVA 2026, die das Schema nicht abbildet, die zum Aufbau: genau einer der Kontexte `Umsatzsteuervoranmeldung`, `Dauerfristverlaengerung` und `Umsatzsteuersondervorauszahlung` im Steuerfall (110085099, `SIM-006`), die Pflichtfelder des Kontexts (`SIM-004`), in der Voranmeldung Kz 83 (110085064), im Vordruck USt 1 H Jahr, Steuernummer und Kz 09 (110085048, 110085044, 110085045) und in der Anmeldung der Sondervorauszahlung Kz 38 (110085143), und dass das Jahr des Kontexts das Jahr der Datenart ist (110085047, 110085130, 110085131, `SIM-007`).
 - Nennt die Umgebungsvariable `STEUERBOTE_ERIC_DOC_DIR` die entpackte ERiC-Dokumentation oder ihr Verzeichnis `Dokumentation`, prüft sie die Nutzdaten zusätzlich gegen `UStVA-<Jahr>.xsd`. Die Schemata gehören nicht in das Repository, weil ihre Weitergabe nicht geregelt ist. Ohne sie sagt ein Hinweis, dass nur der Aufbau geprüft wurde.
-- Testsenden und Senden liefern ein Transferticket `SIM-` mit den ersten 28 Hexadezimalziffern der SHA-256-Summe der Nutzdaten. Diese Form hat kein Transferticket von ERiC. Dazu kommt eine einseitige PDF-Datei mit dem Satz, dass die Übermittlung nur simuliert und nichts an ELSTER übermittelt wurde.
+- Testsenden und Senden liefern ein Transferticket `SIM-` mit den ersten 28 Hexadezimalziffern der SHA-256-Summe der Nutzdaten. Diese Form hat kein Transferticket von ERiC. Dazu kommt eine einseitige PDF-Datei mit dem Satz, dass die Übermittlung nur simuliert und nichts an ELSTER übermittelt wurde, mit Zeitraum und Kz 83 der Voranmeldung oder dem Vordruck mit seinem Jahr und Kz 38.
 - Jedes Ergebnis ist als simuliert gekennzeichnet und trägt den Hinweis `SIM-000`. Ein simuliertes Ergebnis ist nie eine Abgabe.
 
 ## Vorgänge
@@ -57,7 +57,7 @@ Ohne Laufzeit antwortet die Simulation (`steuerbote.eric.fake.Simulation`) auf d
 | Testsenden | Validierung, Versand mit `send-Auth` und Druck (EBV-6), mit Testmerker 700000004 | dazu Zertifikat und PIN; ELSTER-Testzertifikate nur hier (Kap. 4.3.5.1) | Transferticket, PDF mit „*** Testfall ***“ (Kap. 5.1.5.7); der Annahmeserver löscht den Fall sofort nach Eingang (Tabelle 6-7) |
 | Senden | wie Testsenden, ohne Testmerker | Laufzeit, die keine Beta ist, Organisationszertifikat | Transferticket und Übertragungsprotokoll (Kap. 5.1.4.4) |
 
-Die Umsatzsteuer-Voranmeldung kennt nur `send-Auth` (Tabelle 8-8), jedes Senden braucht also ein Zertifikat. Ein Aufruf läuft so ab (Kap. 6.2.4): `EricInitialisiere` mit dem Plugin- und dem Protokollverzeichnis, Einstellungen (Verbindungsaufbau 30 Sekunden, Antwort 60 Sekunden statt unbegrenzt, je 100 statt 20 Fehler und Hinweise, Tabelle 4-1), Zertifikat aus dem Speicher öffnen (`EricZertifikatOeffnenAusBytes`), `EricCreateTH` schreibt den TransferHeader um den DatenTeil, wie das Handbuch empfiehlt (Kap. 5.1), `EricBearbeiteVorgang`, `EricGetErrormessagesFromXMLAnswer` liest Transferticket und Rückmeldungen der Serverantwort, Zertifikat schließen, `EricBeende`. ERiC 44 spricht nur noch mit einem Annahmeserver und nennt das Transferticket nur in dessen Antwort (Releasenotes 44.3.6.0, Kap. 5.2.7).
+Die Datenart UStVA kennt nur `send-Auth` (Tabelle 8-8), jedes Senden braucht also ein Zertifikat, für die Voranmeldung wie für den Vordruck USt 1 H. Ein Aufruf läuft so ab (Kap. 6.2.4): `EricInitialisiere` mit dem Plugin- und dem Protokollverzeichnis, Einstellungen (Verbindungsaufbau 30 Sekunden, Antwort 60 Sekunden statt unbegrenzt, je 100 statt 20 Fehler und Hinweise, Tabelle 4-1), Zertifikat aus dem Speicher öffnen (`EricZertifikatOeffnenAusBytes`), `EricCreateTH` schreibt den TransferHeader um den DatenTeil, wie das Handbuch empfiehlt (Kap. 5.1), `EricBearbeiteVorgang`, `EricGetErrormessagesFromXMLAnswer` liest Transferticket und Rückmeldungen der Serverantwort, Zertifikat schließen, `EricBeende`. ERiC 44 spricht nur noch mit einem Annahmeserver und nennt das Transferticket nur in dessen Antwort (Releasenotes 44.3.6.0, Kap. 5.2.7).
 
 ### Ergebnisse
 
@@ -72,7 +72,7 @@ Die Umsatzsteuer-Voranmeldung kennt nur `send-Auth` (Tabelle 8-8), jedes Senden 
 
 Welche Codes vor der Übermittlung entstehen, folgt aus der Reihenfolge, in der `EricBearbeiteVorgang` arbeitet: Einlesen, Validieren, Vorbereiten mit Signatur und Verschlüsselung, Senden, Drucken (Abbildung 6-6). ERiC validiert vor jedem Senden (Kap. 6.2.1) und prüft die Größe der Daten vor der Übermittlung (Kap. 5.1.3.3); gedruckt wird erst, wenn der Annahmeserver OK gemeldet hat (Kap. 5 mit Abbildung 5-1). `BEFORE_TRANSFER` in `steuerbote/eric/worker.py` nennt deshalb nur Codes zu Aufruf und Parametern, zu Hersteller-ID, Testmerker, Beta und Plugin, zum Einlesen, Validieren und zur Größe der Daten, zu Zertifikat, PIN, Signatur und Verschlüsselung (das Zertifikat dient bei der UStVA nur der Signatur, Kap. 5.2) und zu einer Verbindung, die nicht zustande kam. Nach anderen Fehlern sind die Puffer undefiniert (API-Referenz, `EricBearbeiteVorgang`). Eine Serverantwort liest Steuerbote trotzdem, wann immer ERiC eine liefert, denn auch nach einer Zeitüberschreitung kann sie das Transferticket enthalten (Kap. 6.2.5.2); mit einer Serverantwort ist auch ein Code aus `BEFORE_TRANSFER` ein unbekanntes Ergebnis.
 
-Die Meldungen tragen den Code von ERiC, den Fehler- oder Hinweiscode der Regel oder den Code des Servers. Eigene Codes von Steuerbote beginnen mit `SB-`: `SB-HEADER` (Kopf der Lieferung), `SB-PIN`, `SB-ERIC` (ERiC lässt sich nicht laden oder antwortet unlesbar), `SB-TICKET`, `SB-WORKER` und `SB-UNKNOWN`. Die Simulation verwendet `SIM-000` bis `SIM-005`.
+Die Meldungen tragen den Code von ERiC, den Fehler- oder Hinweiscode der Regel oder den Code des Servers. Eigene Codes von Steuerbote beginnen mit `SB-`: `SB-HEADER` (Kopf der Lieferung), `SB-PIN`, `SB-ERIC` (ERiC lässt sich nicht laden oder antwortet unlesbar), `SB-TICKET`, `SB-WORKER` und `SB-UNKNOWN`. Die Simulation verwendet `SIM-000` bis `SIM-007`.
 
 ## Sicherheit
 
@@ -85,7 +85,7 @@ Die Meldungen tragen den Code von ERiC, den Fehler- oder Hinweiscode der Regel o
 
 ## Grenzen
 
-- Nur Linux x86_64, nur die Datenart UStVA, ein Nutzdatenblock je Lieferung.
+- Nur Linux x86_64, nur die Datenart UStVA mit Voranmeldung und Vordruck USt 1 H, ein Nutzdatenblock je Lieferung.
 - Kein Proxy: Die Einstellungen `http.proxy_*` (Kap. 4.1.2.2) setzt Steuerbote noch nicht.
 - Kein gespeichertes Zertifikat; es wird für jeden Vorgang neu eingegeben.
 - Die Tests laufen gegen eine Stub-Bibliothek, die die dokumentierten Signaturen nachbildet. Wie sich das echte ERiC verhält, zeigt erst ein Lauf mit Hersteller-ID und ELSTER-Testzertifikat.

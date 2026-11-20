@@ -1,6 +1,6 @@
 # Architektur
 
-Steuerbote besteht aus zwei Schichten. Der Rechenkern unter `steuerbote/ustva` kennt die Kennzahlen des Vordrucks, rundet, ordnet Konten zu, rechnet und prüft, alles in reinem Python ohne Frappe. Die Frappe-Schicht liest das Hauptbuch und die Einstellungen aus ERPNext, übergibt sie dem Kern und hält das Ergebnis in DocTypes, einem Bericht, einem Arbeitsbereich und einem Druckformat fest. Über die ERiC-Anbindung unter `steuerbote/eric` übermittelt sie die Meldung an ELSTER. Ebenso rechnen eigene Kerne die Zusammenfassende Meldung (`steuerbote/zm`, siehe [Zusammenfassende Meldung](zm.md)), die Bestätigung ausländischer USt-IdNrn. (`steuerbote/vatid`, siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md)) und die Dauerfristverlängerung (`steuerbote/dauerfrist`). Diese Seite beschreibt die Frappe-Schicht. Die fachlichen Regeln des Kerns stehen in [Kennzahlen und Kontenzuordnung](ustva-kennzahlen.md), Aufbau, Tests und Stil in [Entwicklung](entwicklung.md).
+Steuerbote besteht aus zwei Schichten. Der Rechenkern unter `steuerbote/ustva` kennt die Kennzahlen des Vordrucks, rundet, ordnet Konten zu, rechnet und prüft, alles in reinem Python ohne Frappe. Die Frappe-Schicht liest das Hauptbuch und die Einstellungen aus ERPNext, übergibt sie dem Kern und hält das Ergebnis in DocTypes, einem Bericht, einem Arbeitsbereich und einem Druckformat fest. Über die ERiC-Anbindung unter `steuerbote/eric` übermittelt sie die Meldung und den Vordruck der Dauerfristverlängerung an ELSTER. Ebenso rechnen eigene Kerne die Zusammenfassende Meldung (`steuerbote/zm`, siehe [Zusammenfassende Meldung](zm.md)), die Bestätigung ausländischer USt-IdNrn. (`steuerbote/vatid`, siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md)) und die Dauerfristverlängerung (`steuerbote/dauerfrist`). Diese Seite beschreibt die Frappe-Schicht. Die fachlichen Regeln des Kerns stehen in [Kennzahlen und Kontenzuordnung](ustva-kennzahlen.md), Aufbau, Tests und Stil in [Entwicklung](entwicklung.md).
 
 ## Der Kern rechnet, die Frappe-Schicht liest und speichert
 
@@ -12,7 +12,7 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 | `steuerbote/invoices.py` | liest die eingereichten Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise, mit Frappe |
 | `steuerbote/ustva/plausibility.py` | stellt die Kennzahlen einer Meldung neben Vorperiode und Vorjahr und leitet die Hinweise aus Rechnungen, Hauptbuch und Vergleich ab, im Kern ohne Frappe |
 | `steuerbote/mapping_sync.py` | macht aus den Zeilen der Kontenzuordnung die `Mapping` des Kerns und kürzt die Vorgaben auf die Konten eines Unternehmens |
-| `steuerbote/elster/` | bildet aus Steuernummer und Bundesland die 13-stellige Steuernummer im ELSTER-Format und schreibt die Meldung als XML für Mein ELSTER und ERiC, siehe [Abgabe über Mein ELSTER](abgabe-mein-elster.md) |
+| `steuerbote/elster/` | bildet aus Steuernummer und Bundesland die 13-stellige Steuernummer im ELSTER-Format, schreibt die Meldung als XML für Mein ELSTER und ERiC (`ustva_xml.py`, siehe [Abgabe über Mein ELSTER](abgabe-mein-elster.md)) und den Vordruck USt 1 H als XML für ERiC (`ust1h_xml.py`, siehe [XML für ERiC](dauerfristverlaengerung.md#xml-für-eric)) |
 | `vat_return_settings/rules.py` | Voranmeldungszeitraum je Monat, Dauerfristverlängerung und Sondervorauszahlung je Jahr, Abgaberhythmus der Zusammenfassenden Meldung und eigene USt-IdNr. |
 | `vat_return/bridge.py` | überträgt das Ergebnis des Kerns in die Tabellen der Meldung, auch Vorperiodenvergleich und Hinweise, bildet die Summen über die gemeldeten Beträge und übergibt die Meldung und den Datenlieferanten an das XML |
 | `report/ustva_kennzahlen/attribution.py` | findet die Belege, aus denen jede Kennzahl besteht |
@@ -23,6 +23,8 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 | `vat_id_confirmation/records.py` | macht aus jeder Abfrage einer Bestätigung die Felder einer USt-IdNr.-Bestätigung und das Ergebnis der Prüfung bis zu ihr |
 | `steuerbote/dauerfrist_sources.py` | liest für die Dauerfristverlängerung die abgegebenen Voranmeldungen eines Jahres mit Kz 83 und Kz 39 und das Gründungsdatum des Unternehmens, mit Frappe |
 | `vat_return_extension/bridge.py` | wählt die abgegebenen Voranmeldungen des Vorjahres, deren Kz 83 und Kz 39 die Grundlage bilden, nennt die Voranmeldungszeiträume, die ihr fehlen, gibt Grundlage, Grundlage von Hand und Monate der Tätigkeit an den Kern und bildet den Vordruck USt 1 H aus den Feldern des Belegs |
+| `elster_transmission/transmission.py` | Prüfen, Testsenden und Senden eines Belegs über ERiC: `Transmittable`, von dem Voranmeldung und Dauerfristverlängerung erben, den Hintergrundjob `run_transmission`, `stash_certificate`, den Kopf der Lieferung und die Verknüpfungen eines Belegs zu seinen ELSTER-Übermittlungen, siehe [Übermittlung an ELSTER](#übermittlung-an-elster) |
+| `public/js/elster_transmission.js` | Schaltflächen, Dialog für Zertifikat und Passwort und Hinweise der Übermittlung, die die Formulare von Voranmeldung und Dauerfristverlängerung mit `{% include %}` einbinden |
 
 So läuft „Berechnen“ an einer Meldung:
 
@@ -121,11 +123,11 @@ Ein Dokument für die ganze Installation (Single), nur für den System Manager. 
 
 ### ELSTER-Übermittlung (`ELSTER Transmission`)
 
-Ein Dokument je Lauf von Prüfen, Testsenden oder Senden und je Vermerk einer Abgabe außerhalb von Steuerbote, Nummernkreis `ELSTER-{YYYY}-{#####}`. Nur der Server schreibt es; nach der Aufzeichnung bleibt es, wie es ist.
+Ein Dokument je Lauf von Prüfen, Testsenden oder Senden und je Vermerk einer Abgabe außerhalb von Steuerbote, für eine Umsatzsteuer-Voranmeldung oder eine Dauerfristverlängerung, Nummernkreis `ELSTER-{YYYY}-{#####}`. Nur der Server schreibt es; nach der Aufzeichnung bleibt es, wie es ist.
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
-| `vat_return`, `company` | Umsatzsteuer-Voranmeldung, Unternehmen | die Meldung und ihr Unternehmen |
+| `document_type`, `document`, `company` | Dokumententyp, Dokument, Unternehmen | der Beleg als Dynamic Link, `VAT Return` oder `VAT Return Extension` (`DOCUMENT_TYPES`), und sein Unternehmen |
 | `operation` | Vorgang | `validate`, `test_send`, `send` oder `extern` |
 | `status` | Status | Läuft, Erfolgreich, Fehlgeschlagen oder Unbekannt |
 | `outcome` | Ergebnis laut ERiC | `valid`, `invalid`, `accepted`, `rejected`, `failed` oder `unknown` aus `steuerbote.eric.result.Outcome` |
@@ -136,6 +138,8 @@ Ein Dokument je Lauf von Prüfen, Testsenden oder Senden und je Vermerk einer Ab
 | `remarks` | Anmerkungen | der Vermerk einer Abgabe außerhalb von Steuerbote |
 | `messages` | Nachrichten | Tabelle „Meldung der ELSTER-Übermittlung“: Art (Fehler oder Hinweis), Code, Nachricht und Feld |
 | `xml`, `protocol_pdf`, `response_xml` | Nutzdaten (XML), Protokoll (PDF), Antwort des ELSTER-Servers (XML) | private Dateien der Übermittlung |
+
+Bis Version 0.2 nannte eine ELSTER-Übermittlung ihre Meldung im Feld `vat_return`, einem Link auf die Umsatzsteuer-Voranmeldung. Der Patch `steuerbote/patches/link_transmissions_to_their_document.py` läuft bei `bench migrate` nach dem Abgleich der DocTypes (`post_model_sync`): Frappe behält die Spalte eines Felds, das den DocType verlässt, also trägt er deren Wert als `document` mit dem `document_type` `VAT Return` ein und lässt Übermittlungen, die ihr Dokument schon nennen, wie sie sind. Die alte Spalte entfernt `bench trim-tables`. Die Verknüpfungen eines Belegs zu seinen Übermittlungen stehen nicht in der DocType-Datei, deren Tabelle `links` keinen Dynamic Link kennt, sondern in `<doctype>_dashboard.py` mit `dynamic_links` (`transmission.dashboard`).
 
 ### Zusammenfassende Meldung (`Recapitulative Statement`)
 
@@ -165,7 +169,7 @@ An der Meldung stehen unter „Verknüpfungen“ ihre USt-IdNr.-Bestätigungen.
 
 ### Dauerfristverlängerung (`VAT Return Extension`)
 
-Einreichbar, Nummernkreis `DFV-.YYYY.-.#####`, ein Vordruck USt 1 H je Unternehmen und Jahr: im Jahr des Antrags der Antrag auf Dauerfristverlängerung, bei monatlicher Abgabe mit der Anmeldung der Sondervorauszahlung, in jedem weiteren Jahr die Anmeldung allein. „Berechnen“ liest mit `dauerfrist_sources.py` die abgegebenen Voranmeldungen des Vorjahres und das Gründungsdatum, der Kern unter `steuerbote/dauerfrist` rechnet Grundlage, Sondervorauszahlung (Kz 38), Fälligkeit und den Zeitraum der Anrechnung über Kz 39, und `vat_return_extension/bridge.py` überträgt die Werte. Eine Grundlage von Hand mit Begründung ersetzt die aus den Voranmeldungen. Den Vordruck trägt man in Mein ELSTER von Hand ein, bis es das Schema 2027 und die Hersteller-ID gibt; „In Mein ELSTER eingetragen“ und „Als außerhalb abgegeben vermerken“ reichen den Beleg ein und setzen in den Einstellungen die Dauerfristverlängerung des Jahres, bei der Anmeldung dazu Kz 38 als Sondervorauszahlung, die die letzte Voranmeldung des Jahres in Kz 39 abzieht. Eine abgegebene Anmeldung wird storniert und mit „Ändern“ als berichtigte Anmeldung (Kz 10) neu angelegt. Felder, Status und Fristen stehen in [Der Beleg in ERPNext](dauerfristverlaengerung.md#der-beleg-in-erpnext).
+Einreichbar, Nummernkreis `DFV-.YYYY.-.#####`, ein Vordruck USt 1 H je Unternehmen und Jahr: im Jahr des Antrags der Antrag auf Dauerfristverlängerung, bei monatlicher Abgabe mit der Anmeldung der Sondervorauszahlung, in jedem weiteren Jahr die Anmeldung allein. „Berechnen“ liest mit `dauerfrist_sources.py` die abgegebenen Voranmeldungen des Vorjahres und das Gründungsdatum, der Kern unter `steuerbote/dauerfrist` rechnet Grundlage, Sondervorauszahlung (Kz 38), Fälligkeit und den Zeitraum der Anrechnung über Kz 39, und `vat_return_extension/bridge.py` überträgt die Werte. Eine Grundlage von Hand mit Begründung ersetzt die aus den Voranmeldungen. Prüfen, Testsenden und Senden laufen wie an der Voranmeldung, siehe [Übermittlung an ELSTER](#übermittlung-an-elster), mit `transmission_in_progress` als Sperre; ohne Hersteller-ID trägt man den Vordruck in Mein ELSTER von Hand ein. Ein Senden, das ELSTER angenommen hat, „In Mein ELSTER eingetragen“ und „Als außerhalb abgegeben vermerken“ reichen den Beleg ein und setzen in den Einstellungen die Dauerfristverlängerung des Jahres, bei der Anmeldung dazu Kz 38 als Sondervorauszahlung, die die letzte Voranmeldung des Jahres in Kz 39 abzieht. Eine abgegebene Anmeldung wird storniert und mit „Ändern“ als berichtigte Anmeldung (Kz 10) neu angelegt. Felder, Status und Fristen stehen in [Der Beleg in ERPNext](dauerfristverlaengerung.md#der-beleg-in-erpnext).
 
 ### USt-IdNr.-Bestätigung (`VAT ID Confirmation`)
 
@@ -242,14 +246,14 @@ Auffällig ist eine Kennzahl, wenn ihre Änderung gegenüber der Vorperiode beid
 
 ## Übermittlung an ELSTER
 
-Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in einem kurzlebigen Prozess des Jobs. Was Anwender dabei sehen, beschreibt [Übermittlung an ELSTER](uebermittlung.md), die Anbindung von ERiC [ERiC](eric.md).
+Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in einem kurzlebigen Prozess des Jobs, für die Umsatzsteuer-Voranmeldung und die Dauerfristverlängerung auf demselben Weg: Beide Controller erben von `Transmittable` in `elster_transmission/transmission.py` und liefern nur, was ihr Beleg anders macht, `nutzdaten(hersteller_id)`, `check_transmittable()` und `check_can_be_sent()`. Was Anwender dabei sehen, beschreibt [Übermittlung an ELSTER](uebermittlung.md), die Anbindung von ERiC [ERiC](eric.md).
 
-1. `transmit` an der Meldung sperrt ihre Zeile, liest sie neu und prüft: Entwurf, berechnet, kein laufender Vorgang, außerhalb der Simulation bestätigte Datenschutzhinweise. Für Senden prüft sie dazu, dass kein Simulationsmodus aktiv ist, die Meldung abgegeben werden könnte wie beim Buchen, der Zeitraum nicht schon abgegeben ist und die Meldung weder übermittelt ist noch mit unbekanntem Ergebnis gesendet wurde.
+1. `transmit` am Beleg sperrt seine Zeile, liest ihn neu und prüft: Entwurf, berechnet (`check_transmittable`, an der Dauerfristverlängerung dazu Vordruck und Schema des Jahres), kein laufender Vorgang, außerhalb der Simulation bestätigte Datenschutzhinweise. Für Senden prüft es dazu, dass kein Simulationsmodus aktiv ist, und `check_can_be_sent`, dass der Beleg abgegeben werden könnte wie beim Buchen, der Zeitraum oder das Jahr nicht schon abgegeben ist und der Beleg weder übermittelt ist noch mit unbekanntem Ergebnis gesendet wurde.
 2. Sie legt die ELSTER-Übermittlung mit dem Status „Läuft“ an, setzt `transmission_in_progress` und stellt `run_transmission` mit dem Namen dieser Übermittlung in die Queue `long`, nach dem Commit, mit einer Job-ID je Übermittlung. Ein Job, dessen Übermittlung nicht mehr läuft, tut nichts. Ist der Job eines laufenden Vorgangs verschwunden, zeigt `onload` das dem Formular an, und es ruft `release_stale_transmission`: Die Übermittlung wird geschlossen, ein Prüfen als fehlgeschlagen, ein Testsenden oder Senden mit unbekanntem Ergebnis, und die Sperre fällt. Dasselbe geschieht beim nächsten Start eines Vorgangs.
 3. Zertifikat und Passwort gehen vorher an `stash_certificate`, das sie über `steuerbote.eric.secrets` mit dem Schlüssel der Site verschlüsselt höchstens 15 Minuten im Zwischenspeicher ablegt. Der Job bekommt nur den Token und holt sie einmal ab.
-4. Der Job schreibt die Nutzdaten mit `ustva_xml.to_nutzdaten`, aus demselben Baum wie die Datei für Mein ELSTER und mit der Hersteller-ID in Kz 09, und den Kopf der Lieferung als `EnvelopeHeader`. Hersteller-ID, Produktdaten und Datenlieferant kommen aus den ERiC-Einstellungen, das Finanzamt aus den ersten vier Stellen der Steuernummer im ELSTER-Format.
+4. Der Job schreibt die Nutzdaten mit `nutzdaten` des Belegs, an der Meldung mit `ustva_xml.to_nutzdaten` aus demselben Baum wie die Datei für Mein ELSTER, an der Dauerfristverlängerung mit `ust1h_xml.to_nutzdaten`, beide mit der Hersteller-ID in Kz 09, und den Kopf der Lieferung als `EnvelopeHeader` mit der datenartVersion `UStVA_<Jahr>`. Hersteller-ID, Produktdaten und Datenlieferant kommen aus den ERiC-Einstellungen, das Finanzamt aus den ersten vier Stellen der Steuernummer im ELSTER-Format.
 5. Außerhalb der Simulation sucht `runtime.detect` die Laufzeit für das Jahr der Meldung, mit einem Verzeichnis für `eric.log` je Übermittlung: die neueste freigegebene Version mit dem Plugin des Jahres, für Prüfen und Testsenden ersatzweise eine Beta, für Senden nie. `service.run` ruft damit den Worker auf, ohne Laufzeit die Simulation.
-6. Das Ergebnis geht in die ELSTER-Übermittlung: Status, Ergebnis laut ERiC, Transferticket, Nachrichten und Dateien. Nur ein Senden, das ELSTER angenommen hat, bucht die Meldung. Scheitert das Buchen, steht der Grund mit dem Transferticket in der Übermittlung, und die Meldung bleibt ein Entwurf, der sich nicht noch einmal senden lässt.
+6. Das Ergebnis geht in die ELSTER-Übermittlung: Status, Ergebnis laut ERiC, Transferticket, Nachrichten und Dateien. Nur ein Senden, das ELSTER angenommen hat, bucht den Beleg, mit `flags.filing_transmission`; die Dauerfristverlängerung hält dabei ERiC, den Tag der Antwort und das Transferticket als ihre Abgabe fest. Scheitert das Buchen, steht der Grund mit dem Transferticket in der Übermittlung, und der Beleg bleibt ein Entwurf, der sich nicht noch einmal senden lässt.
 7. Zum Schluss gibt der Job die Sperre frei und meldet das Ergebnis dem Benutzer.
 
 | Ergebnis laut ERiC | Status |
@@ -258,7 +262,9 @@ Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in ei
 | Ungültig, Abgelehnt, fehlgeschlagen | Fehlgeschlagen |
 | Unbekannt | Unbekannt; die Meldung lässt sich nicht noch einmal senden, bis jemand in Mein ELSTER nachgesehen und ein System Manager die Übermittlung gelöscht hat |
 
-`vat_return/transmission_adapter.py` enthält die Aufrufe, die ein eingerichtetes ERiC brauchen: Worker, Laufzeit des Jahres und Installation, mit den Pfaden und dem Benutzer der Site. Die Tests ersetzen nur diese Aufrufe und lassen XML, Kopf, Ablage von Zertifikat und Passwort und Simulation wirklich laufen. Mit der Stub-Bibliothek der ERiC-Tests richtet ein Test eine Laufzeit aus einem Archiv ein und sendet durch den Worker.
+`vat_return/transmission_adapter.py` enthält die Aufrufe, die ein eingerichtetes ERiC brauchen: Worker, Laufzeit des Jahres und Installation, mit den Pfaden und dem Benutzer der Site. Die Tests ersetzen nur diese Aufrufe (`FakeEric` in `steuerbote/tests/transmitting.py`) und lassen XML, Kopf, Ablage von Zertifikat und Passwort und Simulation wirklich laufen. Mit der Stub-Bibliothek der ERiC-Tests richtet ein Test eine Laufzeit aus einem Archiv ein und sendet durch den Worker.
+
+Das Ereignis `steuerbote_elster_transmission` nennt `document_type` und `document` des Laufs; jedes Formular reagiert nur auf die Läufe seines DocTypes. Beide Formulare binden dieselben Schaltflächen und denselben Dialog aus `public/js/elster_transmission.js` ein und geben ihm nur die Texte, die ihren Beleg nennen.
 
 ## Die Zusammenfassende Meldung
 
@@ -284,7 +290,8 @@ So läuft „Berechnen“:
 | Kz 39 | `bridge.sondervorauszahlung_values` aus den Einstellungen |
 | Steuernummer im ELSTER-Format | `steuerbote/elster` |
 | XML für Mein ELSTER und ERiC, mit Kz 83 aus den geschriebenen Werten nachgerechnet | `steuerbote/elster/ustva_xml.py` |
-| Kopf der Lieferung, Hersteller-ID, Finanzamt und Testmerker | `envelope_header` in `vat_return.py`, geprüft von `steuerbote/eric/header.py` |
+| XML des Vordrucks USt 1 H für ERiC, im Kontext, den der Abgaberhythmus wählt | `steuerbote/elster/ust1h_xml.py` mit `Ust1H` aus `steuerbote/dauerfrist/form.py` |
+| Kopf der Lieferung, Hersteller-ID, Finanzamt und Testmerker | `envelope_header` in `elster_transmission/transmission.py`, geprüft von `steuerbote/eric/header.py` |
 | Laufzeit des Jahres, Ergebnis eines Laufs | `steuerbote/eric/runtime.py`, `steuerbote/eric/service.py` mit Worker oder Simulation |
 | Belege hinter jeder Kennzahl | `attribution.py` mit den Regeln von `calculate()` |
 | Vorperiode und Vorjahr im Bericht | `calculate()` für die Vergleichszeiträume, `comparison.py` |

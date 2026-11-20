@@ -24,6 +24,7 @@ steuerbote/                    Repository
 │   ├── elster/                ELSTER, reines Python ohne Frappe-Import
 │   │   ├── steuernummer.py    Steuernummer im 13-stelligen ELSTER-Format
 │   │   ├── ustva_xml.py       Voranmeldung als XML: Datei für Mein ELSTER, Nutzdaten für ERiC
+│   │   ├── ust1h_xml.py       Vordruck USt 1 H als XML: Nutzdaten für ERiC in beiden Kontexten
 │   │   ├── zm_xml.py          Zusammenfassende Meldung als XML: Nutzdaten der Datenart ZMDO für ERiC
 │   │   ├── charset.py         Zeichensatz von ELSTER und Ersatz typografischer Zeichen
 │   │   ├── envelope.py        ganzer Umschlag Elster mit TransferHeader, nur für die Schematests
@@ -49,7 +50,7 @@ steuerbote/                    Repository
 │   ├── dauerfrist_sources.py  liest für die Dauerfristverlängerung die abgegebenen Voranmeldungen eines Jahres und das Gründungsdatum
 │   ├── holiday_list.py        liest die Feiertage der Fristen aus der Feiertagsliste des Unternehmens
 │   ├── steuerbote/            Frappe-Modul „Steuerbote“, siehe Architektur
-│   │   ├── doctype/           Einstellungen, Kontenzuordnung, Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung, Dauerfristverlängerung und USt-IdNr.-Bestätigung samt Tabellen
+│   │   ├── doctype/           Einstellungen, Kontenzuordnung, Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung, Dauerfristverlängerung, USt-IdNr.-Bestätigung und ELSTER-Übermittlung samt Tabellen; elster_transmission/transmission.py übermittelt Voranmeldung und Dauerfristverlängerung
 │   │   ├── report/            Bericht „UStVA Kennzahlen“ mit den Belegen hinter jeder Kennzahl
 │   │   ├── workspace/         Arbeitsbereich „Steuern“
 │   │   ├── sidebar/           Seitenleiste des Moduls mit kurzen Bezeichnungen
@@ -57,11 +58,11 @@ steuerbote/                    Repository
 │   │   └── print_format/      Druckformate „Umsatzsteuer-Voranmeldung“, „Zusammenfassende Meldung“ und „Dauerfristverlängerung“
 │   ├── dock/                  Eintrag „Steuern“ in der Leiste von ERPNext
 │   ├── fixtures/              Feld „Nicht in der Umsatzsteuer-Voranmeldung“ an der Journalbuchung
-│   ├── public/                Logo (images/) und Symbol der Leiste (icons/)
+│   ├── public/                Logo (images/), Symbol der Leiste (icons/) und die Übermittlung, die die Formulare einbinden (js/elster_transmission.js)
 │   ├── translations/          deutsche Übersetzungen der Oberfläche (de.csv)
-│   ├── tests/                 Frappe-Integrationstests und Hilfen für Testdaten
-│   └── config/, patches/, templates/
-│                              Standardverzeichnisse einer Frappe-App, noch leer
+│   ├── tests/                 Frappe-Integrationstests und Hilfen für Testdaten und Übermittlungen
+│   ├── patches/               Patches, die bench migrate ausführt (patches.txt)
+│   └── config/, templates/    Standardverzeichnisse einer Frappe-App, noch leer
 ├── docs/                      Dokumentation
 │   └── bilder/                Bildschirmfotos der Oberfläche mit Beispieldaten
 ├── .github/workflows/         CI: Tests, Linters, Security
@@ -113,7 +114,7 @@ pytest --cov    # mit Abdeckung, wie in der CI
 
 ### Schematests
 
-`steuerbote/elster/tests/test_schema.py` prüft das XML gegen die Schemas der ERiC-Dokumentation: die Datei für Mein ELSTER gegen `UStVA-2026.xsd`, Nutzdaten und Umschlag gegen `elster11_UStVA_2026_extern.xsd` mit dem ElsterBasisSchema, dazu Reihenfolge, Typen und Längen, die `ustva_xml.py` aus dem Schema übernimmt. `test_zm_schema.py` prüft die Nutzdaten der Zusammenfassenden Meldung gegen `zm_000005.xsd` und im Umschlag gegen `elster11_Zm_000005_extern.xsd`, vergleicht sie Byte für Byte mit dem Beispiel `ZMDO_5_send-Auth.xml` und die Werte, die `zm_xml.py` übernimmt, mit Schema, Jahresdokumentation und Datenartversionmatrix. Die Schemas tragen keine Lizenz, die eine Weitergabe erlaubt, deshalb liegen sie nicht im Repository. Die Tests lesen sie aus der entpackten ERiC-Dokumentation, deren Verzeichnis die Umgebungsvariable `STEUERBOTE_ERIC_DOC_DIR` nennt:
+`steuerbote/elster/tests/test_schema.py` prüft das XML gegen die Schemas der ERiC-Dokumentation: die Datei für Mein ELSTER und die Nutzdaten des Vordrucks USt 1 H gegen `UStVA-2026.xsd`, Nutzdaten und Umschlag gegen `elster11_UStVA_2026_extern.xsd` mit dem ElsterBasisSchema, dazu Reihenfolge, Typen und Längen, die `ustva_xml.py` aus dem Schema übernimmt, und den Vordruck gegen die Beispiele `UStVA_Df_2026.xml` und `UStVA_SoVZ_2026.xml` in Canonical XML 2.0. `test_zm_schema.py` prüft die Nutzdaten der Zusammenfassenden Meldung gegen `zm_000005.xsd` und im Umschlag gegen `elster11_Zm_000005_extern.xsd`, vergleicht sie Byte für Byte mit dem Beispiel `ZMDO_5_send-Auth.xml` und die Werte, die `zm_xml.py` übernimmt, mit Schema, Jahresdokumentation und Datenartversionmatrix. Die Schemas tragen keine Lizenz, die eine Weitergabe erlaubt, deshalb liegen sie nicht im Repository. Die Tests lesen sie aus der entpackten ERiC-Dokumentation, deren Verzeichnis die Umgebungsvariable `STEUERBOTE_ERIC_DOC_DIR` nennt:
 
 ```bash
 curl -fLo /tmp/eric-doc.zip https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip
