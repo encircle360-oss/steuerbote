@@ -8,9 +8,12 @@ import ast
 import csv
 import json
 import re
+import struct
 from pathlib import Path
 from unittest import TestCase
+from xml.etree import ElementTree
 
+from steuerbote import hooks
 from steuerbote.ustva import KENNZAHLEN
 
 APP = Path(__file__).resolve().parents[1]
@@ -24,6 +27,19 @@ PRINT_FORMAT = MODULE / "print_format" / "umsatzsteuer_voranmeldung"
 VAT_RETURN_SCRIPT = MODULE / "doctype" / "vat_return" / "vat_return.js"
 MAPPING = MODULE / "doctype" / "vat_return_mapping"
 MAPPING_RULE = MODULE / "doctype" / "vat_return_mapping_rule" / "vat_return_mapping_rule.json"
+DOCK = APP / "dock" / "steuerbote" / "steuerbote.json"
+PERMISSIONS = APP / "permissions.py"
+PUBLIC = APP / "public"
+LOGO = PUBLIC / "images" / "steuerbote-logo.svg"
+LOGO_PNG = PUBLIC / "images" / "steuerbote-logo.png"
+# Frappe serves the public folder of an app under this path.
+ASSETS = "/assets/steuerbote/"
+SVG = "{http://www.w3.org/2000/svg}"
+# What would put text, pixels, code or content from elsewhere into a drawing.
+NOT_A_SHAPE = frozenset(
+	f"{SVG}{tag}" for tag in ("text", "image", "script", "style", "foreignObject", "use", "a")
+)
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 # Names of the app that read the same in every language.
 GERMAN_NAMES = frozenset({"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen"})
@@ -86,6 +102,20 @@ def doctypes_with_a_list() -> set[str]:
 
 def untranslated(texts: set[str]) -> list[str]:
 	return sorted(texts - translated() - GERMAN_NAMES - FRAMEWORK_LABELS)
+
+
+def asset(url: str) -> Path | None:
+	"""The file behind a URL of the app's public folder, or None for any other URL."""
+	return PUBLIC / url.removeprefix(ASSETS) if url.startswith(ASSETS) else None
+
+
+def png_size(path: Path) -> tuple[int, int]:
+	"""Width and height from the IHDR chunk, which follows the signature of every PNG file."""
+	header = path.read_bytes()[:24]
+	if header[:8] != PNG_SIGNATURE or header[12:16] != b"IHDR":
+		raise ValueError(f"{path.name} is no PNG file")
+	width, height = struct.unpack(">II", header[16:24])
+	return width, height
 
 
 class ReportFilesTest(TestCase):
@@ -297,6 +327,112 @@ class SidebarFilesTest(TestCase):
 			],
 		)
 		self.assertEqual([label for label in in_german if len(label) > LONGEST_LABEL], [])
+
+
+class AppEntryFilesTest(TestCase):
+	"""The desk offers Steuerbote twice: on the apps screen and on the rail beside the areas of ERPNext."""
+
+	def setUp(self):
+		(self.entry,) = hooks.add_to_apps_screen
+		self.dock = read_json(DOCK)
+
+	def test_the_apps_screen_opens_the_workspace_under_the_name_and_logo_of_the_app(self):
+		self.assertEqual(
+			{key: self.entry[key] for key in ("name", "title", "route")},
+			{
+				"name": hooks.app_name,
+				"title": hooks.app_title,
+				"route": f"/desk/{read_json(WORKSPACE)['name'].lower()}",
+			},
+		)
+		self.assertEqual((hooks.app_title, hooks.app_home), ("Steuerbote", self.entry["route"]))
+		self.assertEqual(asset(self.entry["logo"]), LOGO)
+
+	def test_the_apps_screen_asks_the_app_who_may_see_it(self):
+		module, _, function = self.entry["has_permission"].rpartition(".")
+		self.assertEqual(module, "steuerbote.permissions")
+		functions = {
+			node.name: node
+			for node in ast.parse(PERMISSIONS.read_text(encoding="utf-8")).body
+			if isinstance(node, ast.FunctionDef)
+		}
+		self.assertIn(function, functions)
+		self.assertEqual(functions[function].args.args, [])
+
+	def test_the_app_leaves_the_logo_of_the_login_page_to_the_site(self):
+		"""Frappe takes the logo of the login page from the app_logo_url of the installed apps, the second
+		one when there are exactly two, so one more would change the login page of every site."""
+		self.assertFalse(hasattr(hooks, "app_logo_url"))
+
+	def test_the_dock_mounts_the_app_on_the_rail_of_erpnext(self):
+		self.assertEqual(
+			{key: self.dock[key] for key in ("doctype", "name", "app", "standard", "user", "mount_on")},
+			{
+				"doctype": "Dock",
+				"name": hooks.app_name,
+				"app": hooks.app_name,
+				"standard": 1,
+				"user": "",
+				"mount_on": "erpnext",
+			},
+		)
+		self.assertIn("frappe/erpnext", hooks.required_apps)
+
+	def test_the_rail_entry_opens_the_sidebar_of_the_module_as_steuern(self):
+		(item,) = self.dock["items"]
+		self.assertEqual(
+			{key: item[key] for key in ("link_type", "link_to", "title", "hidden", "added")},
+			{
+				"link_type": "Sidebar",
+				"link_to": read_json(SIDEBAR)["name"],
+				"title": read_json(WORKSPACE)["name"],
+				"hidden": 0,
+				"added": 0,
+			},
+		)
+		self.assertEqual(untranslated({item["title"]}), [])
+
+	def test_the_icon_of_the_rail_entry_is_a_symbol_the_app_ships(self):
+		(item,) = self.dock["items"]
+		(sprite,) = (asset(url) for url in hooks.app_include_icons)
+		self.assertIsNotNone(sprite)
+		symbols = {
+			symbol.get("id"): symbol.get("viewBox")
+			for symbol in ElementTree.parse(sprite).getroot().iter(f"{SVG}symbol")
+		}
+		self.assertEqual(symbols, {f"icon-{item['icon']}": "0 0 24 24"})
+
+
+class LogoFilesTest(TestCase):
+	"""The logo is a drawing in SVG; the PNG is rendered from it for places that take no SVG."""
+
+	def setUp(self):
+		self.logo = ElementTree.parse(LOGO).getroot()
+
+	def test_the_logo_is_a_square_svg(self):
+		self.assertEqual(self.logo.tag, f"{SVG}svg")
+		self.assertIsNotNone(self.logo.get("viewBox"))
+		min_x, min_y, width, height = (float(value) for value in self.logo.get("viewBox").split())
+		self.assertEqual((min_x, min_y), (0, 0))
+		self.assertEqual(width, height)
+
+	def test_the_logo_holds_shapes_and_nothing_else(self):
+		self.assertEqual([element.tag for element in self.logo.iter() if element.tag in NOT_A_SHAPE], [])
+		self.assertEqual(
+			[name for element in self.logo.iter() for name in element.attrib if name.endswith("href")], []
+		)
+
+	def test_the_logo_is_drawn_in_two_colours(self):
+		colours = {
+			element.get(paint)
+			for element in self.logo.iter()
+			for paint in ("fill", "stroke")
+			if element.get(paint) not in (None, "none")
+		}
+		self.assertEqual(colours, {"#7C5CFC", "#FFFFFF"})
+
+	def test_the_png_is_the_logo_at_512_pixels(self):
+		self.assertEqual(png_size(LOGO_PNG), (512, 512))
 
 
 class PrintFormatFilesTest(TestCase):
