@@ -494,6 +494,19 @@ class TestVATReturnExtension(IntegrationTestCase):
 		self.addCleanup(remove, amendment.name)
 		self.assertEqual((amendment.status, amendment.filed_on, amendment.base_rows), ("Entwurf", None, []))
 
+	def test_a_new_form_after_a_cancelled_filing_is_a_corrected_anmeldung(self):
+		"""Cancelling in Steuerbote takes nothing back at the Finanzamt, so every further form of the year is a
+		corrected Anmeldung (Kz 10), also one made anew instead of amended."""
+		doc = self.calculated(remarks="Januar bis November liegen der Steuerberatung vor.")
+		doc.mark_filed_outside(filed_via="mein_elster")
+		doc.reload()
+		doc.cancel()
+		with self.assertRaisesRegex(
+			frappe.ValidationError, f"{COMPANY} filed {doc.name} for 2027 already, which the Finanzamt keeps"
+		):
+			frappe.get_doc({"doctype": DOCTYPE, "company": COMPANY, "year": 2027}).insert()
+		self.assertEqual(self.extension(is_correction=1).is_correction, 1)
+
 	def test_the_print_format_is_installed_for_the_dauerfrist(self):
 		self.assertEqual(
 			frappe.db.get_value(

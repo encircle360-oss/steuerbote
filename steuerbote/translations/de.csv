@@ -540,6 +540,7 @@
 "{0} amends {1}, which is filed with the Finanzamt: mark it as a corrected Anmeldung (Kz 10).","{0} ändert {1}, einen beim Finanzamt abgegebenen Vordruck: Bitte als berichtigte Anmeldung (Kz 10) kennzeichnen."
 "{0} began on {1}, after {2}.","{0} hat am {1} begonnen, nach {2}."
 "{0} began on {1}: its Sondervorauszahlung is the average Vorauszahlung of a month it expects in {2}. Enter the Vorauszahlungen it expects for the year as the base by hand, with the reason.","{0} hat am {1} begonnen: Die Sondervorauszahlung ist die durchschnittliche Vorauszahlung eines Monats, die es für {2} erwartet. Bitte die für das Jahr erwarteten Vorauszahlungen als Grundlage von Hand mit Begründung eintragen."
+"{0} filed {1} for {2} already, which the Finanzamt keeps: a further form for the year is a corrected Anmeldung der Sondervorauszahlung (Kz 10).","{0} hat {1} für {2} bereits abgegeben, und das Finanzamt behält den Vordruck: Ein weiterer Vordruck für das Jahr ist eine berichtigte Anmeldung der Sondervorauszahlung (Kz 10)."
 "{0} for {1} failed, see {2}.","{0} für {1} fehlgeschlagen, siehe {2}."
 "{0} for {1} succeeded, see {2}.","{0} für {1} erfolgreich, siehe {2}."
 "{0} has a Dauerfristverlängerung for {1} already: {2}.","{0} hat für {1} bereits die Dauerfristverlängerung {2}."

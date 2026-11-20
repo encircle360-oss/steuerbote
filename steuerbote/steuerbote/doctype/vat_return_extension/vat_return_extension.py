@@ -288,12 +288,32 @@ class VATReturnExtension(Document):
 			)
 
 	def _require_correction_of_a_filed_form(self) -> None:
-		"""The Finanzamt has the form an amendment amends, so the amendment goes to it as a correction."""
-		if self.amended_from and not cint(self.is_correction):
+		"""The Finanzamt keeps every form filed for the year, also one cancelled in Steuerbote since, so a further
+		form goes to it as a corrected Anmeldung (Kz 10), whether it amends the filed form or is made anew."""
+		if cint(self.is_correction):
+			return
+		if self.amended_from:
 			frappe.throw(
 				_(
 					"{0} amends {1}, which is filed with the Finanzamt: mark it as a corrected Anmeldung (Kz 10)."
 				).format(self.name, self.amended_from)
+			)
+		filed = frappe.get_all(
+			DOCTYPE,
+			filters={
+				"company": self.company,
+				"year": cint(self.year),
+				"name": ["!=", self.name or ""],
+				"filed_via": ["is", "set"],
+			},
+			order_by="creation desc",
+			pluck="name",
+		)
+		if filed:
+			frappe.throw(
+				_(
+					"{0} filed {1} for {2} already, which the Finanzamt keeps: a further form for the year is a corrected Anmeldung der Sondervorauszahlung (Kz 10)."
+				).format(self.company, filed[0], cint(self.year))
 			)
 
 	def _discard_calculation_of_another_form(self) -> None:
