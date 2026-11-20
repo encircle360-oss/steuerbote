@@ -14,8 +14,8 @@ directory from the module path.
 ERiC runs only for a runtime that confirms the privacy notices of the tax administration
 (Lizenzvertrag, § 5 Abs. 1 und 2); the simulation needs no confirmation.
 
-Certificate and PIN go to the worker on standard input and nowhere else. The request that carries them
-is Sealed, and each variable that holds one of them has secret or password in its name, so a traceback
+Certificate and PIN, and the password of a proxy, go to the worker on standard input and nowhere else. The
+request that carries them is Sealed, and each variable that holds one of them has secret or password in its name, so a traceback
 with the local variables of its frames, as Frappe writes it in developer mode, shows neither. Once the
 worker has started, a send that does not come back, because of the timeout, a crash, an answer that is
 no result or an exception in this process such as the timeout of the background job, has an unknown
@@ -36,6 +36,7 @@ from pathlib import Path
 
 from steuerbote.eric.fake import Simulation
 from steuerbote.eric.header import EnvelopeHeader, problems
+from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.result import (
 	ERROR,
 	EXIT_INVALID_REQUEST,
@@ -91,12 +92,15 @@ def run(
 	certificate_secret: bytes | None,
 	certificate_password: str | None,
 	timeout_seconds: int = 120,
+	*,
+	proxy: Proxy | None = None,
 ) -> TransmissionResult:
 	"""Dispatch to the ERiC worker when a runtime is configured, else to the simulation.
 
 	With a runtime, PrivacyNoticeNotConfirmed unless the runtime confirms the privacy notices, and SEND
 	and TEST_SEND need the PKCS#12 container certificate_secret and its certificate_password; the
-	simulation accepts them being None. Never logs the password or the certificate.
+	simulation accepts them being None. ERiC reaches the ELSTER servers through ``proxy`` if one is given;
+	the simulation reaches no server and leaves it aside. Never logs the password or the certificate.
 	"""
 	if runtime is None:
 		return Simulation().run(operation, nutzdaten_xml, header)
@@ -121,7 +125,7 @@ def run(
 			operation, False, False, runtime.version, None, testmerker, refused, outcome=Outcome.FAILED
 		)
 	request_secret = _process_request(
-		operation, nutzdaten_xml, header, runtime, certificate_secret, certificate_password
+		operation, nutzdaten_xml, header, runtime, certificate_secret, certificate_password, proxy
 	)
 	worker = start_worker()
 	try:
@@ -248,6 +252,7 @@ def _process_request(
 	runtime: RuntimeInfo,
 	certificate_secret: bytes | None,
 	certificate_password: str | None,
+	proxy: Proxy | None = None,
 ) -> Sealed:
 	"""The request of the worker for the operation, as Sealed JSON: the dictionary never outlives this call."""
 	return Sealed(
@@ -262,6 +267,7 @@ def _process_request(
 					None if certificate_secret is None else base64.b64encode(certificate_secret).decode()
 				),
 				"certificate_password": certificate_password,
+				"proxy": None if proxy is None else proxy.to_dict(),
 			}
 		).encode()
 	)

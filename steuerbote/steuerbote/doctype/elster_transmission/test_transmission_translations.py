@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from unittest import TestCase
 
+from steuerbote.eric import proxy
+
 APP = Path(__file__).resolve().parents[3]
 MODULE = APP / "steuerbote"
 TRANSLATIONS = APP / "translations" / "de.csv"
@@ -33,6 +35,7 @@ UNTRANSLATED = frozenset(
 		"Hersteller-ID",
 		"Läuft",
 		"Nutzdaten (XML)",
+		"Proxy",
 		"Testmerker",
 		"Transferticket",
 		"Unbekannt",
@@ -94,6 +97,7 @@ def texts_of_the_transmission() -> set[str]:
 	)
 	for source in SOURCES:
 		texts.update(TRANSLATED_LITERAL.findall(source.read_text(encoding="utf-8")))
+	texts.update(proxy.MESSAGES)
 	return texts - UNTRANSLATED - FRAMEWORK_LABELS
 
 
@@ -109,6 +113,8 @@ class TransmissionTranslationsTest(TestCase):
 			"Certificate File (.pfx)",
 			"Errors {0}, hints {1}: see the messages below.",
 			"Latest run {0}, {1}, {2}: errors {3}, hints {4}.",
+			"Proxy URL",
+			proxy.NO_PORT,
 		):
 			with self.subTest(text=text):
 				self.assertIn(text, texts)

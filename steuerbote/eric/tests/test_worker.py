@@ -14,6 +14,7 @@ from unittest import TestCase, mock
 
 from steuerbote.eric import worker
 from steuerbote.eric.header import EnvelopeHeader
+from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Operation, Outcome, TransmissionResult
 from steuerbote.eric.runtime import RuntimeInfo
 from steuerbote.eric.tests import stub
@@ -35,6 +36,9 @@ HEADER = EnvelopeHeader(
 )
 CONTAINER = b"\x30\x82\x01\x00fake\x00pkcs12\x00container"
 PIN = "Geheim-PIN-4711"
+# The password of the proxy, invented.
+PROXY_GEHEIM = "Proxy-Geheim-4711"
+PROXY = Proxy("proxy.example.com", 3128, "steuerbote", PROXY_GEHEIM)
 APP_ROOT = Path(worker.__file__).resolve().parents[2]
 
 
@@ -112,6 +116,12 @@ class ValidateTest(WorkerTestCase):
 		):
 			with self.subTest(setting=name):
 				self.assertEqual(self.stub.recorded(f"setting:{name}"), value)
+
+	def test_sets_no_proxy_without_one(self):
+		self.run_operation(Operation.VALIDATE)
+		for name in ("http.proxy_host", "http.proxy_port", "http.proxy_username", "http.proxy_password"):
+			with self.subTest(setting=name):
+				self.assertIsNone(self.stub.recorded(f"setting:{name}"))
 
 	def test_lets_eric_write_the_transfer_header_around_the_datenteil(self):
 		self.run_operation(Operation.VALIDATE)
@@ -284,11 +294,31 @@ class SendTest(WorkerTestCase):
 		self.assertIsNone(self.stub.recorded("datenpuffer"))
 
 	def test_never_writes_certificate_or_password(self):
-		code, stdout, stderr = self.serve(self.request(Operation.SEND))
+		code, stdout, stderr = self.serve(self.request(Operation.SEND, proxy=PROXY.to_dict()))
 		self.assertEqual(code, 0)
-		for secret in (PIN.encode(), base64.b64encode(CONTAINER), b"pkcs12"):
+		for secret in (PIN.encode(), base64.b64encode(CONTAINER), b"pkcs12", PROXY_GEHEIM.encode()):
 			self.assertNotIn(secret, stdout)
 			self.assertNotIn(secret.decode(), stderr)
+
+	def test_sends_through_the_proxy_of_the_request(self):
+		"""Kap. 6.2.4, step 2: „Falls ein Proxy verwendet wird, müssen die Proxy-Parameter mit
+		EricEinstellungSetzen() gesetzt werden“, with the names of Tabelle 4-2."""
+		result = self.run_operation(Operation.TEST_SEND, proxy=PROXY.to_dict())
+		self.assertIs(result.outcome, Outcome.ACCEPTED)
+		for name, value in (
+			("http.proxy_host", "proxy.example.com"),
+			("http.proxy_port", "3128"),
+			("http.proxy_username", "steuerbote"),
+			("http.proxy_password", PROXY_GEHEIM),
+		):
+			with self.subTest(setting=name):
+				self.assertEqual(self.stub.recorded(f"setting:{name}"), value)
+
+	def test_a_socks_proxy_names_its_protocol_and_no_user(self):
+		self.run_operation(Operation.SEND, proxy=Proxy("socks5://10.0.0.1", 1080).to_dict())
+		self.assertEqual(self.stub.recorded("setting:http.proxy_host"), "socks5://10.0.0.1")
+		self.assertEqual(self.stub.recorded("setting:http.proxy_port"), "1080")
+		self.assertIsNone(self.stub.recorded("setting:http.proxy_username"))
 
 
 class FailureTest(WorkerTestCase):
@@ -366,6 +396,8 @@ class ProtocolTest(WorkerTestCase):
 			"no certificate": valid | {"certificate_secret": None},
 			"no password": valid | {"certificate_password": None},
 			"password": valid | {"certificate_password": 4711},
+			"proxy": valid | {"proxy": ["proxy.example.com", 3128]},
+			"proxy port": valid | {"proxy": PROXY.to_dict() | {"port": "3128"}},
 		}
 		for case, request in broken.items():
 			with self.subTest(case):

@@ -24,7 +24,12 @@
   "installed_version",
   "lib_dir",
   "log_dir",
-  "last_check"
+  "last_check",
+  "proxy_section",
+  "proxy_url",
+  "column_break_proxy",
+  "proxy_user",
+  "proxy_password"
  ],
  "fields": [
   {
@@ -143,11 +148,42 @@
    "fieldtype": "Datetime",
    "label": "Last Check",
    "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:doc.proxy_url",
+   "description": "Only where the server reaches ELSTER through a proxy. ERiC takes http://, socks4:// or socks5:// with host and port, a SOCKS proxy without user and password.",
+   "fieldname": "proxy_section",
+   "fieldtype": "Section Break",
+   "label": "Proxy"
+  },
+  {
+   "description": "Such as http://proxy.example.com:3128. Empty: no proxy.",
+   "fieldname": "proxy_url",
+   "fieldtype": "Data",
+   "label": "Proxy URL"
+  },
+  {
+   "fieldname": "column_break_proxy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.proxy_url",
+   "fieldname": "proxy_user",
+   "fieldtype": "Data",
+   "label": "Proxy User"
+  },
+  {
+   "depends_on": "eval:doc.proxy_url",
+   "description": "Kept encrypted, and handed to ERiC for a run only.",
+   "fieldname": "proxy_password",
+   "fieldtype": "Password",
+   "label": "Proxy Password"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-18 08:00:00.000000",
+ "modified": "2026-11-21 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "ERiC Settings",

@@ -6,7 +6,9 @@ nothing reaches the Finanzamt. Steuerbote ships no part of ERiC and downloads no
 archive for Linux x86_64 from the ELSTER developer area on the server, and the installation job unpacks it
 through steuerbote.eric.runtime after checking its SHA-256. Before ERiC runs, the operator confirms the
 Datenschutzhinweise of the tax administration (ERiC licence, § 5 Abs. 1 and 2); the settings keep who
-confirmed them and when. The simulation needs no confirmation.
+confirmed them and when. The simulation needs no confirmation. Where the server reaches ELSTER through a proxy,
+the settings name it, with its password in a Password field, and every run of ERiC goes through it; the
+simulation reaches no server.
 """
 
 import os
@@ -21,6 +23,7 @@ from frappe.utils.background_jobs import is_job_enqueued
 
 import steuerbote
 from steuerbote.elster import ustva_xml
+from steuerbote.eric import proxy
 from steuerbote.eric.runtime import RuntimeInstallError
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
@@ -63,6 +66,9 @@ class ERiCSettings(Document):
 		privacy_notice_confirmed_on: DF.Datetime | None
 		produkt_name: DF.Data
 		produkt_version: DF.Data | None
+		proxy_password: DF.Password | None
+		proxy_url: DF.Data | None
+		proxy_user: DF.Data | None
 		simulation: DF.Check
 	# end: auto-generated types
 
@@ -83,8 +89,22 @@ class ERiCSettings(Document):
 		self.check_archive()
 		if len(self.datenlieferant) > DATENLIEFERANT_LENGTH:
 			frappe.throw(_("The Datenlieferant has at most {0} characters.").format(DATENLIEFERANT_LENGTH))
+		self.check_proxy()
 		self.record_privacy_notice()
 		self.simulation = int(not self.runs_eric())
+
+	def check_proxy(self) -> None:
+		"""A proxy ERiC can use (steuerbote.eric.proxy); without its URL, user and password go as well."""
+		self.proxy_url = (self.proxy_url or "").strip()
+		self.proxy_user = (self.proxy_user or "").strip() or None
+		if not self.proxy_url:
+			self.proxy_user = None
+			self.proxy_password = None
+			return
+		try:
+			proxy.parse(self.proxy_url, self.proxy_user, self.proxy_password)
+		except proxy.ProxyError as error:
+			frappe.throw(_(error.template).format(*error.values), title=_("ERiC Settings"))
 
 	def record_privacy_notice(self) -> None:
 		"""Who confirmed the Datenschutzhinweise and when: the user who first ticks the box, kept until the box

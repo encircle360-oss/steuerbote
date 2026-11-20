@@ -75,6 +75,8 @@ Die ERiC-Einstellungen gelten für die ganze Installation, nicht je Firma, denn 
 | SHA-256 des Archivs | die Prüfsumme, die der ELSTER-Entwicklerbereich für das Archiv angibt, 64 hexadezimale Stellen |
 | Installierte Version, Verzeichnis der Bibliotheken, Letzte Prüfung | setzt die Installation |
 | Verzeichnis der Logdateien | wo ERiC seine Protokolldatei `eric.log` ablegt, je ELSTER-Übermittlung ein Verzeichnis unter `sites/<site>/logs/eric/` |
+| Proxy-URL | nur wenn der Server ELSTER über einen Proxy erreicht: `http://`, `socks4://` oder `socks5://` mit Host und Port, etwa `http://proxy.example.com:3128`; leer heißt ohne Proxy. Die Simulation erreicht keinen Server und braucht keinen. |
+| Benutzer des Proxys, Passwort des Proxys | nur zusammen und nur für einen Proxy über `http://`; das Passwort liegt verschlüsselt in der Site und geht für jeden Lauf an ERiC, siehe [ERiC](eric.md#proxy) |
 
 ### Laufzeitumgebung installieren
 

@@ -123,6 +123,7 @@ Ein Dokument für die ganze Installation (Single), nur für den System Manager. 
 | `archive_path`, `archive_sha256` | ERiC-Archiv, SHA-256 des Archivs | absoluter Pfad des Archivs auf dem Server und seine Prüfsumme |
 | `installed_version`, `lib_dir`, `log_dir`, `last_check` | Installierte Version, Verzeichnis der Bibliotheken, Verzeichnis der Logdateien, Letzte Prüfung | setzt die Installation |
 | `privacy_notice_confirmed`, `privacy_notice_confirmed_by`, `privacy_notice_confirmed_on` | Datenschutzhinweise gelesen und bestätigt, Bestätigt von, Bestätigt am | die Bestätigung nach § 5 Abs. 1 und 2 des ERiC-Lizenzvertrags; wer sie gibt und wann, setzt das Speichern. Ohne sie läuft kein Vorgang mit ERiC, die Simulation hängt nicht davon ab. |
+| `proxy_url`, `proxy_user`, `proxy_password` | Proxy-URL, Benutzer des Proxys, Passwort des Proxys | der Proxy, über den ERiC die Server von ELSTER erreicht, geprüft von `steuerbote/eric/proxy.py`; das Passwort ist ein Passwortfeld. Ohne URL entfallen Benutzer und Passwort. `transmission_adapter.run` gibt den Proxy jedem Lauf mit Laufzeit mit, siehe [ERiC](eric.md#proxy). |
 
 ### ELSTER-Übermittlung (`ELSTER Transmission`)
 

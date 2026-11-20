@@ -74,6 +74,25 @@ Welche Codes vor der Übermittlung entstehen, folgt aus der Reihenfolge, in der 
 
 Die Meldungen tragen den Code von ERiC, den Fehler- oder Hinweiscode der Regel oder den Code des Servers. Eigene Codes von Steuerbote beginnen mit `SB-`: `SB-HEADER` (Kopf der Lieferung), `SB-PIN`, `SB-ERIC` (ERiC lässt sich nicht laden oder antwortet unlesbar), `SB-TICKET`, `SB-WORKER` und `SB-UNKNOWN`. Die Simulation verwendet `SIM-000` bis `SIM-007`.
 
+## Proxy
+
+Erreicht der Server ELSTER nur über einen Proxy, nennen ihn die ERiC-Einstellungen im Abschnitt „Proxy“: die Proxy-URL und, wenn der Proxy eine Anmeldung verlangt, Benutzer und Passwort in eigenen Feldern. Das Passwort ist ein Passwortfeld von Frappe und liegt verschlüsselt in der Site.
+
+| Proxy-URL | `http.proxy_host` | `http.proxy_port` |
+|---|---|---|
+| `http://proxy.example.com:3128` | `proxy.example.com` | `3128` |
+| `socks4://proxy.example.com:1080` | `socks4://proxy.example.com` | `1080` |
+| `socks5://[2001:db8::1]:1080` | `socks5://[2001:db8::1]` | `1080` |
+
+- **Einstellungen von ERiC.** ERiC nimmt einen Proxy als API-Einstellungen von `EricEinstellungSetzen` (Kap. 4.1.2.2, Tabelle 4-2): `http.proxy_host`, „IP-Adresse oder Hostname des Proxys“, `http.proxy_port` und, mit Benutzer und Passwort, `http.proxy_username` und `http.proxy_password`. Der Worker setzt sie nach `EricInitialisiere` und vor dem Zertifikat, wie es der Ablauf eines Aufrufs vorsieht: „Falls ein Proxy verwendet wird, müssen die Proxy-Parameter mit EricEinstellungSetzen() gesetzt werden“ (Kap. 6.2.4). Sie gelten nur für die Instanz von ERiC, an der sie gesetzt wurden (Kap. 5.3.14), also für einen Lauf.
+- **Port ist Pflicht.** „Proxy-Port muss angegeben werden, falls http.proxy_host gesetzt wurde, andernfalls schlägt der Versand mit dem Rückgabecode ERIC_TRANSFER_ERR_PROXYPORT_INVALID fehl.“ (Tabelle 4-2) Eine URL ohne Port lehnt das Speichern ab.
+- **SOCKS ohne Anmeldung.** „Das SOCKS4- und SOCKS5-Protokoll ohne Authentifizierung wird unterstützt. Der Protokollname ist dem Hostname voranzustellen“ (Tabelle 4-2). Steuerbote nimmt deshalb `http://`, `socks4://` und `socks5://`, einen SOCKS-Proxy nur ohne Benutzer und Passwort, Benutzer und Passwort nur zusammen und nie in der URL.
+- **Authentifizierungsschema.** `http.proxy_auth` behält den Voreinstellungswert Any. Erwartet ein Proxy ein bestimmtes Schema, zeigt `eric.log` den Fehler 407 des Proxys (Kap. 4.1.2.2); ein Feld dafür hat Steuerbote noch nicht.
+- **Weg des Passworts.** Das Passwort des Proxys geht wie Zertifikat und PIN nur über die Standardeingabe an den Worker, in der versiegelten Anfrage (`Sealed`), und erscheint weder in Ausgaben noch in Tracebacks; `Proxy` zeigt es nicht in seiner Darstellung.
+- **Simulation.** Die Simulation erreicht keinen Server und lässt den Proxy beiseite.
+
+`steuerbote/eric/proxy.py` prüft die URL und bildet die Einstellungen, `transmission_adapter.settings_proxy` liest den Proxy der ERiC-Einstellungen für jeden Lauf mit Laufzeit.
+
 ## Sicherheit
 
 - **Zertifikat und PIN nur je Vorgang.** Beide werden für einen Vorgang eingegeben, nie gespeichert und nie protokolliert. Für den Weg in den Hintergrundjob legt `steuerbote.eric.secrets` sie mit dem Schlüssel der Site verschlüsselt (Fernet) unter einem zufälligen Token für höchstens 15 Minuten im Redis-Cache ab. Der Job erhält nur das Token und holt beide genau einmal ab (`GETDEL`). Jobargumente selbst blieben tagelang in Redis und erschienen in der Liste der RQ-Jobs.
@@ -86,7 +105,7 @@ Die Meldungen tragen den Code von ERiC, den Fehler- oder Hinweiscode der Regel o
 ## Grenzen
 
 - Nur Linux x86_64, nur die Datenart UStVA mit Voranmeldung und Vordruck USt 1 H, ein Nutzdatenblock je Lieferung.
-- Kein Proxy: Die Einstellungen `http.proxy_*` (Kap. 4.1.2.2) setzt Steuerbote noch nicht.
+- Ein Proxy nur mit dem Authentifizierungsschema, das ERiC von sich aus wählt (`http.proxy_auth` = Any, Tabelle 4-2), siehe [Proxy](#proxy).
 - Kein gespeichertes Zertifikat; es wird für jeden Vorgang neu eingegeben.
 - Die Tests laufen gegen eine Stub-Bibliothek, die die dokumentierten Signaturen nachbildet. Wie sich das echte ERiC verhält, zeigt erst ein Lauf mit Hersteller-ID und ELSTER-Testzertifikat.
 - Die Simulation prüft weit weniger als ERiC, das alle Plausibilitätsregeln des Jahres anwendet.
@@ -101,6 +120,7 @@ Die Meldungen tragen den Code von ERiC, den Fehler- oder Hinweiscode der Regel o
 | `api.py` | ctypes-Anbindung von ERiC 44, Druckparameter Version 4, Verschlüsselungsparameter Version 3 |
 | `runtime.py` | Einrichtung aus dem Archiv, Auswahl der Laufzeit je Jahr nach den Plugins, die `steuerbote/ustva/years.py` benennt, Statusprüfung |
 | `worker.py` | der Worker-Prozess, der ERiC einmal aufruft |
+| `proxy.py` | `Proxy`, die Proxy-URL der ERiC-Einstellungen geprüft und als Einstellungen von ERiC |
 | `fake.py` | die Simulation |
 | `service.py` | `run` und `library_versions` für die Frappe-Schicht |
 | `sealed.py` | `Sealed`, Bytes mit Zertifikat oder PIN, die sich in Tracebacks als Platzhalter zeigen |
