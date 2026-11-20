@@ -25,7 +25,12 @@ add_to_apps_screen = [
 # The icon of the module on the rail and in the header of its sidebar.
 app_include_icons = ["/assets/steuerbote/icons/module-icons.svg"]
 
-fixtures = [{"dt": "Custom Field", "filters": [["module", "=", "Steuerbote"]]}]
+# The custom field on the Journal Entry, and the print formats of the app as the defaults of their DocTypes:
+# a standard DocType takes its default print format only from a Property Setter.
+fixtures = [
+	{"dt": "Custom Field", "filters": [["module", "=", "Steuerbote"]]},
+	{"dt": "Property Setter", "filters": [["module", "=", "Steuerbote"]]},
+]
 
 # ERPNext's "Delete Company Transactions" (Transaction Deletion Record) deletes the documents of every DocType
 # linked to the company with frappe.db.delete, past on_trash, unless the DocType is listed here: the filings and

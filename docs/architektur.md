@@ -339,6 +339,10 @@ Links im Desk steht eine Leiste mit den Bereichen der App, in der man gerade arb
 - **Logo.** `steuerbote/public/images/steuerbote-logo.svg`, von Hand als SVG gezeichnet, und daraus gerendert `steuerbote-logo.png` mit 512 × 512 Pixeln. Steuerbote setzt kein `app_logo_url`: Daraus nimmt Frappe das Logo der Anmeldeseite, bei genau zwei Einträgen das der App neben Frappe, und ein weiterer Eintrag würde es auf jeder Site ändern.
 - **Arbeitsbereich „Accounting“ von ERPNext.** Dort fügt Steuerbote keine Verknüpfung ein. Den Arbeitsbereich liefert ERPNext als Standard aus, und `bench migrate` spielt ihn neu ein, sobald ERPNext eine neuere Fassung mitbringt. Eine Anpassung der Site übersteht das, friert aber den Inhalt des Arbeitsbereichs ein, sodass spätere Änderungen von ERPNext dort nicht mehr ankommen.
 
+## Standard-Druckformate
+
+Jeder Beleg, der an eine Behörde geht, druckt ohne weitere Wahl mit seinem Druckformat: die Umsatzsteuer-Voranmeldung mit „Umsatzsteuer-Voranmeldung“, die Zusammenfassende Meldung mit „Zusammenfassende Meldung“ und die Dauerfristverlängerung mit „Dauerfristverlängerung“. Ein Standard-DocType nimmt sein Standard-Druckformat nur aus einem Property Setter (`default_print_format`): Frappe 16 lehnt das Feld in der Definition eines Standard-DocTypes ab („Standard DocType cannot have default print format, use Customize Form“, `DocType.validate`), und die Schaltfläche „Set as Default“ eines Druckformats legt den Property Setter an (`make_default` in `print_format.py`). Steuerbote bringt die drei Property Setter als Fixture mit (`steuerbote/fixtures/property_setter.json`, `fixtures` in `hooks.py`). Frappe spielt die Fixtures einer App bei ihrer Installation und bei jedem `bench migrate` neu ein; ein anderes Standard-Druckformat, das eine Site für diese Belege wählt, setzt das nächste `bench migrate` deshalb zurück.
+
 ## Druckformat „Umsatzsteuer-Voranmeldung“
 
 Das Druckformat gibt eine Meldung in Reihenfolge und Wortlaut des Vordrucks USt 1 A 2026 aus, auf A4, schwarz und grau, ohne Logo und ohne Briefkopf.

@@ -18,6 +18,7 @@ from steuerbote.ustva import KENNZAHLEN
 
 APP = Path(__file__).resolve().parents[1]
 MODULE = APP / "steuerbote"
+FIXTURES = APP / "fixtures"
 TRANSLATIONS = APP / "translations" / "de.csv"
 REPORT = MODULE / "report" / "ustva_kennzahlen"
 WORKSPACE = MODULE / "workspace" / "steuern" / "steuern.json"
@@ -458,6 +459,48 @@ class LogoFilesTest(TestCase):
 
 	def test_the_png_is_the_logo_at_512_pixels(self):
 		self.assertEqual(png_size(LOGO_PNG), (512, 512))
+
+
+class DefaultPrintFormatFilesTest(TestCase):
+	"""Frappe keeps the default print format of a DocType an app ships in a Property Setter: DocType.validate
+	refuses default_print_format on a standard DocType („Standard DocType cannot have default print format, use
+	Customize Form“), and Print Format.make_default sets the Property Setter instead."""
+
+	def setUp(self):
+		self.setters = read_json(FIXTURES / "property_setter.json")
+
+	def test_the_hooks_export_the_property_setters_of_the_module(self):
+		self.assertIn({"dt": "Property Setter", "filters": [["module", "=", "Steuerbote"]]}, hooks.fixtures)
+		self.assertEqual({setter["module"] for setter in self.setters}, {"Steuerbote"})
+
+	def test_each_print_format_of_the_app_is_the_default_of_its_doctype(self):
+		formats = {
+			record["doc_type"]: record["name"]
+			for record in (read_json(path) for path in (MODULE / "print_format").glob("*/*.json"))
+		}
+		self.assertEqual(
+			{setter["doc_type"]: setter["value"] for setter in self.setters},
+			formats,
+		)
+		self.assertEqual(set(formats), {"VAT Return", "Recapitulative Statement", "VAT Return Extension"})
+
+	def test_each_property_setter_is_named_and_shaped_as_frappe_makes_it(self):
+		for setter in self.setters:
+			with self.subTest(doctype=setter["doc_type"]):
+				self.assertEqual(
+					{
+						key: setter[key]
+						for key in ("doctype", "name", "doctype_or_field", "property", "property_type")
+					},
+					{
+						"doctype": "Property Setter",
+						"name": f"{setter['doc_type']}-main-default_print_format",
+						"doctype_or_field": "DocType",
+						"property": "default_print_format",
+						"property_type": "Data",
+					},
+				)
+				self.assertIn(setter["doc_type"], doctype_names())
 
 
 class PrintFormatFilesTest(TestCase):
