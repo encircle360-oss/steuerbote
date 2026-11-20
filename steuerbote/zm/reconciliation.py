@@ -20,6 +20,13 @@ the services months for Kz 21.
    Voranmeldung drops less than a euro (steuerbote.zm.lines, rounding.to_full_euros), so they part by less than
    one euro per line of the Art and per Voranmeldung. A larger difference, such as one from an override, gets a
    hint and holds nothing back.
+
+A line entered by hand, such as a Verbringen (§ 6a Absatz 2 UStG), has no voucher: it leaves the first check
+alone, and the rows count what such lines report apart, as a difference to the ledger that their Begründung
+explains. The Voranmeldung reports a Verbringen as well, in Kz 41 („die Bemessungsgrundlagen ihrer
+innergemeinschaftlichen Lieferungen“, § 18b Satz 1 Nummer 1 UStG, and „Als innergemeinschaftliche Lieferung gilt
+auch das einer Lieferung gleichgestellte Verbringen“, § 6a Absatz 2 UStG), so the second check counts it, and its
+hint names the part of the lines entered by hand.
 """
 
 from collections.abc import Iterable
@@ -88,9 +95,10 @@ class VoucherDifference:
 class Reconciled:
 	"""One Art against its Kennzahl.
 
-	``ledger`` is the exact amount of the Kennzahl, ``statement`` the exact sum of the lines of the Art,
-	``reported`` the sum of their Meldezeilen and ``filed`` the Kennzahl of the filed Voranmeldungen, None when
-	the caller has none.
+	``ledger`` is the exact amount of the Kennzahl, ``statement`` the exact sum of the vouchers in the lines of
+	the Art, ``reported`` the sum of their Meldezeilen and ``filed`` the Kennzahl of the filed Voranmeldungen,
+	None when the caller has none. ``manual`` is the part of ``reported`` that lines entered by hand report: no
+	voucher of the ledger stands behind it, and their Begründung explains it.
 	"""
 
 	art: Art
@@ -99,6 +107,7 @@ class Reconciled:
 	reported: Decimal
 	filed: Decimal | None
 	differences: tuple[VoucherDifference, ...]
+	manual: Decimal = ZERO
 
 	@property
 	def kennzahl(self) -> str:
@@ -149,9 +158,10 @@ def reconcile(
 		rows.append(row)
 		findings.extend(_ledger_finding(row.kennzahl, difference, figures) for difference in row.differences)
 		if returns is not None and abs(row.reported - returns.amount) >= _tolerance(statement, art, returns):
+			by_hand = f", davon {figures.money(row.manual)} in Zeilen von Hand" if row.manual else ""
 			text = (
 				f"Die abgegebenen Voranmeldungen melden in Kz {row.kennzahl} {figures.money(returns.amount)}, die "
-				f"Zeilen {art.value} der ZM {figures.money(row.reported)}."
+				f"Zeilen {art.value} der ZM {figures.money(row.reported)}{by_hand}."
 			)
 			findings.append(Finding(Code.FILED_RETURNS, text))
 	return Reconciliation(tuple(rows), tuple(findings))
@@ -176,6 +186,14 @@ def _row(
 		reported=sum((line.amount for line in statement.meldezeilen if line.art is art), ZERO),
 		filed=filed.amount if filed else None,
 		differences=differences,
+		manual=sum(
+			(
+				meldezeile.amount
+				for line in statement.lines
+				if line.art is art and line.manual and (meldezeile := line.meldezeile) is not None
+			),
+			ZERO,
+		),
 	)
 
 

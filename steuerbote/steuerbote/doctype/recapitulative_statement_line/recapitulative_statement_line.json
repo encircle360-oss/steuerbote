@@ -15,6 +15,7 @@
   "override_reason",
   "reported",
   "blocked",
+  "manual",
   "filed_amount",
   "in_file",
   "confirmation_section",
@@ -94,6 +95,16 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Holds the Statement",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "description": "A line of its own without a voucher in the ledger: USt-IdNr., Kind of Supply, override amount and reason entered by hand, such as a Verbringen under the company's own USt-IdNr. in another member state.",
+   "fieldname": "manual",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "By Hand",
    "read_only": 1
   },
   {

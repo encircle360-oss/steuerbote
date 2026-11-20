@@ -10,8 +10,9 @@ The worker reads one JSON object from standard input and writes one to standard 
 
 	{"command": "process", "operation": "validate" | "test_send" | "send", "nutzdaten": "<Anmeldungssteuern …>",
 	 "header": {…}, "runtime": {…}, "certificate_secret": "<PKCS#12 in base64>" | null,
-	 "certificate_password": "…" | null}
-		answers with a TransmissionResult as JSON
+	 "certificate_password": "…" | null, "proxy": {"host": …, "port": …, "username": …, "password": …} | null}
+		answers with a TransmissionResult as JSON; a proxy goes into the settings of ERiC before anything is
+		sent (steuerbote.eric.proxy)
 	{"command": "version", "runtime": {…}}
 		answers {"libraries": {name: product version}} or {"error": "…"}
 
@@ -19,8 +20,8 @@ Exit codes: 0 when the answer is on standard output, whatever the outcome; 2 whe
 understood, before anything was loaded; 1 for an unexpected error. A process killed by a signal, a
 crash inside ERiC, ends with the negative signal number in the parent.
 
-Certificate and password arrive on standard input only and are never written anywhere: not into the
-answer, and not to standard error, which names the field of a request it did not understand or the type
+Certificate and password, and the password of a proxy, arrive on standard input only and are never written
+anywhere: not into the answer, and not to standard error, which names the field of a request it did not understand or the type
 of an unexpected error, never a value. Before reading the request the worker makes itself undumpable,
 so neither a core file nor a debugger of the same user can read what it holds.
 
@@ -71,6 +72,7 @@ from steuerbote.eric.api import (
 	ProcessResult,
 )
 from steuerbote.eric.header import EnvelopeHeader, datenart, datenteil, problems
+from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.result import (
 	ERROR,
 	EXIT_FAILURE,
@@ -192,6 +194,7 @@ class Request:
 	header: EnvelopeHeader | None = None
 	certificate: bytes | None = None
 	password: str | None = None
+	proxy: Proxy | None = None
 
 
 def main() -> int:
@@ -267,7 +270,11 @@ def parse_request(data: bytes) -> Request:
 		container = None if certificate is None else base64.b64decode(certificate, validate=True)
 	except binascii.Error, TypeError:
 		raise RequestError("certificate_secret") from None
-	return Request(command, runtime, operation, nutzdaten, header, container, password)
+	try:
+		proxy = None if request.get("proxy") is None else Proxy.from_dict(request.get("proxy"))
+	except ValueError:
+		raise RequestError("proxy") from None
+	return Request(command, runtime, operation, nutzdaten, header, container, password, proxy)
 
 
 def process(request: Request) -> TransmissionResult:
@@ -299,7 +306,7 @@ def process(request: Request) -> TransmissionResult:
 	try:
 		with tempfile.TemporaryDirectory(prefix="steuerbote-eric-") as work:
 			try:
-				for name, value in SETTINGS:
+				for name, value in (*SETTINGS, *(request.proxy.settings() if request.proxy else ())):
 					library.set_setting(name, value)
 				if operation.sends:
 					certificate = library.open_certificate_from_bytes(

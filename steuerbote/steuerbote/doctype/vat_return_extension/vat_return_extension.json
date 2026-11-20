@@ -51,12 +51,12 @@
  ],
  "fields": [
   {
-   "default": "DFV-.YYYY.-.#####",
+   "default": "DFV-.{year}.-.#####",
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
    "no_copy": 1,
-   "options": "DFV-.YYYY.-.#####",
+   "options": "DFV-.{year}.-.#####",
    "print_hide": 1,
    "reqd": 1,
    "set_only_once": 1

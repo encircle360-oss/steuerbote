@@ -14,6 +14,7 @@ from unittest import TestCase, mock
 
 from steuerbote.eric import service
 from steuerbote.eric.header import EnvelopeHeader
+from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.result import ERROR, TESTMERKER, Operation, Outcome
 from steuerbote.eric.runtime import RuntimeInfo, install_from_archive
 from steuerbote.eric.service import (
@@ -45,6 +46,9 @@ TEST_HEADER = replace(HEADER, testmerker=TESTMERKER)
 CONTAINER = b"\x30\x82\x01\x00fake\x00pkcs12"
 PIN = "Geheim-PIN-4711"
 SECRETS = (PIN, base64.b64encode(CONTAINER).decode(), "pkcs12")
+# The password of the proxy, invented.
+PROXY_GEHEIM = "Proxy-Geheim-4711"
+PROXY = Proxy("proxy.example.com", 3128, "steuerbote", PROXY_GEHEIM)
 
 
 class JobTimeout(Exception):
@@ -102,6 +106,13 @@ class SimulationDispatchTest(ServiceTestCase):
 		self.assertIs(result.outcome, Outcome.ACCEPTED)
 		self.assertTrue(result.transferticket.startswith("SIM-"))
 
+	def test_the_simulation_reaches_no_server_and_leaves_the_proxy_aside(self):
+		workers = self.started_workers()
+		result = run(Operation.TEST_SEND, nutzdaten(), TEST_HEADER, None, None, None, proxy=PROXY)
+		self.assertTrue(result.simulated)
+		self.assertIs(result.outcome, Outcome.ACCEPTED)
+		self.assertEqual(workers, [])
+
 
 class WorkerDispatchTest(ServiceTestCase):
 	def test_with_a_runtime_the_worker_validates(self):
@@ -116,6 +127,11 @@ class WorkerDispatchTest(ServiceTestCase):
 		self.assertIs(result.outcome, Outcome.ACCEPTED)
 		self.assertEqual(result.transferticket, "et0stub0accepted0000000000000001")
 		self.assertEqual(result.testmerker, TESTMERKER)
+
+	def test_the_worker_sends_through_the_proxy(self):
+		result = run(Operation.TEST_SEND, nutzdaten(), TEST_HEADER, self.runtime, CONTAINER, PIN, proxy=PROXY)
+		self.assertIs(result.outcome, Outcome.ACCEPTED)
+		self.assertNotIn(PROXY_GEHEIM, json.dumps(result.to_dict()))
 
 	def test_sending_with_eric_needs_certificate_and_pin(self):
 		for certificate, pin in ((None, PIN), (CONTAINER, None)):
@@ -259,11 +275,13 @@ class TracebackTest(ServiceTestCase):
 	def test_an_error_before_the_worker_starts(self):
 		with mock.patch.object(service, "start_worker", side_effect=OSError("kein Prozess")):
 			error = self.raised(
-				lambda: run(Operation.SEND, nutzdaten(), HEADER, self.runtime, CONTAINER, PIN)
+				lambda: run(Operation.SEND, nutzdaten(), HEADER, self.runtime, CONTAINER, PIN, proxy=PROXY)
 			)
 		variables = self.assertShowsNoSecret(error)
 		self.assertIn("certificate_secret = ********", variables)
 		self.assertIn("request_secret = ********", variables)
+		self.assertIn("proxy = Proxy(host='proxy.example.com', port=3128, username='steuerbote')", variables)
+		self.assertNotIn(PROXY_GEHEIM, variables)
 
 	def test_an_exception_while_the_worker_runs(self):
 		with interrupted_after(1, Interrupted()):
@@ -290,6 +308,14 @@ class TracebackTest(ServiceTestCase):
 			(base64.b64decode(data["certificate_secret"]), data["certificate_password"]), (CONTAINER, PIN)
 		)
 		self.assertTrue(data["runtime"]["confirmed_privacy_notice"])
+		self.assertIsNone(data["proxy"])
+
+	def test_the_proxy_with_its_password_goes_into_the_sealed_request(self):
+		request = service._process_request(
+			Operation.SEND, nutzdaten(), HEADER, self.runtime, CONTAINER, PIN, PROXY
+		)
+		self.assertEqual(repr(request), "<sealed>")
+		self.assertEqual(json.loads(request)["proxy"], PROXY.to_dict())
 
 	def test_hides_what_frappe_hides(self):
 		def fail(certificate_password: str, request: dict, container: bytes) -> None:

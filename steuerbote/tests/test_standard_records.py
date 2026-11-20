@@ -18,6 +18,7 @@ from steuerbote.ustva import KENNZAHLEN
 
 APP = Path(__file__).resolve().parents[1]
 MODULE = APP / "steuerbote"
+FIXTURES = APP / "fixtures"
 TRANSLATIONS = APP / "translations" / "de.csv"
 REPORT = MODULE / "report" / "ustva_kennzahlen"
 WORKSPACE = MODULE / "workspace" / "steuern" / "steuern.json"
@@ -460,6 +461,67 @@ class LogoFilesTest(TestCase):
 		self.assertEqual(png_size(LOGO_PNG), (512, 512))
 
 
+class DefaultPrintFormatFilesTest(TestCase):
+	"""Frappe keeps the default print format of a DocType an app ships in a Property Setter: DocType.validate
+	refuses default_print_format on a standard DocType („Standard DocType cannot have default print format, use
+	Customize Form“), and Print Format.make_default sets the Property Setter instead."""
+
+	def setUp(self):
+		self.setters = read_json(FIXTURES / "property_setter.json")
+
+	def test_the_hooks_export_the_property_setters_of_the_module(self):
+		self.assertIn({"dt": "Property Setter", "filters": [["module", "=", "Steuerbote"]]}, hooks.fixtures)
+		self.assertEqual({setter["module"] for setter in self.setters}, {"Steuerbote"})
+
+	def test_each_print_format_of_the_app_is_the_default_of_its_doctype(self):
+		formats = {
+			record["doc_type"]: record["name"]
+			for record in (read_json(path) for path in (MODULE / "print_format").glob("*/*.json"))
+		}
+		self.assertEqual(
+			{setter["doc_type"]: setter["value"] for setter in self.setters},
+			formats,
+		)
+		self.assertEqual(set(formats), {"VAT Return", "Recapitulative Statement", "VAT Return Extension"})
+
+	def test_each_property_setter_is_named_and_shaped_as_frappe_makes_it(self):
+		for setter in self.setters:
+			with self.subTest(doctype=setter["doc_type"]):
+				self.assertEqual(
+					{
+						key: setter[key]
+						for key in ("doctype", "name", "doctype_or_field", "property", "property_type")
+					},
+					{
+						"doctype": "Property Setter",
+						"name": f"{setter['doc_type']}-main-default_print_format",
+						"doctype_or_field": "DocType",
+						"property": "default_print_format",
+						"property_type": "Data",
+					},
+				)
+				self.assertIn(setter["doc_type"], doctype_names())
+
+
+class NamingFilesTest(TestCase):
+	"""The documents for a year carry the year they are for, not the year they were made in: Frappe reads a part
+	{year} of a naming series from the field of the document (parse_naming_series in frappe/model/naming.py)."""
+
+	def test_the_documents_for_a_year_are_numbered_by_that_year(self):
+		for name, prefix in (
+			("vat_return", "UStVA"),
+			("recapitulative_statement", "ZM"),
+			("vat_return_extension", "DFV"),
+		):
+			definition = read_json(MODULE / "doctype" / name / f"{name}.json")
+			fields = {field["fieldname"]: field for field in definition["fields"]}
+			with self.subTest(doctype=definition["name"]):
+				self.assertEqual(definition["autoname"], "naming_series:")
+				series = fields["naming_series"]
+				self.assertEqual((series["options"], series["default"]), (f"{prefix}-.{{year}}.-.#####",) * 2)
+				self.assertEqual((fields["year"]["fieldtype"], fields["year"]["reqd"]), ("Int", 1))
+
+
 class PrintFormatFilesTest(TestCase):
 	def setUp(self):
 		self.record = read_json(PRINT_FORMAT / "umsatzsteuer_voranmeldung.json")
@@ -518,7 +580,7 @@ class PrintFormatFilesTest(TestCase):
 		)
 
 	def test_the_labels_of_the_flags_are_those_of_the_catalogue(self):
-		for number in ("10", "22", "29", "26"):
+		for number in ("10", "22", "70", "29", "26"):
 			with self.subTest(kennzahl=number):
 				self.assertIn(f'"{KENNZAHLEN[number].label}"', self.template)
 		self.assertIn(KENNZAHLEN["500"].label, self.template)

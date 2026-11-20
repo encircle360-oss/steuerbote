@@ -58,7 +58,7 @@ steuerbote/                    Repository
 │   │   ├── number_card/       Zahlenkarte „Offene Voranmeldungen“
 │   │   └── print_format/      Druckformate „Umsatzsteuer-Voranmeldung“, „Zusammenfassende Meldung“ und „Dauerfristverlängerung“
 │   ├── dock/                  Eintrag „Steuern“ in der Leiste von ERPNext
-│   ├── fixtures/              Feld „Nicht in der Umsatzsteuer-Voranmeldung“ an der Journalbuchung
+│   ├── fixtures/              Feld „Nicht in der Umsatzsteuer-Voranmeldung“ an der Journalbuchung und Standard-Druckformate der Belege
 │   ├── public/                Logo (images/), Symbol der Leiste (icons/) und die Übermittlung, die die Formulare einbinden (js/elster_transmission.js)
 │   ├── translations/          deutsche Übersetzungen der Oberfläche (de.csv)
 │   ├── tests/                 Frappe-Integrationstests und Hilfen für Testdaten und Übermittlungen

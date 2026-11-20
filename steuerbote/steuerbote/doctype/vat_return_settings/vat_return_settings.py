@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import frappe
 from frappe import _
+from frappe.contacts.doctype.address.address import get_default_address
 from frappe.model.document import Document
 from frappe.utils import cint, escape_html, flt
 
@@ -76,6 +77,7 @@ class VATReturnSettings(Document):
 
 	def validate(self) -> None:
 		self.set_elster_tax_number()
+		self.set_datenlieferant()
 		self.check_for_elster()
 		self.set_ust_idnr()
 		self.sort_period_rules()
@@ -100,6 +102,11 @@ class VATReturnSettings(Document):
 				),
 				title=_("Invalid Steuernummer"),
 			)
+
+	def set_datenlieferant(self) -> None:
+		"""Fill an empty part of the Datenlieferant from the company and its address; what the user entered stays."""
+		if self.company:
+			self.update(bridge.datenlieferant_defaults(self, company_contact(self.company)))
 
 	def check_for_elster(self) -> None:
 		"""Refuse a W-IdNr. or a Datenlieferant that ELSTER would not take, before the first file is made."""
@@ -166,6 +173,33 @@ class VATReturnSettings(Document):
 			)
 			for row in self.prepayments
 		]
+
+
+def company_contact(company: str) -> dict[str, str | None]:
+	"""The name, phone and email of a company and the street, postal code and town of its address, under the
+	names of the Datenlieferant; phone and email come from the address where the company has none.
+
+	The address is the one get_default_address of Frappe picks among those linked to the company: its primary
+	address, else any of them.
+	"""
+	record = frappe.db.get_value("Company", company, ["company_name", "phone_no", "email"], as_dict=True)
+	name = get_default_address("Company", company)
+	address = (
+		frappe.db.get_value(
+			"Address", name, ["address_line1", "pincode", "city", "phone", "email_id"], as_dict=True
+		)
+		if name
+		else None
+	)
+	record, address = record or {}, address or {}
+	return {
+		"name": record.get("company_name"),
+		"street": address.get("address_line1"),
+		"postal_code": address.get("pincode"),
+		"city": address.get("city"),
+		"phone": record.get("phone_no") or address.get("phone"),
+		"email": record.get("email") or address.get("email_id"),
+	}
 
 
 @contextmanager

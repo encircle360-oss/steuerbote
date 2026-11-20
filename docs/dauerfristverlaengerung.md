@@ -137,7 +137,7 @@ Die Tests prüfen die Nutzdaten beider Kontexte gegen `UStVA-2026.xsd` und den U
 
 ## Der Beleg in ERPNext
 
-Der DocType `VAT Return Extension` heißt in der Oberfläche „Dauerfristverlängerung“, ist einreichbar und hat den Nummernkreis `DFV-.YYYY.-.#####`. Er hält einen Vordruck USt 1 H eines Unternehmens für ein Jahr; je Unternehmen und Jahr gibt es einen, stornierte zählen nicht mit. Der Controller `vat_return_extension.py` bewegt nur Daten: Beträge, Fristen und die Regeln des Vordrucks kommen aus dem Kern. Was zwischen Beleg und Kern umgerechnet wird, steht ohne Frappe-Import in `vat_return_extension/bridge.py`, was der Beleg aus ERPNext liest, in `steuerbote/dauerfrist_sources.py`.
+Der DocType `VAT Return Extension` heißt in der Oberfläche „Dauerfristverlängerung“, ist einreichbar und hat den Nummernkreis `DFV-.{year}.-.#####`: Das Jahr im Namen ist das Jahr, für das der Vordruck gilt, etwa DFV-2027-00001 für einen Vordruck für 2027, der im November 2026 entsteht. Er hält einen Vordruck USt 1 H eines Unternehmens für ein Jahr; je Unternehmen und Jahr gibt es einen, stornierte zählen nicht mit. Der Controller `vat_return_extension.py` bewegt nur Daten: Beträge, Fristen und die Regeln des Vordrucks kommen aus dem Kern. Was zwischen Beleg und Kern umgerechnet wird, steht ohne Frappe-Import in `vat_return_extension/bridge.py`, was der Beleg aus ERPNext liest, in `steuerbote/dauerfrist_sources.py`.
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|

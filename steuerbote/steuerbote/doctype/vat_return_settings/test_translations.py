@@ -58,14 +58,16 @@ def texts_of_the_import_file() -> set[str]:
 	scripts = "".join(
 		(VAT_RETURN / name).read_text(encoding="utf-8") for name in ("vat_return.py", "vat_return.js")
 	)
-	(begruendung,) = (
-		field for field in doctype("vat_return")["fields"] if field["fieldname"] == "kz500_begruendung"
+	further_details = (
+		field
+		for field in doctype("vat_return")["fields"]
+		if field["fieldname"] in ("kz500_begruendung", "regelbesteuerung_from")
 	)
 	return (
 		set(ustva_xml.MESSAGES)
 		| set(ustva_xml.LABELS)
 		| {text for text in TRANSLATED_LITERAL.findall(scripts) if "Mein ELSTER" in text}
-		| {begruendung["label"], begruendung["description"]}
+		| {field[key] for field in further_details for key in ("label", "description")}
 	)
 
 
@@ -89,6 +91,7 @@ class TranslationsTest(TestCase):
 	def test_every_text_of_the_file_for_mein_elster_is_translated(self):
 		translated = {source for source, *_ in rows()}
 		self.assertIn("XML for Mein ELSTER", texts_of_the_import_file())
+		self.assertIn("Date of the Switch to the Regelbesteuerung (Kz 70)", texts_of_the_import_file())
 		self.assertEqual(sorted(texts_of_the_import_file() - translated), [])
 
 	def test_translations_keep_the_placeholders(self):

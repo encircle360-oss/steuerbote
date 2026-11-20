@@ -15,9 +15,24 @@ FILINGS = frozenset(
 )
 
 
+# The print format of each document that goes to the tax authorities.
+DEFAULT_PRINT_FORMATS = {
+	"VAT Return": "Umsatzsteuer-Voranmeldung",
+	"Recapitulative Statement": "Zusammenfassende Meldung",
+	"VAT Return Extension": "Dauerfristverlängerung",
+}
+
+
 class InstallationTest(IntegrationTestCase):
 	def test_app_is_installed(self):
 		self.assertIn("steuerbote", frappe.get_installed_apps())
+
+	def test_the_print_formats_of_the_app_are_the_defaults_of_their_doctypes(self):
+		"""The Property Setters of the fixtures make them the defaults, as Make Default of a Print Format would."""
+		self.assertEqual(
+			{doctype: frappe.get_meta(doctype).default_print_format for doctype in DEFAULT_PRINT_FORMATS},
+			DEFAULT_PRINT_FORMATS,
+		)
 
 	def test_erpnext_is_installed_as_required(self):
 		self.assertIn("erpnext", frappe.get_installed_apps())

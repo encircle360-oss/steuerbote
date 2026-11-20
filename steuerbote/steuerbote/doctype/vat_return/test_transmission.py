@@ -31,6 +31,7 @@ from steuerbote.eric import secrets, service
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import (
 	ERROR,
+	HINT,
 	UNKNOWN_MESSAGE,
 	Message,
 	Operation,
@@ -613,6 +614,45 @@ class TestTransmission(TransmissionTestCase):
 		self.use_runtime(privacy_notice_confirmed=0)
 		doc.run_method("onload")
 		self.assertFalse(doc.get_onload("elster")["simulation"])
+
+	def test_the_form_names_the_errors_and_hints_of_the_latest_run(self):
+		"""ERiC's hints never stop a check (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.2.4.1), so the form of the
+		return counts them with the errors of its latest finished run and shows the first of each kind."""
+		self.use_runtime()
+		doc = self.calculated(3)
+		doc.run_method("onload")
+		self.assertIsNone(doc.get_onload("elster_run"))
+		hints = tuple(Message(f"1108513{index}", f"Hinweis {index}", HINT) for index in range(4))
+		error = Message("610001002", "Fehler während der Plausibilitätsprüfung.", ERROR)
+		failed, _, _ = self.transmitted(
+			doc, "validate", FakeEric(outcome=Outcome.INVALID, messages=(error, *hints))
+		)
+		doc.run_method("onload")
+		self.assertEqual(
+			doc.get_onload("elster_run"),
+			{
+				"name": failed.name,
+				"operation": "validate",
+				"status": "Fehlgeschlagen",
+				"simulated": 0,
+				"errors": 1,
+				"hints": 4,
+				"first_errors": [{"code": "610001002", "text": "Fehler während der Plausibilitätsprüfung."}],
+				"first_hints": [
+					{"code": f"1108513{index}", "text": f"Hinweis {index}"} for index in range(3)
+				],
+			},
+		)
+		valid, _, _ = self.transmitted(doc, "validate", FakeEric(messages=hints[:1]))
+		doc.run_method("onload")
+		self.assertEqual(
+			{key: doc.get_onload("elster_run")[key] for key in ("name", "status", "errors", "hints")},
+			{"name": valid.name, "status": "Erfolgreich", "errors": 0, "hints": 1},
+		)
+		running, _ = self.transmit(doc, "validate")
+		self.assertEqual(frappe.db.get_value(TRANSMISSION, running, "status"), "Läuft")
+		doc.run_method("onload")
+		self.assertEqual(doc.get_onload("elster_run")["name"], valid.name)
 
 	def test_through_the_eric_stub_a_runtime_installs_and_testsenden_and_senden_go_out(self):
 		library = stub.library()

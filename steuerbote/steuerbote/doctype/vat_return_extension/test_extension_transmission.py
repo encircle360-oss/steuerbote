@@ -15,7 +15,7 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import getdate
 
 from steuerbote.eric import secrets
-from steuerbote.eric.result import ERROR, UNKNOWN_MESSAGE, Message, Operation, Outcome
+from steuerbote.eric.result import ERROR, HINT, UNKNOWN_MESSAGE, Message, Operation, Outcome
 from steuerbote.steuerbote.doctype.vat_return_extension.test_vat_return_extension import (
 	money,
 	prepayments,
@@ -418,6 +418,29 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 		self.use_runtime()
 		doc.run_method("onload")
 		self.assertEqual(doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False})
+
+	def test_the_form_names_the_errors_and_hints_of_its_latest_run(self):
+		"""As on the VAT Return: hints never stop a check (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.2.4.1)."""
+		doc = self.calculated()
+		doc.run_method("onload")
+		self.assertIsNone(doc.get_onload("elster_run"))
+		hint = Message("610001003", "Hinweise während der Plausibilitätsprüfung.", HINT)
+		transmission, _, _ = self.transmitted(doc, "validate", FakeEric(messages=(hint,)))
+		doc.run_method("onload")
+		self.assertEqual(
+			doc.get_onload("elster_run"),
+			{
+				"name": transmission.name,
+				"operation": "validate",
+				"status": "Erfolgreich",
+				"simulated": 1,
+				"errors": 0,
+				"hints": 1,
+				"first_errors": [],
+				"first_hints": [{"code": "610001003", "text": "Hinweise während der Plausibilitätsprüfung."}],
+			},
+		)
+		self.assertIn("show_latest_run(frm);", get_form_meta(DOCTYPE, cached=False).get("__js"))
 
 	def test_the_form_lists_its_transmissions_under_its_connections(self):
 		doc = self.calculated()

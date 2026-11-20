@@ -54,7 +54,7 @@ Ein Ergebnis von null wird nie als „-0“ gemeldet. Außerdem gilt:
 
 Der Katalog für 2026 enthält 50 Kennzahlen. Zu den Spalten:
 
-- **Art:** Bemessungsgrundlage (gemeldet in vollen Euro), Steuer (gemeldet in Cent), Kennzeichen, Datum oder Schlüssel. Kennzeichen, Datum und Schlüssel tragen keinen Betrag. Sie lassen sich keinem Konto zuordnen und nicht über `extra_values` setzen; gesetzt werden sie in der Meldung selbst (geplant, Paket 3 der [Roadmap](roadmap.md)).
+- **Art:** Bemessungsgrundlage (gemeldet in vollen Euro), Steuer (gemeldet in Cent), Kennzeichen, Datum oder Schlüssel. Kennzeichen, Datum und Schlüssel tragen keinen Betrag. Sie lassen sich keinem Konto zuordnen und nicht über `extra_values` setzen; gesetzt werden sie in eigenen Feldern der Meldung: Kz 10, 22, 26 und 29 als Kennzeichen, Kz 70 als Datum und Kz 500 mit Begründung, siehe [Architektur](architektur.md#umsatzsteuer-voranmeldung-vat-return).
 - **Wirkung:** wie der Betrag in die verbleibende Vorauszahlung (Kz 83) eingeht: erhöht, mindert oder keine. Bei Kz 81, 86, 89 und 93 erhöht die Steuer, die aus der Bemessungsgrundlage folgt.
 - **Steuersatz/Steuer-Kz:** der Satz, mit dem der Vordruck die Steuer selbst berechnet, oder die Kennzahl, in der die Steuer zu dieser Bemessungsgrundlage eigens steht.
 

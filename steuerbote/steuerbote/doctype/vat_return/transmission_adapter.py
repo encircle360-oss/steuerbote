@@ -12,6 +12,7 @@ from frappe.utils import cint, get_bench_path
 
 from steuerbote.eric import runtime, service
 from steuerbote.eric.header import EnvelopeHeader
+from steuerbote.eric.proxy import Proxy, parse
 from steuerbote.eric.result import Operation, TransmissionResult
 from steuerbote.eric.runtime import RuntimeInfo
 
@@ -26,10 +27,26 @@ def run(
 	certificate_secret: bytes | None,
 	certificate_password: str | None,
 ) -> TransmissionResult:
-	"""One run of ERiC in its worker process with a runtime, of the simulation without one."""
+	"""One run of ERiC in its worker process with a runtime, through the proxy of the ERiC Settings if they name
+	one, or of the simulation without a runtime, which reaches no server."""
 	return service.run(
-		operation, nutzdaten_xml, header, runtime_info, certificate_secret, certificate_password
+		operation,
+		nutzdaten_xml,
+		header,
+		runtime_info,
+		certificate_secret,
+		certificate_password,
+		proxy=None if runtime_info is None else settings_proxy(),
 	)
+
+
+def settings_proxy() -> Proxy | None:
+	"""The proxy of the ERiC Settings, with its password from the encrypted store of the site, or None."""
+	settings = frappe.get_single(ERIC_SETTINGS)
+	if not settings.proxy_url:
+		return None
+	proxy_password = settings.get_password("proxy_password", raise_exception=False)
+	return parse(settings.proxy_url, settings.proxy_user, proxy_password)
 
 
 def detect_runtime(year: int, operation: Operation, hersteller_id: str, log_dir: Path) -> RuntimeInfo | None:

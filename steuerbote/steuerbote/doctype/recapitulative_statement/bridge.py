@@ -60,6 +60,7 @@ LINE_CODES: frozenset[str] = frozenset(
 		Code.INVALID_VAT_ID,
 		Code.UNCONFIRMED_VAT_ID,
 		Code.DESTINATION,
+		Code.OWN_LINE,
 	}
 )
 HINT_FIELDS = ("severity", "code", "text", "voucher_type", "voucher_no", "party")
@@ -382,6 +383,7 @@ def _line_row(line: Line) -> dict[str, Any]:
 		"override_reason": line.override.reason if line.override else "",
 		"reported": line.reported,
 		"blocked": int(line.blocked),
+		"manual": int(line.manual),
 	}
 
 
@@ -441,6 +443,7 @@ def reconciliation_rows(reconciliation: Reconciliation) -> list[dict[str, Any]]:
 			"filed_known": int(row.filed is not None),
 			"deviating_vouchers": len(row.differences),
 			"balanced": int(not row.differences),
+			"manual": row.manual,
 		}
 		for row in reconciliation.rows
 	]

@@ -42,6 +42,7 @@
   "comparison",
   "further_section",
   "attachments",
+  "regelbesteuerung_from",
   "offset_requested",
   "no_sepa_mandate",
   "column_break_further",
@@ -51,12 +52,12 @@
  ],
  "fields": [
   {
-   "default": "UStVA-.YYYY.-.#####",
+   "default": "UStVA-.{year}.-.#####",
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
    "no_copy": 1,
-   "options": "UStVA-.YYYY.-.#####",
+   "options": "UStVA-.{year}.-.#####",
    "print_hide": 1,
    "reqd": 1,
    "set_only_once": 1
@@ -305,6 +306,12 @@
    "label": "Documents Enclosed (Kz 22)"
   },
   {
+   "description": "Only in the cases of the Anleitung to line 12: the day of the turnover with which the Gesamtumsatz exceeded 100,000 euros, in the year of founding 25,000 euros, or 1 January after waiving the Kleinunternehmer-Regelung (§ 19 Absatz 3 UStG). It lies in the year of the return.",
+   "fieldname": "regelbesteuerung_from",
+   "fieldtype": "Date",
+   "label": "Date of the Switch to the Regelbesteuerung (Kz 70)"
+  },
+  {
    "default": "0",
    "fieldname": "offset_requested",
    "fieldtype": "Check",
@@ -342,7 +349,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-20 23:30:00.000000",
+ "modified": "2026-11-21 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return",

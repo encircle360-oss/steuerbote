@@ -5,6 +5,9 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 import steuerbote
+from steuerbote.eric import service
+from steuerbote.eric.proxy import Proxy
+from steuerbote.eric.result import Operation
 from steuerbote.eric.runtime import RuntimeInfo, RuntimeInstallError
 from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root, run_installation
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
@@ -18,6 +21,8 @@ ARCHIVE = "/srv/eric/ERiC-44.3.6.0-Linux-x86_64.jar"
 CHECKSUM = "ab" * 32
 LIB_DIR = "/srv/eric/44.3.6.0/lib"
 ACCOUNTS_MANAGER = "steuerbote-eric-einstellungen@example.com"
+# The password of the proxy, invented.
+PROXY_GEHEIM = "Proxy-Geheim-2026"
 
 
 def make_user(email: str, role: str) -> str:
@@ -48,11 +53,63 @@ class TestERiCSettings(IntegrationTestCase):
 				"lib_dir": "",
 				"log_dir": "",
 				"privacy_notice_confirmed": 0,
+				"proxy_url": "",
+				"proxy_user": "",
+				"proxy_password": "",
 				**values,
 			}
 		)
 		settings.save()
 		return frappe.get_single(SETTINGS)
+
+	def test_a_proxy_is_one_eric_takes(self):
+		settings = self.settings(
+			proxy_url=" http://proxy.example.com:3128 ",
+			proxy_user=" steuerbote ",
+			proxy_password=PROXY_GEHEIM,
+		)
+		self.assertEqual(
+			(settings.proxy_url, settings.proxy_user), ("http://proxy.example.com:3128", "steuerbote")
+		)
+		self.assertEqual(settings.get_password("proxy_password"), PROXY_GEHEIM)
+		for values, message in (
+			({"proxy_url": "proxy.example.com:3128"}, "is no proxy URL"),
+			({"proxy_url": "http://proxy.example.com"}, "needs the port of the proxy"),
+			({"proxy_url": "http://steuerbote:geheim@proxy.example.com:3128"}, "in their own fields"),
+			(
+				{"proxy_url": "http://proxy.example.com:3128", "proxy_user": "steuerbote"},
+				"a user only with a password",
+			),
+			(
+				{
+					"proxy_url": "socks5://proxy.example.com:1080",
+					"proxy_user": "steuerbote",
+					"proxy_password": PROXY_GEHEIM,
+				},
+				"a SOCKS proxy only without user and password",
+			),
+		):
+			with self.subTest(values=values), self.assertRaisesRegex(frappe.ValidationError, message):
+				self.settings(**values)
+
+	def test_without_a_proxy_url_neither_user_nor_password_stays(self):
+		settings = self.settings(proxy_user="steuerbote", proxy_password=PROXY_GEHEIM)
+		self.assertEqual((settings.proxy_url or None, settings.proxy_user or None), (None, None))
+		self.assertIsNone(settings.get_password("proxy_password", raise_exception=False))
+		self.assertIsNone(transmission_adapter.settings_proxy())
+
+	def test_eric_goes_through_the_proxy_of_the_settings_and_the_simulation_reaches_no_server(self):
+		self.settings(
+			proxy_url="http://proxy.example.com:3128", proxy_user="steuerbote", proxy_password=PROXY_GEHEIM
+		)
+		runtime = RuntimeInfo("44.3.6.0", Path(LIB_DIR), Path(LIB_DIR), Path("/srv/eric/logs"), "12345", True)
+		with patch.object(service, "run") as run:
+			transmission_adapter.run(Operation.VALIDATE, "<Anmeldungssteuern/>", None, runtime, None, None)
+			transmission_adapter.run(Operation.VALIDATE, "<Anmeldungssteuern/>", None, None, None, None)
+		self.assertEqual(
+			[call.kwargs["proxy"] for call in run.call_args_list],
+			[Proxy("proxy.example.com", 3128, "steuerbote", PROXY_GEHEIM), None],
+		)
 
 	def test_starts_as_a_simulation_and_names_the_version_of_the_app(self):
 		settings = self.settings()

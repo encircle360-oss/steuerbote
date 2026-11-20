@@ -23,8 +23,9 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 | `vat_id_confirmation/records.py` | macht aus jeder Abfrage einer Bestätigung die Felder einer USt-IdNr.-Bestätigung und das Ergebnis der Prüfung bis zu ihr |
 | `steuerbote/dauerfrist_sources.py` | liest für die Dauerfristverlängerung die abgegebenen Voranmeldungen eines Jahres mit Kz 83 und Kz 39 und das Gründungsdatum des Unternehmens, mit Frappe |
 | `vat_return_extension/bridge.py` | wählt die abgegebenen Voranmeldungen des Vorjahres, deren Kz 83 und Kz 39 die Grundlage bilden, nennt die Voranmeldungszeiträume, die ihr fehlen, gibt Grundlage, Grundlage von Hand und Monate der Tätigkeit an den Kern und bildet den Vordruck USt 1 H aus den Feldern des Belegs |
-| `elster_transmission/transmission.py` | Prüfen, Testsenden und Senden eines Belegs über ERiC: `Transmittable`, von dem Voranmeldung und Dauerfristverlängerung erben, den Hintergrundjob `run_transmission`, `stash_certificate`, den Kopf der Lieferung und die Verknüpfungen eines Belegs zu seinen ELSTER-Übermittlungen, siehe [Übermittlung an ELSTER](#übermittlung-an-elster) |
-| `public/js/elster_transmission.js` | Schaltflächen, Dialog für Zertifikat und Passwort und Hinweise der Übermittlung, die die Formulare von Voranmeldung und Dauerfristverlängerung mit `{% include %}` einbinden |
+| `elster_transmission/transmission.py` | Prüfen, Testsenden und Senden eines Belegs über ERiC: `Transmittable`, von dem Voranmeldung und Dauerfristverlängerung erben, den Hintergrundjob `run_transmission`, `stash_certificate`, den Kopf der Lieferung, die Verknüpfungen eines Belegs zu seinen ELSTER-Übermittlungen und seinen letzten abgeschlossenen Lauf (`latest_run`), siehe [Übermittlung an ELSTER](#übermittlung-an-elster) |
+| `elster_transmission/messages.py` | zählt die Fehler und Hinweise einer ELSTER-Übermittlung und gibt die ersten jeder Art an das Formular ihres Belegs |
+| `public/js/elster_transmission.js` | Schaltflächen, Dialog für Zertifikat und Passwort, Hinweise der Übermittlung und die Fehler und Hinweise des letzten Laufs, die die Formulare von Voranmeldung und Dauerfristverlängerung mit `{% include %}` einbinden |
 | `steuerbote/steuerbote/deadlines.py` | liest Einstellungen, Belege, Feiertage und Hauptbuch jedes Unternehmens für die Fristen, die der Kern unter `steuerbote/deadlines` bildet, für den Bericht „Offene Fristen“ und die tägliche Erinnerung mit ihren Fristerinnerungen, mit Frappe, siehe [Fristen](fristen.md) |
 
 So läuft „Berechnen“ an einer Meldung:
@@ -57,7 +58,7 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 | `tax_office` | Finanzamt | |
 | `wid_nr` | Wirtschafts-Identifikationsnummer | freiwillig, „DE“ und neun Ziffern ohne die fünfstellige Ergänzung |
 | `ust_idnr` | USt-IdNr. | die eigene deutsche USt-IdNr., „DE“ und neun Ziffern, mit der Steuerbote die USt-IdNrn. der Kunden bestätigen lässt; leer übernimmt das Speichern das Feld „Steuernummer“ (`tax_id`) des Unternehmens, wenn es eine deutsche USt-IdNr. ist |
-| `filer_name`, `street`, `postal_code`, `city`, `phone`, `email` | Name, Straße und Hausnummer, Postleitzahl, Ort, Telefon, E-Mail | Datenlieferant der Datei für ELSTER, Längen wie im Schema (45, 30, 12, 30, 20 und 70 Zeichen); Straße, Postleitzahl und Ort braucht die Datei, ein leerer Name steht für das Unternehmen |
+| `filer_name`, `street`, `postal_code`, `city`, `phone`, `email` | Name, Straße und Hausnummer, Postleitzahl, Ort, Telefon, E-Mail | Datenlieferant der Datei für ELSTER, Längen wie im Schema (45, 30, 12, 30, 20 und 70 Zeichen); Name, Straße, Postleitzahl und Ort braucht die Datei. Ein leeres Feld füllt das Speichern (`set_datenlieferant`) mit `bridge.datenlieferant_defaults` aus dem Unternehmen: Name, Telefon und E-Mail des Unternehmens, Straße (`address_line1`), Postleitzahl und Ort seiner Adresse, die `get_default_address` von Frappe wählt, Telefon und E-Mail ersatzweise aus ihr; einen Wert, den ELSTER nicht nimmt, übernimmt es nicht |
 | `period_rules` | Voranmeldungszeiträume | Pflicht; Tabelle „Regel zum Voranmeldungszeitraum“ mit Jahr, Voranmeldungszeitraum (monatlich, vierteljährlich oder keine) und „Gültig ab Monat“ (1, 4, 7 oder 10) |
 | `prepayments` | Dauerfristverlängerung und Sondervorauszahlung | Tabelle „Dauerfristverlängerung je Jahr“ mit Jahr, Dauerfristverlängerung und Sondervorauszahlung |
 | `zm_rules` | Abgaberhythmus der Zusammenfassenden Meldung | Tabelle „Regel zur Zusammenfassenden Meldung“ mit Jahr, Gültig ab Monat, Abgaberhythmus (monatlich, vierteljährlich oder jährlich), Sonstige Leistungen monatlich und Grund; geprüft von `steuerbote/zm/rhythm.py` |
@@ -76,7 +77,7 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 
 ### Umsatzsteuer-Voranmeldung (`VAT Return`)
 
-Einreichbar, Nummernkreis `UStVA-.YYYY.-.#####`.
+Einreichbar, Nummernkreis `UStVA-.{year}.-.#####`: Das Jahr im Namen ist das Jahr der Meldung (Feld `year`), nicht das Jahr, in dem sie angelegt wird, siehe [Nummern nach dem Jahr des Belegs](#nummern-nach-dem-jahr-des-belegs).
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
@@ -99,6 +100,7 @@ Einreichbar, Nummernkreis `UStVA-.YYYY.-.#####`.
 | `hints` | Hinweise | Tabelle „Hinweis zur Umsatzsteuer-Voranmeldung“: Art (Hinweis oder Warnung), Code, Nachricht, Belegtyp, Belegnr. und Partei; füllt „Berechnen“, hält die Meldung nie an |
 | `comparison` | Vorperiodenvergleich | Tabelle „Vorperiodenvergleich der Umsatzsteuer-Voranmeldung“: Kennzahl, Beschreibung, Dieser Zeitraum, Vorperiode, Vorjahr, Differenz zur Vorperiode, Differenz (%) und Auffällig; füllt „Berechnen“ |
 | `attachments` | Belege beigefügt oder gesondert eingereicht (Kz 22) | Kennzeichen des Vordrucks |
+| `regelbesteuerung_from` | Datum des Wechsels zur Regelbesteuerung (Kz 70) | Zeile 12 des Vordrucks, nur in den Fällen der Anleitung zu Zeile 12 (USt 1 E 2026): der Tag des Umsatzes, mit dem der Gesamtumsatz 100.000 Euro überschritten hat, im Jahr der Gründung 25.000 Euro, oder der 1. Januar nach dem Verzicht auf die Kleinunternehmer-Regelung (§ 19 Absatz 3 UStG). Das Speichern lehnt ein Datum außerhalb des Jahres der Meldung ab (Regel 11085153 der Jahresdokumentation UStVA 2026). Kz 70 trägt keinen Betrag und ändert keine Summe. |
 | `offset_requested` | Verrechnung erwünscht oder Erstattungsbetrag abgetreten (Kz 29) | Kennzeichen des Vordrucks |
 | `no_sepa_mandate` | SEPA-Lastschriftmandat ausnahmsweise nicht verwenden (Kz 26) | Kennzeichen des Vordrucks |
 | `supplementary_code` | Ergänzende Angaben zur Steueranmeldung (Kz 500) | Schlüssel 1 bis 4 |
@@ -106,7 +108,7 @@ Einreichbar, Nummernkreis `UStVA-.YYYY.-.#####`.
 | `remarks` | Anmerkungen | Pflicht, wenn eine Meldung abgegeben wird, die nicht bereit ist |
 | `transmission_in_progress` | Übermittlung läuft | gesetzt, solange Prüfen, Testsenden oder Senden läuft; so lange lässt sich die Meldung nicht ändern |
 
-An der Meldung stehen unter „Verknüpfungen“ ihre ELSTER-Übermittlungen.
+An der Meldung stehen unter „Verknüpfungen“ ihre ELSTER-Übermittlungen. Über dem Formular nennt sie die Fehler und Hinweise ihres letzten abgeschlossenen Prüfens, Testsendens oder Sendens, siehe [Übermittlung an ELSTER](#übermittlung-an-elster).
 
 ### ERiC-Einstellungen (`ERiC Settings`)
 
@@ -121,6 +123,7 @@ Ein Dokument für die ganze Installation (Single), nur für den System Manager. 
 | `archive_path`, `archive_sha256` | ERiC-Archiv, SHA-256 des Archivs | absoluter Pfad des Archivs auf dem Server und seine Prüfsumme |
 | `installed_version`, `lib_dir`, `log_dir`, `last_check` | Installierte Version, Verzeichnis der Bibliotheken, Verzeichnis der Logdateien, Letzte Prüfung | setzt die Installation |
 | `privacy_notice_confirmed`, `privacy_notice_confirmed_by`, `privacy_notice_confirmed_on` | Datenschutzhinweise gelesen und bestätigt, Bestätigt von, Bestätigt am | die Bestätigung nach § 5 Abs. 1 und 2 des ERiC-Lizenzvertrags; wer sie gibt und wann, setzt das Speichern. Ohne sie läuft kein Vorgang mit ERiC, die Simulation hängt nicht davon ab. |
+| `proxy_url`, `proxy_user`, `proxy_password` | Proxy-URL, Benutzer des Proxys, Passwort des Proxys | der Proxy, über den ERiC die Server von ELSTER erreicht, geprüft von `steuerbote/eric/proxy.py`; das Passwort ist ein Passwortfeld. Ohne URL entfallen Benutzer und Passwort. `transmission_adapter.run` gibt den Proxy jedem Lauf mit Laufzeit mit, siehe [ERiC](eric.md#proxy). |
 
 ### ELSTER-Übermittlung (`ELSTER Transmission`)
 
@@ -144,7 +147,7 @@ Bis Version 0.2 nannte eine ELSTER-Übermittlung ihre Meldung im Feld `vat_retur
 
 ### Zusammenfassende Meldung (`Recapitulative Statement`)
 
-Einreichbar, Nummernkreis `ZM-.YYYY.-.#####`. Wie die Meldung arbeitet, steht in [Die Zusammenfassende Meldung](#die-zusammenfassende-meldung) und in [Zusammenfassende Meldung](zm.md#die-zusammenfassende-meldung-in-erpnext).
+Einreichbar, Nummernkreis `ZM-.{year}.-.#####` mit dem Jahr der Meldung, siehe [Nummern nach dem Jahr des Belegs](#nummern-nach-dem-jahr-des-belegs). Wie die Meldung arbeitet, steht in [Die Zusammenfassende Meldung](#die-zusammenfassende-meldung) und in [Zusammenfassende Meldung](zm.md#die-zusammenfassende-meldung-in-erpnext).
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
@@ -156,11 +159,11 @@ Einreichbar, Nummernkreis `ZM-.YYYY.-.#####`. Wie die Meldung arbeitet, steht in
 | `goods_from`, `goods_to`, `services_from`, `services_to` | Lieferungen von, Lieferungen bis, Sonstige Leistungen von, Sonstige Leistungen bis | berechnet: erster und letzter Tag der Monate, deren Lieferungen und deren sonstige Leistungen die Meldung meldet (`coverage()`); eine abgegebene Meldung behält sie |
 | `status` | Status | Entwurf, Berechnet, Bereit, Abgegeben oder Ersetzt |
 | `confirmation_in_progress` | Prüfung läuft | gesetzt, solange „USt-IdNrn. prüfen“ läuft; so lange lässt sich die Meldung nicht ändern |
-| `lines` | Meldezeilen | Tabelle „Zeile der Zusammenfassenden Meldung“: USt-IdNr., Art der Leistung, Kunde, Betrag laut Hauptbuch, Korrigierter Betrag mit Begründung, Gemeldeter Betrag, Hält die Meldung an, Bisher gemeldet, In der Datei und die letzte Prüfung der Nummer (Geprüft am, Dienst, Ergebnis der Prüfung, Code, Nummer der Abfrage, USt-IdNr.-Bestätigung) |
+| `lines` | Meldezeilen | Tabelle „Zeile der Zusammenfassenden Meldung“: USt-IdNr., Art der Leistung, Kunde, Betrag laut Hauptbuch, Korrigierter Betrag mit Begründung, Gemeldeter Betrag, Hält die Meldung an, Von Hand (eine eigene Zeile ohne Beleg, siehe [Zeilen von Hand](zm.md#zeilen-von-hand)), Bisher gemeldet, In der Datei und die letzte Prüfung der Nummer (Geprüft am, Dienst, Ergebnis der Prüfung, Code, Nummer der Abfrage, USt-IdNr.-Bestätigung) |
 | `total_l`, `total_d`, `total_s` | Summe L, Summe D, Summe S | Summen der Meldezeilen je Art |
 | `ready` | Bereit zur Abgabe | keine Zeile gesperrt, keine Schwelle überschritten und jeder Beleg im Hauptbuch wiedergefunden |
 | `hints` | Befunde | Tabelle „Befund der Zusammenfassenden Meldung“: Art (Fehler oder Hinweis), Code, Nachricht, Belegtyp, Belegnr. und Partei |
-| `reconciliation` | Abgleich mit der Voranmeldung | Tabelle „Abgleich der Zusammenfassenden Meldung“ je Art: Kennzahl, Betrag laut Hauptbuch, Betrag in den Meldezeilen, Unterschied, Gemeldeter Betrag, Laut abgegebenen Voranmeldungen, Abweichende Belege und Abgeglichen |
+| `reconciliation` | Abgleich mit der Voranmeldung | Tabelle „Abgleich der Zusammenfassenden Meldung“ je Art: Kennzahl, Betrag laut Hauptbuch, Betrag in den Meldezeilen, Unterschied, Gemeldeter Betrag, Laut abgegebenen Voranmeldungen, Abweichende Belege, Abgeglichen und Zeilen von Hand, der Teil des gemeldeten Betrags ohne Beleg im Hauptbuch |
 | `comparison` | Vorperiodenvergleich | Tabelle „Vorperiodenvergleich der Zusammenfassenden Meldung“: USt-IdNr., Art der Leistung, Dieser Zeitraum, Vorperiode, Differenz zur Vorperiode, Differenz (%) und Auffällig |
 | `vouchers` | Belege der Meldezeilen | Tabelle „Beleg der Zusammenfassenden Meldung“: Belegtyp, Belegnr., Kunde, Partei, USt-IdNr., Kennzahl, Art der Leistung, Betrag laut Hauptbuch und Bestimmungsland |
 | `filed_via`, `filed_on`, `transferticket`, `filed_by`, `filing_note` | Abgegeben über, Abgegeben am, Transferticket, Vermerkt von, Wie und wann abgegeben | der Vermerk der Abgabe |
@@ -170,11 +173,15 @@ An der Meldung stehen unter „Verknüpfungen“ ihre USt-IdNr.-Bestätigungen.
 
 ### Dauerfristverlängerung (`VAT Return Extension`)
 
-Einreichbar, Nummernkreis `DFV-.YYYY.-.#####`, ein Vordruck USt 1 H je Unternehmen und Jahr: im Jahr des Antrags der Antrag auf Dauerfristverlängerung, bei monatlicher Abgabe mit der Anmeldung der Sondervorauszahlung, in jedem weiteren Jahr die Anmeldung allein. „Berechnen“ liest mit `dauerfrist_sources.py` die abgegebenen Voranmeldungen des Vorjahres und das Gründungsdatum, der Kern unter `steuerbote/dauerfrist` rechnet Grundlage, Sondervorauszahlung (Kz 38), Fälligkeit und den Zeitraum der Anrechnung über Kz 39, und `vat_return_extension/bridge.py` überträgt die Werte. Eine Grundlage von Hand mit Begründung ersetzt die aus den Voranmeldungen. Prüfen, Testsenden und Senden laufen wie an der Voranmeldung, siehe [Übermittlung an ELSTER](#übermittlung-an-elster), mit `transmission_in_progress` als Sperre; ohne Hersteller-ID trägt man den Vordruck in Mein ELSTER von Hand ein. Ein Senden, das ELSTER angenommen hat, „In Mein ELSTER eingetragen“ und „Als außerhalb abgegeben vermerken“ reichen den Beleg ein und setzen in den Einstellungen die Dauerfristverlängerung des Jahres, bei der Anmeldung dazu Kz 38 als Sondervorauszahlung, die die letzte Voranmeldung des Jahres in Kz 39 abzieht. Eine abgegebene Anmeldung wird storniert und mit „Ändern“ als berichtigte Anmeldung (Kz 10) neu angelegt. Felder, Status und Fristen stehen in [Der Beleg in ERPNext](dauerfristverlaengerung.md#der-beleg-in-erpnext).
+Einreichbar, Nummernkreis `DFV-.{year}.-.#####` mit dem Jahr des Vordrucks (siehe [Nummern nach dem Jahr des Belegs](#nummern-nach-dem-jahr-des-belegs)), ein Vordruck USt 1 H je Unternehmen und Jahr: im Jahr des Antrags der Antrag auf Dauerfristverlängerung, bei monatlicher Abgabe mit der Anmeldung der Sondervorauszahlung, in jedem weiteren Jahr die Anmeldung allein. „Berechnen“ liest mit `dauerfrist_sources.py` die abgegebenen Voranmeldungen des Vorjahres und das Gründungsdatum, der Kern unter `steuerbote/dauerfrist` rechnet Grundlage, Sondervorauszahlung (Kz 38), Fälligkeit und den Zeitraum der Anrechnung über Kz 39, und `vat_return_extension/bridge.py` überträgt die Werte. Eine Grundlage von Hand mit Begründung ersetzt die aus den Voranmeldungen. Prüfen, Testsenden und Senden laufen wie an der Voranmeldung, siehe [Übermittlung an ELSTER](#übermittlung-an-elster), mit `transmission_in_progress` als Sperre; ohne Hersteller-ID trägt man den Vordruck in Mein ELSTER von Hand ein. Ein Senden, das ELSTER angenommen hat, „In Mein ELSTER eingetragen“ und „Als außerhalb abgegeben vermerken“ reichen den Beleg ein und setzen in den Einstellungen die Dauerfristverlängerung des Jahres, bei der Anmeldung dazu Kz 38 als Sondervorauszahlung, die die letzte Voranmeldung des Jahres in Kz 39 abzieht. Eine abgegebene Anmeldung wird storniert und mit „Ändern“ als berichtigte Anmeldung (Kz 10) neu angelegt. Felder, Status und Fristen stehen in [Der Beleg in ERPNext](dauerfristverlaengerung.md#der-beleg-in-erpnext).
 
 ### USt-IdNr.-Bestätigung (`VAT ID Confirmation`)
 
 Ein Dokument je Abfrage beim BZSt oder bei VIES, Nummernkreis `USTID-{YYYY}-{#####}`. Nur der Server legt es an, über den Beleg ändert oder löscht es niemand, auch nicht seine Antwort, die als private Datei daran hängt, und „Transaktionen löschen“ am Unternehmen lässt es aus wie die Meldungen (`company_data_to_be_ignored` in `hooks.py`). Es hält angefragte und anfragende USt-IdNr., Unternehmen, Dienst, Ergebnis der Abfrage und der Prüfung, Code, Nachricht, Nummer der Abfrage, Name und Anschrift einer qualifizierten Abfrage mit den Vergleichsergebnissen, Zeitpunkte, Gültigkeit, HTTP-Status, die vorherige Abfrage und die Meldung, aus der die Prüfung kam. Die Felder stehen in [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
+
+### Nummern nach dem Jahr des Belegs
+
+Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung und Dauerfristverlängerung tragen im Namen das Jahr, für das sie gelten: Ihr Nummernkreis nimmt mit `{year}` das Feld `year` des Belegs, das Frappe beim Anlegen einsetzt (`parse_naming_series` in `frappe/model/naming.py` liest einen Teil in geschweiften Klammern aus dem Feld des Belegs). Mit `.YYYY.` stünde dort das Jahr der Anlage: Der Vordruck USt 1 H für 2027 entsteht im November 2026, die Voranmeldung für Dezember im Januar darauf. Den Zähler hält Frappe je Präfix in der Tabelle der Nummernkreise, etwa für `UStVA-2026-`; Belege, die früher mit dem Jahr der Anlage benannt wurden, behalten ihre Namen, und die Zählung eines Präfixes geht hinter ihnen weiter, so dass kein Name doppelt entsteht.
 
 ### Feld an der Journalbuchung
 
@@ -267,6 +274,8 @@ Prüfen, Testsenden und Senden laufen in einem Hintergrundjob, ERiC selbst in ei
 
 Das Ereignis `steuerbote_elster_transmission` nennt `document_type` und `document` des Laufs; jedes Formular reagiert nur auf die Läufe seines DocTypes. Beide Formulare binden dieselben Schaltflächen und denselben Dialog aus `public/js/elster_transmission.js` ein und geben ihm nur die Texte, die ihren Beleg nennen.
 
+Über dem Formular nennen beide Belege die Fehler und Hinweise ihres letzten abgeschlossenen Prüfens, Testsendens oder Sendens, denn ein Prüfen mit Hinweisen ist erfolgreich (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.2.4.1): `onload` gibt dem Formular `latest_run` von `Transmittable`, `elster_transmission/messages.py` zählt die Nachrichten des Laufs je Art und gibt die ersten drei jeder Art weiter, und `show_latest_run` in `public/js/elster_transmission.js` zeigt sie mit dem Link auf die ELSTER-Übermittlung, die alle hält. Ein Vorgang, der noch läuft, zählt erst, wenn er beendet ist.
+
 ## Die Zusammenfassende Meldung
 
 Die Meldung folgt dem Muster der Voranmeldung: Der Kern unter `steuerbote/zm` rechnet, `steuerbote/zm_sources.py` liest, `recapitulative_statement/bridge.py` überträgt, und der Controller bewegt nur Daten.
@@ -333,6 +342,10 @@ Links im Desk steht eine Leiste mit den Bereichen der App, in der man gerade arb
 - **App-Übersicht.** `add_to_apps_screen` in `hooks.py` meldet Steuerbote mit Logo und dem Arbeitsbereich `/desk/steuern` an. Den Eintrag sehen Benutzer mit einer der Rollen des Arbeitsbereichs: Accounts Manager, Accounts User oder System Manager (`steuerbote/permissions.py`). Eine App, die sich in die Leiste einer anderen App einhängt, zeigt Frappe nicht als Kachel in der App-Übersicht. Der Eintrag macht Steuerbote aber als Standard-App wählbar, und Frappe zählt ihn mit, wenn es nach der Anmeldung die Startseite wählt: Wer außer Steuerbote nur ERPNext sieht, landet in der App-Übersicht statt auf der Startseite von ERPNext. Eine Standard-App in den Systemeinstellungen oder am Benutzer legt die Startseite fest.
 - **Logo.** `steuerbote/public/images/steuerbote-logo.svg`, von Hand als SVG gezeichnet, und daraus gerendert `steuerbote-logo.png` mit 512 × 512 Pixeln. Steuerbote setzt kein `app_logo_url`: Daraus nimmt Frappe das Logo der Anmeldeseite, bei genau zwei Einträgen das der App neben Frappe, und ein weiterer Eintrag würde es auf jeder Site ändern.
 - **Arbeitsbereich „Accounting“ von ERPNext.** Dort fügt Steuerbote keine Verknüpfung ein. Den Arbeitsbereich liefert ERPNext als Standard aus, und `bench migrate` spielt ihn neu ein, sobald ERPNext eine neuere Fassung mitbringt. Eine Anpassung der Site übersteht das, friert aber den Inhalt des Arbeitsbereichs ein, sodass spätere Änderungen von ERPNext dort nicht mehr ankommen.
+
+## Standard-Druckformate
+
+Jeder Beleg, der an eine Behörde geht, druckt ohne weitere Wahl mit seinem Druckformat: die Umsatzsteuer-Voranmeldung mit „Umsatzsteuer-Voranmeldung“, die Zusammenfassende Meldung mit „Zusammenfassende Meldung“ und die Dauerfristverlängerung mit „Dauerfristverlängerung“. Ein Standard-DocType nimmt sein Standard-Druckformat nur aus einem Property Setter (`default_print_format`): Frappe 16 lehnt das Feld in der Definition eines Standard-DocTypes ab („Standard DocType cannot have default print format, use Customize Form“, `DocType.validate`), und die Schaltfläche „Set as Default“ eines Druckformats legt den Property Setter an (`make_default` in `print_format.py`). Steuerbote bringt die drei Property Setter als Fixture mit (`steuerbote/fixtures/property_setter.json`, `fixtures` in `hooks.py`). Frappe spielt die Fixtures einer App bei ihrer Installation und bei jedem `bench migrate` neu ein; ein anderes Standard-Druckformat, das eine Site für diese Belege wählt, setzt das nächste `bench migrate` deshalb zurück.
 
 ## Druckformat „Umsatzsteuer-Voranmeldung“
 

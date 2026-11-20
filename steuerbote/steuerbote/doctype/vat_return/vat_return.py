@@ -101,7 +101,7 @@ class VATReturn(Transmittable, Document):
 		kennzahlen: DF.Table[VATReturnKennzahl]
 		kz500_begruendung: DF.SmallText | None
 		kz83: DF.Currency
-		naming_series: DF.Literal["UStVA-.YYYY.-.#####"]
+		naming_series: DF.Literal["UStVA-.{year}.-.#####"]
 		no_sepa_mandate: DF.Check
 		offset_requested: DF.Check
 		other_tax: DF.Currency
@@ -110,6 +110,7 @@ class VATReturn(Transmittable, Document):
 		period_index: DF.Int
 		period_label: DF.Data | None
 		ready: DF.Check
+		regelbesteuerung_from: DF.Date | None
 		remarks: DF.SmallText | None
 		rhythm: DF.Literal["monthly", "quarterly"]
 		sondervorauszahlung: DF.Currency
@@ -123,6 +124,7 @@ class VATReturn(Transmittable, Document):
 
 	def onload(self) -> None:
 		self.set_onload("elster", self.elster_state())
+		self.set_onload("elster_run", self.latest_run())
 
 	def validate(self):
 		self.refuse_changes_while_transmitting()
@@ -423,9 +425,11 @@ class VATReturn(Transmittable, Document):
 		self.update(filing.totals)
 
 	def _check_supplementary_details(self) -> None:
-		"""Kz 500 and its Begründung go together, the Begründung on one line ELSTER takes."""
+		"""Kz 500 and its Begründung go together, the Begründung on one line ELSTER takes, and the date of the
+		switch to the Regelbesteuerung in Kz 70 lies in the year of the return."""
 		with xml_errors(_("VAT Return")):
 			ustva_xml.supplementary_details(self.supplementary_code, self.kz500_begruendung)
+			ustva_xml.regelbesteuerung_details(bridge.to_date(self.regelbesteuerung_from), cint(self.year))
 
 	def _require_import_file(self) -> None:
 		if self.docstatus == 1 and self.status == FILED:

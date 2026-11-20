@@ -15,7 +15,8 @@
   "filed",
   "filed_known",
   "deviating_vouchers",
-  "balanced"
+  "balanced",
+  "manual"
  ],
  "fields": [
   {
@@ -102,6 +103,16 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Balanced",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "description": "What the lines entered by hand report: no voucher of the ledger stands behind it, their reason explains it. It is part of the amount filed.",
+   "fieldname": "manual",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Lines by Hand",
+   "options": "Company:company:default_currency",
    "read_only": 1
   }
  ],

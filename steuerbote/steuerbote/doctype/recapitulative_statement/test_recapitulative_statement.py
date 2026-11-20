@@ -662,10 +662,43 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		doc.reload()
 		spanish = self.line(doc, "ESX1234567X")
 		self.assertEqual(
-			(money(spanish.amount), money(spanish.reported), spanish.blocked, spanish.in_file),
-			(money(0), money(5000), 0, 1),
+			(
+				money(spanish.amount),
+				money(spanish.reported),
+				spanish.blocked,
+				spanish.in_file,
+				spanish.manual,
+			),
+			(money(0), money(5000), 0, 1, 1),
 		)
 		self.assertEqual(money(doc.total_l), money(14800))
+		(goods,) = (row for row in doc.reconciliation if row.art == "L")
+		self.assertEqual(
+			(money(goods.ledger), money(goods.statement), money(goods.manual), money(goods.reported)),
+			(money(9800), money(9800), money(5000), money(14800)),
+		)
+		self.assertEqual(goods.balanced, 1)
+		(hint,) = (row for row in doc.hints if row.code == "ZM-ZEILE-VON-HAND")
+		self.assertEqual(hint.severity, "Hinweis")
+		self.assertRegex(
+			hint.text,
+			r"^Die Zeile ESX1234567X \(L\) ist von Hand eingetragen und steht ohne Beleg im Hauptbuch mit .+ in "
+			r"der ZM; Begründung: Verbringen nach Madrid\.$",
+		)
+		doc.remarks = "Die USt-IdNrn. der Kunden sind am Liefertag bestätigt worden."
+		doc.save()
+		self.assertEqual(
+			contents(doc.make_csv_file()),
+			HEADER + b"ATU12345678,9800,L\nESX1234567X,5000,L\nFR12345678901,3000,S",
+		)
+
+	def test_a_line_of_its_own_needs_the_vat_id_it_reports(self):
+		"""§ 18a Absatz 7 Satz 1 Nummer 2 UStG reports a Verbringen under the company's own USt-IdNr. in the member
+		state the goods went to."""
+		doc = self.calculated(8)
+		doc.append("lines", {"art": "L", "override": 5000, "override_reason": "Verbringen nach Madrid"})
+		with self.assertRaisesRegex(frappe.ValidationError, "needs the USt-IdNr. it reports"):
+			doc.save()
 
 	def test_a_berichtigung_reports_what_changed_against_the_filing(self):
 		doc = self.calculated(7)

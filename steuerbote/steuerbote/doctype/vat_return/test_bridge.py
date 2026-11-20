@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from unittest import TestCase
@@ -370,6 +371,60 @@ class FilerTest(TestCase):
 		self.assertEqual(lengths["wid_nr"], len("DE123456789"))
 
 
+# The company, its address and its contact as datenlieferant_defaults takes them, invented.
+COMPANY_CONTACT = {
+	"name": "Beispiel GmbH",
+	"street": "Hauptstraße 1",
+	"postal_code": "80331",
+	"city": "München",
+	"phone": "089 1234567",
+	"email": "steuern@example.org",
+}
+
+
+class DatenlieferantDefaultsTest(TestCase):
+	def test_fills_every_empty_part_from_the_company(self):
+		empty = dict.fromkeys(bridge.DATENLIEFERANT_FIELDS.values())
+		self.assertEqual(
+			bridge.datenlieferant_defaults(empty, COMPANY_CONTACT),
+			{
+				"filer_name": "Beispiel GmbH",
+				"street": "Hauptstraße 1",
+				"postal_code": "80331",
+				"city": "München",
+				"phone": "089 1234567",
+				"email": "steuern@example.org",
+			},
+		)
+
+	def test_keeps_what_the_settings_hold(self):
+		settings = {"filer_name": "Beispiel Holding", "street": "  ", "city": "Augsburg", "phone": None}
+		self.assertEqual(
+			bridge.datenlieferant_defaults(settings, COMPANY_CONTACT),
+			{
+				"street": "Hauptstraße 1",
+				"postal_code": "80331",
+				"phone": "089 1234567",
+				"email": "steuern@example.org",
+			},
+		)
+
+	def test_takes_nothing_the_company_lacks(self):
+		self.assertEqual(
+			bridge.datenlieferant_defaults({}, {"name": " Beispiel GmbH ", "street": "", "phone": None}),
+			{"filer_name": "Beispiel GmbH"},
+		)
+
+	def test_leaves_out_what_elster_would_not_take(self):
+		"""Too long for the schema, or with a character outside the set of ELSTER: the field stays empty for the
+		user, and the settings still save."""
+		company = {**COMPANY_CONTACT, "street": "Industriestraße 123, Gebäude C, 3. OG", "city": "Łódź"}
+		defaults = bridge.datenlieferant_defaults({}, company)
+		self.assertNotIn("street", defaults)
+		self.assertNotIn("city", defaults)
+		self.assertEqual(defaults["postal_code"], "80331")
+
+
 class VoranmeldungTest(TestCase):
 	def setUp(self):
 		rows = bridge.kennzahl_rows(calculate(verified_month(), SKR03), KENNZAHLEN, {})
@@ -440,6 +495,22 @@ class VoranmeldungTest(TestCase):
 			{**self.doc, "supplementary_code": "", "kz500_begruendung": ""}, Period.month(2026, 3)
 		)
 		self.assertEqual((voranmeldung.supplementary_code, voranmeldung.begruendung), (None, None))
+
+	def test_takes_the_date_of_the_switch_to_the_regelbesteuerung_as_frappe_gives_it(self):
+		for value, expected in (
+			(date(2026, 3, 14), date(2026, 3, 14)),
+			("2026-03-14", date(2026, 3, 14)),
+			("", None),
+			(None, None),
+		):
+			with self.subTest(value=value):
+				voranmeldung = bridge.voranmeldung(
+					{**self.doc, "regelbesteuerung_from": value}, Period.month(2026, 3)
+				)
+				self.assertEqual(voranmeldung.regelbesteuerung_from, expected)
+
+	def test_the_return_keeps_the_date_of_kz70_in_a_date_field(self):
+		self.assertEqual(fields_of("vat_return")["regelbesteuerung_from"]["fieldtype"], "Date")
 
 
 class ReportedTest(TestCase):
