@@ -141,7 +141,7 @@ class DocumentTest(TestCase):
 				"autoname": "naming_series:",
 			},
 		)
-		self.assertEqual(self.fields["naming_series"]["options"], "DFV-.YYYY.-.#####")
+		self.assertEqual(self.fields["naming_series"]["options"], "DFV-.{year}.-.#####")
 
 	def test_the_contexts_are_those_of_the_core(self):
 		options = self.fields["context"]["options"].split("\n")

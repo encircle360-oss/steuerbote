@@ -55,12 +55,12 @@
  ],
  "fields": [
   {
-   "default": "ZM-.YYYY.-.#####",
+   "default": "ZM-.{year}.-.#####",
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Series",
    "no_copy": 1,
-   "options": "ZM-.YYYY.-.#####",
+   "options": "ZM-.{year}.-.#####",
    "print_hide": 1,
    "reqd": 1,
    "set_only_once": 1

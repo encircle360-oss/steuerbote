@@ -47,7 +47,7 @@ UNTRANSLATED = frozenset(
 		"A",
 		"B",
 		"C",
-		"ZM-.YYYY.-.#####",
+		"ZM-.{year}.-.#####",
 	}
 )
 # Labels Frappe and ERPNext translate themselves; the app keeps out of their translations.

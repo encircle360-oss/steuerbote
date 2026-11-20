@@ -503,6 +503,25 @@ class DefaultPrintFormatFilesTest(TestCase):
 				self.assertIn(setter["doc_type"], doctype_names())
 
 
+class NamingFilesTest(TestCase):
+	"""The documents for a year carry the year they are for, not the year they were made in: Frappe reads a part
+	{year} of a naming series from the field of the document (parse_naming_series in frappe/model/naming.py)."""
+
+	def test_the_documents_for_a_year_are_numbered_by_that_year(self):
+		for name, prefix in (
+			("vat_return", "UStVA"),
+			("recapitulative_statement", "ZM"),
+			("vat_return_extension", "DFV"),
+		):
+			definition = read_json(MODULE / "doctype" / name / f"{name}.json")
+			fields = {field["fieldname"]: field for field in definition["fields"]}
+			with self.subTest(doctype=definition["name"]):
+				self.assertEqual(definition["autoname"], "naming_series:")
+				series = fields["naming_series"]
+				self.assertEqual((series["options"], series["default"]), (f"{prefix}-.{{year}}.-.#####",) * 2)
+				self.assertEqual((fields["year"]["fieldtype"], fields["year"]["reqd"]), ("Int", 1))
+
+
 class PrintFormatFilesTest(TestCase):
 	def setUp(self):
 		self.record = read_json(PRINT_FORMAT / "umsatzsteuer_voranmeldung.json")

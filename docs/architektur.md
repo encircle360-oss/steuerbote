@@ -77,7 +77,7 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 
 ### Umsatzsteuer-Voranmeldung (`VAT Return`)
 
-Einreichbar, Nummernkreis `UStVA-.YYYY.-.#####`.
+Einreichbar, Nummernkreis `UStVA-.{year}.-.#####`: Das Jahr im Namen ist das Jahr der Meldung (Feld `year`), nicht das Jahr, in dem sie angelegt wird, siehe [Nummern nach dem Jahr des Belegs](#nummern-nach-dem-jahr-des-belegs).
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
@@ -147,7 +147,7 @@ Bis Version 0.2 nannte eine ELSTER-Übermittlung ihre Meldung im Feld `vat_retur
 
 ### Zusammenfassende Meldung (`Recapitulative Statement`)
 
-Einreichbar, Nummernkreis `ZM-.YYYY.-.#####`. Wie die Meldung arbeitet, steht in [Die Zusammenfassende Meldung](#die-zusammenfassende-meldung) und in [Zusammenfassende Meldung](zm.md#die-zusammenfassende-meldung-in-erpnext).
+Einreichbar, Nummernkreis `ZM-.{year}.-.#####` mit dem Jahr der Meldung, siehe [Nummern nach dem Jahr des Belegs](#nummern-nach-dem-jahr-des-belegs). Wie die Meldung arbeitet, steht in [Die Zusammenfassende Meldung](#die-zusammenfassende-meldung) und in [Zusammenfassende Meldung](zm.md#die-zusammenfassende-meldung-in-erpnext).
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
@@ -173,11 +173,15 @@ An der Meldung stehen unter „Verknüpfungen“ ihre USt-IdNr.-Bestätigungen.
 
 ### Dauerfristverlängerung (`VAT Return Extension`)
 
-Einreichbar, Nummernkreis `DFV-.YYYY.-.#####`, ein Vordruck USt 1 H je Unternehmen und Jahr: im Jahr des Antrags der Antrag auf Dauerfristverlängerung, bei monatlicher Abgabe mit der Anmeldung der Sondervorauszahlung, in jedem weiteren Jahr die Anmeldung allein. „Berechnen“ liest mit `dauerfrist_sources.py` die abgegebenen Voranmeldungen des Vorjahres und das Gründungsdatum, der Kern unter `steuerbote/dauerfrist` rechnet Grundlage, Sondervorauszahlung (Kz 38), Fälligkeit und den Zeitraum der Anrechnung über Kz 39, und `vat_return_extension/bridge.py` überträgt die Werte. Eine Grundlage von Hand mit Begründung ersetzt die aus den Voranmeldungen. Prüfen, Testsenden und Senden laufen wie an der Voranmeldung, siehe [Übermittlung an ELSTER](#übermittlung-an-elster), mit `transmission_in_progress` als Sperre; ohne Hersteller-ID trägt man den Vordruck in Mein ELSTER von Hand ein. Ein Senden, das ELSTER angenommen hat, „In Mein ELSTER eingetragen“ und „Als außerhalb abgegeben vermerken“ reichen den Beleg ein und setzen in den Einstellungen die Dauerfristverlängerung des Jahres, bei der Anmeldung dazu Kz 38 als Sondervorauszahlung, die die letzte Voranmeldung des Jahres in Kz 39 abzieht. Eine abgegebene Anmeldung wird storniert und mit „Ändern“ als berichtigte Anmeldung (Kz 10) neu angelegt. Felder, Status und Fristen stehen in [Der Beleg in ERPNext](dauerfristverlaengerung.md#der-beleg-in-erpnext).
+Einreichbar, Nummernkreis `DFV-.{year}.-.#####` mit dem Jahr des Vordrucks (siehe [Nummern nach dem Jahr des Belegs](#nummern-nach-dem-jahr-des-belegs)), ein Vordruck USt 1 H je Unternehmen und Jahr: im Jahr des Antrags der Antrag auf Dauerfristverlängerung, bei monatlicher Abgabe mit der Anmeldung der Sondervorauszahlung, in jedem weiteren Jahr die Anmeldung allein. „Berechnen“ liest mit `dauerfrist_sources.py` die abgegebenen Voranmeldungen des Vorjahres und das Gründungsdatum, der Kern unter `steuerbote/dauerfrist` rechnet Grundlage, Sondervorauszahlung (Kz 38), Fälligkeit und den Zeitraum der Anrechnung über Kz 39, und `vat_return_extension/bridge.py` überträgt die Werte. Eine Grundlage von Hand mit Begründung ersetzt die aus den Voranmeldungen. Prüfen, Testsenden und Senden laufen wie an der Voranmeldung, siehe [Übermittlung an ELSTER](#übermittlung-an-elster), mit `transmission_in_progress` als Sperre; ohne Hersteller-ID trägt man den Vordruck in Mein ELSTER von Hand ein. Ein Senden, das ELSTER angenommen hat, „In Mein ELSTER eingetragen“ und „Als außerhalb abgegeben vermerken“ reichen den Beleg ein und setzen in den Einstellungen die Dauerfristverlängerung des Jahres, bei der Anmeldung dazu Kz 38 als Sondervorauszahlung, die die letzte Voranmeldung des Jahres in Kz 39 abzieht. Eine abgegebene Anmeldung wird storniert und mit „Ändern“ als berichtigte Anmeldung (Kz 10) neu angelegt. Felder, Status und Fristen stehen in [Der Beleg in ERPNext](dauerfristverlaengerung.md#der-beleg-in-erpnext).
 
 ### USt-IdNr.-Bestätigung (`VAT ID Confirmation`)
 
 Ein Dokument je Abfrage beim BZSt oder bei VIES, Nummernkreis `USTID-{YYYY}-{#####}`. Nur der Server legt es an, über den Beleg ändert oder löscht es niemand, auch nicht seine Antwort, die als private Datei daran hängt, und „Transaktionen löschen“ am Unternehmen lässt es aus wie die Meldungen (`company_data_to_be_ignored` in `hooks.py`). Es hält angefragte und anfragende USt-IdNr., Unternehmen, Dienst, Ergebnis der Abfrage und der Prüfung, Code, Nachricht, Nummer der Abfrage, Name und Anschrift einer qualifizierten Abfrage mit den Vergleichsergebnissen, Zeitpunkte, Gültigkeit, HTTP-Status, die vorherige Abfrage und die Meldung, aus der die Prüfung kam. Die Felder stehen in [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
+
+### Nummern nach dem Jahr des Belegs
+
+Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung und Dauerfristverlängerung tragen im Namen das Jahr, für das sie gelten: Ihr Nummernkreis nimmt mit `{year}` das Feld `year` des Belegs, das Frappe beim Anlegen einsetzt (`parse_naming_series` in `frappe/model/naming.py` liest einen Teil in geschweiften Klammern aus dem Feld des Belegs). Mit `.YYYY.` stünde dort das Jahr der Anlage: Der Vordruck USt 1 H für 2027 entsteht im November 2026, die Voranmeldung für Dezember im Januar darauf. Den Zähler hält Frappe je Präfix in der Tabelle der Nummernkreise, etwa für `UStVA-2026-`; Belege, die früher mit dem Jahr der Anlage benannt wurden, behalten ihre Namen, und die Zählung eines Präfixes geht hinter ihnen weiter, so dass kein Name doppelt entsteht.
 
 ### Feld an der Journalbuchung
 

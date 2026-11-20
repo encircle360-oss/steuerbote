@@ -101,7 +101,7 @@ class VATReturn(Transmittable, Document):
 		kennzahlen: DF.Table[VATReturnKennzahl]
 		kz500_begruendung: DF.SmallText | None
 		kz83: DF.Currency
-		naming_series: DF.Literal["UStVA-.YYYY.-.#####"]
+		naming_series: DF.Literal["UStVA-.{year}.-.#####"]
 		no_sepa_mandate: DF.Check
 		offset_requested: DF.Check
 		other_tax: DF.Currency

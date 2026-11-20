@@ -115,7 +115,7 @@ class VATReturnExtension(Transmittable, Document):
 		kz83: DF.Currency
 		missing_periods: DF.SmallText | None
 		months_active: DF.Int
-		naming_series: DF.Literal["DFV-.YYYY.-.#####"]
+		naming_series: DF.Literal["DFV-.{year}.-.#####"]
 		no_sepa_mandate: DF.Check
 		offset_requested: DF.Check
 		remarks: DF.SmallText | None

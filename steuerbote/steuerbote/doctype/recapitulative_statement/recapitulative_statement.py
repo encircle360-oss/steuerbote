@@ -127,7 +127,7 @@ class RecapitulativeStatement(Document):
 		hints: DF.Table[RecapitulativeStatementHint]
 		lines: DF.Table[RecapitulativeStatementLine]
 		meldeart: DF.Literal["Erstmeldung", "Berichtigung"]
-		naming_series: DF.Literal["ZM-.YYYY.-.#####"]
+		naming_series: DF.Literal["ZM-.{year}.-.#####"]
 		period_index: DF.Int
 		period_kind: DF.Literal["month", "two_months", "quarter", "year"]
 		period_label: DF.Data | None
