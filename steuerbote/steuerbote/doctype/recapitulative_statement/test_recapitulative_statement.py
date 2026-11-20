@@ -291,6 +291,37 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[(AUSTRIAN, "L", money(9800), money(0), 1), (FRENCH, "S", money(3000), money(0), 1)],
 		)
 
+	def test_the_file_and_the_filing_wait_for_berechnen_after_the_ledger_changed(self):
+		"""Berechnen reads the ledger once, and an invoice posted afterwards is in no line until it runs again, so
+		the file and the filing read the ledger of the months anew and name the voucher."""
+		a = self.account
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-10-1", ALPEN, "2026-10-05", [(a["1400"], 4000, 0), (a["8125"], 0, 4000)]
+		)
+		doc = self.calculated(10, remarks="Die USt-IdNr. ist am Liefertag bestätigt worden.")
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-10-2", ALPEN, "2026-10-20", [(a["1400"], 1500, 0), (a["8125"], 0, 1500)]
+		)
+		attempts = {
+			"CSV für Mein ELSTER": doc.make_csv_file,
+			"In Mein ELSTER abgegeben": lambda: doc.mark_filed_outside(filed_via="mein_elster"),
+		}
+		for button, attempt in attempts.items():
+			with (
+				self.subTest(button=button),
+				self.assertRaisesRegex(
+					frappe.ValidationError, "Beleg SINV-STZM-10-2 geht laut Hauptbuch mit .* in Kz 41 ein"
+				),
+			):
+				attempt()
+			doc.reload()
+		self.assertEqual(doc.docstatus, 0)
+		doc.calculate()
+		doc.reload()
+		self.assertEqual(contents(doc.make_csv_file()), HEADER + b"ATU12345678,5500,L")
+		doc.mark_filed_outside(filed_via="mein_elster")
+		self.assertEqual(frappe.db.get_value(DOCTYPE, doc.name, "status"), "Abgegeben")
+
 	def test_the_lines_agree_with_the_voranmeldung_and_go_into_the_csv_file(self):
 		vat_return = frappe.get_doc(
 			{

@@ -20,7 +20,7 @@ starts a statement for the same Meldezeitraum that reports only what changed aga
 statement cannot be cancelled, since a change goes to the BZSt as a Berichtigung.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -48,9 +48,10 @@ from steuerbote.zm.comparison import compare, comparison_hints
 from steuerbote.zm.correction import as_filed
 from steuerbote.zm.csv_file import csv_file
 from steuerbote.zm.errors import ZmError
+from steuerbote.zm.findings import Finding
 from steuerbote.zm.lines import Art, Statement, build
 from steuerbote.zm.period import ReportingPeriod
-from steuerbote.zm.reconciliation import Filed, reconcile
+from steuerbote.zm.reconciliation import Filed, ledger_changes, reconcile
 from steuerbote.zm.rhythm import Coverage, Rule, check_notices, coverage, threshold_findings, threshold_window
 
 DOCTYPE = "Recapitulative Statement"
@@ -568,7 +569,9 @@ class RecapitulativeStatement(Document):
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the statement before filing it."))
 		self._require_explanation()
-		period = self._chosen_period()
+		covered = self._coverage()
+		self._require_unchanged_ledger(covered)
+		period = covered.period
 		with zm_errors():
 			rows, correction = self._file_lines(period)
 			if correction and not rows:
@@ -592,6 +595,35 @@ class RecapitulativeStatement(Document):
 			frappe.throw(_("Calculate the statement before making the file for Mein ELSTER."))
 		self._refuse_second_filing()
 		self._require_explanation()
+		self._require_unchanged_ledger(self._coverage())
+
+	def _require_unchanged_ledger(self, covered: Coverage) -> None:
+		"""Berechnen reads the ledger once: a file or a filing goes with the lines only while the ledger of their
+		months still books the vouchers they were made from."""
+		changes = self._ledger_changes(covered, self.vouchers)
+		if changes:
+			frappe.throw(
+				"<br>".join(
+					(
+						_(
+							"The ledger of {0} has changed since the statement was calculated. Calculate it again before making its file or filing it."
+						).format(self.period_label),
+						*(escape_html(finding.text) for finding in changes),
+					)
+				),
+				title=_("Recapitulative Statement"),
+			)
+
+	def _ledger_changes(self, covered: Coverage, vouchers: Iterable[Document]) -> tuple[Finding, ...]:
+		"""The vouchers whose share of Kz 41, 42 or 21 in the ledger of the months now differs from ``vouchers``,
+		the rows the lines were made from: in amount, on one side only or in the USt-IdNr."""
+		mapping = mapping_for(self.company, cint(self.year))
+		shares = zm_sources.shares(self.company, covered, mapping)
+		parties = zm_sources.parties(item.voucher for item in shares)
+		with zm_errors():
+			return ledger_changes(
+				bridge.voucher_amounts(vouchers), bridge.voucher_amounts_of(shares, parties), self._figures()
+			)
 
 	def _attach(self, file_name: str, content: bytes) -> str:
 		"""Attach the file privately; a file of the same content attached before is kept instead."""

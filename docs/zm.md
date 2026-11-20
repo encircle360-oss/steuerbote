@@ -93,7 +93,7 @@ Jeder Befund ist ein Satz mit Beleg und Kunde, wo es sie gibt (`findings.py`). F
 | `ZM-USTID-UNBESTAETIGT` | Fehler | Die Nummer ist nicht bestätigt. | Entscheidung des Maintainers [Q16] |
 | `ZM-DREIECK-LAND` | Fehler | Bei einem Dreiecksgeschäft stammt die USt-IdNr. nicht aus dem Land, in dem die Lieferung endet, oder der Beleg nennt kein Land. | § 18a Absatz 7 Satz 1 Nummer 4 Buchstabe a UStG |
 | `ZM-SCHWELLE` | Fehler | Die Regeln geben eine vierteljährliche oder jährliche ZM, obwohl L und D mehr als 50.000 € im Quartal ergeben. | § 18a Absatz 1 UStG |
-| `ZM-ABGLEICH-HAUPTBUCH` | Fehler | Ein Beleg steht mit anderem Betrag im Hauptbuch als in den Zeilen. | siehe Abgleich |
+| `ZM-ABGLEICH-HAUPTBUCH` | Fehler | Ein Beleg steht seit dem Berechnen mit anderem Betrag oder unter anderer USt-IdNr. im Hauptbuch als in den Zeilen, oder nur auf einer Seite; „CSV für Mein ELSTER“ und der Vermerk der Abgabe lehnen die Meldung dann ab. | siehe Abgleich |
 | `ZM-ABGLEICH-VORANMELDUNG` | Hinweis | Die Meldezeilen weichen weiter von den abgegebenen Voranmeldungen ab, als die Rundung erklärt. | siehe Abgleich |
 | `ZM-ABWEICHUNG-VORPERIODE` | Hinweis | Eine Zeile ist im Vorperiodenvergleich auffällig. | siehe Vorperiodenvergleich |
 
@@ -103,7 +103,7 @@ Jeder Befund ist ein Satz mit Beleg und Kunde, wo es sie gibt (`findings.py`). F
 
 ZM und Voranmeldung melden dieselben Umsätze, mit denselben Zeiträumen (§ 18a Absatz 8, § 18b Satz 2 und 3 UStG) und § 17 UStG für beide (§ 18a Absatz 7 Satz 2, § 18b Satz 4 UStG). Das BZSt gleicht ab: „Nach Eingang der ZM beim BZSt erfolgt ein Abgleich der gemeldeten innergemeinschaftlichen Umsatzarten mit den Angaben in den Umsatzsteuer-Voranmeldungen und -Jahreserklärungen.“ [Q8] [`reconciliation.py`](../steuerbote/zm/reconciliation.py) prüft deshalb ΣL = Kz 41, ΣD = Kz 42 und ΣS = Kz 21 über dieselben Monate, die Lieferungsmonate für Kz 41 und 42, die Leistungsmonate für Kz 21:
 
-1. **Hauptbuch, Beleg für Beleg.** Die genauen Beträge der Belege in den Zeilen gegen das, was das Hauptbuch jeder Kennzahl gibt; die Beiträge (`Contribution`) des Berichts „UStVA Kennzahlen“ passen dafür unverändert. Fehlt ein Beleg auf einer Seite oder hat er einen anderen Betrag, nennt ein Fehler den Beleg (`ZM-ABGLEICH-HAUPTBUCH`).
+1. **Hauptbuch, Beleg für Beleg.** Die genauen Beträge der Belege in den Zeilen gegen das, was das Hauptbuch jeder Kennzahl gibt; die Beiträge (`Contribution`) des Berichts „UStVA Kennzahlen“ passen dafür unverändert. Beim Berechnen stimmen beide Seiten überein, denn die Zeilen entstehen aus eben diesen Beiträgen. Was das Hauptbuch danach bucht, etwa eine weitere Rechnung, eine Zahlung mit Skonto oder eine Stornierung, fehlt den Zeilen aber, bis wieder berechnet wird. Deshalb lesen „CSV für Mein ELSTER“ an einer Meldung im Entwurf und der Vermerk der Abgabe das Hauptbuch der Monate noch einmal und vergleichen es mit den Belegen der Zeilen (`ledger_changes()`): Betrag je Beleg und Kennzahl, Belege, die es nur auf einer Seite gibt, und die USt-IdNr., unter der ein Beleg steht. Weicht ein Beleg ab, lehnen beide ab und nennen jeden abweichenden Beleg mit dem Satz des Befunds `ZM-ABGLEICH-HAUPTBUCH`, bis „Berechnen“ die Zeilen neu bildet.
 2. **Abgegebene Voranmeldungen.** Die Meldezeilen je Art gegen die Kennzahl der für diese Monate abgegebenen Voranmeldungen. Jede Zeile und jede Voranmeldung schneidet weniger als einen Euro ab. Weichen beide um so viele Euro ab, wie es Zeilen dieser Art und Voranmeldungen gibt, oder um mehr, ist das keine Rundung, sondern etwa eine Korrektur; das gibt einen Hinweis (`ZM-ABGLEICH-VORANMELDUNG`).
 
 ## Vorperiodenvergleich
@@ -205,7 +205,7 @@ Die Schaltfläche fragt das BZSt im Hintergrund nach jeder USt-IdNr., die die Me
 
 ### CSV für Mein ELSTER und Abgabe
 
-„CSV für Mein ELSTER“ schreibt die Zeilen der gespeicherten Meldung mit `csv_file()` und hängt die Datei privat an die Meldung, etwa `ZM-2026-03.csv`, für eine Berichtigung `ZM-2026-03-berichtigt.csv`. Die Datei gibt es für eine Meldung, die bereit ist oder deren Anmerkungen begründen, warum sie trotzdem abgegeben wird, und für jede abgegebene Meldung. So geht sie an das BZSt:
+„CSV für Mein ELSTER“ schreibt die Zeilen der gespeicherten Meldung mit `csv_file()` und hängt die Datei privat an die Meldung, etwa `ZM-2026-03.csv`, für eine Berichtigung `ZM-2026-03-berichtigt.csv`. Die Datei gibt es für eine Meldung, die bereit ist oder deren Anmerkungen begründen, warum sie trotzdem abgegeben wird, und für jede abgegebene Meldung. Für eine Meldung im Entwurf und beim Vermerk der Abgabe liest Steuerbote das Hauptbuch der Monate noch einmal; hat es sich seit dem Berechnen geändert, ist erst neu zu berechnen, siehe [Abgleich](#abgleich-mit-der-voranmeldung). So geht sie an das BZSt:
 
 1. In Steuerbote „Berechnen“ und „USt-IdNrn. prüfen“, bis die Meldung „Bereit“ ist oder die Anmerkungen begründen, warum sie trotzdem abgegeben wird.
 2. „CSV für Mein ELSTER“ und die Datei speichern.
