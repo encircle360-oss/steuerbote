@@ -42,6 +42,7 @@ The rules (JD, sheet "Allg. Information" for the formats):
 """
 
 import re
+from collections.abc import Iterable
 from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass
 from datetime import date
@@ -332,12 +333,12 @@ def import_file_name(voranmeldung: Voranmeldung) -> str:
 
 def to_import_file(filer: Filer, voranmeldung: Voranmeldung, created: date) -> bytes:
 	"""The file to import into the form of Mein ELSTER, in ISO-8859-15, created on ``created``."""
-	return IMPORT_DECLARATION + _serialized(build(filer, voranmeldung, created)).encode(IMPORT_ENCODING)
+	return IMPORT_DECLARATION + serialized(build(filer, voranmeldung, created)).encode(IMPORT_ENCODING)
 
 
 def to_nutzdaten(filer: Filer, voranmeldung: Voranmeldung, created: date, hersteller_id: str) -> str:
 	"""The Nutzdaten for ERiC: the tree of the import file with the Hersteller-ID in Kz 09, as text."""
-	return _serialized(build(filer, voranmeldung, created, hersteller_id))
+	return serialized(build(filer, voranmeldung, created, hersteller_id))
 
 
 def build(
@@ -353,6 +354,17 @@ def build(
 		"Kz09": None if hersteller_id is None else require_hersteller_id(hersteller_id),
 		**_kennzahlen(schema, voranmeldung),
 	}
+	root, steuerfall = anmeldungssteuern(filer, schema, created)
+	context(steuerfall, schema, "Umsatzsteuervoranmeldung", texts, schema.elements)
+	return root
+
+
+def anmeldungssteuern(filer: Filer, schema: Schema, created: date) -> tuple[etree._Element, etree._Element]:
+	"""The element Anmeldungssteuern of the schema with Erstellungsdatum and DatenLieferant, and its Steuerfall.
+
+	The Steuerfall takes the one context of the filing: the Umsatzsteuervoranmeldung here, or one of the two of
+	form USt 1 H (ust1h_xml.py), since a filing holds exactly one of the three (JD 110085099).
+	"""
 	root = etree.Element(_tag(schema, "Anmeldungssteuern"), nsmap={None: schema.namespace})
 	root.set("version", str(schema.year))
 	_append(root, schema, "Erstellungsdatum", created.strftime("%Y%m%d"))
@@ -360,11 +372,22 @@ def build(
 	for attribute, field in DATENLIEFERANT.items():
 		if getattr(filer, attribute) is not None:
 			_append(datenlieferant, schema, field.element, getattr(filer, attribute))
-	anmeldung = _append(_append(root, schema, "Steuerfall"), schema, "Umsatzsteuervoranmeldung")
-	for element in schema.elements:
+	return root, _append(root, schema, "Steuerfall")
+
+
+def context(
+	steuerfall: etree._Element,
+	schema: Schema,
+	name: str,
+	texts: ReadOnlyMapping[str, str | None],
+	elements: Iterable[str],
+) -> etree._Element:
+	"""The context ``name`` in the Steuerfall, with each of ``elements`` in that order that has a text."""
+	child = _append(steuerfall, schema, name)
+	for element in elements:
 		if texts.get(element) is not None:
-			_append(anmeldung, schema, element, texts[element])
-	return root
+			_append(child, schema, element, texts[element])
+	return child
 
 
 def _kennzahlen(schema: Schema, voranmeldung: Voranmeldung) -> dict[str, str]:
@@ -467,6 +490,7 @@ def _append(parent: etree._Element, schema: Schema, name: str, text: str | None 
 	return child
 
 
-def _serialized(root: etree._Element) -> str:
+def serialized(root: etree._Element) -> str:
+	"""The tree as text, indented with tabs, without a declaration."""
 	etree.indent(root, space="\t")
 	return etree.tostring(root, encoding="unicode") + "\n"

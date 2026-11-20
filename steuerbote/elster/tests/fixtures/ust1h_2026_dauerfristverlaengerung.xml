@@ -1,0 +1,16 @@
+<Anmeldungssteuern xmlns="http://finkonsens.de/elster/elsteranmeldung/ustva/v2026" version="2026">
+	<Erstellungsdatum>20261118</Erstellungsdatum>
+	<DatenLieferant>
+		<Name>Beispiel GmbH</Name>
+		<Strasse>Hauptstraße 1</Strasse>
+		<PLZ>80331</PLZ>
+		<Ort>München</Ort>
+	</DatenLieferant>
+	<Steuerfall>
+		<Dauerfristverlaengerung>
+			<Jahr>2026</Jahr>
+			<Steuernummer>9198011310010</Steuernummer>
+			<Kz09>12345</Kz09>
+		</Dauerfristverlaengerung>
+	</Steuerfall>
+</Anmeldungssteuern>

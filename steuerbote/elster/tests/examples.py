@@ -1,4 +1,5 @@
-"""The month of VerifiedMonthTest in the core, filed for October 2026, and helpers to read the XML."""
+"""The month of VerifiedMonthTest in the core, filed for October 2026, form USt 1 H of 2026 and helpers to read
+the XML."""
 
 from datetime import date
 from decimal import Decimal
@@ -6,6 +7,7 @@ from pathlib import Path
 
 from lxml import etree
 
+from steuerbote.dauerfrist import Context, Ust1H
 from steuerbote.elster.ustva_xml import Filer, Voranmeldung, to_import_file
 from steuerbote.ustva import Mapping, Period, calculate
 
@@ -57,6 +59,24 @@ def voranmeldung(
 	amounts: dict[str, Decimal] | None = None, period: Period = OCTOBER, **fields
 ) -> Voranmeldung:
 	return Voranmeldung(period, EXAMPLE_MONTH if amounts is None else amounts, **fields)
+
+
+def anmeldung(**fields) -> Ust1H:
+	"""The Anmeldung der Sondervorauszahlung 2026 of a monthly filer, with the Kz 38 of 4.000 € of the example of
+	the Anleitung USt 5 E 2026."""
+	values: dict = {
+		"year": 2026,
+		"context": Context.UMSATZSTEUERSONDERVORAUSZAHLUNG,
+		"sondervorauszahlung": Decimal("4000"),
+		**fields,
+	}
+	return Ust1H(**values)
+
+
+def antrag(**fields) -> Ust1H:
+	"""The Antrag auf Dauerfristverlängerung 2026 of a quarterly filer."""
+	values: dict = {"year": 2026, "context": Context.DAUERFRISTVERLAENGERUNG, **fields}
+	return Ust1H(**values)
 
 
 def parse(document: bytes | str) -> etree._Element:

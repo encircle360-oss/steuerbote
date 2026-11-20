@@ -66,6 +66,17 @@ def example(year: int) -> bytes:
 	return (_ustva() / "Beispiele" / f"UStVA_{year}.xml").read_bytes()
 
 
+# The examples of form USt 1 H by the context they file.
+UST1H_EXAMPLES = {"Dauerfristverlaengerung": "Df", "Umsatzsteuersondervorauszahlung": "SoVZ"}
+
+
+def ust1h_example(year: int, context: str) -> bytes:
+	"""The documentation's example of a context of form USt 1 H in its envelope: Beispiele/UStVA_Df_<year>.xml
+	for the Antrag auf Dauerfristverlängerung, Beispiele/UStVA_SoVZ_<year>.xml for the Anmeldung der
+	Sondervorauszahlung."""
+	return (_ustva() / "Beispiele" / f"UStVA_{UST1H_EXAMPLES[context]}_{year}.xml").read_bytes()
+
+
 ELSTER_XML = "http://www.elster.de/elsterxml/schema/v11"
 XSD = "http://www.w3.org/2001/XMLSchema"
 ODS_TABLE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"

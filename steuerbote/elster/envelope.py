@@ -3,7 +3,8 @@
 The envelope follows elster11_UStVA_2026_extern.xsd with the ElsterBasisSchema of the ERiC documentation
 44.3.6.0 (HB for ERiC-Entwicklerhandbuch.pdf, DS for Einheitliche_Datenschnittstelle_XML_11.pdf). It is
 written in UTF-8 (HB 5.3.2) and declares the namespace of ElsterXML 11 on the root alone; the Nutzdaten
-declare their own (DS 2.3).
+declare their own (DS 2.3). Its Nutzdaten are a Voranmeldung (``to_envelope``) or form USt 1 H, which the
+Datenart UStVA holds as well (HB table 2-13; ``envelope_of`` with the tree of ust1h_xml.py).
 
 The TransferHeader names the Verfahren ElsterAnmeldung, the Datenart UStVA and the Vorgang send-Auth, the
 only one the UStVA allows (HB table 8-8). A test case carries the Testmerker 700000004, which the ELSTER
@@ -71,6 +72,29 @@ def to_envelope(
 	suggests 1 (NutzdatenBlockTicketSType).
 	"""
 	hersteller_id = require_hersteller_id(hersteller_id)
+	return envelope_of(
+		build(filer, voranmeldung, created, hersteller_id),
+		filer,
+		hersteller_id=hersteller_id,
+		testmerker=testmerker,
+		contact=contact,
+		produkt_version=produkt_version,
+		nutzdaten_ticket=nutzdaten_ticket,
+	)
+
+
+def envelope_of(
+	nutzdaten: etree._Element,
+	filer: Filer,
+	*,
+	hersteller_id: str,
+	testmerker: bool,
+	contact: str | None = None,
+	produkt_version: str = __version__,
+	nutzdaten_ticket: str = "1",
+) -> bytes:
+	"""The whole ElsterXML document around the element Anmeldungssteuern of one filing, in UTF-8."""
+	hersteller_id = require_hersteller_id(hersteller_id)
 	root = etree.Element(_tag("Elster"), nsmap={None: NAMESPACE})
 	header = _append(root, "TransferHeader", version=HEADER_VERSION)
 	_append(header, "Verfahren", VERFAHREN)
@@ -92,7 +116,7 @@ def to_envelope(
 	_append(hersteller, "ProduktName", PRODUCT_NAME)
 	version = required_text(produkt_version, PRODUCT_VERSION_LABEL, PRODUCT_TEXT_LENGTH)
 	_append(hersteller, "ProduktVersion", version)
-	_append(block, "Nutzdaten").append(build(filer, voranmeldung, created, hersteller_id))
+	_append(block, "Nutzdaten").append(nutzdaten)
 	etree.indent(root, space="\t")
 	return DECLARATION + etree.tostring(root, encoding="unicode").encode("utf-8") + b"\n"
 

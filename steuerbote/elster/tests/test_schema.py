@@ -10,13 +10,17 @@ from unittest import TestCase
 
 from lxml import etree
 
+from steuerbote.dauerfrist import Context
+from steuerbote.elster import ust1h_xml
 from steuerbote.elster.charset import ALLOWED, EXCLUDED
-from steuerbote.elster.envelope import to_envelope
+from steuerbote.elster.envelope import envelope_of, to_envelope
 from steuerbote.elster.tests import eric_schema
 from steuerbote.elster.tests.examples import (
 	CREATED,
 	EXAMPLE_MONTH,
 	OFFICIAL_EXAMPLE,
+	anmeldung,
+	antrag,
 	balance,
 	children,
 	elements,
@@ -28,12 +32,30 @@ from steuerbote.elster.ustva_xml import (
 	BEGRUENDUNG_LENGTH,
 	DATENLIEFERANT,
 	SCHEMAS,
+	Filer,
 	to_import_file,
 	to_nutzdaten,
 )
 from steuerbote.ustva import Kind, Period, Rhythm, catalogue_for
 
 XS = "{http://www.w3.org/2001/XMLSchema}"
+HERSTELLER_ID = "12345"
+# The DatenLieferant and Steuernummer of the examples of form USt 1 H in the ERiC documentation 44.3.6.0.
+DOCUMENTATION_FILER = {
+	"steuernummer": "9198011310134",
+	"name": "Alois Mustermann",
+	"street": "Testgasse 13",
+	"postal_code": "08151",
+	"city": "Musterstadt",
+	"phone": "0815/99999999",
+	"email": "Mustermann@Geschaeft.de",
+}
+DOCUMENTATION_CREATED = date(2023, 1, 5)
+
+
+def canonical(element: etree._Element) -> bytes:
+	"""The element in Canonical XML 2.0, without comments and without the white space between elements."""
+	return etree.tostring(element, method="c14n2", with_comments=False, strip_text=True)
 
 
 class SchemaTestCase(TestCase):
@@ -228,3 +250,134 @@ class EnvelopeSchemaTest(SchemaTestCase):
 		ours = etree.fromstring(to_import_file(filer(), voranmeldung(EXAMPLE_MONTH), CREATED))
 		self.assertEqual((ours.tag, dict(ours.attrib)), (example.tag, dict(example.attrib)))
 		self.assertEqual([name for name, _ in children(ours)], [name for name, _ in children(example)])
+
+
+class Ust1HSchemaTest(SchemaTestCase):
+	"""Form USt 1 H against UStVA-2026.xsd, whose two contexts it fills, see ust1h_xml.py."""
+
+	def nutzdaten_of(self, filing, **fields) -> str:
+		return ust1h_xml.to_nutzdaten(filer(**fields), filing, CREATED, HERSTELLER_ID)
+
+	def test_both_contexts_follow_the_schema(self):
+		for filing in (antrag(), anmeldung(), anmeldung(sondervorauszahlung=Decimal("0"))):
+			with self.subTest(context=filing.context, kz38=filing.sondervorauszahlung):
+				self.assert_valid(self.nutzdaten, self.nutzdaten_of(filing))
+
+	def test_every_element_follows_the_schema(self):
+		longest = {
+			"wid_nr": "DE123456789",
+			**{attribute: "x" * field.length for attribute, field in DATENLIEFERANT.items()},
+		}
+		for filing in (
+			anmeldung(
+				sondervorauszahlung=Decimal("9999999999999"),
+				corrected=True,
+				no_sepa_mandate=True,
+				offset_requested=True,
+				supplementary_code="4",
+				begruendung="x" * BEGRUENDUNG_LENGTH,
+			),
+			antrag(supplementary_code="1", begruendung="x" * BEGRUENDUNG_LENGTH),
+		):
+			with self.subTest(context=filing.context):
+				self.assert_valid(self.nutzdaten, self.nutzdaten_of(filing, **longest))
+
+	def test_every_key_of_kz500_follows_the_schema(self):
+		for filing in (antrag, anmeldung):
+			for code in ("1", "2", "3", "4"):
+				with self.subTest(filing=filing.__name__, code=code):
+					document = self.nutzdaten_of(filing(supplementary_code=code, begruendung="Sachverhalt"))
+					self.assert_valid(self.nutzdaten, document)
+
+	def test_the_begruendung_takes_every_character_elster_takes(self):
+		characters = sorted(ALLOWED - {" "})
+		for start in range(0, len(characters), 40):
+			text = "".join(characters[start : start + 40])
+			with self.subTest(text=text):
+				filing = anmeldung(supplementary_code="1", begruendung=text)
+				self.assert_valid(self.nutzdaten, self.nutzdaten_of(filing))
+
+	def test_the_schema_refuses_the_formats_the_rules_avoid(self):
+		anmeldung_text = self.nutzdaten_of(anmeldung(corrected=True))
+		antrag_text = self.nutzdaten_of(antrag())
+		mutations = {
+			"Kz 38 with cents": (anmeldung_text, "<Kz38>4000</Kz38>", "<Kz38>4000.00</Kz38>"),
+			"Kz 38 with a sign": (anmeldung_text, "<Kz38>4000</Kz38>", "<Kz38>-4000</Kz38>"),
+			"Kz 38 with a leading zero": (anmeldung_text, "<Kz38>4000</Kz38>", "<Kz38>04000</Kz38>"),
+			"Kz 38 with 14 digits": (anmeldung_text, "<Kz38>4000</Kz38>", "<Kz38>12345678901234</Kz38>"),
+			"Kz 10 other than 1": (anmeldung_text, "<Kz10>1</Kz10>", "<Kz10>2</Kz10>"),
+			"Kz 10 after Kz 38": (
+				anmeldung_text,
+				"<Kz10>1</Kz10>\n\t\t\t<Kz38>4000</Kz38>",
+				"<Kz38>4000</Kz38>\n\t\t\t<Kz10>1</Kz10>",
+			),
+			"Kz 09 of four digits": (antrag_text, "<Kz09>12345</Kz09>", "<Kz09>1234</Kz09>"),
+			"Kz 38 in the Antrag": (antrag_text, "<Kz09>12345</Kz09>", "<Kz09>12345</Kz09><Kz38>0</Kz38>"),
+			"Jahr of two digits": (antrag_text, "<Jahr>2026</Jahr>", "<Jahr>26</Jahr>"),
+		}
+		for case, (text, old, new) in mutations.items():
+			with self.subTest(case):
+				self.assertIn(old, text)
+				self.assert_invalid(self.nutzdaten, text.replace(old, new, 1).encode("utf-8"))
+
+	def test_the_schema_takes_two_contexts_which_rule_110085099_forbids(self):
+		"""The schema leaves the one context of a filing to the rules of ERiC, so the writer and the simulation keep
+		to it themselves."""
+		antrag_text = self.nutzdaten_of(antrag())
+		(context,) = etree.fromstring(self.nutzdaten_of(anmeldung()).encode()).iter(
+			"{*}Umsatzsteuersondervorauszahlung"
+		)
+		both = antrag_text.replace(
+			"</Dauerfristverlaengerung>",
+			"</Dauerfristverlaengerung>" + etree.tostring(context, encoding="unicode"),
+		)
+		self.assertEqual(both.count("<Umsatzsteuersondervorauszahlung"), 1)
+		self.assert_valid(self.nutzdaten, both)
+
+
+class Ust1HEnvelopeSchemaTest(SchemaTestCase):
+	def test_the_envelope_of_form_ust_1_h_follows_the_schema(self):
+		contact = {"phone": "089 1234567", "email": "erika@example.org"}
+		for filing in (antrag(), anmeldung()):
+			for testmerker in (True, False):
+				with self.subTest(context=filing.context, testmerker=testmerker):
+					document = envelope_of(
+						ust1h_xml.build(filer(**contact), filing, CREATED, HERSTELLER_ID),
+						filer(**contact),
+						hersteller_id=HERSTELLER_ID,
+						testmerker=testmerker,
+						contact="Erika Beispiel",
+					)
+					self.assert_valid(self.envelope, document)
+
+	def test_the_examples_of_the_documentation_follow_the_schema(self):
+		for context in Context:
+			with self.subTest(context=context):
+				self.assert_valid(self.envelope, eric_schema.ust1h_example(2026, context.value))
+
+	def test_writes_the_examples_of_the_documentation(self):
+		"""Each example is the same document as ours with its data, once its comments, its Unternehmer, which
+		Steuerbote does not write, and the Hersteller-ID 74931, which only illustrates the documentation, are gone."""
+		filings = {
+			Context.DAUERFRISTVERLAENGERUNG: antrag(),
+			Context.UMSATZSTEUERSONDERVORAUSZAHLUNG: anmeldung(
+				sondervorauszahlung=Decimal("9999999999999"),
+				corrected=True,
+				no_sepa_mandate=True,
+				offset_requested=True,
+			),
+		}
+		for context, filing in filings.items():
+			with self.subTest(context=context):
+				(example,) = etree.fromstring(eric_schema.ust1h_example(2026, context.value)).iter(
+					"{*}Anmeldungssteuern"
+				)
+				(unternehmer,) = example.iter("{*}Unternehmer")
+				unternehmer.getparent().remove(unternehmer)
+				(kz09,) = example.iter("{*}Kz09")
+				self.assertEqual(kz09.text, "74931")
+				kz09.text = HERSTELLER_ID
+				ours = ust1h_xml.build(
+					Filer(**DOCUMENTATION_FILER), filing, DOCUMENTATION_CREATED, HERSTELLER_ID
+				)
+				self.assertEqual(canonical(ours), canonical(example))
