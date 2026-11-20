@@ -20,6 +20,7 @@ from steuerbote import zm_sources
 from steuerbote.steuerbote.doctype.recapitulative_statement import recapitulative_statement as controller
 from steuerbote.steuerbote.doctype.recapitulative_statement.recapitulative_statement import run_confirmation
 from steuerbote.tests.helpers import (
+	cancel_voucher,
 	make_account,
 	make_company,
 	make_customer,
@@ -486,6 +487,38 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		self.assertEqual(
 			(doc.status, self.line(doc, FRENCH).override_reason),
 			("Bereit", "Die Nummer war am Leistungstag laut Bestätigung vom 2. Juni 2026 gültig."),
+		)
+
+	def test_a_filed_statement_says_when_the_ledger_of_its_months_changed_since_the_filing(self):
+		"""Without „Unveränderliches Hauptbuch aktivieren“ ERPNext takes a cancelled invoice out of its own month,
+		so the ledger of a filed month changes and no later ZM shows the cancellation: the filed statement names
+		the voucher, and so does the Berichtigung made from it, which takes the change in."""
+		a = self.account
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-09-1", ALPEN, "2026-09-08", [(a["1400"], 6000, 0), (a["8125"], 0, 6000)]
+		)
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-09-2", ALPEN, "2026-09-18", [(a["1400"], 1000, 0), (a["8125"], 0, 1000)]
+		)
+		doc = self.calculated(9, remarks="Die USt-IdNr. ist am Liefertag bestätigt worden.")
+		self.assertEqual(doc.ledger_changes_since_filing(), [])
+		doc.mark_filed_outside(filed_via="mein_elster")
+		doc.reload()
+		self.assertEqual(doc.ledger_changes_since_filing(), [])
+		cancel_voucher("Sales Invoice", "SINV-STZM-09-2")
+		(change,) = doc.ledger_changes_since_filing()
+		self.assertRegex(
+			change, r"^Beleg SINV-STZM-09-2 geht laut Hauptbuch mit .* in Kz 41 ein, in die ZM mit "
+		)
+		with patch.object(controller.frappe, "msgprint") as msgprint:
+			correction = frappe.get_doc(DOCTYPE, doc.make_correction())
+		self.assertTrue(any(change in str(call.args[0]) for call in msgprint.call_args_list))
+		self.assertEqual(
+			[
+				(row.vat_id, money(row.reported), money(row.filed_amount), row.in_file)
+				for row in correction.lines
+			],
+			[(AUSTRIAN, money(6000), money(7000), 1)],
 		)
 
 	def test_a_line_of_its_own_with_a_reason_is_reported_and_kept(self):

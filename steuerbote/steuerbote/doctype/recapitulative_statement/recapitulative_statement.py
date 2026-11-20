@@ -297,6 +297,7 @@ class RecapitulativeStatement(Document):
 					drafts[0], self.period_label
 				)
 			)
+		changes = self._changes_since_filing()
 		correction = frappe.get_doc(
 			{
 				"doctype": DOCTYPE,
@@ -314,7 +315,32 @@ class RecapitulativeStatement(Document):
 			}
 		).insert()
 		correction.calculate()
+		if changes:
+			frappe.msgprint(
+				"<br>".join(
+					(
+						_(
+							"The ledger of {0} has changed since {1} was filed. The Berichtigung takes in these changes:"
+						).format(self.period_label, self.name),
+						*(escape_html(finding.text) for finding in changes),
+					)
+				),
+				title=_("Make Berichtigung"),
+			)
 		return correction.name
+
+	@frappe.whitelist(methods=["POST"])
+	def ledger_changes_since_filing(self) -> list[str]:
+		"""The form asks this when it shows the filing of a Meldezeitraum: the vouchers whose share in the ledger of
+		its months now differs from the one it filed, as sentences, none while the ledger books what it filed.
+
+		Without the immutable ledger of the Accounts Settings, a cancellation takes an invoice out of its own
+		month, so that the filed month changes and no later ZM reports the cancellation, which the Anleitung zur
+		ZM wants in the Meldezeitraum of the change (IV.10); a Berichtigung then reports it.
+		"""
+		if self.docstatus != 1 or self.status != FILED:
+			return []
+		return [finding.text for finding in self._changes_since_filing()]
 
 	@frappe.whitelist(methods=["POST"])
 	def mark_filed_outside(
@@ -613,6 +639,14 @@ class RecapitulativeStatement(Document):
 				),
 				title=_("Recapitulative Statement"),
 			)
+
+	def _changes_since_filing(self) -> tuple[Finding, ...]:
+		"""What the ledger of the months the statement filed books now against the vouchers it filed."""
+		period = self._chosen_period()
+		covered = bridge.kept_coverage(period, self) or _coverage_or_months(
+			settings_for(self.company).get_zm_rules(), period
+		)
+		return self._ledger_changes(covered, self.vouchers)
 
 	def _ledger_changes(self, covered: Coverage, vouchers: Iterable[Document]) -> tuple[Finding, ...]:
 		"""The vouchers whose share of Kz 41, 42 or 21 in the ledger of the months now differs from ``vouchers``,

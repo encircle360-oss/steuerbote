@@ -267,6 +267,35 @@ def post_ledger(
 		)
 
 
+def cancel_voucher(voucher_type: str, voucher_no: str, immutable_on: str | None = None) -> None:
+	"""Cancel a submitted voucher as make_reverse_gl_entries of ERPNext 16 does (erpnext/accounts/general_ledger.py):
+	a reversing GL Entry for each of its entries, debit and credit swapped. With „Unveränderliches Hauptbuch
+	aktivieren“ in the Accounts Settings the reversal is posted on the day of the cancellation, ``immutable_on``, and
+	nothing is flagged; without it the reversal keeps the voucher's date, and both are flagged as cancelled."""
+	filters = {"voucher_type": voucher_type, "voucher_no": voucher_no}
+	entries = frappe.get_all(
+		"GL Entry",
+		filters={**filters, "is_cancelled": 0},
+		fields=["company", "posting_date", "account", "debit", "credit"],
+	)
+	for entry in entries:
+		insert_record(
+			"GL Entry",
+			company=entry.company,
+			posting_date=immutable_on or entry.posting_date,
+			account=entry.account,
+			debit=entry.credit,
+			credit=entry.debit,
+			is_cancelled=0 if immutable_on else 1,
+			is_opening="No",
+			docstatus=1,
+			**filters,
+		)
+	if not immutable_on:
+		frappe.db.set_value("GL Entry", filters, "is_cancelled", 1)
+	frappe.db.set_value(voucher_type, voucher_no, "docstatus", 2)
+
+
 def post_sales_invoice(
 	company: str,
 	name: str,
