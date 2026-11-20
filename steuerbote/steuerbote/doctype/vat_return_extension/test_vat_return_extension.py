@@ -4,17 +4,20 @@ the VAT Return Settings, the guards around them, and the print format."""
 
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, getdate, today
 
+from steuerbote import dauerfrist_sources
 from steuerbote.steuerbote.print_format.umsatzsteuer_voranmeldung.test_umsatzsteuer_voranmeldung import cells
 from steuerbote.tests.helpers import (
 	make_account,
 	make_company,
 	make_mapping,
 	make_settings,
+	make_user,
 	post_journal_entry,
 )
 
@@ -27,6 +30,8 @@ SVZ = "Umsatzsteuersondervorauszahlung"
 FILED_IN_MEIN_ELSTER = "In Mein ELSTER abgegeben"
 # 32 characters as in the protocol of ELSTER, invented.
 TICKET = "ab123cdefghijkmnopqrstuvwxyz0123"
+# May read nothing of the Dauerfristverlängerung, let alone change it.
+SALES_USER = "steuerbote-dauerfrist-vertrieb@example.com"
 
 # Files monthly from 2026, with the Dauerfristverlängerung and a Sondervorauszahlung of 5.000 € in 2026. Its
 # Voranmeldungen for March and December 2026 make the example of the Anleitung USt 5 E: Kz 83 of 39.000 € and
@@ -397,6 +402,16 @@ class TestVATReturnExtension(IntegrationTestCase):
 			frappe.ValidationError, f"{COMPANY} has a Dauerfristverlängerung for 2027 already: {first.name}"
 		):
 			frappe.get_doc({"doctype": DOCTYPE, "company": COMPANY, "year": 2027}).insert()
+
+	def test_berechnen_reads_nothing_for_a_user_who_may_not_change_the_form(self):
+		doc = self.extension()
+		with (
+			self.set_user(make_user(SALES_USER, "Sales User")),
+			patch.object(dauerfrist_sources, "filed_returns") as filed_returns,
+			self.assertRaises(frappe.PermissionError),
+		):
+			doc.calculate()
+		filed_returns.assert_not_called()
 
 	def test_buchen_alone_files_nothing(self):
 		doc = self.calculated(remarks="Abgestimmt mit der Steuerberatung")

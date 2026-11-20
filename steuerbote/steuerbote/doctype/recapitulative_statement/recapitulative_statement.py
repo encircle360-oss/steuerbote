@@ -180,6 +180,7 @@ class RecapitulativeStatement(Document):
 		"""Berechnen: the lines of the Meldezeitraum from the ledger, with their vouchers and the latest
 		confirmation of each USt-IdNr., the threshold, the reconciliation and the previous period; overrides
 		with a Begründung stay."""
+		frappe.has_permission(DOCTYPE, "write", self, throw=True)
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft Zusammenfassende Meldung can be calculated."))
 		self._refuse_changes_while_confirming()

@@ -160,6 +160,7 @@ class VATReturnExtension(Document):
 	def calculate(self) -> None:
 		"""Berechnen: read the VAT Returns filed for the previous year and the start of the company, and save
 		the form with the base, Kz 38 and the deadline."""
+		frappe.has_permission(DOCTYPE, "write", self, throw=True)
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft form can be calculated."))
 		settings = settings_for(self.company)

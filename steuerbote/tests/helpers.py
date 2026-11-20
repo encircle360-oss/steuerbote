@@ -124,6 +124,21 @@ def post_journal_entry(
 	return entry
 
 
+def make_user(email: str, role: str) -> str:
+	"""A user with one role, without a welcome mail."""
+	if not frappe.db.exists("User", email):
+		frappe.get_doc(
+			{
+				"doctype": "User",
+				"email": email,
+				"first_name": "Steuerbote",
+				"send_welcome_email": 0,
+				"roles": [{"role": role}],
+			}
+		).insert(ignore_permissions=True)
+	return email
+
+
 def make_settings(
 	company: str,
 	period_rules: Iterable[tuple[int, str, int]],

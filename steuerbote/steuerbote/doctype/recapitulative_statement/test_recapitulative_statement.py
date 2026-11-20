@@ -16,6 +16,7 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, getdate, today
 from frappe.utils.data import convert_utc_to_system_timezone
 
+from steuerbote import zm_sources
 from steuerbote.steuerbote.doctype.recapitulative_statement import recapitulative_statement as controller
 from steuerbote.steuerbote.doctype.recapitulative_statement.recapitulative_statement import run_confirmation
 from steuerbote.tests.helpers import (
@@ -24,6 +25,7 @@ from steuerbote.tests.helpers import (
 	make_customer,
 	make_mapping,
 	make_settings,
+	make_user,
 	post_payment_entry,
 	post_sales_invoice,
 )
@@ -54,6 +56,8 @@ AUSTRIAN = "ATU12345678"
 FRENCH = "FR12345678901"
 ALPEN = "Alpen Handel GmbH (ZM)"
 PARIS = "Paris Services SA (ZM)"
+# May read nothing of the Zusammenfassende Meldung, let alone change it.
+SALES_USER = "steuerbote-zm-vertrieb@example.com"
 # The form of TransferTicketSType in headerbasis_datentypen.xsd, invented.
 TICKET = "ab123cdefghijkmnopqrstuvwxyz0123"
 HEADER = b"#v3.0\n#ve3.2.1\nUmsatzsteuer-Identifikationsnummer (USt-IdNr.),Summe (Euro),Art der Leistung\n"
@@ -604,6 +608,16 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			doc.confirm_vat_ids()
 		enqueue.assert_not_called()
 		frappe.db.set_value("VAT Return Settings", COMPANY, "ust_idnr", OWN_VAT_ID)
+
+	def test_berechnen_reads_nothing_for_a_user_who_may_not_change_the_statement(self):
+		doc = self.statement(3)
+		with (
+			self.set_user(make_user(SALES_USER, "Sales User")),
+			patch.object(zm_sources, "shares") as shares,
+			self.assertRaises(frappe.PermissionError),
+		):
+			doc.calculate()
+		shares.assert_not_called()
 
 	def test_a_running_confirmation_keeps_the_statement_as_it_is(self):
 		doc = self.calculated(3)
