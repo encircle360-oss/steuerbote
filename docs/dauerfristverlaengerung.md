@@ -1,6 +1,6 @@
 # Dauerfristverlängerung und Sondervorauszahlung
 
-Mit der Dauerfristverlängerung gibt ein Unternehmen jede Umsatzsteuer-Voranmeldung einen Monat später ab und zahlt die Vorauszahlung einen Monat später. Wer monatlich abgibt, bekommt sie nur gegen eine Sondervorauszahlung, die jedes Jahr fällig wird und in der letzten Voranmeldung des Jahres über Kz 39 angerechnet wird. Diese Seite beschreibt die Regeln mit ihren Quellen und was der Rechenkern unter `steuerbote/dauerfrist` daraus macht. Sie ersetzt keine Steuerberatung.
+Mit der Dauerfristverlängerung gibt ein Unternehmen jede Umsatzsteuer-Voranmeldung einen Monat später ab und zahlt die Vorauszahlung einen Monat später. Wer monatlich abgibt, bekommt sie nur gegen eine Sondervorauszahlung, die jedes Jahr fällig wird und in der letzten Voranmeldung des Jahres über Kz 39 angerechnet wird. Diese Seite beschreibt die Regeln mit ihren Quellen, was der Rechenkern unter `steuerbote/dauerfrist` daraus macht und wie der Beleg „Dauerfristverlängerung“ in ERPNext damit arbeitet. Sie ersetzt keine Steuerberatung.
 
 ## Quellen
 
@@ -10,6 +10,9 @@ Mit der Dauerfristverlängerung gibt ein Unternehmen jede Umsatzsteuer-Voranmeld
 - **BMF-Schreiben vom 29. Dezember 2025**, GZ III C 3 - S 7344/00039/007/036, mit den Vordrucken USt 1 H 2026 (Antrag auf Dauerfristverlängerung, Anmeldung der Sondervorauszahlung), USt 1 E 2026 (Anleitung zur Umsatzsteuer-Voranmeldung) und USt 5 E 2026 (Anleitung zum Antrag auf Dauerfristverlängerung/zur Anmeldung der Sondervorauszahlung): <https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Steuerarten/Umsatzsteuer/2025-12-29-vordruckmuster-USt-voranmeldung-2026.pdf?__blob=publicationFile>, SHA-256 `82e7d63a0faec542bb184acb438eaf4ce90a2d7db067bb47f92ae13b4b17613d`. Ohne `?__blob=publicationFile` liefert die Adresse eine HTML-Seite statt des PDF.
 - **ERiC-Dokumentation 44.3.6.0:** <https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip>, darin `UStVA-2026.xsd`, die Jahresdokumentation `Jahresdokumentation_UStVA_2026.ods` (Blätter „Anmeldungssteuern - Felder“, „Anmeldungssteuern - Regeln“ und „Allg. Information“), die Beispiele `UStVA_Df_2026.xml` und `UStVA_SoVZ_2026.xml` und das ERiC-Entwicklerhandbuch, Kap. 8.5.1.
 - **ELSTER-Hilfe „Benutzeranleitung zum Hochladen von Formulardaten“:** <https://www.elster.de/eportal/helpGlobal?themaGlobal=ustva_upload>
+- **ELSTER-Hilfe „Anleitung zur Umsatzsteuer-Dauerfristverlängerung 2026“**, die Hilfe zum Formular in Mein ELSTER: <https://www.elster.de/eportal/helpGlobal?themaGlobal=help_ustdv_2026>
+- **ELSTER-Hilfe zu Formularen:** <https://www.elster.de/eportal/helpGlobal?themaGlobal=formulare_eop>. Sie führt das Formular unter „Umsatzsteuer“ als „Dauerfristverlängerung / Sondervorauszahlung“.
+- **ERPNext 16**, die DocTypes Company (Felder `date_of_establishment`, „Gründungsdatum“, und `default_holiday_list`, „Standard Feiertagsliste“) und Holiday List mit der Tabelle Holiday (`holiday_date` und `weekly_off`, „Wöchentlich frei“): <https://github.com/frappe/erpnext/tree/version-16/erpnext/setup/doctype>
 
 Gelesen am 20. November 2026.
 
@@ -104,17 +107,91 @@ Die Nummern in Klammern sind die Fehlercodes der Regeln aus der Jahresdokumentat
 
 ## Was Steuerbote heute rechnet und was später kommt
 
-**Heute** gibt es den Rechenkern unter `steuerbote/dauerfrist`, reines Python ohne Frappe mit vollständiger Testabdeckung: Grundlage und Sondervorauszahlung, Fristen, den Zeitraum der Anrechnung und das Modell des Vordrucks. Die Frappe-Schicht nutzt ihn noch nicht. Die Sondervorauszahlung steht weiter von Hand in den Einstellungen („Dauerfristverlängerung je Jahr“), und daraus kommt Kz 39.
+**Heute** gibt es den Rechenkern unter `steuerbote/dauerfrist`, reines Python ohne Frappe mit vollständiger Testabdeckung: Grundlage und Sondervorauszahlung, Fristen, den Zeitraum der Anrechnung und das Modell des Vordrucks. Auf ihm baut der Beleg „Dauerfristverlängerung“ in ERPNext auf, siehe [Der Beleg in ERPNext](#der-beleg-in-erpnext). Er berechnet Kz 38 aus den abgegebenen Voranmeldungen des Vorjahres und schreibt mit dem Vermerk der Abgabe die Sondervorauszahlung in die Einstellungen, aus denen die letzte Voranmeldung des Jahres sie in Kz 39 abzieht.
 
-**Später** kommen:
+**Später** kommt das XML über ERiC, sobald die ERiC-Dokumentation das Schema für 2027 enthält und Steuerbote eine Hersteller-ID hat: ERiC verlangt Kz 09 in beiden Kontexten (110085045). Die ERiC-Dokumentation 44.3.6.0 kennt bisher nur 2026, die Sondervorauszahlung 2027 ist am 10. Februar 2027 fällig.
 
-- **ein Beleg für den Vordruck USt 1 H** in der Frappe-Schicht, der Kz 38 aus den abgegebenen Voranmeldungen des Vorjahres berechnet (Kz 83 und Kz 39 jeder zuletzt abgegebenen Meldung je Zeitraum) und mit der Abgabe die Sondervorauszahlung seines Jahres in die Einstellungen schreibt. Dann kommt Kz 39 aus dem abgegebenen Vordruck statt aus einer eigenen Eingabe.
-- **das XML über ERiC**, sobald die ERiC-Dokumentation das Schema für 2027 enthält und Steuerbote eine Hersteller-ID hat: ERiC verlangt Kz 09 in beiden Kontexten (110085045). Die ERiC-Dokumentation 44.3.6.0 kennt bisher nur 2026, die Sondervorauszahlung 2027 ist am 10. Februar 2027 fällig.
+**Bis dahin von Hand in Mein ELSTER.** Eine Datei zum Hochladen gibt es für den Vordruck nicht. Die ELSTER-Hilfe sagt: „Die Funktion zum Hochladen von Formulardaten (XML-Datei) steht Ihnen für alle angebotenen Jahresversionen der Umsatzsteuer-Voranmeldung (UStVA) und der Mitteilung nach § 146a Abs. 4 AO zur Verfügung.“ Den Antrag auf Dauerfristverlängerung nennt sie nicht. Den Vordruck füllst du deshalb in Mein ELSTER von Hand aus, siehe [In Mein ELSTER eintragen](#in-mein-elster-eintragen), und vermerkst die Abgabe danach am Beleg.
 
-**Bis dahin von Hand in Mein ELSTER.** Eine Datei zum Hochladen gibt es für den Vordruck nicht. Die ELSTER-Hilfe sagt: „Die Funktion zum Hochladen von Formulardaten (XML-Datei) steht Ihnen für alle angebotenen Jahresversionen der Umsatzsteuer-Voranmeldung (UStVA) und der Mitteilung nach § 146a Abs. 4 AO zur Verfügung.“ Den Antrag auf Dauerfristverlängerung nennt sie nicht. Den Betrag aus Kz 38 tippst du deshalb in Mein ELSTER in das Formular für den Antrag auf Dauerfristverlängerung und die Anmeldung der Sondervorauszahlung und trägst ihn danach in die Einstellungen ein.
+## Der Beleg in ERPNext
+
+Der DocType `VAT Return Extension` heißt in der Oberfläche „Dauerfristverlängerung“, ist einreichbar und hat den Nummernkreis `DFV-.YYYY.-.#####`. Er hält einen Vordruck USt 1 H eines Unternehmens für ein Jahr; je Unternehmen und Jahr gibt es einen, stornierte zählen nicht mit. Der Controller `vat_return_extension.py` bewegt nur Daten: Beträge, Fristen und die Regeln des Vordrucks kommen aus dem Kern. Was zwischen Beleg und Kern umgerechnet wird, steht ohne Frappe-Import in `vat_return_extension/bridge.py`, was der Beleg aus ERPNext liest, in `steuerbote/dauerfrist_sources.py`.
+
+| Feld | Bezeichnung | Inhalt |
+|---|---|---|
+| `company`, `year` | Unternehmen, Jahr | Pflicht |
+| `antrag` | Antrag auf Dauerfristverlängerung | im Jahr des Antrags; ohne ihn gilt die Verlängerung aus einem früheren Jahr fort |
+| `first_month` | Verlängert ab Monat | mit dem Antrag Pflicht: der Monat, dessen Voranmeldung als erste verlängert wird, 1 bis 12; bei vierteljährlicher Abgabe der erste Monat des Quartals |
+| `is_correction` | Berichtigte Anmeldung (Kz 10) | nur bei der Anmeldung der Sondervorauszahlung |
+| `context` | Art des Vordrucks | berechnet: Anmeldung der Sondervorauszahlung (`Umsatzsteuersondervorauszahlung`) oder Antrag auf Dauerfristverlängerung (`Dauerfristverlaengerung`) |
+| `rhythm`, `first_period_label` | Abgaberhythmus, Verlängert ab | berechnet; der erste verlängerte Voranmeldungszeitraum nur mit Antrag |
+| `deadline` | Fälligkeitsdatum | berechnet, siehe unten |
+| `crediting_period_label` | Angerechnet in Kz 39 von | berechnet: die letzte Voranmeldung des Jahres im Abgaberhythmus des Dezembers (`crediting_period`) |
+| `status` | Status | Entwurf, Berechnet, Bereit oder Abgegeben |
+| `base_rows` | Abgegebene Voranmeldungen des Vorjahres | Tabelle „Grundlage der Sondervorauszahlung“: Voranmeldungszeitraum, Zeitraumcode, Umsatzsteuer-Voranmeldung, Kz 83 und Kz 39 |
+| `missing_periods` | Fehlt in der Grundlage | Voranmeldungszeiträume des Vorjahres ohne abgegebene Voranmeldung |
+| `kz83`, `kz39` | Summe der Kz 83, Angerechnete Sondervorauszahlung (Kz 39) | Summen über die Tabelle |
+| `established_on`, `months_active` | Gründungsdatum, Monate der Tätigkeit | aus dem Gründungsdatum des Unternehmens, gelesen von Berechnen |
+| `computed_base` | Grundlage aus den Voranmeldungen | Zeile 8 aus Kz 83 und Kz 39 (`previous_year_base`) |
+| `base_override`, `base_override_reason` | Grundlage von Hand, Begründung der Grundlage von Hand | siehe unten |
+| `base` | Grundlage (Zeile 8) | die Grundlage, aus der Kz 38 folgt |
+| `sondervorauszahlung` | Sondervorauszahlung (Kz 38) | `sondervorauszahlung` oder, nach einem Beginn im Jahr des Belegs, `expected_sondervorauszahlung` |
+| `offset_requested`, `no_sepa_mandate` | Verrechnung erwünscht oder Erstattungsbetrag abgetreten (Kz 29), SEPA-Lastschriftmandat ausnahmsweise nicht verwenden (Kz 26) | nur bei der Anmeldung der Sondervorauszahlung |
+| `supplementary_code`, `kz500_begruendung` | Ergänzende Angaben zur Steueranmeldung (Kz 500), Begründung zu Kz 500 | in beiden Vordrucken |
+| `findings` | Offene Punkte | was dem Status „Bereit“ entgegensteht |
+| `remarks` | Anmerkungen | Pflicht, wenn ein Beleg abgegeben wird, der nicht bereit ist |
+| `filed_via`, `filed_on`, `transferticket`, `filing_note` | Abgegeben über, Abgegeben am, Transferticket, Wie und wann abgegeben | setzt der Vermerk der Abgabe |
+
+**Welcher Vordruck.** Beim Speichern liest der Beleg aus den Einstellungen den Voranmeldungszeitraum des ersten Monats, den er abdeckt: mit Antrag den Monat in „Verlängert ab Monat“, sonst den Januar. Wer dann monatlich abgibt, meldet die Sondervorauszahlung an, wer vierteljährlich abgibt, beantragt nur die Dauerfristverlängerung (`Context.for_rhythm`). Ein vierteljährlich abgebendes Unternehmen, dessen Verlängerung fortgilt, gibt nichts ab (`obligation` ergibt `None`), und das Speichern lehnt einen solchen Beleg ab. Kz 10, 26 und 29 trägt nur die Anmeldung der Sondervorauszahlung, beim Antrag allein setzt das Speichern sie zurück.
+
+**Berechnen** liest die Voranmeldungen des Vorjahres und das Gründungsdatum des Unternehmens:
+
+1. Als abgegeben zählt eine Voranmeldung, die eingereicht ist und den Status „Abgegeben“ hat. Eine durch eine berichtigte Anmeldung ersetzte steht auf „Ersetzt“ und fällt heraus, je Voranmeldungszeitraum zählt die zuletzt abgegebene. Aus ihr übernimmt der Beleg Kz 83 und Kz 39, wie die Meldung sie hält: Kz 83 ist der Betrag, den ihre Datei für Mein ELSTER schreibt.
+2. Hat das Unternehmen im Vorjahr begonnen, rechnet `previous_year_base` die Summe über dessen Monate der Tätigkeit auf ein Jahr hoch (§ 47 Abs. 2 UStDV). Hat es im Jahr des Belegs begonnen, gibt es kein Vorjahr: Dann gehören die erwarteten Vorauszahlungen des Jahres in die Grundlage von Hand, und Kz 38 ist ihr Durchschnitt über die Monate der Tätigkeit (§ 47 Abs. 3 UStDV, `expected_sondervorauszahlung`).
+3. Für jeden Monat des Vorjahres ab dem Beginn der Tätigkeit prüft der Beleg, ob eine abgegebene Voranmeldung ihn abdeckt. Fehlt sie, nennt „Fehlt in der Grundlage“ den Voranmeldungszeitraum, den die Einstellungen für den Monat vorsehen, oder den Monat selbst, wenn die Einstellungen für ihn keinen Voranmeldungszeitraum kennen, etwa weil seine Voranmeldung außerhalb von Steuerbote abgegeben wurde. Ein Monat, für den die Einstellungen keine Voranmeldung vorsehen, fehlt nicht. Mit Dauerfristverlängerung ist die Voranmeldung für Dezember am selben Tag fällig wie die Sondervorauszahlung, siehe [Fristen](#fristen); ist sie noch nicht abgegeben, steht sie hier.
+4. Grundlage und Kz 38 rechnet der Kern, Kz 38 in vollen Euro wie unter [Sondervorauszahlung](#sondervorauszahlung) beschrieben.
+
+Ohne abgegebene Voranmeldung des Vorjahres und ohne Grundlage von Hand lehnt Berechnen ab und sagt, was fehlt.
+
+**Grundlage von Hand.** Sie ersetzt die Grundlage aus den Voranmeldungen, sobald eine Begründung dasteht, auch mit 0 €; einen Betrag ohne Begründung lehnt das Speichern ab. Sie ist für das, was die Buchhaltung nicht wissen kann: Voranmeldungen des Vorjahres, die außerhalb von Steuerbote abgegeben wurden, oder die erwarteten Vorauszahlungen nach einem Beginn im laufenden Jahr. Kz 38 folgt ihr bei jedem Speichern. Mit ihr sind fehlende Voranmeldungen kein offener Punkt mehr; die Tabelle und „Fehlt in der Grundlage“ zeigen sie weiter.
+
+| Status | Bedeutung |
+|---|---|
+| Entwurf | angelegt und noch nicht berechnet, oder Unternehmen, Jahr, Antrag oder erster verlängerter Monat haben sich geändert; das verwirft eine Berechnung |
+| Berechnet | berechnet, aber mit offenen Punkten |
+| Bereit | berechnet und ohne offene Punkte |
+| Abgegeben | mit einem Vermerk der Abgabe eingereicht |
+
+**Offene Punkte** sind fehlende Voranmeldungen des Vorjahres ohne Grundlage von Hand und ein Jahr, dessen Vordruck Steuerbote noch nicht kennt. `layout_for` kennt bisher nur 2026, ein Beleg für 2027 bleibt deshalb „Berechnet“, bis der Kern den Vordruck 2027 kennt. Die Regeln des Vordrucks prüft `Ust1H` bei jedem Speichern: Kz 29 nur mit Kz 10, Kz 500 nur mit Begründung und umgekehrt, die Schlüssel 1 bis 4 und höchstens 180 Zeichen in einer Zeile. Ein Verstoß verhindert das Speichern. Für ein Jahr ohne Vordruck im Kern prüft Steuerbote diese Regeln nicht.
+
+**Fristen.** Die Fälligkeit rechnet `obligation` wie unter [Fristen](#fristen): mit Antrag der Tag, an dem die erste verlängerte Voranmeldung ohne die Verlängerung fällig ist, sonst der 10. Februar. Die Feiertage nimmt der Beleg aus der Standard-Feiertagsliste des Unternehmens, und zwar die Tage, die dort nicht als wöchentlich frei markiert sind; Samstag und Sonntag kennt der Kern selbst.
+
+**Abgabe vermerken.** Unter „ELSTER“ stehen „In Mein ELSTER eingetragen“ und „Als außerhalb abgegeben vermerken“, sobald der Beleg berechnet ist. Beide fragen nach dem Tag der Abgabe und nach dem Transferticket aus dem Protokoll von ELSTER, das freiwillig ist; „Als außerhalb abgegeben vermerken“ verlangt dazu, wie und wann abgegeben wurde. Ein Beleg, der nicht bereit ist, wird nur mit Anmerkungen abgegeben, und der Tag der Abgabe liegt nicht in der Zukunft. Der Vermerk reicht den Beleg ein. „Buchen“ allein gibt nichts ab: Das Formular bietet es nicht an, und das Einreichen lehnt es ab.
+
+**Was in die Einstellungen kommt.** Mit dem Einreichen schreibt der Beleg in den Einstellungen Umsatzsteuer-Voranmeldung die Zeile seines Jahres in „Dauerfristverlängerung je Jahr“. Er setzt den Haken „Dauerfristverlängerung“ und bei der Anmeldung der Sondervorauszahlung den Betrag aus Kz 38 als Sondervorauszahlung; fehlt die Zeile, legt er sie an. Die letzte Voranmeldung des Jahres zieht die Sondervorauszahlung dann in Kz 39 ab, wie es `bridge.sondervorauszahlung_values` schon tut, im Dezember oder im IV. Kalendervierteljahr. Der Antrag allein setzt nur den Haken. Die Einstellungen halten die Verlängerung je Jahr fest: Jedes weitere Jahr, in dem sie fortgilt, braucht eine eigene Zeile.
+
+**Berichtigen.** Eine abgegebene Anmeldung der Sondervorauszahlung lässt sich stornieren und mit „Ändern“ als berichtigte Anmeldung (Kz 10) neu anlegen; ohne Kz 10 lehnt das Speichern die Änderung ab. Die Änderung beginnt als Entwurf ohne Berechnung und ohne Vermerk. Stornieren nimmt beim Finanzamt nichts zurück: Die Einstellungen behalten den Betrag, bis die Berichtigung vermerkt ist. Eine Voranmeldung, die die alte Sondervorauszahlung schon abgezogen hat, ändert Steuerbote nicht. Den Antrag auf Dauerfristverlängerung allein lässt Steuerbote nicht stornieren, denn er lässt sich nicht berichtigen: „Eine Berichtigung dieser Fallkonstellation ist nicht möglich.“ (ERiC-Entwicklerhandbuch, Kap. 8.5.1)
+
+**Druckformat „Dauerfristverlängerung“.** A4, schwarz und grau, im Stil des Druckformats der Voranmeldung. Der Kopf nennt Unternehmen, Steuernummer, Steuernummer im ELSTER-Format und Finanzamt, mit Antrag den ersten verlängerten Voranmeldungszeitraum, die Fälligkeit, die Voranmeldung, die die Sondervorauszahlung anrechnet, und Name und Status des Belegs. Bei der Anmeldung der Sondervorauszahlung folgt die Tabelle der abgegebenen Voranmeldungen des Vorjahres mit Kz 83, Kz 39 und ihrer Summe, dazu die fehlenden Voranmeldungszeiträume und die Monate der Tätigkeit. Darunter steht der Vordruck USt 1 H in Reihenfolge und Wortlaut von 2026: Abschnitt I mit dem Antrag, Abschnitt II mit den Zeilen 7 bis 9, Abschnitt III mit den Zeilen 10 und 11 und Zeile 12 mit Kz 500. Danach kommen die Grundlage von Hand mit Begründung, die offenen Punkte, die Anmerkungen und die Abgabe. Die Fußzeile sagt, dass der Ausdruck keine Abgabe ist.
+
+## In Mein ELSTER eintragen
+
+Mein ELSTER führt den Vordruck unter „Umsatzsteuer“ als „Dauerfristverlängerung / Sondervorauszahlung“, je Jahr ein eigenes Formular (ELSTER-Hilfe zu Formularen). Die Schritte folgen dem Vordruck USt 1 H 2026, der Anleitung USt 5 E 2026 und der ELSTER-Hilfe zum Formular. Die ELSTER-Hilfe nennt die Summe der Vorauszahlungen Zeile 7, der Vordruck Zeile 8; die Zeilen hier sind die des Vordrucks.
+
+1. **Berechnen.** Ist der Beleg nicht bereit, in den Anmerkungen festhalten, warum er trotzdem so abgegeben wird. Der Ausdruck „Dauerfristverlängerung“ dient als Vorlage.
+2. **Kopf.** In Mein ELSTER das Formular für das Jahr des Belegs öffnen. Zeile 1 nennt die Steuernummer, Zeile 2 die Wirtschafts-Identifikationsnummer, die nur eingetragen wird, „wenn diese Ihnen bereits bekannt ist“ (USt 5 E), Zeile 3 das Finanzamt und die Zeilen 4 bis 6 das Unternehmen.
+3. **Abschnitt I, Antrag auf Dauerfristverlängerung,** nur im Jahr des Antrags: „Dieser Abschnitt ist gegenstandslos, wenn Dauerfristverlängerung bereits gewährt worden ist.“ Wer vierteljährlich abgibt, füllt nur ihn aus: „Eine Sondervorauszahlung ist nicht zu berechnen und anzumelden.“ (USt 1 H)
+4. **Abschnitt II, nur bei monatlicher Abgabe.** Zeile 7 „Berichtigte Anmeldung“ (Kz 10) nur bei einer Berichtigung. In Zeile 8, die „Summe der verbleibenden Umsatzsteuer-Vorauszahlungen zuzüglich der zu berücksichtigenden Sondervorauszahlung“ des Vorjahres, gehört „Grundlage (Zeile 8)“ des Belegs, in Zeile 9, „Davon 1/11 = Sondervorauszahlung“ (Kz 38), „Sondervorauszahlung (Kz 38)“ in vollen Euro. „Ergibt sich bei der Berechnung der Sondervorauszahlung in Zeile 8 ein Überschuss zu Ihren Gunsten, ist die Sondervorauszahlung in Zeile 9 mit 0 € einzutragen.“ (USt 5 E)
+5. **Abschnitt III, Sonstige Angaben.** Zeile 10, Kz 29: „Verrechnung des Erstattungsbetrags erwünscht / Erstattungsbetrag ist abgetreten“; die Verrechnungswünsche gehen nach der ELSTER-Hilfe mit dem Formular „Sonstige Nachricht an das Finanzamt“ an das Finanzamt. Zeile 11, Kz 26, wenn das SEPA-Lastschriftmandat für die Sondervorauszahlung dieses Jahres ausnahmsweise nicht verwendet werden soll: „Ein ggf. verbleibender Restbetrag ist gesondert zu entrichten.“ (USt 1 H) In Mein ELSTER sind beides Häkchen.
+6. **Zeile 12, Kz 500,** nur für einen der dort genannten Sachverhalte, mit der Begründung aus dem Beleg. In Mein ELSTER gehören dazu ein Häkchen und ein Freitextfeld; reicht der Platz nicht, nennt die ELSTER-Hilfe eine „Sonstige Nachricht an das Finanzamt“ mit dem Betreff „Ergänzende Angaben zur Steueranmeldung“.
+7. **Beginn im laufenden Jahr.** Die Anleitung USt 5 E bittet um „ein gesondertes Blatt mit kurzer Erläuterung der Berechnung“, die ELSTER-Hilfe dafür um eine „Sonstige Nachricht an das Finanzamt“.
+8. **Absenden** und das Transferticket aus dem Protokoll notieren. Danach am Beleg „In Mein ELSTER eingetragen“ mit dem Tag der Abgabe vermerken. Die Sondervorauszahlung ist bis zur Fälligkeit des Belegs zu entrichten, im Jahr des Antrags „gleichzeitig“ mit ihm (§ 48 Abs. 1 Satz 5 und Abs. 2 UStDV).
 
 ## Annahmen und offene Punkte
 
 1. **Volle Euro in Kz 38.** Steuerbote lässt die Cent des Elftels weg. Verordnung, Anleitung und Jahresdokumentation sagen nur, dass Kz 38 volle Euro sind. Zu bestätigen bei der ELSTER-Hotline.
 2. **Monate beim Beginn im laufenden Jahr.** Für das Vorjahr zählt § 47 Abs. 2 UStDV einen angefangenen Monat voll. Für das Jahr des Beginns sagen weder § 47 Abs. 3 UStDV noch die Anleitung, wie die Monate zählen; Steuerbote zählt ebenso.
-3. **Feiertage.** Wie bei der Voranmeldung kennt Steuerbote die Feiertage der Bundesländer noch nicht; der Aufrufer übergibt sie.
+3. **Feiertage.** Steuerbote kennt die Feiertage der Bundesländer nicht. Der Beleg nimmt die Tage der Standard-Feiertagsliste des Unternehmens, die nicht als wöchentlich frei markiert sind. Stehen dort Tage, die keine gesetzlichen Feiertage sind, etwa Betriebsferien, verschiebt er die Frist zu Unrecht; die Liste ist deshalb mit den gesetzlichen Feiertagen abzugleichen. Die Fälligkeit der Voranmeldung berücksichtigt noch keine Feiertage.
+4. **Vordruck 2027.** Der Kern kennt den Vordruck USt 1 H bisher nur für 2026. Ein Beleg für 2027 bleibt „Berechnet“ und wird mit Anmerkungen abgegeben, bis der Vordruck 2027 im Kern steht; seine Angaben zu Kz 10, 26, 29 und 500 prüft Steuerbote bis dahin nicht.
+5. **Verlängerung je Jahr.** Die Einstellungen kennen die Dauerfristverlängerung nur für ein ganzes Jahr. Wer sie ab einem späteren Monat beantragt, bekommt mit dem Vermerk der Abgabe auch für die Voranmeldungen der Monate davor die verlängerte Frist angezeigt.
+6. **Beginn der Tätigkeit.** § 47 UStDV stellt auf die Tätigkeit ab, Steuerbote auf das Gründungsdatum des Unternehmens. Begann die Tätigkeit an einem anderen Tag, gehört die Grundlage von Hand mit Begründung in den Beleg.

@@ -1,0 +1,216 @@
+{#-
+	Form USt 1 H, Antrag auf Dauerfristverlängerung and Anmeldung der Sondervorauszahlung, in the order and wording
+	of the form of 2026 (BMF letter of 29 December 2025, GZ III C 3 - S 7344/00039/007/036), after the filed VAT
+	Returns of the previous year that make the base. Every amount is one the form keeps, the print computes
+	none. Text fields print as Frappe formats them, since Frappe sanitises their markup when a document is saved.
+-#}
+{%- set settings = frappe.db.get_value("VAT Return Settings", doc.company, ["tax_number", "elster_tax_number", "tax_office"], as_dict=True) or {} -%}
+{%- set with_sondervorauszahlung = doc.context == "Umsatzsteuersondervorauszahlung" -%}
+{%- set previous_year = doc.year - 1 -%}
+{%- set supplementary = {
+	"1": "konnten steuererhebliche Sachverhalte nicht erklärt werden.",
+	"2": "wird bewusst eine von der Verwaltungsauffassung abweichende Rechtsauffassung vertreten.",
+	"3": "sollen Sachverhalte personell vertieft geprüft werden.",
+	"4": "liegen mehrere der vorgenannten Gründe vor (Mehrfachauswahl).",
+} -%}
+{%- set filed_via = {"mein_elster": "Mein ELSTER", "other_way": "Auf anderem Weg"} -%}
+
+{%- macro euros(value) -%}{{ frappe.utils.fmt_money(value, 0, None, "#.###,##") }}{%- endmacro -%}
+{%- macro cents(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
+{%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
+
+{%- macro flag_row(line, kennzahl, label, value) -%}
+<tr>
+	<td class="sb-line">{{ line }}</td>
+	<td>{{ label }}</td>
+	<td class="sb-kz">{{ kennzahl }}</td>
+	<td class="sb-num">{{ "1 = Ja" if value else "" }}</td>
+</tr>
+{%- endmacro -%}
+
+<div class="sb-dfv">
+	<h1>{{ "Anmeldung der Sondervorauszahlung" if with_sondervorauszahlung else "Antrag auf Dauerfristverlängerung" }} {{ doc.year }}</h1>
+	{%- if with_sondervorauszahlung and doc.antrag %}
+	<p class="sb-subtitle">mit Antrag auf Dauerfristverlängerung</p>
+	{%- endif %}
+	{%- if doc.is_correction %}
+	<p class="sb-subtitle">Berichtigte Anmeldung</p>
+	{%- endif %}
+
+	<table class="sb-head">
+		<tr><td class="sb-label">Unternehmen</td><td class="sb-value">{{ doc.company | e }}</td></tr>
+		<tr><td class="sb-label">Steuernummer</td><td class="sb-value">{{ (settings.tax_number or "") | e }}</td></tr>
+		<tr><td class="sb-label">Steuernummer im ELSTER-Format</td><td class="sb-value">{{ (settings.elster_tax_number or "") | e }}</td></tr>
+		{%- if settings.tax_office %}
+		<tr><td class="sb-label">Finanzamt</td><td class="sb-value">{{ settings.tax_office | e }}</td></tr>
+		{%- endif %}
+		{%- if doc.antrag %}
+		<tr><td class="sb-label">Verlängert ab</td><td class="sb-value">{{ (doc.first_period_label or "") | e }}</td></tr>
+		{%- endif %}
+		<tr><td class="sb-label">Fällig am</td><td class="sb-value">{{ day(doc.deadline) }}</td></tr>
+		{%- if with_sondervorauszahlung and doc.crediting_period_label %}
+		<tr><td class="sb-label">Angerechnet in Kz 39 von</td><td class="sb-value">{{ doc.crediting_period_label | e }}</td></tr>
+		{%- endif %}
+		<tr><td class="sb-label">Vordruck</td><td class="sb-value">{{ doc.name | e }}, {{ doc.status | e }}</td></tr>
+	</table>
+
+	{%- if with_sondervorauszahlung %}
+	<h2>Grundlage: abgegebene Voranmeldungen {{ previous_year }}</h2>
+	<table class="sb-form">
+		<colgroup>
+			<col>
+			<col>
+			<col class="sb-num">
+			<col class="sb-num">
+		</colgroup>
+		<thead>
+			<tr>
+				<th>Voranmeldungszeitraum</th>
+				<th>Voranmeldung</th>
+				<th class="sb-num">Kz 83<br>EUR, Ct</th>
+				<th class="sb-num">Kz 39<br>EUR, Ct</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in doc.base_rows %}
+			<tr>
+				<td>{{ (row.period_label or "") | e }}</td>
+				<td>{{ (row.vat_return or "") | e }}</td>
+				<td class="sb-num">{{ cents(row.kz83) }}</td>
+				<td class="sb-num">{{ cents(row.kz39) }}</td>
+			</tr>
+			{%- else %}
+			<tr class="sb-empty"><td colspan="4">Keine abgegebene Voranmeldung</td></tr>
+			{%- endfor %}
+			<tr class="sb-sum">
+				<td colspan="2">Summe</td>
+				<td class="sb-num">{{ cents(doc.kz83) }}</td>
+				<td class="sb-num">{{ cents(doc.kz39) }}</td>
+			</tr>
+		</tbody>
+	</table>
+	{%- if doc.missing_periods %}
+	<p class="sb-note">Ohne abgegebene Voranmeldung: {{ doc.get_formatted("missing_periods") }}</p>
+	{%- endif %}
+	{%- if doc.established_on and doc.months_active < 12 %}
+	<p class="sb-note">Tätig seit {{ day(doc.established_on) }}, {{ doc.months_active }} Monate</p>
+	{%- endif %}
+	{%- endif %}
+
+	<h2>Vordruck USt 1 H</h2>
+	<table class="sb-form">
+		<colgroup>
+			<col class="sb-line">
+			<col>
+			<col class="sb-kz">
+			<col class="sb-num">
+		</colgroup>
+		<thead>
+			<tr>
+				<th class="sb-line">Zeile</th>
+				<th></th>
+				<th class="sb-kz">Kz</th>
+				<th class="sb-num">EUR</th>
+			</tr>
+		</thead>
+		{%- if doc.antrag %}
+		<tbody class="sb-group">
+			<tr class="sb-section"><td colspan="4">I. Antrag auf Dauerfristverlängerung</td></tr>
+			<tr>
+				<td class="sb-line"></td>
+				<td colspan="3">Ich beantrage, die Fristen für die Übermittlung der Umsatzsteuer-Voranmeldungen und für die Entrichtung der Umsatzsteuer-Vorauszahlungen um einen Monat zu verlängern.</td>
+			</tr>
+		</tbody>
+		{%- endif %}
+		{%- if with_sondervorauszahlung %}
+		<tbody class="sb-group">
+			<tr class="sb-section"><td colspan="4">II. Berechnung und Anmeldung der Sondervorauszahlung auf die Steuer für das Kalenderjahr {{ doc.year }}</td></tr>
+			{{ flag_row(7, "10", "Berichtigte Anmeldung", doc.is_correction) }}
+			<tr>
+				<td class="sb-line">8</td>
+				<td>Summe der verbleibenden Umsatzsteuer-Vorauszahlungen zuzüglich der zu berücksichtigenden Sondervorauszahlung für das Kalenderjahr {{ previous_year }}</td>
+				<td class="sb-kz"></td>
+				<td class="sb-num">{{ cents(doc.base) }}</td>
+			</tr>
+			<tr class="sb-sum">
+				<td class="sb-line">9</td>
+				<td>Davon 1/11 = Sondervorauszahlung {{ doc.year }}</td>
+				<td class="sb-kz">38</td>
+				<td class="sb-num">{{ euros(doc.sondervorauszahlung) }}</td>
+			</tr>
+		</tbody>
+		<tbody class="sb-group">
+			<tr class="sb-section"><td colspan="4">III. Sonstige Angaben</td></tr>
+			{{ flag_row(10, "29", "Verrechnung des Erstattungsbetrags erwünscht / Erstattungsbetrag ist abgetreten", doc.offset_requested) }}
+			{{ flag_row(11, "26", "Das SEPA-Lastschriftmandat soll ausnahmsweise (z. B. wegen Verrechnungswünschen) für die Sondervorauszahlung dieses Jahres nicht verwendet werden", doc.no_sepa_mandate) }}
+		</tbody>
+		{%- endif %}
+		<tbody class="sb-group">
+			<tr class="sb-section"><td colspan="4">Ergänzende Angaben zur Steueranmeldung</td></tr>
+			<tr>
+				<td class="sb-line">12</td>
+				<td>
+					In dieser Steueranmeldung (1 bis 4)
+					{%- if doc.supplementary_code in supplementary %}<br><span class="sb-note">In dieser Steueranmeldung {{ supplementary[doc.supplementary_code] }}</span>{% endif %}
+					{%- if doc.kz500_begruendung %}<br><span class="sb-note">Begründung: {{ doc.get_formatted("kz500_begruendung") }}</span>{% endif %}
+				</td>
+				<td class="sb-kz">500</td>
+				<td class="sb-num">{{ doc.supplementary_code or "" }}</td>
+			</tr>
+		</tbody>
+	</table>
+
+	{%- if with_sondervorauszahlung and doc.base_override_reason %}
+	<h2>Grundlage von Hand</h2>
+	<table class="sb-form">
+		<colgroup>
+			<col class="sb-num">
+			<col class="sb-num">
+			<col>
+		</colgroup>
+		<thead>
+			<tr>
+				<th class="sb-num">Grundlage aus den Voranmeldungen</th>
+				<th class="sb-num">Grundlage von Hand</th>
+				<th>Begründung</th>
+			</tr>
+		</thead>
+		<tbody>
+			<tr>
+				<td class="sb-num">{{ cents(doc.computed_base) if doc.base_rows else "" }}</td>
+				<td class="sb-num">{{ cents(doc.base_override) }}</td>
+				<td>{{ doc.get_formatted("base_override_reason") }}</td>
+			</tr>
+		</tbody>
+	</table>
+	{%- endif %}
+
+	{%- if doc.findings %}
+	<h2>Offene Punkte</h2>
+	<p>{{ doc.get_formatted("findings") }}</p>
+	{%- endif %}
+
+	{%- if doc.remarks %}
+	<h2>Anmerkungen</h2>
+	<p>{{ doc.get_formatted("remarks") }}</p>
+	{%- endif %}
+
+	{%- if doc.filed_on %}
+	<h2>Abgabe</h2>
+	<table class="sb-head">
+		<tr><td class="sb-label">Abgegeben über</td><td class="sb-value">{{ filed_via.get(doc.filed_via, "") }}</td></tr>
+		<tr><td class="sb-label">Abgegeben am</td><td class="sb-value">{{ day(doc.filed_on) }}</td></tr>
+		{%- if doc.transferticket %}
+		<tr><td class="sb-label">Transferticket</td><td class="sb-value">{{ doc.transferticket | e }}</td></tr>
+		{%- endif %}
+		{%- if doc.filing_note %}
+		<tr><td class="sb-label">Wie und wann abgegeben</td><td class="sb-value">{{ doc.get_formatted("filing_note") }}</td></tr>
+		{%- endif %}
+	</table>
+	{%- endif %}
+
+	<div class="sb-footer">
+		<p>Zum Abgleich mit der Steuerberatung oder zum Eintragen in Mein ELSTER.</p>
+		<p>Dieser Ausdruck ist keine Abgabe. Abgegeben ist der Vordruck erst, wenn er elektronisch an das Finanzamt übermittelt ist.</p>
+	</div>
+</div>
