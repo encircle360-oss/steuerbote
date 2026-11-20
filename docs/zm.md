@@ -1,6 +1,6 @@
 # Zusammenfassende Meldung
 
-Diese Seite ist die fachliche Grundlage des Kerns unter `steuerbote/zm`: Meldezeiträume und Fristen, Abgaberhythmus, Meldezeilen aus dem Hauptbuch, USt-IdNrn., Sperren und Übersteuern, Abgleich mit der Voranmeldung, Berichtigung und die CSV-Datei für Mein ELSTER. Der Kern ist reines Python ohne Frappe-Import. Wie der Beleg „Zusammenfassende Meldung“ in ERPNext mit ihm arbeitet, steht unter [Die Zusammenfassende Meldung in ERPNext](#die-zusammenfassende-meldung-in-erpnext); die Übermittlung über ERiC folgt mit der Hersteller-ID, siehe [Roadmap](roadmap.md). Die Seite ersetzt keine Steuerberatung. Die Quellen stehen am Ende als [Q1] bis [Q17], alle am 20. November 2026 gelesen.
+Diese Seite ist die fachliche Grundlage des Kerns unter `steuerbote/zm`: Meldezeiträume und Fristen, Abgaberhythmus, Meldezeilen aus dem Hauptbuch, USt-IdNrn., Sperren und Übersteuern, Abgleich mit der Voranmeldung, Berichtigung und die CSV-Datei für Mein ELSTER. Der Kern ist reines Python ohne Frappe-Import. Wie der Beleg „Zusammenfassende Meldung“ in ERPNext mit ihm arbeitet, steht unter [Die Zusammenfassende Meldung in ERPNext](#die-zusammenfassende-meldung-in-erpnext). Die Nutzdaten für ERiC schreibt `steuerbote/elster/zm_xml.py`, siehe [ZM über ERiC](#zm-über-eric); die Übermittlung folgt mit der Hersteller-ID, siehe [Roadmap](roadmap.md). Die Seite ersetzt keine Steuerberatung. Die Quellen stehen am Ende als [Q1] bis [Q18], alle am 20. November 2026 gelesen.
 
 ## Was die ZM ist
 
@@ -52,7 +52,7 @@ Beispiele aus den Tests: Januar 2026 ist am 25. Februar 2026 fällig. April und 
 
 Ein Hinweis des BZSt: „Der Wechsel zur monatlichen Abgabe erfolgt automatisch. Das Unternehmen hat auf seine Abgabepflichten zu achten; es erfolgt keine Mitteilung des BZSt über die Änderung des Meldezeitraums.“ [Q9]
 
-**Anzeige und Widerruf.** Wer monatlich abgibt, obwohl er vierteljährlich dürfte, zeigt das in der ersten monatlichen ZM an (§ 18a Absatz 1 Satz 4 UStG; Anleitung zur ZM, III.1 und IV.4 [Q10]); der Widerruf steht in einer ZM für ein Quartal oder für den dritten Monat eines Quartals (ZMDO-Regeln 170015008, 170015012 und 170015013 [Q11]). `check_notices()` lehnt ab, was diese Regeln nicht zulassen. Beides sind Felder im Kopf des Formulars, nicht in der CSV-Datei; sie werden in Mein ELSTER gesetzt.
+**Anzeige und Widerruf.** Wer monatlich abgibt, obwohl er vierteljährlich dürfte, zeigt das in der ersten monatlichen ZM an (§ 18a Absatz 1 Satz 4 UStG; Anleitung zur ZM, III.1 und IV.4 [Q10]); der Widerruf steht in einer ZM für ein Quartal oder für den dritten Monat eines Quartals (ZMDO-Regeln 170015008, 170015012 und 170015013 [Q11]). `check_notices()` lehnt ab, was diese Regeln nicht zulassen. Beides sind Felder im Kopf des Formulars, nicht in der CSV-Datei; sie werden in Mein ELSTER gesetzt. In den Nutzdaten für ERiC stehen sie als `anzeige` und `widerruf`, siehe [ZM über ERiC](#zm-über-eric).
 
 ## Meldezeilen aus dem Hauptbuch
 
@@ -144,7 +144,7 @@ Ohne Hersteller-ID geht die ZM nicht über ERiC. Das Formular „Zusammenfassend
 
 Eine Berichtigung schreibt nur ihre geänderten Zeilen (`csv_file(correction.lines, correction=True)`).
 
-**Mehr als 1.500 Zeilen** nimmt das Formular nicht. Das BZSt nennt dafür die Massendatenschnittstelle ELMA5 im BZSt-Online-Portal [Q9]; die Übermittlung über ERiC (ZMDO) nimmt bis zu 5.000 Zeilen [Q11] und folgt mit der Hersteller-ID.
+**Mehr als 1.500 Zeilen** nimmt das Formular nicht. Das BZSt nennt dafür die Massendatenschnittstelle ELMA5 im BZSt-Online-Portal [Q9]; die Übermittlung über ERiC (ZMDO) nimmt bis zu 5.000 Zeilen [Q11] und folgt mit der Hersteller-ID, siehe [ZM über ERiC](#zm-über-eric).
 
 **Import in Mein ELSTER**, soweit die Hilfe ihn beschreibt:
 
@@ -154,6 +154,66 @@ Eine Berichtigung schreibt nur ihre geänderten Zeilen (`csv_file(correction.lin
 4. Scheitert der Import, bietet das Formular eine kommentierte CSV-Datei an, mit den Fehlern in der letzten Spalte; nach der Korrektur den Import wiederholen [Q14].
 5. Nach dem Import prüfen, „dass die Anzahl der Datensätze in der CSV-Datei mit der Anzahl der importierten Datensätze übereinstimmt“ [Q14].
 6. Die ZM in Mein ELSTER absenden.
+
+## ZM über ERiC
+
+Für die Übermittlung über ERiC schreibt [`steuerbote/elster/zm_xml.py`](../steuerbote/elster/zm_xml.py) die Nutzdaten der Datenart ZMDO. Am Beleg lässt sich die ZM noch nicht über ERiC senden: Es fehlen die Anbindung in ERPNext und die Hersteller-ID, siehe [Was noch fehlt](#was-noch-fehlt). Bis dahin geht sie über die [CSV-Datei für Mein ELSTER](#csv-datei-für-mein-elster) an das BZSt.
+
+### Was die Nutzdaten enthalten
+
+`to_nutzdaten(unternehmer, zm, created)` schreibt das Element `zm` im Namensraum `http://www.elster.de/elsterxml/schema/v11` mit der Version `000005` [Q11]. ERiC nimmt es als Nutzdaten in den `DatenTeil` einer Lieferung, die in UTF-8 ohne Byte Order Mark an ELSTER geht [Q18, Kap. 5.3.2]. Ein Test baut aus den Werten des Beispiels `ZMDO_5_send-Auth.xml` der Dokumentation die Nutzdaten und vergleicht sie Byte für Byte mit dessen Element `zm`; die Tests prüfen die Nutzdaten außerdem gegen `zm_000005.xsd` und im Umschlag gegen `elster11_Zm_000005_extern.xsd`.
+
+| Element | Inhalt | Grundlage [Q11] |
+|---|---|---|
+| `knri` | eigene USt-IdNr., DE und neun Ziffern | `knri_Type`, 170015001, 170015002 |
+| `zulassNr` | Teilnehmernummer: `zulnr1` „N“, für ERiC „der konstante Wert“; `zulnr2` „1111111“, weil „das BZSt keine neuen Teilnehmernummern vergibt“, oder die eigene Teilnehmernummer des Unternehmens, sieben oder acht Ziffern ab 0300000 | Felder `zulnr1` und `zulnr2`, 170015022, 170015024 |
+| `anschrift` | Name (bis 100 Zeichen), Adresszusatz (40), Straße (30), Hausnummer (10), Zusatz zur Hausnummer (10), PLZ (12), Ort (30), Staat (2) und Telefon (20); Pflicht sind Name, Straße, Ort und Staat, in Deutschland auch die PLZ | `anschrift_Type`, 170025001 bis 170025005 |
+| `zm-zeilen` | Attribute `waehrung` „1“ für Euro und `meldeart` 10 (Erstmeldung) oder 11 (Berichtigung) | Felder `waehrung` und `meldeart` |
+| `anzeige`, `widerruf` | Anzeige nach § 18a Absatz 1 UStG und ihr Widerruf, immer geschrieben, als `true` oder `false` | 170015006, 170015009 |
+| `mzr` | Meldezeitraum: `quart` aus `period.py` und `jahr` | Feld `quart` |
+| `zeile` | je Meldezeile die Art (`umsatzart`), die USt-IdNr. (`knre`) und die Summe in ganzen Euro (`betrag`) | Felder `umsatzart`, `knre_UstIdNr_Erwerber` und `betrag` |
+
+Eine Hersteller-ID steht nicht in den Nutzdaten. Anders als die Voranmeldung mit Kz 09 hat die ZM kein Feld dafür; die Hersteller-ID steht nur im TransferHeader, den ERiC mit `EricCreateTH` schreibt.
+
+### Prüfungen, bevor die Nutzdaten entstehen
+
+`Unternehmer` und `Zm` lehnen ab, was ERiC nicht nimmt, mit `XmlError` wie die Voranmeldung:
+
+| Regel | Grundlage [Q11] |
+|---|---|
+| Eine deutsche PLZ hat fünf Ziffern von 01001 bis 99999, eine ausländische nur Buchstaben ohne Umlaute, Ziffern und Leerzeichen. Die Telefonnummer hat nur Ziffern, Leerzeichen und ( ) / + -. | 170025005, 170025006, Felder `plz` und `telefon`, `zm_000005.xsd` |
+| Der Staat steht in der Liste der Jahresdokumentation, ISO 3166-1 mit XL (Melilla), XI (Nordirland) und XU (Vereinigtes Königreich ohne Nordirland); GB nimmt ELSTER nicht mehr. | Feld `staat`, Blatt „Benutzerdefinierte Typen“, 170045020 |
+| Texte im Zeichensatz Standard_E_V2 auf einer Zeile, ohne Leerzeichen am Anfang oder Ende; typografische Zeichen ersetzt `charset.py` wie bei der Voranmeldung. | Blätter „Allg. Information“, „Zeichensatz“ und „Formale Fehler“ |
+| mindestens eine und höchstens 5.000 Meldezeilen | 170045002, „max. Zeilen“ der Felder der Meldezeile |
+| jede USt-IdNr. und Art nur in einer Zeile | 170045003 bis 170045005 |
+| Summen in ganzen Euro, negativ mit Minuszeichen, höchstens 11 Ziffern | Feld `betrag` (Formatkennzeichen N), `betrag_Type` |
+| keine Zeile mit 0; nur eine Berichtigung storniert eine Zeile mit 0 | 170045001, [Q10, III.1], [Q8] |
+| XI nur für L und D, wie jede Meldezeile, und erst für Meldezeiträume ab 2021 | 170045021, 170045022 |
+| Anzeige nur in einer monatlichen ZM, Widerruf nur in einer ZM für ein Quartal oder für dessen dritten Monat, nicht beide zugleich (`check_notices()`) | 170015008, 170015012, 170015013 |
+| Am Tag, an dem die Nutzdaten entstehen (`created`): Der Meldezeitraum hat begonnen, eine ZM für zwei Monate geht erst ab dem ersten Tag des zweiten Monats, und ERiC nimmt höchstens zehn Jahre zurück. | 170015020, 170015019, 170015016 |
+
+**Berichtigung.** `Zm` bekommt immer die Meldezeilen von heute. Mit `filed`, dem, was das BZSt nach den bisherigen Abgaben für den Meldezeitraum hält (`as_filed()`), ist sie eine Berichtigung mit der Meldeart 11 und meldet nur, was sich ändert (`correct()`, siehe [Berichtigung](#berichtigung)): eine neue oder geänderte Zeile mit ihrer neuen Summe, eine weggefallene mit 0, eine unveränderte nicht. Ändert sich nichts, entstehen keine Nutzdaten. Die Tests rechnen die fünf Fälle des BZSt nach.
+
+**Nordirland.** Die Applikationsbedingungen der ZMDO beschreiben eine formale Prüfung nordirischer USt-IdNrn. („validiereNordirischeUstidAppBed“), nennen aber kein Format, und die Jahresdokumentation verwendet keine Applikationsbedingung („Verwendete Applikationsbedingungen: keine“) [Q11]. Steuerbote prüft den Aufbau einer XI-Nummer deshalb nicht weiter als den jeder anderen; ob sie erteilt ist, sagt die [Bestätigung](ust-idnr-pruefung.md).
+
+### Was die Übermittlung braucht
+
+`zm_xml.py` hält dafür fest:
+
+| Angabe | Wert | Grundlage |
+|---|---|---|
+| Verfahren | `ElsterExtern` | [Q18, Tabelle 8-28] |
+| Datenart | `ZMDO` | [Q18, Tabelle 8-28] |
+| Vorgang | `send-Auth`; `send-NoSig` nimmt ZMDO nicht | [Q18, Tabelle 8-28] |
+| datenartVersion | `ZMDO`, ohne Jahr | Datenartversionmatrix [Q18] |
+| Plugin | `checkZMDO`, unter Linux `libcheckZMDO.so` | Datenartversionmatrix, Kap. 3.1.6.1 [Q18] |
+| Empfänger im NutzdatenHeader | `<Empfaenger id="L">BF</Empfaenger>`; BF steht für das „Bundesamt für Finanzen“, heute das BZSt | [Q18, Tabelle 8-28], Felder `EmpfaengerTyp` und `EmpfaengerName` [Q11], `headerbasis_datentypen.xsd` [Q18] |
+
+### Was noch fehlt
+
+- **Die Anbindung in ERPNext.** An der Meldung fehlen „Prüfen“, „Testsenden“ und „Senden“ wie bei der Voranmeldung. Die Frappe-Schicht bildet dafür den `Unternehmer` aus den Einstellungen (eigene USt-IdNr., Name und Anschrift, eine eigene Teilnehmernummer, für die es noch kein Feld gibt) und die `Zm` aus den gespeicherten Meldezeilen, bei einer Berichtigung mit `as_filed()` der bisherigen Abgaben des Meldezeitraums, ruft `to_nutzdaten` mit dem Tag der Übermittlung auf und übersetzt die Meldungen (`MESSAGES` und `LABELS`). In `steuerbote/eric` kennen Kopf der Lieferung, Laufzeit und Simulation bisher nur die UStVA. Für ZMDO brauchen sie die datenartVersion `ZMDO` ohne Jahr, den Empfänger `L` mit `BF` statt des Finanzamts im NutzdatenHeader, das Plugin `checkZMDO` in der eingerichteten Laufzeit und eine Simulation, die die Wurzel `zm` kennt.
+- **Die Hersteller-ID.** Ohne sie prüft und sendet ERiC nichts, siehe [ERiC](eric.md#lizenz-und-voraussetzungen).
+- **Ein Lauf mit echtem ERiC.** Dass ERiC die Nutzdaten annimmt, zeigen bisher nur Schema, Jahresdokumentation und Beispiel der Dokumentation.
 
 ## Die Zusammenfassende Meldung in ERPNext
 
@@ -235,7 +295,7 @@ Das Druckformat „Zusammenfassende Meldung“ zeigt Unternehmen, eigene USt-IdN
 
 ## Offene Punkte
 
-- **ZMDO über ERiC** mit Anzeige und Widerruf, sobald es die Hersteller-ID gibt.
+- **ZMDO über ERiC:** Die Nutzdaten schreibt `zm_xml.py`; es fehlen die Anbindung in ERPNext und die Hersteller-ID, siehe [Was noch fehlt](#was-noch-fehlt).
 - **Feiertage:** Die Fälligkeit folgt der Standard-Feiertagsliste des Unternehmens. Welche Feiertage für eine Frist beim BZSt gelten, sagt keine der Quellen.
 - **Rundung:** Das Abschneiden der Cent ist eine Annahme; eine Bestätigung des BZSt oder der ELSTER-Hotline steht aus.
 - **Zeile `#ve3.2.1`:** Das Beispiel der Hilfe hat sie, die allgemeine Anleitung nennt nur die Zeile `#v`. Ob der Import sie verlangt, ist nicht belegt; Steuerbote schreibt sie wie das Beispiel. Bringt die Versionstabelle eine neue Version, ändern sich `VERSION` und `EXCEL_VERSION`.
@@ -244,7 +304,7 @@ Das Druckformat „Zusammenfassende Meldung“ zeigt Unternehmen, eigene USt-IdN
 - **Konsignationslager** (§ 6b UStG): Die Angaben lassen sich derzeit nicht im Verfahren der ZM übermitteln; das BZSt hält dafür ein eigenes Formular bereit [Q7, Q9]. Steuerbote meldet sie nicht.
 - **Nordirland als Bestimmungsland:** ERPNext kennt Nordirland nicht als Land. Ein Dreiecksgeschäft mit einer XI-Nummer bekommt `ZM-DREIECK-LAND`, wenn die Frappe-Schicht nicht „XI“ als Land übergibt.
 - **Dreiecksgeschäfte** kennt ERPNext nicht eigens; Steuerbote findet sie über die Konten der Kz 42 aus der Kontenzuordnung. Ein Dreiecksgeschäft auf einem anderen Konto erkennt Steuerbote nicht.
-- **Prüfungen von ERiC**, die erst die Übermittlung betreffen, prüft der Kern nicht: kein Meldezeitraum in der Zukunft (170015020), eine ZM für zwei Monate erst ab dem zweiten Monat (170015019), höchstens zehn Jahre zurück (170015016).
+- **Prüfungen von ERiC**, die vom Tag der Übermittlung abhängen, prüft der Kern für die CSV-Datei nicht: kein Meldezeitraum in der Zukunft (170015020), eine ZM für zwei Monate erst ab dem zweiten Monat (170015019), höchstens zehn Jahre zurück (170015016). Für ERiC prüft sie `zm_xml.py` mit dem Tag, an dem die Nutzdaten entstehen.
 
 ## Quellen
 
@@ -258,10 +318,11 @@ Das Druckformat „Zusammenfassende Meldung“ zeigt Unternehmen, eigene USt-IdN
 - **[Q8]** BZSt „Berichtigung einer ZM“, Abschnitte „Fristen“, „Berichtigungs-Form“, Fälle 1 bis 5 und „Rabatte, Stornierungen“: <https://www.bzst.de/DE/Unternehmen/Umsatzsteuer/ZusammenfassendeMeldung/BerichtigungZM/berichtigung_node.html>
 - **[Q9]** BZSt „Fragen und Antworten“ (ZM), darunter die Fragen zu Meldezeiträumen, ELMA5, Konsignationslager und Brexit: <https://www.bzst.de/DE/Unternehmen/Umsatzsteuer/ZusammenfassendeMeldung/FAQ/faq_zm.html>
 - **[Q10]** BZSt „Anleitung zur Zusammenfassenden Meldung“ (USt ZM 1/2021), Textziffern III.1 und IV.1 bis IV.12: <https://www.bzst.de/SharedDocs/Downloads/DE/ZM/zm_ausfuellanleitung.pdf?__blob=publicationFile&v=14>
-- **[Q11]** ERiC-Dokumentation 44.3.6.0, wie in der CI gepinnt: `Datenarten/ElsterExtern/ZMDO/Jahresdokumentation/Jahresdokumentation_ZMDO_2.ods`, Blätter „ZMDO - Felder“ (`quart`, `knre_UstIdNr_Erwerber`, `betrag`) und „ZMDO - Regeln“, sowie `Schema/5/zm_000005.xsd`: <https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip>
+- **[Q11]** ERiC-Dokumentation 44.3.6.0, wie in der CI gepinnt, unter `Datenarten/ElsterExtern/ZMDO/`: `Jahresdokumentation/Jahresdokumentation_ZMDO_2.ods` mit den Blättern „ZMDO - Felder“ (`quart`, `knre_UstIdNr_Erwerber`, `betrag` und die übrigen Felder der Nutzdaten), „ZMDO - Regeln“, „Allg. Information“, „Benutzerdefinierte Typen“, „Zeichensatz“, „Formale Fehler“ und „XML-Schema Namensräume“, das Schema `Schema/5/zm_000005.xsd` mit `Schema/5/elster11_Zm_000005_extern.xsd`, das Beispiel `Beispiele/ZMDO_5_send-Auth.xml` und `Applikationsbedingungen_ZMDO_2.pdf`: <https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip>
 - **[Q12]** Abkommen über den Austritt des Vereinigten Königreichs aus der EU und der EAG, Protokoll zu Irland/Nordirland, Artikel 8 „VAT and excise“, englische Fassung im ABl. C 384 I vom 12. November 2019, S. 1: <https://www.legislation.gov.uk/eut/withdrawal-agreement/pdfs/eut_withdrawal-agreement_adopted_en.pdf>
 - **[Q13]** ELSTER-Hilfe „Import von Meldelisten zur Zusammenfassenden Meldung“, Abschnitte „Versionstabelle“, „Datensatztabelle Meldezeilen (Satzart 1)“, „Beispielhafte CSV-Datei“ und „Liste der Länderkennzeichen“: <https://www.elster.de/eportal/helpGlobal?themaGlobal=zmdo_import_eop>
 - **[Q14]** ELSTER-Hilfe „Allgemeine Anleitung zur Erstellung von CSV-Dateien für die Importfunktion“, Abschnitte „Aufbau einer CSV-Datei“, „Vorgaben für gültige CSV-Dateien“ und „Import der CSV-Datei“: <https://www.elster.de/eportal/helpGlobal?themaGlobal=allgemeine_csv-anleitung>
 - **[Q15]** ELSTER-Hilfe „Hilfe zur UTF-8-Umstellung der Importfunktion“: <https://www.elster.de/eportal/helpGlobal?themaGlobal=help_utf-8_import>
 - **[Q16]** Entscheidungen des Maintainers vom 20. November 2026: Zeilen aus dem Hauptbuch je Beleg, Abschneiden auf ganze Euro, ungültige USt-IdNr. sperrt „Bereit“ und lässt sich je Zeile mit Begründung übersteuern, XI nur für Lieferungen, Buchungsdatum für die Zuordnung zum Zeitraum; in ERPNext der Abgaberhythmus aus den Einstellungen mit Prüfung der Schwelle, die Feiertage aus der Standard-Feiertagsliste des Unternehmens und die Bestätigung beim BZSt mit VIES als Ausweichdienst, ohne die Prüfungen der App erpnext_germany.
 - **[Q17]** ERPNext 16.60.0, `erpnext/accounts/general_ledger.py`, `make_reverse_gl_entries()`: Ohne „Unveränderliches Hauptbuch aktivieren“ (`enable_immutable_ledger` der Buchhaltungseinstellungen) setzt das Stornieren die Buchungen des Belegs auf `is_cancelled = 1` und bucht die Gegenbuchungen ebenso gekennzeichnet; mit der Einstellung bleiben die Buchungen, und die Gegenbuchungen tragen `is_cancelled = 0` und das Datum der Stornierung: <https://github.com/frappe/erpnext/blob/v16.60.0/erpnext/accounts/general_ledger.py>
+- **[Q18]** ERiC-Dokumentation 44.3.6.0 [Q11]: `ERiC-Entwicklerhandbuch.pdf`, Kap. 3.1.6.1 „ERiC Plugins im Verzeichnis „plugins““, Kap. 5.3.2 „Encoding und Zeichensatz“ und Kap. 8.15 „Zusammenfassende Meldung Daten Online (ZMDO)“ mit Tabelle 8-28 „Eigenschaften der Datenart ZMDO“; `Datenartversionmatrix.ods`, Zeile ElsterExtern/ZMDO; `ElsterBasisSchema/Schema/headerbasis_datentypen.xsd`, Typ `BundeslandSType`
