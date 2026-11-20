@@ -25,6 +25,7 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 | `vat_return_extension/bridge.py` | wählt die abgegebenen Voranmeldungen des Vorjahres, deren Kz 83 und Kz 39 die Grundlage bilden, nennt die Voranmeldungszeiträume, die ihr fehlen, gibt Grundlage, Grundlage von Hand und Monate der Tätigkeit an den Kern und bildet den Vordruck USt 1 H aus den Feldern des Belegs |
 | `elster_transmission/transmission.py` | Prüfen, Testsenden und Senden eines Belegs über ERiC: `Transmittable`, von dem Voranmeldung und Dauerfristverlängerung erben, den Hintergrundjob `run_transmission`, `stash_certificate`, den Kopf der Lieferung und die Verknüpfungen eines Belegs zu seinen ELSTER-Übermittlungen, siehe [Übermittlung an ELSTER](#übermittlung-an-elster) |
 | `public/js/elster_transmission.js` | Schaltflächen, Dialog für Zertifikat und Passwort und Hinweise der Übermittlung, die die Formulare von Voranmeldung und Dauerfristverlängerung mit `{% include %}` einbinden |
+| `steuerbote/steuerbote/deadlines.py` | liest Einstellungen, Belege, Feiertage und Hauptbuch jedes Unternehmens für die Fristen, die der Kern unter `steuerbote/deadlines` bildet, für den Bericht „Offene Fristen“ und die tägliche Erinnerung mit ihren Fristerinnerungen, mit Frappe, siehe [Fristen](fristen.md) |
 
 So läuft „Berechnen“ an einer Meldung:
 
