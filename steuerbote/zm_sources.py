@@ -55,10 +55,19 @@ ADDRESS_FIELDS = ("name", "address_line1", "pincode", "city")
 
 def shares(company: str, coverage: Coverage, mapping: Mapping) -> list[Contribution]:
 	"""What each voucher adds to Kz 41 and 42 in the goods months and to Kz 21 in the services months."""
-	found = _shares(company, coverage.goods_span, mapping, GOODS)
-	if coverage.services_span is not None:
-		found += _shares(company, coverage.services_span, mapping, SERVICES)
-	return found
+	return [*goods_shares(company, coverage, mapping), *services_shares(company, coverage, mapping)]
+
+
+def goods_shares(company: str, coverage: Coverage, mapping: Mapping) -> list[Contribution]:
+	"""What each voucher adds to Kz 41 and 42 in the goods months."""
+	return _shares(company, coverage.goods_span, mapping, GOODS)
+
+
+def services_shares(company: str, coverage: Coverage, mapping: Mapping) -> list[Contribution]:
+	"""What each voucher adds to Kz 21 in the services months, nothing without them."""
+	if coverage.services_span is None:
+		return []
+	return _shares(company, coverage.services_span, mapping, SERVICES)
 
 
 def _shares(

@@ -293,6 +293,62 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[(AUSTRIAN, "L", money(9800), money(0), 1), (FRENCH, "S", money(3000), money(0), 1)],
 		)
 
+	def test_sonstige_leistungen_compare_with_the_last_zm_that_reports_them(self):
+		"""Without „sonstige Leistungen monatlich“ the ZM for June holds the sonstige Leistungen of April to June,
+		which compare with those of January to March in the ZM for March, and the ZM for July holds and compares
+		none (§ 18a Absatz 2 Satz 2 UStG)."""
+		company = "Steuerbote Test ZM Quartalsleistungen GmbH"
+		make_company(company, "STZL")
+		a = {
+			number: make_account(company, number, name, root_type)
+			for number, (name, root_type) in ACCOUNTS.items()
+		}
+		make_settings(
+			company,
+			[(2026, "monthly", 1)],
+			ust_idnr=OWN_VAT_ID,
+			zm_rules=[{"year": 2026, "valid_from_month": 1, "rhythm": "monthly"}],
+		)
+		make_mapping(company)
+		for number in (2, 5):
+			post_sales_invoice(
+				company,
+				f"SINV-STZL-{number:02d}-1",
+				PARIS,
+				f"2026-{number:02d}-12",
+				[(a["1400"], 3000, 0), (a["8336"], 0, 3000)],
+				customer_address=self.paris_address,
+			)
+		for number in (6, 7):
+			post_sales_invoice(
+				company,
+				f"SINV-STZL-{number:02d}-2",
+				ALPEN,
+				f"2026-{number:02d}-03",
+				[(a["1400"], 1000, 0), (a["8125"], 0, 1000)],
+				customer_address=self.alpen_address,
+			)
+		june = self.calculated(6, company=company)
+		self.assertEqual(
+			[
+				(row.vat_id, row.art, money(row.current), money(row.previous), row.flagged)
+				for row in june.comparison
+			],
+			[(AUSTRIAN, "L", money(1000), money(0), 1), (FRENCH, "S", money(3000), money(3000), 0)],
+		)
+		(hint,) = (row.text for row in june.hints if row.code == "ZM-ABWEICHUNG-VORPERIODE")
+		self.assertIn(f"Die Zeile {AUSTRIAN} (L) liegt mit", hint)
+		self.assertIn("der Vorperiode Mai 2026", hint)
+		july = self.calculated(7, company=company)
+		self.assertEqual(
+			[
+				(row.vat_id, row.art, money(row.current), money(row.previous), row.flagged)
+				for row in july.comparison
+			],
+			[(AUSTRIAN, "L", money(1000), money(1000), 0)],
+		)
+		self.assertNotIn("ZM-ABWEICHUNG-VORPERIODE", [row.code for row in july.hints])
+
 	def test_the_file_and_the_filing_wait_for_berechnen_after_the_ledger_changed(self):
 		"""Berechnen reads the ledger once, and an invoice posted afterwards is in no line until it runs again, so
 		the file and the filing read the ledger of the months anew and name the voucher."""

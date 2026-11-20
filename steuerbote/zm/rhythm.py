@@ -180,6 +180,15 @@ def coverage(rules: Iterable[Rule], period: ReportingPeriod) -> Coverage:
 	return Coverage(period, goods, services)
 
 
+def coverage_or_months(rules: Iterable[Rule], period: ReportingPeriod) -> Coverage:
+	"""The months of ``period`` a comparison reads: those the rules give it, or all of its months where the rules
+	give no ZM for it, such as before their first rule."""
+	try:
+		return coverage(rules, period)
+	except ZmError:
+		return Coverage(period, period.months, period.months)
+
+
 def check_notices(period: ReportingPeriod, anzeige: bool, widerruf: bool) -> None:
 	"""Refuse an Anzeige or a Widerruf after § 18a Absatz 1 UStG that the ZM for ``period`` cannot carry.
 

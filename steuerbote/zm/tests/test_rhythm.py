@@ -6,11 +6,13 @@ from steuerbote.zm.findings import Code
 from steuerbote.zm.period import ReportingPeriod
 from steuerbote.zm.rhythm import (
 	THRESHOLD,
+	Coverage,
 	Rhythm,
 	Rule,
 	check_notices,
 	check_rules,
 	coverage,
+	coverage_or_months,
 	exceeded_in,
 	goods_period,
 	rule_for,
@@ -221,6 +223,14 @@ class CoverageTest(TestCase):
 			coverage([Rule(2026, 1, MONTHLY)], ReportingPeriod.quarter(2026, 2))
 		with self.assertRaisesRegex(ZmError, "entered twice"):
 			coverage([Rule(2026, 1, MONTHLY), Rule(2026, 1, MONTHLY)], month(2026, 1))
+
+	def test_or_all_months_of_a_period_the_rules_do_not_give(self):
+		"""What a comparison reads of a Meldezeitraum that has no ZM, such as one before the first rule."""
+		rules = [Rule(2026, 1, MONTHLY)]
+		self.assertEqual(coverage_or_months(rules, month(2026, 6)), coverage(rules, month(2026, 6)))
+		quarter = ReportingPeriod.quarter(2026, 2)
+		self.assertEqual(coverage_or_months(rules, quarter), Coverage(quarter, (4, 5, 6), (4, 5, 6)))
+		self.assertEqual(coverage_or_months(rules, month(2025, 12)), Coverage(month(2025, 12), (12,), (12,)))
 
 
 def deliveries(**amounts: str) -> dict[tuple[int, int], object]:

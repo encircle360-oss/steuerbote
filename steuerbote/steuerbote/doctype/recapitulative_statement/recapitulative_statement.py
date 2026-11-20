@@ -4,10 +4,11 @@
 each voucher adds to Kz 41, 42 and 21 in its months through steuerbote.zm_sources, and leaves every line, amount
 and rule to the core in steuerbote.zm: the lines per USt-IdNr. and Art (lines.build), the threshold of
 50,000 euros (rhythm.threshold_findings), the reconciliation with the ledger and the filed Voranmeldungen
-(reconciliation.reconcile) and the previous Meldezeitraum (comparison). bridge.py maps the results onto the
-tables. Every save rebuilds the lines from the rows of vouchers and lines, so an override with a Begründung
-lifts the block of its line at once; the threshold and the reconciliation with the ledger hold the statement
-back until "Berechnen" finds them gone.
+(reconciliation.reconcile) and the earlier Meldezeiträume (comparison). bridge.py maps the results onto the
+tables. Every save rebuilds the lines from the vouchers Berechnen stored, the overrides of the lines and the
+latest confirmations, so an override with a Begründung lifts the block of its line at once; the threshold and
+the reconciliation with the ledger hold the statement back until "Berechnen" finds them gone. The file for Mein
+ELSTER and the filing read the ledger again and wait for Berechnen when it books other vouchers by then.
 
 "USt-IdNrn. prüfen" (confirm_vat_ids) asks the BZSt about each USt-IdNr. the lines report, in a background job,
 one query after the other and none repeated (steuerbote.vatid), and keeps every query as a VAT ID Confirmation.
@@ -44,7 +45,7 @@ from steuerbote.steuerbote.doctype.vat_return.vat_return import (
 )
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
 from steuerbote.vatid import UrllibFetch
-from steuerbote.zm.comparison import compare, comparison_hints
+from steuerbote.zm.comparison import compare, comparison_hints, earlier
 from steuerbote.zm.correction import as_filed
 from steuerbote.zm.csv_file import csv_file
 from steuerbote.zm.errors import ZmError
@@ -52,7 +53,14 @@ from steuerbote.zm.findings import Finding
 from steuerbote.zm.lines import Art, Override, Statement, VoucherAmount, build
 from steuerbote.zm.period import ReportingPeriod
 from steuerbote.zm.reconciliation import Filed, ledger_changes, reconcile
-from steuerbote.zm.rhythm import Coverage, Rule, check_notices, coverage, threshold_findings, threshold_window
+from steuerbote.zm.rhythm import (
+	Coverage,
+	check_notices,
+	coverage,
+	coverage_or_months,
+	threshold_findings,
+	threshold_window,
+)
 
 DOCTYPE = "Recapitulative Statement"
 
@@ -206,15 +214,20 @@ class RecapitulativeStatement(Document):
 		with zm_errors():
 			overrides = bridge.overrides_of(self.lines)
 			shares = zm_sources.shares(self.company, covered, mapping)
-			previous_period = period.previous()
-			previous_shares = zm_sources.shares(
-				self.company, _coverage_or_months(rules, previous_period), mapping
-			)
+			before = earlier(rules, covered)
+			previous_shares = [
+				*zm_sources.goods_shares(self.company, before.goods, mapping),
+				*(
+					zm_sources.services_shares(self.company, before.services, mapping)
+					if before.services
+					else ()
+				),
+			]
 			parties = zm_sources.parties(item.voucher for item in (*shares, *previous_shares))
 			amounts = bridge.voucher_amounts_of(shares, parties)
 			statement, confirmations = self._build(amounts, overrides, covered, figures)
 			previous = build(bridge.voucher_amounts_of(previous_shares, parties), figures)
-			compared = compare(statement, previous, _thresholds(settings).exceeded)
+			compared = compare(statement, previous, _thresholds(settings).exceeded, before.arts)
 			deliveries = zm_sources.deliveries(self.company, threshold_window(period), mapping)
 			threshold = threshold_findings(rules, period, deliveries, figures)
 			reconciliation = reconcile(statement, shares, figures, self._filed(covered))
@@ -228,7 +241,7 @@ class RecapitulativeStatement(Document):
 			*statement.findings,
 			*threshold,
 			*reconciliation.findings,
-			*comparison_hints(compared, previous_period, figures),
+			*comparison_hints(compared, before, figures),
 		]
 		self.set("hints", bridge.hint_rows(findings))
 		self._set_totals_and_status(statement)
@@ -670,7 +683,7 @@ class RecapitulativeStatement(Document):
 	def _changes_since_filing(self) -> tuple[Finding, ...]:
 		"""What the ledger of the months the statement filed books now against the vouchers it filed."""
 		period = self._chosen_period()
-		covered = bridge.kept_coverage(period, self) or _coverage_or_months(
+		covered = bridge.kept_coverage(period, self) or coverage_or_months(
 			settings_for(self.company).get_zm_rules(), period
 		)
 		return self._ledger_changes(covered, self.vouchers)
@@ -822,15 +835,6 @@ def _failure_text(error: Exception) -> str:
 		return strip_html(str(error)).strip()
 	frappe.log_error(title=_("Confirmation of the USt-IdNrn. failed"))
 	return _("An unexpected error stopped the confirmation. The Error Log has the details.")
-
-
-def _coverage_or_months(rules: list[Rule], period: ReportingPeriod) -> Coverage:
-	"""The months of a Meldezeitraum to compare with: those the rules give, or all of its months where the
-	rules give no ZM for it, such as before their first rule."""
-	try:
-		return coverage(rules, period)
-	except ZmError:
-		return Coverage(period, period.months, period.months)
 
 
 def _thresholds(settings: Document) -> Thresholds:
