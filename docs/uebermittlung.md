@@ -57,6 +57,8 @@ Testsenden und Senden brauchen die Zertifikatsdatei (.pfx) des ELSTER-Kontos der
 
 - Der Browser liest die Zertifikatsdatei. Sie wird nicht als Anhang hochgeladen.
 - Zertifikat und Passwort gehen einmal an den Server. Dort liegen sie mit dem Schlüssel der Site verschlüsselt und höchstens 15 Minuten im Zwischenspeicher, bis der Hintergrundjob sie einmal abholt; ein zweites Abholen gibt es nicht. Weder an der Meldung noch an der ELSTER-Übermittlung, im Hintergrundjob oder in einem Protokoll wird eines von beiden gespeichert, auch nicht im Recorder von Frappe oder in einem Fehlerbericht. Lassen sie sich nicht ablegen, sagt das eine Meldung, die keines von beiden nennt, siehe [ERiC](eric.md#sicherheit).
+- Zertifikat und Passwort gelten nur für den Benutzer, der sie eingegeben hat, und für die Meldung, an der er sie eingegeben hat. Startet ein anderer Benutzer oder für eine andere Meldung mit ihnen einen Vorgang, lehnt Steuerbote ab und verlangt sie neu; der Hintergrundjob erhält nie etwas, womit sich Zertifikat und Passwort abholen ließen, außer dem Namen seiner ELSTER-Übermittlung.
+- Die Zertifikatsdatei darf höchstens 32 KiB groß sein, und jeder Benutzer kann Zertifikat und Passwort höchstens zehnmal in einer Viertelstunde an den Server geben.
 - Das Passwort hat 6 bis 128 Zeichen: Buchstaben, Ziffern, Leerzeichen und Satzzeichen, ohne Umlaute (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 5-3).
 - Testzertifikate von ELSTER taugen nur für Testsenden.
 

@@ -24,7 +24,8 @@ requires = ["flit_core >=3.12,<5"]
 build-backend = "flit_core.buildapi"
 
 [tool.bench.frappe-dependencies]
-frappe = ">=16.0.0,<17.0.0"
+# 16.54.0 is the first release whose rate limiter counts per user (user_based), which stash_certificate needs.
+frappe = ">=16.54.0,<17.0.0"
 erpnext = ">=16.0.0,<17.0.0"
 
 [tool.ruff]

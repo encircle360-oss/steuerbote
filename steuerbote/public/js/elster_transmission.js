@@ -187,7 +187,7 @@ function ask_for_certificate(frm, operation, title, texts) {
 			dialog.hide();
 			frappe.dom
 				.file_to_base64(file)
-				.then((data_url) => stash_certificate(data_url.split(",")[1] || "", certificate_password))
+				.then((data_url) => stash_certificate(frm, data_url.split(",")[1] || "", certificate_password))
 				.then((r) => start(frm, operation, texts, r.message));
 		},
 	});
@@ -196,12 +196,17 @@ function ask_for_certificate(frm, operation, title, texts) {
 	dialog.show();
 }
 
-// Both go under names with "password": the report of a server error copies the arguments of its request, and
-// Frappe masks those, and only those, there.
-function stash_certificate(password_protected_certificate, certificate_password) {
+// The server keeps both for this user and this document only. Both go under names with "password": the report of a
+// server error copies the arguments of its request, and Frappe masks those, and only those, there.
+function stash_certificate(frm, password_protected_certificate, certificate_password) {
 	return frappe.call({
 		method: STASH_CERTIFICATE,
-		args: { password_protected_certificate, certificate_password },
+		args: {
+			document_type: frm.doctype,
+			document: frm.doc.name,
+			password_protected_certificate,
+			certificate_password,
+		},
 		freeze: true,
 		always: forget_the_last_request,
 	});

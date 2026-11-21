@@ -281,8 +281,7 @@ class TestTransmission(TransmissionTestCase):
 		self.use_runtime()
 		doc = self.calculated(4)
 		fake = FakeEric()
-		token = self.stash()
-		transmission, _, _ = self.transmitted(doc, "send", fake, token)
+		transmission, _, _ = self.transmitted(doc, "send", fake, self.stash(doc))
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (1, "Abgegeben", 0))
 		self.assertEqual(
 			(
@@ -307,22 +306,22 @@ class TestTransmission(TransmissionTestCase):
 		self.assertIn("<Kz09>12345</Kz09>", run["nutzdaten"])
 		self.assertEqual(self.attachment(transmission, "protocol_pdf").get_content(), PROTOCOL)
 		with self.assertRaises(secrets.SecretsExpired):
-			secrets.take(token)
+			self.handed_over(transmission.name, doc)
 
-	def test_the_certificate_and_its_password_reach_the_job_only_as_a_token(self):
+	def test_the_certificate_and_its_password_reach_the_job_only_through_its_transmission(self):
 		self.use_runtime()
 		doc = self.calculated(10)
 		fake = FakeEric()
-		token = self.stash()
+		token = self.stash(doc)
 		name, enqueue = self.transmit(doc, "test_send", token)
 		(call,) = enqueue.call_args_list
 		self.assertEqual(call.args, (JOB,))
+		self.assertNotIn(token, repr(call))
 		self.assertEqual(
 			call.kwargs,
 			{
 				"name": doc.name,
 				"operation": "test_send",
-				"token": token,
 				"transmission": name,
 				"queue": "long",
 				"timeout": 300,
@@ -349,11 +348,25 @@ class TestTransmission(TransmissionTestCase):
 			doc.transmit("test_send")
 		enqueue.assert_not_called()
 
-	def test_a_certificate_that_is_gone_ends_in_a_failed_transmission(self):
+	def test_a_certificate_that_is_gone_starts_no_run_and_ends_one_that_waits_for_it(self):
 		self.use_runtime()
 		doc = self.calculated(10)
+		# The request that is refused rolls back what it wrote.
+		frappe.db.savepoint("refused")
+		with (
+			patch("frappe.enqueue") as enqueue,
+			self.assertRaisesRegex(frappe.ValidationError, "certificate"),
+		):
+			doc.transmit("test_send", "x" * 43)
+		frappe.db.rollback(save_point="refused")
+		enqueue.assert_not_called()
+		self.assertFalse(frappe.db.exists(TRANSMISSION, {"document": doc.name, "operation": "test_send"}))
+		name, enqueue = self.transmit(doc, "test_send", self.stash(doc))
+		secrets.discard(name)
 		fake = FakeEric()
-		transmission, publish, _ = self.transmitted(doc, "test_send", fake, "expired")
+		publish, _ = self.run_job(enqueue, fake)
+		transmission = frappe.get_doc(TRANSMISSION, name)
+		doc.reload()
 		self.assertEqual(
 			(transmission.status, transmission.outcome, doc.transmission_in_progress),
 			("Fehlgeschlagen", "failed", 0),
@@ -378,7 +391,7 @@ class TestTransmission(TransmissionTestCase):
 		doc = self.calculated(5)
 		error = Message("610101210", "Die Steuernummer ist ungültig.", ERROR, "Steuernummer")
 		fake = FakeEric(outcome=Outcome.REJECTED, messages=(error,))
-		transmission, _, _ = self.transmitted(doc, "send", fake, self.stash())
+		transmission, _, _ = self.transmitted(doc, "send", fake, self.stash(doc))
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (0, "Bereit", 0))
 		self.assertEqual(
 			(transmission.status, transmission.outcome, transmission.transferticket),
@@ -394,7 +407,7 @@ class TestTransmission(TransmissionTestCase):
 		doc = self.calculated(12)
 		lost = Message("SB-WORKER", "ERiC hat nach 120 Sekunden nicht geantwortet.", ERROR)
 		fake = FakeEric(outcome=Outcome.UNKNOWN, messages=(lost, UNKNOWN_MESSAGE))
-		transmission, publish, _ = self.transmitted(doc, "send", fake, self.stash())
+		transmission, publish, _ = self.transmitted(doc, "send", fake, self.stash(doc))
 		self.assertEqual(
 			(transmission.status, transmission.outcome, transmission.transferticket),
 			("Unbekannt", "unknown", None),
@@ -405,12 +418,13 @@ class TestTransmission(TransmissionTestCase):
 			with self.assertRaisesRegex(
 				frappe.ValidationError, f"Whether {transmission.name} reached ELSTER"
 			):
-				doc.transmit("send", self.stash())
+				doc.transmit("send", self.stash(doc))
+			other = self.calculated(12)
 			with self.assertRaisesRegex(frappe.ValidationError, "transmitted already"):
-				self.calculated(12).transmit("send", self.stash())
+				other.transmit("send", self.stash(other))
 		enqueue.assert_not_called()
 		frappe.delete_doc(TRANSMISSION, transmission.name)
-		_, enqueue = self.transmit(doc, "send", self.stash())
+		_, enqueue = self.transmit(doc, "send", self.stash(doc))
 		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
 
 	def test_a_sent_return_that_could_not_be_submitted_is_never_sent_again(self):
@@ -418,7 +432,7 @@ class TestTransmission(TransmissionTestCase):
 		doc = self.calculated(6)
 		fake = FakeEric()
 		with patch.object(VATReturn, "before_submit", side_effect=frappe.ValidationError("Kaputt")):
-			transmission, _, _ = self.transmitted(doc, "send", fake, self.stash())
+			transmission, _, _ = self.transmitted(doc, "send", fake, self.stash(doc))
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (0, "Bereit", 0))
 		self.assertEqual((transmission.status, transmission.transferticket), ("Erfolgreich", TICKET))
 		self.assertEqual(transmission.messages[-1].severity, "error")
@@ -426,18 +440,19 @@ class TestTransmission(TransmissionTestCase):
 		self.assertIn("Kaputt", transmission.messages[-1].text)
 		with patch("frappe.enqueue") as enqueue:
 			with self.assertRaisesRegex(frappe.ValidationError, "transmitted already"):
-				doc.transmit("send", self.stash())
+				doc.transmit("send", self.stash(doc))
+			other = self.calculated(6)
 			with self.assertRaisesRegex(frappe.ValidationError, "transmitted already"):
-				self.calculated(6).transmit("send", self.stash())
+				other.transmit("send", self.stash(other))
 		enqueue.assert_not_called()
 
 	def test_a_corrected_return_replaces_the_return_sent_before(self):
 		self.use_runtime()
 		first = self.calculated(7)
 		fake = FakeEric()
-		self.transmitted(first, "send", fake, self.stash())
+		self.transmitted(first, "send", fake, self.stash(first))
 		correction = self.calculated(7, is_correction=1)
-		self.transmitted(correction, "send", fake, self.stash())
+		self.transmitted(correction, "send", fake, self.stash(correction))
 		first.reload()
 		self.assertEqual((first.status, correction.docstatus, correction.status), ("Ersetzt", 1, "Abgegeben"))
 		self.assertIn("<Kz10>1</Kz10>", fake.runs[1]["nutzdaten"])
@@ -477,13 +492,13 @@ class TestTransmission(TransmissionTestCase):
 	def test_a_send_whose_job_is_gone_has_an_unknown_outcome_and_is_not_repeated(self):
 		self.use_runtime()
 		doc = self.calculated(11)
-		first, _ = self.transmit(doc, "send", self.stash())
+		first, _ = self.transmit(doc, "send", self.stash(doc))
 		with (
 			patch(IS_JOB_ENQUEUED, return_value=False),
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaisesRegex(frappe.ValidationError, f"Whether {first} reached ELSTER"),
 		):
-			doc.transmit("send", self.stash())
+			doc.transmit("send", self.stash(doc))
 		enqueue.assert_not_called()
 		self.assertEqual(
 			frappe.db.get_value(TRANSMISSION, first, ["status", "outcome"]), ("Unbekannt", "unknown")
@@ -586,11 +601,15 @@ class TestTransmission(TransmissionTestCase):
 		self.assertFalse(frappe.db.exists(TRANSMISSION, transmission.name))
 
 	def test_stashing_keeps_certificate_and_password_behind_a_token(self):
+		doc = self.new_return(2)
 		encoded = base64.b64encode(CERTIFICATE).decode()
-		token = stash_certificate(encoded, PIN)
-		self.assertEqual(secrets.take(token), (CERTIFICATE, PIN))
+		token = stash_certificate(doc.doctype, doc.name, encoded, PIN)
+		secrets.hand_over(
+			token, "ELSTER-2026-99999", user=frappe.session.user, document=(doc.doctype, doc.name)
+		)
+		self.assertEqual(self.handed_over("ELSTER-2026-99999", doc), (CERTIFICATE, PIN))
 		with self.assertRaises(secrets.SecretsExpired):
-			secrets.take(token)
+			self.handed_over("ELSTER-2026-99999", doc)
 		for certificate, password, message in (
 			("", PIN, "certificate file"),
 			("kein base64!", PIN, "certificate file"),
@@ -602,7 +621,7 @@ class TestTransmission(TransmissionTestCase):
 				self.subTest(certificate=certificate[:8], password=len(password)),
 				self.assertRaisesRegex(frappe.ValidationError, message) as raised,
 			):
-				stash_certificate(certificate, password)
+				stash_certificate(doc.doctype, doc.name, certificate, password)
 			self.assertNotIn(password, str(raised.exception))
 
 	def test_the_form_learns_whether_eric_is_simulated(self):
@@ -691,7 +710,7 @@ class TestTransmission(TransmissionTestCase):
 			doc = self.new_return(1, company=STUB_COMPANY)
 			doc.calculate()
 			doc.reload()
-			test, _, _ = self.transmitted(doc, "test_send", token=self.stash())
+			test, _, _ = self.transmitted(doc, "test_send", token=self.stash(doc))
 			self.assertEqual(
 				(test.status, test.outcome, test.simulated, test.transferticket, test.testmerker),
 				("Erfolgreich", "accepted", 0, STUB_TICKET, "700000004"),
@@ -699,7 +718,7 @@ class TestTransmission(TransmissionTestCase):
 			self.assertEqual(test.eric_version, "44.3.6.0")
 			self.assertTrue((eric_log_root() / test.name).is_dir())
 			self.assertEqual((doc.docstatus, doc.status), (0, "Bereit"))
-			sent, _, _ = self.transmitted(doc, "send", token=self.stash())
+			sent, _, _ = self.transmitted(doc, "send", token=self.stash(doc))
 		self.assertEqual(
 			(sent.status, sent.outcome, sent.transferticket), ("Erfolgreich", "accepted", STUB_TICKET)
 		)
@@ -719,7 +738,7 @@ class TestTransmission(TransmissionTestCase):
 			doc.calculate()
 			doc.reload()
 			checked, _, _ = self.transmitted(doc, "validate")
-			sent, _, _ = self.transmitted(doc, "test_send", token=self.stash())
+			sent, _, _ = self.transmitted(doc, "test_send", token=self.stash(doc))
 		start.assert_not_called()
 		for transmission in (checked, sent):
 			with self.subTest(operation=transmission.operation):
@@ -741,7 +760,7 @@ class TestFilingState(TransmissionTestCase):
 		first.mark_filed_outside(NOTE)
 		with patch("frappe.enqueue") as enqueue:
 			with self.assertRaisesRegex(frappe.ValidationError, "filed already as"):
-				second.transmit("send", self.stash())
+				second.transmit("send", self.stash(second))
 			second.transmit("validate")
 		self.assertEqual(enqueue.call_count, 1)
 
@@ -757,7 +776,7 @@ class TestFilingState(TransmissionTestCase):
 		outside.mark_filed_outside(NOTE)
 		self.use_runtime()
 		sent = self.calculated(4)
-		self.transmitted(sent, "send", FakeEric(), self.stash())
+		self.transmitted(sent, "send", FakeEric(), self.stash(sent))
 		for doc in (outside, sent):
 			doc.reload()
 			with (
@@ -770,14 +789,15 @@ class TestFilingState(TransmissionTestCase):
 	def test_a_cancelled_return_that_was_sent_still_stops_senden_without_kz10(self):
 		self.use_runtime()
 		sent = self.calculated(5)
-		self.transmitted(sent, "send", FakeEric(), self.stash())
+		self.transmitted(sent, "send", FakeEric(), self.stash(sent))
 		# A return cancelled before a filed return could no longer be cancelled.
 		frappe.db.set_value("VAT Return", sent.name, "docstatus", 2)
 		draft = self.calculated(5)
 		with patch("frappe.enqueue") as enqueue:
 			with self.assertRaisesRegex(frappe.ValidationError, "transmitted already as"):
-				draft.transmit("send", self.stash())
-			self.calculated(5, is_correction=1).transmit("send", self.stash())
+				draft.transmit("send", self.stash(draft))
+			correction = self.calculated(5, is_correction=1)
+			correction.transmit("send", self.stash(correction))
 		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
 
 	def test_buchen_alone_files_no_return(self):
@@ -790,7 +810,7 @@ class TestFilingState(TransmissionTestCase):
 		self.use_runtime()
 		doc = self.calculated(7)
 		with patch.object(VATReturn, "before_submit", side_effect=frappe.ValidationError("Kaputt")):
-			transmission, _, _ = self.transmitted(doc, "send", FakeEric(), self.stash())
+			transmission, _, _ = self.transmitted(doc, "send", FakeEric(), self.stash(doc))
 		self.assertEqual((transmission.status, doc.docstatus), ("Erfolgreich", 0))
 		doc.run_method("onload")
 		self.assertTrue(doc.get_onload("elster")["sent"])
@@ -839,8 +859,7 @@ class TestFilingState(TransmissionTestCase):
 	def test_the_form_releases_a_lock_whose_job_is_gone(self):
 		self.use_runtime()
 		doc = self.calculated(10)
-		token = self.stash()
-		name, job = self.transmit(doc, "send", token)
+		name, job = self.transmit(doc, "send", self.stash(doc))
 		doc.reload()
 		with patch(IS_JOB_ENQUEUED, return_value=True) as enqueued:
 			doc.run_method("onload")
@@ -863,7 +882,7 @@ class TestFilingState(TransmissionTestCase):
 		self.run_job(job, fake)
 		self.assertEqual(fake.runs, [])
 		with self.assertRaises(secrets.SecretsExpired):
-			secrets.take(token)
+			self.handed_over(name, doc)
 
 	def test_a_job_whose_transmission_was_closed_does_nothing(self):
 		doc = self.calculated(11)

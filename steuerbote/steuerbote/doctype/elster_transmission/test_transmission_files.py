@@ -59,7 +59,9 @@ class SharedScriptTest(TestCase):
 		)
 		parameters = [argument.arg for argument in stash.args.args]
 		(arguments,) = re.findall(r"method: STASH_CERTIFICATE,\s*args: \{([^}]*)\}", self.script)
-		self.assertEqual([name.split(":")[0].strip() for name in arguments.split(",")], parameters)
+		self.assertEqual(
+			[name.split(":")[0].strip() for name in arguments.split(",") if name.strip()], parameters
+		)
 		for name in parameters:
 			if name not in DOCUMENT_ARGUMENTS:
 				with self.subTest(name=name):

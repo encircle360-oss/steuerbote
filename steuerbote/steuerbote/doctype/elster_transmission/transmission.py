@@ -8,8 +8,10 @@ of the document, hands them to steuerbote.eric, through the worker of an install
 records the result. While it runs, the document is locked and cannot change, so that the job files exactly what it
 sent. Only a Senden that ELSTER accepted files the document: the job submits it with flags.filing_transmission set.
 A run whose job is gone is closed by the form or by the next run, a check as failed, a test send or send as
-unknown, since it may have reached ELSTER. Certificate and password never become arguments of the job:
-stash_certificate keeps them encrypted for a few minutes, and the job takes them back once by their token.
+unknown, since it may have reached ELSTER. Certificate and password never become arguments of the job, nor does
+anything that unlocks them: stash_certificate keeps them encrypted for a few minutes, for the user who entered them
+and the document they entered them for, transmit hands them over to the transmission it starts for that user and
+document, and the job takes them by the name of its transmission, once.
 
 A document that transmits has the fields company, year and transmission_in_progress and provides datenart(), the
 Datenart it goes as (steuerbote.eric.datenart); nutzdaten(hersteller_id), the Nutzdaten for ERiC;
@@ -19,11 +21,11 @@ which files the document once.
 
 import base64
 import binascii
-import contextlib
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.rate_limiter import rate_limit
 from frappe.recorder import do_not_record
 from frappe.utils import cint, escape_html, now_datetime, strip_html
 from frappe.utils.background_jobs import is_job_enqueued
@@ -64,7 +66,11 @@ NUTZDATEN_TICKET = "1"
 SIMULATION_HERSTELLER_ID = "00000"
 DEFAULT_PRODUKT_NAME = "steuerbote"
 # The .pfx file of an ELSTER certificate has a few kilobytes.
-MAX_CERTIFICATE_BYTES = 64 * 1024
+MAX_CERTIFICATE_BYTES = 32 * 1024
+MAX_ENCODED_CERTIFICATE = 4 * -(-MAX_CERTIFICATE_BYTES // 3)
+# Each stash stays in the Redis cache for up to its 15 minutes, which evicts what it cannot hold.
+STASH_LIMIT = 10
+STASH_SECONDS = secrets.TTL_SECONDS
 
 
 class Transmittable:
@@ -85,8 +91,9 @@ class Transmittable:
 	def transmit(self, operation: str, token: str | None = None) -> str:
 		"""Prüfen, Testsenden or Senden: check that the document can go, then run it in a background job.
 
-		Certificate and password reach the job only as ``token`` from stash_certificate(), never as arguments
-		of the job. Returns the name of the ELSTER Transmission that records the run.
+		Testsenden and Senden take certificate and password as ``token`` from stash_certificate(), which this
+		request hands over to its transmission; the job is given the transmission only. Returns the name of the
+		ELSTER Transmission that records the run.
 		"""
 		if operation not in OPERATIONS:
 			frappe.throw(_("Steuerbote knows no ELSTER procedure {0}.").format(escape_html(str(operation))))
@@ -109,6 +116,8 @@ class Transmittable:
 		if operation != VALIDATE and not simulation and not token:
 			frappe.throw(_("Choose the certificate file and enter its password."))
 		transmission = self.new_transmission(operation, simulated=simulation)
+		if operation != VALIDATE and not simulation:
+			self.hand_over_certificate(token, transmission.name)
 		self.db_set(LOCK_FIELD, 1)
 		frappe.enqueue(
 			TRANSMISSION_JOB,
@@ -118,10 +127,25 @@ class Transmittable:
 			enqueue_after_commit=True,
 			name=self.name,
 			operation=operation,
-			token=token,
 			transmission=transmission.name,
 		)
 		return transmission.name
+
+	def hand_over_certificate(self, token: str, transmission: str) -> None:
+		"""Give the certificate that the user entered for this document to the transmission, under whose name its
+		job alone takes it."""
+		try:
+			secrets.hand_over(
+				token, transmission, user=frappe.session.user, document=(self.doctype, self.name)
+			)
+		except secrets.SecretsMismatch:
+			frappe.throw(
+				_(
+					"The certificate was entered for another document or by another user. Enter it again for {0}."
+				).format(self.name)
+			)
+		except secrets.SecretsExpired:
+			certificate_gone()
 
 	@frappe.whitelist(methods=["POST"])
 	def release_stale_transmission(self) -> None:
@@ -282,8 +306,9 @@ def transmission_job_id(transmission: str) -> str:
 
 
 def close_stale_transmission(transmission: Document) -> None:
-	"""Close a run whose job is gone. A check never left the server, a test send or a send may have
-	reached ELSTER, so its outcome is unknown."""
+	"""Close a run whose job is gone, and drop the certificate it was handed. A check never left the server, a
+	test send or a send may have reached ELSTER, so its outcome is unknown."""
+	secrets.discard(transmission.name)
 	transferred = transmission.operation in (TEST_SEND, SEND) and not cint(transmission.simulated)
 	outcome = Outcome.UNKNOWN if transferred else Outcome.FAILED
 	transmission.update(
@@ -326,10 +351,14 @@ def record(transmission: Document) -> None:
 @frappe.whitelist(methods=["POST"])
 @do_not_record
 def stash_certificate(
-	password_protected_certificate: str | None = None, certificate_password: str | None = None
+	document_type: str | None = None,
+	document: str | None = None,
+	password_protected_certificate: str | None = None,
+	certificate_password: str | None = None,
 ) -> str:
-	"""Keep the certificate (.pfx, base64) and its password for the next transmission in the one-shot store
-	of steuerbote.eric.secrets; returns the token that transmit() takes in their place.
+	"""Keep the certificate (.pfx, base64) and its password for the next transmission of the document in the
+	one-shot store of steuerbote.eric.secrets; returns the token that transmit() of the document takes in their
+	place, for this user only. Each user stashes at most STASH_LIMIT times in STASH_SECONDS.
 
 	Neither may escape the store on the way. The Recorder of the Administrator keeps the form of every request it
 	records, so this one is never recorded. Sentry receives the raw form with an error it reports, and the dialog
@@ -339,7 +368,7 @@ def stash_certificate(
 	and that dialog.
 	"""
 	try:
-		token = _stash(password_protected_certificate, certificate_password)
+		token = _stash(document_type, document, password_protected_certificate, certificate_password)
 	except frappe.ValidationError, frappe.PermissionError:
 		raise
 	except Exception:
@@ -349,14 +378,32 @@ def stash_certificate(
 	return token
 
 
-def _stash(password_protected_certificate: str | None, certificate_password: str | None) -> str:
-	if not any(frappe.has_permission(doctype, "write") for doctype in DOCUMENT_TYPES):
+@rate_limit(limit=STASH_LIMIT, seconds=STASH_SECONDS, ip_based=False, user_based=True)
+def _stash(
+	document_type: str | None,
+	document: str | None,
+	password_protected_certificate: str | None,
+	certificate_password: str | None,
+) -> str:
+	if document_type not in DOCUMENT_TYPES or not document:
+		frappe.throw(
+			_("Steuerbote transmits no document of type {0} to ELSTER.").format(_(document_type or ""))
+		)
+	if not frappe.has_permission(document_type, "write", doc=document):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
+	if len(password_protected_certificate or "") > MAX_ENCODED_CERTIFICATE:
+		frappe.throw(
+			_("Steuerbote takes certificate files of at most {0} KiB.").format(MAX_CERTIFICATE_BYTES >> 10)
+		)
 	try:
 		decoded_secret = base64.b64decode(password_protected_certificate or "", validate=True)
 	except binascii.Error, ValueError:
 		decoded_secret = b""
-	if not decoded_secret or len(decoded_secret) > MAX_CERTIFICATE_BYTES:
+	if len(decoded_secret) > MAX_CERTIFICATE_BYTES:
+		frappe.throw(
+			_("Steuerbote takes certificate files of at most {0} KiB.").format(MAX_CERTIFICATE_BYTES >> 10)
+		)
+	if not decoded_secret:
 		frappe.throw(_("The certificate file could not be read. Choose the .pfx file of the ELSTER account."))
 	if not PIN.fullmatch(certificate_password or ""):
 		frappe.throw(
@@ -364,10 +411,12 @@ def _stash(password_protected_certificate: str | None, certificate_password: str
 				"The certificate password has 6 to 128 characters: letters, digits, spaces and punctuation, without umlauts."
 			)
 		)
-	return secrets.stash(decoded_secret, certificate_password)
+	return secrets.stash(
+		decoded_secret, certificate_password, user=frappe.session.user, document=(document_type, document)
+	)
 
 
-def run_transmission(name: str, operation: str, transmission: str, token: str | None = None) -> None:
+def run_transmission(name: str, operation: str, transmission: str) -> None:
 	"""Background job of Transmittable.transmit: one run through ERiC or its simulation.
 
 	Whatever happens ends in the ELSTER Transmission, the lock of the document is released and the user who
@@ -377,15 +426,13 @@ def run_transmission(name: str, operation: str, transmission: str, token: str | 
 	"""
 	transmission = frappe.get_doc(TRANSMISSION, transmission)
 	if transmission.status != RUNNING:
-		_discard_certificate(token)
+		secrets.discard(transmission.name)
 		return
 	doctype = transmission.document_type
 	result = None
 	frappe.db.savepoint("elster_transmission")
 	try:
-		result, nutzdaten = _call_eric(
-			frappe.get_doc(doctype, name), Operation(operation), token, transmission
-		)
+		result, nutzdaten = _call_eric(frappe.get_doc(doctype, name), Operation(operation), transmission)
 		_record_result(transmission, result, nutzdaten)
 		if _files_the_document(result):
 			_file_sent_document(doctype, name, transmission)
@@ -409,12 +456,12 @@ def run_transmission(name: str, operation: str, transmission: str, token: str | 
 	)
 
 
-def _call_eric(doc: Document, operation: Operation, token: str | None, transmission: Document):
+def _call_eric(doc: Document, operation: Operation, transmission: Document):
 	settings = frappe.get_single(ERIC_SETTINGS)
 	simulation = bool(cint(settings.simulation))
 	if not simulation:
 		require_privacy_notice(settings)
-	certificate_secret, certificate_password = _take_certificate(token)
+	certificate_secret, certificate_password = _take_certificate(doc, transmission)
 	header = envelope_header(doc, settings, operation, simulation)
 	nutzdaten = doc.nutzdaten(header.hersteller_id)
 	runtime_info = (
@@ -463,23 +510,15 @@ def finanzamt_of(company: str) -> str:
 	return elster_tax_number[:4]
 
 
-def _take_certificate(token: str | None) -> tuple[bytes | None, str | None]:
-	if not token:
+def _take_certificate(doc: Document, transmission: Document) -> tuple[bytes | None, str | None]:
+	"""What transmit handed over to a Testsenden or Senden outside the simulation, for the user who started it and
+	for this document."""
+	if transmission.operation == VALIDATE or cint(transmission.simulated):
 		return None, None
 	try:
-		return secrets.take(token)
+		return secrets.take(transmission.name, user=transmission.user, document=(doc.doctype, doc.name))
 	except secrets.SecretsExpired:
-		frappe.throw(
-			_(
-				"The certificate and its password are no longer available. Start the transmission again and enter them anew."
-			)
-		)
-
-
-def _discard_certificate(token: str | None) -> None:
-	if token:
-		with contextlib.suppress(secrets.SecretsExpired):
-			secrets.take(token)
+		certificate_gone()
 
 
 def _installed_runtime(doc: Document, operation: Operation, hersteller_id: str, transmission: Document):
@@ -508,6 +547,14 @@ def _installed_runtime(doc: Document, operation: Operation, hersteller_id: str, 
 			).format(kind.year)
 		)
 	return runtime_info
+
+
+def certificate_gone() -> None:
+	frappe.throw(
+		_(
+			"The certificate and its password are no longer available. Start the transmission again and enter them anew."
+		)
+	)
 
 
 def _status(result) -> str:
