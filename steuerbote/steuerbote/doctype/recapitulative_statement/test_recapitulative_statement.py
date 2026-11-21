@@ -212,6 +212,11 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 	def line(self, doc, vat_id: str):
 		return next(row for row in doc.lines if row.vat_id == vat_id)
 
+	def roll_back_afterwards(self) -> None:
+		"""Undo what the test files, so that its Meldezeitraum stays open for the tests after it."""
+		frappe.db.savepoint("recapitulative_statement_test")
+		self.addCleanup(frappe.db.rollback, save_point="recapitulative_statement_test")
+
 	def confirm(self, doc, service: FakeBzst):
 		"""USt-IdNrn. prüfen, with the job run at once against the fake transport."""
 		with patch("frappe.enqueue") as enqueue:
@@ -863,6 +868,18 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "cannot be cancelled"):
 			doc.cancel()
 		self.assertTrue(doc.make_csv_file())
+
+	def test_the_status_of_a_filed_statement_stays_as_filed(self):
+		"""Whether a Meldezeitraum is filed, and what a Berichtigung corrects, follow the status of its statements:
+		once submitted, only the filing of a Berichtigung replaces a statement."""
+		self.roll_back_afterwards()
+		doc = self.calculated(3, remarks="Die USt-IdNrn. sind am Liefertag bestätigt worden.")
+		doc.mark_filed_outside(filed_via="mein_elster")
+		doc.reload()
+		doc.status = "Ersetzt"
+		with self.assertRaises(frappe.UpdateAfterSubmitError):
+			doc.save()
+		self.assertEqual(frappe.db.get_value(DOCTYPE, doc.name, "status"), "Abgegeben")
 
 	def test_a_number_valid_all_through_the_months_counts_for_them_and_a_finding_says_how_old_it_is(self):
 		"""The BZSt answers for the moment of the query. A number that lost its validity after the months of the
