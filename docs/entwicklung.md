@@ -61,7 +61,7 @@ steuerbote/                    Repository
 │   ├── fixtures/              Feld „Nicht in der Umsatzsteuer-Voranmeldung“ an der Journalbuchung und Standard-Druckformate der Belege
 │   ├── public/                Logo (images/), Symbol der Leiste (icons/) und die Übermittlung, die die Formulare einbinden (js/elster_transmission.js)
 │   ├── translations/          deutsche Übersetzungen der Oberfläche (de.csv)
-│   ├── tests/                 Frappe-Integrationstests und Hilfen für Testdaten und Übermittlungen
+│   ├── tests/                 Frappe-Integrationstests und Hilfen für Testdaten und Übermittlungen, unter e2e/ die Browsertests mit ihren Testdaten
 │   ├── patches/               Patches, die bench migrate ausführt (patches.txt)
 │   └── config/, templates/    Standardverzeichnisse einer Frappe-App, noch leer
 ├── docs/                      Dokumentation
@@ -100,7 +100,7 @@ Du brauchst Python 3.14 und eine Bench mit Frappe und ERPNext 16, dazu eine Site
    pre-commit install
    ```
 
-   `requirements-dev.txt` bringt coverage, lxml, pre-commit, pytest, pytest-cov, ruff und zizmor in festen Versionen. `pre-commit install` richtet die Hooks aus `.pre-commit-config.yaml` ein. Der Hook `no-commit-to-branch` verhindert Commits direkt auf `main`.
+   `requirements-dev.txt` bringt coverage, lxml, playwright, pre-commit, pytest, pytest-cov, ruff und zizmor in festen Versionen. `pre-commit install` richtet die Hooks aus `.pre-commit-config.yaml` ein. Der Hook `no-commit-to-branch` verhindert Commits direkt auf `main`.
 
 ## Tests
 
@@ -139,6 +139,30 @@ Die Tests schreiben in die Datenbank der Site. Nimm dafür eine eigene Testsite,
 
 Der Frappe-Runner durchsucht die ganze App nach Dateien `test_*.py`. Die Tests des Kerns sind `unittest.TestCase`-Klassen, deshalb laufen sie bei `run-tests` ebenfalls mit. Die Frappe-Tests unter `steuerbote/tests` erben von `IntegrationTestCase` aus `frappe.tests`.
 
+### Browsertests
+
+Die Browsertests unter `steuerbote/tests/e2e` bedienen eine laufende Site mit Playwright und Chromium wie ein Mensch am Bildschirm: die Anmeldung, den Eintrag „Steuern“ in der Leiste von ERPNext und den Arbeitsbereich mit seinen Verknüpfungen, jede Liste der Seitenleiste, neue Belege, die Umsatzsteuer-Voranmeldung (Berechnen, das Menü ELSTER bis zum Dialog für Zertifikat und Passwort, „XML für Mein ELSTER“, Druckvorschau), die Zusammenfassende Meldung (Berechnen, „CSV für Mein ELSTER“), die Dauerfristverlängerung, Einstellungen, Kontenzuordnung mit „Vorgaben laden“ und ERiC-Einstellungen, die Berichte „UStVA Kennzahlen“ und „Offene Fristen“ und die Sicht eines Benutzers, der nur die Rolle Accounts User hat. Ein Test schlägt fehl, sobald eine seiner Seiten einen JavaScript-Fehler, einen Fehler auf der Konsole oder eine Antwort des Servers mit Status 500 oder mehr sieht; Antworten mit 4xx sind Ablehnungen des Servers, die die Tests an dem messen, was die Oberfläche daraus macht. Ein fehlgeschlagener Test legt Bildschirmfotos seiner Seiten unter `test-results/` ab.
+
+Die Testdaten legt `steuerbote/tests/e2e/seed.py` mit den Hilfen der Frappe-Tests an, alle erfunden: ein Unternehmen mit SKR03-Konten, Einstellungen und der Kontenzuordnung aus „Vorgaben laden“, drei Rechnungen im Oktober 2026 (Inland 19 %, sonstige Leistung an einen Kunden in Österreich mit USt-IdNr., eine Leistung nach § 13b UStG), eine USt-IdNr.-Bestätigung, eine in Mein ELSTER abgegebene Voranmeldung für September, berechnete Voranmeldung und Zusammenfassende Meldung für Oktober, eine Dauerfristverlängerung, ERiC-Einstellungen im Simulationsmodus und den Benutzer `steuerbote-e2e-buchhaltung@example.com` mit der Rolle Accounts User. Ein zweiter Lauf legt nichts doppelt an. Außerdem schließt der Seed den Einrichtungsassistenten ab und stellt die Sprache des Administrators und des Benutzers auf Deutsch. Nimm dafür eine eigene Testsite, nie eine Site mit echten Daten.
+
+Lokal, gegen eine Bench mit einer Testsite:
+
+```bash
+# in der Bench
+bench --site <site> execute steuerbote.tests.e2e.seed.run
+bench build --app frappe   # nur nötig, wenn die Bench mit --skip-assets angelegt wurde
+bench use <site>
+bench start
+
+# im Checkout, mit den Werkzeugen aus requirements-dev.txt
+playwright install chromium
+pytest steuerbote/tests/e2e --base-url http://localhost:8000 --admin-password <Passwort des Administrators>
+```
+
+`bench start` startet neben dem Webserver auch socket.io, mit dem die Seiten sich verbinden; `bench use` macht die Testsite zur Site von `localhost`. Ohne `--admin-password` melden sich die Tests mit `admin` an, dem Passwort der Testsite in der CI. Das Passwort des Benutzers mit der Rolle Accounts User setzt jeder Lauf neu über den Administrator, der Seed vergibt keines. `--headed` zeigt den Browser, `--output` nennt ein anderes Verzeichnis für die Bildschirmfotos. Der ganze Lauf dauert etwa eine Minute.
+
+Die Testmodule importieren weder pytest noch Playwright: `bench run-tests` importiert jede Datei `test_*.py` der App, in der Umgebung der Bench, die beides nicht hat. Was die Tests brauchen, auch `expect` von Playwright, geben ihnen die Fixtures in `conftest.py`; `desk.py` hält die Schritte auf den Seiten des Desks.
+
 ## Testgetrieben arbeiten
 
 1. **Rot:** Schreib zuerst einen Test, der ohne die Änderung fehlschlägt, und sieh ihn fehlschlagen.
@@ -171,7 +195,7 @@ Alle drei Workflows laufen bei Pull Requests, bei Pushes auf `main` und von Hand
 | Workflow | Job | Was er tut |
 |---|---|---|
 | Tests | Core (without bench) | lädt die ERiC-Dokumentation 44.3.6.0 und prüft ihre SHA-256-Summe, dann pytest mit Abdeckung und Schematests auf Python 3.14, unter 100 % rot; legt `coverage.xml` als Artefakt ab. |
-| Tests | Frappe site (ERPNext v16) | baut eine Bench mit Frappe und ERPNext `version-16`, MariaDB 11.8 und Redis als Dienste, installiert ERPNext und Steuerbote auf einer Testsite, lädt die ERiC-Dokumentation für die Schematests und führt `bench run-tests --app steuerbote` aus. |
+| Tests | Frappe site (ERPNext v16) | baut eine Bench mit Frappe und ERPNext `version-16`, MariaDB 11.8 und Redis als Dienste, installiert ERPNext und Steuerbote auf einer Testsite, lädt die ERiC-Dokumentation für die Schematests und führt `bench run-tests --app steuerbote` aus. Danach baut er die Assets von Frappe, füllt die Testsite mit dem Seed der Browsertests, startet Webserver und socket.io und lässt die Browsertests mit Chromium laufen; schlägt einer fehl, liegen Bildschirmfotos und die Protokolle des Servers im Artefakt `browser-tests`. |
 | Linters | pre-commit | alle Hooks auf allen Dateien, ohne `no-commit-to-branch`. |
 | Linters | Frappe semgrep rules | semgrep mit den Regeln aus `frappe/semgrep-rules` und `r/python.lang.correctness`; jeder Fund macht den Job rot. |
 | Security | Secret scan (gitleaks) | durchsucht die ganze Git-Historie nach Geheimnissen; gitleaks wird mit Prüfsumme geladen. |
@@ -185,7 +209,7 @@ Bei Tests bricht ein neuer Lauf für denselben Pull Request oder Branch den lauf
 
 - **Frappe und ERPNext:** nur die aktuelle Hauptversion, derzeit 16. `pyproject.toml` verlangt `>=16.0.0,<17.0.0` (`[tool.bench.frappe-dependencies]`), `hooks.py` setzt ERPNext voraus, und die CI baut gegen `version-16`. Frappe und ERPNext installiert bench; sie stehen nicht in den Abhängigkeiten des Pakets. Ältere Hauptversionen werden nicht unterstützt, es gibt keine Kompatibilitätsschichten.
 - **Python:** 3.14, in `requires-python`, als `target-version` von ruff und in der CI.
-- **Entwicklungswerkzeuge** sind in `requirements-dev.txt` exakt gepinnt, die pre-commit-Hooks über `rev`, semgrep, gitleaks und zizmor in den Workflows. Einige Versionen stehen an mehreren Stellen: ruff in `requirements-dev.txt` und `.pre-commit-config.yaml`, zizmor zusätzlich in `security.yml`. Ein Update zieht alle Stellen gleich.
+- **Entwicklungswerkzeuge** sind in `requirements-dev.txt` exakt gepinnt, die pre-commit-Hooks über `rev`, semgrep, gitleaks und zizmor in den Workflows. Einige Versionen stehen an mehreren Stellen: ruff in `requirements-dev.txt` und `.pre-commit-config.yaml`, zizmor zusätzlich in `security.yml`. Ein Update zieht alle Stellen gleich. Playwright lädt mit `playwright install` die Version von Chromium, zu der es gehört.
 - **lxml** baut das XML für ELSTER. Frappe 16 bringt es selbst mit, ohne eine Version festzulegen. `pyproject.toml` verlangt deshalb nur `lxml>=6.0,<7`, damit die App neben Frappe kein anderes lxml erzwingt, und `requirements-dev.txt` pinnt die Version, mit der die Tests laufen.
 - **ERiC-Dokumentation** für die Schematests und die Jahresprüfung: Adresse und SHA-256-Summe der Zip-Datei stehen in `tests.yml`, die Version zusätzlich in `steuerbote/elster/tests/eric_schema.py`. Zum Jahreswechsel kommt eine Version, die das neue Jahr kennt, siehe [Jahreswechsel](#jahreswechsel).
 - **Neue Abhängigkeiten** nur mit Grund, exakt gepinnt und im Pull Request begründet.

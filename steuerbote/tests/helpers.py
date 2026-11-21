@@ -99,7 +99,7 @@ def post_journal_entry(
 	``exclude`` sets the flag that leaves the entry out of the Umsatzsteuer-Voranmeldung; ``fields`` go to
 	the entry itself, such as ``voucher_type="Opening Entry"``.
 	"""
-	_ensure_fiscal_year(company, posting_date)
+	ensure_fiscal_year(company, posting_date)
 	cost_center = frappe.db.get_value("Company", company, "cost_center")
 	entry = frappe.get_doc(
 		{
@@ -182,7 +182,8 @@ def make_mapping(company: str, chart: str = "SKR03") -> Document:
 	return mapping.insert(ignore_permissions=True)
 
 
-def _ensure_fiscal_year(company: str, posting_date: date | str) -> None:
+def ensure_fiscal_year(company: str, posting_date: date | str) -> None:
+	"""A Fiscal Year for the year of the date, unless one of the company covers it."""
 	if get_fiscal_year(posting_date, company=company, raise_on_missing=False):
 		return
 	year = getdate(posting_date).year
