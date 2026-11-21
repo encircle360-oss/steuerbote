@@ -654,15 +654,31 @@ static int check_combination(uint32_t flags, const struct print_parameters *prin
 	return GLOBAL_UNGUELTIGER_PARAMETER;
 }
 
+/* The plugin of a datenartVersion, as the Datenartversionmatrix names it: checkUStVA_<Jahr> for UStVA_<Jahr> and
+ * checkZMDO for ZMDO. Returns 0 for any other datenartVersion. */
+static int plugin_of(const char *datenartVersion, char *library, size_t size)
+{
+	if (strcmp(datenartVersion, "ZMDO") == 0) {
+		snprintf(library, size, "libcheckZMDO.so");
+		return 1;
+	}
+	if (strncmp(datenartVersion, "UStVA_", 6) != 0 || strlen(datenartVersion) != 10 || !is_digits(datenartVersion + 6))
+		return 0;
+	snprintf(library, size, "libcheckUStVA_%s.so", datenartVersion + 6);
+	return 1;
+}
+
 static int plugin_exists(const char *datenartVersion)
 {
 	const char *plugin_path = recorded("plugin_path");
-	const char *year = datenartVersion + strlen("UStVA_");
+	char library[64];
 	char path[4096];
-	snprintf(path, sizeof path, "%s/plugins2/libcheckUStVA_%s.so", plugin_path, year);
+	if (!plugin_of(datenartVersion, library, sizeof library))
+		return 0;
+	snprintf(path, sizeof path, "%s/plugins2/%s", plugin_path, library);
 	if (access(path, R_OK) == 0)
 		return 1;
-	snprintf(path, sizeof path, "%s/plugins/libcheckUStVA_%s.so", plugin_path, year);
+	snprintf(path, sizeof path, "%s/plugins/%s", plugin_path, library);
 	return access(path, R_OK) == 0;
 }
 
@@ -734,8 +750,7 @@ EXPORT int EricBearbeiteVorgang(const char *datenpuffer, const char *datenartVer
 	}
 	if (strncmp(datenpuffer, "\xef\xbb\xbf", 3) == 0 || contains(datenpuffer, "encoding=\"ISO-8859-15\""))
 		return IO_READER_FALSCHES_ENCODING;
-	if (strncmp(datenartVersion, "UStVA_", 6) != 0 || strlen(datenartVersion) != 10 ||
-	    !is_digits(datenartVersion + 6) || !plugin_exists(datenartVersion))
+	if (!plugin_exists(datenartVersion))
 		return GLOBAL_DATENARTVERSION_UNBEKANNT;
 	if (!contains(datenpuffer, "<TransferHeader version=\"11\">") || !contains(datenpuffer, "<Nutzdaten>"))
 		return IO_PARSE_FEHLER;

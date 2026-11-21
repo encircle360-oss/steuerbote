@@ -27,6 +27,7 @@
   "deadline",
   "status",
   "confirmation_in_progress",
+  "transmission_in_progress",
   "amended_from",
   "lines_section",
   "lines",
@@ -218,6 +219,16 @@
    "read_only": 1
   },
   {
+   "default": "0",
+   "description": "Set while Prüfen, Testsenden or Senden runs; the statement cannot change until it ends.",
+   "fieldname": "transmission_in_progress",
+   "fieldtype": "Check",
+   "label": "Transmission Running",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
    "fieldname": "amended_from",
    "fieldtype": "Link",
    "ignore_user_permissions": 1,
@@ -343,7 +354,7 @@
    "fieldtype": "Select",
    "label": "Filed Via",
    "no_copy": 1,
-   "options": "\nmein_elster\nother_way",
+   "options": "\nmein_elster\nother_way\neric",
    "read_only": 1
   },
   {
@@ -393,7 +404,7 @@
    "link_fieldname": "recapitulative_statement"
   }
  ],
- "modified": "2026-11-20 20:00:00.000000",
+ "modified": "2026-11-21 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Recapitulative Statement",

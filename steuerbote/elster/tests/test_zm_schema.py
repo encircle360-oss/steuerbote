@@ -17,6 +17,7 @@ from steuerbote.elster.tests import eric_schema
 from steuerbote.elster.tests.zm_examples import AUSTRIA, CREATED, LINES, line, nutzdaten, unternehmer, zm
 from steuerbote.elster.ustva_xml import XmlError
 from steuerbote.elster.zm_xml import NAMESPACE, Meldeart, Unternehmer, Zm, to_nutzdaten
+from steuerbote.eric.datenart import ZMDO
 from steuerbote.vatid.ustid import GERMAN
 from steuerbote.zm.lines import Art, Meldezeile
 from steuerbote.zm.period import ReportingPeriod
@@ -38,9 +39,9 @@ def envelope(nutzdaten_xml: str, testmerker: bool) -> bytes:
 
 	root = etree.Element(Z + "Elster", nsmap={None: NAMESPACE})
 	header = append(root, "TransferHeader", version="11")
-	append(header, "Verfahren", zm_xml.VERFAHREN)
-	append(header, "DatenArt", zm_xml.DATENART)
-	append(header, "Vorgang", zm_xml.VORGANG)
+	append(header, "Verfahren", ZMDO.verfahren)
+	append(header, "DatenArt", ZMDO.name)
+	append(header, "Vorgang", ZMDO.vorgang)
 	if testmerker:
 		append(header, "Testmerker", TESTMERKER)
 	append(header, "HerstellerID", "12345")
@@ -51,7 +52,7 @@ def envelope(nutzdaten_xml: str, testmerker: bool) -> bytes:
 	block = append(append(root, "DatenTeil"), "Nutzdatenblock")
 	nutzdaten_header = append(block, "NutzdatenHeader", version="11")
 	append(nutzdaten_header, "NutzdatenTicket", "1")
-	append(nutzdaten_header, "Empfaenger", zm_xml.EMPFAENGER, id=zm_xml.EMPFAENGER_ID)
+	append(nutzdaten_header, "Empfaenger", ZMDO.recipient, id=ZMDO.recipient_id)
 	hersteller = append(nutzdaten_header, "Hersteller")
 	append(hersteller, "ProduktName", "steuerbote")
 	append(hersteller, "ProduktVersion", "0.2.0")
@@ -202,16 +203,6 @@ class EnvelopeSchemaTest(SchemaTestCase):
 			with self.subTest(testmerker=testmerker):
 				self.assert_valid(self.schema, envelope(nutzdaten(), testmerker))
 
-	def test_the_example_is_sent_as_zm_xml_names_it(self):
-		root = etree.fromstring(eric_schema.zm_example())
-		header = root.find(Z + "TransferHeader")
-		self.assertEqual(
-			[header.findtext(Z + name) for name in ("Verfahren", "DatenArt", "Vorgang")],
-			[zm_xml.VERFAHREN, zm_xml.DATENART, zm_xml.VORGANG],
-		)
-		(recipient,) = root.iter(Z + "Empfaenger")
-		self.assertEqual((recipient.get("id"), recipient.text), (zm_xml.EMPFAENGER_ID, zm_xml.EMPFAENGER))
-
 	def test_writes_the_example_of_the_documentation_byte_for_byte(self):
 		"""Every field of the example is one zm_xml.py writes, so the Nutzdaten of its own values are its element zm
 		byte for byte, without the indentation of the envelope and with a line feed for each CR LF."""
@@ -313,7 +304,7 @@ class SchemaStructureTest(TestCase):
 
 
 class JahresdokumentationTest(TestCase):
-	"""The facts of Jahresdokumentation_ZMDO_2.ods and Datenartversionmatrix.ods that zm_xml.py writes down."""
+	"""The facts of Jahresdokumentation_ZMDO_2.ods that zm_xml.py writes down."""
 
 	@classmethod
 	def setUpClass(cls) -> None:
@@ -366,22 +357,6 @@ class JahresdokumentationTest(TestCase):
 					self.accepts(phone=f"1{character}"),
 					re.fullmatch(self.pattern("telefon"), f"1{character}") is not None,
 				)
-
-	def test_the_recipient_is_bf(self):
-		self.assertEqual(self.pattern("EmpfaengerTyp"), rf"\Q{zm_xml.EMPFAENGER_ID}\E")
-		self.assertIn(rf"\Q{zm_xml.EMPFAENGER}\E", self.pattern("EmpfaengerName").split("|"))
-
-	def test_zmdo_is_elster_extern_with_the_plugin_check_zmdo(self):
-		(row,) = (row for row in eric_schema.datenart_versions() if row["Datenart(en)"] == zm_xml.DATENART)
-		self.assertEqual(
-			(
-				row["Verfahren"],
-				row["Jahr / Version"],
-				row["datenartVersion-Parameter"],
-				row["Plugin-Bibliothek"],
-			),
-			(zm_xml.VERFAHREN, "", zm_xml.DATENART_VERSION, zm_xml.PLUGIN),
-		)
 
 	def accepts(self, **fields: object) -> bool:
 		try:

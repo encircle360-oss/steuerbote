@@ -12,6 +12,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from unittest import TestCase, mock
 
+from steuerbote.elster.tests import zm_examples
 from steuerbote.eric import worker
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.proxy import Proxy
@@ -29,11 +30,13 @@ HEADER = EnvelopeHeader(
 	datenlieferant="Beispiel GmbH & Co. KG; Erika Beispiel",
 	produkt_name="Steuerbote",
 	produkt_version="0.1.0",
-	empfaenger_finanzamt="9198",
+	empfaenger="9198",
 	datenart_version="UStVA_2026",
 	testmerker=None,
 	nutzdaten_ticket="1",
 )
+# The Zusammenfassende Meldung goes to the Länderkürzel BF in the datenartVersion ZMDO (steuerbote.eric.datenart).
+ZM_HEADER = replace(HEADER, empfaenger="BF", datenart_version="ZMDO")
 CONTAINER = b"\x30\x82\x01\x00fake\x00pkcs12\x00container"
 PIN = "Geheim-PIN-4711"
 # The password of the proxy, invented.
@@ -319,6 +322,47 @@ class SendTest(WorkerTestCase):
 		self.assertEqual(self.stub.recorded("setting:http.proxy_host"), "socks5://10.0.0.1")
 		self.assertEqual(self.stub.recorded("setting:http.proxy_port"), "1080")
 		self.assertIsNone(self.stub.recorded("setting:http.proxy_username"))
+
+
+class ZmdoTest(WorkerTestCase):
+	"""The Zusammenfassende Meldung takes the calls of the UStVA with the parameters of its Datenart ZMDO: Verfahren
+	ElsterExtern, send-Auth and the recipient BF (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 8-28), the
+	datenartVersion ZMDO with the plugin checkZMDO (Datenartversionmatrix.ods)."""
+
+	def run_zm(self, operation: Operation) -> TransmissionResult:
+		header = (
+			ZM_HEADER if operation is not Operation.TEST_SEND else replace(ZM_HEADER, testmerker=TESTMERKER)
+		)
+		return self.run_operation(operation, header=asdict(header), nutzdaten=zm_examples.nutzdaten())
+
+	def test_lets_eric_write_the_transfer_header_of_zmdo_around_the_datenteil(self):
+		for operation in Operation:
+			with self.subTest(operation=operation):
+				self.stub.reset()
+				result = self.run_zm(operation)
+				self.assertTrue(result.ok)
+				self.assertEqual(
+					[self.stub.recorded(f"th_{name}") for name in ("verfahren", "datenart", "vorgang")],
+					["ElsterExtern", "ZMDO", "send-Auth"],
+				)
+				self.assertEqual(self.stub.recorded("datenart_version"), "ZMDO")
+				delivered = self.stub.recorded("datenpuffer")
+				self.assertIn('<Empfaenger id="L">BF</Empfaenger>', delivered)
+				self.assertIn(f"<Nutzdaten>{zm_examples.nutzdaten()}</Nutzdaten>", delivered)
+
+	def test_a_send_of_the_zm_is_accepted_with_the_ticket_of_the_server(self):
+		result = self.run_zm(Operation.SEND)
+		self.assertIs(result.outcome, Outcome.ACCEPTED)
+		self.assertTrue(result.transferticket)
+		self.assertEqual(self.stub.recorded("th_testmerker"), "<NULL>")
+
+	def test_without_the_plugin_check_zmdo_eric_knows_no_zmdo(self):
+		plugin = self.lib_dir / "plugins2" / "libcheckZMDO.so"
+		plugin.unlink()
+		self.addCleanup(plugin.write_bytes, b"")
+		result = self.run_zm(Operation.VALIDATE)
+		self.assertIs(result.outcome, Outcome.FAILED)
+		self.assertEqual(result.messages[0].code, "610001042")
 
 
 class FailureTest(WorkerTestCase):

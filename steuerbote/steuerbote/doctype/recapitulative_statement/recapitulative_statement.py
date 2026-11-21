@@ -19,6 +19,16 @@ starts a statement for the same Meldezeitraum that reports only what changed aga
 (steuerbote.zm.correction). "In Mein ELSTER abgegeben" and "Als außerhalb abgegeben vermerken"
 (mark_filed_outside) submit the statement with a note of the filing; Buchen alone files nothing, and a filed
 statement cannot be cancelled, since a change goes to the BZSt as a Berichtigung.
+
+"Prüfen", "Testsenden" and "Senden" (transmit) run in a background job, as for every document that goes to ELSTER
+through ERiC (elster_transmission/transmission.py): the job writes the statement as the Nutzdaten of the Datenart
+ZMDO (nutzdaten, steuerbote.elster.zm_xml), with the Unternehmer from the VAT Return Settings, and hands them to
+steuerbote.eric, through the worker of an installed runtime or the simulation; every run is recorded as an ELSTER
+Transmission, and so is every note of a filing. Only a Senden that ELSTER accepted submits the statement, which
+files it through ERiC with its Transferticket, and a Berichtigung filed so replaces the statements before it. Until
+then a statement ELSTER accepted is filed as it was sent: nothing of it changes, and Buchen submits it. A
+Meldezeitraum counts as filed once a statement of it is submitted or sent through Steuerbote, accepted or with an
+unknown outcome; a further statement of it is a Berichtigung.
 """
 
 from collections.abc import Iterable, Iterator
@@ -34,7 +44,20 @@ from frappe.utils import cint, escape_html, getdate, strip_html
 from frappe.utils.background_jobs import is_job_enqueued
 
 from steuerbote import holiday_list, vatid, zm_sources
-from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import FILED_VIA, OTHER_WAY
+from steuerbote.elster import zm_xml
+from steuerbote.eric import datenart as eric_datenart
+from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
+	EXTERN,
+	FILED_VIA,
+	OTHER_WAY,
+	SUCCEEDED,
+	UNKNOWN,
+)
+from steuerbote.steuerbote.doctype.elster_transmission.transmission import (
+	TRANSMISSION,
+	Transmittable,
+	filings,
+)
 from steuerbote.steuerbote.doctype.recapitulative_statement import bridge
 from steuerbote.steuerbote.doctype.vat_id_confirmation import vat_id_confirmation
 from steuerbote.steuerbote.doctype.vat_return.vat_return import (
@@ -43,6 +66,7 @@ from steuerbote.steuerbote.doctype.vat_return.vat_return import (
 	mapping_for,
 	settings_for,
 )
+from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
 from steuerbote.vatid import UrllibFetch
 from steuerbote.zm.comparison import compare, comparison_hints, earlier
@@ -83,9 +107,11 @@ CONFIRMATION_EVENT = "steuerbote_vat_id_confirmation"
 # up to a minute for each answer.
 SECONDS_PER_NUMBER = 200
 MINIMUM_TIMEOUT = 300
+# How the statement went to the BZSt when ELSTER accepted its Senden.
+FILED_THROUGH_ERIC = "eric"
 
 
-class RecapitulativeStatement(Document):
+class RecapitulativeStatement(Transmittable, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -119,7 +145,7 @@ class RecapitulativeStatement(Document):
 		deadline: DF.Date | None
 		filed_by: DF.Link | None
 		filed_on: DF.Date | None
-		filed_via: DF.Literal["", "mein_elster", "other_way"]
+		filed_via: DF.Literal["", "mein_elster", "other_way", "eric"]
 		filing_note: DF.SmallText | None
 		from_date: DF.Date | None
 		goods_from: DF.Date | None
@@ -143,15 +169,19 @@ class RecapitulativeStatement(Document):
 		total_l: DF.Currency
 		total_s: DF.Currency
 		transferticket: DF.Data | None
+		transmission_in_progress: DF.Check
 		vouchers: DF.Table[RecapitulativeStatementVoucher]
 		widerruf: DF.Check
 		year: DF.Int
 	# end: auto-generated types
 
 	def onload(self) -> None:
-		"""Tell the form whether the lock of a confirmation is stale, so that it releases it."""
+		"""Tell the form whether the lock of a confirmation or of a transmission is stale, so that it releases it,
+		whether ERiC runs as a simulation and what the latest run of ERiC found."""
 		draft = self.docstatus == 0 and not self.is_new()
 		self.set_onload("confirmation", {"stale": draft and self._has_stale_confirmation()})
+		self.set_onload("elster", self.elster_state())
+		self.set_onload("elster_run", self.latest_run())
 
 	def before_insert(self) -> None:
 		"""A new statement starts as a draft that Berechnen has not read yet, whatever the rows it was made with
@@ -161,7 +191,9 @@ class RecapitulativeStatement(Document):
 		self.update({"ready": 0, "status": DRAFT, **dict.fromkeys(TOTALS, 0)})
 
 	def validate(self) -> None:
+		self.refuse_changes_while_transmitting()
 		self._refuse_changes_while_confirming()
+		self._refuse_changes_after_an_accepted_send()
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
 		covered = self._set_period()
@@ -175,13 +207,28 @@ class RecapitulativeStatement(Document):
 			self._apply_lines(covered)
 
 	def before_submit(self) -> None:
-		if not self.flags.filed_outside:
+		"""A statement is filed by a Senden ELSTER accepted, with what came back, or by the note of its filing,
+		which files the lines the file for Mein ELSTER holds."""
+		sent = None if self.flags.filed_outside else self.accepted_send()
+		if not (self.flags.filed_outside or sent):
 			frappe.throw(
 				_(
-					"A Zusammenfassende Meldung is filed by noting its filing in Mein ELSTER or outside Steuerbote, not by Buchen alone."
+					"A Zusammenfassende Meldung is filed through Senden or by noting its filing in Mein ELSTER or outside Steuerbote, not by Buchen alone."
 				)
 			)
-		self._check_fit_for_filing()
+		if sent:
+			self._check_ready_to_file()
+			self.update(
+				{
+					"filed_via": FILED_THROUGH_ERIC,
+					"filed_on": getdate(sent.finished_at),
+					"transferticket": sent.transferticket,
+					"filing_note": None,
+					"filed_by": frappe.db.get_value(TRANSMISSION, sent.name, "user"),
+				}
+			)
+		else:
+			self._check_fit_for_filing()
 		self.status = FILED
 
 	def before_cancel(self) -> None:
@@ -204,7 +251,9 @@ class RecapitulativeStatement(Document):
 		frappe.has_permission(DOCTYPE, "write", self, throw=True)
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft Zusammenfassende Meldung can be calculated."))
+		self.refuse_changes_while_transmitting()
 		self._refuse_changes_while_confirming()
+		self._refuse_changes_after_an_accepted_send()
 		covered = self._set_period()
 		period = covered.period
 		settings = settings_for(self.company)
@@ -261,6 +310,9 @@ class RecapitulativeStatement(Document):
 			frappe.throw(_("Only the USt-IdNrn. of a draft Zusammenfassende Meldung are confirmed."))
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the statement before confirming its USt-IdNrn."))
+		if cint(self.transmission_in_progress):
+			frappe.throw(_("A transmission of {0} is running. Wait for its result.").format(self.name))
+		self._refuse_changes_after_an_accepted_send()
 		self._close_stale_confirmation()
 		requester(self.company)
 		numbers = bridge.numbers_to_confirm(self.lines)
@@ -365,9 +417,10 @@ class RecapitulativeStatement(Document):
 		filed_via: str = OTHER_WAY,
 		transferticket: str | None = None,
 		filed_on: str | None = None,
-	) -> None:
+	) -> str:
 		"""In Mein ELSTER abgegeben, or Als außerhalb abgegeben vermerken: the statement went to the BZSt with
-		the file for Mein ELSTER or another way. Submits it with how, when and by whom it was noted."""
+		the file for Mein ELSTER or another way. Submits it with how, when and by whom it was noted, and returns the
+		name of the ELSTER Transmission that records it."""
 		self.check_permission("submit")
 		note = (remarks or "").strip()
 		ticket = (transferticket or "").strip()
@@ -387,6 +440,13 @@ class RecapitulativeStatement(Document):
 		self._lock()
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft Zusammenfassende Meldung can be marked as filed."))
+		accepted = self.accepted_send()
+		if accepted:
+			frappe.throw(
+				_(
+					"ELSTER accepted {0} with Transferticket {1}, so it was not filed outside Steuerbote: submit it with Buchen."
+				).format(self.name, accepted.transferticket)
+			)
 		self._refuse_second_filing()
 		self.update(
 			{
@@ -402,6 +462,72 @@ class RecapitulativeStatement(Document):
 			self.submit()
 		finally:
 			self.flags.filed_outside = False
+		return self.new_transmission(
+			EXTERN,
+			simulated=False,
+			status=SUCCEEDED,
+			remarks=note or None,
+			filed_via=filed_via,
+			transferticket=ticket or None,
+			filed_on=filed_date,
+		).name
+
+	def datenart(self) -> eric_datenart.Datenart:
+		"""The Datenart ZMDO, which has no year."""
+		return eric_datenart.ZMDO
+
+	def nutzdaten(self, hersteller_id: str) -> str:
+		"""The Nutzdaten for ERiC: the element zm of the statement as saved, with the Unternehmer from the VAT Return
+		Settings. ZMDO has no field for the Hersteller-ID, which only the TransferHeader names."""
+		settings = settings_for(self.company)
+		if not vatid.is_german(settings.ust_idnr):
+			frappe.throw(
+				_(
+					"Enter the USt-IdNr. of {0} in the VAT Return Settings, DE and nine digits: the Zusammenfassende Meldung names the company by it."
+				).format(self.company)
+			)
+		country = frappe.db.get_value(
+			"Country", frappe.db.get_value("Company", self.company, "country"), "code"
+		)
+		period = self._chosen_period()
+		with xml_errors(_("ELSTER Transmission")), zm_errors():
+			statement = bridge.statement_of(self.vouchers, self.lines, self._figures())
+			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
+			zm = bridge.zm(period, statement, held, self.anzeige, self.widerruf)
+			return zm_xml.to_nutzdaten(bridge.unternehmer(settings, country), zm, getdate())
+
+	def check_transmittable(self) -> None:
+		"""A calculated draft whose USt-IdNrn. are not being confirmed."""
+		if self.docstatus != 0:
+			frappe.throw(
+				_(
+					"Only a draft Zusammenfassende Meldung can be transmitted. A filed one is corrected by a Berichtigung."
+				)
+			)
+		if self.status not in (CALCULATED, READY):
+			frappe.throw(_("Calculate the statement before transmitting it."))
+		if cint(self.confirmation_in_progress):
+			frappe.throw(_("The USt-IdNrn. of this statement are being confirmed. Wait for the result."))
+
+	def check_can_be_sent(self) -> None:
+		"""Senden files the statement, once: it needs the statement fit for filing, the ledger of its months as
+		Berechnen read it and no earlier filing of its Meldezeitraum."""
+		self._check_ready_to_file()
+		self._require_unchanged_ledger(self._coverage())
+		sent = self.filings()
+		if sent and sent[0].status == UNKNOWN:
+			frappe.throw(
+				_(
+					"Whether {0} reached ELSTER is unknown. Check in Mein ELSTER whether the statement arrived: if it did, note it with Filed in Mein ELSTER; if not, a System Manager deletes {0}, then the statement can be sent again."
+				).format(sent[0].name)
+			)
+		if sent:
+			frappe.throw(
+				_(
+					"This statement was transmitted already with Transferticket {0}. A change goes to the BZSt as a Berichtigung."
+				).format(sent[0].transferticket)
+			)
+		self._refuse_second_filing()
 
 	def _lacks_mandatory_values(self) -> bool:
 		return (
@@ -524,9 +650,21 @@ class RecapitulativeStatement(Document):
 		)
 
 	def _refuse_second_filing(self) -> None:
-		"""A Berichtigung reports what changed against the filings when it was made, so none may follow."""
+		"""A Meldezeitraum counts as filed also when a statement of it was sent through Steuerbote, whether ELSTER
+		accepted it or its outcome is unknown, so every other statement of it is a Berichtigung. A Berichtigung
+		reports what changed against the filings when it was made, so none may follow."""
 		self._refuse_second_statement(self._coverage())
 		if self.meldeart != bridge.BERICHTIGUNG:
+			others = frappe.get_all(
+				DOCTYPE, filters={**self._period_filters(), "name": ["!=", self.name]}, pluck="name"
+			)
+			sent = filings(DOCTYPE, others)
+			if sent:
+				frappe.throw(
+					_(
+						"{0} of {1} was transmitted already as {2}. Clear its filing there first; a further statement of the Meldezeitraum is a Berichtigung of it."
+					).format(self.period_label, self.company, sent[0].document)
+				)
 			return
 		later = frappe.get_all(
 			DOCTYPE,
@@ -631,10 +769,14 @@ class RecapitulativeStatement(Document):
 		held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
 		return bridge.file_lines(statement, period, held)
 
-	def _check_fit_for_filing(self) -> None:
+	def _check_ready_to_file(self) -> None:
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the statement before filing it."))
 		self._require_explanation()
+
+	def _check_fit_for_filing(self) -> None:
+		"""The statement is ready, and its lines are those of the file for Mein ELSTER of the ledger as it is."""
+		self._check_ready_to_file()
 		covered = self._coverage()
 		self._require_unchanged_ledger(covered)
 		period = covered.period
@@ -732,6 +874,19 @@ class RecapitulativeStatement(Document):
 		"""Hold the row of the statement until the request ends and read it fresh."""
 		frappe.db.get_value(DOCTYPE, self.name, "name", for_update=True)
 		self.reload()
+
+	def _refuse_changes_after_an_accepted_send(self) -> None:
+		"""A statement ELSTER accepted is filed as it was sent, even when its submission failed: a change would file
+		other lines than the BZSt has."""
+		if self.is_new() or self.docstatus != 0:
+			return
+		accepted = self.accepted_send()
+		if accepted:
+			frappe.throw(
+				_(
+					"ELSTER accepted {0} with Transferticket {1}, so it is filed as it was sent: submit it with Buchen. A change goes to the BZSt as a Berichtigung afterwards."
+				).format(self.name, accepted.transferticket)
+			)
 
 	def _refuse_changes_while_confirming(self) -> None:
 		"""The job writes the confirmations onto the lines, so the statement stays as it is while it runs."""

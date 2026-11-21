@@ -8,7 +8,7 @@ from frappe.contacts.doctype.address.address import get_default_address
 from frappe.model.document import Document
 from frappe.utils import cint, escape_html, flt
 
-from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster, ustva_xml
+from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster, ustva_xml, zm_xml
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
 from steuerbote.ustva import Rhythm
@@ -69,6 +69,7 @@ class VATReturnSettings(Document):
 		tax_number: DF.Data
 		tax_office: DF.Data | None
 		taxation_type: DF.Literal["Soll"]
+		teilnehmernummer: DF.Data | None
 		tolerance: DF.Currency
 		ust_idnr: DF.Data | None
 		wid_nr: DF.Data | None
@@ -80,6 +81,7 @@ class VATReturnSettings(Document):
 		self.set_datenlieferant()
 		self.check_for_elster()
 		self.set_ust_idnr()
+		self.set_teilnehmernummer()
 		self.sort_period_rules()
 		self.sort_zm_rules()
 		with settings_errors():
@@ -122,6 +124,11 @@ class VATReturnSettings(Document):
 		tax_id = frappe.db.get_value("Company", self.company, "tax_id") if self.company else None
 		with settings_errors():
 			self.ust_idnr = rules.own_vat_id(self.ust_idnr, tax_id)
+
+	def set_teilnehmernummer(self) -> None:
+		"""The Teilnehmernummer the BZSt assigned for the Zusammenfassende Meldung, as its Nutzdaten write it."""
+		with xml_errors(_("VAT Return Settings")):
+			self.teilnehmernummer = zm_xml.teilnehmernummer(self.teilnehmernummer)
 
 	def sort_period_rules(self) -> None:
 		self.period_rules.sort(key=lambda row: (cint(row.year), cint(row.valid_from_month)))

@@ -1,11 +1,16 @@
+import hashlib
+import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
 import frappe
+from frappe.desk.form.meta import get_meta as get_form_meta
 from frappe.tests import IntegrationTestCase
 
 import steuerbote
-from steuerbote.eric import service
+from steuerbote.eric import runtime, service
 from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.result import Operation
 from steuerbote.eric.runtime import RuntimeInfo, RuntimeInstallError
@@ -297,3 +302,51 @@ class TestERiCSettings(IntegrationTestCase):
 			run_installation(archive_path=ARCHIVE, sha256=CHECKSUM)
 		self.assertEqual(frappe.db.count("Error Log"), logged + 1)
 		self.assertIn("Datenträger voll", publish.call_args.args[1]["error"])
+
+	def runtime_root(self, *plugins: str) -> Path:
+		"""A runtime of ERiC 44.3.6.0 installed from an archive of invented files, with the plugins named."""
+		directory = Path(tempfile.mkdtemp(prefix="steuerbote-eric-status-"))
+		self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+		archive = directory / "ERiC-44.3.6.0-Linux-x86_64.jar"
+		lib = "ERiC-44.3.6.0/Linux-x86_64/lib"
+		with zipfile.ZipFile(archive, "w") as jar:
+			for name in (
+				"libericapi.so",
+				"plugins2/libcommonData.so",
+				*(f"plugins2/lib{plugin}.so" for plugin in plugins),
+			):
+				jar.writestr(f"{lib}/{name}", name.encode())
+		checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
+		runtime.install_from_archive(archive, checksum, directory / "eric")
+		return directory / "eric"
+
+	def test_the_status_of_the_runtime_names_the_plugin_of_the_zusammenfassende_meldung(self):
+		"""steuerbote.eric.runtime.status: the plugin checkZMDO serves the ZM of every year."""
+		settings = self.settings(hersteller_id="12345")
+		for plugins, ok, detail in (
+			(("checkZMDO",), True, "ERiC 44.3.6.0 prüft und sendet die Zusammenfassende Meldung (ZMDO)."),
+			((), False, "Für die Zusammenfassende Meldung (ZMDO) fehlt ERiC mit dem Plugin libcheckZMDO.so."),
+		):
+			with (
+				self.subTest(plugins=plugins),
+				patch.object(transmission_adapter, "runtime_root", return_value=self.runtime_root(*plugins)),
+			):
+				checks = {check["name"]: check for check in settings.check_runtime()}
+				self.assertEqual((checks["zmdo"]["ok"], checks["zmdo"]["detail"]), (ok, detail))
+				self.assertEqual(
+					(checks["runtime"]["ok"], checks["hersteller_id"]["detail"]),
+					(True, "Hersteller-ID 12345."),
+				)
+				self.assertIn("plugin", checks)
+
+	def test_only_a_system_manager_checks_the_runtime(self):
+		settings = self.settings()
+		with (
+			self.set_user(make_user(ACCOUNTS_MANAGER, "Accounts Manager")),
+			self.assertRaises(frappe.PermissionError),
+		):
+			settings.check_runtime()
+
+	def test_the_form_shows_the_status_of_the_runtime(self):
+		script = get_form_meta(SETTINGS, cached=False).get("__js")
+		self.assertIn('frm.call("check_runtime")', script)

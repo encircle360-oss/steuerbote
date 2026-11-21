@@ -1,9 +1,12 @@
+{% include "steuerbote/public/js/elster_transmission.js" %}
+
 const CONFIRMATION_EVENT = "steuerbote_vat_id_confirmation";
 
 frappe.ui.form.on("Recapitulative Statement", {
 	setup(frm) {
 		frappe.realtime.on(CONFIRMATION_EVENT, (data) => on_confirmation_finished(frm, data));
-		// Frappe asks to submit a draft, but Buchen alone files nothing: the filing marks submit it.
+		listen_for_transmissions(frm);
+		// Frappe asks to submit a draft, but Buchen alone files nothing: Senden and the filing marks submit it.
 		frm.show_submit_message = () => {};
 		leave_the_share_without_previous_amount_blank();
 	},
@@ -12,12 +15,11 @@ frappe.ui.form.on("Recapitulative Statement", {
 		if (confirmation_state(frm).stale && frm.perm[0] && frm.perm[0].write) {
 			frm.call("release_stale_confirmation").then(() => frm.reload_doc());
 		}
+		release_stale_transmission(frm);
+		offer_buchen_only_for_an_accepted_send(frm);
 		const draft = frm.doc.docstatus === 0 && !frm.is_new();
 		const calculated = ["Berechnet", "Bereit"].includes(frm.doc.status);
-		const free = draft && !frm.doc.confirmation_in_progress;
-		if (draft) {
-			frm.page.clear_primary_action();
-		}
+		const free = draft && !frm.doc.confirmation_in_progress && !transmission_blocked(frm);
 		if (free) {
 			frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
 		}
@@ -33,13 +35,41 @@ frappe.ui.form.on("Recapitulative Statement", {
 		}
 		if (free && calculated) {
 			const group = __("ELSTER");
+			add_transmission_buttons(frm, group, statement_texts());
 			frm.add_custom_button(__("Filed in Mein ELSTER"), () => ask_for_filing_note(frm, "mein_elster"), group);
 			frm.add_custom_button(__("Mark as Filed Outside"), () => ask_for_filing_note(frm, "other_way"), group);
 		}
 		show_ready_note(frm);
+		show_latest_run(frm);
 		show_intro(frm);
 	},
 });
+
+// What the transmission says about a statement, see elster_transmission.js: it goes to the BZSt, not to a Finanzamt.
+function statement_texts() {
+	return {
+		unsaved: __("Save the statement first."),
+		send: __(
+			"The statement goes to the BZSt and is filed with it. Afterwards a change goes to the BZSt as a Berichtigung."
+		),
+		test_send: __(
+			"The statement goes to the ELSTER server as a test case with the Testmerker and is deleted there on receipt. It stays a draft."
+		),
+		sent: __(
+			"ELSTER accepted this statement, but it could not be submitted afterwards. Do not send it again; submit it with Buchen once the cause is resolved."
+		),
+		running: __("A transmission of this statement is running. The form reloads when it has finished."),
+		send_label: __("Transmit to the BZSt"),
+		simulation: (link) =>
+			__(
+				"Simulation mode: Prüfen and Testsenden only simulate, nothing reaches the BZSt. Senden needs an installed ERiC runtime and a Hersteller-ID, see {0}.",
+				[link]
+			),
+		simulated_test_send: __(
+			"The simulation needs no certificate and no password: Testsenden runs against the simulation, nothing reaches the BZSt."
+		),
+	};
+}
 
 function confirmation_state(frm) {
 	return (frm.doc.__onload && frm.doc.__onload.confirmation) || {};
@@ -65,16 +95,8 @@ function leave_the_share_without_previous_amount_blank() {
 	);
 }
 
-function saved(frm) {
-	if (frm.is_dirty()) {
-		frappe.msgprint(__("Save the statement first."));
-		return false;
-	}
-	return true;
-}
-
 function confirm_vat_ids(frm) {
-	if (!saved(frm)) {
+	if (!saved(frm, statement_texts())) {
 		return;
 	}
 	frappe.confirm(
@@ -99,7 +121,7 @@ function confirm_vat_ids(frm) {
 }
 
 function make_csv_file(frm) {
-	if (!saved(frm)) {
+	if (!saved(frm, statement_texts())) {
 		return;
 	}
 	frm.call("make_csv_file").then((response) => {
@@ -129,7 +151,7 @@ function make_correction(frm) {
 }
 
 function ask_for_filing_note(frm, filed_via) {
-	if (!saved(frm)) {
+	if (!saved(frm, statement_texts())) {
 		return;
 	}
 	const in_mein_elster = filed_via === "mein_elster";
@@ -194,9 +216,12 @@ function show_ready_note(frm) {
 		frm.$ready_note.remove();
 		frm.$ready_note = null;
 	}
-	if (!frm.is_new() && frm.doc.docstatus === 0 && frm.doc.status === "Bereit" && !frm.doc.confirmation_in_progress) {
+	const ready = frm.doc.docstatus === 0 && frm.doc.status === "Bereit" && !frm.doc.confirmation_in_progress;
+	if (!frm.is_new() && ready && !transmission_blocked(frm)) {
 		frm.$ready_note = frm.dashboard.set_headline_alert(
-			__("Ready to file: make the CSV for Mein ELSTER and import it in the form there."),
+			__(
+				"Ready to file: transmit the statement through ELSTER, or make the CSV for Mein ELSTER and import it in the form there."
+			),
 			"blue"
 		);
 	}
@@ -223,7 +248,8 @@ function show_intro(frm) {
 			);
 		}
 	}
-	frm.set_intro(notes.join("<br>"), "blue");
+	const transmission = elster_notes(frm, statement_texts());
+	frm.set_intro([...notes, ...transmission].join("<br>"), transmission.length ? "orange" : "blue");
 }
 
 function on_confirmation_finished(frm, data) {

@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import TestCase, mock
 
 from steuerbote.eric import runtime
+from steuerbote.eric.datenart import ZMDO, ustva
 from steuerbote.eric.runtime import (
 	MANIFEST,
 	RuntimeInfo,
@@ -33,6 +34,8 @@ LIBRARIES = {
 	f"{LIB}/plugins2/libcheckUStVA_2025.so": b"2025",
 	f"{LIB}/plugins2/libcheckUStVA_2026.so": b"2026",
 }
+# The plugin of the Zusammenfassende Meldung, the same for every year (Datenartversionmatrix.ods).
+ZMDO_PLUGIN = {f"{LIB}/plugins2/libcheckZMDO.so": b"zmdo"}
 ELSEWHERE = {
 	"META-INF/MANIFEST.MF": b"Manifest-Version: 1.0\n",
 	f"{ROOT}/Linux-x86_64/include/ericapi.h": b"/* header */",
@@ -71,6 +74,14 @@ class ArchiveTestCase(TestCase):
 	def install(self, members: Mapping[str, bytes] = LIBRARIES | ELSEWHERE, **options) -> RuntimeInfo:
 		path, checksum = self.jar(members)
 		return install_from_archive(path, checksum, self.root, **options)
+
+	def install_version(self, version: str, years: tuple[int, ...], plugins: tuple[str, ...] = ()) -> None:
+		root = f"ERiC-{version}/Linux-x86_64/lib"
+		members = {f"{root}/libericapi.so": b"ericapi", f"{root}/plugins2/libcommonData.so": b"commonData"}
+		members |= {f"{root}/plugins2/libcheckUStVA_{year}.so": str(year).encode() for year in years}
+		members |= {f"{root}/plugins2/lib{plugin}.so": plugin.encode() for plugin in plugins}
+		path, checksum = self.jar(members, name=f"ERiC-{version}-Linux-x86_64.jar")
+		install_from_archive(path, checksum, self.root)
 
 	def assertRefused(self, members: Mapping[str, bytes], fragment: str, **special) -> None:
 		path, checksum = self.jar(members, **special)
@@ -264,13 +275,6 @@ class BetaTest(TestCase):
 
 
 class InstallationsTest(ArchiveTestCase):
-	def install_version(self, version: str, years: tuple[int, ...]) -> None:
-		root = f"ERiC-{version}/Linux-x86_64/lib"
-		members = {f"{root}/libericapi.so": b"ericapi", f"{root}/plugins2/libcommonData.so": b"commonData"}
-		members |= {f"{root}/plugins2/libcheckUStVA_{year}.so": str(year).encode() for year in years}
-		path, checksum = self.jar(members, name=f"ERiC-{version}-Linux-x86_64.jar")
-		install_from_archive(path, checksum, self.root)
-
 	def setUp(self):
 		super().setUp()
 		self.install_version("44.3.6.0", (2025, 2026))
@@ -297,24 +301,24 @@ class InstallationsTest(ArchiveTestCase):
 		self.assertEqual(installations(self.directory / "nowhere"), ())
 
 	def test_a_year_uses_the_newest_runtime_that_is_no_beta(self):
-		self.assertEqual(detect(self.root, year=2026).version, "44.3.6.0")
-		self.assertEqual(detect(self.root, year=2024).version, "44.1.4.0")
+		self.assertEqual(detect(self.root, datenart=ustva(2026)).version, "44.3.6.0")
+		self.assertEqual(detect(self.root, datenart=ustva(2024)).version, "44.1.4.0")
 		self.assertEqual(detect(self.root).version, "44.3.6.0")
 
 	def test_a_beta_only_when_allowed_and_no_released_runtime_knows_the_year(self):
-		self.assertIsNone(detect(self.root, year=2027))
-		self.assertEqual(detect(self.root, year=2027, allow_beta=True).version, "45.1.5.0")
-		self.assertEqual(detect(self.root, year=2026, allow_beta=True).version, "44.3.6.0")
+		self.assertIsNone(detect(self.root, datenart=ustva(2027)))
+		self.assertEqual(detect(self.root, datenart=ustva(2027), allow_beta=True).version, "45.1.5.0")
+		self.assertEqual(detect(self.root, datenart=ustva(2026), allow_beta=True).version, "44.3.6.0")
 		self.assertEqual(detect(self.root, allow_beta=True).version, "44.3.6.0")
 
 	def test_no_runtime_for_a_year_without_its_plugin(self):
-		self.assertIsNone(detect(self.root, year=2023, allow_beta=True))
+		self.assertIsNone(detect(self.root, datenart=ustva(2023), allow_beta=True))
 		self.assertIsNone(detect(self.directory / "nowhere"))
 
 	def test_passes_log_directory_hersteller_id_and_the_confirmation_on(self):
 		info = detect(
 			self.root,
-			year=2026,
+			datenart=ustva(2026),
 			log_dir=self.directory / "logs" / "run",
 			hersteller_id="12345",
 			confirmed_privacy_notice=True,
@@ -325,8 +329,28 @@ class InstallationsTest(ArchiveTestCase):
 		)
 
 	def test_a_runtime_confirms_nothing_unless_told(self):
-		self.assertFalse(detect(self.root, year=2026).confirmed_privacy_notice)
-		self.assertFalse(detect(self.root, year=2027, allow_beta=True).confirmed_privacy_notice)
+		self.assertFalse(detect(self.root, datenart=ustva(2026)).confirmed_privacy_notice)
+		self.assertFalse(detect(self.root, datenart=ustva(2027), allow_beta=True).confirmed_privacy_notice)
+
+
+class ZmdoInstallationsTest(ArchiveTestCase):
+	"""The Zusammenfassende Meldung needs a runtime with the plugin checkZMDO, whatever its year."""
+
+	def setUp(self):
+		super().setUp()
+		self.install_version("44.3.6.0", (2025, 2026))
+		self.install_version("44.1.4.0", (2024, 2025, 2026), ("checkZMDO",))
+		self.install_version("45.1.5.0", (2026, 2027), ("checkZMDO",))
+
+	def test_takes_the_newest_released_runtime_with_check_zmdo(self):
+		self.assertEqual(detect(self.root, datenart=ZMDO).version, "44.1.4.0")
+		self.assertEqual(detect(self.root, datenart=ZMDO, allow_beta=True).version, "44.1.4.0")
+		self.assertEqual(detect(self.root, datenart=ustva(2026)).version, "44.3.6.0")
+
+	def test_a_beta_only_when_allowed_and_no_released_runtime_has_check_zmdo(self):
+		shutil.rmtree(self.root / "44.1.4.0")
+		self.assertIsNone(detect(self.root, datenart=ZMDO))
+		self.assertEqual(detect(self.root, datenart=ZMDO, allow_beta=True).version, "45.1.5.0")
 
 
 class VerifyTest(ArchiveTestCase):
@@ -378,10 +402,12 @@ class StatusTest(ArchiveTestCase):
 
 	def test_without_a_runtime(self):
 		checks = self.checks(year=2026, hersteller_id="")
-		self.assertEqual(list(checks), ["platform", "runtime", "libraries", "plugin", "hersteller_id"])
+		self.assertEqual(
+			list(checks), ["platform", "runtime", "libraries", "plugin", "zmdo", "hersteller_id"]
+		)
 		self.assertEqual(
 			{name: ok for name, (ok, _) in checks.items() if name != "platform"},
-			{"runtime": False, "libraries": False, "plugin": False, "hersteller_id": False},
+			{"runtime": False, "libraries": False, "plugin": False, "zmdo": False, "hersteller_id": False},
 		)
 
 	def test_with_a_runtime_for_the_year_and_a_hersteller_id(self):
@@ -393,6 +419,19 @@ class StatusTest(ArchiveTestCase):
 		)
 		self.assertEqual(checks["plugin"], (True, "ERiC 44.3.6.0 prüft und sendet das Jahr 2026."))
 		self.assertEqual(checks["hersteller_id"], (True, "Hersteller-ID 12345."))
+
+	def test_names_the_plugin_check_zmdo_of_the_zusammenfassende_meldung(self):
+		self.install(LIBRARIES)
+		self.assertEqual(
+			self.checks(hersteller_id="12345")["zmdo"],
+			(False, "Für die Zusammenfassende Meldung (ZMDO) fehlt ERiC mit dem Plugin libcheckZMDO.so."),
+		)
+		shutil.rmtree(self.root)
+		self.install(LIBRARIES | ZMDO_PLUGIN)
+		self.assertEqual(
+			self.checks(hersteller_id="12345")["zmdo"],
+			(True, "ERiC 44.3.6.0 prüft und sendet die Zusammenfassende Meldung (ZMDO)."),
+		)
 
 	def test_names_the_problems(self):
 		self.install(LIBRARIES)
@@ -417,8 +456,28 @@ class StatusTest(ArchiveTestCase):
 			(False, "Das Jahr 2027 kennt nur die Beta ERiC 45.1.5.0: Prüfen und Testsenden, kein Senden."),
 		)
 
+	def test_a_beta_serves_the_zusammenfassende_meldung_for_checks_and_test_sends_only(self):
+		root = "ERiC-45.1.5.0/Linux-x86_64/lib"
+		members = {
+			f"{root}/libericapi.so": b"ericapi",
+			f"{root}/plugins2/libcommonData.so": b"commonData",
+			f"{root}/plugins2/libcheckZMDO.so": b"zmdo",
+		}
+		path, checksum = self.jar(members, name="ERiC-45.1.5.0-Linux-x86_64.jar")
+		install_from_archive(path, checksum, self.root)
+		self.assertEqual(
+			self.checks(hersteller_id="12345")["zmdo"],
+			(
+				False,
+				"Die Zusammenfassende Meldung (ZMDO) kennt nur die Beta ERiC 45.1.5.0: Prüfen und Testsenden, "
+				"kein Senden.",
+			),
+		)
+
 	def test_without_a_year_the_plugin_check_is_left_out(self):
-		self.assertNotIn("plugin", self.checks(hersteller_id="12345"))
+		checks = self.checks(hersteller_id="12345")
+		self.assertNotIn("plugin", checks)
+		self.assertIn("zmdo", checks)
 
 
 class RuntimeInfoTest(TestCase):

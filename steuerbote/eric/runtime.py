@@ -10,17 +10,18 @@ archive and its SHA-256, and the checksum is verified before anything is unpacke
 Each version gets a directory of its own, because libraries of different packages must not be mixed
 (Kap. 3.1.6.2), with its manifest steuerbote-runtime.json: the hashes of archive and files, the years of
 its UStVA plugins and whether it is a beta. A version directory appears only complete, by renaming it
-into place. The plugin commonData is always required (Kap. 3.1.6.1), the plugin of a year is
-checkUStVA_<Jahr> (Datenartversionmatrix.ods) as the year table steuerbote/ustva/years.py names it, and
-EricInitialisiere searches the library directory for plugins recursively (Kap. 4.1.1). ERiC runs on Linux x86_64
-with glibc 2.28 or newer (Kap. 2.4.4.5).
+into place. The plugin commonData is always required (Kap. 3.1.6.1), and EricInitialisiere searches the
+library directory for plugins recursively (Kap. 4.1.1). Each Datenart has its plugin (steuerbote.eric.datenart,
+from Datenartversionmatrix.ods): the UStVA of a year checkUStVA_<Jahr>, as the year table
+steuerbote/ustva/years.py names it, the Zusammenfassende Meldung checkZMDO for every year. ERiC runs on Linux
+x86_64 with glibc 2.28 or newer (Kap. 2.4.4.5).
 
 A main release in November starts with a beta, from which no real case can be sent; its major number is
 odd and the beta is its first delivery, <major>.1 (Kap. 2.3 with the graphic of the release cycle, and
 Kap. 3.1.1). A beta checks and sends test cases, only a real send is refused (Kap. 5.4.3). Each April the
-Mindestversion rises and older releases are rejected (Kap. 5.4.2), so a year uses the newest released
-runtime with its plugin, and a beta only for a check or a test send of a year that no released runtime
-knows yet.
+Mindestversion rises and older releases are rejected (Kap. 5.4.2), so a Datenart uses the newest released
+runtime with its plugin, and a beta only for a check or a test send that no released runtime serves yet, such
+as one of a year that only the beta knows.
 
 Messages are German, for the operator. This module is pure Python and never imports Frappe.
 """
@@ -42,8 +43,9 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
+from steuerbote.eric.datenart import ZMDO, Datenart, ustva
 from steuerbote.eric.header import ILLUSTRATION_HERSTELLER_ID
-from steuerbote.ustva.years import plugin_library, plugin_year
+from steuerbote.ustva.years import plugin_year
 
 MANIFEST = "steuerbote-runtime.json"
 PLATFORM = "Linux-x86_64"
@@ -133,6 +135,10 @@ class Installation:
 	def lib_dir(self) -> Path:
 		return self.path / "lib"
 
+	def has_plugin(self, library: str) -> bool:
+		"""Whether the installation holds the plugin file, in any directory below lib."""
+		return any(PurePosixPath(name).name == library for name in self.files)
+
 	def runtime(
 		self, *, log_dir: Path, hersteller_id: str, confirmed_privacy_notice: bool = False
 	) -> RuntimeInfo:
@@ -211,23 +217,23 @@ def installations(target_root: Path) -> tuple[Installation, ...]:
 def detect(
 	target_root: Path,
 	*,
-	year: int | None = None,
+	datenart: Datenart | None = None,
 	allow_beta: bool = False,
 	log_dir: Path | None = None,
 	hersteller_id: str = "",
 	confirmed_privacy_notice: bool = False,
 ) -> RuntimeInfo | None:
-	"""The runtime for the year: the newest released installation with its plugin, else, if allow_beta, the
+	"""The runtime for the Datenart: the newest released installation with its plugin, else, if allow_beta, the
 	newest beta with it.
 
 	A beta refuses real cases only (Kap. 5.4.3), so Prüfen and Testsenden pass allow_beta=True and Senden
-	passes False. Prüfen and Testsenden still get the released runtime whenever one knows the year, the one
+	passes False. Prüfen and Testsenden still get the released runtime whenever one has the plugin, the one
 	that Senden uses.
 	"""
 	with_plugin = [
 		installation
 		for installation in installations(target_root)
-		if year is None or year in installation.years
+		if datenart is None or installation.has_plugin(datenart.plugin_library)
 	]
 	chosen = next((installation for installation in with_plugin if not installation.beta), None)
 	if chosen is None and allow_beta and with_plugin:
@@ -275,7 +281,8 @@ def platform_check(system: str, machine: str, libc: str | None) -> Check:
 
 
 def status(target_root: Path, *, year: int | None = None, hersteller_id: str = "") -> tuple[Check, ...]:
-	"""The checks of the status page: platform, runtime, libraries, plugin of the year, Hersteller-ID."""
+	"""The checks of the status page: platform, runtime, libraries, the plugin of the year, the plugin of the
+	Zusammenfassende Meldung and the Hersteller-ID."""
 	checks = [platform_check(*_platform())]
 	installed = installations(target_root)
 	newest = next((installation for installation in installed if not installation.beta), None)
@@ -297,7 +304,8 @@ def status(target_root: Path, *, year: int | None = None, hersteller_id: str = "
 			)
 		)
 	if year is not None:
-		checks.append(_plugin_check(installed, year))
+		checks.append(_plugin_check(installed, ustva(year), "plugin", f"das Jahr {year}"))
+	checks.append(_plugin_check(installed, ZMDO, "zmdo", "die Zusammenfassende Meldung (ZMDO)"))
 	checks.append(_hersteller_id_check(hersteller_id))
 	return tuple(checks)
 
@@ -447,19 +455,20 @@ def _read_manifest(path: Path) -> Installation | None:
 	return installation if installation.version == path.name else None
 
 
-def _plugin_check(installed: tuple[Installation, ...], year: int) -> Check:
-	plugin = plugin_library(year)
-	with_plugin = [installation for installation in installed if year in installation.years]
+def _plugin_check(installed: tuple[Installation, ...], datenart: Datenart, name: str, subject: str) -> Check:
+	"""Whether a runtime serves the Datenart; ``subject`` names what it serves, in the accusative."""
+	plugin = datenart.plugin_library
+	with_plugin = [installation for installation in installed if installation.has_plugin(plugin)]
 	released = next((installation for installation in with_plugin if not installation.beta), None)
 	if released is not None:
-		return Check("plugin", True, f"ERiC {released.version} prüft und sendet das Jahr {year}.")
+		return Check(name, True, f"ERiC {released.version} prüft und sendet {subject}.")
 	if with_plugin:
+		beta = with_plugin[0].version
+		capitalised = subject[:1].upper() + subject[1:]
 		return Check(
-			"plugin",
-			False,
-			f"Das Jahr {year} kennt nur die Beta ERiC {with_plugin[0].version}: Prüfen und Testsenden, kein Senden.",
+			name, False, f"{capitalised} kennt nur die Beta ERiC {beta}: Prüfen und Testsenden, kein Senden."
 		)
-	return Check("plugin", False, f"Für das Jahr {year} fehlt ERiC mit dem Plugin {plugin}.")
+	return Check(name, False, f"Für {subject} fehlt ERiC mit dem Plugin {plugin}.")
 
 
 def _hersteller_id_check(hersteller_id: str) -> Check:

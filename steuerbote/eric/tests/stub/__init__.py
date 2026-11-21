@@ -45,15 +45,16 @@ def library() -> Path:
 	return output
 
 
-def install(root: Path, years: tuple[int, ...] = (2026,)) -> Path:
-	"""A lib directory laid out like ERiC's: the stub, the plugin commonData and a plugin per year."""
+def install(root: Path, years: tuple[int, ...] = (2026,), plugins: tuple[str, ...] = ("checkZMDO",)) -> Path:
+	"""A lib directory laid out like ERiC's: the stub, the plugin commonData, a plugin per year of the UStVA and the
+	plugins of the Datenarten without a year, such as checkZMDO."""
 	lib = root / "lib"
-	plugins = lib / "plugins2"
-	plugins.mkdir(parents=True)
+	directory = lib / "plugins2"
+	directory.mkdir(parents=True)
 	shutil.copyfile(library(), lib / "libericapi.so")
-	(plugins / "libcommonData.so").write_bytes(b"")
-	for year in years:
-		(plugins / f"libcheckUStVA_{year}.so").write_bytes(b"")
+	(directory / "libcommonData.so").write_bytes(b"")
+	for name in (*(f"checkUStVA_{year}" for year in years), *plugins):
+		(directory / f"lib{name}.so").write_bytes(b"")
 	return lib
 
 

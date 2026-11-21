@@ -1,6 +1,6 @@
 # Zusammenfassende Meldung
 
-Diese Seite ist die fachliche Grundlage des Kerns unter `steuerbote/zm`: Meldezeiträume und Fristen, Abgaberhythmus, Meldezeilen aus dem Hauptbuch, USt-IdNrn., Sperren und Übersteuern, Abgleich mit der Voranmeldung, Berichtigung und die CSV-Datei für Mein ELSTER. Der Kern ist reines Python ohne Frappe-Import. Wie der Beleg „Zusammenfassende Meldung“ in ERPNext mit ihm arbeitet, steht unter [Die Zusammenfassende Meldung in ERPNext](#die-zusammenfassende-meldung-in-erpnext). Die Nutzdaten für ERiC schreibt `steuerbote/elster/zm_xml.py`, siehe [ZM über ERiC](#zm-über-eric); die Übermittlung folgt mit der Hersteller-ID, siehe [Roadmap](roadmap.md). Die Seite ersetzt keine Steuerberatung. Die Quellen stehen am Ende als [Q1] bis [Q18], alle am 20. November 2026 gelesen.
+Diese Seite ist die fachliche Grundlage des Kerns unter `steuerbote/zm`: Meldezeiträume und Fristen, Abgaberhythmus, Meldezeilen aus dem Hauptbuch, USt-IdNrn., Sperren und Übersteuern, Abgleich mit der Voranmeldung, Berichtigung und die CSV-Datei für Mein ELSTER. Der Kern ist reines Python ohne Frappe-Import. Wie der Beleg „Zusammenfassende Meldung“ in ERPNext mit ihm arbeitet, steht unter [Die Zusammenfassende Meldung in ERPNext](#die-zusammenfassende-meldung-in-erpnext). Die Nutzdaten für ERiC schreibt `steuerbote/elster/zm_xml.py`, und der Beleg übermittelt sie mit „Prüfen“, „Testsenden“ und „Senden“, bis zur Hersteller-ID als Simulation, siehe [ZM über ERiC](#zm-über-eric). Die Seite ersetzt keine Steuerberatung. Die Quellen stehen am Ende als [Q1] bis [Q18], alle am 20. November 2026 gelesen.
 
 ## Was die ZM ist
 
@@ -131,7 +131,7 @@ Eine Berichtigung bezieht sich immer auf den Meldezeitraum der ZM, die sie beric
 
 ## CSV-Datei für Mein ELSTER
 
-Ohne Hersteller-ID geht die ZM nicht über ERiC. Das Formular „Zusammenfassende Meldung“ in Mein ELSTER und im BZSt-Online-Portal übernimmt die Meldezeilen aber aus einer CSV-Datei [Q7]. [`csv_file.py`](../steuerbote/zm/csv_file.py) schreibt sie nach der Hilfe „Import von Meldelisten zur Zusammenfassenden Meldung“ [Q13] und der allgemeinen Anleitung für CSV-Dateien [Q14]; ein Test vergleicht die Datei Byte für Byte mit dem Beispiel der Hilfe.
+Ohne Hersteller-ID geht die ZM nicht über ERiC, und die CSV-Datei bleibt der Weg zum BZSt: Das Formular „Zusammenfassende Meldung“ in Mein ELSTER und im BZSt-Online-Portal übernimmt die Meldezeilen aus einer CSV-Datei [Q7]. [`csv_file.py`](../steuerbote/zm/csv_file.py) schreibt sie nach der Hilfe „Import von Meldelisten zur Zusammenfassenden Meldung“ [Q13] und der allgemeinen Anleitung für CSV-Dateien [Q14]; ein Test vergleicht die Datei Byte für Byte mit dem Beispiel der Hilfe.
 
 | Regel | Grundlage |
 |---|---|
@@ -147,7 +147,7 @@ Ohne Hersteller-ID geht die ZM nicht über ERiC. Das Formular „Zusammenfassend
 
 Eine Berichtigung schreibt nur ihre geänderten Zeilen (`csv_file(correction.lines, correction=True)`).
 
-**Mehr als 1.500 Zeilen** nimmt das Formular nicht. Das BZSt nennt dafür die Massendatenschnittstelle ELMA5 im BZSt-Online-Portal [Q9]; die Übermittlung über ERiC (ZMDO) nimmt bis zu 5.000 Zeilen [Q11] und folgt mit der Hersteller-ID, siehe [ZM über ERiC](#zm-über-eric).
+**Mehr als 1.500 Zeilen** nimmt das Formular nicht. Das BZSt nennt dafür die Massendatenschnittstelle ELMA5 im BZSt-Online-Portal [Q9]; über ERiC (ZMDO) gehen mit der Hersteller-ID bis zu 5.000 Zeilen [Q11], siehe [ZM über ERiC](#zm-über-eric).
 
 **Import in Mein ELSTER**, soweit die Hilfe ihn beschreibt:
 
@@ -160,7 +160,7 @@ Eine Berichtigung schreibt nur ihre geänderten Zeilen (`csv_file(correction.lin
 
 ## ZM über ERiC
 
-Für die Übermittlung über ERiC schreibt [`steuerbote/elster/zm_xml.py`](../steuerbote/elster/zm_xml.py) die Nutzdaten der Datenart ZMDO. Am Beleg lässt sich die ZM noch nicht über ERiC senden: Es fehlen die Anbindung in ERPNext und die Hersteller-ID, siehe [Was noch fehlt](#was-noch-fehlt). Bis dahin geht sie über die [CSV-Datei für Mein ELSTER](#csv-datei-für-mein-elster) an das BZSt.
+Für die Übermittlung über ERiC schreibt [`steuerbote/elster/zm_xml.py`](../steuerbote/elster/zm_xml.py) die Nutzdaten der Datenart ZMDO, und der Beleg „Zusammenfassende Meldung“ übermittelt sie mit „Prüfen“, „Testsenden“ und „Senden“ wie die Voranmeldung, mit demselben Dialog für Zertifikatsdatei und Passwort, derselben Sperre und derselben ELSTER-Übermittlung, siehe [Übermittlung an ELSTER](uebermittlung.md#zusammenfassende-meldung). Ohne Hersteller-ID oder ohne eingerichtete ERiC-Laufzeitumgebung antwortet die [Simulation](#simulation); abgegeben wird die ZM dann über die [CSV-Datei für Mein ELSTER](#csv-datei-für-mein-elster).
 
 ### Was die Nutzdaten enthalten
 
@@ -201,22 +201,69 @@ Eine Hersteller-ID steht nicht in den Nutzdaten. Anders als die Voranmeldung mit
 
 ### Was die Übermittlung braucht
 
-`zm_xml.py` hält dafür fest:
+[`steuerbote/eric/datenart.py`](../steuerbote/eric/datenart.py) beschreibt die Datenart ZMDO an einer Stelle, wie die UStVA jedes Jahres, für den DatenTeil mit dem NutzdatenHeader, den Worker, die Auswahl der Laufzeit und die Simulation, siehe [ERiC](eric.md#datenarten):
 
 | Angabe | Wert | Grundlage |
 |---|---|---|
 | Verfahren | `ElsterExtern` | [Q18, Tabelle 8-28] |
 | Datenart | `ZMDO` | [Q18, Tabelle 8-28] |
 | Vorgang | `send-Auth`; `send-NoSig` nimmt ZMDO nicht | [Q18, Tabelle 8-28] |
-| datenartVersion | `ZMDO`, ohne Jahr | Datenartversionmatrix [Q18] |
+| datenartVersion | `ZMDO`, ohne Jahr: Der Anmeldungszeitraum ist „Unabhängig“ | Datenartversionmatrix, Tabelle 2-13 [Q18] |
 | Plugin | `checkZMDO`, unter Linux `libcheckZMDO.so` | Datenartversionmatrix, Kap. 3.1.6.1 [Q18] |
 | Empfänger im NutzdatenHeader | `<Empfaenger id="L">BF</Empfaenger>`; BF steht für das „Bundesamt für Finanzen“, heute das BZSt | [Q18, Tabelle 8-28], Felder `EmpfaengerTyp` und `EmpfaengerName` [Q11], `headerbasis_datentypen.xsd` [Q18] |
+| Testmerker beim Testsenden | `700000004`, „Testfall, der sofort nach Eingang in dem ELSTER-Annahmeserver gelöscht wird“, wie im Beispiel `ZMDO_5_send-Auth.xml` | [Q18, Kap. 6.5.5, Tabelle 6-7], [Q11] |
+| Schema der Nutzdaten | `Datenarten/ElsterExtern/ZMDO/Schema/5/zm_000005.xsd`, ohne eigenen Namensraum; `elster11_Zm_000005_extern.xsd` nimmt es in den Namensraum von ElsterXML 11 | [Q11] |
+
+Prüfen ist wie bei der Voranmeldung Hinweisprüfung, Validierung und Vorschaudruck, Testsenden und Senden sind Validierung, Versand mit `send-Auth` und Druck (EBV-9 und EBV-6, [Q18, Tabelle 6-2]); ZMDO kennt den PDF-Druck [Q18, Tabelle 8-28]. Eine Hersteller-ID steht nur im TransferHeader, siehe oben.
+
+### Der Unternehmer aus den Einstellungen
+
+Den `Unternehmer` bildet der Beleg aus den Einstellungen Umsatzsteuer-Voranmeldung seines Unternehmens (`unternehmer` in `recapitulative_statement/bridge.py`):
+
+| Element | Feld der Einstellungen | Anmerkung |
+|---|---|---|
+| `knri` | USt-IdNr. (`ust_idnr`) | Pflicht; ohne sie lehnt die Übermittlung ab und nennt das Feld |
+| `zulnr2` | Teilnehmernummer beim BZSt (`teilnehmernummer`) | leer: `1111111`, siehe oben; das Speichern prüft sieben oder acht Ziffern ab 0300000 (170015024) |
+| `name` | Name des Datenlieferanten (`filer_name`) | leer: der Name des Unternehmens |
+| `strasse` | Straße und Hausnummer (`street`) | ein Feld für beides; `hausnr` bleibt leer, die Regeln verlangen nur die Straße (170025002) |
+| `plz`, `ort` | Postleitzahl (`postal_code`), Ort (`city`) | eine deutsche Postleitzahl hat fünf Ziffern (170025005, 170025006) |
+| `staat` | keines | der Staatenschlüssel des Landes des Unternehmens in ERPNext (`Country.code`), meist DE |
+| `telefon` | Telefon (`phone`) | nur Ziffern, Leerzeichen und ( ) / + - |
+
+Was die Einstellungen ohne Datenlieferant von Hand eintragen lassen, übernimmt das Speichern aus dem Unternehmen und seiner Adresse, siehe [Architektur](architektur.md#einstellungen-umsatzsteuer-voranmeldung-vat-return-settings). Was `zm_xml.py` davon ablehnt, steht als Nachricht in der ELSTER-Übermittlung des Laufs, auf Deutsch.
+
+### Der Ablauf am Beleg
+
+1. **Berechnen**, bei Bedarf „USt-IdNrn. prüfen“, bis die Meldung „Bereit“ ist oder ihre Anmerkungen begründen, warum sie trotzdem abgegeben wird.
+2. **Prüfen** und **Testsenden** gehen an jeder berechneten Meldung im Entwurf, solange keine Prüfung der USt-IdNrn. läuft. Testsenden schickt die Meldung mit dem Testmerker an den ELSTER-Server, der sie beim Eingang löscht; sie bleibt ein Entwurf.
+3. **Senden** braucht außerdem, wie der Vermerk der Abgabe: die Meldung „Bereit“ oder Anmerkungen; das Hauptbuch ihrer Monate, wie „Berechnen“ es gelesen hat, sonst nennt Steuerbote die abweichenden Belege, siehe [Abgleich](#abgleich-mit-der-voranmeldung); keine frühere Abgabe des Meldezeitraums, außer für eine Berichtigung. Als abgegeben gilt ein Meldezeitraum, sobald eine seiner Meldungen eingereicht ist oder über Steuerbote gesendet wurde, mit Annahme durch ELSTER oder unbekanntem Ergebnis.
+4. Der Hintergrundjob schreibt die Nutzdaten mit dem Tag des Laufs als `created` und übergibt sie ERiC oder der Simulation. Eine Berichtigung meldet nur, was sich gegenüber den bisherigen Abgaben ändert (Meldeart 11); ändert sich nichts, endet der Lauf mit dieser Nachricht, und nichts geht an ELSTER.
+5. Nach einem **Senden, das ELSTER angenommen hat**, reicht der Job die Meldung ein: abgegeben über ERiC, am Tag der Antwort, mit dem Transferticket, vermerkt von dem, der gesendet hat. Eine Berichtigung setzt die frühere Meldung des Meldezeitraums auf „Ersetzt“. Scheitert das Einreichen, bleibt die Meldung ein Entwurf, der sich nicht mehr ändert, nicht neu berechnet und nicht noch einmal gesendet wird; „Buchen“ reicht sie ein, sobald die Ursache behoben ist.
+6. Ein Senden mit **unbekanntem Ergebnis** sperrt jedes weitere Senden, bis in Mein ELSTER geklärt ist, ob die Meldung angekommen ist, und ein System Manager die ELSTER-Übermittlung gelöscht hat.
+
+Jeder Lauf und jeder Vermerk der Abgabe ist eine ELSTER-Übermittlung mit Nutzdaten, Protokoll und Antwort des Servers; die Meldung zeigt sie unter „Verknüpfungen“, neben ihren USt-IdNr.-Bestätigungen, und über dem Formular die Fehler und Hinweise ihres letzten Laufs.
+
+### Simulation
+
+Ohne Laufzeitumgebung prüft die Simulation (`steuerbote/eric/fake.py`) die Nutzdaten der ZM nach den Regeln der Jahresdokumentation ZMDO, die ihren Aufbau betreffen, und gibt bei einem Fehler den ersten zurück [Q11]:
+
+| Prüfung | Code | Regel |
+|---|---|---|
+| XML ohne DTD | `SIM-002` | |
+| Wurzel `zm` in der Version `000005` im Namensraum von ElsterXML 11 | `SIM-003` | `zm_000005.xsd` |
+| Pflichtfelder des Unternehmers: `knri`, `zulnr1`, `zulnr2`, `name`, `strasse`, `ort`, `staat`; der Meldezeilen: `waehrung`, `meldeart`, `anzeige`, `widerruf`; des Meldezeitraums: `quart`, `jahr` | `SIM-004` | 170015001, 170015021, 170015023, 170025001 bis 170025004, 170015004, 170015005, 170015006, 170015009, 170015014, 170015018 |
+| mindestens eine Meldezeile | `SIM-004` | 170045002 |
+| jede Meldezeile mit Art, USt-IdNr. und Summe | `SIM-004` | 170045011, 170045008, 170045007 |
+| höchstens 5.000 Meldezeilen | `SIM-009` | „max. Zeilen“ der Felder der Meldezeile |
+| keine USt-IdNr. und Art zweimal | `SIM-008` | 170045003 (D), 170045004 (L), 170045005 (S) |
+| mit der ERiC-Dokumentation: gegen `zm_000005.xsd` | `SIM-005` | |
+
+Testsenden und Senden liefern ein Transferticket `SIM-` und ein Platzhalter-PDF mit Meldezeitraum (`quart` und `jahr`), Meldeart und Zahl der Meldezeilen. Senden gibt es in der Simulation nicht, siehe [Übermittlung an ELSTER](uebermittlung.md#simulationsmodus).
 
 ### Was noch fehlt
 
-- **Die Anbindung in ERPNext.** An der Meldung fehlen „Prüfen“, „Testsenden“ und „Senden“ wie bei der Voranmeldung. Die Frappe-Schicht bildet dafür den `Unternehmer` aus den Einstellungen (eigene USt-IdNr., Name und Anschrift, eine eigene Teilnehmernummer, für die es noch kein Feld gibt) und die `Zm` aus den gespeicherten Meldezeilen, bei einer Berichtigung mit `as_filed()` der bisherigen Abgaben des Meldezeitraums, ruft `to_nutzdaten` mit dem Tag der Übermittlung auf und übersetzt die Meldungen (`MESSAGES` und `LABELS`). In `steuerbote/eric` kennen Kopf der Lieferung, Laufzeit und Simulation bisher nur die UStVA. Für ZMDO brauchen sie die datenartVersion `ZMDO` ohne Jahr, den Empfänger `L` mit `BF` statt des Finanzamts im NutzdatenHeader, das Plugin `checkZMDO` in der eingerichteten Laufzeit und eine Simulation, die die Wurzel `zm` kennt.
-- **Die Hersteller-ID.** Ohne sie prüft und sendet ERiC nichts, siehe [ERiC](eric.md#lizenz-und-voraussetzungen).
-- **Ein Lauf mit echtem ERiC.** Dass ERiC die Nutzdaten annimmt, zeigen bisher nur Schema, Jahresdokumentation und Beispiel der Dokumentation.
+- **Die Hersteller-ID.** Ohne sie prüft und sendet ERiC nichts, siehe [ERiC](eric.md#lizenz-und-voraussetzungen); bis dahin laufen Prüfen und Testsenden als Simulation.
+- **Ein Lauf mit echtem ERiC.** Dass ERiC die Nutzdaten annimmt, zeigen bisher nur Schema, Jahresdokumentation, Beispiel der Dokumentation und die Stub-Bibliothek der Tests.
 
 ## Die Zusammenfassende Meldung in ERPNext
 
@@ -228,7 +275,8 @@ In den Einstellungen Umsatzsteuer-Voranmeldung des Unternehmens stehen dazu:
 
 | Feld | Inhalt |
 |---|---|
-| USt-IdNr. | die eigene deutsche USt-IdNr., DE und neun Ziffern; mit ihr fragt Steuerbote das BZSt nach den USt-IdNrn. der Kunden. Bleibt das Feld leer, übernimmt Steuerbote beim Speichern das Feld „Steuernummer“ (`tax_id`) des Unternehmens, wenn es eine deutsche USt-IdNr. enthält. |
+| USt-IdNr. | die eigene deutsche USt-IdNr., DE und neun Ziffern; mit ihr fragt Steuerbote das BZSt nach den USt-IdNrn. der Kunden, und die ZM über ERiC nennt mit ihr das Unternehmen. Bleibt das Feld leer, übernimmt Steuerbote beim Speichern das Feld „Steuernummer“ (`tax_id`) des Unternehmens, wenn es eine deutsche USt-IdNr. enthält. |
+| Teilnehmernummer beim BZSt | nur für die ZM über ERiC und nur, wenn das BZSt dem Unternehmen einmal eine vergeben hat: sieben oder acht Ziffern ab 0300000. Leer schreibt die ZM `1111111`, siehe [Was die Nutzdaten enthalten](#was-die-nutzdaten-enthalten). |
 | Abgaberhythmus der Zusammenfassenden Meldung | Tabelle „Regel zur Zusammenfassenden Meldung“ mit Jahr, Gültig ab Monat, Abgaberhythmus (monatlich, vierteljährlich oder jährlich), Sonstige Leistungen monatlich und Grund. Jede Regel gilt bis zur nächsten, wie unter [Abgaberhythmus](#abgaberhythmus) beschrieben; der Kern prüft die Regeln beim Speichern. |
 
 Ohne Abgaberhythmus lässt sich keine Zusammenfassende Meldung anlegen, ohne Kontenzuordnung keine berechnen.
@@ -242,7 +290,7 @@ Eine Meldung gilt einem Unternehmen und einem Meldezeitraum: Jahr, Art des Melde
 | Entwurf | angelegt und noch nicht berechnet, oder Unternehmen, Jahr oder Meldezeitraum haben sich geändert; das verwirft die Berechnung |
 | Berechnet | berechnet, aber ein Fehler der Befunde hält die Meldung an |
 | Bereit | berechnet, kein Fehler hält die Meldung an |
-| Abgegeben | als abgegeben vermerkt und damit eingereicht |
+| Abgegeben | nach einem Senden, das ELSTER angenommen hat, oder mit dem Vermerk der Abgabe eingereicht |
 | Ersetzt | für denselben Meldezeitraum ist später eine Berichtigung abgegeben worden |
 
 ### Berechnen
@@ -288,7 +336,7 @@ Die Schaltfläche fragt das BZSt im Hintergrund nach jeder USt-IdNr., die die Me
 5. Die ZM in Mein ELSTER absenden.
 6. In Steuerbote „In Mein ELSTER abgegeben“ mit dem Tag der Abgabe und, wenn vorhanden, dem Transferticket des Protokolls vermerken. Für jeden anderen Weg, etwa das BZSt-Online-Portal oder die Steuerberatung, „Als außerhalb abgegeben vermerken“ mit einer Notiz, wie und wann.
 
-Erst der Vermerk reicht die Meldung ein; „Buchen“ allein lehnt Steuerbote ab. Ein Meldezeitraum wird je Unternehmen einmal abgegeben, und ebenso die Lieferungen und die sonstigen Leistungen jedes Monats: Gibt ein geänderter Abgaberhythmus einen Monat einem zweiten Meldezeitraum, etwa den Januar nach einer vierteljährlichen Abgabe einer monatlichen ZM, lehnt Steuerbote die zweite Meldung ab. Eine abgegebene Meldung lässt sich nicht stornieren: Eine Änderung geht als Berichtigung an das BZSt.
+Erst der Vermerk oder ein Senden, das ELSTER annimmt, reicht die Meldung ein; „Buchen“ allein lehnt Steuerbote ab. Auch der Vermerk hinterlässt eine ELSTER-Übermittlung mit dem Vorgang „Außerhalb abgegeben“. Ein Meldezeitraum wird je Unternehmen einmal abgegeben, und ebenso die Lieferungen und die sonstigen Leistungen jedes Monats: Gibt ein geänderter Abgaberhythmus einen Monat einem zweiten Meldezeitraum, etwa den Januar nach einer vierteljährlichen Abgabe einer monatlichen ZM, lehnt Steuerbote die zweite Meldung ab. Eine abgegebene Meldung lässt sich nicht stornieren: Eine Änderung geht als Berichtigung an das BZSt.
 
 ### Berichtigung anlegen
 
@@ -309,7 +357,8 @@ Das Druckformat „Zusammenfassende Meldung“ zeigt Unternehmen, eigene USt-IdN
 
 ## Offene Punkte
 
-- **ZMDO über ERiC:** Die Nutzdaten schreibt `zm_xml.py`; es fehlen die Anbindung in ERPNext und die Hersteller-ID, siehe [Was noch fehlt](#was-noch-fehlt).
+- **ZMDO über ERiC:** Prüfen, Testsenden und Senden laufen am Beleg, bis zur Hersteller-ID als Simulation; ein Lauf mit echtem ERiC steht aus, siehe [Was noch fehlt](#was-noch-fehlt).
+- **Straße und Hausnummer** stehen in den Einstellungen in einem Feld und gehen zusammen in das Element `strasse`; `hausnr` bleibt leer. Die Regeln verlangen nur die Straße (170025002); ob das BZSt die Hausnummer getrennt erwartet, ist nicht belegt.
 - **Feiertage:** Die Fälligkeit folgt der Standard-Feiertagsliste des Unternehmens. Welche Feiertage für eine Frist beim BZSt gelten, sagt keine der Quellen.
 - **Rundung:** Das Abschneiden der Cent ist eine Annahme; eine Bestätigung des BZSt oder der ELSTER-Hotline steht aus.
 - **Zeile `#ve3.2.1`:** Das Beispiel der Hilfe hat sie, die allgemeine Anleitung nennt nur die Zeile `#v`. Ob der Import sie verlangt, ist nicht belegt; Steuerbote schreibt sie wie das Beispiel. Bringt die Versionstabelle eine neue Version, ändern sich `VERSION` und `EXCEL_VERSION`.
@@ -339,4 +388,4 @@ Das Druckformat „Zusammenfassende Meldung“ zeigt Unternehmen, eigene USt-IdN
 - **[Q15]** ELSTER-Hilfe „Hilfe zur UTF-8-Umstellung der Importfunktion“: <https://www.elster.de/eportal/helpGlobal?themaGlobal=help_utf-8_import>
 - **[Q16]** Entscheidungen des Maintainers vom 20. November 2026: Zeilen aus dem Hauptbuch je Beleg, Abschneiden auf ganze Euro, ungültige USt-IdNr. sperrt „Bereit“ und lässt sich je Zeile mit Begründung übersteuern, XI nur für Lieferungen, Buchungsdatum für die Zuordnung zum Zeitraum; in ERPNext der Abgaberhythmus aus den Einstellungen mit Prüfung der Schwelle, die Feiertage aus der Standard-Feiertagsliste des Unternehmens und die Bestätigung beim BZSt mit VIES als Ausweichdienst, ohne die Prüfungen der App erpnext_germany.
 - **[Q17]** ERPNext 16.60.0, `erpnext/accounts/general_ledger.py`, `make_reverse_gl_entries()`: Ohne „Unveränderliches Hauptbuch aktivieren“ (`enable_immutable_ledger` der Buchhaltungseinstellungen) setzt das Stornieren die Buchungen des Belegs auf `is_cancelled = 1` und bucht die Gegenbuchungen ebenso gekennzeichnet; mit der Einstellung bleiben die Buchungen, und die Gegenbuchungen tragen `is_cancelled = 0` und das Datum der Stornierung: <https://github.com/frappe/erpnext/blob/v16.60.0/erpnext/accounts/general_ledger.py>
-- **[Q18]** ERiC-Dokumentation 44.3.6.0 [Q11]: `ERiC-Entwicklerhandbuch.pdf`, Kap. 3.1.6.1 „ERiC Plugins im Verzeichnis „plugins““, Kap. 5.3.2 „Encoding und Zeichensatz“ und Kap. 8.15 „Zusammenfassende Meldung Daten Online (ZMDO)“ mit Tabelle 8-28 „Eigenschaften der Datenart ZMDO“; `Datenartversionmatrix.ods`, Zeile ElsterExtern/ZMDO; `ElsterBasisSchema/Schema/headerbasis_datentypen.xsd`, Typ `BundeslandSType`
+- **[Q18]** ERiC-Dokumentation 44.3.6.0 [Q11]: `ERiC-Entwicklerhandbuch.pdf`, Tabelle 2-13 „Anmeldungssteuern“, Kap. 3.1.6.1 „ERiC Plugins im Verzeichnis „plugins““, Kap. 5.3.2 „Encoding und Zeichensatz“, Tabelle 5-2 „Vorgangsarten“, Tabelle 6-2 „Erlaubte Parameterkombinationen für die Anwendungsfälle von EricBearbeiteVorgang()“, Kap. 6.5.5 „Testmerker“ mit Tabelle 6-7, Kap. 8.1 „Allgemeine Hinweise“ und Kap. 8.15 „Zusammenfassende Meldung Daten Online (ZMDO)“ mit Tabelle 8-27 „ZMDO Dokumentation“ und Tabelle 8-28 „Eigenschaften der Datenart ZMDO“; `Datenartversionmatrix.ods`, Zeile ElsterExtern/ZMDO; `ElsterBasisSchema/Schema/headerbasis_datentypen.xsd`, Typen `BundeslandSType` und `EmpfaengerIDSType`

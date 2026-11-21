@@ -1,8 +1,8 @@
 # Übermittlung an ELSTER
 
-Steuerbote übermittelt die Umsatzsteuer-Voranmeldung und die Dauerfristverlängerung (Vordruck USt 1 H) über ERiC, die Schnittstelle der Finanzverwaltung. An beiden Belegen gibt es dafür die Gruppe „ELSTER“ mit drei Vorgängen, „Prüfen“, „Testsenden“ und „Senden“, und den Vermerken „In Mein ELSTER abgegeben“ (an der Dauerfristverlängerung „In Mein ELSTER eingetragen“) und „Als außerhalb abgegeben vermerken“ für Meldungen, die auf anderem Weg zum Finanzamt gehen. Jeder Vorgang läuft im Hintergrund und hinterlässt eine ELSTER-Übermittlung mit Ergebnis, Meldungen und Dateien. Wie ERiC selbst eingebunden ist, beschreibt [ERiC](eric.md).
+Steuerbote übermittelt die Umsatzsteuer-Voranmeldung, die Dauerfristverlängerung (Vordruck USt 1 H) und die Zusammenfassende Meldung über ERiC, die Schnittstelle der Finanzverwaltung. An allen drei Belegen gibt es dafür die Gruppe „ELSTER“ mit drei Vorgängen, „Prüfen“, „Testsenden“ und „Senden“, und den Vermerken „In Mein ELSTER abgegeben“ (an der Dauerfristverlängerung „In Mein ELSTER eingetragen“) und „Als außerhalb abgegeben vermerken“ für Meldungen, die auf anderem Weg zum Finanzamt oder zum BZSt gehen. Jeder Vorgang läuft im Hintergrund und hinterlässt eine ELSTER-Übermittlung mit Ergebnis, Meldungen und Dateien. Wie ERiC selbst eingebunden ist, beschreibt [ERiC](eric.md).
 
-Diese Seite beschreibt die Vorgänge an der Voranmeldung. An der Dauerfristverlängerung laufen sie genauso, mit demselben Dialog, derselben Sperre, denselben Ergebnissen und derselben ELSTER-Übermittlung; was dort anders ist, steht unter [Dauerfristverlängerung](#dauerfristverlängerung).
+Diese Seite beschreibt die Vorgänge an der Voranmeldung. An der Dauerfristverlängerung und an der Zusammenfassenden Meldung laufen sie genauso, mit demselben Dialog, derselben Sperre, denselben Ergebnissen und derselben ELSTER-Übermittlung; was dort anders ist, steht unter [Dauerfristverlängerung](#dauerfristverlängerung) und [Zusammenfassende Meldung](#zusammenfassende-meldung).
 
 Ohne eigene Hersteller-ID oder ohne installierte ERiC-Laufzeitumgebung läuft Steuerbote im [Simulationsmodus](#simulationsmodus). Dann geht nichts an das Finanzamt.
 
@@ -38,6 +38,18 @@ Der Beleg „Dauerfristverlängerung“ übermittelt den Vordruck USt 1 H eines 
 - **Nach einem angenommenen Senden** ist der Beleg abgegeben über ERiC, am Tag der Antwort, mit dem Transferticket, und seine Sondervorauszahlung steht in den Einstellungen des Unternehmens.
 - **Berichtigen** heißt eine abgegebene Anmeldung der Sondervorauszahlung stornieren und mit „Ändern“ als berichtigte Anmeldung (Kz 10) neu anlegen; das Stornieren nimmt beim Finanzamt nichts zurück.
 - **Die Vermerke** legen ebenfalls eine ELSTER-Übermittlung mit dem Vorgang „Außerhalb abgegeben“ an.
+
+## Zusammenfassende Meldung
+
+Der Beleg „Zusammenfassende Meldung“ übermittelt die ZM eines Unternehmens für einen Meldezeitraum an das BZSt, siehe [Zusammenfassende Meldung](zm.md#zm-über-eric). Sie ist eine eigene Datenart, ZMDO des Verfahrens ElsterExtern, mit dem Vorgang `send-Auth` (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 8.15, Tabelle 8-28), beschrieben in [`steuerbote/eric/datenart.py`](../steuerbote/eric/datenart.py). Anders als an der Voranmeldung:
+
+- **Das BZSt ist der Empfänger.** Der Kopf der Lieferung nennt `<Empfaenger id="L">BF</Empfaenger>` statt des Finanzamts, die Steuernummer braucht die ZM nicht. Die datenartVersion ist `ZMDO` ohne Jahr, und die Laufzeitumgebung ist die neueste freigegebene mit dem Plugin `checkZMDO`; hat nur eine Beta das Plugin, prüft und testsendet Steuerbote mit ihr, Senden geht mit einer Beta nie.
+- **Die Nutzdaten** sind das Element `zm` mit den Meldezeilen der Meldung, bei einer Berichtigung nur mit den Zeilen, die die bisherigen Abgaben ändern. Den Unternehmer nehmen sie aus den Einstellungen: USt-IdNr., Teilnehmernummer beim BZSt, Name und Anschrift des Datenlieferanten, siehe [Der Unternehmer aus den Einstellungen](zm.md#der-unternehmer-aus-den-einstellungen). Eine Hersteller-ID steht nur im Kopf der Lieferung. Die Simulation prüft den Aufbau nach den Regeln der Jahresdokumentation ZMDO, siehe [Simulation](zm.md#simulation).
+- **Senden braucht das Hauptbuch, wie „Berechnen“ es gelesen hat.** Hat sich seit dem Berechnen ein Beleg der Monate geändert, lehnt Steuerbote das Senden ab und nennt ihn, wie bei der CSV-Datei für Mein ELSTER. Prüfen und Testsenden gehen trotzdem.
+- **Ein Meldezeitraum wird einmal abgegeben.** Ist eine Meldung des Meldezeitraums eingereicht oder über Steuerbote gesendet, mit Annahme durch ELSTER oder unbekanntem Ergebnis, gehen Senden, Vermerk und CSV-Datei jeder anderen Meldung des Meldezeitraums nur als Berichtigung, die „Berichtigung anlegen“ an der abgegebenen Meldung anlegt.
+- **Eine Übermittlung zur Zeit, und keine Prüfung der USt-IdNrn. daneben.** Während ein Vorgang läuft, lassen sich die USt-IdNrn. nicht prüfen, und während sie geprüft werden, startet kein Vorgang.
+- **Nach einem angenommenen Senden** ist die Meldung abgegeben über ERiC, am Tag der Antwort, mit dem Transferticket, und vermerkt von dem, der gesendet hat. Eine Berichtigung setzt die frühere Meldung des Meldezeitraums auf „Ersetzt“. Scheitert das Einreichen, ändert sich die Meldung nicht mehr: Berechnen, USt-IdNrn. prüfen und Speichern lehnt Steuerbote ab, und „Buchen“ reicht sie ein, wie sie gesendet wurde.
+- **Ohne Hersteller-ID** bleibt die [CSV-Datei für Mein ELSTER](zm.md#csv-datei-für-mein-elster) der Weg zum BZSt. Die Vermerke legen wie an der Voranmeldung eine ELSTER-Übermittlung mit dem Vorgang „Außerhalb abgegeben“ an.
 
 ## Zertifikat und Passwort
 
@@ -88,6 +100,10 @@ Steuerbote enthält kein ERiC und lädt es auch nicht herunter. ERiC dürfen nur
 
 Die Laufzeitumgebungen liegen außerhalb jeder Site im Verzeichnis `sites/eric` der Bench, das `steuerbote_eric_root` in `common_site_config.json` ändern kann. Sie werden weder ausgeliefert noch mit einer Site gesichert. Wie Versionen und Jahreswechsel zusammenhängen, steht in [ERiC](eric.md#versionen-und-jahreswechsel).
 
+### Laufzeitumgebung prüfen
+
+„Laufzeitumgebung prüfen“ zeigt dem System Manager die Statusprüfungen von ERiC: Plattform, eingerichtete Laufzeitumgebung, ob ihre Bibliotheken unverändert sind, ob eine freigegebene Laufzeitumgebung das Plugin des laufenden Jahres für die Voranmeldung und das Plugin `checkZMDO` für die Zusammenfassende Meldung hat, und die Hersteller-ID, siehe [ERiC](eric.md#statusprüfung). Die Prüfung ändert nichts.
+
 ## Ablauf eines Vorgangs
 
 1. Bei Testsenden und Senden fragt ein Dialog nach Zertifikatsdatei und Zertifikats-Passwort, im Simulationsmodus nur nach einer Bestätigung.
@@ -108,7 +124,7 @@ Jeder Vorgang und jeder Vermerk ist eine ELSTER-Übermittlung. Die Liste steht u
 
 | Feld | Inhalt |
 |---|---|
-| Dokumententyp, Dokument, Unternehmen | der Beleg, eine Umsatzsteuer-Voranmeldung oder eine Dauerfristverlängerung, und sein Unternehmen |
+| Dokumententyp, Dokument, Unternehmen | der Beleg, eine Umsatzsteuer-Voranmeldung, eine Dauerfristverlängerung oder eine Zusammenfassende Meldung, und sein Unternehmen |
 | Vorgang | Prüfen, Testsenden, Senden oder Außerhalb abgegeben |
 | Status | Läuft, Erfolgreich, Fehlgeschlagen oder Unbekannt |
 | Ergebnis laut ERiC | Gültig oder Ungültig nach Prüfen, Angenommen oder Abgelehnt nach einem Senden, Fehlgeschlagen, wenn nichts gesendet wurde, Unbekannt, wenn offen ist, ob ein Senden angekommen ist |

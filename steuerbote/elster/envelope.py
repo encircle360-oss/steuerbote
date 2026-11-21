@@ -7,7 +7,8 @@ declare their own (DS 2.3). Its Nutzdaten are a Voranmeldung (``to_envelope``) o
 Datenart UStVA holds as well (HB table 2-13; ``envelope_of`` with the tree of ust1h_xml.py).
 
 The TransferHeader names the Verfahren ElsterAnmeldung, the Datenart UStVA and the Vorgang send-Auth, the
-only one the UStVA allows (HB table 8-8). A test case carries the Testmerker 700000004, which the ELSTER
+only one the UStVA allows (HB table 8-8), as steuerbote.eric.datenart describes the Datenart UStVA of the year of
+the Nutzdaten for the transmission as well. A test case carries the Testmerker 700000004, which the ELSTER
 server deletes „sofort nach Eingang“ (HB table 6-7); a real case carries none (HB 6.5.5). TransferTicket,
 EingangsDatum, RC, SigUser and the Empfaenger of the TransferHeader are left to ERiC and the server. The
 NutzdatenHeader sends to the Bundesfinanzamtsnummer, „die ersten 4 Stellen der 13-stelligen Steuernummer“
@@ -33,13 +34,11 @@ from steuerbote.elster.ustva_xml import (
 	require_hersteller_id,
 	required_text,
 )
+from steuerbote.eric.datenart import ELSTER_XML, ustva
 
-NAMESPACE = "http://www.elster.de/elsterxml/schema/v11"
+NAMESPACE = ELSTER_XML
 DECLARATION = b'<?xml version="1.0" encoding="UTF-8"?>\n'
 HEADER_VERSION = "11"
-VERFAHREN = "ElsterAnmeldung"
-DATENART = "UStVA"
-VORGANG = "send-Auth"
 TESTMERKER = "700000004"
 VERSCHLUESSELUNG = "CMSEncryptedData"
 KOMPRESSION = "GZIP"
@@ -93,13 +92,15 @@ def envelope_of(
 	produkt_version: str = __version__,
 	nutzdaten_ticket: str = "1",
 ) -> bytes:
-	"""The whole ElsterXML document around the element Anmeldungssteuern of one filing, in UTF-8."""
+	"""The whole ElsterXML document around the element Anmeldungssteuern of one filing, in UTF-8; the version of the
+	element is the year of its Datenart."""
 	hersteller_id = require_hersteller_id(hersteller_id)
+	kind = ustva(int(nutzdaten.get("version")))
 	root = etree.Element(_tag("Elster"), nsmap={None: NAMESPACE})
 	header = _append(root, "TransferHeader", version=HEADER_VERSION)
-	_append(header, "Verfahren", VERFAHREN)
-	_append(header, "DatenArt", DATENART)
-	_append(header, "Vorgang", VORGANG)
+	_append(header, "Verfahren", kind.verfahren)
+	_append(header, "DatenArt", kind.name)
+	_append(header, "Vorgang", kind.vorgang)
 	if testmerker:
 		_append(header, "Testmerker", TESTMERKER)
 	_append(header, "HerstellerID", hersteller_id)
@@ -111,7 +112,7 @@ def envelope_of(
 	nutzdaten_header = _append(block, "NutzdatenHeader", version=HEADER_VERSION)
 	ticket = required_text(nutzdaten_ticket, NUTZDATEN_TICKET_LABEL, NUTZDATEN_TICKET_LENGTH)
 	_append(nutzdaten_header, "NutzdatenTicket", ticket)
-	_append(nutzdaten_header, "Empfaenger", filer.steuernummer[:4], id="F")
+	_append(nutzdaten_header, "Empfaenger", filer.steuernummer[:4], id=kind.recipient_id)
 	hersteller = _append(nutzdaten_header, "Hersteller")
 	_append(hersteller, "ProduktName", PRODUCT_NAME)
 	version = required_text(produkt_version, PRODUCT_VERSION_LABEL, PRODUCT_TEXT_LENGTH)

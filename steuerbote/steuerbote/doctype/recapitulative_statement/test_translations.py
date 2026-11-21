@@ -1,5 +1,5 @@
-"""Every text of the Zusammenfassende Meldung, its USt-IdNr.-Bestätigungen and the rules of the core it shows
-has a German translation in translations/de.csv."""
+"""Every text of the Zusammenfassende Meldung, its USt-IdNr.-Bestätigungen, the rules of the core it shows and
+those of its Nutzdaten for ERiC has a German translation in translations/de.csv."""
 
 import csv
 import importlib
@@ -7,6 +7,8 @@ import json
 import re
 from pathlib import Path
 from unittest import TestCase
+
+from steuerbote.elster import zm_xml
 
 APP = Path(__file__).resolve().parents[3]
 MODULE = APP / "steuerbote"
@@ -21,7 +23,7 @@ DOCTYPES = (
 	"vat_id_confirmation",
 	"zm_rule",
 )
-SETTINGS_FIELDS = ("ust_idnr", "zm_rules")
+SETTINGS_FIELDS = ("ust_idnr", "teilnehmernummer", "zm_rules")
 SOURCES = (
 	"doctype/recapitulative_statement/recapitulative_statement.py",
 	"doctype/recapitulative_statement/recapitulative_statement.js",
@@ -131,6 +133,9 @@ class ZmTranslationsTest(TestCase):
 		for text, found in (
 			("Recapitulative Statement", texts_of_the_doctypes()),
 			("Confirm VAT IDs", texts_of_the_sources()),
+			("Transmit to the BZSt", texts_of_the_sources()),
+			("Calculate the statement before transmitting it.", texts_of_the_sources()),
+			("Teilnehmernummer of the BZSt", texts_of_the_doctypes()),
 			("A Zusammenfassende Meldung needs at least one Meldezeile.", templates_of_the_core()),
 		):
 			with self.subTest(text=text):
@@ -146,6 +151,11 @@ class ZmTranslationsTest(TestCase):
 
 	def test_every_rule_of_the_core_is_translated(self):
 		self.assertEqual(sorted(templates_of_the_core() - set(translations())), [])
+
+	def test_every_rule_and_label_of_the_nutzdaten_for_eric_is_translated(self):
+		"""What steuerbote.elster.zm_xml refuses reaches the user as the message of a transmission."""
+		texts = {*zm_xml.MESSAGES, *zm_xml.LABELS}
+		self.assertEqual(sorted(texts - set(translations())), [])
 
 	def test_the_framework_labels_are_left_to_the_framework(self):
 		self.assertEqual(sorted(FRAMEWORK_LABELS & set(translations())), [])

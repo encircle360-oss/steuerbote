@@ -28,6 +28,7 @@ PRINT_FORMAT = MODULE / "print_format" / "umsatzsteuer_voranmeldung"
 ZM_PRINT_FORMAT = MODULE / "print_format" / "zusammenfassende_meldung"
 ZM_SCRIPT = MODULE / "doctype" / "recapitulative_statement" / "recapitulative_statement.js"
 VAT_RETURN_SCRIPT = MODULE / "doctype" / "vat_return" / "vat_return.js"
+TRANSMISSION_SCRIPT = APP / "public" / "js" / "elster_transmission.js"
 MAPPING = MODULE / "doctype" / "vat_return_mapping"
 MAPPING_RULE = MODULE / "doctype" / "vat_return_mapping_rule" / "vat_return_mapping_rule.json"
 DOCK = APP / "dock" / "steuerbote" / "steuerbote.json"
@@ -655,7 +656,7 @@ class ZmPrintFormatFilesTest(TestCase):
 
 
 class ZmFormFilesTest(TestCase):
-	"""A draft statement is filed through a note of its filing, never by Buchen alone."""
+	"""A draft statement is filed through ELSTER or a note of its filing, never by Buchen alone."""
 
 	def setUp(self):
 		self.script = ZM_SCRIPT.read_text(encoding="utf-8")
@@ -664,7 +665,8 @@ class ZmFormFilesTest(TestCase):
 		setup = re.search(r"\n\tsetup\(frm\) \{\n(?P<body>.*?)\n\t\},\n", self.script, re.DOTALL)
 		self.assertIsNotNone(setup)
 		self.assertIn("frm.show_submit_message = () => {};", setup["body"])
-		self.assertIn("frm.page.clear_primary_action();", self.script)
+		self.assertIn("offer_buchen_only_for_an_accepted_send(frm);", self.script)
+		self.assertIn("frm.page.clear_primary_action();", TRANSMISSION_SCRIPT.read_text(encoding="utf-8"))
 
 	def test_the_buttons_read_as_the_steps_of_the_zm(self):
 		buttons = re.findall(r'frm\.add_custom_button\(__\("([^"]+)"\)', self.script)

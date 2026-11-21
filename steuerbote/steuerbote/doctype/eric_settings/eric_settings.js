@@ -40,5 +40,22 @@ frappe.ui.form.on("ERiC Settings", {
 				})
 			);
 		});
+		frm.add_custom_button(__("Check Runtime"), () =>
+			frm.call("check_runtime").then((response) => show_status(response.message || []))
+		);
 	},
 });
+
+// The checks of steuerbote.eric.runtime.status, the plugin of the year and that of the Zusammenfassende Meldung
+// among them; their texts are German, as the runtime writes them for the operator.
+function show_status(checks) {
+	const lines = checks.map(
+		(check) =>
+			`<p><span class="indicator ${check.ok ? "green" : "red"}">${frappe.utils.escape_html(check.detail)}</span></p>`
+	);
+	frappe.msgprint({
+		title: __("Status of the ERiC Runtime"),
+		message: lines.join(""),
+		indicator: checks.every((check) => check.ok) ? "green" : "orange",
+	});
+}

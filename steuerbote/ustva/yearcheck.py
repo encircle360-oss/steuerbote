@@ -17,7 +17,7 @@ It compares
 - the layout of form USt 1 H (LAYOUTS of steuerbote/dauerfrist/form.py) with the fields and rules of its two
   contexts and with their elements in the schema;
 - the datenartVersion and the plugin of the year (steuerbote/ustva/years.py) with the row of the Datenart UStVA in
-  Datenartversionmatrix.ods, and those of ZMDO (steuerbote/elster/zm_xml.py) with its row, which names no year.
+  Datenartversionmatrix.ods, and those of ZMDO (steuerbote/eric/datenart.py) with its row, which names no year.
 
 A year that a table lacks is a year in the making: the command names those tables and compares the part of the
 latest year in its place, so that its lines are what the new year changes.
@@ -33,8 +33,8 @@ from types import MappingProxyType
 from typing import TextIO
 
 from steuerbote.dauerfrist.form import LAYOUTS, Context, Layout
-from steuerbote.elster import zm_xml
 from steuerbote.elster.ustva_xml import SCHEMAS, Schema
+from steuerbote.eric.datenart import ZMDO
 from steuerbote.ustva import documentation
 from steuerbote.ustva.documentation import DocumentationError, Row, YearDocumentation
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL, CATALOGUES, Kennzahl, Kind
@@ -340,8 +340,8 @@ def _datenart_versions(doc: YearDocumentation) -> Iterator[Difference]:
 		if first is None or year < int(first["year"]):
 			years = ustva["Jahr / Version"] or "none"
 			yield Difference(subject, f"the year {year}", source, f"Jahr / Version {years}")
-	zmdo = rows.get((zm_xml.VERFAHREN, zm_xml.DATENART))
-	ours = f"no year, {zm_xml.DATENART_VERSION}, {zm_xml.PLUGIN}"
+	zmdo = rows.get((ZMDO.verfahren, ZMDO.name))
+	ours = f"no year, {ZMDO.version}, {ZMDO.plugin}"
 	if zmdo is None:
 		yield Difference("ZMDO", ours, source, "no row of the Datenart ZMDO")
 	else:

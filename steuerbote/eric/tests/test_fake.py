@@ -8,6 +8,9 @@ from dataclasses import replace
 from pathlib import Path
 from unittest import TestCase, mock
 
+from steuerbote.elster import zm_xml
+from steuerbote.elster.tests import eric_schema, zm_examples
+from steuerbote.eric import fake
 from steuerbote.eric.fake import DOCUMENTATION_VARIABLE, SIMULATED_VERSION, Simulation, placeholder_pdf
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Operation, Outcome
@@ -59,12 +62,58 @@ HEADER = EnvelopeHeader(
 	datenlieferant="Beispiel GmbH",
 	produkt_name="Steuerbote",
 	produkt_version="0.1.0",
-	empfaenger_finanzamt="9198",
+	empfaenger="9198",
 	datenart_version="UStVA_2026",
 	testmerker=None,
 	nutzdaten_ticket="1",
 )
 TEST_HEADER = replace(HEADER, testmerker=TESTMERKER)
+# The Zusammenfassende Meldung of October 2026 in zm_examples.py, Datenart ZMDO, which goes to BF.
+ZM = zm_examples.nutzdaten()
+ZM_HEADER = replace(HEADER, empfaenger="BF", datenart_version="ZMDO")
+# A schema of our own with the shape of zm_000005.xsd, which declares no namespace either: the simulation takes it
+# into the namespace of ElsterXML 11, as elster11_Zm_000005_extern.xsd does.
+ANY = '<xs:complexType><xs:sequence><xs:any processContents="skip" maxOccurs="unbounded"/></xs:sequence></xs:complexType>'
+ZM_SCHEMA = f"""<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+	<xs:element name="zm">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="unternehmer">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="knri" type="xs:string"/>
+							<xs:element name="zulassNr">{ANY}</xs:element>
+							<xs:element name="anschrift">{ANY}</xs:element>
+							<xs:element name="zm-zeilen">
+								<xs:complexType>
+									<xs:sequence>
+										<xs:element name="anzeige" type="xs:boolean"/>
+										<xs:element name="widerruf" type="xs:boolean"/>
+										<xs:element name="mzr">{ANY}</xs:element>
+										<xs:element name="zeile" maxOccurs="unbounded">
+											<xs:complexType>
+												<xs:sequence>
+													<xs:element name="knre" type="xs:string"/>
+													<xs:element name="betrag" type="xs:integer"/>
+												</xs:sequence>
+												<xs:attribute name="umsatzart" type="xs:string" use="required"/>
+											</xs:complexType>
+										</xs:element>
+									</xs:sequence>
+									<xs:attribute name="waehrung" type="xs:string" use="required"/>
+									<xs:attribute name="meldeart" type="xs:string" use="required"/>
+								</xs:complexType>
+							</xs:element>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+			</xs:sequence>
+			<xs:attribute name="version" type="xs:string" use="required"/>
+		</xs:complexType>
+	</xs:element>
+</xs:schema>
+"""
 
 # A schema of our own with the shape of the UStVA schema, for the test of the schema check: the schemas of
 # the ERiC documentation may not be passed on.
@@ -140,6 +189,12 @@ class SimulationTestCase(TestCase):
 		schema.write_text(SCHEMA, encoding="utf-8")
 		return root
 
+	def zm_documentation(self, root: Path) -> Path:
+		schema = root / "Datenarten" / "ElsterExtern" / "ZMDO" / "Schema" / "5" / "zm_000005.xsd"
+		schema.parent.mkdir(parents=True)
+		schema.write_text(ZM_SCHEMA, encoding="utf-8")
+		return root
+
 
 class ValidateTest(SimulationTestCase):
 	def test_valid_nutzdaten_are_valid_and_nothing_is_sent(self):
@@ -185,7 +240,7 @@ class ValidateTest(SimulationTestCase):
 		self.assertIn("110085064", error.text)
 
 	def test_checks_the_header(self):
-		result = Simulation().run(Operation.VALIDATE, NUTZDATEN, replace(HEADER, empfaenger_finanzamt="91"))
+		result = Simulation().run(Operation.VALIDATE, NUTZDATEN, replace(HEADER, empfaenger="91"))
 		self.assertIs(result.outcome, Outcome.INVALID)
 		self.assertIn("SB-HEADER", codes(result))
 
@@ -325,6 +380,162 @@ class Ust1HTest(SimulationTestCase):
 			"Vordruck: Antrag auf Dauerfristverlängerung 2026".encode("cp1252"), result.protocol_pdf
 		)
 		self.assertNotIn(b"Kennzahl", result.protocol_pdf)
+
+
+class ZmdoTest(SimulationTestCase):
+	"""The Zusammenfassende Meldung, Datenart ZMDO, with the rules of Jahresdokumentation_ZMDO_2.ods, sheet
+	„ZMDO - Regeln“, on the structure of its Nutzdaten."""
+
+	def errors(self, result) -> list[tuple[str, str | None]]:
+		return [(message.code, message.field) for message in result.messages if message.severity == ERROR]
+
+	def refused(self, nutzdaten: str) -> tuple[str, str | None, str]:
+		"""The one error of the simulation for the Nutzdaten: code, field and text."""
+		result = Simulation().run(Operation.VALIDATE, nutzdaten, ZM_HEADER)
+		self.assertIs(result.outcome, Outcome.INVALID)
+		(error,) = (message for message in result.messages if message.severity == ERROR)
+		return error.code, error.field, error.text
+
+	def test_the_statement_of_october_is_valid(self):
+		result = Simulation().run(Operation.VALIDATE, ZM, ZM_HEADER)
+		self.assertIs(result.outcome, Outcome.VALID)
+		self.assertEqual(codes(result), ["SIM-000", "SIM-001"])
+		self.assertIn("zm_000005.xsd", result.messages[1].text)
+
+	def test_the_root_is_zm_of_version_000005_in_the_namespace_of_elster_xml_11(self):
+		cases = {
+			"another element": ZM.replace("<zm ", "<zmx ").replace("</zm>", "</zmx>"),
+			"another version": ZM.replace('version="000005"', 'version="000004"'),
+			"another namespace": ZM.replace("schema/v11", "schema/v12"),
+			"a Voranmeldung": NUTZDATEN,
+		}
+		for case, nutzdaten in cases.items():
+			with self.subTest(case):
+				code, field, text = self.refused(nutzdaten)
+				self.assertEqual((code, field), ("SIM-003", "zm"))
+				self.assertIn("000005", text)
+
+	def test_the_unternehmer_and_its_meldezeitraum_hold_the_fields_the_rules_require(self):
+		for element, code in (
+			("knri", "170015001"),
+			("zulnr1", "170015021"),
+			("zulnr2", "170015023"),
+			("name", "170025001"),
+			("strasse", "170025002"),
+			("ort", "170025003"),
+			("staat", "170025004"),
+			("anzeige", "170015006"),
+			("widerruf", "170015009"),
+			("quart", "170015014"),
+			("jahr", "170015018"),
+		):
+			for change in ("missing", "empty"):
+				with self.subTest(element=element, change=change):
+					empty = "" if change == "missing" else f"<{element}> </{element}>"
+					nutzdaten = re.sub(rf"\s*<{element}>[^<]*</{element}>", empty, ZM, count=1)
+					self.assertNotEqual(nutzdaten, ZM)
+					found, field, text = self.refused(nutzdaten)
+					self.assertEqual((found, field), ("SIM-004", element))
+					self.assertIn(code, text)
+
+	def test_170015004_170015005_the_lines_name_currency_and_meldeart(self):
+		for attribute, code in (("waehrung", "170015004"), ("meldeart", "170015005")):
+			with self.subTest(attribute=attribute):
+				found, field, text = self.refused(re.sub(rf' {attribute}="[^"]*"', "", ZM, count=1))
+				self.assertEqual((found, field), ("SIM-004", attribute))
+				self.assertIn(code, text)
+
+	def test_170045002_the_statement_has_a_line(self):
+		nutzdaten = re.sub(r"\s*<zeile umsatzart=.*?</zeile>", "", ZM, flags=re.DOTALL)
+		code, field, text = self.refused(nutzdaten)
+		self.assertEqual((code, field), ("SIM-004", "zeile"))
+		self.assertIn("170045002", text)
+
+	def test_each_line_names_its_art_its_ust_idnr_and_its_sum(self):
+		for part, change, code in (
+			("umsatzart", (' umsatzart="L"', ""), "170045011"),
+			("knre", ("<knre>ATU12345678</knre>", ""), "170045008"),
+			("betrag", ("<betrag>12000</betrag>", ""), "170045007"),
+		):
+			with self.subTest(part=part):
+				found, field, text = self.refused(ZM.replace(*change, 1))
+				self.assertEqual((found, field), ("SIM-004", part))
+				self.assertIn(code, text)
+
+	def test_170045003_to_170045005_no_ust_idnr_and_art_twice(self):
+		for art, code in (("D", "170045003"), ("L", "170045004"), ("S", "170045005")):
+			with self.subTest(art=art):
+				line = f'<zeile umsatzart="{art}"><knre>PL1234567890</knre><betrag>1</betrag></zeile>'
+				found, field, text = self.refused(ZM.replace("</zm-zeilen>", line + line + "</zm-zeilen>"))
+				self.assertEqual((found, field), ("SIM-008", "zeile"))
+				self.assertIn("PL1234567890", text)
+				self.assertIn(code, text)
+
+	def test_at_most_5000_lines(self):
+		"""The „max. Zeilen“ of umsatzart, knre_UstIdNr_Erwerber and betrag on the sheet „ZMDO - Felder“."""
+		self.assertEqual(fake.ZM_MAX_LINES, zm_xml.MAX_LINES)
+
+		def statement(count: int) -> str:
+			head = ZM.partition("\t\t\t<zeile")[0]
+			lines = "".join(
+				f'<zeile umsatzart="L"><knre>AT{number:08d}</knre><betrag>1</betrag></zeile>'
+				for number in range(count)
+			)
+			return head + lines + "</zm-zeilen></unternehmer></zm>"
+
+		self.assertTrue(Simulation().run(Operation.VALIDATE, statement(5000), ZM_HEADER).ok)
+		found, field, text = self.refused(statement(5001))
+		self.assertEqual((found, field), ("SIM-009", "zeile"))
+		self.assertIn("5001", text)
+
+	def test_validates_against_a_schema_without_namespace_in_the_namespace_of_elster_xml_11(self):
+		simulation = Simulation(self.zm_documentation(self.directory / "Dokumentation"))
+		self.assertEqual(codes(simulation.run(Operation.VALIDATE, ZM, ZM_HEADER)), ["SIM-000"])
+		invalid = simulation.run(
+			Operation.VALIDATE, ZM.replace("<betrag>3500</betrag>", "<betrag>3500.00</betrag>"), ZM_HEADER
+		)
+		self.assertEqual(self.errors(invalid), [("SIM-005", None)])
+		self.assertIn("zm_000005.xsd", invalid.messages[-1].text)
+
+	def test_a_test_send_names_the_meldezeitraum_and_the_lines_in_its_protocol(self):
+		result = Simulation().run(Operation.TEST_SEND, ZM, replace(ZM_HEADER, testmerker=TESTMERKER))
+		self.assertIs(result.outcome, Outcome.ACCEPTED)
+		self.assertEqual(result.transferticket, "SIM-" + hashlib.sha256(ZM.encode()).hexdigest()[:28])
+		for line in (
+			b"Vorgang: Testsenden",
+			b"Datenart: ZMDO",
+			b"Meldezeitraum: 30/2026",
+			rb"Meldeart: 10 \(Erstmeldung\)",
+			b"Meldezeilen: 3",
+		):
+			with self.subTest(line=line):
+				self.assertIn(line, result.protocol_pdf)
+		self.assertNotIn(b"Kennzahl", result.protocol_pdf)
+
+	def test_a_berichtigung_names_its_meldeart(self):
+		berichtigung = ZM.replace('meldeart="10"', 'meldeart="11"')
+		result = Simulation().run(Operation.SEND, berichtigung, ZM_HEADER)
+		self.assertIs(result.outcome, Outcome.ACCEPTED)
+		self.assertIn(rb"Meldeart: 11 \(Berichtigung\)", result.protocol_pdf)
+
+	def test_the_header_of_zmdo_names_bf(self):
+		result = Simulation().run(Operation.VALIDATE, ZM, replace(ZM_HEADER, empfaenger="9198"))
+		self.assertIs(result.outcome, Outcome.INVALID)
+		self.assertEqual(self.errors(result), [("SB-HEADER", "Empfaenger")])
+
+
+class ZmdoDocumentationTest(TestCase):
+	"""The Zusammenfassende Meldung against zm_000005.xsd of the ERiC documentation 44.3.6.0 itself."""
+
+	def test_validates_against_zm_000005_xsd_of_the_eric_documentation(self):
+		simulation = Simulation(eric_schema.documentation())
+		self.assertEqual(codes(simulation.run(Operation.VALIDATE, ZM, ZM_HEADER)), ["SIM-000"])
+		invalid = simulation.run(
+			Operation.VALIDATE, ZM.replace("<zulnr1>N</zulnr1>", "<zulnr1>X</zulnr1>"), ZM_HEADER
+		)
+		self.assertEqual(
+			[message.code for message in invalid.messages if message.severity == ERROR], ["SIM-005"]
+		)
 
 
 class SendTest(SimulationTestCase):

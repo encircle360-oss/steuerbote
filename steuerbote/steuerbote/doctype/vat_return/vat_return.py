@@ -35,6 +35,7 @@ from frappe.utils import cint, escape_html, fmt_money, getdate
 
 from steuerbote import invoices, ustva
 from steuerbote.elster import ustva_xml
+from steuerbote.eric import datenart as eric_datenart
 from steuerbote.ledger import account_names, accounts_without_number, load_lines
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
@@ -324,6 +325,10 @@ class VATReturn(Transmittable, Document):
 					"{0} of {1} was transmitted already as {2}. Mark this return as a corrected return (Kz 10)."
 				).format(self.period_label, self.company, sent[0].document)
 			)
+
+	def datenart(self) -> eric_datenart.Datenart:
+		"""The Datenart UStVA of the year of the return."""
+		return eric_datenart.ustva(cint(self.year))
 
 	def nutzdaten(self, hersteller_id: str) -> str:
 		"""The Nutzdaten for ERiC: the tree of the file for Mein ELSTER, with the Hersteller-ID in Kz 09."""
