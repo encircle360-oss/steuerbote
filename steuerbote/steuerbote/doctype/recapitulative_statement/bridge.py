@@ -11,6 +11,9 @@ A number that was never confirmed counts as unconfirmed, as does one whose confi
 hold the statement back from „Bereit“ until the BZSt confirms the number or the line is overridden with a
 Begründung (decision of the maintainer, docs/zm.md, [Q16]). The core lets a number without an outcome pass, so
 the statement passes an outcome for every number its lines have.
+
+For ERiC the module hands the statement as it is filed to steuerbote.elster.zm_xml: the Unternehmer from the VAT
+Return Settings and the Zusammenfassende Meldung from the lines of the statement.
 """
 
 from collections.abc import Iterable, Sequence
@@ -21,6 +24,7 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Any
 
+from steuerbote.elster import zm_xml
 from steuerbote.steuerbote.doctype.vat_return.bridge import Row, split_voucher, to_amount
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import ZERO
@@ -508,6 +512,45 @@ def file_lines(
 	if held is None:
 		return statement.meldezeilen, False
 	return correct(period, held, statement.meldezeilen).lines, True
+
+
+def unternehmer(settings: Row, country: str | None) -> zm_xml.Unternehmer:
+	"""The company as the Zusammenfassende Meldung names it, from its VAT Return Settings: its own USt-IdNr., the
+	name and address of the Datenlieferant, without a name of its own that of the company, its phone and its
+	Teilnehmernummer, if it has one; ``country`` is the code of the country of the company.
+
+	The settings hold street and house number in one field, which goes into strasse; the rules require the street
+	and leave the house number to the filer (Jahresdokumentation ZMDO 2, 170025002).
+	"""
+	return zm_xml.Unternehmer(
+		ust_idnr=settings.get("ust_idnr") or "",
+		name=settings.get("filer_name") or settings.get("company"),
+		street=settings.get("street"),
+		postal_code=settings.get("postal_code") or None,
+		city=settings.get("city"),
+		country=country,
+		phone=settings.get("phone") or None,
+		teilnehmernummer=settings.get("teilnehmernummer") or None,
+	)
+
+
+def zm(
+	period: ReportingPeriod,
+	statement: Statement,
+	held: ReadOnlyMapping[tuple[str, Art], Decimal] | None,
+	anzeige: object,
+	widerruf: object,
+) -> zm_xml.Zm:
+	"""The Zusammenfassende Meldung for ERiC: the Meldezeilen of the statement, for a Berichtigung with what the BZSt
+	holds for the Meldezeitraum (``held``, see line_rows), and the Anzeige and its Widerruf of its check fields."""
+	return zm_xml.Zm(
+		period, statement.meldezeilen, filed=held, anzeige=_checked(anzeige), widerruf=_checked(widerruf)
+	)
+
+
+def _checked(value: object) -> bool:
+	"""The value of a check field; Frappe hands out 0 and 1, as numbers or text."""
+	return bool(int(value or 0))
 
 
 def numbers_to_confirm(rows: Iterable[Row]) -> list[str]:

@@ -1,15 +1,15 @@
 """Prüfen, Testsenden and Senden of a filing through ERiC, each run recorded as an ELSTER Transmission.
 
-Two documents go to ELSTER this way, both of the Datenart UStVA: the VAT Return (Umsatzsteuer-Voranmeldung) and
-the VAT Return Extension (form USt 1 H, Dauerfristverlängerung). Both inherit Transmittable, so that every run
-goes the same way. transmit checks the document and puts the run into a background job, run_transmission, which
-writes the Nutzdaten of the document, hands them to steuerbote.eric, through the worker of an installed runtime
-or the simulation, and records the result. While it runs, the document is locked and cannot change, so that the
-job files exactly what it sent. Only a Senden that ELSTER accepted files the document: the job submits it with
-flags.filing_transmission set. A run whose job is gone is closed by the form or by the next run, a check as
-failed, a test send or send as unknown, since it may have reached ELSTER. Certificate and password never become
-arguments of the job: stash_certificate keeps them encrypted for a few minutes, and the job takes them back once
-by their token.
+Three documents go to ELSTER this way: the VAT Return (Umsatzsteuer-Voranmeldung) and the VAT Return Extension
+(form USt 1 H, Dauerfristverlängerung), both of the Datenart UStVA, and the Recapitulative Statement
+(Zusammenfassende Meldung) of the Datenart ZMDO. All inherit Transmittable, so that every run goes the same way.
+transmit checks the document and puts the run into a background job, run_transmission, which writes the Nutzdaten
+of the document, hands them to steuerbote.eric, through the worker of an installed runtime or the simulation, and
+records the result. While it runs, the document is locked and cannot change, so that the job files exactly what it
+sent. Only a Senden that ELSTER accepted files the document: the job submits it with flags.filing_transmission set.
+A run whose job is gone is closed by the form or by the next run, a check as failed, a test send or send as
+unknown, since it may have reached ELSTER. Certificate and password never become arguments of the job:
+stash_certificate keeps them encrypted for a few minutes, and the job takes them back once by their token.
 
 A document that transmits has the fields company, year and transmission_in_progress and provides datenart(), the
 Datenart it goes as (steuerbote.eric.datenart); nutzdaten(hersteller_id), the Nutzdaten for ERiC;

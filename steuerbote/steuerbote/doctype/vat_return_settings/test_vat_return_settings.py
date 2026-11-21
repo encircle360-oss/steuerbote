@@ -291,6 +291,24 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, r"ATU12345678 is not a German USt-IdNr\."):
 			self.make_settings(ust_idnr="ATU12345678").insert()
 
+	def test_the_teilnehmernummer_of_the_zm_is_optional_and_one_the_bzst_assigns(self):
+		"""Jahresdokumentation ZMDO 2, rule 170015024: seven or eight digits from 0300000 on; without one the ZM
+		writes 1111111, „da das BZSt keine neuen Teilnehmernummern vergibt“."""
+		self.assertIsNone(self.make_settings().insert().teilnehmernummer)
+		frappe.delete_doc("VAT Return Settings", COMPANY)
+		self.assertEqual(
+			self.make_settings(teilnehmernummer=" 0300 000 ").insert().teilnehmernummer, "0300000"
+		)
+		frappe.delete_doc("VAT Return Settings", COMPANY)
+		for number in ("0299999", "123456", "12a4567"):
+			with (
+				self.subTest(number=number),
+				self.assertRaisesRegex(
+					frappe.ValidationError, f"{number} is not a Teilnehmernummer of the BZSt"
+				),
+			):
+				self.make_settings(teilnehmernummer=number).insert()
+
 	def test_sorts_and_reads_the_rhythm_of_the_zusammenfassende_meldung(self):
 		self.make_settings(
 			zm_rules=[

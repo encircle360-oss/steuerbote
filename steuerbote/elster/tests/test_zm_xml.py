@@ -119,6 +119,15 @@ class UnternehmerTest(TestCase):
 				unternehmer(teilnehmernummer=number)
 			self.assertEqual(raised(context), (zm_xml.NOT_A_TEILNEHMERNUMMER, (number,)))
 
+	def test_checks_a_teilnehmernummer_on_its_own_for_the_settings(self):
+		self.assertEqual(
+			[zm_xml.teilnehmernummer(value) for value in (None, "", " ", " 0300 000 ", "99999999")],
+			[None, None, None, "0300000", "99999999"],
+		)
+		with self.assertRaises(XmlError) as context:
+			zm_xml.teilnehmernummer("0299999")
+		self.assertEqual(raised(context), (zm_xml.NOT_A_TEILNEHMERNUMMER, ("0299999",)))
+
 	def test_170025001_to_170025004_name_street_town_and_country_are_required(self):
 		labels = {
 			"name": zm_xml.NAME_LABEL,

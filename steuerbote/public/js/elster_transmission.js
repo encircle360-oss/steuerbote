@@ -1,6 +1,8 @@
-// Prüfen, Testsenden and Senden through ERiC, the same for every form that goes to ELSTER this way: the VAT Return
-// and the Dauerfristverlängerung include this file. Each form passes the texts that name its document:
-// unsaved, send, test_send, sent and running. The server side is elster_transmission/transmission.py.
+// Prüfen, Testsenden and Senden through ERiC, the same for every form that goes to ELSTER this way: the VAT Return,
+// the Dauerfristverlängerung and the Zusammenfassende Meldung include this file. Each form passes the texts that
+// name its document: unsaved, send, test_send, sent and running, and a document that goes to another recipient than
+// the Finanzamt its send_label, simulation and simulated_test_send. The server side is
+// elster_transmission/transmission.py.
 
 const TRANSMISSION_EVENT = "steuerbote_elster_transmission";
 const STASH_CERTIFICATE = "steuerbote.steuerbote.doctype.elster_transmission.transmission.stash_certificate";
@@ -53,10 +55,12 @@ function elster_notes(frm, texts) {
 		if (eric_simulates(frm)) {
 			const link = `<a href="/app/${frappe.router.slug("ERiC Settings")}">${__("ERiC Settings")}</a>`;
 			notes.push(
-				__(
-					"Simulation mode: Prüfen and Testsenden only simulate, nothing reaches the Finanzamt. Senden needs an installed ERiC runtime and a Hersteller-ID, see {0}.",
-					[link]
-				)
+				texts.simulation
+					? texts.simulation(link)
+					: __(
+							"Simulation mode: Prüfen and Testsenden only simulate, nothing reaches the Finanzamt. Senden needs an installed ERiC runtime and a Hersteller-ID, see {0}.",
+							[link]
+					  )
 			);
 		}
 	}
@@ -104,7 +108,7 @@ function add_transmission_buttons(frm, group, texts) {
 		frm.add_custom_button(__("Validate with ERiC"), () => start(frm, "validate", texts), group);
 		const test_label = __("Test Transmission");
 		frm.add_custom_button(test_label, () => ask_for_certificate(frm, "test_send", test_label, texts), group);
-		const send_label = __("Transmit to the Finanzamt");
+		const send_label = texts.send_label || __("Transmit to the Finanzamt");
 		frm.add_custom_button(send_label, () => ask_for_certificate(frm, "send", send_label, texts), group);
 	}
 }
@@ -136,9 +140,10 @@ function ask_for_certificate(frm, operation, title, texts) {
 	}
 	if (eric_simulates(frm)) {
 		frappe.confirm(
-			__(
-				"The simulation needs no certificate and no password: Testsenden runs against the simulation, nothing reaches the Finanzamt."
-			),
+			texts.simulated_test_send ||
+				__(
+					"The simulation needs no certificate and no password: Testsenden runs against the simulation, nothing reaches the Finanzamt."
+				),
 			() => start(frm, operation, texts)
 		);
 		return;

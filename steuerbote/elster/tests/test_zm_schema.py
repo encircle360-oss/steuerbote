@@ -304,7 +304,7 @@ class SchemaStructureTest(TestCase):
 
 
 class JahresdokumentationTest(TestCase):
-	"""The facts of Jahresdokumentation_ZMDO_2.ods and Datenartversionmatrix.ods that zm_xml.py writes down."""
+	"""The facts of Jahresdokumentation_ZMDO_2.ods that zm_xml.py writes down."""
 
 	@classmethod
 	def setUpClass(cls) -> None:

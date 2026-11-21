@@ -5,6 +5,8 @@ from pathlib import Path
 from types import MappingProxyType
 from unittest import TestCase
 
+from steuerbote.elster import zm_xml
+from steuerbote.elster.ustva_xml import TEXT_MISSING, XmlError
 from steuerbote.steuerbote.doctype.recapitulative_statement import bridge
 from steuerbote.steuerbote.doctype.recapitulative_statement.bridge import FiledReturn, Party
 from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import Contribution
@@ -610,6 +612,80 @@ class FiledLinesTest(TestCase):
 			bridge.file_lines(lines, MARCH, held),
 			((Meldezeile(SPAIN, Art.L, d("0")), Meldezeile(FRANCE, Art.L, d("50"))), True),
 		)
+
+
+class UnternehmerTest(TestCase):
+	"""The element unternehmer of the Nutzdaten from the VAT Return Settings of the company."""
+
+	SETTINGS = MappingProxyType(
+		{
+			"company": "Beispiel GmbH",
+			"ust_idnr": "DE123456789",
+			"filer_name": None,
+			"street": "Hauptstraße 1",
+			"postal_code": "80331",
+			"city": "München",
+			"phone": "089 1234567",
+			"email": "steuern@example.org",
+			"teilnehmernummer": None,
+		}
+	)
+
+	def test_names_the_company_with_its_ust_idnr_and_the_address_of_the_datenlieferant(self):
+		self.assertEqual(
+			bridge.unternehmer(self.SETTINGS, "de"),
+			zm_xml.Unternehmer(
+				ust_idnr="DE123456789",
+				name="Beispiel GmbH",
+				street="Hauptstraße 1",
+				postal_code="80331",
+				city="München",
+				country="DE",
+				phone="089 1234567",
+			),
+		)
+
+	def test_the_name_and_the_teilnehmernummer_of_the_settings_come_first(self):
+		filer = bridge.unternehmer(
+			{**self.SETTINGS, "filer_name": "Beispiel Handel", "teilnehmernummer": "0300000"}, "DE"
+		)
+		self.assertEqual((filer.name, filer.teilnehmernummer), ("Beispiel Handel", "0300000"))
+
+	def test_empty_fields_are_left_out_and_the_required_ones_refused(self):
+		filer = bridge.unternehmer({**self.SETTINGS, "phone": "", "postal_code": ""}, "AT")
+		self.assertEqual((filer.phone, filer.postal_code, filer.country), (None, None, "AT"))
+		with self.assertRaises(XmlError) as raised:
+			bridge.unternehmer({**self.SETTINGS, "street": None}, "DE")
+		self.assertEqual(
+			(raised.exception.template, raised.exception.label), (TEXT_MISSING, zm_xml.STREET_LABEL)
+		)
+		with self.assertRaises(XmlError) as raised:
+			bridge.unternehmer({**self.SETTINGS, "ust_idnr": None}, "DE")
+		self.assertEqual(raised.exception.template, zm_xml.NOT_A_GERMAN_VAT_ID)
+
+
+class ZmTest(TestCase):
+	"""The Zusammenfassende Meldung for ERiC from the lines of the statement."""
+
+	def test_an_erstmeldung_reports_the_meldezeilen_of_the_statement(self):
+		lines = statement(invoice("SINV-1", "1000.00"), invoice("SINV-2", "50.00", vat_id=FRANCE))
+		zm = bridge.zm(MARCH, lines, None, 0, 0)
+		self.assertEqual(
+			(zm.period, zm.lines, zm.meldeart, zm.anzeige, zm.widerruf),
+			(MARCH, lines.meldezeilen, zm_xml.Meldeart.ERSTMELDUNG, False, False),
+		)
+
+	def test_a_berichtigung_reports_what_changes_what_the_bzst_holds(self):
+		lines = statement(invoice("SINV-1", "1000.00"), invoice("SINV-2", "50.00", vat_id=FRANCE))
+		held = {(AUSTRIA, Art.L): d("1000"), (SPAIN, Art.L): d("70")}
+		zm = bridge.zm(MARCH, lines, held, 0, 0)
+		self.assertEqual(zm.meldeart, zm_xml.Meldeart.BERICHTIGUNG)
+		self.assertEqual(zm.reported, bridge.file_lines(lines, MARCH, held)[0])
+
+	def test_anzeige_and_widerruf_come_from_their_check_fields(self):
+		lines = statement(invoice("SINV-1", "1000.00"))
+		self.assertTrue(bridge.zm(MARCH, lines, None, 1, 0).anzeige)
+		self.assertTrue(bridge.zm(MARCH, lines, None, "0", 1).widerruf)
 
 
 class NumbersToConfirmTest(TestCase):

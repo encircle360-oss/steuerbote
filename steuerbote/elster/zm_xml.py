@@ -233,7 +233,7 @@ class Unternehmer:
 			raise XmlError(NOT_A_POSTAL_CODE, self.postal_code)
 		if self.phone is not None and not PHONE.fullmatch(self.phone):
 			raise XmlError(NOT_A_PHONE, self.phone)
-		object.__setattr__(self, "teilnehmernummer", _teilnehmernummer(self.teilnehmernummer))
+		object.__setattr__(self, "teilnehmernummer", teilnehmernummer(self.teilnehmernummer))
 
 
 @dataclass(frozen=True, slots=True)
@@ -361,7 +361,8 @@ def _country(value: object) -> str:
 	return code
 
 
-def _teilnehmernummer(value: str | None) -> str | None:
+def teilnehmernummer(value: str | None) -> str | None:
+	"""The Teilnehmernummer of the BZSt without blanks, None for none; XmlError for one the rules refuse."""
 	number = "".join((value or "").split())
 	if not number:
 		return None

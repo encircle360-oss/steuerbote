@@ -2,7 +2,7 @@
  "actions": [],
  "autoname": "format:ELSTER-{YYYY}-{#####}",
  "creation": "2026-11-18 04:00:00.000000",
- "description": "One run of Prüfen, Testsenden or Senden for a VAT Return or a Dauerfristverlängerung, or the note that it was filed outside Steuerbote. Recorded by the server and kept unchanged.",
+ "description": "One run of Prüfen, Testsenden or Senden for a VAT Return, a Dauerfristverlängerung or a Zusammenfassende Meldung, or the note that it was filed outside Steuerbote. Recorded by the server and kept unchanged.",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -209,7 +209,7 @@
  ],
  "in_create": 1,
  "links": [],
- "modified": "2026-11-20 23:30:00.000000",
+ "modified": "2026-11-21 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "ELSTER Transmission",

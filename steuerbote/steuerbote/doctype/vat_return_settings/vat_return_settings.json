@@ -23,6 +23,7 @@
   "tax_office",
   "wid_nr",
   "ust_idnr",
+  "teilnehmernummer",
   "datenlieferant_section",
   "filer_name",
   "street",
@@ -162,6 +163,13 @@
    "length": 11
   },
   {
+   "description": "For the Zusammenfassende Meldung: the Teilnehmernummer the BZSt once assigned, seven or eight digits from 0300000 on. Empty: 1111111, since the BZSt assigns no new Teilnehmernummern.",
+   "fieldname": "teilnehmernummer",
+   "fieldtype": "Data",
+   "label": "Teilnehmernummer of the BZSt",
+   "length": 8
+  },
+  {
    "description": "Who files: the name, address and contact the files for ELSTER carry as Datenlieferant. Saving fills an empty field from the company and its address.",
    "fieldname": "datenlieferant_section",
    "fieldtype": "Section Break",
@@ -271,7 +279,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-21 00:00:00.000000",
+ "modified": "2026-11-21 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",
