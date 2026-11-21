@@ -150,6 +150,15 @@ class TestOffeneFristen(IntegrationTestCase):
 		self.assertEqual(self.deadlines()[-1], (VA, "November 2026", date(2026, 12, 11), 21, "Abgegeben"))
 		self.assertIn(f">{november.name}</a>", self.rows()[-1]["document"])
 
+	def test_a_return_sent_but_not_submitted_files_its_deadline(self):
+		"""ELSTER accepted the return and its submission failed afterwards: the Finanzamt has it, on the day the
+		transmission finished, while the return stays a draft."""
+		draft = new_vat_return(11)
+		with self.freeze_time("2026-11-18 10:00:00"):
+			draft.new_transmission("send", simulated=False, status="Erfolgreich")
+		self.assertEqual(self.deadlines()[-1], (VA, "November 2026", date(2026, 12, 11), 21, "Abgegeben"))
+		self.assertIn(f">{draft.name}</a>", self.rows()[-1]["document"])
+
 	def test_a_meldezeitraum_without_anything_to_report_owes_no_zusammenfassende_meldung(self):
 		self.assertNotIn((ZM, "November 2026"), [row[:2] for row in self.deadlines(horizon=40)])
 		post_journal_entry(

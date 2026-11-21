@@ -122,7 +122,7 @@ def _days_filed(returns: list[str]) -> dict[str, date]:
 	}
 	filed: dict[str, date] = {}
 	for record in records:
-		filed.setdefault(record.vat_return, days[record.name])
+		filed.setdefault(record.document, days[record.name])
 	return filed
 
 
