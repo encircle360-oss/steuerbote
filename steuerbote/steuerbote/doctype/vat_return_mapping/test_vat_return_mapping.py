@@ -3,7 +3,7 @@ from decimal import Decimal
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from steuerbote.ustva import LATEST_YEAR, AccountRule, Mapping, Side, TaxCheck
+from steuerbote.ustva import LATEST_YEAR, AccountRule, Mapping, Side, TaxCheck, WatchedAccount, WatchLevel
 
 # The tests build their own companies and accounts and need none of ERPNext's test records.
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Account"]
@@ -81,9 +81,15 @@ class IntegrationTestVATReturnMapping(IntegrationTestCase):
 			"3123": make_account(COMPANY, "3123", "Sonstige Leistungen EU 19 %", expense),
 		}
 		cls.bank = make_account(COMPANY, None, "Bank", asset)
-		cls.other_company_account = make_account(
-			OTHER_COMPANY, "8300", "Erlöse USt. 7 %", make_root(OTHER_COMPANY, "Income")
-		)
+		other_income = make_root(OTHER_COMPANY, "Income")
+		cls.other_company_account = make_account(OTHER_COMPANY, "8300", "Erlöse USt. 7 %", other_income)
+		# Watched by the defaults: 1548 at the blocking level, 8603 at the hint level.
+		cls.other_watched = {
+			"1548": make_account(
+				OTHER_COMPANY, "1548", "Vorsteuer im Folgejahr abziehbar", make_root(OTHER_COMPANY, "Asset")
+			),
+			"8603": make_account(OTHER_COMPANY, "8603", "Sonstige betriebliche Erträge", other_income),
+		}
 
 	def new_mapping(self, chart="SKR03"):
 		return frappe.get_doc({"doctype": "VAT Return Mapping", "company": COMPANY, "chart": chart})
@@ -168,7 +174,55 @@ class IntegrationTestVATReturnMapping(IntegrationTestCase):
 		self.assertEqual(
 			(mapping.rules[0].account_number, mapping.watched[0].account_number), ("8400", "1776")
 		)
-		self.assertEqual(mapping.to_mapping(LATEST_YEAR).watched, ("1776",))
+		self.assertEqual(mapping.to_mapping(LATEST_YEAR).watched, (WatchedAccount("1776"),))
+		self.assertEqual(mapping.watched[0].level, "blocking")
+
+	def test_a_watched_account_takes_its_level_into_the_core_mapping(self):
+		mapping = self.new_mapping("Eigener Kontenrahmen")
+		mapping.append("rules", {"account": self.accounts["8400"], "kennzahl": "81", "side": "credit"})
+		mapping.append("watched", {"account": self.accounts["1776"], "level": "hint"})
+		mapping.append("watched", {"account": self.accounts["8336"], "level": "blocking"})
+		self.insert(mapping)
+		self.assertEqual(
+			frappe.get_doc("VAT Return Mapping", COMPANY).to_mapping(LATEST_YEAR).watched,
+			(WatchedAccount("1776", WatchLevel.HINT), WatchedAccount("8336")),
+		)
+
+	def test_an_account_watched_twice_is_refused(self):
+		mapping = self.new_mapping("Eigener Kontenrahmen")
+		mapping.append("watched", {"account": self.accounts["1776"], "level": "hint"})
+		mapping.append("watched", {"account": self.accounts["1776"]})
+		with self.assertRaisesRegex(frappe.ValidationError, "account 1776 is watched twice"):
+			self.insert(mapping)
+
+	def test_load_defaults_gives_each_watched_account_the_level_of_the_defaults(self):
+		mapping = frappe.get_doc(
+			{"doctype": "VAT Return Mapping", "company": OTHER_COMPANY, "chart": "SKR03"}
+		)
+		mapping.load_defaults()
+		self.assertEqual(
+			[(row.account, row.account_number, row.level) for row in mapping.watched],
+			[(self.other_watched["1548"], "1548", "blocking"), (self.other_watched["8603"], "8603", "hint")],
+		)
+
+	def test_load_defaults_keeps_the_level_a_watched_account_has(self):
+		mapping = frappe.get_doc(
+			{"doctype": "VAT Return Mapping", "company": OTHER_COMPANY, "chart": "SKR03"}
+		)
+		mapping.load_defaults()
+		for row in mapping.watched:
+			row.level = {"blocking": "hint", "hint": "blocking"}[row.level]
+		mapping.load_defaults()
+		self.assertEqual(
+			[(row.account_number, row.level) for row in mapping.watched],
+			[("1548", "hint"), ("8603", "blocking")],
+		)
+		frappe.delete_doc_if_exists("VAT Return Mapping", OTHER_COMPANY)
+		mapping.insert()
+		self.assertEqual(
+			frappe.get_doc("VAT Return Mapping", OTHER_COMPANY).to_mapping(LATEST_YEAR).watched,
+			(WatchedAccount("1548", WatchLevel.HINT), WatchedAccount("8603")),
+		)
 
 	def test_an_account_mapped_twice_is_refused(self):
 		mapping = self.mapping_with_defaults()

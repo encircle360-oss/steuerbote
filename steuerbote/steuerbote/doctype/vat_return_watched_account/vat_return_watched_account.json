@@ -6,7 +6,8 @@
  "engine": "InnoDB",
  "field_order": [
   "account",
-  "account_number"
+  "account_number",
+  "level"
  ],
  "fields": [
   {
@@ -23,11 +24,22 @@
    "fieldtype": "Data",
    "label": "Account Number",
    "read_only": 1
+  },
+  {
+   "columns": 2,
+   "default": "blocking",
+   "description": "Blocking: a balance on the account holds the return. Hint: a balance only adds a hint to the return.",
+   "fieldname": "level",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Watch Level",
+   "options": "blocking\nhint",
+   "reqd": 1
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-18 02:00:00.000000",
+ "modified": "2026-11-21 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Watched Account",

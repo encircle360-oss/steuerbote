@@ -15,12 +15,15 @@ from steuerbote.ustva import (
 	Side,
 	TaxCheck,
 	UnknownYearError,
+	WatchedAccount,
+	WatchLevel,
 	calculate,
 	default_mapping,
 )
 
 CREDIT = Side.CREDIT
 DEBIT = Side.DEBIT
+HINT = WatchLevel.HINT
 
 
 def rule_row(account_number: str | None, kennzahl: Any = "81", side: Any = "credit", **fields: Any) -> dict:
@@ -44,7 +47,7 @@ def accounts_of(mapping: Mapping) -> set[str]:
 	return {
 		*(rule.account_number for rule in mapping.rules),
 		*(account for check in mapping.checks for account in (*check.base_accounts, *check.tax_accounts)),
-		*mapping.watched,
+		*(watched.account_number for watched in mapping.watched),
 	}
 
 
@@ -74,7 +77,7 @@ class RowsToMappingTest(TestCase):
 					AccountRule("1576", "66", DEBIT),
 				),
 				(TaxCheck("Umsatzsteuer 19 %", ("8400",), ("1776",), CREDIT),),
-				("1548",),
+				(WatchedAccount("1548"),),
 				LATEST_YEAR,
 			),
 		)
@@ -232,7 +235,35 @@ class CheckRowTest(TestCase):
 class WatchedRowTest(TestCase):
 	def test_watched_accounts_are_taken_by_number(self):
 		watched = [{"account_number": "1548", "account": "1548 - Vorsteuer - X"}, {"account_number": "1725"}]
-		self.assertEqual(mapping_of(watched_rows=watched).watched, ("1548", "1725"))
+		self.assertEqual(
+			mapping_of(watched_rows=watched).watched, (WatchedAccount("1548"), WatchedAccount("1725"))
+		)
+
+	def test_the_level_of_a_row_is_taken(self):
+		watched = [
+			{"account_number": "8603", "level": "hint"},
+			{"account_number": "1548", "level": "blocking"},
+		]
+		self.assertEqual(
+			mapping_of(watched_rows=watched).watched, (WatchedAccount("8603", HINT), WatchedAccount("1548"))
+		)
+
+	def test_a_row_without_level_blocks(self):
+		for level in (None, ""):
+			with self.subTest(level=level):
+				(watched,) = mapping_of(watched_rows=[{"account_number": "1548", "level": level}]).watched
+				self.assertIs(watched.level, WatchLevel.BLOCKING)
+
+	def test_an_unknown_level_is_refused(self):
+		with self.assertRaisesRegex(
+			MappingError, "account 8603: level must be blocking or hint, not 'warning'"
+		):
+			mapping_of(watched_rows=[{"account_number": "8603", "level": "warning"}])
+
+	def test_an_account_watched_twice_is_refused(self):
+		watched = [{"account_number": "8603", "level": "hint"}, {"account_number": "8603"}]
+		with self.assertRaisesRegex(MappingError, "account 8603 is watched twice"):
+			mapping_of(watched_rows=watched)
 
 	def test_watched_account_without_number_is_refused(self):
 		with self.assertRaisesRegex(MappingError, "account Bank - X has no account number"):
@@ -312,7 +343,46 @@ class ReducingTheDefaultsTest(TestCase):
 
 	def test_watched_accounts_are_kept_when_they_exist(self):
 		_, _, watched_rows, _ = self.reduce({"1725", "1548", "8400"})
-		self.assertEqual(watched_rows, [{"account_number": "1548"}, {"account_number": "1725"}])
+		self.assertEqual(
+			watched_rows,
+			[
+				{"account_number": "1548", "level": "blocking"},
+				{"account_number": "1725", "level": "blocking"},
+			],
+		)
+
+	def test_watched_accounts_carry_the_level_of_the_defaults(self):
+		_, _, watched_rows, _ = self.reduce({"8603", "1548"})
+		self.assertEqual(
+			watched_rows,
+			[{"account_number": "1548", "level": "blocking"}, {"account_number": "8603", "level": "hint"}],
+		)
+
+	def test_the_levels_a_company_set_are_kept(self):
+		_, _, watched_rows, _ = defaults_for_accounts(
+			"SKR03", LATEST_YEAR, frozenset({"8603", "1548", "1725"}), {"1548": "hint", "8603": "blocking"}
+		)
+		self.assertEqual(
+			watched_rows,
+			[
+				{"account_number": "1548", "level": "hint"},
+				{"account_number": "1725", "level": "blocking"},
+				{"account_number": "8603", "level": "blocking"},
+			],
+		)
+
+	def test_an_empty_level_of_the_company_takes_the_level_of_the_defaults(self):
+		_, _, watched_rows, _ = defaults_for_accounts(
+			"SKR03", LATEST_YEAR, frozenset({"8603"}), {"8603": None}
+		)
+		self.assertEqual(watched_rows, [{"account_number": "8603", "level": "hint"}])
+
+	def test_levels_of_accounts_the_defaults_do_not_watch_change_nothing(self):
+		kept = defaults_for_accounts(
+			"SKR03", LATEST_YEAR, frozenset({"8400", "2654"}), {"8400": "hint", "2654": "hint"}
+		)
+		self.assertEqual(kept, self.reduce({"8400", "2654"}))
+		self.assertEqual(kept.watched_rows, [])
 
 	def test_a_bad_debt_keeps_its_additional_kennzahl(self):
 		rule_rows, _, _, _ = self.reduce({"2406"})

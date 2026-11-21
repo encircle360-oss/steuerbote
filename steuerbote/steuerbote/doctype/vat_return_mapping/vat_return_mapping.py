@@ -77,7 +77,8 @@ class VATReturnMapping(Document):
 	def load_defaults(self) -> list[str]:
 		"""Replace the rows by the defaults of the chart, reduced to the ledger accounts of the company.
 
-		Returns the accounts of the defaults that the company does not have, for the message of the form.
+		A watched account keeps the level its row had. Returns the accounts of the defaults that the company
+		does not have, for the message of the form.
 		"""
 		if not self.company:
 			frappe.throw(_("Select the company first."))
@@ -91,7 +92,8 @@ class VATReturnMapping(Document):
 				fields=["name", "account_number"],
 			)
 		}
-		defaults = defaults_for_accounts(self.chart, LATEST_YEAR, names.keys())
+		levels = {row.account_number: row.level for row in self.watched if row.account_number}
+		defaults = defaults_for_accounts(self.chart, LATEST_YEAR, names.keys(), levels)
 		self.set("rules", [{"account": names[row["account_number"]], **row} for row in defaults.rule_rows])
 		self.set("checks", defaults.check_rows)
 		self.set(

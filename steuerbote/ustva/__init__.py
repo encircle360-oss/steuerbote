@@ -4,6 +4,7 @@ This package is pure Python. It never imports Frappe, so it can be tested withou
 """
 
 from steuerbote.ustva.calculation import (
+	AccountBalance,
 	CheckResult,
 	Deviation,
 	KennzahlValue,
@@ -22,7 +23,15 @@ from steuerbote.ustva.kennzahlen import (
 	UnknownYearError,
 	catalogue_for,
 )
-from steuerbote.ustva.mapping import AccountRule, Mapping, MappingError, Side, TaxCheck
+from steuerbote.ustva.mapping import (
+	AccountRule,
+	Mapping,
+	MappingError,
+	Side,
+	TaxCheck,
+	WatchedAccount,
+	WatchLevel,
+)
 from steuerbote.ustva.period import Period, Rhythm
 from steuerbote.ustva.rounding import tax_from_base, to_cents, to_full_euros
 
@@ -33,6 +42,7 @@ __all__ = [
 	"LATEST_YEAR",
 	"SKR03",
 	"SKR04",
+	"AccountBalance",
 	"AccountRule",
 	"CheckResult",
 	"Deviation",
@@ -49,6 +59,8 @@ __all__ = [
 	"TaxCheck",
 	"UnknownYearError",
 	"UstvaResult",
+	"WatchLevel",
+	"WatchedAccount",
 	"calculate",
 	"catalogue_for",
 	"default_mapping",

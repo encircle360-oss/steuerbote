@@ -64,7 +64,7 @@ Jede Jahresmeldung wird ein eigenes Modul mit eigener Planung:
 
 ## Offene Punkte
 
-- **Prüfung der Steuervorlagen.** Ein Konto aus den Steuervorlagen einer Firma, das keine Kennzahl hat, meldet Steuerbote noch nicht. Bis dahin halten nur beobachtete Konten mit Saldo eine Meldung an.
+- **Prüfung der Steuervorlagen.** Ein Konto aus den Steuervorlagen einer Firma, das keine Kennzahl hat, meldet Steuerbote noch nicht. Bis dahin halten nur beobachtete Konten der Stufe „Sperrt“ mit Saldo eine Meldung an.
 - **Bestätigung der Kontenzuordnung.** Die Vorgaben für SKR03 und SKR04 sind noch nicht von einer Steuerberatung bestätigt. Lass deine Einrichtung in jedem Fall von deiner Steuerberatung bestätigen.
 - **Markenprüfung.** Recherche zum Namen „Steuerbote“ beim Deutschen Patent- und Markenamt vor der ersten öffentlichen Veröffentlichung.
 - **ELSTER-Konto mit Zertifikatsdatei.** Für die Übermittlung über ERiC braucht die Firma ein ELSTER-Konto mit Anmeldung per Zertifikatsdatei (.pfx). ELSTER Secure funktioniert mit ERiC nicht.

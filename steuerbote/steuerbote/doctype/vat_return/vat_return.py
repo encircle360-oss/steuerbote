@@ -39,7 +39,7 @@ from frappe.utils import cint, escape_html, fmt_money, getdate
 from steuerbote import invoices, ustva
 from steuerbote.elster import ustva_xml
 from steuerbote.eric import datenart as eric_datenart
-from steuerbote.ledger import account_names, accounts_without_number, load_lines
+from steuerbote.ledger import account_labels, account_names, accounts_without_number, load_lines
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
 	FILED_VIA,
@@ -648,10 +648,11 @@ def build_hints(
 	result: ustva.UstvaResult,
 	comparison: plausibility.Comparison,
 ) -> tuple[plausibility.Hint, ...]:
-	"""Hinweise: the invoices of the period, their reconciliation with the ledger and the Vorperiodenvergleich.
+	"""Hinweise: the invoices of the period, their reconciliation with the ledger, the balances on the accounts
+	watched for a hint and the Vorperiodenvergleich.
 
-	A hint informs and never holds the return; whether it is ready follows the Verprobung and the watched
-	accounts alone.
+	A hint informs and never holds the return; whether it is ready follows the Verprobung and the accounts
+	watched at the blocking level alone.
 	"""
 	lines = invoices.load_lines(
 		doc.company,
@@ -662,7 +663,8 @@ def build_hints(
 	)
 	ledger = {number: value.amount for number, value in result.values.items()}
 	currency = frappe.get_cached_value("Company", doc.company, "default_currency")
-	return plausibility.hints(comparison, lines, ledger, mapping, SiteFigures(currency))
+	names = account_labels(doc.company, (balance.account_number for balance in result.hinted))
+	return plausibility.hints(comparison, lines, ledger, mapping, SiteFigures(currency), result.hinted, names)
 
 
 class SiteFigures:

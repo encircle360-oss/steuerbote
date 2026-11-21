@@ -6,9 +6,11 @@ side the account carries its balance. A base whose tax the form reports in its o
 example 46 and 47) gets that tax in one of two ways: every rule of the base carries a tax rate, so the
 tax is derived from the base accounts and the tax accounts are only checked, or no rule does and a tax
 account is mapped to the tax Kennzahl directly. A rule may report its balance to a second,
-informational Kennzahl as well, one that does not change the amount owed, such as Kz 50. The defaults
-for the DATEV charts live in defaults.py; a company adjusts them in its settings. ``for_year``
-re-validates the same rules against another year's form.
+informational Kennzahl as well, one that does not change the amount owed, such as Kz 50. A watched
+account belongs, or may belong, to the Voranmeldung without a Kennzahl yet: at the blocking level a
+balance on it holds the return, at the hint level it only adds a hint. The defaults for the DATEV
+charts live in defaults.py; a company adjusts them in its settings. ``for_year`` re-validates the same
+rules against another year's form.
 """
 
 from collections.abc import Iterable
@@ -83,6 +85,38 @@ def _is_percentage(rate: Decimal) -> bool:
 	return rate.is_finite() and ZERO < rate < HUNDRED
 
 
+class WatchLevel(Enum):
+	"""What a balance on a watched account does to the return."""
+
+	BLOCKING = "blocking"
+	HINT = "hint"
+
+
+@dataclass(frozen=True, slots=True)
+class WatchedAccount:
+	"""An account of the Voranmeldung whose Kennzahl is not decided.
+
+	At the blocking level a balance on it holds the return until the account is mapped. At the hint level
+	a balance only adds a hint to the return: for an account whose balance belongs in the Voranmeldung in
+	some cases only, which the company settles with its Steuerberatung.
+	"""
+
+	account_number: str
+	level: WatchLevel = WatchLevel.BLOCKING
+
+	def __post_init__(self) -> None:
+		if not is_account_number(self.account_number):
+			raise MappingError(f"watched: {self.account_number!r} is not an account number")
+		object.__setattr__(self, "level", WatchLevel(self.level))
+
+
+def _watched(value: Iterable[str | WatchedAccount]) -> tuple[WatchedAccount, ...]:
+	"""Watched accounts as given; a bare account number is watched at the blocking level."""
+	if isinstance(value, str):
+		raise MappingError("watched must be a sequence of account numbers, not a string")
+	return tuple(item if isinstance(item, WatchedAccount) else WatchedAccount(item) for item in value)
+
+
 @dataclass(frozen=True, slots=True)
 class TaxCheck:
 	"""Verprobung: the tax booked on tax_accounts against the tax that belongs to base_accounts."""
@@ -103,13 +137,13 @@ class Mapping:
 	chart: str
 	rules: tuple[AccountRule, ...]
 	checks: tuple[TaxCheck, ...] = ()
-	watched: tuple[str, ...] = ()
+	watched: tuple[WatchedAccount, ...] = ()
 	year: int = LATEST_YEAR
 
 	def __post_init__(self) -> None:
 		object.__setattr__(self, "rules", tuple(self.rules))
 		object.__setattr__(self, "checks", tuple(self.checks))
-		object.__setattr__(self, "watched", _accounts(self.watched, "watched"))
+		object.__setattr__(self, "watched", _watched(self.watched))
 		self.validate()
 
 	@property
@@ -127,6 +161,10 @@ class Mapping:
 		self._validate_reported_taxes()
 		self._validate_checks()
 		self._validate_watched()
+
+	def watched_at(self, level: WatchLevel) -> tuple[str, ...]:
+		"""The numbers of the accounts watched at ``level``, in the order of the mapping."""
+		return tuple(watched.account_number for watched in self.watched if watched.level is level)
 
 	def rule_for(self, account_number: str) -> AccountRule | None:
 		for rule in self.rules:
@@ -244,8 +282,14 @@ class Mapping:
 					)
 
 	def _validate_watched(self) -> None:
+		"""An account watched twice would have two levels, or count its balance twice."""
 		checked = {account for check in self.checks for account in check.tax_accounts}
-		for account in self.watched:
+		seen: set[str] = set()
+		for watched in self.watched:
+			account = watched.account_number
+			if account in seen:
+				raise MappingError(f"account {account} is watched twice")
+			seen.add(account)
 			if self.rule_for(account) is not None or account in checked:
 				raise MappingError(f"account {account} is watched but also mapped or checked")
 

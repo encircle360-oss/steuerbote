@@ -100,12 +100,22 @@ def accounts_without_number(company: str) -> list[str]:
 
 def account_names(company: str, numbers: Iterable[str]) -> dict[str, str]:
 	"""The names of the company's accounts with these numbers, by number; unknown numbers are left out."""
+	return _by_number(company, numbers, "name")
+
+
+def account_labels(company: str, numbers: Iterable[str]) -> dict[str, str]:
+	"""The Account Name of the company's accounts with these numbers, without number and company, by number;
+	unknown numbers are left out."""
+	return _by_number(company, numbers, "account_name")
+
+
+def _by_number(company: str, numbers: Iterable[str], field: str) -> dict[str, str]:
 	numbers = list(numbers)
 	if not numbers:
 		return {}
 	accounts = frappe.get_all(
 		"Account",
 		filters={"company": company, "account_number": ["in", numbers]},
-		fields=["name", "account_number"],
+		fields=[field, "account_number"],
 	)
-	return {account.account_number: account.name for account in accounts}
+	return {account.account_number: account[field] for account in accounts}

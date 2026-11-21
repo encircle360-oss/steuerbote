@@ -142,7 +142,7 @@ Die Zuordnung steht in [`mapping.py`](../steuerbote/ustva/mapping.py) und ist re
 
 - **`AccountRule`** ordnet ein Konto über seine Kontonummer einer Kennzahl zu und legt die Seite fest, auf der das Konto seinen Saldo trägt: Haben (`Side.CREDIT`) für Erlöse und andere Steuerbeträge, Soll (`Side.DEBIT`) für Erwerbe, bezogene Leistungen und Vorsteuer. Der Betrag ist der Saldo des Zeitraums auf dieser Seite. Eine Gutschrift auf einem Erlöskonto mindert also die Bemessungsgrundlage und kann sie negativ machen. Hat die Kennzahl eine eigene Steuer-Kennzahl (etwa Kz 46 mit Kz 47), kann die Regel einen Steuersatz tragen (`tax_rate`). Dann leitet Steuerbote die Steuer aus dem Grundlagenkonto ab: Saldo × Satz geht in die Steuer-Kennzahl.
 - **`TaxCheck`** ist eine Verprobung mit einer Bezeichnung (`label`): Die Steuer, die zu den Grundlagenkonten gehört (`base_accounts`), wird mit der Steuer auf den Steuerkonten verglichen (`tax_accounts`, Seite standardmäßig Haben). Der Satz eines Grundlagenkontos ist der Satz seiner Regel oder, wenn sie keinen trägt, der Satz der Kennzahl im Vordruck.
-- **`Mapping`** gehört zu genau einem Kontenrahmen und einem Jahr des Vordrucks (`year`, ohne Angabe das neueste) und enthält Regeln, Verprobungen und beobachtete Konten (`watched`). Beobachtet werden Konten, die zur Voranmeldung gehören, für die es aber noch keine Zuordnung gibt. `for_year(year)` prüft dieselben Regeln gegen den Vordruck eines anderen Jahres, `default_mapping(chart, year)` liefert die Vorgabe eines Kontenrahmens für das Jahr des Zeitraums.
+- **`Mapping`** gehört zu genau einem Kontenrahmen und einem Jahr des Vordrucks (`year`, ohne Angabe das neueste) und enthält Regeln, Verprobungen und beobachtete Konten (`watched`). Beobachtet werden Konten, die zur Voranmeldung gehören oder gehören können, für die es aber noch keine Zuordnung gibt. Jedes beobachtete Konto (`WatchedAccount`) hat eine Stufe (`WatchLevel`): „Sperrt“ (`BLOCKING`) hält die Meldung an, sobald das Konto einen Saldo hat, „Hinweis“ (`HINT`) gibt dann nur einen Hinweis. Eine bloße Kontonummer wird auf der Stufe „Sperrt“ beobachtet, `watched_at(level)` nennt die Konten einer Stufe. `for_year(year)` prüft dieselben Regeln gegen den Vordruck eines anderen Jahres, `default_mapping(chart, year)` liefert die Vorgabe eines Kontenrahmens für das Jahr des Zeitraums.
 
 Eine Zuordnung prüft sich beim Anlegen selbst. Einen `MappingError` gibt es bei:
 
@@ -152,7 +152,7 @@ Eine Zuordnung prüft sich beim Anlegen selbst. Einen `MappingError` gibt es bei
 - einem Steuersatz an einer Regel, deren Kennzahl keine eigene Steuer-Kennzahl hat, etwa Kz 81 oder 66, oder einem Satz, der nicht endlich oder nicht zwischen 0 und 100 liegt,
 - einer Bemessungsgrundlage mit eigener Steuer-Kennzahl (etwa Kz 46), deren Regeln teils mit, teils ohne Steuersatz sind, oder deren Steuer-Kennzahl nichts zufließt, weil weder die Regeln einen Satz tragen noch ein Steuerkonto der Steuer-Kennzahl zugeordnet ist,
 - einer Verprobung ohne Bezeichnung, ohne Grundlagen- oder Steuerkonten, mit einem Grundlagenkonto ohne Regel oder ohne Steuersatz, mit einem Steuerkonto, das schon eine andere Verprobung prüft, oder mit einem Steuerkonto, das zugleich einer Kennzahl zugeordnet ist,
-- einem beobachteten Konto, das zugleich zugeordnet oder verprobt ist.
+- einem beobachteten Konto, das zugleich zugeordnet oder verprobt ist oder zweimal beobachtet wird, auch auf zwei Stufen.
 
 Ein Jahr, das keine ganze Zahl ist, ergibt einen `TypeError`. Für ein Jahr ohne Katalog gibt es stattdessen einen `UnknownYearError`.
 
@@ -168,7 +168,7 @@ Jede Firma soll die Vorgabe ihres Kontenrahmens in ihren Einstellungen anpassen 
 4. Kennzahlen mit dem Betrag null entfallen. Jede andere hat ihren genauen Betrag (`amount`) und den gemeldeten Wert (`reported`) nach den Rundungsregeln.
 5. Die Summen folgen dem Vordruck: Zeile 37 (`output_tax`), Zeilen 38 bis 44 (`input_tax`), Zeile 45 (`remaining_tax`), Zeilen 46 und 47 (`other_tax`), Zeile 48 (`prepayment`) und Kz 39 (`sondervorauszahlung`). Kz 83 ist Zeile 48 abzüglich Kz 39, auf Cent gerundet, und immer dabei.
 6. Jede Verprobung ergibt ein `CheckResult` mit berechneter und gebuchter Steuer, Zahl der Buchungen, Toleranz, Differenz (gebucht minus berechnet) und der Liste der abweichenden Belege (`deviations`, je Beleg berechnete und gebuchte Steuer). `passed` ist wahr, wenn kein Beleg abweicht.
-7. `unmapped` nennt die beobachteten Konten mit Saldo. `ready` ist erst wahr, wenn kein beobachtetes Konto einen Saldo hat und alle Verprobungen aufgehen.
+7. `unmapped` nennt die beobachteten Konten der Stufe „Sperrt“ mit Saldo, `hinted` die der Stufe „Hinweis“ mit Saldo, jeweils mit Soll und Haben des Zeitraums (`AccountBalance`). Keines davon geht in eine Kennzahl ein. `ready` ist erst wahr, wenn kein Konto der Stufe „Sperrt“ einen Saldo hat und alle Verprobungen aufgehen; ein Saldo auf der Stufe „Hinweis“ ändert daran nichts und ergibt an der Meldung den Hinweis `KONTO-BEOBACHTET` (siehe [Vorperiodenvergleich und Hinweise](architektur.md#vorperiodenvergleich-und-hinweise)).
 
 Konten ohne Regel, die auch nicht beobachtet werden, fehlen in der Meldung, ohne dass ein Fehler entsteht. Geplant ist eine Prüfung, die jedes Konto aus den Steuervorlagen einer Firma ohne Kennzahl meldet (Paket 1 der Roadmap).
 
@@ -178,12 +178,12 @@ Konten ohne Regel, die auch nicht beobachtet werden, fehlen in der Meldung, ohne
 
 - **Zugeordnet:** Das Konto geht in die Kennzahl, die sich aus seiner Bezeichnung eindeutig ergibt. Dazu gehören auch die Vorsteuerkonten und die Konten für Kz 63, 65 und 69. Ein Forderungsverlust mindert die Bemessungsgrundlage und meldet die Minderung zusätzlich in Kz 50; die Tabellen zeigen das als „81, zusätzlich Kz 50“, und in Kz 50 geht der Saldo im Soll.
 - **Verprobt:** Das Umsatzsteuerkonto zu einer Bemessungsgrundlage wird nie zugeordnet. Die Steuer folgt aus dem Grundlagenkonto, mit dem Satz der Kennzahl oder, bei § 13b UStG und bei neuen Fahrzeugen, mit dem Satz, den das Konto laut Bezeichnung trägt. Das gebuchte Steuerkonto wird dagegen verprobt.
-- **Beobachtet:** Das Konto gehört zur Voranmeldung, seine Kennzahl ist aber noch nicht entschieden. Hat es im Zeitraum einen Saldo, ist die Meldung nicht bereit.
+- **Beobachtet:** Das Konto gehört zur Voranmeldung, seine Kennzahl ist aber noch nicht entschieden. Hat es im Zeitraum einen Saldo, ist die Meldung nicht bereit. Konten, deren Saldo nur in manchen Fällen in die Voranmeldung gehört, beobachten die Vorgaben auf der Stufe „Hinweis“: Ein Saldo darauf ergibt einen Hinweis, und die Meldung bleibt bereit (siehe [Beobachtete Konten mit Hinweis](#beobachtete-konten-mit-hinweis)).
 - **Bewusst ohne Kennzahl:** Die Voranmeldung hat für das Konto keine Kennzahl, etwa für Zahlungen an das Finanzamt, für Umsatzsteuer aus dem OSS-Verfahren oder für einen Einkauf im Inland, von dem nur die Vorsteuer gemeldet wird. Diese Konten stehen in `SKR03_IGNORED` und `SKR04_IGNORED` und gehören nicht zur Zuordnung.
 
 Ein Kontenbereich wie 8400 bis 8409 fasst Konten gleichen Zwecks zusammen. Die Kontenrahmen drucken ihn als „-09“ unter seinem ersten Konto und sagen: „Kontenbereiche werden nur weitergegeben, wenn sie im Standardkontenrahmen ausgewiesen sind (z. B. AM 8400-09)“. Jedes Konto eines Bereichs hat den Platz seines ersten Kontos. `SKR03_RANGES` und `SKR04_RANGES` führen die Bereiche, die Tabellen zeigen sie als „8400 bis 8409“. Bezeichnungen mit dem Zusatz „(ERPNext)“ stammen aus der Vorlage von ERPNext, solche mit dem Zusatz „(SKR03-Variante)“ aus einer verbreiteten SKR03-Variante, weil der Kontenrahmen 2026 die Nummer nicht oder ohne Bezeichnung führt.
 
-[`test_completeness.py`](../steuerbote/ustva/tests/test_completeness.py) setzt das durch: Jedes Konto, das in der Spalte „Programmverbindung“ ein „U“ trägt (Weitergabe an das Programm Umsatzsteuererklärung), jedes Steuerkonto mit der Funktion S oder F in den Bereichen der Vor- und Umsatzsteuer (SKR03 15xx und 17xx, SKR04 14xx und 38xx), jedes Konto ihrer Kontenbereiche, jedes Umsatzsteuerkonto der Vorlagen von ERPNext und jede Nummer aus den SKR03-Varianten hat genau einen dieser Plätze, die Nummern der Varianten genau den, den ihre Bezeichnung ergibt. Die Kontonummern stehen in [`datev_2026.py`](../steuerbote/ustva/tests/fixtures/datev_2026.py), [`erpnext_v16.py`](../steuerbote/ustva/tests/fixtures/erpnext_v16.py) mit den Stichwörtern, nach denen die Konten der Vorlagen ausgewählt sind, und [`skr03_legacy_numbers.py`](../steuerbote/ustva/tests/fixtures/skr03_legacy_numbers.py). Wenige Konten aus keiner dieser Quellen haben trotzdem einen Platz, etwa 8320 bis 8329 für Lieferungen, die im anderen EU-Land steuerpflichtig sind, und 8331 für elektronische Dienstleistungen, beide in Kz 45, und 3551 und 1390 (SKR04: 5551), die der Kontenrahmen 2026 ohne „U“ führt, bewusst ohne Kennzahl. Der Test führt sie mit Grund auf. Kennzeichnet eine neue Ausgabe des Kontenrahmens ein weiteres Konto mit „U“, schlägt der Test fehl, bis das Konto seinen Platz hat.
+[`test_completeness.py`](../steuerbote/ustva/tests/test_completeness.py) setzt das durch: Jedes Konto, das in der Spalte „Programmverbindung“ ein „U“ trägt (Weitergabe an das Programm Umsatzsteuererklärung), jedes Steuerkonto mit der Funktion S oder F in den Bereichen der Vor- und Umsatzsteuer (SKR03 15xx und 17xx, SKR04 14xx und 38xx), jedes Konto ihrer Kontenbereiche, jedes Umsatzsteuerkonto der Vorlagen von ERPNext und jede Nummer aus den SKR03-Varianten hat genau einen dieser Plätze, die Nummern der Varianten genau den, den ihre Bezeichnung ergibt. Die Kontonummern stehen in [`datev_2026.py`](../steuerbote/ustva/tests/fixtures/datev_2026.py), [`erpnext_v16.py`](../steuerbote/ustva/tests/fixtures/erpnext_v16.py) mit den Stichwörtern, nach denen die Konten der Vorlagen ausgewählt sind, und [`skr03_legacy_numbers.py`](../steuerbote/ustva/tests/fixtures/skr03_legacy_numbers.py). Wenige Konten aus keiner dieser Quellen haben trotzdem einen Platz: etwa 8320 bis 8329 für Lieferungen, die im anderen EU-Land steuerpflichtig sind, und 8331 für elektronische Dienstleistungen, beide in Kz 45; 3551 und 1390 (SKR04: 5551), die der Kontenrahmen 2026 ohne „U“ führt, bewusst ohne Kennzahl; und die sonstigen betrieblichen Erträge auf der Stufe „Hinweis“ (siehe [Beobachtete Konten mit Hinweis](#beobachtete-konten-mit-hinweis)). Der Test führt sie mit Grund auf. Kennzeichnet eine neue Ausgabe des Kontenrahmens ein weiteres Konto mit „U“, schlägt der Test fehl, bis das Konto seinen Platz hat.
 
 An echten Buchungen geprüft sind die Konten des Testfalls `VerifiedMonthTest` (siehe [Beispiel](#beispiel)). Alle anderen Zuordnungen folgen den Bezeichnungen. Die Vorgabe SKR04 bildet SKR03 Rolle für Rolle nach: gleiche Kennzahl, gleiche Seite, gleicher Steuersatz, gleiche Verprobungen. Zu 8630 hat SKR04 kein Konto, zu 3852 aus der Vorlage von ERPNext hat SKR03 keines, siehe [Vorgabe SKR04](#vorgabe-skr04). [`test_defaults.py`](../steuerbote/ustva/tests/test_defaults.py) hält jede Regel, jede Verprobung und die Listen der beobachteten und der bewusst nicht zugeordneten Konten beider Vorgaben fest und prüft die Spiegelung. [`test_docs.py`](../steuerbote/ustva/tests/test_docs.py) prüft, dass die Tabellen auf dieser Seite genau den Code zeigen.
 
@@ -540,7 +540,7 @@ Die Steuer zu Kz 47, 85 und 96 kommt in den Vorgaben deshalb immer aus den Grund
 
 ### Beobachtete Konten
 
-Diese Konten gehören zur Voranmeldung, sind in den Vorgaben aber noch keiner Kennzahl zugeordnet. Hat eines davon im Zeitraum einen Saldo, steht es in `unmapped`, und die Meldung ist nicht bereit, bis die Firma eine Zuordnung ergänzt hat. Auf 1548 und 1725 (SKR04: 1434 und 3865) ist ein Saldo eine Frage des Zeitpunkts: Vorsteuer, die erst in einem späteren Zeitraum abziehbar ist, und Umsatzsteuer, die erst später fällig wird. Die Firma klärt sie, bevor sie meldet.
+Diese Konten gehören zur Voranmeldung, sind in den Vorgaben aber noch keiner Kennzahl zugeordnet. Die Vorgaben beobachten sie auf der Stufe „Sperrt“: Hat eines davon im Zeitraum einen Saldo, steht es in `unmapped`, und die Meldung ist nicht bereit, bis die Firma eine Zuordnung ergänzt hat. Auf 1548 und 1725 (SKR04: 1434 und 3865) ist ein Saldo eine Frage des Zeitpunkts: Vorsteuer, die erst in einem späteren Zeitraum abziehbar ist, und Umsatzsteuer, die erst später fällig wird. Die Firma klärt sie, bevor sie meldet.
 
 | SKR03 | Bezeichnung laut Kontenrahmen 2026 |
 |---|---|
@@ -703,6 +703,26 @@ Diese Konten gehören zur Voranmeldung, sind in den Vorgaben aber noch keiner Ke
 | 6939 | Forderungsverluste aus im Inland steuerpfl. EU-Lieferungen 15% USt (übliche Höhe) (ERPNext) |
 
 Die beiden Listen entsprechen sich Konto für Konto, mit zwei Ausnahmen: Nur in SKR03 steht 8600 aus einer verbreiteten SKR03-Variante. Nur in SKR04 stehen 4330, 4723, 4729, 5726, 5727, 6285, 6287, 6934, 6935, 6937 und 6939, Konten zu 15 und 16 % aus der Vorlage von ERPNext ohne Gegenstück in SKR03. 5744, 4499 und 4869 beobachtet SKR04 als Gegenstücke von 3744, 8499 und 8853, obwohl der Kontenrahmen sie ohne „U“ führt.
+
+### Beobachtete Konten mit Hinweis
+
+Diese Konten beobachten die Vorgaben auf der Stufe „Hinweis“: Ihr Saldo kann in die Voranmeldung gehören, meist gehört er nicht hinein. Hat eines davon im Zeitraum einen Saldo, steht es mit Soll und Haben in `hinted`, und die Meldung bekommt den Hinweis `KONTO-BEOBACHTET` mit Kontonummer, Bezeichnung, Soll, Haben und Saldo. Bereit bleibt sie trotzdem.
+
+8603, 8605 und 8606 (SKR04: 4830, 4835 und 4832) sind sonstige betriebliche Erträge ohne „U“. Über der Kontenklasse druckt der Kontenrahmen 2026 für sie die Zusatzfunktion „Umsatzsteuer“: „M 8194-8603“ und „M 8605-8613“, in SKR04 „M 4830-4837“, erläutert unter „Zusatzfunktionen (über einer Kontenklasse)“ als „M Zusatzfunktion ‚Umsatzsteuer‘“. Auf diesen Konten lässt sich also mit Umsatzsteuer buchen, ohne dass der Kontenrahmen sie an die Umsatzsteuererklärung weitergibt. Steuerpflichtiges, das mit seiner Steuer darauf gebucht ist, zeigt die Verprobung, denn die Steuer steht dann ohne Grundlage auf 1776 oder 1771 (SKR04: 3806 oder 3801). Steuerfreies, etwa ein Umsatz nach § 4 Nr. 8 UStG für Kz 48, zeigt sie nicht; dafür steht der Hinweis.
+
+| SKR03 | Bezeichnung laut Kontenrahmen 2026 |
+|---|---|
+| 8603 | Sonstige betriebliche Erträge |
+| 8605 | Sonstige Erträge betrieblich und regelmäßig |
+| 8606 | Sonstige betriebliche Erträge von verbundenen Unternehmen |
+
+| SKR04 | Bezeichnung laut Kontenrahmen 2026 |
+|---|---|
+| 4830 | Sonstige betriebliche Erträge |
+| 4835 | Sonstige Erträge betrieblich und regelmäßig |
+| 4832 | Sonstige betriebliche Erträge von verbundenen Unternehmen |
+
+In ihrer Kontenzuordnung setzt jede Firma jedes beobachtete Konto auf eine der beiden Stufen und kann weitere Konten beobachten. Die Stufe „Hinweis“ passt zu Konten, deren Einordnung die Steuerberatung noch klärt, etwa Erträge und Aufwendungen aus dem Handel mit Wertpapieren oder Devisen, Zinsen und Gebühren (siehe [Für die Steuerberatung zu klären](architektur.md#für-die-steuerberatung-zu-klären)). In den Vorgaben stehen solche Konten nicht: Der Kontenrahmen 2026 kennzeichnet etwa 2650, 2654, 2166 und 4970 weder mit „U“ noch mit der Zusatzfunktion „Umsatzsteuer“, und ob ihr Saldo in eine Kennzahl gehört, hängt von der Tätigkeit der Firma ab.
 
 ### Bewusst ohne Kennzahl
 

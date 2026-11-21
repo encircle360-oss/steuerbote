@@ -3,8 +3,9 @@
 Every Kennzahl comes from the ledger (see calculation.py). This module adds what helps a person check the
 Kennzahlen before filing and changes none of them: the Vorperiodenvergleich, which sets each Kennzahl
 against the previous period of the same rhythm and against the same period a year earlier, and hints where
-the invoices behind the ledger look wrong or where invoices and ledger part ways. A hint never holds a
-return; whether a return is ready stays with the Verprobung and the watched accounts.
+the invoices behind the ledger look wrong, where invoices and ledger part ways, or where an account watched
+at the hint level has a balance. A hint never holds a return; whether a return is ready stays with the
+Verprobung and the accounts watched at the blocking level.
 
 The rules behind the hints on single invoices:
 
@@ -34,7 +35,7 @@ from enum import Enum, StrEnum
 from types import MappingProxyType
 from typing import Protocol
 
-from steuerbote.ustva.calculation import require_cents
+from steuerbote.ustva.calculation import AccountBalance, require_cents
 from steuerbote.ustva.kennzahlen import Kennzahl
 from steuerbote.ustva.mapping import AccountRule, Mapping, is_account_number
 from steuerbote.ustva.period import Period
@@ -52,6 +53,7 @@ class Code(StrEnum):
 	ZERO_TAX = "NULLSATZ-OHNE-GRUND"
 	TAX_DEVIATION = "STEUER-ABWEICHUNG"
 	INVOICES_AND_LEDGER = "ABGLEICH-RECHNUNGEN"
+	WATCHED_ACCOUNT = "KONTO-BEOBACHTET"
 	PREVIOUS_PERIOD = "ABWEICHUNG-VORPERIODE"
 	NO_CATALOGUE = "KEIN-KATALOG"
 	MAPPING_UNFIT = "ZUORDNUNG-JAHRGANG"
@@ -66,6 +68,7 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.ZERO_TAX: Severity.WARNING,
 		Code.TAX_DEVIATION: Severity.WARNING,
 		Code.INVOICES_AND_LEDGER: Severity.HINT,
+		Code.WATCHED_ACCOUNT: Severity.HINT,
 		Code.PREVIOUS_PERIOD: Severity.HINT,
 		Code.NO_CATALOGUE: Severity.HINT,
 		Code.MAPPING_UNFIT: Severity.HINT,
@@ -311,6 +314,30 @@ def reconciliation_hints(
 	return found
 
 
+def watched_account_hints(
+	balances: Iterable[AccountBalance], names: ReadOnlyMapping[str, str], figures: Figures
+) -> list[Hint]:
+	"""A hint per account watched at the hint level that has a balance, in the order of ``balances``.
+
+	``names`` holds the names of the accounts by number, as far as the caller knows them. The hint names
+	the account, its debits, its credits and the balance, which goes into no Kennzahl.
+	"""
+	found: list[Hint] = []
+	for balance in balances:
+		if not balance.balance:
+			continue
+		name = names.get(balance.account_number)
+		account = f"Konto {balance.account_number} {name}" if name else f"Konto {balance.account_number}"
+		side = "Soll" if balance.balance > ZERO else "Haben"
+		totals = f"Soll {figures.money(balance.debit)}, Haben {figures.money(balance.credit)}"
+		text = (
+			f"{account} hat einen Saldo von {figures.money(abs(balance.balance))} im {side} ({totals}), "
+			"geht aber in keine Kennzahl ein."
+		)
+		found.append(Hint(Code.WATCHED_ACCOUNT, text))
+	return found
+
+
 @dataclass(frozen=True, slots=True)
 class EarlierPeriod:
 	"""A period to compare with and its reported amounts by Kennzahl.
@@ -441,14 +468,18 @@ def hints(
 	ledger: ReadOnlyMapping[str, Decimal],
 	mapping: Mapping,
 	figures: Figures,
+	watched: Iterable[AccountBalance] = (),
+	names: ReadOnlyMapping[str, str] = MappingProxyType({}),
 ) -> tuple[Hint, ...]:
 	"""Every hint of a return: the warnings first, then the hints; each kind in the order it is found.
 
-	The invoices come first, then their reconciliation with the ledger, then the comparison.
+	The invoices come first, then their reconciliation with the ledger, then the balances of the accounts
+	watched at the hint level (``watched``, named after ``names``), then the comparison.
 	"""
 	found = [
 		*invoice_hints(lines, mapping, figures),
 		*reconciliation_hints(lines, ledger, mapping, figures),
+		*watched_account_hints(watched, names, figures),
 		*comparison_hints(comparison, figures),
 	]
 	return tuple(sorted(found, key=lambda hint: hint.severity is not Severity.WARNING))

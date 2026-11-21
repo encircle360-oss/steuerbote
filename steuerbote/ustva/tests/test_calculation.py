@@ -4,6 +4,7 @@ from unittest import TestCase
 
 from steuerbote.ustva.calculation import (
 	TOLERANCE_PER_VOUCHER,
+	AccountBalance,
 	CheckResult,
 	Deviation,
 	LedgerLine,
@@ -12,7 +13,7 @@ from steuerbote.ustva.calculation import (
 	require_cents,
 )
 from steuerbote.ustva.defaults import SKR03, SKR04
-from steuerbote.ustva.mapping import AccountRule, Mapping, Side, TaxCheck
+from steuerbote.ustva.mapping import AccountRule, Mapping, Side, TaxCheck, WatchedAccount, WatchLevel
 
 
 def line(account: str, debit: str = "0", credit: str = "0", voucher: str | None = None) -> LedgerLine:
@@ -681,6 +682,71 @@ class ScopeTest(TestCase):
 			self.assertEqual(check.postings, 0)
 			self.assertEqual(check.deviations, ())
 			self.assertTrue(check.passed)
+
+
+class WatchLevelTest(TestCase):
+	"""A balance on an account watched at the blocking level holds the return; one watched for a hint does not."""
+
+	mapping = Mapping(
+		"own",
+		(AccountRule("8400", "81", Side.CREDIT),),
+		watched=("1548", WatchedAccount("8603", WatchLevel.HINT), WatchedAccount("2654", WatchLevel.HINT)),
+	)
+
+	def test_a_balance_watched_for_a_hint_leaves_the_return_ready_and_changes_no_kennzahl(self):
+		result = calculate([line("8603", credit="250"), line("1200", debit="250")], self.mapping)
+		self.assertEqual(result.unmapped, ())
+		self.assertEqual(result.hinted, (AccountBalance("8603", d("0"), d("250")),))
+		self.assertEqual(set(result.values), {"83"})
+		self.assertEqual(result.kz83, d("0.00"))
+		self.assertTrue(result.ready)
+
+	def test_a_balance_watched_at_the_blocking_level_holds_the_return(self):
+		result = calculate([line("1548", debit="50"), line("1200", credit="50")], self.mapping)
+		self.assertEqual((result.unmapped, result.hinted), (("1548",), ()))
+		self.assertFalse(result.ready)
+
+	def test_a_hint_does_not_release_a_return_that_a_blocking_balance_holds(self):
+		result = calculate([line("1548", debit="50"), line("8603", credit="50")], self.mapping)
+		self.assertEqual(result.unmapped, ("1548",))
+		self.assertEqual(result.hinted, (AccountBalance("8603", d("0"), d("50")),))
+		self.assertFalse(result.ready)
+
+	def test_a_hinted_account_carries_its_debits_and_credits_over_all_vouchers(self):
+		lines = [
+			line("8603", credit="300", voucher="V1"),
+			line("8603", debit="50", voucher="V2"),
+			line("8603", credit="20"),
+		]
+		self.assertEqual(calculate(lines, self.mapping).hinted, (AccountBalance("8603", d("50"), d("320")),))
+
+	def test_an_account_watched_for_a_hint_without_a_balance_is_left_out(self):
+		lines = [line("8603", credit="100", voucher="V1"), line("8603", debit="100", voucher="V2")]
+		self.assertEqual(calculate(lines, self.mapping).hinted, ())
+
+	def test_hinted_accounts_are_sorted_by_number(self):
+		lines = [line("8603", credit="1"), line("2654", credit="2")]
+		self.assertEqual(
+			[balance.account_number for balance in calculate(lines, self.mapping).hinted], ["2654", "8603"]
+		)
+
+	def test_the_defaults_watch_other_operating_income_for_a_hint(self):
+		for mapping, account, bank in ((SKR03, "8603", "1200"), (SKR04, "4830", "1800")):
+			with self.subTest(chart=mapping.chart):
+				result = calculate([line(account, credit="500"), line(bank, debit="500")], mapping)
+				self.assertEqual(result.hinted, (AccountBalance(account, d("0"), d("500")),))
+				self.assertEqual(result.unmapped, ())
+				self.assertTrue(result.ready)
+
+
+class AccountBalanceTest(TestCase):
+	def test_the_balance_is_debit_less_credit(self):
+		self.assertEqual(AccountBalance("8603", d("50"), d("320")).balance, d("-270"))
+		self.assertEqual(AccountBalance("1548", d("70"), d("5")).balance, d("65"))
+
+	def test_an_account_balance_is_immutable(self):
+		with self.assertRaises(AttributeError):
+			AccountBalance("8603", d("0"), d("1")).debit = d("2")  # type: ignore[misc]
 
 
 class CustomMappingTest(TestCase):
