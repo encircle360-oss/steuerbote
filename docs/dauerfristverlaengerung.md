@@ -178,6 +178,8 @@ Ohne abgegebene Voranmeldung des Vorjahres und ohne Grundlage von Hand lehnt Ber
 
 **Grundlage von Hand.** Sie ersetzt die Grundlage aus den Voranmeldungen, sobald eine Begründung dasteht, auch mit 0 €; einen Betrag ohne Begründung lehnt das Speichern ab. Sie ist für das, was die Buchhaltung nicht wissen kann: Voranmeldungen des Vorjahres, die außerhalb von Steuerbote abgegeben wurden, oder die erwarteten Vorauszahlungen nach einem Beginn im laufenden Jahr. Kz 38 folgt ihr bei jedem Speichern. Mit ihr sind fehlende Voranmeldungen kein offener Punkt mehr; die Tabelle und „Fehlt in der Grundlage“ zeigen sie weiter.
 
+**Was das Speichern nimmt.** Frappe hält beim Speichern über die API kein schreibgeschütztes Feld fest. Das Speichern nimmt deshalb nur, was das Formular ändern lässt: Antrag und ersten verlängerten Monat, Kz 10, die Grundlage von Hand mit Begründung, die weiteren Angaben und die Anmerkungen. Die Tabelle der Grundlage, „Fehlt in der Grundlage“, das Gründungsdatum, der Status und die Abgabe bleiben, wie „Berechnen“ und die Abgabe sie gespeichert haben; Grundlage und Kz 38 rechnet das Speichern daraus neu. Bevor der Beleg übermittelt oder eingereicht wird, rechnet Steuerbote Grundlage und Kz 38 noch einmal nach und lehnt ab, wenn sie nicht zum gespeicherten Vordruck passen.
+
 | Status | Bedeutung |
 |---|---|
 | Entwurf | angelegt und noch nicht berechnet, oder Unternehmen, Jahr, Antrag oder erster verlängerter Monat haben sich geändert; das verwirft eine Berechnung |

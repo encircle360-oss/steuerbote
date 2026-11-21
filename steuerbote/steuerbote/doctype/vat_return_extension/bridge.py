@@ -7,6 +7,7 @@ data and every rule is tested without a bench.
 """
 
 from collections.abc import Iterable, Sequence
+from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -198,6 +199,16 @@ def sondervorauszahlung(
 	else:
 		base = computed
 	return Sondervorauszahlung(total, kz39, computed, base, dauerfrist.sondervorauszahlung(base))
+
+
+def amounts_kept(computed: ReadOnlyMapping[str, object], stored: Row) -> bool:
+	"""Whether ``stored`` holds each of the values of base and Kz 38 that ``computed`` gives.
+
+	A filing carries Kz 38 as the form holds it, which every save sets from the table of the base and the base by
+	hand. Computed again before a filing, it differs when it was changed past the save, or when the base by hand
+	changed while the form was filed.
+	"""
+	return all(to_amount(stored.get(field)) == to_amount(value) for field, value in computed.items())
 
 
 def form(doc: Row) -> Ust1H:

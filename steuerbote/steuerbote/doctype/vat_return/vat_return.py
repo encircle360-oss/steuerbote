@@ -5,7 +5,10 @@ Return Mapping and VAT Return Settings, and leaves every amount to the core in s
 maps the results onto the tables. A company can switch between monthly and quarterly filing at the start of
 a quarter, so a period number alone names a month or a quarter: the return carries its rhythm, which has to
 be the one the settings prescribe for the first month of the period. An override replaces a computed amount
-once it has a reason, and the totals and Kz 83 always follow the amounts as filed. "Berechnen" also fills the
+once it has a reason, and the totals and Kz 83 always follow the amounts as filed. Frappe keeps no read-only
+field from a save through its API, so a save keeps what Berechnen stored and takes only what the form lets the
+user change, a new return starts as a draft, and before the return is transmitted, made into a file or filed, its
+amounts are computed again from the stored Kennzahlen. "Berechnen" also fills the
 Vorperiodenvergleich (build_comparison) and the hints (build_hints) of steuerbote.ustva.plausibility, which
 inform and never change an amount or whether the return is ready. A period is filed once; every further
 return for it is a corrected return (Kz 10), and filing one marks the returns before it as replaced. "XML für
@@ -61,7 +64,10 @@ FILED = "Abgegeben"
 REPLACED = "Ersetzt"
 
 PERIOD_FIELDS = ("company", "year", "rhythm", "period_index")
-CALCULATED_TABLES = ("kennzahlen", "checks", "deviations", "unmapped", "hints", "comparison")
+# What Berechnen finds besides the Kennzahlen: the Verprobung, the watched accounts, the hints and the comparison.
+FINDINGS = ("checks", "deviations", "unmapped", "hints", "comparison")
+CALCULATED_TABLES = ("kennzahlen", *FINDINGS)
+CALCULATED_FIELDS = ("status", "ready", "accounts_without_number")
 
 # TransferTicketSType in headerbasis_datentypen.xsd of the ELSTER Basisschema.
 TRANSFERTICKET = re.compile(r"[0-9a-km-z]{2}[0-9]{3}[0-9a-km-z]{27}")
@@ -127,6 +133,15 @@ class VATReturn(Transmittable, Document):
 		self.set_onload("elster", self.elster_state())
 		self.set_onload("elster_run", self.latest_run())
 
+	def before_insert(self) -> None:
+		"""A new return starts as a draft that Berechnen has not read, whatever it was made with: its Kennzahlen keep
+		their overrides without a computed amount, and nothing else of a calculation stays."""
+		for table in FINDINGS:
+			self.set(table, [])
+		for row in self.kennzahlen:
+			row.update({"amount": 0, "reported": 0})
+		self.update({"status": DRAFT, "ready": 0, "accounts_without_number": 0})
+
 	def validate(self):
 		self.refuse_changes_while_transmitting()
 		if self._lacks_mandatory_values():
@@ -134,7 +149,7 @@ class VATReturn(Transmittable, Document):
 		self._require_catalogue()
 		self._set_period()
 		self._refuse_second_return()
-		self._discard_calculation_of_another_period()
+		self._keep_the_calculation()
 		self._set_final_amounts()
 		self._check_supplementary_details()
 
@@ -146,6 +161,7 @@ class VATReturn(Transmittable, Document):
 				)
 			)
 		self._check_fit_for_filing()
+		self._require_amounts_as_stored(self.get_doc_before_save() or self)
 		self.status = FILED
 
 	def before_cancel(self):
@@ -283,6 +299,7 @@ class VATReturn(Transmittable, Document):
 			)
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the return before transmitting it."))
+		self._require_amounts_as_stored(self)
 
 	def check_can_be_sent(self) -> None:
 		"""Senden files the return, once: it needs the return fit for filing and no earlier filing."""
@@ -414,20 +431,41 @@ class VATReturn(Transmittable, Document):
 			pluck="name",
 		)
 
-	def _discard_calculation_of_another_period(self) -> None:
+	def _keep_the_calculation(self) -> None:
+		"""Frappe keeps no read-only field from a save through its API, so a save keeps what Berechnen stored and
+		takes only what the form lets the user change: the overrides with their reasons, the further details and the
+		remarks. Another company or period discards the calculation instead. A new return is a draft (before_insert),
+		so a calculated one was saved before."""
 		before = self.get_doc_before_save()
-		if not before or self.flags.calculating:
+		if before is None or self.flags.calculating:
 			return
 		if any(str(before.get(field)) != str(self.get(field)) for field in PERIOD_FIELDS):
 			for table in CALCULATED_TABLES:
 				self.set(table, [])
 			self.update({"ready": 0, "status": DRAFT, "accounts_without_number": 0})
+			return
+		computed = _read_rows(bridge.restored, before.kennzahlen, self.kennzahlen)
+		for row, values in zip(self.kennzahlen, computed, strict=True):
+			row.update(values)
+		for table in FINDINGS:
+			self.set(table, [row.as_dict() for row in before.get(table)])
+		self.update({field: before.get(field) for field in CALCULATED_FIELDS})
 
 	def _set_final_amounts(self) -> None:
 		filing = _read_rows(bridge.filing, self.kennzahlen, cint(self.year))
 		for row, values in zip(self.kennzahlen, filing.rows, strict=True):
 			row.update(values)
 		self.update(filing.totals)
+
+	def _require_amounts_as_stored(self, stored: Document) -> None:
+		"""A filing carries the amounts the return holds, which every save sets from its Kennzahlen: computed again
+		from the rows, they are the amounts ``stored`` holds, or nothing is filed."""
+		if not _read_rows(bridge.amounts_kept, self.kennzahlen, stored, cint(self.year)):
+			frappe.throw(
+				_(
+					"The amounts of {0} do not agree with its Kennzahlen as stored. Reload the return, and calculate it again if they still do not agree."
+				).format(self.name)
+			)
 
 	def _check_supplementary_details(self) -> None:
 		"""Kz 500 and its Begründung go together, the Begründung on one line ELSTER takes, and the date of the
@@ -454,6 +492,7 @@ class VATReturn(Transmittable, Document):
 					"The return is not ready: a Verprobung deviates or a watched account has a balance. Explain in the remarks why it is filed nonetheless."
 				)
 			)
+		self._require_amounts_as_stored(self)
 
 	def _reported_before(self) -> frozenset[str]:
 		"""What the other filed returns of the period reported, which a corrected return writes as zero."""
@@ -508,6 +547,9 @@ def _read_rows(read, rows, *args):
 			),
 			bridge.RowProblem.COMPUTED: _("Kennzahl {0} is computed and cannot be overridden."),
 			bridge.RowProblem.MISSING_REASON: _("The override of Kennzahl {0} needs a reason."),
+			bridge.RowProblem.REMOVED: _(
+				"Kennzahl {0} comes from the general ledger and stays on the return; an override with a reason files another amount."
+			),
 		}
 		frappe.throw(messages[error.problem].format(error.kennzahl))
 

@@ -7,7 +7,9 @@ a monthly filer registers the Sondervorauszahlung, a quarterly one applies for t
 with the holidays of the company's Holiday List. "Berechnen" (calculate) reads the VAT Returns filed for the
 previous year and the date of establishment of the company through steuerbote.dauerfrist_sources; the core
 computes the base and Kz 38 from them, and bridge.py moves the values. A base by hand with a reason replaces
-the base from the Voranmeldungen, and Kz 38 follows it on every save.
+the base from the Voranmeldungen, and Kz 38 follows it on every save. Frappe keeps no read-only field from a save
+through its API, so a save keeps what Berechnen read, the status and the filing as they are stored, and before the
+form is transmitted or filed, base and Kz 38 are computed again from them.
 
 "Prüfen", "Testsenden" and "Senden" (transmit) run in a background job, as for every document that goes to
 ELSTER through ERiC (elster_transmission/transmission.py): the job writes form USt 1 H with the Hersteller-ID in
@@ -147,7 +149,7 @@ class VATReturnExtension(Transmittable, Document):
 		self._set_form(settings_for(self.company))
 		self._refuse_second_form()
 		self._require_correction_of_a_filed_form()
-		self._discard_calculation_of_another_form()
+		self._keep_the_calculation()
 		self._set_sondervorauszahlung()
 		self._set_status(self._check_form())
 
@@ -160,6 +162,7 @@ class VATReturnExtension(Transmittable, Document):
 				)
 			)
 		self._check_fit_for_filing()
+		self._require_amounts_as_stored(self.get_doc_before_save() or self)
 		if sent:
 			self.update(
 				{
@@ -275,6 +278,7 @@ class VATReturnExtension(Transmittable, Document):
 			frappe.throw(_("Only a draft form can be transmitted."))
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the form before transmitting it."))
+		self._require_amounts_as_stored(self)
 		with xml_errors(_("ELSTER Transmission")), self._form_errors():
 			layout_for(cint(self.year))
 			ustva_xml.schema_for(cint(self.year))
@@ -424,10 +428,24 @@ class VATReturnExtension(Transmittable, Document):
 				).format(self.company, filed[0], cint(self.year))
 			)
 
-	def _discard_calculation_of_another_form(self) -> None:
+	def _keep_the_calculation(self) -> None:
+		"""Frappe keeps no read-only field from a save through its API, so a save keeps what Berechnen read, the
+		status and the filing as they are stored, and takes only what the form lets the user change: the Antrag with
+		its first month, Kz 10, the base by hand with its reason, the further details and the remarks. Base and Kz 38
+		follow from them (_set_sondervorauszahlung). Another form discards the calculation instead. Only the note of a
+		filing outside Steuerbote sets the filing on a save, and a new form is a draft (before_insert)."""
 		before = self.get_doc_before_save()
-		if before and not self.flags.calculating and _form_key(before) != _form_key(self):
+		if before is None:
+			return
+		if not self.flags.filed_outside:
+			self.update({field: before.get(field) for field in FILING_FIELDS})
+		if self.flags.calculating:
+			return
+		if _form_key(before) != _form_key(self):
 			self._discard_calculation()
+			return
+		self.set("base_rows", [row.as_dict() for row in before.base_rows])
+		self.update({field: before.get(field) for field in (*CALCULATED_VALUES, "status")})
 
 	def _discard_calculation(self) -> None:
 		self.set("base_rows", [])
@@ -454,24 +472,38 @@ class VATReturnExtension(Transmittable, Document):
 
 	def _set_sondervorauszahlung(self) -> None:
 		"""Base and Kz 38 from the table of the base and the base by hand, through the core."""
+		self.update(self._sondervorauszahlung() or {})
+
+	def _sondervorauszahlung(self) -> dict | None:
+		"""Base and Kz 38 as the table of the base and the base by hand give them, through the core; None for a form
+		that is not calculated or registers no Sondervorauszahlung."""
 		began = getdate(self.established_on) if self.established_on else None
 		with self._base_errors(began):
 			override = bridge.override_of(self.base_override, self.base_override_reason)
 			if self.status not in (CALCULATED, READY) or not self._with_sondervorauszahlung():
-				return
+				return None
 			active = bridge.activity(cint(self.year), began)
 			kz83, kz39 = bridge.base_amounts(self.base_rows)
 			result = bridge.sondervorauszahlung(kz83, kz39, active, override)
-		self.update(
-			{
-				"kz83": result.kz83,
-				"kz39": result.kz39,
-				"months_active": active.months,
-				"computed_base": result.computed_base or 0,
-				"base": result.base,
-				"sondervorauszahlung": result.kz38,
-			}
-		)
+		return {
+			"kz83": result.kz83,
+			"kz39": result.kz39,
+			"months_active": active.months,
+			"computed_base": result.computed_base or 0,
+			"base": result.base,
+			"sondervorauszahlung": result.kz38,
+		}
+
+	def _require_amounts_as_stored(self, stored: Document) -> None:
+		"""A filing carries Kz 38 as the form holds it, which every save sets from the base: computed again, base and
+		Kz 38 are those ``stored`` holds, or nothing is filed."""
+		computed = self._sondervorauszahlung()
+		if computed is not None and not bridge.amounts_kept(computed, stored):
+			frappe.throw(
+				_(
+					"Base and Kz 38 of {0} do not agree with the form as stored. Reload the form, and calculate it again if they still do not agree."
+				).format(self.name)
+			)
 
 	def _set_status(self, finding: str | None) -> None:
 		"""A calculated form is ready without open points: the form of its year is known and, without a base by

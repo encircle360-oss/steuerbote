@@ -107,7 +107,7 @@ Die Laufzeitumgebungen liegen außerhalb jeder Site im Verzeichnis `sites/eric` 
 ## Ablauf eines Vorgangs
 
 1. Bei Testsenden und Senden fragt ein Dialog nach Zertifikatsdatei und Zertifikats-Passwort, im Simulationsmodus nur nach einer Bestätigung.
-2. Steuerbote prüft die Meldung: Entwurf, berechnet, kein anderer Vorgang läuft, außerhalb der Simulation bestätigte Datenschutzhinweise. Für Senden zusätzlich: kein Simulationsmodus, Meldung „Bereit“ oder mit Begründung, der Zeitraum ist nicht schon abgegeben, und die Meldung ist weder übermittelt noch mit unbekanntem Ergebnis gesendet.
+2. Steuerbote prüft die Meldung: Entwurf, berechnet, ihre Beträge stimmen mit den gespeicherten Kennzahlen überein (an der Dauerfristverlängerung Grundlage und Kz 38 mit dem gespeicherten Vordruck), kein anderer Vorgang läuft, außerhalb der Simulation bestätigte Datenschutzhinweise. Für Senden zusätzlich: kein Simulationsmodus, Meldung „Bereit“ oder mit Begründung, der Zeitraum ist nicht schon abgegeben, und die Meldung ist weder übermittelt noch mit unbekanntem Ergebnis gesendet.
 3. Steuerbote legt eine ELSTER-Übermittlung mit dem Status „Läuft“ an, sperrt die Meldung und stellt einen Hintergrundjob für genau diese Übermittlung ein.
 4. Der Hintergrundjob holt Zertifikat und Passwort ab, schreibt die Nutzdaten, ruft ERiC in einem eigenen, kurzlebigen Prozess oder die Simulation auf, hält Ergebnis, Meldungen und Dateien in der ELSTER-Übermittlung fest, gibt die Meldung wieder frei und benachrichtigt den Benutzer, der den Vorgang gestartet hat.
 5. Nach einem Senden, das ELSTER angenommen hat, bucht der Hintergrundjob die Meldung, ihr Status wird „Abgegeben“.
