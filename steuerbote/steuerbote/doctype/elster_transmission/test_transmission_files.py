@@ -1,5 +1,6 @@
 """The forms that go to ELSTER through ERiC share one script for it, read from their files without a bench."""
 
+import ast
 import re
 from pathlib import Path
 from unittest import TestCase
@@ -14,6 +15,8 @@ FORMS = {
 }
 # The path Frappe resolves an include of a form script by: the app, then the path inside its package.
 INCLUDE = '{% include "steuerbote/public/js/elster_transmission.js" %}\n'
+# The arguments of the store that name the document the certificate is for, and carry no secret.
+DOCUMENT_ARGUMENTS = ("document_type", "document")
 
 
 def constant(source: str, name: str) -> str:
@@ -38,10 +41,33 @@ class SharedScriptTest(TestCase):
 			with self.subTest(method=method):
 				self.assertRegex(self.server, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
 
-	def test_the_certificate_goes_to_the_whitelisted_store(self):
+	def test_the_certificate_goes_to_the_whitelisted_store_which_is_never_recorded(self):
 		module, _, function = constant(self.script, "STASH_CERTIFICATE").rpartition(".")
 		self.assertEqual(module, "steuerbote.steuerbote.doctype.elster_transmission.transmission")
-		self.assertRegex(self.server, rf'@frappe\.whitelist\(methods=\["POST"\]\)\ndef {function}\(')
+		self.assertRegex(
+			self.server, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n@do_not_record\ndef {function}\('
+		)
+
+	def test_certificate_and_password_travel_under_names_frappe_masks(self):
+		"""The dialog of a server error copies the arguments of its request and masks only those whose name holds
+		password (mask_passwords of Frappe's utils.js); the logs and tracebacks of the server mask password and
+		secret as well."""
+		(stash,) = (
+			node
+			for node in ast.parse(self.server).body
+			if isinstance(node, ast.FunctionDef) and node.name == "stash_certificate"
+		)
+		parameters = [argument.arg for argument in stash.args.args]
+		(arguments,) = re.findall(r"method: STASH_CERTIFICATE,\s*args: \{([^}]*)\}", self.script)
+		self.assertEqual([name.split(":")[0].strip() for name in arguments.split(",")], parameters)
+		for name in parameters:
+			if name not in DOCUMENT_ARGUMENTS:
+				with self.subTest(name=name):
+					self.assertIn("password", name)
+
+	def test_the_script_forgets_the_request_that_carried_the_certificate(self):
+		self.assertIn("always: forget_the_last_request,", self.script)
+		self.assertIn("frappe.last_request = null;", self.script)
 
 	def test_the_script_listens_to_the_event_the_job_publishes(self):
 		self.assertEqual(

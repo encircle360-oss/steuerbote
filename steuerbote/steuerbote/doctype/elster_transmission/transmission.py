@@ -24,6 +24,7 @@ import contextlib
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.recorder import do_not_record
 from frappe.utils import cint, escape_html, now_datetime, strip_html
 from frappe.utils.background_jobs import is_job_enqueued
 
@@ -323,17 +324,36 @@ def record(transmission: Document) -> None:
 
 
 @frappe.whitelist(methods=["POST"])
-def stash_certificate(certificate_secret: str, certificate_password: str) -> str:
+@do_not_record
+def stash_certificate(
+	password_protected_certificate: str | None = None, certificate_password: str | None = None
+) -> str:
 	"""Keep the certificate (.pfx, base64) and its password for the next transmission in the one-shot store
 	of steuerbote.eric.secrets; returns the token that transmit() takes in their place.
 
-	Parameters and locals carry "secret" or "password" in their names, which Frappe masks in its logs and
-	tracebacks.
+	Neither may escape the store on the way. The Recorder of the Administrator keeps the form of every request it
+	records, so this one is never recorded. Sentry receives the raw form with an error it reports, and the dialog
+	of a server error in the desk copies the arguments of the request, so whatever fails here ends as a
+	ValidationError, which neither reports, with a message that names neither and no exception chained to it.
+	Every parameter and local name carries "password" or "secret", which Frappe masks in its logs, its tracebacks
+	and that dialog.
 	"""
+	try:
+		token = _stash(password_protected_certificate, certificate_password)
+	except frappe.ValidationError, frappe.PermissionError:
+		raise
+	except Exception:
+		token = None
+	if token is None:
+		frappe.throw(_("The certificate could not be kept for the transmission. Try again in a moment."))
+	return token
+
+
+def _stash(password_protected_certificate: str | None, certificate_password: str | None) -> str:
 	if not any(frappe.has_permission(doctype, "write") for doctype in DOCUMENT_TYPES):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 	try:
-		decoded_secret = base64.b64decode(certificate_secret or "", validate=True)
+		decoded_secret = base64.b64decode(password_protected_certificate or "", validate=True)
 	except binascii.Error, ValueError:
 		decoded_secret = b""
 	if not decoded_secret or len(decoded_secret) > MAX_CERTIFICATE_BYTES:

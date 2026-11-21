@@ -56,7 +56,7 @@ Der Beleg „Zusammenfassende Meldung“ übermittelt die ZM eines Unternehmens 
 Testsenden und Senden brauchen die Zertifikatsdatei (.pfx) des ELSTER-Kontos der Firma und ihr Passwort. Beides wird für jeden Vorgang neu eingegeben.
 
 - Der Browser liest die Zertifikatsdatei. Sie wird nicht als Anhang hochgeladen.
-- Zertifikat und Passwort gehen einmal an den Server. Dort liegen sie mit dem Schlüssel der Site verschlüsselt und höchstens 15 Minuten im Zwischenspeicher, bis der Hintergrundjob sie einmal abholt; ein zweites Abholen gibt es nicht. Weder an der Meldung noch an der ELSTER-Übermittlung, im Hintergrundjob oder in einem Protokoll wird eines von beiden gespeichert.
+- Zertifikat und Passwort gehen einmal an den Server. Dort liegen sie mit dem Schlüssel der Site verschlüsselt und höchstens 15 Minuten im Zwischenspeicher, bis der Hintergrundjob sie einmal abholt; ein zweites Abholen gibt es nicht. Weder an der Meldung noch an der ELSTER-Übermittlung, im Hintergrundjob oder in einem Protokoll wird eines von beiden gespeichert, auch nicht im Recorder von Frappe oder in einem Fehlerbericht. Lassen sie sich nicht ablegen, sagt das eine Meldung, die keines von beiden nennt, siehe [ERiC](eric.md#sicherheit).
 - Das Passwort hat 6 bis 128 Zeichen: Buchstaben, Ziffern, Leerzeichen und Satzzeichen, ohne Umlaute (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 5-3).
 - Testzertifikate von ELSTER taugen nur für Testsenden.
 

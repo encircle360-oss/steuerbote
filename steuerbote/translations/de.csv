@@ -468,6 +468,7 @@
 "The base by hand needs a reason.","Die Grundlage von Hand braucht eine Begründung."
 "The calendar year the form is filed for.","Das Kalenderjahr, für das der Vordruck abgegeben wird."
 "The certificate and its password are no longer available. Start the transmission again and enter them anew.","Zertifikat und Passwort liegen nicht mehr vor. Bitte die Übermittlung neu starten und beides erneut eingeben."
+"The certificate could not be kept for the transmission. Try again in a moment.","Das Zertifikat ließ sich für die Übermittlung nicht ablegen. Bitte gleich noch einmal versuchen."
 "The certificate file could not be read. Choose the .pfx file of the ELSTER account.","Die Zertifikatsdatei ließ sich nicht lesen. Bitte die .pfx-Datei des ELSTER-Kontos wählen."
 "The certificate password has 6 to 128 characters: letters, digits, spaces and punctuation, without umlauts.","Das Zertifikats-Passwort hat 6 bis 128 Zeichen: Buchstaben, Ziffern, Leerzeichen und Satzzeichen, ohne Umlaute."
 "The company's own German USt-IdNr., DE and nine digits, with which the USt-IdNrn. of its customers are confirmed. Empty: the Tax ID of the company, if it is one.","Die eigene deutsche USt-IdNr. des Unternehmens, DE und neun Ziffern, mit der die USt-IdNrn. seiner Kunden bestätigt werden. Leer: der Wert im Feld Steuernummer (tax_id) des Unternehmens, wenn er eine deutsche USt-IdNr. ist."
