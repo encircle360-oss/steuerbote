@@ -27,5 +27,6 @@ venv/
 # ERiC runtime is downloaded at install time and never committed
 steuerbote/eric/runtime/
 
-# Test sites and bench artefacts
+# Test sites and bench artefacts, and the screenshots of failed browser tests
 *.log
+test-results/
