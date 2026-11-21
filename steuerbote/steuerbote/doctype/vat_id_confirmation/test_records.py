@@ -1,9 +1,12 @@
 """Each query of a confirmation becomes a record of its own, with what was asked, what came back and what the
 confirmation says of the number up to it."""
 
+import json
 from datetime import UTC, date, datetime
+from pathlib import Path
 from unittest import TestCase
 
+from steuerbote.steuerbote.doctype.recapitulative_statement.bridge import confirmation_fields
 from steuerbote.steuerbote.doctype.vat_id_confirmation import records
 from steuerbote.vatid.result import Outcome
 from steuerbote.vatid.service import confirm
@@ -21,9 +24,16 @@ from steuerbote.vatid.tests.fakes import (
 )
 from steuerbote.vatid.transport import Response
 
+DOCTYPES = Path(__file__).resolve().parents[1]
+
 
 def confirmed(*answers, details=None):
 	return confirm(REQUESTED, REQUESTER, details, FakeFetch(*answers), FakeClock())
+
+
+def fields(doctype: str) -> dict[str, dict]:
+	definition = json.loads((DOCTYPES / doctype / f"{doctype}.json").read_text(encoding="utf-8"))
+	return {field["fieldname"]: field for field in definition["fields"]}
 
 
 class RecordsTest(TestCase):
@@ -134,6 +144,32 @@ class ResultTest(TestCase):
 		self.assertIs(records.result(unknown.queries()), Outcome.UNKNOWN)
 		self.assertIs(records.result([valid, invalid]), Outcome.INVALID)
 		self.assertIs(records.result([]), Outcome.UNKNOWN)
+
+
+class FieldTypesTest(TestCase):
+	"""A Data field of Frappe takes 140 characters, and saving a longer value fails. The record is the proof of a
+	query the service has received, so it keeps what it did not choose itself in fields of any length."""
+
+	def test_the_address_and_the_answer_keep_any_length(self):
+		definition = fields("vat_id_confirmation")
+		for name in ("status_code", "consultation_id", *records.DETAILS_FIELDS):
+			with self.subTest(field=name):
+				self.assertEqual(definition[name]["fieldtype"], "Small Text")
+
+	def test_the_lines_of_a_zusammenfassende_meldung_take_what_the_record_keeps(self):
+		"""Saving a statement copies the latest record of each number onto its lines (confirmation_fields)."""
+		record = fields("vat_id_confirmation")
+		line = fields("recapitulative_statement_line")
+		copied = {
+			target: source
+			for target, source in confirmation_fields({name: name for name in record}).items()
+			if source in record
+		}
+		self.assertEqual(copied["confirmation_status"], "status_code")
+		for target, source in copied.items():
+			if record[source]["fieldtype"] == "Small Text":
+				with self.subTest(field=target):
+					self.assertEqual(line[target]["fieldtype"], "Small Text")
 
 
 class ResponseFileTest(TestCase):

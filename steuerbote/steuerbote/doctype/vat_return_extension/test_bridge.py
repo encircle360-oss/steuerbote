@@ -3,6 +3,7 @@ Voranmeldungszeiträume it lacks, the base and Kz 38, and form USt 1 H from the 
 
 from datetime import date
 from decimal import Decimal
+from types import MappingProxyType
 from unittest import TestCase
 
 from steuerbote.dauerfrist import Context, FormError, Ust1H
@@ -244,6 +245,30 @@ class SondervorauszahlungTest(TestCase):
 	def test_passes_on_what_the_core_refuses(self):
 		with self.assertRaisesRegex(ValueError, "Kz 39 takes no negative amount"):
 			bridge.sondervorauszahlung([d("100.00")], d("-5.00"), WHOLE_YEAR, None)
+
+
+class AmountsKeptTest(TestCase):
+	"""Before a filing, base and Kz 38 are computed again from the table of the base and the base by hand."""
+
+	computed = MappingProxyType(
+		{
+			"kz83": d("39000.00"),
+			"kz39": d("5000.00"),
+			"months_active": 12,
+			"computed_base": d("44000.00"),
+			"base": d("44000.00"),
+			"sondervorauszahlung": d("4000"),
+		}
+	)
+
+	def test_a_form_holds_what_its_base_gives(self):
+		stored = {**self.computed, "kz83": 39000.0, "base": "44000", "months_active": 12, "remarks": "x"}
+		self.assertTrue(bridge.amounts_kept(self.computed, stored))
+
+	def test_a_value_that_differs_is_found(self):
+		for field in self.computed:
+			with self.subTest(field=field):
+				self.assertFalse(bridge.amounts_kept(self.computed, {**self.computed, field: 1}))
 
 
 class FormTest(TestCase):

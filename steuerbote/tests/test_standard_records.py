@@ -176,6 +176,25 @@ class ReportFilesTest(TestCase):
 			[(field, field) for field in ("company", "year", "rhythm", "period_index")],
 		)
 
+	def test_the_report_shows_its_texts_as_they_read(self):
+		"""Frappe writes a Data cell of a report into the page as HTML, so a party called <img src=x onerror=…>
+		would run as code. Only the column Print holds HTML on purpose; the formatter escapes every other Data
+		cell before Frappe formats it."""
+		script = (REPORT / "ustva_kennzahlen.js").read_text(encoding="utf-8")
+		formatter = re.search(r"\n\tformatter\(([^)]*)\) \{\n(?P<body>.*?)\n\t\},\n", script, re.DOTALL)
+		self.assertIsNotNone(formatter)
+		for part in (
+			'column.fieldtype === "Data" && column.fieldname !== "print_link"',
+			"default_formatter(text ? frappe.utils.escape_html(value) : value, row, column, data)",
+		):
+			with self.subTest(part=part):
+				self.assertIn(part, formatter["body"])
+		source = (REPORT / "ustva_kennzahlen.py").read_text(encoding="utf-8")
+		data_columns = set(
+			re.findall(r'\{"fieldname": "(\w+)", "label": _\("[^"]*"\), "fieldtype": "Data"', source)
+		)
+		self.assertEqual(data_columns, {"kennzahl", "label", "print_link", "party"})
+
 	def test_every_label_of_the_report_is_translated(self):
 		texts = set()
 		for name in ("ustva_kennzahlen.js", "ustva_kennzahlen.py"):

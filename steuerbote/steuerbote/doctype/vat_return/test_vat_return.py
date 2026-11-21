@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
@@ -132,6 +133,11 @@ class TestVATReturn(IntegrationTestCase):
 	def kennzahl(self, doc, number: str):
 		return next(row for row in doc.kennzahlen if row.kennzahl == number)
 
+	def roll_back_afterwards(self) -> None:
+		"""Undo what the test files or sends, so that its period stays open for the tests after it."""
+		frappe.db.savepoint("vat_return_test")
+		self.addCleanup(frappe.db.rollback, save_point="vat_return_test")
+
 	def amounts(self, doc) -> dict[str, Decimal]:
 		return {row.kennzahl: money(row.final) for row in doc.kennzahlen}
 
@@ -218,6 +224,117 @@ class TestVATReturn(IntegrationTestCase):
 		)
 		self.assertEqual(money(row.final), money(600))
 
+	def test_a_save_keeps_the_amounts_berechnen_computed(self):
+		"""Frappe keeps no read-only field from a save through its API: Kz 81 sent with 10 euros instead of 1,000
+		would be filed, and Kz 83 would follow it."""
+		doc = self.calculated(3)
+		self.kennzahl(doc, "81").update({"amount": 10, "reported": 10})
+		doc.save()
+		doc.reload()
+		row = self.kennzahl(doc, "81")
+		self.assertEqual((money(row.amount), money(row.reported), money(row.final)), (money(1000),) * 3)
+		self.assertEqual((money(doc.output_tax), money(doc.kz83)), (money(247), money(95)))
+
+	def test_a_save_keeps_the_kennzahl_of_a_computed_row(self):
+		"""The base of Kz 81 sent as Kz 86 would be filed at 7 % instead of 19 %."""
+		doc = self.calculated(3)
+		self.kennzahl(doc, "81").kennzahl = "86"
+		doc.save()
+		doc.reload()
+		self.assertEqual(self.amounts(doc), self.amounts(self.calculated(3)))
+		self.assertEqual(money(doc.kz83), money(95))
+
+	def test_a_kennzahl_berechnen_computed_stays_on_the_return(self):
+		doc = self.calculated(3)
+		doc.set("kennzahlen", [row for row in doc.kennzahlen if row.kennzahl != "81"])
+		with self.assertRaisesRegex(frappe.ValidationError, "Kennzahl 81 comes from the general ledger"):
+			doc.save()
+
+	def test_a_save_keeps_the_verprobung_and_whether_the_return_is_ready(self):
+		"""A return whose Verprobung deviates, sent back as ready with the Verprobung passed and without the
+		deviating voucher, stays as Berechnen found it and is not filed without remarks."""
+		self.roll_back_afterwards()
+		a = self.account
+		post_journal_entry(
+			COMPANY, "2026-02-12", [(a["1400"], 1180, 0), (a["8400"], 0, 1000), (a["1776"], 0, 180)]
+		)
+		doc = self.calculated(2)
+		self.assertEqual((doc.ready, doc.status, len(doc.deviations)), (0, "Berechnet", 1))
+		doc.update({"ready": 1, "status": "Bereit", "accounts_without_number": 0})
+		for check in doc.checks:
+			check.update({"passed": 1, "booked_tax": check.computed_tax, "difference": 0, "deviations": 0})
+		doc.set("deviations", [])
+		doc.set("hints", [])
+		doc.save()
+		doc.reload()
+		self.assertEqual((doc.ready, doc.status, len(doc.deviations)), (0, "Berechnet", 1))
+		self.assertEqual([check.passed for check in doc.checks], [0, 1])
+		with self.assertRaisesRegex(frappe.ValidationError, "The return is not ready"):
+			doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+
+	def test_a_save_keeps_the_status(self):
+		"""A draft that Berechnen has not read, sent back as ready, stays a draft."""
+		self.roll_back_afterwards()
+		doc = self.new_return(2)
+		doc.update({"status": "Bereit", "ready": 1})
+		doc.save()
+		self.assertEqual((doc.status, doc.ready), ("Entwurf", 0))
+		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the return before submitting it"):
+			doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+
+	def test_a_new_return_starts_as_a_draft_whatever_it_is_made_with(self):
+		"""An insert through the API keeps no read-only field either: a return made as ready, with Kz 81 and a
+		passed Verprobung, is a draft that Berechnen has not read."""
+		self.roll_back_afterwards()
+		doc = self.new_return(
+			2,
+			status="Bereit",
+			ready=1,
+			kennzahlen=[{"kennzahl": "81", "amount": 10, "reported": 10}],
+			checks=[{"label": "Umsatzsteuer 19 %", "passed": 1}],
+			hints=[{"severity": "Hinweis", "code": "ABWEICHUNG-VORPERIODE", "text": "Kz 81"}],
+		)
+		self.assertEqual((doc.status, doc.ready, doc.checks, doc.hints), ("Entwurf", 0, [], []))
+		self.assertEqual((money(self.kennzahl(doc, "81").final), money(doc.kz83)), (money(0), money(0)))
+		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the return before submitting it"):
+			doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+
+	def test_amounts_changed_past_the_save_are_not_filed(self):
+		"""Kz 83 and the sums follow the rows on every save. Written past it, here straight into the database, they
+		are neither transmitted nor made into the file for Mein ELSTER nor filed, until Berechnen runs again."""
+		self.roll_back_afterwards()
+		doc = self.calculated(3)
+		frappe.db.set_value("VAT Return", doc.name, "kz83", 1.9)
+		refused = "do not agree with its Kennzahlen as stored"
+		with patch("frappe.enqueue") as enqueue, self.assertRaisesRegex(frappe.ValidationError, refused):
+			doc.transmit("validate")
+		enqueue.assert_not_called()
+		with self.assertRaisesRegex(frappe.ValidationError, refused):
+			doc.make_import_file()
+		with self.assertRaisesRegex(frappe.ValidationError, refused):
+			doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		self.assertEqual((doc.status, money(doc.kz83)), ("Abgegeben", money(95)))
+
+	def test_buchen_after_an_accepted_send_files_the_amounts_as_stored(self):
+		"""ELSTER accepted the return while its submission failed: Buchen submits it with the amounts it holds, not
+		with others sent along."""
+		self.roll_back_afterwards()
+		doc = self.calculated(3)
+		doc.new_transmission("send", simulated=False, status="Erfolgreich")
+		doc.reload()
+		self.kennzahl(doc, "45").update({"override": 600, "override_reason": "Second invoice"})
+		with self.assertRaisesRegex(frappe.ValidationError, "do not agree with its Kennzahlen as stored"):
+			doc.submit()
+		doc.reload()
+		doc.submit()
+		self.assertEqual(
+			(doc.docstatus, doc.status, money(self.kennzahl(doc, "45").final)), (1, "Abgegeben", money(500))
+		)
+
 	def test_submitting_needs_a_calculation(self):
 		doc = self.new_return(5)
 		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the return before submitting it"):
@@ -272,6 +389,18 @@ class TestVATReturn(IntegrationTestCase):
 		correction.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		first.reload()
 		self.assertEqual((first.status, correction.status), ("Ersetzt", "Abgegeben"))
+
+	def test_the_status_of_a_filed_return_stays_as_filed(self):
+		"""Whether a return counts as filed, for its period and for the base of the Dauerfristverlängerung, follows
+		its status: once submitted, only the filing of a corrected return replaces it."""
+		self.roll_back_afterwards()
+		doc = self.calculated(2)
+		doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		doc.reload()
+		doc.status = "Ersetzt"
+		with self.assertRaises(frappe.UpdateAfterSubmitError):
+			doc.save()
+		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "status"), "Abgegeben")
 
 	def test_cancelling_a_correction_restores_the_return_it_replaced(self):
 		first = self.calculated(7)
@@ -426,6 +555,20 @@ class TestVATReturn(IntegrationTestCase):
 		"""Rule 11085153: the year of the date in Kz 70 is the year of the Voranmeldungszeitraum."""
 		with self.assertRaisesRegex(frappe.ValidationError, "has to lie in 2026, not in 2025"):
 			self.new_return(2, regelbesteuerung_from="2025-12-01")
+
+	def test_a_return_sent_through_steuerbote_makes_no_file_for_mein_elster(self):
+		"""ELSTER accepted its Senden, or the outcome is unknown: the Finanzamt has the return or may have it, and
+		the file for Mein ELSTER would file it once more."""
+		self.roll_back_afterwards()
+		for month, status, refused in (
+			(2, "Erfolgreich", "transmitted already with Transferticket et0123456789abcdef"),
+			(5, "Unbekannt", "reached ELSTER is unknown"),
+		):
+			doc = self.calculated(month)
+			doc.new_transmission("send", simulated=False, status=status, transferticket="et0123456789abcdef")
+			with self.subTest(status=status), self.assertRaisesRegex(frappe.ValidationError, refused):
+				doc.make_import_file()
+			self.assertFalse(frappe.db.exists("File", {"attached_to_name": doc.name}))
 
 	def test_the_import_file_needs_a_calculation(self):
 		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the return before making the file"):

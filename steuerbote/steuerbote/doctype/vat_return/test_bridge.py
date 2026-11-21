@@ -220,6 +220,114 @@ class FilingTest(TestCase):
 		self.assertEqual(raised.exception.problem, bridge.RowProblem.DUPLICATE)
 
 
+def stored_rows() -> list[dict]:
+	"""The Kennzahlen of the verified month as Berechnen stores them, each row with the name Frappe gives it."""
+	rows = bridge.kennzahl_rows(calculate(verified_month(), SKR03), KENNZAHLEN, {})
+	return [{**row, "name": f"row-{index}"} for index, row in enumerate(rows)]
+
+
+def stored_return(rows: list[dict]) -> dict:
+	"""A return as validate leaves it: the final amount of each row and the sums of the form over them."""
+	filing = bridge.filing(rows, 2026)
+	return {
+		"kennzahlen": [{**row, **filed} for row, filed in zip(rows, filing.rows, strict=True)],
+		**filing.totals,
+	}
+
+
+class RestoredTest(TestCase):
+	"""Frappe keeps no read-only field from a save through its API: a save keeps the Kennzahlen and amounts Berechnen
+	computed and takes no more from its rows than the overrides."""
+
+	def setUp(self):
+		self.stored = stored_rows()
+
+	def test_a_row_keeps_the_kennzahl_and_the_amounts_berechnen_stored(self):
+		sent = [dict(row) for row in self.stored]
+		sent[0].update(
+			{"kennzahl": "86", "amount": 10, "reported": 10, "override": 1100, "override_reason": "x"}
+		)
+		kept = bridge.restored(self.stored, sent)
+		self.assertEqual(
+			kept[0], {"name": "row-0", "kennzahl": "81", "amount": d("1000.00"), "reported": d("1000.00")}
+		)
+		self.assertEqual(
+			[(row["name"], row["kennzahl"]) for row in kept],
+			[(row["name"], row["kennzahl"]) for row in self.stored],
+		)
+
+	def test_a_row_the_save_adds_only_overrides(self):
+		added = [
+			{"kennzahl": " 43 ", "amount": 99, "reported": 99, "override": 250, "override_reason": "Export"},
+			{"name": "forged", "kennzahl": "86", "amount": 500, "reported": 500},
+		]
+		kept = bridge.restored(self.stored, [*self.stored, *added])
+		self.assertEqual(
+			kept[-2:],
+			[
+				{"name": None, "kennzahl": "43", "amount": d("0"), "reported": d("0")},
+				{"name": None, "kennzahl": "86", "amount": d("0"), "reported": d("0")},
+			],
+		)
+
+	def test_a_row_berechnen_computed_stays_on_the_return(self):
+		for number in ("81", "83"):
+			sent = [row for row in self.stored if row["kennzahl"] != number]
+			with self.subTest(kennzahl=number), self.assertRaises(bridge.RowError) as raised:
+				bridge.restored(self.stored, sent)
+			self.assertEqual(
+				(raised.exception.problem, raised.exception.kennzahl), (bridge.RowProblem.REMOVED, number)
+			)
+
+	def test_kz83_stays_without_an_amount_as_well(self):
+		stored = [{"name": "row-0", "kennzahl": "83", "amount": 0.0, "reported": 0.0}]
+		with self.assertRaises(bridge.RowError) as raised:
+			bridge.restored(stored, [])
+		self.assertEqual(raised.exception.kennzahl, "83")
+
+	def test_a_row_that_only_overrides_can_be_removed(self):
+		override = {
+			"name": "row-9",
+			"kennzahl": "43",
+			"amount": 0.0,
+			"reported": 0.0,
+			"override": 250.0,
+			"override_reason": "Export",
+		}
+		kept = bridge.restored([*self.stored, override], self.stored)
+		self.assertEqual([row["name"] for row in kept], [row["name"] for row in self.stored])
+
+
+class AmountsKeptTest(TestCase):
+	"""Before a filing, the amounts the return holds are computed again from its rows."""
+
+	def setUp(self):
+		self.rows = stored_rows()
+		self.stored = stored_return(self.rows)
+
+	def test_a_return_holds_what_its_rows_give(self):
+		self.assertTrue(bridge.amounts_kept(self.rows, self.stored, 2026))
+
+	def test_a_sum_or_a_final_amount_changed_past_the_save_is_found(self):
+		changes = {
+			"kz83": lambda stored: stored.update({"kz83": 1.9}),
+			"output_tax": lambda stored: stored.update({"output_tax": 0}),
+			"final": lambda stored: stored["kennzahlen"][0].update({"final": 10}),
+			"row": lambda stored: stored["kennzahlen"].pop(0),
+		}
+		for case, change in changes.items():
+			stored = stored_return(self.rows)
+			change(stored)
+			with self.subTest(case):
+				self.assertFalse(bridge.amounts_kept(self.rows, stored, 2026))
+
+	def test_rows_that_differ_from_the_stored_return_are_found(self):
+		changed = [dict(row) for row in self.rows]
+		changed[0].update({"override": 1100, "override_reason": "Invoice booked in April"})
+		self.assertFalse(bridge.amounts_kept(changed, self.stored, 2026))
+		self.assertTrue(bridge.amounts_kept(changed, stored_return(changed), 2026))
+
+
 class CheckRowsTest(TestCase):
 	def setUp(self):
 		self.rows = bridge.check_rows(calculate(verified_month(), SKR03))

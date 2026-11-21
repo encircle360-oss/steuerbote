@@ -64,6 +64,7 @@ class RowProblem(Enum):
 	NO_AMOUNT = "no_amount"
 	COMPUTED = "computed"
 	MISSING_REASON = "missing_reason"
+	REMOVED = "removed"
 
 
 class RowError(ValueError):
@@ -191,6 +192,56 @@ def filing(rows: Sequence[Row], year: int) -> Filing:
 def final_amounts(rows: Sequence[Row], year: int) -> dict[str, Decimal]:
 	"""The amount each Kennzahl of the rows is filed with, Kz 83 as filing() computes it."""
 	return {row["kennzahl"]: row["final"] for row in filing(rows, year).rows}
+
+
+def restored(stored: Iterable[Row], rows: Iterable[Row]) -> list[dict[str, Any]]:
+	"""The Kennzahl and the amounts Berechnen computed for each of the rows a save sends, in their order: those of
+	the stored row of the same name, and none for a row the save adds, which only overrides.
+
+	Frappe keeps no read-only field from a save through its API, so a save takes no more from its rows than the
+	overrides with their reasons. A row Berechnen computed stays on the return, since its amount would drop out of
+	the filing unnoticed: a save without it is refused. A row whose name is not stored is new, whatever name it was
+	sent with, and gets none.
+	"""
+	by_name = {row.get("name"): row for row in stored if row.get("name")}
+	kept: list[dict[str, Any]] = []
+	for row in rows:
+		before = by_name.pop(row.get("name"), None)
+		if before is None:
+			kept.append({"name": None, "kennzahl": _number(row), "amount": ZERO, "reported": ZERO})
+		else:
+			kept.append(
+				{
+					"name": before.get("name"),
+					"kennzahl": _number(before),
+					"amount": to_amount(before.get("amount")),
+					"reported": to_amount(before.get("reported")),
+				}
+			)
+	removed = next((_number(row) for row in by_name.values() if _computed(row)), None)
+	if removed is not None:
+		raise RowError(RowProblem.REMOVED, removed)
+	return kept
+
+
+def _computed(row: Row) -> bool:
+	"""Whether Berechnen made the row: kennzahl_rows gives one to each Kennzahl the core computed, each with an amount,
+	and to Kz 83, which the core always computes."""
+	return _number(row) == BALANCE_KENNZAHL or bool(to_amount(row.get("amount")))
+
+
+def amounts_kept(rows: Sequence[Row], stored: Row, year: int) -> bool:
+	"""Whether ``stored`` holds the final amount of each Kennzahl and the sums of the form that ``rows`` give.
+
+	A filing writes the amounts the return holds, which every save sets from its rows (filing). Computed again
+	before a filing, they differ when they were changed past the save, or when the rows changed while the return
+	was filed.
+	"""
+	computed = filing(rows, year)
+	held = {_number(row): to_amount(row.get("final")) for row in stored.get("kennzahlen") or ()}
+	return held == {row["kennzahl"]: row["final"] for row in computed.rows} and all(
+		to_amount(stored.get(field)) == amount for field, amount in computed.totals.items()
+	)
 
 
 def _description(kennzahl: Kennzahl) -> dict[str, Any]:

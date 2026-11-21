@@ -45,11 +45,11 @@ class VATIDConfirmation(Document):
 		answered_at: DF.Datetime | None
 		city_match: DF.Literal["", "A", "B", "C", "D"]
 		company: DF.Link | None
-		consultation_id: DF.Data | None
-		details_city: DF.Data | None
-		details_name: DF.Data | None
-		details_postcode: DF.Data | None
-		details_street: DF.Data | None
+		consultation_id: DF.SmallText | None
+		details_city: DF.SmallText | None
+		details_name: DF.SmallText | None
+		details_postcode: DF.SmallText | None
+		details_street: DF.SmallText | None
 		fallback_reason: DF.SmallText | None
 		http_status: DF.Int
 		message: DF.SmallText | None
@@ -67,7 +67,7 @@ class VATIDConfirmation(Document):
 		service: DF.Literal["bzst", "vies"]
 		service_date: DF.Date | None
 		service_time: DF.Datetime | None
-		status_code: DF.Data | None
+		status_code: DF.SmallText | None
 		street_match: DF.Literal["", "A", "B", "C", "D"]
 		unavailable: DF.Check
 		user: DF.Link | None

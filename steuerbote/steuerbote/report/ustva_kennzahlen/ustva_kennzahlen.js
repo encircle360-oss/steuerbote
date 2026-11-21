@@ -45,7 +45,9 @@ frappe.query_reports["UStVA Kennzahlen"] = {
 	parent_field: "parent_kennzahl",
 	initial_depth: 0,
 	formatter(value, row, column, data, default_formatter) {
-		value = default_formatter(value, row, column, data);
+		// Frappe writes a Data cell into the page as HTML; only the link to the print view is meant as such.
+		const text = column.fieldtype === "Data" && column.fieldname !== "print_link";
+		value = default_formatter(text ? frappe.utils.escape_html(value) : value, row, column, data);
 		return data && data.bold ? `<strong>${value}</strong>` : value;
 	},
 };

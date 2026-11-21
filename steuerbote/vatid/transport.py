@@ -45,14 +45,24 @@ type Fetch = Callable[[Request], Response]
 type Clock = Callable[[], datetime]
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+	"""Answers a redirect with itself: urllib would follow it, also to another host or to plain HTTP, and the record
+	of the query would keep an answer that did not come from the service asked."""
+
+	def redirect_request(self, req, fp, code, msg, headers, newurl):
+		raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+
+
 def _opener() -> urllib.request.OpenerDirector:
-	return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+	return urllib.request.build_opener(
+		urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()), _NoRedirect()
+	)
 
 
 @dataclass(frozen=True, slots=True)
 class UrllibFetch:
-	"""A Fetch over urllib, HTTPS only, with the certificate store of the system and the proxies of the
-	environment.
+	"""A Fetch over urllib, HTTPS only and without following redirects, with the certificate store of the system and
+	the proxies of the environment.
 
 	Each instance keeps the cookies the services set in a jar of its own. Whether the BZSt ties a qualified
 	query to the simple query before it is not documented; its status evatr-0008 speaks of a session. One

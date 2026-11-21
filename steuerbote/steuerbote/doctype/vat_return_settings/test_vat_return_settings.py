@@ -5,7 +5,7 @@ from frappe.model.document import Document
 from frappe.tests import IntegrationTestCase
 from frappe.translate import clear_cache as clear_translation_cache
 
-from steuerbote.tests.helpers import insert_record
+from steuerbote.tests.helpers import insert_record, make_user
 from steuerbote.ustva import Rhythm
 from steuerbote.zm.rhythm import Rhythm as ZmRhythm
 from steuerbote.zm.rhythm import Rule as ZmRule
@@ -18,6 +18,8 @@ ABBR = "STBEIN"
 # Has a phone, an email and a primary address with a phone and an email of its own, all invented.
 CONTACT_COMPANY = "Steuerbote Test Datenlieferant GmbH"
 CONTACT = {"phone_no": "089 7654321", "email": "steuern@example.org"}
+ACCOUNTANT = "steuerbote-einstellungen-buchhaltung@example.com"
+MANAGER = "steuerbote-einstellungen-leitung@example.com"
 
 
 def make_company(name: str, abbr: str) -> str:
@@ -346,3 +348,23 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 		):
 			with self.subTest(message=message), self.assertRaisesRegex(frappe.ValidationError, message):
 				self.make_settings(zm_rules=rules).insert()
+
+	def test_an_accounts_user_reads_the_settings_and_an_accounts_manager_changes_them(self):
+		"""Steuernummer, rhythm, Sondervorauszahlung and tolerance of the Verprobung decide what is filed and with
+		which Finanzamt, so only who may file a return may change them."""
+		self.make_settings().insert()
+		for user, role, may_change in (
+			(ACCOUNTANT, "Accounts User", False),
+			(MANAGER, "Accounts Manager", True),
+		):
+			make_user(user, role)
+			with self.subTest(role=role), self.set_user(user):
+				self.assertTrue(frappe.has_permission("VAT Return Settings", "read", COMPANY))
+				settings = frappe.get_doc("VAT Return Settings", COMPANY)
+				settings.tolerance = 100
+				if may_change:
+					settings.save()
+				else:
+					with self.assertRaises(frappe.PermissionError):
+						settings.save()
+				self.assertEqual(frappe.has_permission("VAT Return Settings", "create"), may_change)

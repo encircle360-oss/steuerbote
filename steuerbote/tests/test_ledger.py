@@ -84,6 +84,23 @@ class LedgerTest(IntegrationTestCase):
 			lines_of(f"Journal Entry:{kept.name}", ("1200", "50", "0"), ("8400", "0", "50")),
 		)
 
+	def test_a_submitted_journal_entry_keeps_whether_it_is_left_out(self):
+		"""The flag decides what a filed period reports, so it is set before the entry is submitted: an entry
+		submitted without it stays in the return, and one submitted with it stays out."""
+		kept = post_journal_entry(COMPANY, "2026-12-14", [(self.bank, 30, 0), (self.revenue, 0, 30)])
+		excluded = post_journal_entry(
+			COMPANY, "2026-12-31", [(self.output_tax, 190, 0), (self.bank, 0, 190)], exclude=True
+		)
+		for entry, flag in ((kept, 1), (excluded, 0)):
+			entry.reload()
+			entry.set(EXCLUDE_FIELD, flag)
+			with self.subTest(entry=entry.name), self.assertRaises(frappe.UpdateAfterSubmitError):
+				entry.save()
+		self.assertEqual(
+			load_lines(COMPANY, "2026-12-01", "2026-12-31"),
+			lines_of(f"Journal Entry:{kept.name}", ("1200", "30", "0"), ("8400", "0", "30")),
+		)
+
 	def test_leaves_out_opening_entries(self):
 		post_journal_entry(
 			COMPANY,

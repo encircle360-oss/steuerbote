@@ -43,7 +43,7 @@ DocTypes heißen nach der Konvention von Frappe englisch. Die Oberfläche zeigt 
 
 ### Einstellungen Umsatzsteuer-Voranmeldung (`VAT Return Settings`)
 
-Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
+Ein Dokument je Unternehmen, sein Name ist das Unternehmen. Anlegen und ändern dürfen es Accounts Manager und System Manager, Accounts User lesen es nur: Steuernummer, Voranmeldungszeiträume, Sondervorauszahlung und Toleranz entscheiden, was an welches Finanzamt geht, und Steuerbote liest sie bei jedem Vorgang neu, siehe [Übermittlung an ELSTER](uebermittlung.md#die-vorgänge).
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
@@ -189,7 +189,7 @@ Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung und Dauerfristverlängerung 
 
 ### Feld an der Journalbuchung
 
-Steuerbote ergänzt die Journalbuchung (Journal Entry) um das Feld „Nicht in der Umsatzsteuer-Voranmeldung“ (`steuerbote_exclude_from_vat_return`). Es kommt als Fixture der App und lässt eine Buchung aus der Meldung heraus, etwa die Verrechnung der Steuerkonten mit dem Finanzamt.
+Steuerbote ergänzt die Journalbuchung (Journal Entry) um das Feld „Nicht in der Umsatzsteuer-Voranmeldung“ (`steuerbote_exclude_from_vat_return`). Es kommt als Fixture der App und lässt eine Buchung aus der Meldung heraus, etwa die Verrechnung der Steuerkonten mit dem Finanzamt. Der Haken wird gesetzt, bevor die Journalbuchung gebucht wird: Danach lässt er sich nicht mehr ändern, denn er bestimmt, was ein schon abgegebener Zeitraum meldet. Soll eine gebuchte Buchung anders zählen, wird sie storniert und mit „Ändern“ neu gebucht; für einen abgegebenen Zeitraum geht die Änderung als berichtigte Anmeldung (Kz 10) an das Finanzamt.
 
 ## Die Abfrage des Hauptbuchs
 
@@ -228,7 +228,10 @@ Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cen
 | Abgegeben | eingereicht; das setzt eine Berechnung voraus und, wenn die Meldung nicht bereit ist, eine Begründung in den Anmerkungen |
 | Ersetzt | für denselben Zeitraum ist später eine berichtigte Anmeldung abgegeben worden |
 
+- Den Status setzt nur Steuerbote. An einer eingereichten Meldung ändert ihn niemand von Hand: Er entscheidet, ob ein Zeitraum abgegeben ist und welche Meldung in die Grundlage der Sondervorauszahlung eingeht (`dauerfrist_sources.py`). Auf „Ersetzt“ setzt ihn die Abgabe einer berichtigten Anmeldung, zurück auf „Abgegeben“ ihr Stornieren.
 - „Berechnen“ geht, solange die Meldung nicht eingereicht ist, und lässt Korrekturen mit Begründung stehen.
+- Frappe hält beim Speichern über die API kein schreibgeschütztes Feld fest. Deshalb nimmt das Speichern nur, was das Formular ändern lässt: Korrekturen mit Begründung, eigene Zeilen mit einer Korrektur, die weiteren Angaben und die Anmerkungen. Kennzahlen und Beträge der Zeilen, die „Berechnen“ gefunden hat, Verprobung, beobachtete Konten, Hinweise, Vorperiodenvergleich, „Bereit zur Abgabe“ und Status bleiben, wie „Berechnen“ sie gespeichert hat (`_keep_the_calculation`, `bridge.restored`); eine Zeile, die „Berechnen“ gefunden hat, lässt sich nicht entfernen. Eine neue Meldung beginnt immer als Entwurf ohne Berechnung (`before_insert`). Die Dauerfristverlängerung hält es mit ihrer Grundlage, ihrem Status und ihrer Abgabe ebenso.
+- Bevor eine Meldung übermittelt, als Datei für Mein ELSTER geschrieben oder eingereicht wird, rechnet Steuerbote ihre gemeldeten Beträge, die Summen und Kz 83 aus den gespeicherten Zeilen nach (`bridge.amounts_kept`), an der Dauerfristverlängerung Grundlage und Kz 38. Weichen sie von dem ab, was gespeichert ist, etwa weil jemand sie an Steuerbote vorbei geändert hat oder „Buchen“ andere Korrekturen mitschickt, lehnt Steuerbote ab, bis die Meldung neu geladen oder neu berechnet ist.
 - Ein Zeitraum wird je Unternehmen einmal abgegeben. Jede weitere Meldung für einen abgegebenen Zeitraum muss eine berichtigte Anmeldung (Kz 10) sein. Wird sie abgegeben, stehen die früheren Meldungen des Zeitraums auf „Ersetzt“; wird sie storniert, steht die zuletzt ersetzte wieder auf „Abgegeben“.
 - Als abgegeben zählt ein Zeitraum, sobald eine seiner Meldungen eingereicht ist oder eine seiner Meldungen über Steuerbote gesendet wurde, mit Annahme durch ELSTER oder unbekanntem Ergebnis, auch wenn sie danach storniert wurde. Diese Regel prüfen Senden, die Datei für Mein ELSTER und die Vermerke einer Abgabe (`_refuse_second_filing`); das Speichern lehnt eine zweite Meldung ohne Kz 10 ab, sobald eine Meldung des Zeitraums eingereicht ist (`_refuse_second_return`).
 - „Abgegeben“ heißt: Die Meldung ist in ERPNext eingereicht und festgeschrieben. Das geschieht nach einem Senden, das ELSTER angenommen hat, mit „In Mein ELSTER abgegeben“ nach einer Abgabe über die [Datei für Mein ELSTER](abgabe-mein-elster.md) oder von Hand dort, oder mit „Als außerhalb abgegeben vermerken“ für jeden anderen Weg. „Buchen“ allein lehnt `before_submit` ab, außer für eine Meldung, die ELSTER angenommen hat, deren Buchen danach aber scheiterte; das Formular zeigt die Schaltfläche nur dann.
@@ -338,6 +341,7 @@ Der Bericht zeigt für einen Zeitraum, aus welchen Buchungen jede Kennzahl beste
 - Kennt Steuerbote die Kennzahlen eines Vergleichsjahres nicht, etwa 2025, oder passt die Kontenzuordnung nicht zu dessen Vordruck, bleibt die Spalte leer, ohne Vorperiode auch die Differenz. Eine Zeile am Anfang des Berichts nennt den Grund, etwa „Kein Vergleich mit Dezember 2025: Steuerbote kennt die Kennzahlen für 2025 noch nicht.“
 - **Nur Abweichungen** zeigt nur die Kennzahlen und Summen, deren Differenz zur Vorperiode beide Schwellen überschreitet, den Betrag in Euro und den Anteil am Betrag der Vorperiode, jeweils mit ihren Belegen. Die Schwellen kommen aus den Einstellungen des Unternehmens, „Schwelle Vorperiodenvergleich (%)“ und „Schwelle Vorperiodenvergleich (EUR)“; ohne Eintrag gelten 50 % und 100 EUR. Eine Änderung gegenüber 0 überschreitet jede Prozentschwelle. Ohne Vorperiode blendet der Filter nichts aus.
 - Der Bericht zeigt das Hauptbuch, keine Meldung: Korrekturen einer Meldung erscheinen darin nicht.
+- Frappe schreibt eine Textspalte eines Berichts als HTML in die Seite. Nur „Drucken“ enthält HTML mit Absicht; Kennzahl, Bezeichnung und Partei maskiert der Formatierer des Berichts (`ustva_kennzahlen.js`), bevor Frappe sie zeigt, so dass etwa der Name eines Kunden nie als Code läuft. Der Export nach CSV oder Excel nimmt die Werte, wie sie sind.
 
 ## Arbeitsbereich „Steuern“ und Seitenleiste
 

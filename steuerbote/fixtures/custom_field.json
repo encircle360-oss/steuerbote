@@ -1,7 +1,7 @@
 [
  {
   "allow_in_quick_entry": 0,
-  "allow_on_submit": 1,
+  "allow_on_submit": 0,
   "bold": 0,
   "collapsible": 0,
   "collapsible_depends_on": null,
@@ -33,7 +33,7 @@
   "length": 0,
   "link_filters": null,
   "mandatory_depends_on": null,
-  "modified": "2026-11-18 00:00:00.000000",
+  "modified": "2026-11-21 16:00:00.000000",
   "module": "Steuerbote",
   "name": "Journal Entry-steuerbote_exclude_from_vat_return",
   "no_copy": 0,

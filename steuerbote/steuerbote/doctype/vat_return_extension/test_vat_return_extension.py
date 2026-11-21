@@ -187,6 +187,92 @@ class TestVATReturnExtension(IntegrationTestCase):
 	def printed(self, doc) -> str:
 		return frappe.get_print(DOCTYPE, doc.name, print_format=PRINT_FORMAT, no_letterhead=1)
 
+	def roll_back_afterwards(self) -> None:
+		"""Undo what the test files, the Sondervorauszahlung in the VAT Return Settings among it."""
+		frappe.db.savepoint("vat_return_extension_test")
+		self.addCleanup(frappe.db.rollback, save_point="vat_return_extension_test")
+
+	def test_a_save_keeps_the_base_berechnen_read(self):
+		"""Frappe keeps no read-only field from a save through its API: a base of other amounts, without the
+		missing Voranmeldungen and with another start of the company, would set another Kz 38."""
+		doc = self.calculated()
+		doc.base_rows[0].kz83 = 1
+		doc.append(
+			"base_rows", {"period_label": "Januar 2026", "period_code": "01", "kz83": 110000, "kz39": 0}
+		)
+		doc.update(
+			{"missing_periods": None, "findings": None, "status": "Bereit", "established_on": "2026-11-01"}
+		)
+		doc.save()
+		doc.reload()
+		self.assertEqual(
+			[(row.period_label, money(row.kz83)) for row in doc.base_rows],
+			[("März 2026", money(19000)), ("Dezember 2026", money(20000))],
+		)
+		self.assertEqual(
+			(doc.status, doc.established_on, doc.months_active, money(doc.sondervorauszahlung)),
+			("Berechnet", None, 12, money(4000)),
+		)
+		self.assertIn("is missing from the base", doc.findings)
+
+	def test_a_form_that_berechnen_has_not_read_stays_a_draft(self):
+		"""A draft sent back as ready, with a base and a filing of its own, would file the Kz 38 of that base."""
+		self.roll_back_afterwards()
+		doc = self.extension(FILING_COMPANY, 2026)
+		doc.update(
+			{"status": "Bereit", "missing_periods": None, "filed_via": "eric", "transferticket": TICKET}
+		)
+		doc.append(
+			"base_rows", {"period_label": "Januar 2025", "period_code": "01", "kz83": 110000, "kz39": 0}
+		)
+		doc.save()
+		doc.reload()
+		self.assertEqual(
+			(doc.status, doc.base_rows, money(doc.sondervorauszahlung), doc.filed_via, doc.transferticket),
+			("Entwurf", [], money(0), None, None),
+		)
+		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the form before filing it"):
+			doc.mark_filed_outside(filed_via="mein_elster")
+
+	def test_kz38_changed_past_the_save_is_not_filed(self):
+		"""Kz 38 follows the base on every save. Written past it, here straight into the database, it is neither
+		transmitted nor filed, until Berechnen runs again."""
+		self.roll_back_afterwards()
+		doc = self.calculated(
+			FILING_COMPANY, 2026, base_override=44000, base_override_reason="Voranmeldungen 2025 im Altsystem"
+		)
+		frappe.db.set_value(DOCTYPE, doc.name, "sondervorauszahlung", 100)
+		refused = "do not agree with the form as stored"
+		with patch("frappe.enqueue") as enqueue, self.assertRaisesRegex(frappe.ValidationError, refused):
+			doc.transmit("validate")
+		enqueue.assert_not_called()
+		with self.assertRaisesRegex(frappe.ValidationError, refused):
+			doc.mark_filed_outside(filed_via="mein_elster")
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		doc.mark_filed_outside(filed_via="mein_elster")
+		self.assertEqual((doc.docstatus, money(doc.sondervorauszahlung)), (1, money(4000)))
+
+	def test_buchen_after_an_accepted_send_files_kz38_as_stored(self):
+		"""ELSTER accepted the form while its submission failed: Buchen submits it with the Kz 38 it holds, not with
+		another base by hand sent along."""
+		self.roll_back_afterwards()
+		doc = self.calculated(
+			FILING_COMPANY, 2026, base_override=44000, base_override_reason="Voranmeldungen 2025 im Altsystem"
+		)
+		doc.new_transmission("send", simulated=False, status="Erfolgreich", transferticket=TICKET)
+		doc.reload()
+		doc.base_override = 55000
+		with self.assertRaisesRegex(frappe.ValidationError, "do not agree with the form as stored"):
+			doc.submit()
+		doc.reload()
+		doc.submit()
+		self.assertEqual(
+			(doc.docstatus, money(doc.sondervorauszahlung), doc.filed_via, doc.transferticket),
+			(1, money(4000), "eric", TICKET),
+		)
+
 	def test_takes_kz83_and_kz39_of_the_latest_filing_of_each_period(self):
 		doc = self.calculated()
 		self.assertEqual(

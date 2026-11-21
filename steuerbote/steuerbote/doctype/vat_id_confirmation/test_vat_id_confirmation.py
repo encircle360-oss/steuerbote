@@ -7,6 +7,7 @@ from frappe.tests import IntegrationTestCase
 
 from steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation import latest, store
 from steuerbote.tests.helpers import make_company
+from steuerbote.vatid.result import Details
 from steuerbote.vatid.service import confirm
 from steuerbote.vatid.tests.fakes import DETAILS, REQUESTED, REQUESTER, FakeClock, FakeFetch, bzst
 
@@ -50,6 +51,21 @@ class TestVATIDConfirmation(IntegrationTestCase):
 		answer = self.answer_of(last)
 		self.assertEqual((answer.is_private, record.response_file), (1, answer.file_url))
 		self.assertEqual(Path(answer.get_full_path()).read_bytes(), qualified.body)
+
+	def test_keeps_an_address_and_an_answer_of_any_length(self):
+		"""An address line of ERPNext holds 240 characters, and a service may send a longer status or number than
+		the 140 characters of a Data field; the records keep them whole, the simple query with the qualified one."""
+		street = "Lange Straße " + "1" * 227
+		status = "evatr-" + "9" * 200
+		number = "0a1b2c3d" * 25
+		details = Details(DETAILS.name, DETAILS.city, DETAILS.postcode, street)
+		last = store(confirmed(bzst("evatr-0000"), bzst(status, id=number), details=details), COMPANY)
+		record = frappe.get_doc(DOCTYPE, last)
+		self.assertEqual(
+			(len(street), record.details_street, record.status_code, record.consultation_id),
+			(240, street, status, number),
+		)
+		self.assertEqual(frappe.db.get_value(DOCTYPE, record.previous, "status_code"), "evatr-0000")
 
 	def test_a_query_without_an_answer_keeps_no_file(self):
 		name = store(confirmed(OSError("timed out"), OSError("timed out")), COMPANY)

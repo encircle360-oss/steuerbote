@@ -279,7 +279,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-21 14:00:00.000000",
+ "modified": "2026-11-21 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",
@@ -305,10 +305,8 @@
    "write": 1
   },
   {
-   "create": 1,
    "read": 1,
-   "role": "Accounts User",
-   "write": 1
+   "role": "Accounts User"
   }
  ],
  "row_format": "Dynamic",
