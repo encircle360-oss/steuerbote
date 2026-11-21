@@ -35,6 +35,7 @@ from steuerbote.tests.e2e.desk import Desk
 
 # A busy runner of the CI can take seconds for a page of the desk; a step that passes never waits this long.
 TIMEOUT_MS = 30_000
+FIRST_DESK_TIMEOUT_MS = 120_000
 VIEWPORT = {"width": 1440, "height": 900}
 ADMINISTRATOR = "Administrator"
 
@@ -91,6 +92,11 @@ def browser(playwright: Playwright, pytestconfig: pytest.Config) -> Iterator[Bro
 @pytest.fixture(scope="session")
 def admin_session(playwright: Playwright, base_url: str, admin_password: str) -> StorageState:
 	return logged_in(playwright, base_url, ADMINISTRATOR, admin_password)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def desk_built(admin_session: StorageState) -> None:
+	"""Every test starts once the server has built the desk of the Administrator, see logged_in()."""
 
 
 @pytest.fixture(scope="session")
@@ -165,9 +171,12 @@ def desk_of(browser: Browser, base_url: str, session: StorageState | None) -> It
 
 
 def logged_in(playwright: Playwright, base_url: str, user: str, password: str) -> StorageState:
+	"""A session of the user, whose desk the server has built once: after a cleared cache, as after the seed, the
+	first desk of a user takes the server long enough to outlast the timeout of a step."""
 	api = playwright.request.new_context(base_url=base_url)
 	try:
 		checked(api.post("/api/method/login", form={"usr": user, "pwd": password}))
+		checked(api.get("/desk", timeout=FIRST_DESK_TIMEOUT_MS))
 		return api.storage_state()
 	finally:
 		api.dispose()
