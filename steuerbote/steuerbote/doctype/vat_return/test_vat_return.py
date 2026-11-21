@@ -556,6 +556,20 @@ class TestVATReturn(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "has to lie in 2026, not in 2025"):
 			self.new_return(2, regelbesteuerung_from="2025-12-01")
 
+	def test_a_return_sent_through_steuerbote_makes_no_file_for_mein_elster(self):
+		"""ELSTER accepted its Senden, or the outcome is unknown: the Finanzamt has the return or may have it, and
+		the file for Mein ELSTER would file it once more."""
+		self.roll_back_afterwards()
+		for month, status, refused in (
+			(2, "Erfolgreich", "transmitted already with Transferticket et0123456789abcdef"),
+			(5, "Unbekannt", "reached ELSTER is unknown"),
+		):
+			doc = self.calculated(month)
+			doc.new_transmission("send", simulated=False, status=status, transferticket="et0123456789abcdef")
+			with self.subTest(status=status), self.assertRaisesRegex(frappe.ValidationError, refused):
+				doc.make_import_file()
+			self.assertFalse(frappe.db.exists("File", {"attached_to_name": doc.name}))
+
 	def test_the_import_file_needs_a_calculation(self):
 		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the return before making the file"):
 			self.new_return(5).make_import_file()

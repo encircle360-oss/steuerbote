@@ -304,6 +304,12 @@ class VATReturn(Transmittable, Document):
 	def check_can_be_sent(self) -> None:
 		"""Senden files the return, once: it needs the return fit for filing and no earlier filing."""
 		self._check_fit_for_filing()
+		self._refuse_sent_return()
+		self._refuse_second_filing()
+
+	def _refuse_sent_return(self) -> None:
+		"""The Finanzamt has a return whose Senden through Steuerbote ELSTER accepted, or may have it when the
+		outcome is unknown: it is neither sent again nor made into the file for Mein ELSTER."""
 		sent = self.filings()
 		if sent and sent[0].status == UNKNOWN:
 			frappe.throw(
@@ -317,7 +323,6 @@ class VATReturn(Transmittable, Document):
 					"This return was transmitted already with Transferticket {0}. A change goes to the Finanzamt as a corrected return (Kz 10)."
 				).format(sent[0].transferticket)
 			)
-		self._refuse_second_filing()
 
 	def _refuse_second_filing(self) -> None:
 		"""A period is filed once: after a return of it is submitted, or sent through Steuerbote even if it
@@ -485,6 +490,7 @@ class VATReturn(Transmittable, Document):
 			)
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the return before making the file for Mein ELSTER."))
+		self._refuse_sent_return()
 		self._refuse_second_filing()
 		if not self.ready and not (self.remarks or "").strip():
 			frappe.throw(
