@@ -56,7 +56,9 @@ Der Beleg „Zusammenfassende Meldung“ übermittelt die ZM eines Unternehmens 
 Testsenden und Senden brauchen die Zertifikatsdatei (.pfx) des ELSTER-Kontos der Firma und ihr Passwort. Beides wird für jeden Vorgang neu eingegeben.
 
 - Der Browser liest die Zertifikatsdatei. Sie wird nicht als Anhang hochgeladen.
-- Zertifikat und Passwort gehen einmal an den Server. Dort liegen sie mit dem Schlüssel der Site verschlüsselt und höchstens 15 Minuten im Zwischenspeicher, bis der Hintergrundjob sie einmal abholt; ein zweites Abholen gibt es nicht. Weder an der Meldung noch an der ELSTER-Übermittlung, im Hintergrundjob oder in einem Protokoll wird eines von beiden gespeichert.
+- Zertifikat und Passwort gehen einmal an den Server. Dort liegen sie mit dem Schlüssel der Site verschlüsselt und höchstens 15 Minuten im Zwischenspeicher, bis der Hintergrundjob sie einmal abholt; ein zweites Abholen gibt es nicht. Weder an der Meldung noch an der ELSTER-Übermittlung, im Hintergrundjob oder in einem Protokoll wird eines von beiden gespeichert, auch nicht im Recorder von Frappe oder in einem Fehlerbericht. Lassen sie sich nicht ablegen, sagt das eine Meldung, die keines von beiden nennt, siehe [ERiC](eric.md#sicherheit).
+- Zertifikat und Passwort gelten nur für den Benutzer, der sie eingegeben hat, und für die Meldung, an der er sie eingegeben hat. Startet ein anderer Benutzer oder für eine andere Meldung mit ihnen einen Vorgang, lehnt Steuerbote ab und verlangt sie neu; der Hintergrundjob erhält nie etwas, womit sich Zertifikat und Passwort abholen ließen, außer dem Namen seiner ELSTER-Übermittlung.
+- Die Zertifikatsdatei darf höchstens 32 KiB groß sein, und jeder Benutzer kann Zertifikat und Passwort höchstens zehnmal in einer Viertelstunde an den Server geben.
 - Das Passwort hat 6 bis 128 Zeichen: Buchstaben, Ziffern, Leerzeichen und Satzzeichen, ohne Umlaute (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 5-3).
 - Testzertifikate von ELSTER taugen nur für Testsenden.
 
@@ -83,8 +85,8 @@ Die ERiC-Einstellungen gelten für die ganze Installation, nicht je Firma, denn 
 | Produktname | Vorgabe „steuerbote“, höchstens 50 Zeichen. Der Name darf das Wort ELSTER nicht enthalten (§ 12 der ERiC-Nutzungsbedingungen). |
 | Produktversion | Version von Steuerbote, wird gesetzt |
 | Datenlieferant | wer die Daten liefert, für den Kopf der Lieferung, höchstens 256 Zeichen: Firma; Ansprechpartner; Telefon; E-Mail; Ort; PLZ; Straße; Land. Zeilenumbrüche werden zu Semikolons. |
-| ERiC-Archiv | absoluter Pfad des Archivs für Linux x86_64 auf dem Server |
-| SHA-256 des Archivs | die Prüfsumme, die der ELSTER-Entwicklerbereich für das Archiv angibt, 64 hexadezimale Stellen |
+| ERiC-Archiv | nur zur Anzeige: der absolute Pfad des Archivs für Linux x86_64 auf dem Server, den der Betreiber als `steuerbote_eric_archive` in die `common_site_config.json` der Bench einträgt |
+| SHA-256 des Archivs | nur zur Anzeige: die Prüfsumme des Archivs, 64 hexadezimale Stellen, aus `steuerbote_eric_archive_sha256` derselben Datei |
 | Installierte Version, Verzeichnis der Bibliotheken, Letzte Prüfung | setzt die Installation |
 | Verzeichnis der Logdateien | wo ERiC seine Protokolldatei `eric.log` ablegt, je ELSTER-Übermittlung ein Verzeichnis unter `sites/<site>/logs/eric/` |
 | Proxy-URL | nur wenn der Server ELSTER über einen Proxy erreicht: `http://`, `socks4://` oder `socks5://` mit Host und Port, etwa `http://proxy.example.com:3128`; leer heißt ohne Proxy. Die Simulation erreicht keinen Server und braucht keinen. |
@@ -95,10 +97,11 @@ Die ERiC-Einstellungen gelten für die ganze Installation, nicht je Firma, denn 
 Steuerbote enthält kein ERiC und lädt es auch nicht herunter. ERiC dürfen nur Lizenznehmer der Finanzverwaltung nutzen, und zwar in ihrem eigenen Produkt. Jeder Betreiber holt sein ERiC deshalb selbst:
 
 1. Im ELSTER-Entwicklerbereich anmelden, die Nutzungsbedingungen annehmen, das ERiC-Archiv für Linux x86_64 herunterladen und auf den Server legen.
-2. In den ERiC-Einstellungen den absoluten Pfad des Archivs und seine SHA-256 eintragen, die Datenschutzhinweise lesen und bestätigen und speichern.
-3. „Laufzeitumgebung installieren“ wählen. Die Installation läuft im Hintergrund: Sie prüft die SHA-256, entpackt die Bibliotheken für Linux x86_64, lädt sie einmal zur Probe und legt die Version erst danach ab. Ist sie fertig, erscheinen ein Hinweis und die installierte Version. Schlägt sie fehl, nennt der Hinweis die Ursache, Einzelheiten zu unerwarteten Fehlern stehen im Fehlerprotokoll.
+2. Auf dem Server die Signatur des Archivs mit `jarsigner` prüfen, seine SHA-256 bilden und beides in die `common_site_config.json` der Bench eintragen, mit `bench set-config -g steuerbote_eric_archive <Pfad>` und `bench set-config -g steuerbote_eric_archive_sha256 <SHA-256>`, siehe [ERiC](eric.md#einrichtung-durch-den-betreiber). Das ist Sache des Betreibers des Servers: Die ERiC-Einstellungen zeigen Pfad und SHA-256 nur an, und die `site_config.json` einer Site zählt nicht, denn eine Laufzeitumgebung dient allen Sites der Bench, und ihre Probe lädt die Bibliothek des Archivs als Benutzer der Bench.
+3. In den ERiC-Einstellungen die Datenschutzhinweise lesen und bestätigen und speichern.
+4. „Laufzeitumgebung installieren“ wählen. Die Installation läuft im Hintergrund und liest Pfad und SHA-256 selbst aus der `common_site_config.json`: Sie prüft die SHA-256, entpackt die Bibliotheken für Linux x86_64, lädt sie einmal zur Probe und legt die Version erst danach ab. Ist sie fertig, erscheinen ein Hinweis und die installierte Version. Schlägt sie fehl, nennt der Hinweis die Ursache, Einzelheiten zu unerwarteten Fehlern stehen im Fehlerprotokoll.
 
-Die Laufzeitumgebungen liegen außerhalb jeder Site im Verzeichnis `sites/eric` der Bench, das `steuerbote_eric_root` in `common_site_config.json` ändern kann. Sie werden weder ausgeliefert noch mit einer Site gesichert. Wie Versionen und Jahreswechsel zusammenhängen, steht in [ERiC](eric.md#versionen-und-jahreswechsel).
+Die Laufzeitumgebungen liegen außerhalb jeder Site im Verzeichnis `sites/eric` der Bench, das `steuerbote_eric_root` in `common_site_config.json` ändern kann. Sie werden weder ausgeliefert noch mit einer Site gesichert. Vor jedem Vorgang mit ERiC prüft Steuerbote die Bibliotheken der Laufzeitumgebung gegen ihr Manifest; ist eine verändert, fehlt eine oder liegt eine fremde Datei oder ein Link darunter, lehnt es den Vorgang ab und nennt die Abweichung. Wie Versionen und Jahreswechsel zusammenhängen, steht in [ERiC](eric.md#versionen-und-jahreswechsel).
 
 ### Laufzeitumgebung prüfen
 
@@ -149,6 +152,8 @@ Jeder Lauf legt seine Dateien als private Dateien an seiner ELSTER-Übermittlung
 - **Antwort des ELSTER-Servers (XML):** die Antwort von ELSTER, wenn es eine gibt.
 
 Lässt sich eine Datei nicht speichern, nennt eine Nachricht der ELSTER-Übermittlung sie und den Grund; Ergebnis und Transferticket bleiben trotzdem festgehalten.
+
+Die Dateien bleiben, wie der Lauf sie abgelegt hat. Sie gehören dem Benutzer, der den Vorgang gestartet hat, und Frappe ließe den Eigentümer einer Datei sie ändern und löschen. Steuerbote lehnt deshalb für jede Datei einer ELSTER-Übermittlung ab, sie von der Übermittlung zu lösen oder an einen anderen Beleg oder ein anderes Feld zu hängen, sie öffentlich zu machen, sie auf eine andere Datei zu richten, sie umzubenennen und sie zu löschen, solange es die Übermittlung gibt, für jeden Benutzer (`steuerbote/steuerbote/record_files.py`, eingehängt als `doc_events` für File). Geprüft wird gegen die gespeicherte Datei, nicht gegen das, was eine Anfrage schickt. Löscht ein System Manager eine Übermittlung, die keine Abgabe festhält, gehen ihre Dateien mit ihr. Eine eigene Datei mit demselben Inhalt teilt sich mit der Datei der Übermittlung die Datei auf dem Server, deshalb lässt auch sie sich nicht öffentlich machen. Eingriffe direkt in der Datenbank oder im Dateisystem verhindert das nicht.
 
 Private Dateien liegen im Verzeichnis `sites/<site>/private/files` und öffnen sich nur für Benutzer, die die ELSTER-Übermittlung lesen dürfen. Eine Sicherung mit Dateien (`bench backup --with-files`) enthält sie. Die Nutzdaten enthalten die Steuerdaten der Meldung, Sicherungen sind entsprechend zu schützen. Zertifikat und Passwort sind nie darunter. Die Protokolldatei `eric.log` von ERiC liegt je ELSTER-Übermittlung unter `sites/<site>/logs/eric/<Übermittlung>`; der ELSTER-Support fragt bei Fehlern nach ihr.
 

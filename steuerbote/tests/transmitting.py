@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import frappe
 
+from steuerbote.eric import secrets
 from steuerbote.eric.fake import placeholder_pdf
 from steuerbote.eric.result import TESTMERKER, Message, Operation, Outcome, TransmissionResult
 from steuerbote.eric.runtime import RuntimeInfo
@@ -22,7 +23,7 @@ from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 
 TRANSMISSION = "ELSTER Transmission"
 JOB = "steuerbote.steuerbote.doctype.elster_transmission.transmission.run_transmission"
-JOB_ARGUMENTS = ("name", "operation", "token", "transmission")
+JOB_ARGUMENTS = ("name", "operation", "transmission")
 IS_JOB_ENQUEUED = "steuerbote.steuerbote.doctype.elster_transmission.transmission.is_job_enqueued"
 DATENLIEFERANT = "Steuerbote Test Uebermittlung GmbH; Erika Beispiel; 089 1234567; erika@example.org"
 # Invented for the tests, like every certificate and password here.
@@ -128,8 +129,13 @@ class Transmitting:
 			}
 		)
 
-	def stash(self) -> str:
-		return stash_certificate(base64.b64encode(CERTIFICATE).decode(), PIN)
+	def stash(self, doc) -> str:
+		"""Certificate and password, entered by the current user for the document."""
+		return stash_certificate(doc.doctype, doc.name, base64.b64encode(CERTIFICATE).decode(), PIN)
+
+	def handed_over(self, transmission: str, doc) -> tuple[bytes, str]:
+		"""What the job of the transmission would take, taken by the test instead."""
+		return secrets.take(transmission, user=frappe.session.user, document=(doc.doctype, doc.name))
 
 	def transmit(self, doc, operation: str, token: str | None = None):
 		with patch("frappe.enqueue") as enqueue:

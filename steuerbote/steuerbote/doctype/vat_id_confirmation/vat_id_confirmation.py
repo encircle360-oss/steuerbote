@@ -3,7 +3,8 @@
 Only the server writes it, with what was asked and what came back, and the answer as it came as a private file:
 the record the BZSt returns is the proof of the query (UStAE 18e.1 Abs. 2 Satz 5), and „Das BZSt versendet keine
 schriftliche Bestätigungsmitteilung.“ (BZSt, "Fragen und Antworten" zur USt-IdNr.). So nobody changes or deletes
-a record or its answer once it is stored. A confirmation of steuerbote.vatid can take two queries, and store() keeps each, the
+a record or its answer once it is stored; steuerbote.steuerbote.record_files keeps the File of the answer as it
+was stored. A confirmation of steuerbote.vatid can take two queries, and store() keeps each, the
 later one pointing to the earlier; latest() gives the newest record of each number of a company, which the lines
 of a Zusammenfassende Meldung show.
 """
@@ -84,17 +85,6 @@ class VATIDConfirmation(Document):
 	def on_trash(self) -> None:
 		frappe.throw(
 			_("{0} is the proof of a query to confirm a USt-IdNr. and cannot be deleted.").format(self.name)
-		)
-
-
-def keep_answer(file: Document, method: str | None = None) -> None:
-	"""doc_event of File: the answer kept with a VAT ID Confirmation is part of the proof, so once stored it is
-	neither changed nor deleted."""
-	if file.attached_to_doctype == DOCTYPE and not file.is_new():
-		frappe.throw(
-			_("The answer of {0} is part of the proof of the query and cannot be changed or deleted.").format(
-				file.attached_to_name
-			)
 		)
 
 

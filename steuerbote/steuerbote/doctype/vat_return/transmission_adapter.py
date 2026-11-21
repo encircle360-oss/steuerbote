@@ -3,11 +3,19 @@
 The documents that go to ELSTER and the ERiC Settings reach the worker and the runtime directory of steuerbote.eric
 only through these functions, so that their tests can replace what needs a real ERiC and run the rest for real:
 the XML of steuerbote.elster, the header, the simulation and the store of certificate and password.
+
+The runtimes serve every site of the bench, and installing one loads the library of its archive as the user of
+the bench. So the archive, its SHA-256 and the directory of the runtimes come from common_site_config.json, which
+only the operator of the server writes, and never from a site: neither from its site_config.json nor from the
+ERiC Settings, which a System Manager edits.
 """
 
+import os
+import re
 from pathlib import Path
 
 import frappe
+from frappe import _
 from frappe.utils import cint, get_bench_path, getdate
 
 from steuerbote.eric import runtime, service
@@ -18,6 +26,10 @@ from steuerbote.eric.result import Operation, TransmissionResult
 from steuerbote.eric.runtime import RuntimeInfo
 
 ERIC_SETTINGS = "ERiC Settings"
+ARCHIVE = "steuerbote_eric_archive"
+ARCHIVE_SHA256 = "steuerbote_eric_archive_sha256"
+RUNTIME_ROOT = "steuerbote_eric_root"
+SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 def run(
@@ -77,15 +89,42 @@ def runtime_status(hersteller_id: str) -> tuple[runtime.Check, ...]:
 	return runtime.status(runtime_root(), year=getdate().year, hersteller_id=hersteller_id)
 
 
-def install_from_archive(archive_path: str, sha256: str) -> RuntimeInfo:
-	"""Unpack the ERiC archive on the server after checking its SHA-256; the worker loads the libraries
+def install_configured_archive() -> RuntimeInfo:
+	"""Unpack the ERiC archive the operator names after checking its SHA-256; the worker loads the libraries
 	once before the version is activated."""
+	archive_path, sha256 = configured_archive()
 	return runtime.install_from_archive(
-		Path(archive_path),
+		archive_path,
 		sha256,
 		runtime_root(),
 		installed_by=frappe.session.user,
 		probe=service.library_versions,
+	)
+
+
+def configured_archive() -> tuple[Path, str]:
+	"""The ERiC archive and its SHA-256 as ``steuerbote_eric_archive`` and ``steuerbote_eric_archive_sha256`` of
+	common_site_config.json name them."""
+	archive_path, sha256 = shown_archive()
+	if not (archive_path and sha256):
+		frappe.throw(
+			_(
+				"Name the ERiC archive and its SHA-256 as {0} and {1} in common_site_config.json of the bench, with bench set-config -g on the server."
+			).format(ARCHIVE, ARCHIVE_SHA256)
+		)
+	if not os.path.isabs(archive_path):
+		frappe.throw(_("{0} in common_site_config.json is no absolute path on the server.").format(ARCHIVE))
+	if not SHA256.fullmatch(sha256):
+		frappe.throw(_("{0} in common_site_config.json has 64 hexadecimal digits.").format(ARCHIVE_SHA256))
+	return Path(archive_path), sha256
+
+
+def shown_archive() -> tuple[str, str]:
+	"""Archive and SHA-256 of common_site_config.json as the ERiC Settings show them, empty where none is named."""
+	config = common_site_config()
+	return (
+		str(config.get(ARCHIVE) or "").strip(),
+		str(config.get(ARCHIVE_SHA256) or "").strip().lower(),
 	)
 
 
@@ -94,5 +133,10 @@ def runtime_root() -> Path:
 
 	``steuerbote_eric_root`` in common_site_config.json overrides the directory ``sites/eric`` of the bench.
 	"""
-	configured = frappe.conf.get("steuerbote_eric_root")
+	configured = common_site_config().get(RUNTIME_ROOT)
 	return Path(configured) if configured else Path(get_bench_path(), "sites", "eric")
+
+
+def common_site_config() -> dict:
+	"""common_site_config.json of the bench, read anew: what its operator configures for every site."""
+	return frappe.get_common_site_config()

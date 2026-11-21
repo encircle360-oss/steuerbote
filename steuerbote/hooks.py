@@ -43,11 +43,12 @@ company_data_to_be_ignored = [
 	"ELSTER Transmission",
 ]
 
-# The answer kept with a VAT ID Confirmation is part of the proof of its query.
+# The files of an ELSTER Transmission and the answer kept with a VAT ID Confirmation stay as they were stored.
 doc_events = {
 	"File": {
-		"validate": "steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation.keep_answer",
-		"on_trash": "steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation.keep_answer",
+		"before_validate": "steuerbote.steuerbote.record_files.keep_unchanged",
+		"on_trash": "steuerbote.steuerbote.record_files.keep_while_recorded",
+		"before_rename": "steuerbote.steuerbote.record_files.keep_name",
 	}
 }
 

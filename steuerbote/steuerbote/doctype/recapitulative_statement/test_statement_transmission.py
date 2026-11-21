@@ -245,8 +245,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		self.use_runtime()
 		doc = self.calculated(4)
 		fake = FakeEric()
-		token = self.stash()
-		transmission, _, _ = self.transmitted(doc, "send", fake, token)
+		transmission, _, _ = self.transmitted(doc, "send", fake, self.stash(doc))
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (1, "Abgegeben", 0))
 		self.assertEqual(
 			(doc.filed_via, getdate(doc.filed_on), doc.transferticket, doc.filing_note, doc.filed_by),
@@ -266,7 +265,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		self.assertEqual(fake.detections[0][:3], (ZMDO, Operation.SEND, "12345"))
 		self.assertEqual(self.attachment(transmission, "protocol_pdf").get_content(), PROTOCOL)
 		with self.assertRaises(secrets.SecretsExpired):
-			secrets.take(token)
+			self.handed_over(transmission.name, doc)
 		with self.assertRaisesRegex(frappe.ValidationError, "cannot be cancelled"):
 			doc.cancel()
 		with self.assertRaises(frappe.ValidationError):
@@ -286,10 +285,10 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		doc = self.calculated(3)
 		frappe.db.set_value(DOCTYPE, doc.name, {"status": "Berechnet", "ready": 0})
 		with patch("frappe.enqueue") as enqueue, self.assertRaisesRegex(frappe.ValidationError, "not ready"):
-			doc.transmit("send", self.stash())
+			doc.transmit("send", self.stash(doc))
 		enqueue.assert_not_called()
 		frappe.db.set_value(DOCTYPE, doc.name, "remarks", "Die USt-IdNr. ist am Liefertag bestätigt worden.")
-		_, enqueue = self.transmit(doc, "send", self.stash())
+		_, enqueue = self.transmit(doc, "send", self.stash(doc))
 		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
 
 	def test_senden_waits_for_berechnen_after_the_ledger_changed(self):
@@ -302,7 +301,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaisesRegex(frappe.ValidationError, f"Beleg SINV-{ABBR}-09-2 geht laut Hauptbuch"),
 		):
-			doc.transmit("send", self.stash())
+			doc.transmit("send", self.stash(doc))
 		enqueue.assert_not_called()
 		_, enqueue = self.transmit(doc, "validate")
 		self.assertEqual(enqueue.call_args.kwargs["operation"], "validate")
@@ -332,7 +331,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		self.use_runtime()
 		doc = self.calculated(5)
 		fake = FakeEric(outcome=Outcome.UNKNOWN, messages=(LOST, UNKNOWN_MESSAGE))
-		transmission, publish, _ = self.transmitted(doc, "send", fake, self.stash())
+		transmission, publish, _ = self.transmitted(doc, "send", fake, self.stash(doc))
 		self.assertEqual(
 			(transmission.status, transmission.outcome, doc.docstatus, publish.call_args.args[1]["status"]),
 			("Unbekannt", "unknown", 0, "Unbekannt"),
@@ -341,10 +340,10 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaisesRegex(frappe.ValidationError, f"Whether {transmission.name} reached ELSTER"),
 		):
-			doc.transmit("send", self.stash())
+			doc.transmit("send", self.stash(doc))
 		enqueue.assert_not_called()
 		frappe.delete_doc(TRANSMISSION, transmission.name)
-		_, enqueue = self.transmit(doc, "send", self.stash())
+		_, enqueue = self.transmit(doc, "send", self.stash(doc))
 		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
 
 	def test_a_meldezeitraum_sent_through_steuerbote_is_filed_for_every_other_statement(self):
@@ -352,11 +351,11 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		self.use_runtime()
 		sent = self.calculated(6)
 		fake = FakeEric(outcome=Outcome.UNKNOWN, messages=(LOST, UNKNOWN_MESSAGE))
-		self.transmitted(sent, "send", fake, self.stash())
+		self.transmitted(sent, "send", fake, self.stash(sent))
 		other = self.calculated(6, remarks="Zweiter Versuch")
 		refused = f"Juni 2026 of {COMPANY} was transmitted already as {sent.name}"
 		for attempt in (
-			lambda: other.transmit("send", self.stash()),
+			lambda: other.transmit("send", self.stash(other)),
 			lambda: other.mark_filed_outside(filed_via="mein_elster"),
 			other.make_csv_file,
 		):
@@ -368,7 +367,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 	def test_an_accepted_berichtigung_replaces_the_statement_it_corrects(self):
 		self.use_runtime()
 		filed = self.calculated(8)
-		self.transmitted(filed, "send", FakeEric(), self.stash())
+		self.transmitted(filed, "send", FakeEric(), self.stash(filed))
 		self.assertEqual((filed.docstatus, filed.status, filed.filed_via), (1, "Abgegeben", "eric"))
 		self.deliver(8, 2, 500)
 		with patch.object(controller.frappe, "msgprint"):
@@ -379,7 +378,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 			[(AUSTRIAN, 8500, 8000, 1)],
 		)
 		fake = FakeEric()
-		transmission, _, _ = self.transmitted(correction, "send", fake, self.stash())
+		transmission, _, _ = self.transmitted(correction, "send", fake, self.stash(correction))
 		self.assertIn('<zm-zeilen waehrung="1" meldeart="11">', fake.runs[0]["nutzdaten"])
 		self.assertIn("<betrag>8500</betrag>", fake.runs[0]["nutzdaten"])
 		filed.reload()
@@ -393,7 +392,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 	def test_a_berichtigung_that_changes_nothing_sends_nothing(self):
 		self.use_runtime()
 		filed = self.calculated(7)
-		self.transmitted(filed, "send", FakeEric(), self.stash())
+		self.transmitted(filed, "send", FakeEric(), self.stash(filed))
 		with patch.object(controller.frappe, "msgprint"):
 			correction = frappe.get_doc(DOCTYPE, filed.make_correction())
 		self.addCleanup(discard, correction.name)
@@ -408,7 +407,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		with patch.object(
 			RecapitulativeStatement, "before_submit", side_effect=frappe.ValidationError("Kaputt")
 		):
-			transmission, _, _ = self.transmitted(doc, "send", FakeEric(), self.stash())
+			transmission, _, _ = self.transmitted(doc, "send", FakeEric(), self.stash(doc))
 		self.assertEqual(
 			(transmission.status, transmission.transferticket, doc.docstatus), ("Erfolgreich", TICKET, 0)
 		)
@@ -419,7 +418,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaisesRegex(frappe.ValidationError, "transmitted already"),
 		):
-			doc.transmit("send", self.stash())
+			doc.transmit("send", self.stash(doc))
 		enqueue.assert_not_called()
 		for attempt, message in (
 			(lambda: doc.mark_filed_outside(filed_via="mein_elster"), "submit it with Buchen"),
@@ -470,7 +469,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 	def test_the_form_releases_a_lock_whose_job_is_gone(self):
 		self.use_runtime()
 		doc = self.calculated(10)
-		name, job = self.transmit(doc, "send", self.stash())
+		name, job = self.transmit(doc, "send", self.stash(doc))
 		doc.reload()
 		with patch(IS_JOB_ENQUEUED, return_value=False):
 			doc.run_method("onload")

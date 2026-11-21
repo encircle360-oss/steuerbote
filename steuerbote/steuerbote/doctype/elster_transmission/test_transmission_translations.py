@@ -23,6 +23,7 @@ SOURCES = (
 	MODULE / "doctype/vat_return/vat_return.py",
 	MODULE / "doctype/vat_return/vat_return.js",
 	MODULE / "doctype/vat_return/transmission_adapter.py",
+	MODULE / "record_files.py",
 	APP / "public/js/elster_transmission.js",
 )
 # German terms and values that read the same in every language.

@@ -3,8 +3,9 @@
 The Hersteller-ID belongs to the installation, not to a company, and so does the ERiC runtime. While either
 is missing the settings simulate: Prüfen and Testsenden run against the simulation of steuerbote.eric and
 nothing reaches the Finanzamt. Steuerbote ships no part of ERiC and downloads nothing: the operator puts the
-archive for Linux x86_64 from the ELSTER developer area on the server, and the installation job unpacks it
-through steuerbote.eric.runtime after checking its SHA-256. Before ERiC runs, the operator confirms the
+archive for Linux x86_64 from the ELSTER developer area on the server and names it with its SHA-256 in
+common_site_config.json of the bench, which the settings show and never change, and the installation job unpacks
+it through steuerbote.eric.runtime after checking its SHA-256. Before ERiC runs, the operator confirms the
 Datenschutzhinweise of the tax administration (ERiC licence, § 5 Abs. 1 and 2); the settings keep who
 confirmed them and when. The simulation needs no confirmation. Where the server reaches ELSTER through a proxy,
 the settings name it, with its password in a Password field, and every run of ERiC goes through it; the
@@ -13,14 +14,12 @@ platform, the runtimes installed with their libraries, the plugins of the curren
 Meldung, and the Hersteller-ID.
 """
 
-import os
-import re
 from pathlib import Path
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, now_datetime
+from frappe.utils import cint, now_datetime, strip_html
 from frappe.utils.background_jobs import is_job_enqueued
 
 import steuerbote
@@ -37,7 +36,6 @@ PRODUKT_NAME_LENGTH = 50
 TRADEMARK = "elster"
 # TransferHeader of the ELSTER Basisschema: DatenLieferant is free text of at most 256 characters.
 DATENLIEFERANT_LENGTH = 256
-SHA256 = re.compile(r"[0-9a-f]{64}")
 
 INSTALLATION_JOB = "steuerbote.steuerbote.doctype.eric_settings.eric_settings.run_installation"
 INSTALLATION_JOB_ID = "steuerbote:eric:installation"
@@ -74,6 +72,9 @@ class ERiCSettings(Document):
 		simulation: DF.Check
 	# end: auto-generated types
 
+	def onload(self) -> None:
+		self.show_configured_archive()
+
 	def validate(self) -> None:
 		self.produkt_version = steuerbote.__version__
 		self.hersteller_id = (self.hersteller_id or "").strip()
@@ -81,14 +82,12 @@ class ERiCSettings(Document):
 		self.datenlieferant = "; ".join(
 			line.strip() for line in (self.datenlieferant or "").splitlines() if line.strip()
 		)
-		self.archive_path = (self.archive_path or "").strip()
-		self.archive_sha256 = (self.archive_sha256 or "").strip().lower()
+		self.show_configured_archive()
 		if self.hersteller_id:
 			# The rule of Kz 09 in the Nutzdaten, which carries the same Hersteller-ID as header and runtime.
 			with xml_errors(_("ERiC Settings")):
 				ustva_xml.require_hersteller_id(self.hersteller_id)
 		self.check_produkt_name()
-		self.check_archive()
 		if len(self.datenlieferant) > DATENLIEFERANT_LENGTH:
 			frappe.throw(_("The Datenlieferant has at most {0} characters.").format(DATENLIEFERANT_LENGTH))
 		self.check_proxy()
@@ -133,19 +132,18 @@ class ERiCSettings(Document):
 		if TRADEMARK in self.produkt_name.casefold():
 			frappe.throw(_("The product name must not contain the word ELSTER."))
 
-	def check_archive(self) -> None:
-		if self.archive_path and not os.path.isabs(self.archive_path):
-			frappe.throw(_("Enter the ERiC archive as an absolute path on the server."))
-		if self.archive_sha256 and not SHA256.fullmatch(self.archive_sha256):
-			frappe.throw(_("The SHA-256 of the archive has 64 hexadecimal digits."))
+	def show_configured_archive(self) -> None:
+		"""The archive and its SHA-256 as common_site_config.json names them, whatever the form sent."""
+		archive_path, sha256 = transmission_adapter.shown_archive()
+		self.archive_path = archive_path or None
+		self.archive_sha256 = sha256 or None
 
 	@frappe.whitelist(methods=["POST"])
 	def install_runtime(self) -> None:
-		"""Laufzeitumgebung installieren: unpack the ERiC archive of the saved settings in a background job."""
+		"""Laufzeitumgebung installieren: unpack the ERiC archive that common_site_config.json names in a background
+		job, which reads the archive there itself."""
 		frappe.only_for("System Manager", message=True)
-		self.reload()
-		if not (self.archive_path and self.archive_sha256):
-			frappe.throw(_("Enter the ERiC archive and its SHA-256 and save the settings before installing."))
+		transmission_adapter.configured_archive()
 		if is_job_enqueued(INSTALLATION_JOB_ID):
 			frappe.throw(_("An installation of ERiC is running already."))
 		frappe.enqueue(
@@ -155,8 +153,6 @@ class ERiCSettings(Document):
 			job_id=INSTALLATION_JOB_ID,
 			deduplicate=True,
 			enqueue_after_commit=True,
-			archive_path=self.archive_path,
-			sha256=self.archive_sha256,
 		)
 
 	@frappe.whitelist(methods=["POST"])
@@ -171,17 +167,20 @@ class ERiCSettings(Document):
 		]
 
 
-def run_installation(archive_path: str, sha256: str) -> None:
-	"""Background job of ERiCSettings.install_runtime: unpack the archive and record the runtime.
+def run_installation() -> None:
+	"""Background job of ERiCSettings.install_runtime: unpack the archive common_site_config.json names and record
+	the runtime.
 
 	The user who started the installation gets a realtime notice either way.
 	"""
 	runtime = None
 	error = None
 	try:
-		runtime = transmission_adapter.install_from_archive(archive_path, sha256)
+		runtime = transmission_adapter.install_configured_archive()
 	except RuntimeInstallError as refused:
 		error = str(refused)
+	except frappe.ValidationError as refused:
+		error = strip_html(str(refused))
 	except Exception as failure:
 		frappe.log_error(title=_("Installation of ERiC failed"))
 		error = str(failure)

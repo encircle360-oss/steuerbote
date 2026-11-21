@@ -176,8 +176,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 		self.use_runtime()
 		doc = self.calculated()
 		fake = FakeEric()
-		token = self.stash()
-		transmission, _, _ = self.transmitted(doc, "send", fake, token)
+		transmission, _, _ = self.transmitted(doc, "send", fake, self.stash(doc))
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (1, "Abgegeben", 0))
 		self.assertEqual(
 			(doc.filed_via, getdate(doc.filed_on), doc.transferticket, doc.filing_note),
@@ -198,7 +197,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 		self.assertEqual(self.attachment(transmission, "protocol_pdf").get_content(), PROTOCOL)
 		self.assertIn((2026, 1, money(4000)), prepayments(COMPANY))
 		with self.assertRaises(secrets.SecretsExpired):
-			secrets.take(token)
+			self.handed_over(transmission.name, doc)
 		printed = cells(frappe.get_print(DOCTYPE, doc.name, print_format=PRINT_FORMAT, no_letterhead=1))
 		self.assertIn("Abgegeben über | ERiC |", printed)
 		self.assertIn(f"Transferticket | {TICKET} |", printed)
@@ -217,10 +216,10 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 		doc = self.calculated()
 		frappe.db.set_value(DOCTYPE, doc.name, "status", "Berechnet")
 		with patch("frappe.enqueue") as enqueue, self.assertRaisesRegex(frappe.ValidationError, "not ready"):
-			doc.transmit("send", self.stash())
+			doc.transmit("send", self.stash(doc))
 		enqueue.assert_not_called()
 		frappe.db.set_value(DOCTYPE, doc.name, "remarks", "Abgestimmt mit der Steuerberatung")
-		_, enqueue = self.transmit(doc, "send", self.stash())
+		_, enqueue = self.transmit(doc, "send", self.stash(doc))
 		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
 
 	def test_only_a_calculated_draft_of_a_known_form_is_transmitted(self):
@@ -248,7 +247,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 		self.use_runtime()
 		doc = self.calculated()
 		fake = FakeEric(outcome=Outcome.UNKNOWN, messages=(LOST, UNKNOWN_MESSAGE))
-		transmission, publish, _ = self.transmitted(doc, "send", fake, self.stash())
+		transmission, publish, _ = self.transmitted(doc, "send", fake, self.stash(doc))
 		self.assertEqual(
 			(transmission.status, transmission.outcome, doc.docstatus, publish.call_args.args[1]["status"]),
 			("Unbekannt", "unknown", 0, "Unbekannt"),
@@ -257,17 +256,17 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaisesRegex(frappe.ValidationError, f"Whether {transmission.name} reached ELSTER"),
 		):
-			doc.transmit("send", self.stash())
+			doc.transmit("send", self.stash(doc))
 		enqueue.assert_not_called()
 		frappe.delete_doc(TRANSMISSION, transmission.name)
-		_, enqueue = self.transmit(doc, "send", self.stash())
+		_, enqueue = self.transmit(doc, "send", self.stash(doc))
 		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
 
 	def test_a_form_sent_for_the_year_leaves_a_further_one_to_a_corrected_anmeldung(self):
 		self.use_runtime()
 		sent = self.calculated()
 		fake = FakeEric(outcome=Outcome.UNKNOWN, messages=(LOST, UNKNOWN_MESSAGE))
-		self.transmitted(sent, "send", fake, self.stash())
+		self.transmitted(sent, "send", fake, self.stash(sent))
 		# A form cancelled before a filed one could no longer be cancelled.
 		frappe.db.set_value(DOCTYPE, sent.name, "docstatus", 2)
 		further = self.calculated()
@@ -275,21 +274,21 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaisesRegex(frappe.ValidationError, f"{COMPANY} filed {sent.name} for 2026 already"),
 		):
-			further.transmit("send", self.stash())
+			further.transmit("send", self.stash(further))
 		enqueue.assert_not_called()
 		with self.assertRaisesRegex(frappe.ValidationError, f"{COMPANY} filed {sent.name} for 2026 already"):
 			further.mark_filed_outside(filed_via="mein_elster")
 		further.reload()
 		further.is_correction = 1
 		further.save()
-		_, enqueue = self.transmit(further, "send", self.stash())
+		_, enqueue = self.transmit(further, "send", self.stash(further))
 		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
 
 	def test_a_form_elster_accepted_while_its_submission_failed_is_submitted_with_buchen(self):
 		self.use_runtime()
 		doc = self.calculated()
 		with patch.object(VATReturnExtension, "before_submit", side_effect=frappe.ValidationError("Kaputt")):
-			transmission, _, _ = self.transmitted(doc, "send", FakeEric(), self.stash())
+			transmission, _, _ = self.transmitted(doc, "send", FakeEric(), self.stash(doc))
 		self.assertEqual(
 			(transmission.status, transmission.transferticket, doc.docstatus), ("Erfolgreich", TICKET, 0)
 		)
@@ -301,7 +300,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaisesRegex(frappe.ValidationError, "transmitted already"),
 		):
-			doc.transmit("send", self.stash())
+			doc.transmit("send", self.stash(doc))
 		enqueue.assert_not_called()
 		with self.assertRaisesRegex(frappe.ValidationError, "submit it with Buchen"):
 			doc.mark_filed_outside(filed_via="mein_elster")
@@ -319,7 +318,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 	def test_an_anmeldung_sent_through_eric_is_corrected_by_amending_it_with_kz10(self):
 		self.use_runtime()
 		doc = self.calculated()
-		self.transmitted(doc, "send", FakeEric(), self.stash())
+		self.transmitted(doc, "send", FakeEric(), self.stash(doc))
 		doc.cancel()
 		amendment = frappe.copy_doc(doc)
 		amendment.update({"amended_from": doc.name, "docstatus": 0})
@@ -330,7 +329,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 		self.addCleanup(discard, amendment.name)
 		amendment.calculate()
 		amendment.reload()
-		_, enqueue = self.transmit(amendment, "send", self.stash())
+		_, enqueue = self.transmit(amendment, "send", self.stash(amendment))
 		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
 
 	def test_one_transmission_at_a_time(self):
@@ -359,8 +358,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 	def test_the_form_releases_a_lock_whose_job_is_gone(self):
 		self.use_runtime()
 		doc = self.calculated()
-		token = self.stash()
-		name, job = self.transmit(doc, "send", token)
+		name, job = self.transmit(doc, "send", self.stash(doc))
 		doc.reload()
 		with patch(IS_JOB_ENQUEUED, return_value=False):
 			doc.run_method("onload")
@@ -376,6 +374,8 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 		fake = FakeEric()
 		self.run_job(job, fake)
 		self.assertEqual(fake.runs, [])
+		with self.assertRaises(secrets.SecretsExpired):
+			self.handed_over(name, doc)
 
 	def test_filing_outside_steuerbote_is_recorded_as_an_elster_transmission(self):
 		doc = self.calculated()

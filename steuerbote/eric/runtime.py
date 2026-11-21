@@ -5,13 +5,16 @@ and acceptance of the licence (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 3 and 3.1;
 Unpacked, it holds ERiC-<version>/<os>/ with the libraries in lib and the plugins below it (Kap. 3.1.4,
 Tabellen 3-2 and 3-3; the include path C:\\Eric\\ERiC-<version>\\Windows-x86\\include in Kap. 4.3), so
 Linux-x86_64/lib is all steuerbote needs. Steuerbote never downloads ERiC: the operator provides the
-archive and its SHA-256, and the checksum is verified before anything is unpacked.
+archive and its SHA-256, and the checksum is verified before anything is unpacked. The handbook names jarsigner
+to check the signature of the JAR (Kap. 3.1) but no certificate it has to carry, so the operator checks the
+signature before naming the archive and its SHA-256.
 
 Each version gets a directory of its own, because libraries of different packages must not be mixed
 (Kap. 3.1.6.2), with its manifest steuerbote-runtime.json: the hashes of archive and files, the years of
 its UStVA plugins and whether it is a beta. A version directory appears only complete, by renaming it
-into place. The plugin commonData is always required (Kap. 3.1.6.1), and EricInitialisiere searches the
-library directory for plugins recursively (Kap. 4.1.1). Each Datenart has its plugin (steuerbote.eric.datenart,
+into place, and a run takes it only while its files are those of the manifest. The plugin commonData is
+always required (Kap. 3.1.6.1), and EricInitialisiere searches the library directory for plugins
+recursively (Kap. 4.1.1). Each Datenart has its plugin (steuerbote.eric.datenart,
 from Datenartversionmatrix.ods): the UStVA of a year checkUStVA_<Jahr>, as the year table
 steuerbote/ustva/years.py names it, the Zusammenfassende Meldung checkZMDO for every year. ERiC runs on Linux
 x86_64 with glibc 2.28 or newer (Kap. 2.4.4.5).
@@ -66,6 +69,18 @@ _GLIBC = re.compile(r"glibc (?P<major>\d+)\.(?P<minor>\d+)")
 
 class RuntimeInstallError(Exception):
 	pass
+
+
+class RuntimeIntegrityError(Exception):
+	"""The files of the installation a run would take differ from its manifest, so ERiC is not loaded."""
+
+	def __init__(self, version: str, problems: tuple[str, ...]):
+		super().__init__(
+			f"Die Bibliotheken von ERiC {version} weichen vom Manifest ab ({', '.join(problems)}); Steuerbote "
+			"lädt sie nicht. Das Verzeichnis der Version entfernen und sie neu einrichten."
+		)
+		self.version = version
+		self.problems = problems
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,7 +243,7 @@ def detect(
 
 	A beta refuses real cases only (Kap. 5.4.3), so Prüfen and Testsenden pass allow_beta=True and Senden
 	passes False. Prüfen and Testsenden still get the released runtime whenever one has the plugin, the one
-	that Senden uses.
+	that Senden uses. RuntimeIntegrityError when the files of that installation differ from its manifest.
 	"""
 	with_plugin = [
 		installation
@@ -240,6 +255,9 @@ def detect(
 		chosen = with_plugin[0]
 	if chosen is None:
 		return None
+	problems = verify(chosen)
+	if problems:
+		raise RuntimeIntegrityError(chosen.version, problems)
 	return chosen.runtime(
 		log_dir=log_dir or target_root / LOG_DIRECTORY,
 		hersteller_id=hersteller_id,
@@ -248,22 +266,36 @@ def detect(
 
 
 def verify(installation: Installation) -> tuple[str, ...]:
-	"""What differs from the manifest: changed, missing and unknown files below lib."""
-	present = {
-		path.relative_to(installation.lib_dir).as_posix(): path
-		for path in installation.lib_dir.rglob("*")
-		if path.is_file()
-	}
+	"""What differs from the manifest: changed, missing and unknown files below lib, and every link there.
+
+	The installation writes regular files and directories only, so a link, to a library or to a directory of
+	plugins, is foreign whatever it points to. Links are never followed, and nothing but a regular file is read.
+	"""
+	files: dict[str, Path] = {}
+	others: list[str] = []
+	links: list[str] = []
+	for directory, subdirectories, names in os.walk(installation.lib_dir):
+		for name in (*subdirectories, *names):
+			path = Path(directory, name)
+			relative = path.relative_to(installation.lib_dir).as_posix()
+			mode = path.lstat().st_mode
+			if stat.S_ISLNK(mode):
+				links.append(relative)
+			elif stat.S_ISREG(mode):
+				files[relative] = path
+			elif not stat.S_ISDIR(mode):
+				others.append(relative)
 	expected = installation.files
 	changed = [
-		name for name in sorted(expected) if name in present and _file_sha256(present[name]) != expected[name]
+		name for name in sorted(expected) if name in files and _file_sha256(files[name]) != expected[name]
 	]
-	missing = [name for name in sorted(expected) if name not in present]
-	unknown = sorted(present.keys() - expected.keys())
+	missing = [name for name in sorted(expected) if name not in files]
+	unknown = sorted((files.keys() - expected.keys()) | set(others))
 	return (
 		*(f"verändert: {name}" for name in changed),
 		*(f"fehlt: {name}" for name in missing),
 		*(f"unbekannt: {name}" for name in unknown),
+		*(f"Link: {name}" for name in sorted(links)),
 	)
 
 
@@ -333,6 +365,12 @@ def _install(
 	target = target_root / version
 	installed = _read_manifest(target)
 	if installed is not None and installed.archive_sha256 == archive_sha256:
+		problems = verify(installed)
+		if problems:
+			raise RuntimeInstallError(
+				f"ERiC {version} ist aus diesem Archiv eingerichtet, aber seine Bibliotheken weichen vom Manifest "
+				f"ab ({', '.join(problems)}). Das Verzeichnis {target} entfernen und neu einrichten."
+			)
 		return installed.runtime(log_dir=target_root / LOG_DIRECTORY, hersteller_id="")
 	if target.exists():
 		raise RuntimeInstallError(f"ERiC {version} ist bereits aus einem anderen Archiv eingerichtet.")

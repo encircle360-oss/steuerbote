@@ -2,9 +2,11 @@ import base64
 import ctypes
 import io
 import json
+import os
 import resource
 import runpy
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -43,6 +45,7 @@ PIN = "Geheim-PIN-4711"
 PROXY_GEHEIM = "Proxy-Geheim-4711"
 PROXY = Proxy("proxy.example.com", 3128, "steuerbote", PROXY_GEHEIM)
 APP_ROOT = Path(worker.__file__).resolve().parents[2]
+PR_GET_PDEATHSIG = 2
 
 
 def nutzdaten(marker: str = "") -> str:
@@ -75,6 +78,7 @@ class WorkerTestCase(TestCase):
 				None if operation is Operation.VALIDATE else base64.b64encode(CONTAINER).decode()
 			),
 			"certificate_password": None if operation is Operation.VALIDATE else PIN,
+			"work_dir": str(self.directory),
 		}
 		return request | changes
 
@@ -442,6 +446,8 @@ class ProtocolTest(WorkerTestCase):
 			"password": valid | {"certificate_password": 4711},
 			"proxy": valid | {"proxy": ["proxy.example.com", 3128]},
 			"proxy port": valid | {"proxy": PROXY.to_dict() | {"port": "3128"}},
+			"no work dir": valid | {"work_dir": None},
+			"relative work dir": valid | {"work_dir": "steuerbote-eric"},
 		}
 		for case, request in broken.items():
 			with self.subTest(case):
@@ -552,41 +558,84 @@ class OutcomeTest(TestCase):
 		)
 
 
+def parent_death_signal() -> int:
+	"""PR_GET_PDEATHSIG of this process, which prctl writes through a pointer."""
+	value = ctypes.c_int()
+	function = ctypes.CDLL(None, use_errno=True).prctl
+	function.argtypes = (
+		ctypes.c_int,
+		ctypes.POINTER(ctypes.c_int),
+		ctypes.c_ulong,
+		ctypes.c_ulong,
+		ctypes.c_ulong,
+	)
+	if function(PR_GET_PDEATHSIG, ctypes.byref(value), 0, 0, 0) < 0:
+		raise OSError(ctypes.get_errno(), "prctl(PR_GET_PDEATHSIG) failed")
+	return value.value
+
+
 class HardeningTest(TestCase):
 	def setUp(self):
 		limits = resource.getrlimit(resource.RLIMIT_CORE)
 		self.addCleanup(resource.setrlimit, resource.RLIMIT_CORE, limits)
 		self.addCleanup(worker.prctl, worker.PR_SET_DUMPABLE, 1)
+		self.addCleanup(worker.prctl, worker.PR_SET_PDEATHSIG, 0)
 
 	def test_makes_the_process_undumpable_without_core_files(self):
-		worker.harden()
+		self.assertTrue(worker.harden(os.getppid()))
 		self.assertEqual(worker.prctl(worker.PR_GET_DUMPABLE, 0), 0)
 		self.assertEqual(resource.getrlimit(resource.RLIMIT_CORE)[0], 0)
+
+	def test_ends_with_the_process_that_started_it(self):
+		"""PR_SET_PDEATHSIG holds for the thread that started the worker, the thread of the background job that waits
+		for it; a parent that ended before the signal was set is no longer the parent."""
+		self.assertTrue(worker.harden(os.getppid()))
+		self.assertEqual(parent_death_signal(), signal.SIGKILL)
+		self.assertFalse(worker.harden(os.getpid()))
 
 	def test_a_refused_prctl_is_an_error(self):
 		with self.assertRaises(OSError):
 			worker.prctl(-1, 0)
 
-	def test_runs_as_a_script_that_hardens_itself_first(self):
+	def run_as_script(self, *arguments: str) -> tuple[int, str, io.TextIOWrapper]:
 		request = json.dumps({"command": "version", "runtime": {}}).encode()
 		stdin = io.TextIOWrapper(io.BytesIO(request))
 		stdout = io.TextIOWrapper(io.BytesIO())
 		with (
+			mock.patch.object(sys, "argv", [worker.__file__, *arguments]),
 			mock.patch.object(sys, "stdin", stdin),
 			mock.patch.object(sys, "stdout", stdout),
 			mock.patch.object(sys, "stderr", io.StringIO()) as stderr,
 			self.assertRaises(SystemExit) as exited,
 		):
 			runpy.run_path(worker.__file__, run_name="__main__")
-		self.assertEqual(exited.exception.code, worker.EXIT_INVALID_REQUEST)
-		self.assertEqual(stderr.getvalue(), "steuerbote.eric.worker: invalid request: runtime\n")
+		return exited.exception.code, stderr.getvalue(), stdin
+
+	def test_runs_as_a_script_that_hardens_itself_first(self):
+		code, stderr, _ = self.run_as_script(str(os.getppid()))
+		self.assertEqual(code, worker.EXIT_INVALID_REQUEST)
+		self.assertEqual(stderr, "steuerbote.eric.worker: invalid request: runtime\n")
 		self.assertEqual(worker.prctl(worker.PR_GET_DUMPABLE, 0), 0)
+		self.assertEqual(parent_death_signal(), signal.SIGKILL)
+
+	def test_needs_the_process_that_starts_it(self):
+		for arguments in ((), ("kein Prozess",), ("1", "2")):
+			with self.subTest(arguments=arguments):
+				code, stderr, stdin = self.run_as_script(*arguments)
+				self.assertEqual(code, worker.EXIT_INVALID_REQUEST)
+				self.assertEqual(stderr, "steuerbote.eric.worker: invalid request: parent\n")
+				self.assertEqual(stdin.tell(), 0)
+
+	def test_a_worker_whose_parent_has_gone_reads_no_request(self):
+		code, stderr, stdin = self.run_as_script(str(os.getpid()))
+		self.assertEqual((code, stderr), (worker.EXIT_FAILURE, "steuerbote.eric.worker: parent gone\n"))
+		self.assertEqual(stdin.tell(), 0)
 
 
 class SubprocessTest(WorkerTestCase):
 	def test_answers_as_a_process_of_its_own(self):
-		completed = subprocess.run(
-			[sys.executable, "-E", "-s", "-m", "steuerbote.eric.worker"],
+		completed = subprocess.run(  # noqa: S603 - this interpreter with the worker and the pid of this process
+			[sys.executable, "-E", "-s", "-m", "steuerbote.eric.worker", str(os.getpid())],
 			input=json.dumps(self.request(Operation.VALIDATE)).encode(),
 			capture_output=True,
 			cwd=APP_ROOT,

@@ -110,16 +110,18 @@
    "label": "Runtime"
   },
   {
-   "description": "Absolute path on the server of the ERiC archive for Linux x86_64, as downloaded from the ELSTER developer area after the login.",
+   "description": "Set on the server as steuerbote_eric_archive in common_site_config.json of the bench: the absolute path of the ERiC archive for Linux x86_64 from the ELSTER developer area. Shown here, changed only there.",
    "fieldname": "archive_path",
    "fieldtype": "Data",
-   "label": "ERiC Archive"
+   "label": "ERiC Archive",
+   "read_only": 1
   },
   {
-   "description": "The checksum the ELSTER developer area lists for the archive, 64 hexadecimal digits.",
+   "description": "Set on the server as steuerbote_eric_archive_sha256 in common_site_config.json: the SHA-256 of the archive, 64 hexadecimal digits, taken once its signature is checked. Shown here, changed only there.",
    "fieldname": "archive_sha256",
    "fieldtype": "Data",
-   "label": "SHA-256 of the Archive"
+   "label": "SHA-256 of the Archive",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_archive",
@@ -183,7 +185,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-21 00:00:00.000000",
+ "modified": "2026-11-21 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "ERiC Settings",

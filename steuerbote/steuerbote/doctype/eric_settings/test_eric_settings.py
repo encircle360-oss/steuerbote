@@ -8,6 +8,7 @@ from unittest.mock import patch
 import frappe
 from frappe.desk.form.meta import get_meta as get_form_meta
 from frappe.tests import IntegrationTestCase
+from frappe.utils import get_bench_path
 
 import steuerbote
 from steuerbote.eric import runtime, service
@@ -24,7 +25,12 @@ SETTINGS = "ERiC Settings"
 INSTALLATION_JOB = "steuerbote.steuerbote.doctype.eric_settings.eric_settings.run_installation"
 ARCHIVE = "/srv/eric/ERiC-44.3.6.0-Linux-x86_64.jar"
 CHECKSUM = "ab" * 32
+# What a System Manager could upload as a File and enter as the archive.
+UPLOADED = "/home/frappe/frappe-bench/sites/test_site/private/files/ERiC-44.3.6.0-Linux-x86_64.jar"
+UPLOADED_CHECKSUM = "cd" * 32
+BENCH = {"steuerbote_eric_archive": ARCHIVE, "steuerbote_eric_archive_sha256": CHECKSUM}
 LIB_DIR = "/srv/eric/44.3.6.0/lib"
+RUNTIME = RuntimeInfo("44.3.6.0", Path(LIB_DIR), Path(LIB_DIR), Path("/srv/eric/log"), "")
 ACCOUNTS_MANAGER = "steuerbote-eric-einstellungen@example.com"
 # The password of the proxy, invented.
 PROXY_GEHEIM = "Proxy-Geheim-2026"
@@ -45,6 +51,10 @@ def make_user(email: str, role: str) -> str:
 
 
 class TestERiCSettings(IntegrationTestCase):
+	def configured(self, **values):
+		"""common_site_config.json of the bench with these values."""
+		return patch.object(transmission_adapter, "common_site_config", return_value=frappe._dict(values))
+
 	def settings(self, **values):
 		settings = frappe.get_single(SETTINGS)
 		settings.update(
@@ -188,14 +198,59 @@ class TestERiCSettings(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "256"):
 			self.settings(datenlieferant="a" * 257)
 
+	def test_the_archive_comes_from_the_bench_and_never_from_the_settings(self):
+		"""The probe of an installation loads the library of the archive as the user of the bench, and the runtime
+		serves every site of the bench: only its operator names the archive, in common_site_config.json."""
+		uploaded = {"archive_path": UPLOADED, "archive_sha256": UPLOADED_CHECKSUM}
+		site = {"steuerbote_eric_archive": UPLOADED, "steuerbote_eric_archive_sha256": UPLOADED_CHECKSUM}
+		with self.configured(), patch.dict(frappe.local.conf, site):
+			settings = self.settings(**uploaded)
+			self.assertEqual((settings.archive_path or "", settings.archive_sha256 or ""), ("", ""))
+			with (
+				patch("frappe.enqueue") as enqueue,
+				self.assertRaisesRegex(frappe.ValidationError, "common_site_config.json"),
+			):
+				settings.install_runtime()
+			enqueue.assert_not_called()
+		with (
+			self.configured(**BENCH),
+			patch.object(runtime, "install_from_archive", return_value=RUNTIME) as install,
+			patch("frappe.publish_realtime"),
+		):
+			settings = self.settings(**uploaded)
+			self.assertEqual((settings.archive_path, settings.archive_sha256), (ARCHIVE, CHECKSUM))
+			with patch("frappe.enqueue") as enqueue:
+				settings.install_runtime()
+			enqueue.assert_called_once()
+			run_installation()
+		self.assertEqual(install.call_args.args[:2], (Path(ARCHIVE), CHECKSUM))
+
+	def test_the_form_shows_the_archive_of_the_bench(self):
+		settings = self.settings()
+		with self.configured(
+			steuerbote_eric_archive=f" {ARCHIVE} ", steuerbote_eric_archive_sha256="AB" * 32
+		):
+			settings.run_method("onload")
+		self.assertEqual((settings.archive_path, settings.archive_sha256), (ARCHIVE, CHECKSUM))
+		definition = frappe.get_meta(SETTINGS)
+		for fieldname in ("archive_path", "archive_sha256"):
+			with self.subTest(fieldname=fieldname):
+				self.assertEqual(definition.get_field(fieldname).read_only, 1)
+
 	def test_the_checksum_is_a_sha256_in_hex(self):
-		self.assertEqual(self.settings(archive_sha256=f" {'AB' * 32} ").archive_sha256, CHECKSUM)
-		for value in ("ab" * 31, "xy" * 32):
-			with self.subTest(value=value), self.assertRaisesRegex(frappe.ValidationError, "SHA-256"):
-				self.settings(archive_sha256=value)
+		with self.configured(
+			steuerbote_eric_archive=ARCHIVE, steuerbote_eric_archive_sha256=f" {'AB' * 32} "
+		):
+			self.assertEqual(transmission_adapter.configured_archive(), (Path(ARCHIVE), CHECKSUM))
+		for value in ("ab" * 31, "xy" * 32, 4711):
+			with (
+				self.subTest(value=value),
+				self.configured(steuerbote_eric_archive=ARCHIVE, steuerbote_eric_archive_sha256=value),
+				self.assertRaisesRegex(frappe.ValidationError, "64 hexadecimal digits"),
+			):
+				transmission_adapter.configured_archive()
 
 	def test_the_archive_is_an_absolute_path_on_the_server(self):
-		self.assertEqual(self.settings(archive_path=f" {ARCHIVE} ").archive_path, ARCHIVE)
 		for value in (
 			"ERiC-44.3.6.0-Linux-x86_64.jar",
 			"eric/ERiC-44.3.6.0-Linux-x86_64.jar",
@@ -203,29 +258,32 @@ class TestERiCSettings(IntegrationTestCase):
 		):
 			with (
 				self.subTest(value=value),
+				self.configured(steuerbote_eric_archive=value, steuerbote_eric_archive_sha256=CHECKSUM),
 				self.assertRaisesRegex(frappe.ValidationError, "absolute path on the server"),
 			):
-				self.settings(archive_path=value)
+				transmission_adapter.configured_archive()
 
 	def test_installing_needs_the_archive_and_its_checksum(self):
-		for values in ({"archive_path": ARCHIVE}, {"archive_sha256": CHECKSUM}):
-			settings = self.settings(**values)
-			with self.subTest(values=values), patch("frappe.enqueue") as enqueue:
-				with self.assertRaises(frappe.ValidationError):
+		settings = self.settings()
+		for values in (
+			{"steuerbote_eric_archive": ARCHIVE},
+			{"steuerbote_eric_archive_sha256": CHECKSUM},
+			{},
+		):
+			with self.subTest(values=values), self.configured(**values), patch("frappe.enqueue") as enqueue:
+				with self.assertRaisesRegex(frappe.ValidationError, "bench set-config -g"):
 					settings.install_runtime()
 				enqueue.assert_not_called()
 
-	def test_installing_runs_in_a_background_job_that_gets_the_archive_and_its_checksum(self):
-		settings = self.settings(archive_path=ARCHIVE, archive_sha256=CHECKSUM)
-		with patch("frappe.enqueue") as enqueue:
+	def test_installing_runs_in_a_background_job_that_reads_the_archive_of_the_bench(self):
+		settings = self.settings()
+		with self.configured(**BENCH), patch("frappe.enqueue") as enqueue:
 			settings.install_runtime()
 		(call,) = enqueue.call_args_list
 		self.assertEqual(call.args, (INSTALLATION_JOB,))
 		self.assertEqual(
 			call.kwargs,
 			{
-				"archive_path": ARCHIVE,
-				"sha256": CHECKSUM,
 				"queue": "long",
 				"timeout": 1800,
 				"job_id": "steuerbote:eric:installation",
@@ -235,8 +293,9 @@ class TestERiCSettings(IntegrationTestCase):
 		)
 
 	def test_only_a_system_manager_installs(self):
-		settings = self.settings(archive_path=ARCHIVE, archive_sha256=CHECKSUM)
+		settings = self.settings()
 		with (
+			self.configured(**BENCH),
 			self.set_user(make_user(ACCOUNTS_MANAGER, "Accounts Manager")),
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaises(frappe.PermissionError),
@@ -244,17 +303,30 @@ class TestERiCSettings(IntegrationTestCase):
 			settings.install_runtime()
 		enqueue.assert_not_called()
 
+	def test_the_runtimes_live_where_the_bench_says(self):
+		with self.configured():
+			self.assertEqual(transmission_adapter.runtime_root(), Path(get_bench_path(), "sites", "eric"))
+		with self.configured(steuerbote_eric_root="/srv/eric"):
+			self.assertEqual(transmission_adapter.runtime_root(), Path("/srv/eric"))
+		with self.configured(), patch.dict(frappe.local.conf, {"steuerbote_eric_root": "/srv/elsewhere"}):
+			self.assertEqual(transmission_adapter.runtime_root(), Path(get_bench_path(), "sites", "eric"))
+
 	def test_the_installation_job_records_the_runtime(self):
 		self.settings(hersteller_id="12345")
-		runtime = RuntimeInfo(
+		runtime_info = RuntimeInfo(
 			"44.3.6.0", Path(LIB_DIR), Path(LIB_DIR, "plugins"), Path("/srv/eric/logs"), "12345"
 		)
 		with (
-			patch.object(transmission_adapter, "install_from_archive", return_value=runtime) as install,
+			self.configured(**BENCH),
+			patch.object(runtime, "install_from_archive", return_value=runtime_info) as install,
 			patch("frappe.publish_realtime") as publish,
 		):
-			run_installation(archive_path=ARCHIVE, sha256=CHECKSUM)
-		install.assert_called_once_with(ARCHIVE, CHECKSUM)
+			run_installation()
+		self.assertEqual(
+			install.call_args.args, (Path(ARCHIVE), CHECKSUM, transmission_adapter.runtime_root())
+		)
+		self.assertEqual(install.call_args.kwargs["installed_by"], "Administrator")
+		self.assertIs(install.call_args.kwargs["probe"], service.library_versions)
 		settings = frappe.get_single(SETTINGS)
 		self.assertEqual(
 			(settings.installed_version, settings.lib_dir, settings.log_dir, settings.simulation),
@@ -271,8 +343,9 @@ class TestERiCSettings(IntegrationTestCase):
 	def test_a_failed_installation_keeps_the_settings_and_says_why(self):
 		self.settings()
 		with (
+			self.configured(**BENCH),
 			patch.object(
-				transmission_adapter,
+				runtime,
 				"install_from_archive",
 				side_effect=RuntimeInstallError(
 					f"Die SHA-256-Summe des Archivs ist {'cd' * 32}, erwartet war {CHECKSUM}."
@@ -280,7 +353,7 @@ class TestERiCSettings(IntegrationTestCase):
 			),
 			patch("frappe.publish_realtime") as publish,
 		):
-			run_installation(archive_path=ARCHIVE, sha256=CHECKSUM)
+			run_installation()
 		settings = frappe.get_single(SETTINGS)
 		self.assertEqual((settings.installed_version or "", settings.simulation), ("", 1))
 		self.assertTrue(settings.last_check)
@@ -294,14 +367,21 @@ class TestERiCSettings(IntegrationTestCase):
 		self.settings()
 		logged = frappe.db.count("Error Log")
 		with (
-			patch.object(
-				transmission_adapter, "install_from_archive", side_effect=OSError("Datenträger voll")
-			),
+			self.configured(**BENCH),
+			patch.object(runtime, "install_from_archive", side_effect=OSError("Datenträger voll")),
 			patch("frappe.publish_realtime") as publish,
 		):
-			run_installation(archive_path=ARCHIVE, sha256=CHECKSUM)
+			run_installation()
 		self.assertEqual(frappe.db.count("Error Log"), logged + 1)
 		self.assertIn("Datenträger voll", publish.call_args.args[1]["error"])
+
+	def test_an_installation_without_the_archive_of_the_bench_says_how_to_name_it(self):
+		self.settings()
+		with self.configured(), patch("frappe.publish_realtime") as publish:
+			run_installation()
+		event, message = publish.call_args.args
+		self.assertEqual((event, message["ok"]), ("steuerbote_eric_installation", False))
+		self.assertIn("common_site_config.json", message["error"])
 
 	def runtime_root(self, *plugins: str) -> Path:
 		"""A runtime of ERiC 44.3.6.0 installed from an archive of invented files, with the plugins named."""
