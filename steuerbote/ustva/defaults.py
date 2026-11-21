@@ -730,6 +730,7 @@ SKR03_WATCHED = (
 SKR03_IGNORED = (
 	"1543",  # Bauabzugsbetrag (§ 48 EStG), not Umsatzsteuer
 	"1593",  # clearing account for prepayments received; the taxed ones are on 1711 to 1718
+	"1390",  # clearing account for the Ist-Versteuerung, F in the chart like its twin SKR04 1490
 	# OSS: this Umsatzsteuer is declared to the Bundeszentralamt für Steuern, not in the Voranmeldung
 	"1728",
 	"1767",
@@ -831,6 +832,11 @@ SKR03_IGNORED = (
 	"3794",
 	"3796",
 	"3798",  # Skonti 5,5 % in earlier editions; not the OSS account 3798 of SKR04
+	# Wareneingang taxable in a third country: a supply made outside the Inland is not taxable here
+	# (§ 1 Abs. 1 Nr. 1 UStG), and the Einfuhrumsatzsteuer of an import is deducted through 1588 in Kz 62.
+	# 3557 is a number in circulation; the chart for 2026 reserves 3554 to 3557 (R 3554-57).
+	"3551",
+	"3557",
 	"3558",  # Wareneingang taxable in another EU country
 	"3559",  # tax-free imports
 	# Wertabgaben without Umsatzsteuer, not taxable (§ 3 Abs. 1b Satz 2 UStG)
@@ -1261,7 +1267,9 @@ SKR04_IGNORED = (
 	"5785",
 	"5790",
 	"5906",
-	# purchases taxable in another EU country, tax-free imports and non-deductible Vorsteuer
+	# purchases taxable in a third country or in another EU country, tax-free imports and
+	# non-deductible Vorsteuer
+	"5551",
 	"5558",
 	"5559",
 	"5600",
