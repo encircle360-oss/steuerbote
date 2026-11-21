@@ -24,7 +24,8 @@ which files it; "In Mein ELSTER abgegeben" and "Als außerhalb abgegeben vermerk
 it with a note instead. Submitting alone ("Buchen") files nothing and is refused, except for a return that
 ELSTER accepted while its submission failed. A period counts as filed once a return of it is submitted or
 another return of it was filed through Steuerbote, cancelled or not, and a return with a record of its filing
-cannot be cancelled.
+cannot be cancelled. A draft that ELSTER accepted, or whose Senden has an unknown outcome, keeps all but its
+remarks, since the Finanzamt has it, or may have it, as it was sent.
 """
 
 import re
@@ -144,6 +145,7 @@ class VATReturn(Transmittable, Document):
 
 	def validate(self):
 		self.refuse_changes_while_transmitting()
+		self.refuse_changes_after_sending()
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
 		self._require_catalogue()
@@ -188,6 +190,7 @@ class VATReturn(Transmittable, Document):
 		Vorperiodenvergleich and the hints, which leave its amounts and whether it is ready as they are."""
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft return can be calculated."))
+		self.refuse_if_sent()
 		self._require_catalogue()
 		year = cint(self.year)
 		period, settings = self._set_period()

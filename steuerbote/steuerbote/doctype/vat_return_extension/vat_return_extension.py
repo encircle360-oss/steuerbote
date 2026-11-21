@@ -23,7 +23,9 @@ last Voranmeldung of the year deducts it in Kz 39. Submitting alone ("Buchen") f
 except for a form that ELSTER accepted while its submission failed. A company files one form a year: once a form
 of the year is filed or sent through Steuerbote, cancelled or not, a further one is a corrected Anmeldung (Kz 10).
 A filed Anmeldung der Sondervorauszahlung is corrected by cancelling it and amending it into a corrected
-Anmeldung, which the Antrag alone does not allow.
+Anmeldung, which the Antrag alone does not allow. A draft that ELSTER accepted, or whose Senden has an unknown
+outcome, keeps all but its remarks, since the Finanzamt has it, or may have it, as it was sent; after an unknown
+outcome, the note of its filing sets the filing as well.
 """
 
 from collections.abc import Iterator
@@ -144,6 +146,7 @@ class VATReturnExtension(Transmittable, Document):
 
 	def validate(self) -> None:
 		self.refuse_changes_while_transmitting()
+		self.refuse_changes_after_sending(FILING_FIELDS if self.flags.filed_outside else ())
 		if not self.company or self.year is None:
 			return  # the mandatory check that follows names the missing field
 		self._set_form(settings_for(self.company))
@@ -192,6 +195,7 @@ class VATReturnExtension(Transmittable, Document):
 		frappe.has_permission(DOCTYPE, "write", self, throw=True)
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft form can be calculated."))
+		self.refuse_if_sent()
 		settings = settings_for(self.company)
 		self._set_form(settings)
 		if self._with_sondervorauszahlung():

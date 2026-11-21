@@ -42,9 +42,11 @@ Jede Frist hat einen Status. Er kommt aus den Belegen des Unternehmens für ihre
 
 Als abgegeben zählt:
 
-- **Voranmeldung:** eine Meldung des Zeitraums ist eingereicht, also „Abgegeben“ oder „Ersetzt“, oder wurde über Steuerbote gesendet, mit Annahme durch ELSTER oder unbekanntem Ergebnis, auch wenn sie danach storniert wurde. Das ist dieselbe Regel wie im [Lebenslauf einer Meldung](architektur.md#lebenslauf-einer-meldung) (`filings` in `vat_return.py`).
-- **Zusammenfassende Meldung:** eine Meldung des Meldezeitraums ist mit „In Mein ELSTER abgegeben“ oder „Als außerhalb abgegeben vermerken“ eingereicht, auch eine Berichtigung.
+- **Voranmeldung:** eine Meldung des Zeitraums ist eingereicht, also „Abgegeben“ oder „Ersetzt“.
+- **Zusammenfassende Meldung:** eine Meldung des Meldezeitraums ist eingereicht, nach einem Senden über ERiC oder mit „In Mein ELSTER abgegeben“ oder „Als außerhalb abgegeben vermerken“, auch eine Berichtigung.
 - **Sondervorauszahlung:** eine Dauerfristverlängerung des Unternehmens für das Jahr ist eingereicht. Eine Anmeldung, die für ihre Berichtigung storniert wurde, bleibt abgegeben, denn das Finanzamt hat sie.
+
+Ebenso zählt jeder dieser Belege als abgegeben, sobald er über Steuerbote gesendet wurde, mit Annahme durch ELSTER oder unbekanntem Ergebnis, auch wenn er danach ein Entwurf blieb oder storniert oder verworfen wurde, denn das Finanzamt oder das BZSt hat ihn oder kann ihn haben; abgegeben ist er am Tag, an dem die Übermittlung endete. Das ist dieselbe Regel wie im [Lebenslauf einer Meldung](architektur.md#lebenslauf-einer-meldung) (`filings` in `elster_transmission/transmission.py`).
 
 Gibt es mehrere Belege, zeigt die Frist den zuletzt angelegten abgegebenen, sonst den zuletzt angelegten.
 

@@ -11,7 +11,9 @@ A run whose job is gone is closed by the form or by the next run, a check as fai
 unknown, since it may have reached ELSTER. Certificate and password never become arguments of the job, nor does
 anything that unlocks them: stash_certificate keeps them encrypted for a few minutes, for the user who entered them
 and the document they entered them for, transmit hands them over to the transmission it starts for that user and
-document, and the job takes them by the name of its transmission, once.
+document, and the job takes them by the name of its transmission, once. After a Senden that ELSTER accepted or
+whose outcome is unknown, the Finanzamt or the BZSt has the document as it was sent, or may have it: nothing of the
+draft changes then but its remarks, Buchen submits it as it is, and after an unknown outcome the note of its filing.
 
 A document that transmits has the fields company, year and transmission_in_progress and provides datenart(), the
 Datenart it goes as (steuerbote.eric.datenart); nutzdaten(hersteller_id), the Nutzdaten for ERiC;
@@ -21,13 +23,15 @@ which files the document once.
 
 import base64
 import binascii
+from collections.abc import Collection
 
 import frappe
 from frappe import _
+from frappe.model import no_value_fields, table_fields
 from frappe.model.document import Document
 from frappe.rate_limiter import rate_limit
 from frappe.recorder import do_not_record
-from frappe.utils import cint, escape_html, now_datetime, strip_html
+from frappe.utils import cast, cint, escape_html, now_datetime, strip_html
 from frappe.utils.background_jobs import is_job_enqueued
 
 import steuerbote
@@ -71,6 +75,9 @@ MAX_ENCODED_CERTIFICATE = 4 * -(-MAX_CERTIFICATE_BYTES // 3)
 # Each stash stays in the Redis cache for up to its 15 minutes, which evicts what it cannot hold.
 STASH_LIMIT = 10
 STASH_SECONDS = secrets.TTL_SECONDS
+# What a document that ELSTER has, or may have, still changes: its remarks, which are Steuerbote's own and go into no
+# Nutzdaten.
+CHANGEABLE_AFTER_SENDING = frozenset({"remarks"})
 
 
 class Transmittable:
@@ -211,6 +218,43 @@ class Transmittable:
 			(row for row in self.filings() if row.operation == SEND and row.status == SUCCEEDED), None
 		)
 
+	def sent_record(self) -> dict | None:
+		"""The record of the latest real Senden of the document that ELSTER accepted or whose outcome is unknown,
+		if there is one."""
+		return next((row for row in self.filings() if row.operation == SEND), None)
+
+	def refuse_changes_after_sending(self, filing: Collection[str] = ()) -> None:
+		"""A draft that ELSTER accepted, or may have received, is filed as it was sent, also when its submission
+		failed: a save keeps every value but the remarks, Buchen submits the draft as it is, and the note of its
+		filing after an unknown outcome sets the fields of ``filing`` besides. A change goes to the Finanzamt or the
+		BZSt as a new document that corrects it."""
+		before = self.get_doc_before_save()
+		if before is None or before.docstatus != 0:
+			return
+		if changed_fields(before, self, {*CHANGEABLE_AFTER_SENDING, *filing}):
+			self.refuse_if_sent()
+
+	def refuse_if_sent(self) -> None:
+		"""Refuse to change a draft that ELSTER has, or may have, by a save, by Berechnen or by discarding it."""
+		sent = self.sent_record()
+		if sent is None:
+			return
+		if sent.status == UNKNOWN:
+			frappe.throw(
+				_(
+					"Whether {0} reached ELSTER is unknown, so {1} stays as it was sent. Check in Mein ELSTER whether it arrived: if it did, note its filing; if not, a System Manager deletes {0}, then it can change again. Only its remarks can change meanwhile."
+				).format(sent.name, self.name)
+			)
+		frappe.throw(
+			_(
+				"{0} was transmitted with Transferticket {1}: it can only be submitted with Buchen as it was sent, and a change needs a new document that corrects it. Only its remarks can still change."
+			).format(self.name, sent.transferticket)
+		)
+
+	def before_discard(self) -> None:
+		"""Discarding a draft cancels it in ERPNext, which takes nothing back from ELSTER."""
+		self.refuse_if_sent()
+
 	def latest_run(self) -> dict | None:
 		"""For the form: the latest Prüfen, Testsenden or Senden of the document that has finished, with how many
 		errors and hints ERiC or the simulation gave and the first of each (messages.summary)."""
@@ -299,6 +343,31 @@ def filings(doctype: str, names: list[str]) -> list[dict]:
 		fields=["name", "document", "operation", "status", "transferticket", "finished_at"],
 		order_by="creation desc",
 	)
+
+
+def changed_fields(before: Document, after: Document, kept: Collection[str] = ()) -> list[str]:
+	"""The fields of a document whose values differ between two versions of it, each value as Frappe casts it for
+	its fieldtype and a table row by row; the fields of ``kept`` do not count."""
+	return [
+		field.fieldname
+		for field in after.meta.fields
+		if field.fieldname not in kept
+		and not field.get("is_virtual")
+		and (field.fieldtype in table_fields or field.fieldtype not in no_value_fields)
+		and _values(before, field) != _values(after, field)
+	]
+
+
+def _values(doc: Document, field) -> object:
+	if field.fieldtype not in table_fields:
+		return cast(field.fieldtype, doc.get(field.fieldname))
+	columns = [
+		column for column in frappe.get_meta(field.options).fields if column.fieldtype not in no_value_fields
+	]
+	return [
+		tuple(cast(column.fieldtype, row.get(column.fieldname)) for column in columns)
+		for row in doc.get(field.fieldname) or ()
+	]
 
 
 def transmission_job_id(transmission: str) -> str:

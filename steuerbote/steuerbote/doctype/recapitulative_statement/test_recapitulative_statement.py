@@ -212,6 +212,15 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 	def line(self, doc, vat_id: str):
 		return next(row for row in doc.lines if row.vat_id == vat_id)
 
+	def rows_of(self, doc, table: str) -> list[dict]:
+		"""The values of the rows of a table, without the fields Frappe sets on every save."""
+		return [row.as_dict(no_default_fields=True, no_child_table_fields=True) for row in doc.get(table)]
+
+	def roll_back_afterwards(self) -> None:
+		"""Undo what the test files, so that its Meldezeitraum stays open for the tests after it."""
+		frappe.db.savepoint("recapitulative_statement_test")
+		self.addCleanup(frappe.db.rollback, save_point="recapitulative_statement_test")
+
 	def confirm(self, doc, service: FakeBzst):
 		"""USt-IdNrn. prüfen, with the job run at once against the fake transport."""
 		with patch("frappe.enqueue") as enqueue:
@@ -826,6 +835,113 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		forged.save()
 		self.assertEqual(frappe.db.get_value(DOCTYPE, forged.name, ["status", "ready"]), ("Entwurf", 0))
 
+	def test_a_save_keeps_the_reconciliation_the_comparison_the_status_and_the_filing_as_stored(self):
+		"""What Berechnen found besides the lines stays as it stored it, the status as well, also when a save sends
+		the statement back as a draft, and the filing as its note or Senden stored it."""
+		self.roll_back_afterwards()
+		doc = self.calculated(4)
+		found = {table: self.rows_of(doc, table) for table in ("reconciliation", "comparison")}
+		self.assertTrue(all(found.values()))
+		for row in doc.reconciliation:
+			row.update({"ledger": 1, "difference": 0, "deviating_vouchers": 0, "balanced": 1})
+		doc.set("comparison", [])
+		doc.update(
+			{
+				"status": "Entwurf",
+				"filed_via": "eric",
+				"filed_on": "2026-05-20",
+				"transferticket": TICKET,
+				"filing_note": "Abgegeben",
+				"filed_by": "Administrator",
+			}
+		)
+		doc.save()
+		doc.reload()
+		self.assertEqual({table: self.rows_of(doc, table) for table in found}, found)
+		self.assertEqual(
+			(doc.status, doc.filed_via, doc.filed_on, doc.transferticket, doc.filing_note, doc.filed_by),
+			("Berechnet", None, None, None, None, None),
+		)
+
+	def test_a_new_statement_keeps_of_its_rows_only_what_the_form_lets_the_user_enter(self):
+		"""An insert through the API keeps no read-only field either: a line comes with its USt-IdNr., Art and
+		override, and Berechnen finds the rest; a new statement has no filing."""
+		self.roll_back_afterwards()
+		doc = self.statement(
+			4,
+			filed_via="eric",
+			filed_on="2026-05-20",
+			transferticket=TICKET,
+			filed_by="Administrator",
+			lines=[
+				{
+					"vat_id": AUSTRIAN,
+					"art": "L",
+					"override": 9000,
+					"override_reason": "Gutschrift vom 30. April",
+					"party": "Erfunden",
+					"amount": 99999,
+					"reported": 99999,
+					"filed_amount": 5,
+					"in_file": 1,
+					"manual": 1,
+					"confirmation_outcome": "valid",
+				}
+			],
+		)
+		doc.reload()
+		(row,) = doc.lines
+		self.assertEqual(
+			(row.vat_id, row.art, money(row.override), row.override_reason),
+			(AUSTRIAN, "L", money(9000), "Gutschrift vom 30. April"),
+		)
+		self.assertEqual(
+			(row.party or None, money(row.amount), money(row.reported), money(row.filed_amount), row.in_file),
+			(None, money(0), money(0), money(0), 0),
+		)
+		self.assertEqual((row.manual, row.confirmation_outcome or None), (0, None))
+		self.assertEqual(
+			(doc.status, doc.filed_via, doc.filed_on, doc.transferticket, doc.filed_by),
+			("Entwurf", None, None, None, None),
+		)
+
+	def test_lines_changed_past_the_save_are_not_filed(self):
+		"""The lines and their sums follow the vouchers and the overrides on every save, and what the lines of a
+		filing report is what a Berichtigung later corrects. Written past the save, here straight into the database,
+		they are neither transmitted nor made into the file for Mein ELSTER nor filed, until Berechnen runs again."""
+		self.roll_back_afterwards()
+		doc = self.calculated(4, remarks="Die USt-IdNrn. sind am Liefertag bestätigt worden.")
+		refused = "do not agree with its vouchers and overrides as stored"
+		line = self.line(doc, AUSTRIAN).name
+		for record, field, value in (
+			(("Recapitulative Statement Line", line), "reported", 1),
+			(("Recapitulative Statement Line", line), "in_file", 0),
+			((DOCTYPE, doc.name), "total_l", 1),
+		):
+			stored = frappe.db.get_value(*record, field)
+			frappe.db.set_value(*record, field, value)
+			with self.subTest(field=field):
+				with (
+					patch("frappe.enqueue") as enqueue,
+					self.assertRaisesRegex(frappe.ValidationError, refused),
+				):
+					doc.transmit("validate")
+				enqueue.assert_not_called()
+				for attempt in (doc.make_csv_file, lambda: doc.mark_filed_outside(filed_via="mein_elster")):
+					with self.assertRaisesRegex(frappe.ValidationError, refused):
+						attempt()
+					doc.reload()
+			frappe.db.set_value(*record, field, stored)
+		frappe.db.set_value(DOCTYPE, doc.name, "total_l", 1)
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		doc.mark_filed_outside(filed_via="mein_elster")
+		self.assertEqual(
+			(doc.docstatus, money(self.line(doc, AUSTRIAN).reported), money(doc.total_l)),
+			(1, money(9800), money(9800)),
+		)
+
 	def test_a_statement_is_filed_only_through_the_filing_marks(self):
 		doc = self.statement(8)
 		with self.assertRaisesRegex(frappe.ValidationError, "Calculate the statement before filing it"):
@@ -863,6 +979,18 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "cannot be cancelled"):
 			doc.cancel()
 		self.assertTrue(doc.make_csv_file())
+
+	def test_the_status_of_a_filed_statement_stays_as_filed(self):
+		"""Whether a Meldezeitraum is filed, and what a Berichtigung corrects, follow the status of its statements:
+		once submitted, only the filing of a Berichtigung replaces a statement."""
+		self.roll_back_afterwards()
+		doc = self.calculated(3, remarks="Die USt-IdNrn. sind am Liefertag bestätigt worden.")
+		doc.mark_filed_outside(filed_via="mein_elster")
+		doc.reload()
+		doc.status = "Ersetzt"
+		with self.assertRaises(frappe.UpdateAfterSubmitError):
+			doc.save()
+		self.assertEqual(frappe.db.get_value(DOCTYPE, doc.name, "status"), "Abgegeben")
 
 	def test_a_number_valid_all_through_the_months_counts_for_them_and_a_finding_says_how_old_it_is(self):
 		"""The BZSt answers for the moment of the query. A number that lost its validity after the months of the

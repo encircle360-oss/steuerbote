@@ -5,9 +5,11 @@ frappe.ui.form.on("VAT Return Mapping", {
 				filters: { company: doc.company, is_group: 0 },
 			}));
 		}
-		// A Float field stores no blank, so a rule without a rate holds 0, which mapping_sync reads as no rate.
+		// A Float field stores no blank, so a rule without a rate holds 0, which mapping_sync reads as no rate. The
+		// grid formats a cell whose text is empty once more with the document of the form, which has no rate and
+		// shows 0, so the cell gets an empty element instead.
 		frappe.meta.set_formatter("VAT Return Mapping Rule", "tax_rate", null, (value, df, options, doc) =>
-			flt(value) ? frappe.form.formatters.Float(value, df, options, doc) : ""
+			flt(value) ? frappe.form.formatters.Float(value, df, options, doc) : "<span></span>"
 		);
 	},
 

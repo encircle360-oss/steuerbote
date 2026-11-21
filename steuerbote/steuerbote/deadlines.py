@@ -4,7 +4,9 @@ steuerbote.deadlines computes the deadlines from plain data. This module reads t
 of the VAT Return Settings and the day they were made, the VAT Returns, Recapitulative Statements and VAT Return
 Extensions of a company with the day each was filed, the holidays of its Holiday List (steuerbote.holiday_list)
 and, for a Meldezeitraum without a Recapitulative Statement, whether its ledger holds anything to report
-(steuerbote.zm_sources). The report Offene Fristen shows the deadlines.
+(steuerbote.zm_sources). A document is filed once it is submitted, or sent through Steuerbote with an outcome that
+ELSTER accepted or that is unknown, even if it was cancelled or discarded since (transmission.filings). The report
+Offene Fristen shows the deadlines.
 
 send_reminders() runs once a day (scheduler_events in hooks.py). For each company whose settings name recipients,
 it sends one e-mail in German with the deadlines that are not filed and fall due within the days of notice of the
@@ -36,7 +38,13 @@ from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import DO
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import reminder_name
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import filings
 from steuerbote.steuerbote.doctype.recapitulative_statement.bridge import reporting_period
+from steuerbote.steuerbote.doctype.recapitulative_statement.recapitulative_statement import (
+	DOCTYPE as RECAPITULATIVE_STATEMENT,
+)
 from steuerbote.steuerbote.doctype.vat_return.vat_return import DOCTYPE as VAT_RETURN
+from steuerbote.steuerbote.doctype.vat_return_extension.vat_return_extension import (
+	DOCTYPE as VAT_RETURN_EXTENSION,
+)
 from steuerbote.ustva import Mapping
 from steuerbote.ustva.period import Period, Rhythm
 from steuerbote.zm.rhythm import Coverage
@@ -90,12 +98,12 @@ def _vat_returns(company: str) -> list[Filing]:
 	"""A return is filed once it is submitted, or sent through Steuerbote even if it was cancelled since
 	(vat_return.filings); a return cancelled without that never reached the Finanzamt."""
 	rows = frappe.get_all(
-		"VAT Return",
+		VAT_RETURN,
 		filters={"company": company},
 		fields=["name", "year", "rhythm", "period_index", "docstatus", "modified"],
 		order_by="creation desc",
 	)
-	sent = _days_filed([row.name for row in rows])
+	sent = _days_filed(VAT_RETURN, [row.name for row in rows])
 	found = []
 	for row in rows:
 		filed_on = sent.get(row.name) or (getdate(row.modified) if row.docstatus == SUBMITTED else None)
@@ -106,10 +114,10 @@ def _vat_returns(company: str) -> list[Filing]:
 	return found
 
 
-def _days_filed(returns: list[str]) -> dict[str, date]:
-	"""The day each of the returns was filed by its latest record that files it: the day noted for a filing outside
+def _days_filed(doctype: str, names: list[str]) -> dict[str, date]:
+	"""The day each of the documents was filed by its latest record that files it: the day noted for a filing outside
 	Steuerbote, or else the day its transmission finished."""
-	records = filings(VAT_RETURN, returns)
+	records = filings(doctype, names)
 	if not records:
 		return {}
 	days = {
@@ -127,37 +135,42 @@ def _days_filed(returns: list[str]) -> dict[str, date]:
 
 
 def _statements(company: str) -> list[Filing]:
+	"""A statement is filed once it is submitted, or sent through Steuerbote even if it was discarded since; a
+	statement discarded without that never reached the BZSt."""
 	rows = frappe.get_all(
-		"Recapitulative Statement",
-		filters={"company": company, "docstatus": ["<", CANCELLED]},
+		RECAPITULATIVE_STATEMENT,
+		filters={"company": company},
 		fields=["name", "year", "period_kind", "period_index", "docstatus", "filed_on", "modified"],
 		order_by="creation desc",
 	)
-	return [
-		Filing(
-			Kind.ZUSAMMENFASSENDE_MELDUNG,
-			reporting_period(row.period_kind, cint(row.year), cint(row.period_index)),
-			row.name,
-			_noted_filing(row),
-		)
-		for row in rows
-	]
+	sent = _days_filed(RECAPITULATIVE_STATEMENT, [row.name for row in rows])
+	found = []
+	for row in rows:
+		filed_on = sent.get(row.name) or _noted_filing(row)
+		if row.docstatus == CANCELLED and filed_on is None:
+			continue
+		period = reporting_period(row.period_kind, cint(row.year), cint(row.period_index))
+		found.append(Filing(Kind.ZUSAMMENFASSENDE_MELDUNG, period, row.name, filed_on))
+	return found
 
 
 def _extensions(company: str) -> list[Filing]:
-	"""A filed form cancelled for its correction stays filed with the Finanzamt; any other cancelled form files
-	nothing."""
+	"""A form is filed once it is submitted, or sent through Steuerbote even if it was discarded since. A filed form
+	cancelled for its correction stays filed with the Finanzamt; any other cancelled form files nothing."""
 	rows = frappe.get_all(
-		"VAT Return Extension",
+		VAT_RETURN_EXTENSION,
 		filters={"company": company},
 		fields=["name", "year", "docstatus", "filed_on", "modified"],
 		order_by="creation desc",
 	)
-	return [
-		Filing(Kind.SONDERVORAUSZAHLUNG, cint(row.year), row.name, _noted_filing(row))
-		for row in rows
-		if row.docstatus != CANCELLED or row.filed_on
-	]
+	sent = _days_filed(VAT_RETURN_EXTENSION, [row.name for row in rows])
+	found = []
+	for row in rows:
+		filed_on = sent.get(row.name) or _noted_filing(row)
+		if row.docstatus == CANCELLED and filed_on is None:
+			continue
+		found.append(Filing(Kind.SONDERVORAUSZAHLUNG, cint(row.year), row.name, filed_on))
+	return found
 
 
 def _noted_filing(row: frappe._dict) -> date | None:

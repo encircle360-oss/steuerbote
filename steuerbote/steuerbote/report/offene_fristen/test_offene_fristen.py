@@ -34,6 +34,7 @@ ACCOUNTS = {
 }
 VA = "Umsatzsteuer-Voranmeldung"
 ZM = "Zusammenfassende Meldung"
+SVZ = "Sondervorauszahlung"
 
 
 def new_vat_return(month: int, **fields):
@@ -158,6 +159,45 @@ class TestOffeneFristen(IntegrationTestCase):
 			draft.new_transmission("send", simulated=False, status="Erfolgreich")
 		self.assertEqual(self.deadlines()[-1], (VA, "November 2026", date(2026, 12, 11), 21, "Abgegeben"))
 		self.assertIn(f">{draft.name}</a>", self.rows()[-1]["document"])
+
+	def test_a_zusammenfassende_meldung_sent_but_not_submitted_files_its_deadline(self):
+		"""ELSTER accepted the statement, or the outcome of its Senden is unknown, while it stayed a draft or was
+		discarded: the BZSt has it, or may have it."""
+		draft = frappe.get_doc(
+			{
+				"doctype": "Recapitulative Statement",
+				"company": COMPANY,
+				"year": 2026,
+				"period_kind": "month",
+				"period_index": 10,
+			}
+		).insert()
+		october = (ZM, "Oktober 2026", date(2026, 11, 25), 5)
+		self.assertIn((*october, "Offen"), self.deadlines())
+		for status in ("Erfolgreich", "Unbekannt"):
+			with self.subTest(status=status):
+				frappe.db.delete("ELSTER Transmission", {"document": draft.name})
+				draft.new_transmission("send", simulated=False, status=status)
+				self.assertIn((*october, "Abgegeben"), self.deadlines())
+		frappe.db.set_value("Recapitulative Statement", draft.name, "docstatus", 2)
+		self.assertIn((*october, "Abgegeben"), self.deadlines())
+
+	def test_a_dauerfristverlaengerung_sent_but_not_submitted_files_its_deadline(self):
+		"""ELSTER accepted the form, or the outcome of its Senden is unknown, while it stayed a draft or was
+		discarded: the Finanzamt has it, or may have it."""
+		settings = frappe.get_doc("VAT Return Settings", COMPANY)
+		settings.append("prepayments", {"year": 2027, "dauerfristverlaengerung": 1})
+		settings.save()
+		draft = frappe.get_doc({"doctype": "VAT Return Extension", "company": COMPANY, "year": 2027}).insert()
+		sondervorauszahlung = (SVZ, "2027", date(2027, 2, 10), 82)
+		self.assertIn((*sondervorauszahlung, "Offen"), self.deadlines(horizon=90))
+		for status in ("Erfolgreich", "Unbekannt"):
+			with self.subTest(status=status):
+				frappe.db.delete("ELSTER Transmission", {"document": draft.name})
+				draft.new_transmission("send", simulated=False, status=status)
+				self.assertIn((*sondervorauszahlung, "Abgegeben"), self.deadlines(horizon=90))
+		frappe.db.set_value("VAT Return Extension", draft.name, "docstatus", 2)
+		self.assertIn((*sondervorauszahlung, "Abgegeben"), self.deadlines(horizon=90))
 
 	def test_a_meldezeitraum_without_anything_to_report_owes_no_zusammenfassende_meldung(self):
 		self.assertNotIn((ZM, "November 2026"), [row[:2] for row in self.deadlines(horizon=40)])

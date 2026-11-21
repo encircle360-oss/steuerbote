@@ -385,6 +385,68 @@ class LineRowsTest(TestCase):
 		)
 
 
+class AmountsKeptTest(TestCase):
+	"""Before a statement is transmitted, made into its file or filed, its lines and sums are built again from its
+	vouchers and overrides and set against what it holds."""
+
+	def setUp(self):
+		self.lines = statement(
+			invoice("SINV-1", "1000.99"),
+			invoice("SINV-2", "20.00", kennzahl="21", vat_id=FRANCE),
+			invoice("SINV-3", "50.00", vat_id=None),
+			overrides={(SPAIN, Art.L): Override(d("5000"), "Verbringen nach Spanien")},
+		)
+		self.stored = {
+			"lines": bridge.line_rows(self.lines, {}, MARCH),
+			**bridge.totals(self.lines.meldezeilen),
+		}
+
+	def test_the_lines_and_the_sums_of_a_save_are_kept(self):
+		self.assertTrue(bridge.amounts_kept(self.lines, MARCH, None, self.stored))
+
+	def test_lines_and_sums_read_as_frappe_gives_them(self):
+		"""Floats for the amounts, None for a line without USt-IdNr., the rows in any order."""
+		rows = [
+			{
+				**row,
+				"vat_id": row["vat_id"] or None,
+				"amount": float(row["amount"]),
+				"reported": float(row["reported"]),
+				"filed_amount": 0.0,
+			}
+			for row in reversed(self.stored["lines"])
+		]
+		totals = {field: float(amount) for field, amount in bridge.totals(self.lines.meldezeilen).items()}
+		self.assertTrue(bridge.amounts_kept(self.lines, MARCH, None, {"lines": rows, **totals}))
+
+	def test_a_line_or_a_sum_changed_past_the_save_is_not_kept(self):
+		for field, value in (
+			("amount", d("1000.98")),
+			("reported", d("999")),
+			("filed_amount", d("1")),
+			("in_file", 0),
+		):
+			with self.subTest(field=field):
+				rows = [dict(row) for row in self.stored["lines"]]
+				next(row for row in rows if row["vat_id"] == AUSTRIA)[field] = value
+				self.assertFalse(bridge.amounts_kept(self.lines, MARCH, None, {**self.stored, "lines": rows}))
+		for field in ("total_l", "total_d", "total_s"):
+			with self.subTest(field=field):
+				self.assertFalse(bridge.amounts_kept(self.lines, MARCH, None, {**self.stored, field: d("1")}))
+		for rows in (self.stored["lines"][1:], [*self.stored["lines"], line_row(AUSTRIA, "S")]):
+			with self.subTest(rows=len(rows)):
+				self.assertFalse(bridge.amounts_kept(self.lines, MARCH, None, {**self.stored, "lines": rows}))
+
+	def test_a_berichtigung_keeps_what_was_filed_for_its_lines(self):
+		held = {(AUSTRIA, Art.L): d("900"), ("ES111111113", Art.L): d("100")}
+		stored = {
+			"lines": bridge.line_rows(self.lines, {}, MARCH, held),
+			**bridge.totals(self.lines.meldezeilen),
+		}
+		self.assertTrue(bridge.amounts_kept(self.lines, MARCH, held, stored))
+		self.assertFalse(bridge.amounts_kept(self.lines, MARCH, None, stored))
+
+
 class HintsTest(TestCase):
 	def test_a_row_per_finding_with_voucher_and_party(self):
 		finding = Finding(Code.NO_VAT_ID, "Beleg SINV-1 geht ...", "Sales Invoice:SINV-1", "Alpen GmbH")

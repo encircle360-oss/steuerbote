@@ -264,7 +264,9 @@ class TestVATReturnExtension(IntegrationTestCase):
 		doc.new_transmission("send", simulated=False, status="Erfolgreich", transferticket=TICKET)
 		doc.reload()
 		doc.base_override = 55000
-		with self.assertRaisesRegex(frappe.ValidationError, "do not agree with the form as stored"):
+		with self.assertRaisesRegex(
+			frappe.ValidationError, "can only be submitted with Buchen as it was sent"
+		):
 			doc.submit()
 		doc.reload()
 		doc.submit()
@@ -272,6 +274,63 @@ class TestVATReturnExtension(IntegrationTestCase):
 			(doc.docstatus, money(doc.sondervorauszahlung), doc.filed_via, doc.transferticket),
 			(1, money(4000), "eric", TICKET),
 		)
+
+	def test_a_form_elster_has_or_may_have_keeps_all_but_its_remarks(self):
+		"""ELSTER accepted the Senden of the draft, or its outcome is unknown: the Finanzamt has the form, or may
+		have it, as it was sent. A save changes nothing but the remarks, Berechnen and discarding the draft are
+		refused, and the form is filed as it is, with Buchen or, after an unknown outcome, by noting its filing."""
+		self.roll_back_afterwards()
+		for company, status, refused in (
+			(FILING_COMPANY, "Erfolgreich", f"was transmitted with Transferticket {TICKET}"),
+			(HOLIDAY_COMPANY, "Unbekannt", "reached ELSTER is unknown"),
+		):
+			with self.subTest(status=status):
+				doc = self.calculated(
+					company,
+					2026,
+					base_override=44000,
+					base_override_reason="Voranmeldungen 2025 im Altsystem",
+				)
+				doc.new_transmission(
+					"send",
+					simulated=False,
+					status=status,
+					transferticket=TICKET if status == "Erfolgreich" else None,
+				)
+				doc.reload()
+				for change in (
+					{"base_override": 55000},
+					{"no_sepa_mandate": 1, "remarks": "Ohne Lastschrift"},
+					{"supplementary_code": "1", "kz500_begruendung": "Siehe Schreiben"},
+					{"filed_via": "mein_elster", "filed_on": "2026-02-09"},
+				):
+					doc.update(change)
+					with self.assertRaisesRegex(frappe.ValidationError, refused):
+						doc.save()
+					doc.reload()
+				with self.assertRaisesRegex(frappe.ValidationError, refused):
+					doc.calculate()
+				doc.reload()
+				with self.assertRaisesRegex(frappe.ValidationError, refused):
+					doc.discard()
+				# Frappe keeps the action of a refused discard on the document; the next request loads it anew.
+				doc = frappe.get_doc(DOCTYPE, doc.name)
+				doc.remarks = "Am 9. Februar 2026 übermittelt"
+				doc.save()
+				doc.reload()
+				if status == "Erfolgreich":
+					doc.submit()
+				else:
+					doc.mark_filed_outside(filed_via="mein_elster", filed_on="2026-02-09")
+				self.assertEqual(
+					frappe.db.get_value(DOCTYPE, doc.name, ["docstatus", "status", "filed_via", "remarks"]),
+					(
+						1,
+						"Abgegeben",
+						"eric" if status == "Erfolgreich" else "mein_elster",
+						"Am 9. Februar 2026 übermittelt",
+					),
+				)
 
 	def test_takes_kz83_and_kz39_of_the_latest_filing_of_each_period(self):
 		doc = self.calculated()

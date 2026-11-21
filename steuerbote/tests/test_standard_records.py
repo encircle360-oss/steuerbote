@@ -551,6 +551,31 @@ class NamingFilesTest(TestCase):
 				self.assertEqual((fields["year"]["fieldtype"], fields["year"]["reqd"]), ("Int", 1))
 
 
+class SubmittedFieldsFilesTest(TestCase):
+	"""A submitted document stays as it was filed: Steuerbote changes one only in code, with db_set, such as the
+	status Ersetzt of a filing that a correction replaces, and no action of a user needs to change a field after
+	submit. So no field of the app, its custom fields or its Property Setters allows that."""
+
+	def test_no_field_of_the_app_changes_after_submit(self):
+		changeable = [
+			f"{definition['name']}.{field['fieldname']}"
+			for definition in (read_json(path) for path in sorted((MODULE / "doctype").glob("*/*.json")))
+			for field in definition["fields"]
+			if field.get("allow_on_submit")
+		]
+		changeable += [
+			f"{field['dt']}.{field['fieldname']}"
+			for field in read_json(FIXTURES / "custom_field.json")
+			if field.get("allow_on_submit")
+		]
+		changeable += [
+			f"{setter['doc_type']}.{setter.get('field_name')}"
+			for setter in read_json(FIXTURES / "property_setter.json")
+			if setter["property"] == "allow_on_submit" and str(setter["value"]) != "0"
+		]
+		self.assertEqual(changeable, [])
+
+
 class PrintFormatFilesTest(TestCase):
 	def setUp(self):
 		self.record = read_json(PRINT_FORMAT / "umsatzsteuer_voranmeldung.json")
