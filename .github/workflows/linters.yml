@@ -39,14 +39,30 @@ jobs:
         with:
           persist-credentials: false
 
+      # The rules decide whether the scan passes, so like the actions they come at one commit, and a newer
+      # commit is an update by hand.
+      - name: Check out the Frappe semgrep rules
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: frappe/semgrep-rules
+          ref: 81a6e3d47a328249e8ddf04c586e493dd5553002
+          path: .semgrep/frappe
+          persist-credentials: false
+
+      - name: Check out the correctness rules for Python of the Semgrep registry
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: semgrep/semgrep-rules
+          ref: a5ad1714f00c9f7fde980cab0ea1d6dc6d414fd2
+          path: .semgrep/registry
+          sparse-checkout: python/lang/correctness
+          persist-credentials: false
+
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
 
-      - name: Download the Frappe semgrep rules
-        run: git clone --depth 1 https://github.com/frappe/semgrep-rules.git /tmp/frappe-semgrep-rules
-
       - name: Run semgrep
         run: |
           pip install semgrep==1.185.0
-          semgrep scan --error --config /tmp/frappe-semgrep-rules/rules --config r/python.lang.correctness steuerbote
+          semgrep scan --error --config .semgrep/frappe/rules --config .semgrep/registry/python/lang/correctness steuerbote
