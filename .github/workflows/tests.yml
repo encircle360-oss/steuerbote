@@ -147,3 +147,46 @@ jobs:
         run: |
           bench --site test_site set-config allow_tests true
           bench --site test_site run-tests --app steuerbote
+
+      - name: Build the assets of the desk for the browser tests
+        # bench init --skip-assets leaves out the bundles of Frappe. They are built without the build commands
+        # of Frappe's sub-projects such as Studio, which the desk does not load: a minute instead of the four of
+        # bench build --app frappe. The cache holds the assets.json of before.
+        working-directory: /home/runner/frappe-bench
+        run: |
+          yarn --cwd apps/frappe run production --apps frappe
+          bench compile-po-to-mo --app frappe --locale de
+          bench --site test_site clear-cache
+
+      - name: Fill the test site with the data of the browser tests
+        working-directory: /home/runner/frappe-bench
+        run: bench --site test_site execute steuerbote.tests.e2e.seed.run
+
+      - name: Start the test site
+        # DEV_SERVER sends the desk to socket.io on its own port, as bench start does, and the default site
+        # tells socket.io which site localhost is.
+        working-directory: /home/runner/frappe-bench
+        run: |
+          mkdir -p "$RUNNER_TEMP/browser-results"
+          bench use test_site
+          DEV_SERVER=1 nohup bench --site test_site serve --port 8000 --noreload > "$RUNNER_TEMP/browser-results/web.log" 2>&1 &
+          nohup node apps/frappe/socketio.js > "$RUNNER_TEMP/browser-results/socketio.log" 2>&1 &
+          curl --fail --silent --show-error --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/method/ping
+
+      - name: Install Playwright and Chromium
+        run: |
+          python -m venv "$RUNNER_TEMP/browser-venv"
+          "$RUNNER_TEMP/browser-venv/bin/pip" install -r requirements-dev.txt
+          "$RUNNER_TEMP/browser-venv/bin/playwright" install --with-deps --only-shell chromium
+
+      - name: Run the browser tests
+        run: |
+          "$RUNNER_TEMP/browser-venv/bin/python" -m pytest steuerbote/tests/e2e --base-url http://localhost:8000 \
+            --output "$RUNNER_TEMP/browser-results"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: browser-tests
+          path: ${{ runner.temp }}/browser-results
+          if-no-files-found: ignore
