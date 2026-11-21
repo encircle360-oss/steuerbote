@@ -655,7 +655,9 @@ class TestTransmission(TransmissionTestCase):
 		doc.run_method("onload")
 		self.assertEqual(doc.get_onload("elster_run")["name"], valid.name)
 
-	def test_through_the_eric_stub_a_runtime_installs_and_testsenden_and_senden_go_out(self):
+	def install_stub_runtime(self) -> Path:
+		"""Install the ERiC stub as runtime 44.3.6.0 from an archive the bench names, with the Hersteller-ID and the
+		confirmation in the settings; returns the directory of the runtimes, which the caller patches in."""
 		library = stub.library()
 		directory = Path(tempfile.mkdtemp(prefix="steuerbote-eric-"))
 		self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
@@ -666,17 +668,26 @@ class TestTransmission(TransmissionTestCase):
 			jar.writestr(f"{STUB_LIB}/plugins2/libcheckUStVA_2026.so", b"")
 		checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
 		root = directory / "eric"
+		bench = {"steuerbote_eric_archive": str(archive), "steuerbote_eric_archive_sha256": checksum}
+		with (
+			patch.object(transmission_adapter, "runtime_root", return_value=root),
+			patch.object(transmission_adapter, "common_site_config", return_value=bench),
+			patch("frappe.publish_realtime"),
+		):
+			run_installation()
+		settings = frappe.get_single("ERiC Settings")
+		self.assertEqual(
+			(settings.installed_version, settings.lib_dir), ("44.3.6.0", str(root / "44.3.6.0" / "lib"))
+		)
+		settings.update(
+			{"hersteller_id": "12345", "datenlieferant": DATENLIEFERANT, "privacy_notice_confirmed": 1}
+		)
+		settings.save()
+		return root
+
+	def test_through_the_eric_stub_a_runtime_installs_and_testsenden_and_senden_go_out(self):
+		root = self.install_stub_runtime()
 		with patch.object(transmission_adapter, "runtime_root", return_value=root):
-			with patch("frappe.publish_realtime"):
-				run_installation(archive_path=str(archive), sha256=checksum)
-			settings = frappe.get_single("ERiC Settings")
-			self.assertEqual(
-				(settings.installed_version, settings.lib_dir), ("44.3.6.0", str(root / "44.3.6.0" / "lib"))
-			)
-			settings.update(
-				{"hersteller_id": "12345", "datenlieferant": DATENLIEFERANT, "privacy_notice_confirmed": 1}
-			)
-			settings.save()
 			doc = self.new_return(1, company=STUB_COMPANY)
 			doc.calculate()
 			doc.reload()
@@ -693,6 +704,29 @@ class TestTransmission(TransmissionTestCase):
 			(sent.status, sent.outcome, sent.transferticket), ("Erfolgreich", "accepted", STUB_TICKET)
 		)
 		self.assertEqual((doc.docstatus, doc.status, doc.transmission_in_progress), (1, "Abgegeben", 0))
+
+	def test_through_the_eric_stub_a_runtime_whose_libraries_changed_is_never_loaded(self):
+		"""Every run checks the runtime against its manifest first: a library planted after the installation never
+		gets loaded, and nothing reaches the worker, certificate and PIN least of all."""
+		root = self.install_stub_runtime()
+		with (root / "44.3.6.0" / "lib" / "libericapi.so").open("ab") as library:
+			library.write(b"planted")
+		with (
+			patch.object(transmission_adapter, "runtime_root", return_value=root),
+			patch.object(service, "start_worker") as start,
+		):
+			doc = self.new_return(2, company=STUB_COMPANY)
+			doc.calculate()
+			doc.reload()
+			checked, _, _ = self.transmitted(doc, "validate")
+			sent, _, _ = self.transmitted(doc, "test_send", token=self.stash())
+		start.assert_not_called()
+		for transmission in (checked, sent):
+			with self.subTest(operation=transmission.operation):
+				self.assertEqual((transmission.status, transmission.outcome), ("Fehlgeschlagen", "failed"))
+				self.assertIn("verändert: libericapi.so", transmission.messages[-1].text)
+				self.assertIn("44.3.6.0", transmission.messages[-1].text)
+		self.assertEqual((doc.docstatus, doc.transmission_in_progress), (0, 0))
 
 
 class TestFilingState(TransmissionTestCase):

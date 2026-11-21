@@ -15,15 +15,25 @@ Quelle ist die ERiC-Dokumentation 44.3.6.0: Entwicklerhandbuch (zitiert mit Kapi
 ## Einrichtung durch den Betreiber
 
 1. Im ELSTER-Entwicklerbereich anmelden, den Lizenzvertrag annehmen und das Softwarepaket für Linux laden, `ERiC-<version>-Linux-x86_64.jar`. Die JAR-Datei ist ein ZIP-Archiv (Kap. 3.1, 4.3.3).
-2. Die SHA-256-Summe des Archivs bilden, etwa mit `sha256sum`, und Pfad und Summe in den ERiC-Einstellungen eintragen.
-3. Einrichten lassen. Steuerbote
+2. Die Signatur prüfen. Die Softwarepakete werden „jeweils als signierte JAR-Datei ausgeliefert“, und das Entwicklerhandbuch nennt zur Prüfung `jarsigner -verify -certs -verbose ERiC-<version>-<os>.jar` aus dem JDK, das auch das Zertifikat der Signatur zeigt (Kap. 3.1). Welches Zertifikat die Signatur tragen muss, nennt es nicht, und das Dokumentationspaket enthält keine Zertifikatsdatei. Steuerbote prüft die Signatur deshalb nicht selbst; das tut der Betreiber, und Steuerbote prüft danach die SHA-256-Summe, die er festhält.
+3. Die SHA-256-Summe des Archivs bilden, etwa mit `sha256sum`, und Pfad und Summe auf dem Server in die `common_site_config.json` der Bench eintragen:
+
+   ```sh
+   bench set-config -g steuerbote_eric_archive /srv/eric/ERiC-44.3.6.0-Linux-x86_64.jar
+   bench set-config -g steuerbote_eric_archive_sha256 <SHA-256-Summe>
+   ```
+
+   Nur dort zählen sie: Eine Laufzeit dient allen Sites der Bench, und die Probe beim Einrichten lädt die Bibliothek des Archivs als Benutzer der Bench. Was in der `site_config.json` einer Site steht, nimmt Steuerbote nicht, und die ERiC-Einstellungen zeigen Pfad und Summe nur an, sodass auch ein System Manager kein anderes Archiv wählen kann.
+4. In den ERiC-Einstellungen „Laufzeitumgebung installieren“ wählen. Der Hintergrundjob liest Pfad und Summe selbst aus der `common_site_config.json`. Steuerbote
    - prüft die SHA-256-Summe, bevor es etwas entpackt, und nimmt nur Archive bis 1 GiB;
    - entpackt nur die Dateien unter `ERiC-<version>/Linux-x86_64/lib/`, die Basisbibliotheken und darunter die Plugins (Kap. 3.1.4, Tabellen 3-2 und 3-3), und verlangt `libericapi.so` und das Plugin `libcommonData.so`, das ERiC immer braucht (Kap. 3.1.6.1);
    - weist Pfade außerhalb dieses Verzeichnisses, Links, doppelte Einträge und Bibliotheken zweier Pakete zurück;
    - lädt die Bibliothek zur Probe einmal im Worker-Prozess (`EricInitialisiere`, `EricVersion`, `EricBeende`);
    - legt die Version erst danach als Ganzes unter `<Laufzeitverzeichnis>/<version>/` ab, mit dem Manifest `steuerbote-runtime.json`: SHA-256 des Archivs und jeder Datei, die Jahre der UStVA-Plugins, ob die Version eine Beta ist, Zeitpunkt und Benutzer der Einrichtung.
-4. Jede Version liegt in einem eigenen Verzeichnis, denn Basisbibliotheken verschiedener Pakete passen nur garantiert zusammen, wenn sie aus demselben Paket stammen (Kap. 3.1.6.2). Dasselbe Archiv noch einmal einzurichten ändert nichts; ein anderes Archiv mit derselben Version wird abgewiesen.
-5. Das Laufzeitverzeichnis liegt außerhalb jeder Site, etwa unter `sites/eric/` der Bench. So wird ERiC weder ausgeliefert noch mit den Sicherungen einer Site gesichert. Steuerbote übergibt den Pfad der Bibliotheken nie an `ldconfig` und setzt kein `LD_LIBRARY_PATH` (Kap. 4.3.3, 4.2.2).
+5. Jede Version liegt in einem eigenen Verzeichnis, denn Basisbibliotheken verschiedener Pakete passen nur garantiert zusammen, wenn sie aus demselben Paket stammen (Kap. 3.1.6.2). Dasselbe Archiv noch einmal einzurichten ändert nichts, solange die Dateien der Version ihrem Manifest entsprechen, und nennt sonst die Abweichung; ein anderes Archiv mit derselben Version wird abgewiesen.
+6. Das Laufzeitverzeichnis liegt außerhalb jeder Site, unter `sites/eric/` der Bench oder dort, wo `steuerbote_eric_root` in der `common_site_config.json` es hinlegt. So wird ERiC weder ausgeliefert noch mit den Sicherungen einer Site gesichert. Steuerbote übergibt den Pfad der Bibliotheken nie an `ldconfig` und setzt kein `LD_LIBRARY_PATH` (Kap. 4.3.3, 4.2.2).
+
+Vor jedem Prüfen, Testsenden und Senden vergleicht Steuerbote die Laufzeit, die es gewählt hat, mit ihrem Manifest (`runtime.detect`, `runtime.verify`): Jede Datei unter `lib/` muss die SHA-256-Summe des Manifests haben, keine darf fehlen, keine fremde dazukommen, und ein Link, auf eine Bibliothek oder ein Verzeichnis von Plugins, ist immer fremd. Weicht etwas ab, lädt Steuerbote ERiC nicht, der Vorgang endet als fehlgeschlagen und nennt die Abweichung, und der Worker erhält weder Zertifikat noch PIN. Dann das Verzeichnis der Version entfernen und sie neu einrichten.
 
 Das Archiv nennt seine Version im Stammverzeichnis `ERiC-<version>/`; fehlt es, gilt die Version aus dem Dateinamen `ERiC-<version>-Linux-x86_64.jar`. Diesen Aufbau beschreibt das Entwicklerhandbuch für das entpackte Paket (Kap. 3.1.4 und Kap. 4.3 mit dem Include-Pfad `ERiC-<version>\Windows-x86\include`). Ein echtes Paket für Linux hat Steuerbote bisher nicht entpackt.
 

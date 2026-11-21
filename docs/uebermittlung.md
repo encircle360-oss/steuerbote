@@ -83,8 +83,8 @@ Die ERiC-Einstellungen gelten für die ganze Installation, nicht je Firma, denn 
 | Produktname | Vorgabe „steuerbote“, höchstens 50 Zeichen. Der Name darf das Wort ELSTER nicht enthalten (§ 12 der ERiC-Nutzungsbedingungen). |
 | Produktversion | Version von Steuerbote, wird gesetzt |
 | Datenlieferant | wer die Daten liefert, für den Kopf der Lieferung, höchstens 256 Zeichen: Firma; Ansprechpartner; Telefon; E-Mail; Ort; PLZ; Straße; Land. Zeilenumbrüche werden zu Semikolons. |
-| ERiC-Archiv | absoluter Pfad des Archivs für Linux x86_64 auf dem Server |
-| SHA-256 des Archivs | die Prüfsumme, die der ELSTER-Entwicklerbereich für das Archiv angibt, 64 hexadezimale Stellen |
+| ERiC-Archiv | nur zur Anzeige: der absolute Pfad des Archivs für Linux x86_64 auf dem Server, den der Betreiber als `steuerbote_eric_archive` in die `common_site_config.json` der Bench einträgt |
+| SHA-256 des Archivs | nur zur Anzeige: die Prüfsumme des Archivs, 64 hexadezimale Stellen, aus `steuerbote_eric_archive_sha256` derselben Datei |
 | Installierte Version, Verzeichnis der Bibliotheken, Letzte Prüfung | setzt die Installation |
 | Verzeichnis der Logdateien | wo ERiC seine Protokolldatei `eric.log` ablegt, je ELSTER-Übermittlung ein Verzeichnis unter `sites/<site>/logs/eric/` |
 | Proxy-URL | nur wenn der Server ELSTER über einen Proxy erreicht: `http://`, `socks4://` oder `socks5://` mit Host und Port, etwa `http://proxy.example.com:3128`; leer heißt ohne Proxy. Die Simulation erreicht keinen Server und braucht keinen. |
@@ -95,10 +95,11 @@ Die ERiC-Einstellungen gelten für die ganze Installation, nicht je Firma, denn 
 Steuerbote enthält kein ERiC und lädt es auch nicht herunter. ERiC dürfen nur Lizenznehmer der Finanzverwaltung nutzen, und zwar in ihrem eigenen Produkt. Jeder Betreiber holt sein ERiC deshalb selbst:
 
 1. Im ELSTER-Entwicklerbereich anmelden, die Nutzungsbedingungen annehmen, das ERiC-Archiv für Linux x86_64 herunterladen und auf den Server legen.
-2. In den ERiC-Einstellungen den absoluten Pfad des Archivs und seine SHA-256 eintragen, die Datenschutzhinweise lesen und bestätigen und speichern.
-3. „Laufzeitumgebung installieren“ wählen. Die Installation läuft im Hintergrund: Sie prüft die SHA-256, entpackt die Bibliotheken für Linux x86_64, lädt sie einmal zur Probe und legt die Version erst danach ab. Ist sie fertig, erscheinen ein Hinweis und die installierte Version. Schlägt sie fehl, nennt der Hinweis die Ursache, Einzelheiten zu unerwarteten Fehlern stehen im Fehlerprotokoll.
+2. Auf dem Server die Signatur des Archivs mit `jarsigner` prüfen, seine SHA-256 bilden und beides in die `common_site_config.json` der Bench eintragen, mit `bench set-config -g steuerbote_eric_archive <Pfad>` und `bench set-config -g steuerbote_eric_archive_sha256 <SHA-256>`, siehe [ERiC](eric.md#einrichtung-durch-den-betreiber). Das ist Sache des Betreibers des Servers: Die ERiC-Einstellungen zeigen Pfad und SHA-256 nur an, und die `site_config.json` einer Site zählt nicht, denn eine Laufzeitumgebung dient allen Sites der Bench, und ihre Probe lädt die Bibliothek des Archivs als Benutzer der Bench.
+3. In den ERiC-Einstellungen die Datenschutzhinweise lesen und bestätigen und speichern.
+4. „Laufzeitumgebung installieren“ wählen. Die Installation läuft im Hintergrund und liest Pfad und SHA-256 selbst aus der `common_site_config.json`: Sie prüft die SHA-256, entpackt die Bibliotheken für Linux x86_64, lädt sie einmal zur Probe und legt die Version erst danach ab. Ist sie fertig, erscheinen ein Hinweis und die installierte Version. Schlägt sie fehl, nennt der Hinweis die Ursache, Einzelheiten zu unerwarteten Fehlern stehen im Fehlerprotokoll.
 
-Die Laufzeitumgebungen liegen außerhalb jeder Site im Verzeichnis `sites/eric` der Bench, das `steuerbote_eric_root` in `common_site_config.json` ändern kann. Sie werden weder ausgeliefert noch mit einer Site gesichert. Wie Versionen und Jahreswechsel zusammenhängen, steht in [ERiC](eric.md#versionen-und-jahreswechsel).
+Die Laufzeitumgebungen liegen außerhalb jeder Site im Verzeichnis `sites/eric` der Bench, das `steuerbote_eric_root` in `common_site_config.json` ändern kann. Sie werden weder ausgeliefert noch mit einer Site gesichert. Vor jedem Vorgang mit ERiC prüft Steuerbote die Bibliotheken der Laufzeitumgebung gegen ihr Manifest; ist eine verändert, fehlt eine oder liegt eine fremde Datei oder ein Link darunter, lehnt es den Vorgang ab und nennt die Abweichung. Wie Versionen und Jahreswechsel zusammenhängen, steht in [ERiC](eric.md#versionen-und-jahreswechsel).
 
 ### Laufzeitumgebung prüfen
 

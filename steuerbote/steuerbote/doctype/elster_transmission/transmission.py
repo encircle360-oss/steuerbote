@@ -31,6 +31,7 @@ import steuerbote
 from steuerbote.eric import secrets
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import TESTMERKER, Operation, Outcome
+from steuerbote.eric.runtime import RuntimeIntegrityError
 from steuerbote.eric.service import PIN
 from steuerbote.steuerbote.doctype.elster_transmission import messages
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
@@ -466,7 +467,14 @@ def _installed_runtime(doc: Document, operation: Operation, hersteller_id: str, 
 	per run."""
 	log_dir = eric_log_root() / transmission.name
 	kind = doc.datenart()
-	runtime_info = transmission_adapter.detect_runtime(kind, operation, hersteller_id, log_dir)
+	try:
+		runtime_info = transmission_adapter.detect_runtime(kind, operation, hersteller_id, log_dir)
+	except RuntimeIntegrityError as error:
+		frappe.throw(
+			_(
+				"The libraries of the installed ERiC {0} differ from its manifest: {1}. Steuerbote does not load them; remove the directory of the version and install it again."
+			).format(error.version, ", ".join(error.problems))
+		)
 	if runtime_info is None and kind.year is None:
 		frappe.throw(
 			_(

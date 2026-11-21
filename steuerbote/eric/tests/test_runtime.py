@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 import warnings
@@ -15,6 +16,7 @@ from steuerbote.eric.runtime import (
 	MANIFEST,
 	RuntimeInfo,
 	RuntimeInstallError,
+	RuntimeIntegrityError,
 	detect,
 	install_from_archive,
 	installations,
@@ -375,6 +377,76 @@ class VerifyTest(ArchiveTestCase):
 				"unbekannt: plugins/libcheckUStVA_2019.so",
 			),
 		)
+
+	def test_names_links_and_special_files_which_the_installation_never_makes(self):
+		self.install(LIBRARIES)
+		lib = self.root / "44.3.6.0" / "lib"
+		elsewhere = self.directory / "elsewhere"
+		elsewhere.mkdir()
+		(elsewhere / "libericapi.so").write_bytes(b"ericapi")
+		(lib / "libericapi.so").unlink()
+		(lib / "libericapi.so").symlink_to(elsewhere / "libericapi.so")
+		(lib / "plugins3").symlink_to(elsewhere, target_is_directory=True)
+		os.mkfifo(lib / "plugins2" / "libcheckLStA_2026.so")
+		(installation,) = installations(self.root)
+		self.assertEqual(
+			verify(installation),
+			(
+				"fehlt: libericapi.so",
+				"unbekannt: plugins2/libcheckLStA_2026.so",
+				"Link: libericapi.so",
+				"Link: plugins3",
+			),
+		)
+
+
+class IntegrityTest(ArchiveTestCase):
+	"""Every run takes an installation only as its manifest describes it, so a planted or changed library of ERiC is
+	never loaded, and the worker never receives certificate and PIN for it."""
+
+	def setUp(self):
+		super().setUp()
+		self.archive = self.jar(LIBRARIES | ZMDO_PLUGIN)
+		install_from_archive(*self.archive, self.root)
+		self.lib = self.root / "44.3.6.0" / "lib"
+
+	def assertRefusedToRun(self, *problems: str) -> None:
+		for datenart in (ustva(2026), ZMDO):
+			with self.subTest(datenart=datenart.name), self.assertRaises(RuntimeIntegrityError) as raised:
+				detect(self.root, datenart=datenart, allow_beta=True, hersteller_id="12345")
+			self.assertEqual((raised.exception.version, raised.exception.problems), ("44.3.6.0", problems))
+			self.assertIn("ERiC 44.3.6.0", str(raised.exception))
+			self.assertIn(problems[0], str(raised.exception))
+
+	def test_an_untouched_runtime_runs(self):
+		self.assertEqual(detect(self.root, datenart=ustva(2026)).version, "44.3.6.0")
+		self.assertEqual(detect(self.root, datenart=ZMDO).version, "44.3.6.0")
+
+	def test_a_changed_library_is_never_loaded(self):
+		(self.lib / "libericapi.so").write_bytes(b"planted")
+		self.assertRefusedToRun("verändert: libericapi.so")
+
+	def test_a_planted_plugin_is_never_loaded(self):
+		(self.lib / "plugins2" / "libcheckLStA_2026.so").write_bytes(b"planted")
+		self.assertRefusedToRun("unbekannt: plugins2/libcheckLStA_2026.so")
+
+	def test_a_missing_library_is_noticed_before_eric_is_loaded(self):
+		(self.lib / "plugins2" / "libcommonData.so").unlink()
+		self.assertRefusedToRun("fehlt: plugins2/libcommonData.so")
+
+	def test_a_link_in_place_of_a_library_is_never_loaded(self):
+		elsewhere = self.directory / "libericapi.so"
+		elsewhere.write_bytes(b"ericapi")
+		(self.lib / "libericapi.so").unlink()
+		(self.lib / "libericapi.so").symlink_to(elsewhere)
+		self.assertRefusedToRun("fehlt: libericapi.so", "Link: libericapi.so")
+
+	def test_installing_the_same_archive_again_refuses_a_changed_runtime(self):
+		(self.lib / "libericapi.so").write_bytes(b"planted")
+		with self.assertRaises(RuntimeInstallError) as raised:
+			install_from_archive(*self.archive, self.root)
+		self.assertIn("verändert: libericapi.so", str(raised.exception))
+		self.assertIn(str(self.root / "44.3.6.0"), str(raised.exception))
 
 
 class PlatformTest(TestCase):
