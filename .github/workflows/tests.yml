@@ -150,8 +150,8 @@ jobs:
 
       - name: Build the assets of the desk for the browser tests
         # bench init --skip-assets leaves out the bundles of Frappe. They are built without the build commands
-        # of Frappe's sub-projects such as Studio, which the desk does not load: a minute instead of the four of
-        # bench build --app frappe. The cache holds the assets.json of before.
+        # of Frappe's sub-projects such as Studio, which the desk does not load: seconds instead of the minutes
+        # of bench build --app frappe. The cache still holds the assets.json from before the build.
         working-directory: /home/runner/frappe-bench
         run: |
           yarn --cwd apps/frappe run production --apps frappe
