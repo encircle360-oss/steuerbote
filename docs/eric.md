@@ -118,6 +118,14 @@ Erreicht der Server ELSTER nur über einen Proxy, nennen ihn die ERiC-Einstellun
 - **PIN.** Die PIN einer Zertifikatsdatei hat 6 bis 128 ASCII-Zeichen vom Leerzeichen bis zur Tilde (Tabelle 5-3); Steuerbote weist andere vor dem Aufruf ab. Fehlversuche sperren eine Zertifikatsdatei nicht (Tabelle 5-4).
 - **Protokoll `eric.log`.** ERiC schreibt sein Protokoll in das Verzeichnis, das der Aufruf nennt, rollierend in bis zu vier Dateien zu je 10 MiB (Kap. 4.1.3.3). Für den ELSTER-Support ist die Datei vollständig weiterzugeben (Kap. 4.1.3.4), an die Finanzverwaltung nur mit ausdrücklicher Erlaubnis der Anwender (§ 15).
 
+## Aufbewahrung
+
+Steuerbote löscht nichts, was ein Lauf hinterlässt. Was bleibt, wo es liegt und wer es löscht:
+
+- **ELSTER-Übermittlung und ihre Dateien.** Nutzdaten, Protokoll und Antwort des ELSTER-Servers hängen als private Dateien an der Übermittlung, unter `sites/<site>/private/files` und in jeder Sicherung mit Dateien, siehe [Übermittlung an ELSTER](uebermittlung.md#wo-xml-und-protokoll-liegen). Eine Übermittlung, die eine Abgabe festhält, lässt sich nicht löschen: Sie gehört mit dem Übermittlungsprotokoll zu den Unterlagen, die das Unternehmen nach § 147 AO aufbewahrt; wie lange, klärt es mit der Steuerberatung. Jede andere Übermittlung darf der System Manager löschen.
+- **`eric.log`.** Das Protokoll von ERiC liegt je Übermittlung unter `sites/<site>/logs/eric/<Übermittlung>`, außerhalb der Datenbank, mit höchstens 40 MiB je Verzeichnis. Es dient der Fehlersuche mit dem ELSTER-Support. Steuerbote löscht es nicht, auch nicht mit seiner Übermittlung, und eine Sicherung mit `bench backup --with-files` enthält es nicht. Der Betreiber legt fest, wie lange er die Verzeichnisse braucht, und löscht ältere selbst, etwa mit einem Cron-Job.
+- **Fehlerprotokoll.** Unerwartete Fehler eines Laufs schreibt Steuerbote mit dem Traceback in das Fehlerprotokoll (Error Log) von Frappe. Zertifikat und PIN stehen nie darin, siehe [Sicherheit](#sicherheit), im Entwicklermodus aber womöglich Steuerdaten aus den lokalen Variablen. Frappe löscht die Einträge jeden Tag, sobald sie älter sind als die Tage, die die Protokolleinstellungen (Log Settings) unter „Zu löschende Protokolle“ für das Fehlerprotokoll nennen; ohne eigenen Eintrag sind es in Frappe 16 14 Tage (`default_log_clearing_doctypes` in `frappe/hooks.py`). Wer Einträge länger braucht oder kürzer halten will, stellt die Zahl dort ein.
+
 ## Grenzen
 
 - Nur Linux x86_64, nur die Datenarten UStVA mit Voranmeldung und Vordruck USt 1 H und ZMDO mit der Zusammenfassenden Meldung, ein Nutzdatenblock je Lieferung.
