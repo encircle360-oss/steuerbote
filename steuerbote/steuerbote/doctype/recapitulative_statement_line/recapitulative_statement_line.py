@@ -17,8 +17,8 @@ class RecapitulativeStatementLine(Document):
 		confirmation_date: DF.Date | None
 		confirmation_outcome: DF.Literal["", "valid", "invalid", "unknown"]
 		confirmation_service: DF.Literal["", "bzst", "vies"]
-		confirmation_status: DF.Data | None
-		consultation_id: DF.Data | None
+		confirmation_status: DF.SmallText | None
+		consultation_id: DF.SmallText | None
 		filed_amount: DF.Currency
 		in_file: DF.Check
 		manual: DF.Check
