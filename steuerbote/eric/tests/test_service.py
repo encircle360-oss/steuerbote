@@ -1,9 +1,13 @@
 import base64
+import ctypes
 import hashlib
 import json
+import os
 import shutil
 import signal
+import stat
 import subprocess
+import sys
 import tempfile
 import time
 import zipfile
@@ -49,6 +53,26 @@ SECRETS = (PIN, base64.b64encode(CONTAINER).decode(), "pkcs12")
 # The password of the proxy, invented.
 PROXY_GEHEIM = "Proxy-Geheim-4711"
 PROXY = Proxy("proxy.example.com", 3128, "steuerbote", PROXY_GEHEIM)
+PR_SET_CHILD_SUBREAPER = 36
+# A background job that starts the worker on a send that sleeps in ERiC and then waits, as long as it is let live.
+JOB = """
+import json, sys, time
+from pathlib import Path
+from steuerbote.eric import service
+from steuerbote.eric.result import Operation
+from steuerbote.eric.runtime import RuntimeInfo
+from steuerbote.eric.tests.test_service import CONTAINER, HEADER, PIN, nutzdaten
+
+runtime = RuntimeInfo.from_dict(json.loads(sys.argv[1]))
+request = service._process_request(
+	Operation.SEND, nutzdaten("STUB-SLEEP"), HEADER, runtime, CONTAINER, PIN, work_dir=Path(sys.argv[2])
+)
+worker = service.start_worker()
+worker.stdin.write(request)
+worker.stdin.close()
+print(worker.pid, flush=True)
+time.sleep(60)
+"""
 
 
 class JobTimeout(Exception):
@@ -254,6 +278,121 @@ class LostWorkerTest(ServiceTestCase):
 			self.assertRaises(OSError),
 		):
 			run(Operation.SEND, nutzdaten(), HEADER, self.runtime, CONTAINER, PIN)
+
+
+class WorkDirectoryTest(ServiceTestCase):
+	"""ERiC writes its protocol into a directory only the user of the bench can read, which the service makes for
+	each run and removes once the worker has ended, whether it answered, was ended after its timeout or by an
+	exception: a worker that is killed cannot remove anything itself."""
+
+	def setUp(self):
+		self.temporary = Path(tempfile.mkdtemp(prefix="steuerbote-eric-tmp-"))
+		self.addCleanup(shutil.rmtree, self.temporary, ignore_errors=True)
+		self.enterContext(mock.patch.object(tempfile, "tempdir", str(self.temporary)))
+		self.seen: list[tuple[Path, int]] = []
+		start = service.start_worker
+
+		def started() -> subprocess.Popen:
+			for path in self.temporary.iterdir():
+				self.seen.append((path, stat.S_IMODE(path.stat().st_mode)))
+			return start()
+
+		self.enterContext(mock.patch.object(service, "start_worker", side_effect=started))
+
+	def assertRemovedAfterwards(self) -> None:
+		((path, mode),) = self.seen
+		self.assertTrue(path.name.startswith("steuerbote-eric-"))
+		self.assertEqual(mode, 0o700)
+		self.assertEqual(list(self.temporary.iterdir()), [])
+
+	def test_a_run_that_answers(self):
+		self.assertIs(
+			run(Operation.VALIDATE, nutzdaten(), HEADER, self.runtime, None, None).outcome, Outcome.VALID
+		)
+		self.assertRemovedAfterwards()
+
+	def test_a_run_whose_worker_is_ended_after_its_timeout(self):
+		result = run(
+			Operation.SEND, nutzdaten("STUB-SLEEP"), HEADER, self.runtime, CONTAINER, PIN, timeout_seconds=1
+		)
+		self.assertIs(result.outcome, Outcome.UNKNOWN)
+		self.assertRemovedAfterwards()
+
+	def test_a_run_that_an_exception_interrupts(self):
+		with self.assertRaises(Interrupted), interrupted_after(1, Interrupted()):
+			run(
+				Operation.SEND,
+				nutzdaten("STUB-SLEEP"),
+				HEADER,
+				self.runtime,
+				CONTAINER,
+				PIN,
+				timeout_seconds=60,
+			)
+		self.assertRemovedAfterwards()
+
+	def test_the_worker_writes_into_that_directory(self):
+		request = json.loads(
+			service._process_request(
+				Operation.SEND, nutzdaten(), HEADER, self.runtime, CONTAINER, PIN, work_dir=self.temporary
+			)
+		)
+		self.assertEqual(request["work_dir"], str(self.temporary))
+
+
+class OrphanTest(ServiceTestCase):
+	"""A background job ended with SIGKILL, by the operating system or a supervisor, takes its worker along
+	(PR_SET_PDEATHSIG), so no worker keeps running with certificate and PIN after the run is gone."""
+
+	def subreaper(self) -> None:
+		"""Orphans of this test become children of this process, which so learns how they ended."""
+		prctl = ctypes.CDLL(None, use_errno=True).prctl
+		prctl.argtypes = (ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong)
+		self.assertEqual(prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0), 0)
+		self.addCleanup(prctl, PR_SET_CHILD_SUBREAPER, 0, 0, 0, 0)
+
+	def ended(self, pid: int, seconds: float) -> int | None:
+		"""The wait status of the child, once it has ended within the seconds; None while it runs."""
+		deadline = time.monotonic() + seconds
+		while True:
+			ended, status = os.waitpid(pid, os.WNOHANG)
+			if ended:
+				self.reaped.add(pid)
+				return status
+			if time.monotonic() >= deadline:
+				return None
+			time.sleep(0.05)
+
+	def end(self, pid: int) -> None:
+		"""Kill and reap a child the test has not reaped."""
+		if pid not in self.reaped:
+			os.kill(pid, signal.SIGKILL)
+			os.waitpid(pid, 0)
+
+	def test_a_worker_ends_with_the_job_that_started_it(self):
+		self.reaped: set[int] = set()
+		self.subreaper()
+		log_dir = Path(tempfile.mkdtemp(prefix="steuerbote-eric-orphan-"))
+		self.addCleanup(shutil.rmtree, log_dir, ignore_errors=True)
+		runtime = replace(self.runtime, log_dir=log_dir)
+		job = subprocess.Popen(  # noqa: S603 - this interpreter with the job above
+			[sys.executable, "-c", JOB, json.dumps(runtime.to_dict()), str(log_dir)],
+			stdout=subprocess.PIPE,
+			cwd=service.APP_ROOT,
+		)
+		self.addCleanup(job.wait)
+		self.addCleanup(job.kill)
+		worker = int(job.stdout.readline())
+		self.addCleanup(self.end, worker)
+		deadline = time.monotonic() + 30
+		while not (log_dir / "eric.log").exists() and time.monotonic() < deadline:
+			time.sleep(0.05)
+		self.assertTrue((log_dir / "eric.log").exists(), "the worker never reached ERiC")
+		job.kill()
+		job.wait()
+		status = self.ended(worker, 10)
+		self.assertIsNotNone(status, "the worker outlived the job that started it")
+		self.assertEqual(os.WTERMSIG(status), signal.SIGKILL)
 
 
 class TracebackTest(ServiceTestCase):

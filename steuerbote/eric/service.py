@@ -9,7 +9,9 @@ The worker starts with the interpreter of this process, without the PYTHON* envi
 the user's site packages (-E -s), in a new process group, with LANG=C.UTF-8 and a fixed PATH as its whole
 environment. Its working directory is the directory that holds the package steuerbote, so it imports
 the same code as this process, whether steuerbote is installed or checked out; -I would drop that
-directory from the module path.
+directory from the module path. It is told the pid of this process and ends when this process ends, also
+when this process is killed. ERiC writes its files, the PDF of a protocol among them, into a directory of this
+run that only the user of the bench can read and that is removed when the worker has ended.
 
 ERiC runs only for a runtime that confirms the privacy notices of the tax administration
 (Lizenzvertrag, § 5 Abs. 1 und 2); the simulation needs no confirmation.
@@ -26,9 +28,11 @@ import base64
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass
@@ -124,14 +128,25 @@ def run(
 		return TransmissionResult(
 			operation, False, False, runtime.version, None, testmerker, refused, outcome=Outcome.FAILED
 		)
-	request_secret = _process_request(
-		operation, nutzdaten_xml, header, runtime, certificate_secret, certificate_password, proxy
-	)
-	worker = start_worker()
+	work_dir = Path(tempfile.mkdtemp(prefix="steuerbote-eric-"))
 	try:
-		return interpret(wait_for(worker, request_secret, timeout_seconds), operation, runtime.version)
-	except Exception as error:
-		return lost(operation, runtime.version, error)
+		request_secret = _process_request(
+			operation,
+			nutzdaten_xml,
+			header,
+			runtime,
+			certificate_secret,
+			certificate_password,
+			proxy,
+			work_dir,
+		)
+		worker = start_worker()
+		try:
+			return interpret(wait_for(worker, request_secret, timeout_seconds), operation, runtime.version)
+		except Exception as error:
+			return lost(operation, runtime.version, error)
+	finally:
+		shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def library_versions(runtime: RuntimeInfo, timeout_seconds: int = 60) -> dict[str, str]:
@@ -151,7 +166,7 @@ def call_worker(request: Mapping[str, object], timeout_seconds: int) -> WorkerOu
 def start_worker() -> subprocess.Popen:
 	"""The worker process, waiting for its request on standard input."""
 	return subprocess.Popen(  # noqa: S603 - the interpreter of this process with a fixed module
-		[sys.executable, "-E", "-s", "-m", WORKER_MODULE],
+		[sys.executable, "-E", "-s", "-m", WORKER_MODULE, str(os.getpid())],
 		stdin=subprocess.PIPE,
 		stdout=subprocess.PIPE,
 		stderr=subprocess.PIPE,
@@ -253,8 +268,10 @@ def _process_request(
 	certificate_secret: bytes | None,
 	certificate_password: str | None,
 	proxy: Proxy | None = None,
+	work_dir: Path | None = None,
 ) -> Sealed:
-	"""The request of the worker for the operation, as Sealed JSON: the dictionary never outlives this call."""
+	"""The request of the worker for the operation, as Sealed JSON: the dictionary never outlives this call.
+	ERiC writes its files into work_dir, which the caller makes and removes."""
 	return Sealed(
 		json.dumps(
 			{
@@ -268,6 +285,7 @@ def _process_request(
 				),
 				"certificate_password": certificate_password,
 				"proxy": None if proxy is None else proxy.to_dict(),
+				"work_dir": None if work_dir is None else str(work_dir),
 			}
 		).encode()
 	)

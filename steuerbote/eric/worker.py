@@ -1,4 +1,4 @@
-"""The worker that calls ERiC once, in a process of its own: python -m steuerbote.eric.worker.
+"""The worker that calls ERiC once, in a process of its own: python -m steuerbote.eric.worker <pid of the parent>.
 
 ERiC runs in a short-lived process because a crash in the native library then ends only that process,
 because a thread inside ERiC must not be stopped (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.3.14), so only
@@ -11,20 +11,27 @@ The worker reads one JSON object from standard input and writes one to standard 
 	{"command": "process", "operation": "validate" | "test_send" | "send",
 	 "nutzdaten": "<Anmeldungssteuern …>" | "<zm …>", "header": {…}, "runtime": {…},
 	 "certificate_secret": "<PKCS#12 in base64>" | null,
-	 "certificate_password": "…" | null, "proxy": {"host": …, "port": …, "username": …, "password": …} | null}
+	 "certificate_password": "…" | null, "proxy": {"host": …, "port": …, "username": …, "password": …} | null,
+	 "work_dir": "/absolute/directory"}
 		answers with a TransmissionResult as JSON; a proxy goes into the settings of ERiC before anything is
-		sent (steuerbote.eric.proxy)
+		sent (steuerbote.eric.proxy); ERiC writes its files into work_dir, which the parent makes private and
+		removes once the worker has ended, since a killed worker removes nothing
 	{"command": "version", "runtime": {…}}
 		answers {"libraries": {name: product version}} or {"error": "…"}
 
 Exit codes: 0 when the answer is on standard output, whatever the outcome; 2 when the request was not
-understood, before anything was loaded; 1 for an unexpected error. A process killed by a signal, a
-crash inside ERiC, ends with the negative signal number in the parent.
+understood, before anything was loaded, or the pid of the parent is missing; 1 for an unexpected error and
+for a parent that has gone before the worker hardened itself. A process killed by a signal, a crash inside
+ERiC, ends with the negative signal number in the parent.
 
 Certificate and password, and the password of a proxy, arrive on standard input only and are never written
 anywhere: not into the answer, and not to standard error, which names the field of a request it did not understand or the type
 of an unexpected error, never a value. Before reading the request the worker makes itself undumpable,
-so neither a core file nor a debugger of the same user can read what it holds.
+so neither a core file nor a debugger of the same user can read what it holds, and has the kernel send it
+SIGKILL when its parent ends (prctl(2), PR_SET_PDEATHSIG, Linux only, as ERiC is here), so that a background
+job killed with SIGKILL takes its worker along. The signal follows the thread that started the worker, the
+thread of the job that waits for it; a parent that ended before the signal was set is no longer the parent of
+the worker, which then ends at once.
 
 Prüfen is EBV-9 of the handbook (Tabelle 6-2): Hinweisprüfung, validation and a preview PDF, without
 encryption parameters. Testsenden and Senden are EBV-6 with send-Auth, the only way to send a UStVA
@@ -49,9 +56,10 @@ import base64
 import binascii
 import ctypes
 import json
+import os
 import resource
+import signal
 import sys
-import tempfile
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, fields
@@ -92,6 +100,7 @@ from steuerbote.eric.result import (
 )
 from steuerbote.eric.runtime import RuntimeInfo
 
+PR_SET_PDEATHSIG = 1
 PR_GET_DUMPABLE = 3
 PR_SET_DUMPABLE = 4
 
@@ -199,10 +208,17 @@ class Request:
 	certificate: bytes | None = None
 	password: str | None = None
 	proxy: Proxy | None = None
+	work_dir: Path | None = None
 
 
 def main() -> int:
-	harden()
+	arguments = sys.argv[1:]
+	if len(arguments) != 1 or not arguments[0].isdigit():
+		sys.stderr.write("steuerbote.eric.worker: invalid request: parent\n")
+		return EXIT_INVALID_REQUEST
+	if not harden(int(arguments[0])):
+		sys.stderr.write("steuerbote.eric.worker: parent gone\n")
+		return EXIT_FAILURE
 	return serve(sys.stdin.buffer, sys.stdout.buffer, sys.stderr)
 
 
@@ -223,11 +239,14 @@ def serve(stdin: BinaryIO, stdout: BinaryIO, stderr: TextIO) -> int:
 	return EXIT_OK
 
 
-def harden() -> None:
-	"""No core file and no ptrace by the same user while the worker holds certificate and PIN."""
+def harden(parent: int) -> bool:
+	"""No core file and no ptrace by the same user while the worker holds certificate and PIN, and SIGKILL once
+	the parent ends; False when the parent had ended already."""
 	prctl(PR_SET_DUMPABLE, 0)
 	_, hard = resource.getrlimit(resource.RLIMIT_CORE)
 	resource.setrlimit(resource.RLIMIT_CORE, (0, hard))
+	prctl(PR_SET_PDEATHSIG, signal.SIGKILL)
+	return os.getppid() == parent
 
 
 def prctl(option: int, value: int) -> int:
@@ -278,7 +297,10 @@ def parse_request(data: bytes) -> Request:
 		proxy = None if request.get("proxy") is None else Proxy.from_dict(request.get("proxy"))
 	except ValueError:
 		raise RequestError("proxy") from None
-	return Request(command, runtime, operation, nutzdaten, header, container, password, proxy)
+	work_dir = request.get("work_dir")
+	if not isinstance(work_dir, str) or not os.path.isabs(work_dir):
+		raise RequestError("work_dir")
+	return Request(command, runtime, operation, nutzdaten, header, container, password, proxy, Path(work_dir))
 
 
 def process(request: Request) -> TransmissionResult:
@@ -308,37 +330,36 @@ def process(request: Request) -> TransmissionResult:
 		return failed(_error_message(error))
 	certificate = None
 	try:
-		with tempfile.TemporaryDirectory(prefix="steuerbote-eric-") as work:
-			try:
-				for name, value in (*SETTINGS, *(request.proxy.settings() if request.proxy else ())):
-					library.set_setting(name, value)
-				if operation.sends:
-					certificate = library.open_certificate_from_bytes(
-						request.certificate, request.password.encode()
-					)
-				kind = of_version(header.datenart_version)
-				xml = library.create_transfer_header(
-					datenteil(request.nutzdaten, header),
-					verfahren=kind.verfahren,
-					datenart=kind.name,
-					vorgang=kind.vorgang,
-					testmerker=header.testmerker,
-					hersteller_id=header.hersteller_id,
-					datenlieferant=header.datenlieferant,
+		try:
+			for name, value in (*SETTINGS, *(request.proxy.settings() if request.proxy else ())):
+				library.set_setting(name, value)
+			if operation.sends:
+				certificate = library.open_certificate_from_bytes(
+					request.certificate, request.password.encode()
 				)
-				# process raises only before it calls ERiC, when it gets no return buffer.
-				answer = library.process(
-					xml,
-					header.datenart_version,
-					SEND_FLAGS if operation.sends else VALIDATE_FLAGS,
-					preview=not operation.sends,
-					pdf_path=Path(work) / "protocol.pdf",
-					certificate=certificate,
-					pin=(request.password or "").encode(),
-				)
-			except EricError as error:
-				return failed(_error_message(error))
-			return _result(library, operation, runtime.version, testmerker, answer)
+			kind = of_version(header.datenart_version)
+			xml = library.create_transfer_header(
+				datenteil(request.nutzdaten, header),
+				verfahren=kind.verfahren,
+				datenart=kind.name,
+				vorgang=kind.vorgang,
+				testmerker=header.testmerker,
+				hersteller_id=header.hersteller_id,
+				datenlieferant=header.datenlieferant,
+			)
+			# process raises only before it calls ERiC, when it gets no return buffer.
+			answer = library.process(
+				xml,
+				header.datenart_version,
+				SEND_FLAGS if operation.sends else VALIDATE_FLAGS,
+				preview=not operation.sends,
+				pdf_path=request.work_dir / "protocol.pdf",
+				certificate=certificate,
+				pin=(request.password or "").encode(),
+			)
+		except EricError as error:
+			return failed(_error_message(error))
+		return _result(library, operation, runtime.version, testmerker, answer)
 	finally:
 		if certificate is not None:
 			with suppress(EricError):
