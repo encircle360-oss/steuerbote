@@ -8,7 +8,9 @@ through steuerbote.eric.runtime after checking its SHA-256. Before ERiC runs, th
 Datenschutzhinweise of the tax administration (ERiC licence, § 5 Abs. 1 and 2); the settings keep who
 confirmed them and when. The simulation needs no confirmation. Where the server reaches ELSTER through a proxy,
 the settings name it, with its password in a Password field, and every run of ERiC goes through it; the
-simulation reaches no server.
+simulation reaches no server. "Laufzeitumgebung prüfen" shows the checks of steuerbote.eric.runtime.status: the
+platform, the runtimes installed with their libraries, the plugins of the current year and of the Zusammenfassende
+Meldung, and the Hersteller-ID.
 """
 
 import os
@@ -156,6 +158,17 @@ class ERiCSettings(Document):
 			archive_path=self.archive_path,
 			sha256=self.archive_sha256,
 		)
+
+	@frappe.whitelist(methods=["POST"])
+	def check_runtime(self) -> list[dict]:
+		"""Laufzeitumgebung prüfen: the checks of the status page for the runtimes installed, among them whether one
+		holds the plugin of the current year and the plugin checkZMDO of the Zusammenfassende Meldung."""
+		frappe.only_for("System Manager", message=True)
+		self.reload()
+		return [
+			{"name": check.name, "ok": check.ok, "detail": check.detail}
+			for check in transmission_adapter.runtime_status(self.hersteller_id or "")
+		]
 
 
 def run_installation(archive_path: str, sha256: str) -> None:
