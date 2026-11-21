@@ -99,6 +99,12 @@ class Desk:
 		"""The rows of a table of the form, without its head."""
 		return self.field(fieldname).locator(".grid-body .grid-row")
 
+	def grid_cells(self, fieldname: str, column: str) -> Locator:
+		"""The cells of a column of a table of the form, as its rows show them."""
+		return self.grid_rows(fieldname).locator(
+			f'.grid-static-col[data-fieldname="{column}"] > .static-area'
+		)
+
 	def run_doc_method(self, method: str, click: Callable[[], None]) -> Response:
 		"""What the server answers to the method of the document that the click runs."""
 		with self.page.expect_response(lambda response: doc_method(response.request) == method) as answer:

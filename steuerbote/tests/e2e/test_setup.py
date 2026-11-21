@@ -16,10 +16,16 @@ def test_the_settings_show_their_rules_in_their_tables(desk, expect):
 
 
 def test_vorgaben_laden_replaces_the_rules_with_the_defaults_of_skr03(desk, expect):
-	"""The seed made the mapping with the same defaults, so the rules come back as they were, unsaved."""
+	"""The seed made the mapping with the same defaults, so the rules come back as they were, unsaved, and the
+	column Steuersatz shows them as before: a rule without a rate holds 0, which the column leaves blank."""
 	desk.open(f"/desk/vat-return-mapping/{data.COMPANY}")
 	expect(desk.grid_rows("rules").first).to_be_visible()
 	before = rules_of(desk)
+	expect(desk.grid_rows("rules")).to_have_count(len(before))
+	rates = desk.grid_cells("rules", "tax_rate")
+	shown = rates.all_text_contents()
+	assert [not text.strip() for text in shown] == [not rule[3] for rule in before]
+	assert any(rule[3] for rule in before) and not all(rule[3] for rule in before)
 	desk.button("Vorgaben laden").click()
 	response = desk.run_doc_method("load_defaults", lambda: desk.answer_dialog(yes=True))
 	assert response.ok
@@ -27,6 +33,7 @@ def test_vorgaben_laden_replaces_the_rules_with_the_defaults_of_skr03(desk, expe
 	desk.close_dialog()
 	expect(desk.grid_rows("rules")).to_have_count(len(before))
 	assert rules_of(desk) == before
+	expect(rates).to_have_text(shown)
 	assert desk.page.evaluate("() => cur_frm.is_dirty()")
 
 
