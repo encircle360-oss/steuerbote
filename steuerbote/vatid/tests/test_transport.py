@@ -1,6 +1,7 @@
 import io
 import urllib.error
 import urllib.request
+import urllib.response
 from email.message import Message
 from unittest import TestCase
 
@@ -8,6 +9,8 @@ from steuerbote.vatid.transport import MAX_RESPONSE_BYTES, Request, Response, Ur
 
 URL = "https://api.evatr.vies.bzst.de/app/v1/abfrage"
 BODY = b'{"anfragendeUstid":"DE123456789","angefragteUstid":"ATU12345678"}'
+# What a server elsewhere would answer in place of the BZSt, invented.
+FORGED = b'{"id":"0a1b2c3d4e5f6071","anfrageZeitpunkt":"2026-11-20T15:00:00+01:00","status":"evatr-0000"}'
 
 
 class FakeAnswer:
@@ -45,6 +48,35 @@ class FakeOpener:
 
 def http_error(code: int, body: bytes) -> urllib.error.HTTPError:
 	return urllib.error.HTTPError(URL, code, "Bad Request", Message(), io.BytesIO(body))
+
+
+class FakeServer(urllib.request.BaseHandler):
+	"""Answers in front of the handlers of urllib: the first request with a redirect to ``location``, every later
+	one with an answer of its own, which a fetch that follows the redirect would return. Keeps the addresses asked."""
+
+	handler_order = 100
+
+	def __init__(self, status: int, location: str) -> None:
+		self.status = status
+		self.location = location
+		self.asked: list[str] = []
+
+	def https_open(self, request: urllib.request.Request) -> urllib.response.addinfourl:
+		return self._answer(request)
+
+	def http_open(self, request: urllib.request.Request) -> urllib.response.addinfourl:
+		return self._answer(request)
+
+	def _answer(self, request: urllib.request.Request) -> urllib.response.addinfourl:
+		self.asked.append(request.full_url)
+		headers = Message()
+		if len(self.asked) == 1:
+			headers["Location"] = self.location
+			answer = urllib.response.addinfourl(io.BytesIO(b"moved"), headers, request.full_url, self.status)
+		else:
+			answer = urllib.response.addinfourl(io.BytesIO(FORGED), headers, request.full_url, 200)
+		answer.msg = "Found"
+		return answer
 
 
 class RequestTest(TestCase):
@@ -101,6 +133,23 @@ class UrllibFetchTest(TestCase):
 			with self.subTest(url=url), self.assertRaises(ValueError):
 				UrllibFetch(opener=opener)(Request(url, {}, BODY))
 		self.assertEqual(opener.calls, [])
+
+	def test_follows_no_redirect(self):
+		"""The answer is the proof of the query, so it comes from the address asked: a redirect, to another host, to
+		plain HTTP or back to the same address, is returned as the answer it is."""
+		for status, location in (
+			(302, "http://api.evatr.vies.bzst.de/app/v1/abfrage"),
+			(301, "https://evatr.example.org/app/v1/abfrage"),
+			(303, URL),
+			(307, "https://evatr.example.org/app/v1/abfrage"),
+			(308, "https://evatr.example.org/app/v1/abfrage"),
+		):
+			fetch = UrllibFetch()
+			server = FakeServer(status, location)
+			fetch.opener.add_handler(server)
+			with self.subTest(status=status):
+				self.assertEqual(fetch(Request(URL, {}, BODY)), Response(status, b"moved"))
+				self.assertEqual(server.asked, [URL])
 
 	def test_waits_a_minute_by_default(self):
 		self.assertEqual(UrllibFetch().timeout_seconds, 60)
