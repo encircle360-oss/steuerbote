@@ -3,7 +3,15 @@ from typing import ClassVar
 from unittest import TestCase
 
 from steuerbote.ustva.kennzahlen import LATEST_YEAR, UnknownYearError, catalogue_for
-from steuerbote.ustva.mapping import AccountRule, Mapping, MappingError, Side, TaxCheck
+from steuerbote.ustva.mapping import (
+	AccountRule,
+	Mapping,
+	MappingError,
+	Side,
+	TaxCheck,
+	WatchedAccount,
+	WatchLevel,
+)
 
 
 def rule(account: str, kennzahl: str, side: Side = Side.CREDIT, rate: str | None = None) -> AccountRule:
@@ -281,6 +289,52 @@ class WatchedValidationTest(TestCase):
 		with self.assertRaisesRegex(MappingError, "not an account number"):
 			Mapping("test", (), watched=("1779 ",))
 
+	def test_an_account_number_is_watched_at_the_blocking_level(self):
+		mapping = Mapping("test", (), watched=("1548", WatchedAccount("8603", WatchLevel.HINT)))
+		self.assertEqual(mapping.watched, (WatchedAccount("1548"), WatchedAccount("8603", WatchLevel.HINT)))
+
+	def test_an_account_watched_twice_is_rejected_whatever_its_levels(self):
+		for second in ("1548", WatchedAccount("1548", WatchLevel.HINT)):
+			with (
+				self.subTest(second=second),
+				self.assertRaisesRegex(MappingError, "account 1548 is watched twice"),
+			):
+				Mapping("test", (), watched=("1548", second))
+
+	def test_an_account_watched_for_a_hint_cannot_be_mapped_or_checked_either(self):
+		hint = WatchLevel.HINT
+		with self.assertRaisesRegex(MappingError, "8400 is watched but also mapped or checked"):
+			Mapping("test", (rule("8400", "81"),), watched=(WatchedAccount("8400", hint),))
+		with self.assertRaisesRegex(MappingError, "1776 is watched but also mapped or checked"):
+			Mapping(
+				"test",
+				(rule("8400", "81"),),
+				(TaxCheck("x", ("8400",), ("1776",)),),
+				(WatchedAccount("1776", hint),),
+			)
+
+
+class WatchedAccountTest(TestCase):
+	def test_a_watched_account_blocks_unless_it_is_watched_for_a_hint(self):
+		self.assertIs(WatchedAccount("1548").level, WatchLevel.BLOCKING)
+		self.assertIs(WatchedAccount("8603", WatchLevel.HINT).level, WatchLevel.HINT)
+
+	def test_the_levels_are_blocking_and_hint(self):
+		self.assertEqual([level.value for level in WatchLevel], ["blocking", "hint"])
+
+	def test_level_accepts_the_value_of_the_enum(self):
+		self.assertIs(WatchedAccount("8603", "hint").level, WatchLevel.HINT)  # type: ignore[arg-type]
+		self.assertIs(WatchedAccount("1548", "blocking").level, WatchLevel.BLOCKING)  # type: ignore[arg-type]
+
+	def test_unknown_level_is_rejected(self):
+		with self.assertRaises(ValueError):
+			WatchedAccount("8603", "warning")  # type: ignore[arg-type]
+
+	def test_account_number_must_be_a_non_empty_string_without_padding(self):
+		for account in (8603, None, "", " 8603", "8603 "):
+			with self.subTest(account=account), self.assertRaisesRegex(MappingError, "not an account number"):
+				WatchedAccount(account)  # type: ignore[arg-type]
+
 
 class LookupTest(TestCase):
 	def test_finds_the_rule_of_an_account(self):
@@ -299,6 +353,17 @@ class LookupTest(TestCase):
 		mapping = Mapping("test", (rule("8125", "41"),))
 		with self.assertRaisesRegex(MappingError, "41 carries no tax rate"):
 			mapping.rate_for(mapping.rule_for("8125"))
+
+	def test_watched_at_lists_the_accounts_of_a_level_in_their_order(self):
+		hint = WatchLevel.HINT
+		mapping = Mapping(
+			"test",
+			(),
+			watched=("1725", WatchedAccount("8606", hint), "1548", WatchedAccount("8603", hint)),
+		)
+		self.assertEqual(mapping.watched_at(WatchLevel.BLOCKING), ("1725", "1548"))
+		self.assertEqual(mapping.watched_at(hint), ("8606", "8603"))
+		self.assertEqual(Mapping("test", ()).watched_at(hint), ())
 
 	def test_sequences_are_stored_as_tuples_and_the_mapping_is_immutable(self):
 		mapping = Mapping("test", [rule("8400", "81")], [TaxCheck("x", ["8400"], ["1776"])], ["1779"])  # type: ignore[arg-type]
@@ -320,6 +385,10 @@ class YearTest(TestCase):
 		same = mapping.for_year(2026)
 		self.assertEqual(same, mapping)
 		self.assertEqual(same.rules, mapping.rules)
+
+	def test_for_year_keeps_the_levels_of_the_watched_accounts(self):
+		mapping = Mapping("test", (), watched=("1548", WatchedAccount("8603", WatchLevel.HINT)))
+		self.assertEqual(mapping.for_year(2026).watched, mapping.watched)
 
 	def test_year_without_catalogue_is_refused(self):
 		with self.assertRaisesRegex(UnknownYearError, "2019"):

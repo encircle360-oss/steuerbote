@@ -25,6 +25,8 @@ FERNVERKAEUFE = "Kz 45: innergemeinschaftliche Fernverkäufe per Anleitung zu Ze
 ELECTRONIC_SERVICES = "Kz 45: auf elektronischem Weg erbrachte sonstige Leistungen per Anleitung zu Zeile 36"
 PREPAYMENT = "ignored like its SKR03 twin: prepayment without automatic tax, no VAT keyword in the name"
 TRAVEL_AND_MARGIN = "watched like 8193 and 4138: Umsatzerlöse nach § 25 or § 25a UStG ohne USt"
+OTHER_OPERATING_INCOME = "watched for a hint: other operating income with the Zusatzfunktion M, without „U“"
+THIRD_COUNTRY = "ignored like 3558 and 5558: Wareneingang im Drittland steuerbar, without „U“ in the chart"
 
 
 def _range(first: str, last: str, reason: str) -> dict[str, str]:
@@ -40,6 +42,9 @@ NOT_IN_THE_FIXTURES = {
 		"8331": ELECTRONIC_SERVICES,
 		"8727": FERNVERKAEUFE,
 		**dict.fromkeys(("8189", "8197"), TRAVEL_AND_MARGIN),
+		**dict.fromkeys(("8603", "8605", "8606"), OTHER_OPERATING_INCOME),
+		"3551": THIRD_COUNTRY,
+		"1390": "ignored like its twin SKR04 1490: F account of the Ist-Versteuerung, in 13xx outside 15xx and 17xx",
 	},
 	"SKR04": {
 		"3798": "ignored like its twin SKR03 1728: OSS; an S account in 37xx, outside 14xx and 38xx",
@@ -47,6 +52,8 @@ NOT_IN_THE_FIXTURES = {
 		**dict.fromkeys(("1190", "3250", "3280", "3284", "3285", "3695"), PREPAYMENT),
 		**dict.fromkeys(("5744", "4499", "4869"), "Zwilling eines beobachteten SKR03-Kontos"),
 		**dict.fromkeys(("4131", "4132"), TRAVEL_AND_MARGIN),
+		**dict.fromkeys(("4830", "4832", "4835"), OTHER_OPERATING_INCOME),
+		"5551": THIRD_COUNTRY,
 	},
 }
 
@@ -74,7 +81,7 @@ class Chart:
 		return {
 			"rule": {rule.account_number for rule in self.mapping.rules},
 			"checked": {account for check in self.mapping.checks for account in check.tax_accounts},
-			"watched": set(self.mapping.watched),
+			"watched": {watched.account_number for watched in self.mapping.watched},
 			"ignored": set(with_ranges(self.ignored, self.ranges)),
 		}
 

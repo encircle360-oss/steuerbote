@@ -12,6 +12,7 @@ class VATReturnWatchedAccount(Document):
 
 		account: DF.Link
 		account_number: DF.Data | None
+		level: DF.Literal["blocking", "hint"]
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data

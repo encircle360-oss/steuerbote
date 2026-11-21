@@ -14,7 +14,7 @@ from steuerbote.ustva.defaults import (
 	SKR04_RANGES,
 	with_ranges,
 )
-from steuerbote.ustva.mapping import AccountRule, Mapping, Side
+from steuerbote.ustva.mapping import AccountRule, Mapping, Side, WatchLevel
 
 DOC = Path(__file__).resolve().parents[3] / "docs" / "ustva-kennzahlen.md"
 SIDES = {"Haben": Side.CREDIT, "Soll": Side.DEBIT}
@@ -105,12 +105,18 @@ class DocTablesTest(TestCase):
 				self.assertEqual(self.account_list(tax03, SKR03_RANGES), skr03.tax_accounts)
 				self.assertEqual(self.account_list(tax04, SKR04_RANGES), skr04.tax_accounts)
 
-	def test_watched_tables_show_every_watched_account(self):
-		found = tables(section("### Beobachtete Konten"))
+	def watched_tables_show(self, heading: str, level: WatchLevel) -> None:
+		found = tables(section(heading))
 		self.assertEqual([header[0] for header, _ in found], list(CHARTS))
 		for (_, rows), (chart, (mapping, _, ranges)) in zip(found, CHARTS.items(), strict=True):
 			shown = tuple(account for row in rows for account in self.accounts(row[0], ranges))
-			self.assertEqual(shown, mapping.watched, chart)
+			self.assertEqual(shown, mapping.watched_at(level), chart)
+
+	def test_watched_tables_show_every_account_that_blocks(self):
+		self.watched_tables_show("### Beobachtete Konten", WatchLevel.BLOCKING)
+
+	def test_hint_tables_show_every_account_watched_for_a_hint(self):
+		self.watched_tables_show("### Beobachtete Konten mit Hinweis", WatchLevel.HINT)
 
 	def test_ignored_tables_show_every_ignored_account_with_a_reason(self):
 		found = tables(section("### Bewusst ohne Kennzahl"))

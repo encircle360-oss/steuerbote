@@ -19,6 +19,10 @@ rate, and per check.
 
 The tax of the bases with a statutory rate (Kennzahl 81, 86, 89 and 93) is not summed from the
 ledger at all: the form derives it from the reported base in full euros.
+
+A balance on a watched account never enters a Kennzahl. At the blocking level it holds the return
+(``unmapped``); at the hint level the result carries the account's debits and credits (``hinted``) for a
+hint, and the return stays ready.
 """
 
 from collections.abc import Iterable
@@ -37,7 +41,7 @@ from steuerbote.ustva.kennzahlen import (
 	Kennzahl,
 	Kind,
 )
-from steuerbote.ustva.mapping import Mapping, Side, TaxCheck, is_account_number
+from steuerbote.ustva.mapping import Mapping, Side, TaxCheck, WatchLevel, is_account_number
 from steuerbote.ustva.rounding import (
 	CENT,
 	HUNDRED,
@@ -143,8 +147,26 @@ class CheckResult:
 
 
 @dataclass(frozen=True, slots=True)
+class AccountBalance:
+	"""The debits and credits of one account in the period."""
+
+	account_number: str
+	debit: Decimal
+	credit: Decimal
+
+	@property
+	def balance(self) -> Decimal:
+		"""Debit less credit: positive on the debit side, negative on the credit side."""
+		return self.debit - self.credit
+
+
+@dataclass(frozen=True, slots=True)
 class UstvaResult:
-	"""The sums follow the form: line 37, lines 38 to 44, lines 46 and 47, Kennzahl 39, Kennzahl 83."""
+	"""The sums follow the form: line 37, lines 38 to 44, lines 46 and 47, Kennzahl 39, Kennzahl 83.
+
+	``unmapped`` names the accounts watched at the blocking level that have a balance, ``hinted`` the
+	debits and credits of those watched at the hint level that have one, both by account number.
+	"""
 
 	values: ReadOnlyMapping[str, KennzahlValue]
 	checks: tuple[CheckResult, ...]
@@ -153,6 +175,7 @@ class UstvaResult:
 	input_tax: Decimal
 	other_tax: Decimal
 	sondervorauszahlung: Decimal
+	hinted: tuple[AccountBalance, ...] = ()
 
 	@property
 	def remaining_tax(self) -> Decimal:
@@ -170,6 +193,7 @@ class UstvaResult:
 
 	@property
 	def ready(self) -> bool:
+		"""Every Verprobung passes and no account watched at the blocking level has a balance."""
 		return not self.unmapped and all(check.passed for check in self.checks)
 
 	def reported(self, kennzahl: str) -> Decimal:
@@ -223,11 +247,16 @@ def calculate(
 	return UstvaResult(
 		values=MappingProxyType(values),
 		checks=tuple(_check(check, mapping, ledger, tolerance) for check in mapping.checks),
-		unmapped=tuple(sorted(a for a in mapping.watched if ledger.has_balance(a))),
+		unmapped=tuple(sorted(a for a in mapping.watched_at(WatchLevel.BLOCKING) if ledger.has_balance(a))),
 		output_tax=to_cents(output_tax),
 		input_tax=to_cents(input_tax),
 		other_tax=to_cents(other_tax),
 		sondervorauszahlung=to_cents(sondervorauszahlung),
+		hinted=tuple(
+			ledger.account_balance(a)
+			for a in sorted(mapping.watched_at(WatchLevel.HINT))
+			if ledger.has_balance(a)
+		),
 	)
 
 
@@ -273,6 +302,14 @@ class _Ledger:
 
 	def has_balance(self, account_number: str) -> bool:
 		return sum((t.balance(Side.DEBIT) for t in self.vouchers(account_number).values()), ZERO) != ZERO
+
+	def account_balance(self, account_number: str) -> AccountBalance:
+		totals = self.vouchers(account_number).values()
+		return AccountBalance(
+			account_number,
+			sum((total.debit for total in totals), ZERO),
+			sum((total.credit for total in totals), ZERO),
+		)
 
 	def first_line(self, voucher: str | None) -> int:
 		return self._first_line[voucher]

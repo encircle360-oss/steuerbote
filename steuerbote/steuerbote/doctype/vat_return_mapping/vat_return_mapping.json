@@ -47,7 +47,7 @@
    "options": "VAT Return Mapping Check"
   },
   {
-   "description": "Accounts of the Voranmeldung without a Kennzahl yet. A balance on one of them holds the return.",
+   "description": "Accounts of the Voranmeldung without a Kennzahl yet. A balance on one watched at the level Blocking holds the return; on one watched at the level Hint, it adds a hint to the return.",
    "fieldname": "watched",
    "fieldtype": "Table",
    "label": "Watched Accounts",
@@ -55,7 +55,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-18 02:00:00.000000",
+ "modified": "2026-11-21 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Mapping",

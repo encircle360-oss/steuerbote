@@ -3,6 +3,7 @@ from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.ustva import KENNZAHLEN, Period
+from steuerbote.ustva.calculation import AccountBalance
 from steuerbote.ustva.defaults import SKR03
 from steuerbote.ustva.plausibility import (
 	EU_MEMBER_STATES,
@@ -19,6 +20,7 @@ from steuerbote.ustva.plausibility import (
 	purchase_accounts,
 	reconciliation_hints,
 	sales_accounts,
+	watched_account_hints,
 )
 
 
@@ -330,6 +332,44 @@ class ReconciliationTest(TestCase):
 		self.assertEqual([hint.text[:5] for hint in found], ["Kz 81", "Kz 86", "Kz 84", "Kz 21"])
 
 
+class WatchedAccountHintsTest(TestCase):
+	"""A balance on an account watched for a hint is named with its debits and credits and holds nothing."""
+
+	def test_names_the_account_its_debits_credits_and_balance(self):
+		(hint,) = watched_account_hints(
+			[AccountBalance("8603", d("0"), d("250"))], {"8603": "Sonstige betriebliche Erträge"}, FIGURES
+		)
+		self.assertEqual((hint.code, hint.severity), (Code.WATCHED_ACCOUNT, Severity.HINT))
+		self.assertEqual(
+			hint.text,
+			"Konto 8603 Sonstige betriebliche Erträge hat einen Saldo von 250,00 € im Haben "
+			"(Soll 0,00 €, Haben 250,00 €), geht aber in keine Kennzahl ein.",
+		)
+		self.assertEqual((hint.voucher_type, hint.voucher_no, hint.party), ("", "", ""))
+
+	def test_a_debit_balance_of_an_account_without_a_name(self):
+		(hint,) = watched_account_hints([AccountBalance("2166", d("1053.11"), d("12.00"))], {}, FIGURES)
+		self.assertEqual(
+			hint.text,
+			"Konto 2166 hat einen Saldo von 1.041,11 € im Soll (Soll 1.053,11 €, Haben 12,00 €), "
+			"geht aber in keine Kennzahl ein.",
+		)
+
+	def test_an_account_without_a_balance_gets_no_hint(self):
+		self.assertEqual(watched_account_hints([AccountBalance("8603", d("100"), d("100"))], {}, FIGURES), [])
+
+	def test_one_hint_per_account_in_the_order_given(self):
+		found = watched_account_hints(
+			[AccountBalance("8606", d("0"), d("1")), AccountBalance("8603", d("2"), d("0"))],
+			{"8603": "Sonstige betriebliche Erträge"},
+			FIGURES,
+		)
+		self.assertEqual(
+			[hint.text.split(" hat ")[0] for hint in found],
+			["Konto 8606", "Konto 8603 Sonstige betriebliche Erträge"],
+		)
+
+
 class CompareTest(TestCase):
 	def setUp(self):
 		self.october = EarlierPeriod(
@@ -537,6 +577,7 @@ class HintsTest(TestCase):
 				"NULLSATZ-OHNE-GRUND",
 				"STEUER-ABWEICHUNG",
 				"ABGLEICH-RECHNUNGEN",
+				"KONTO-BEOBACHTET",
 				"ABWEICHUNG-VORPERIODE",
 				"KEIN-KATALOG",
 				"ZUORDNUNG-JAHRGANG",
@@ -566,6 +607,40 @@ class HintsTest(TestCase):
 			],
 		)
 		self.assertIsInstance(found, tuple)
+
+	def test_balances_watched_for_a_hint_follow_the_reconciliation_with_the_ledger(self):
+		comparison = compare(
+			{"81": d("1600"), "21": d("2000")},
+			EarlierPeriod(Period.month(2026, 10), {"81": d("1000")}),
+			EarlierPeriod(Period.month(2025, 11), None),
+			KENNZAHLEN,
+			report_rule,
+		)
+		lines = [invoice("8400", "1600", "0", country="Germany"), invoice("8336", "1500", tax_id=None)]
+		found = hints(
+			comparison,
+			lines,
+			{"81": d("1600"), "21": d("2000")},
+			SKR03,
+			FIGURES,
+			watched=(AccountBalance("8605", d("0"), d("80")), AccountBalance("8603", d("0"), d("250"))),
+			names={"8603": "Sonstige betriebliche Erträge"},
+		)
+		self.assertEqual(
+			codes(found),
+			[
+				Code.ZERO_TAX,
+				Code.EU_WITHOUT_VAT_ID,
+				Code.INVOICES_AND_LEDGER,
+				Code.WATCHED_ACCOUNT,
+				Code.WATCHED_ACCOUNT,
+				Code.PREVIOUS_PERIOD,
+				Code.PREVIOUS_PERIOD,
+				Code.NO_CATALOGUE,
+			],
+		)
+		self.assertTrue(found[3].text.startswith("Konto 8605 hat einen Saldo von 80,00 € im Haben"))
+		self.assertTrue(found[4].text.startswith("Konto 8603 Sonstige betriebliche Erträge hat"))
 
 	def test_invoice_hints_keep_the_order_of_the_lines(self):
 		lines = [

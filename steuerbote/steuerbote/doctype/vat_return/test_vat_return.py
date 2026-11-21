@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
+from frappe.utils import fmt_money
 from lxml import etree
 
 from steuerbote.elster.tests import eric_schema
@@ -30,8 +31,8 @@ UNMAPPED_COMPANY = "Steuerbote Test Ohne Zuordnung GmbH"
 BARE_COMPANY = "Steuerbote Test Ohne Einstellungen GmbH"
 FILED_IN_MEIN_ELSTER = "In Mein ELSTER abgegeben"
 
-# SKR03 numbers of the month in VerifiedMonthTest of the core, a bank and a receivables account, and a
-# watched account.
+# SKR03 numbers of the month in VerifiedMonthTest of the core, a bank and a receivables account, and two
+# accounts the defaults watch: 1548 at the blocking level, 8603 at the hint level.
 ACCOUNTS = {
 	"8400": ("Erlöse 19 % USt", "Income"),
 	"1776": ("Umsatzsteuer 19 %", "Liability"),
@@ -44,6 +45,7 @@ ACCOUNTS = {
 	"1200": ("Bank", "Asset"),
 	"1400": ("Forderungen aus Lieferungen und Leistungen", "Asset"),
 	"1548": ("Vorsteuer im Folgejahr abziehbar", "Asset"),
+	"8603": ("Sonstige betriebliche Erträge", "Income"),
 }
 
 
@@ -54,6 +56,10 @@ IMPORT_DECLARATION = b'<?xml version="1.0" encoding="ISO-8859-15" standalone="no
 
 def money(value) -> Decimal:
 	return Decimal(str(value)).quantize(Decimal("0.01"))
+
+
+def euros(amount: str) -> str:
+	return fmt_money(Decimal(amount), currency="EUR")
 
 
 def attached_file(url: str, doc):
@@ -378,6 +384,21 @@ class TestVATReturn(IntegrationTestCase):
 			[("1548", a["1548"], money(50), money(0))],
 		)
 		self.assertEqual((doc.ready, doc.status), (0, "Berechnet"))
+		self.assertNotIn("KONTO-BEOBACHTET", [row.code for row in doc.hints])
+
+	def test_a_balance_watched_for_a_hint_adds_a_hint_and_leaves_the_return_ready(self):
+		a = self.account
+		post_journal_entry(COMPANY, "2026-12-15", [(a["1200"], 250, 0), (a["8603"], 0, 250)])
+		doc = self.calculated(12)
+		self.assertEqual((doc.ready, doc.status, doc.unmapped), (1, "Bereit", []))
+		self.assertEqual(self.amounts(doc), {"83": money(0)})
+		watched = [row for row in doc.hints if row.code == "KONTO-BEOBACHTET"]
+		text = (
+			f"Konto 8603 Sonstige betriebliche Erträge hat einen Saldo von {euros('250')} im Haben "
+			f"(Soll {euros('0')}, Haben {euros('250')}), geht aber in keine Kennzahl ein."
+		)
+		self.assertEqual([(row.severity, row.text) for row in watched], [("Hinweis", text)])
+		self.assertFalse(any(row.voucher_type or row.voucher_no or row.party for row in watched))
 
 	def test_a_second_return_for_a_filed_period_must_be_a_correction(self):
 		first = self.calculated(4)

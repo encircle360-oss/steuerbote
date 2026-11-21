@@ -3,7 +3,13 @@ from decimal import Decimal
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from steuerbote.ledger import EXCLUDE_FIELD, account_names, accounts_without_number, load_lines
+from steuerbote.ledger import (
+	EXCLUDE_FIELD,
+	account_labels,
+	account_names,
+	accounts_without_number,
+	load_lines,
+)
 from steuerbote.tests.helpers import (
 	make_account,
 	make_company,
@@ -167,6 +173,14 @@ class LedgerTest(IntegrationTestCase):
 			account_names(COMPANY, ["8400", "1776", "9999"]), {"8400": self.revenue, "1776": self.output_tax}
 		)
 		self.assertEqual(account_names(COMPANY, []), {})
+
+	def test_account_labels_by_number(self):
+		self.assertEqual(
+			account_labels(COMPANY, ["8400", "1776", "9999"]),
+			{"8400": "Erlöse 19 % USt", "1776": "Umsatzsteuer 19 %"},
+		)
+		self.assertEqual(account_labels(NEIGHBOUR, ["8400"]), {"8400": "Erlöse 19 % USt"})
+		self.assertEqual(account_labels(COMPANY, []), {})
 
 	def test_the_lines_of_a_period_meet_the_mapping_of_the_company(self):
 		post_journal_entry(

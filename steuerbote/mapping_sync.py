@@ -1,10 +1,11 @@
 """The rows of the DocType VAT Return Mapping and the core Mapping, converted without Frappe.
 
 The DocType keeps a company's Kontenzuordnung as table rows: rules (account, Kennzahl, side, rate and an
-additional Kennzahl), checks (account numbers as text) and watched accounts. The core works with Mapping,
-AccountRule and TaxCheck. rows_to_mapping turns the rows into a Mapping, and defaults_for_accounts turns
-the default mapping of a chart into rows for the accounts a company has. Both take and return plain dicts
-with the DocType's field names, so the controller stays thin and this module is tested without a bench.
+additional Kennzahl), checks (account numbers as text) and watched accounts with their level. The core works
+with Mapping, AccountRule, TaxCheck and WatchedAccount. rows_to_mapping turns the rows into a Mapping, and
+defaults_for_accounts turns the default mapping of a chart into rows for the accounts a company has. Both
+take and return plain dicts with the DocType's field names, so the controller stays thin and this module is
+tested without a bench.
 
 A row holds what Frappe stores: an empty Float field is 0, an empty Data or Select field is "" or None,
 and a rule's account number is the one fetched from its account. The DocType's own validate runs before
@@ -15,9 +16,19 @@ import re
 from collections.abc import Iterable, Set
 from collections.abc import Mapping as ReadOnlyMapping
 from decimal import Decimal, InvalidOperation
+from types import MappingProxyType
 from typing import Any, NamedTuple
 
-from steuerbote.ustva import AccountRule, Mapping, MappingError, Side, TaxCheck, default_mapping
+from steuerbote.ustva import (
+	AccountRule,
+	Mapping,
+	MappingError,
+	Side,
+	TaxCheck,
+	WatchedAccount,
+	WatchLevel,
+	default_mapping,
+)
 
 Row = ReadOnlyMapping[str, Any]
 
@@ -47,18 +58,24 @@ def rows_to_mapping(
 		chart=chart,
 		rules=tuple(_rule(row) for row in rule_rows),
 		checks=tuple(_check(row) for row in check_rows),
-		watched=tuple(_account_number(row, "watched account") for row in watched_rows),
+		watched=tuple(_watched(row) for row in watched_rows),
 		year=year,
 	)
 
 
-def defaults_for_accounts(chart: str, year: int, existing_numbers: Set[str]) -> DefaultRows:
+def defaults_for_accounts(
+	chart: str,
+	year: int,
+	existing_numbers: Set[str],
+	levels: ReadOnlyMapping[str, str | None] = MappingProxyType({}),
+) -> DefaultRows:
 	"""The default mapping of ``chart`` reduced to the account numbers a company has, as rows.
 
-	A rule or a watched account stays when its account exists. A check keeps the base and tax accounts
-	that exist and is dropped when no base or no tax account remains, since it would compare nothing.
-	``missing`` lists, sorted, the accounts of the defaults that do not exist; it informs and changes
-	nothing.
+	A rule or a watched account stays when its account exists. A watched account keeps the level the
+	company gave it, ``levels`` by account number, and takes the level of the defaults otherwise. A check
+	keeps the base and tax accounts that exist and is dropped when no base or no tax account remains, since
+	it would compare nothing. ``missing`` lists, sorted, the accounts of the defaults that do not exist; it
+	informs and changes nothing.
 	"""
 	mapping = default_mapping(chart, year)
 	return DefaultRows(
@@ -66,7 +83,14 @@ def defaults_for_accounts(chart: str, year: int, existing_numbers: Set[str]) -> 
 		check_rows=[
 			row for check in mapping.checks if (row := _check_row(check, existing_numbers)) is not None
 		],
-		watched_rows=[{"account_number": number} for number in mapping.watched if number in existing_numbers],
+		watched_rows=[
+			{
+				"account_number": watched.account_number,
+				"level": levels.get(watched.account_number) or watched.level.value,
+			}
+			for watched in mapping.watched
+			if watched.account_number in existing_numbers
+		],
 		missing=sorted(_accounts_of(mapping).difference(existing_numbers)),
 	)
 
@@ -86,6 +110,21 @@ def _rule(row: Row) -> AccountRule:
 		also_kennzahl=_text(row.get("also_kennzahl")) or None,
 		also_side=_side(also_side, where) if also_side else None,
 	)
+
+
+def _watched(row: Row) -> WatchedAccount:
+	number = _account_number(row, "watched account")
+	return WatchedAccount(number, _level(row.get("level"), f"account {number}"))
+
+
+def _level(value: Any, where: str) -> WatchLevel:
+	"""An empty level blocks, like the default of the DocType."""
+	if not value:
+		return WatchLevel.BLOCKING
+	try:
+		return WatchLevel(value)
+	except ValueError:
+		raise MappingError(f"{where}: level must be blocking or hint, not {value!r}") from None
 
 
 def _check(row: Row) -> TaxCheck:
@@ -163,5 +202,5 @@ def _accounts_of(mapping: Mapping) -> set[str]:
 	return {
 		*(rule.account_number for rule in mapping.rules),
 		*(number for check in mapping.checks for number in check.tax_accounts),
-		*mapping.watched,
+		*(watched.account_number for watched in mapping.watched),
 	}

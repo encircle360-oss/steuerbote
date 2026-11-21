@@ -17,7 +17,8 @@ VAT account of ERPNext's template and every such number in circulation has one p
   base account, at the statutory rate of its Kennzahl or at the rate the account carries for
   § 13b UStG and new vehicles, and the tax booked on the output-tax account is checked against it.
 - Watched: an account of the Voranmeldung whose Kennzahl is not decided yet. A balance on it blocks
-  the filing until the company has added a mapping.
+  the filing until the company has added a mapping. An account whose balance belongs in the
+  Voranmeldung in some cases only is watched at the hint level: a balance on it adds a hint.
 - Ignored: an account that carries no Kennzahl at all, such as a payment to the Finanzamt or a
   domestic purchase whose Vorsteuer alone is reported. Ignored accounts are listed here for
   completeness and are not part of the Mapping.
@@ -35,7 +36,7 @@ from collections.abc import Mapping as ReadOnlyMapping
 from decimal import Decimal
 from types import MappingProxyType
 
-from steuerbote.ustva.mapping import AccountRule, Mapping, Side, TaxCheck
+from steuerbote.ustva.mapping import AccountRule, Mapping, Side, TaxCheck, WatchedAccount, WatchLevel
 
 RATE_19 = Decimal("19")
 RATE_7 = Decimal("7")
@@ -400,6 +401,7 @@ def _mapping(
 	chart: str,
 	a: ReadOnlyMapping[str, str | None],
 	watched: tuple[str, ...],
+	watched_for_hints: tuple[str, ...],
 	ranges: ReadOnlyMapping[str, str],
 ) -> Mapping:
 	"""Build the mapping from a chart's account numbers, keyed by the role an account plays."""
@@ -416,7 +418,10 @@ def _mapping(
 			for member in with_ranges((number,), ranges)
 		),
 		checks=tuple(TaxCheck(label, numbers(bases), numbers(taxes)) for label, bases, taxes in _CHECKS),
-		watched=with_ranges(watched, ranges),
+		watched=(
+			*with_ranges(watched, ranges),
+			*(WatchedAccount(number, WatchLevel.HINT) for number in with_ranges(watched_for_hints, ranges)),
+		),
 	)
 
 
@@ -725,11 +730,22 @@ SKR03_WATCHED = (
 	"8955",
 )
 
+# Other operating income that the chart gives the Zusatzfunktion "Umsatzsteuer" without marking it "U":
+# above class 8 it prints "M 8194-8603" and "M 8605-8613" and explains "M Zusatzfunktion „Umsatzsteuer“".
+# Taxable turnover booked on them with its tax shows in the Verprobung, since the tax lands on 1776 or 1771
+# without a base; tax-free turnover does not, so a balance on them adds a hint.
+SKR03_WATCHED_FOR_HINTS = (
+	"8603",
+	"8605",
+	"8606",
+)
+
 # The chart, ERPNext's template or a chart in circulation hands these to the Umsatzsteuer, but the
 # Voranmeldung has no Kennzahl for them.
 SKR03_IGNORED = (
 	"1543",  # Bauabzugsbetrag (§ 48 EStG), not Umsatzsteuer
 	"1593",  # clearing account for prepayments received; the taxed ones are on 1711 to 1718
+	"1390",  # clearing account for the Ist-Versteuerung, F in the chart like its twin SKR04 1490
 	# OSS: this Umsatzsteuer is declared to the Bundeszentralamt für Steuern, not in the Voranmeldung
 	"1728",
 	"1767",
@@ -831,6 +847,11 @@ SKR03_IGNORED = (
 	"3794",
 	"3796",
 	"3798",  # Skonti 5,5 % in earlier editions; not the OSS account 3798 of SKR04
+	# Wareneingang taxable in a third country: a supply made outside the Inland is not taxable here
+	# (§ 1 Abs. 1 Nr. 1 UStG), and the Einfuhrumsatzsteuer of an import is deducted through 1588 in Kz 62.
+	# 3557 is a number in circulation; the chart for 2026 reserves 3554 to 3557 (R 3554-57).
+	"3551",
+	"3557",
 	"3558",  # Wareneingang taxable in another EU country
 	"3559",  # tax-free imports
 	# Wertabgaben without Umsatzsteuer, not taxable (§ 3 Abs. 1b Satz 2 UStG)
@@ -1175,6 +1196,13 @@ SKR04_WATCHED = (
 	"6939",
 )
 
+# The twins of SKR03_WATCHED_FOR_HINTS; above class 4 the chart prints "M 4830-4837".
+SKR04_WATCHED_FOR_HINTS = (
+	"4830",
+	"4835",
+	"4832",
+)
+
 # The twins of SKR03_IGNORED, settlement and EÜR accounts that only SKR04 hands to the Umsatzsteuer,
 # and the accounts of ERPNext's template that carry no Kennzahl.
 SKR04_IGNORED = (
@@ -1261,7 +1289,9 @@ SKR04_IGNORED = (
 	"5785",
 	"5790",
 	"5906",
-	# purchases taxable in another EU country, tax-free imports and non-deductible Vorsteuer
+	# purchases taxable in a third country or in another EU country, tax-free imports and
+	# non-deductible Vorsteuer
+	"5551",
 	"5558",
 	"5559",
 	"5600",
@@ -1277,8 +1307,8 @@ SKR04_IGNORED = (
 	"3695",
 )
 
-SKR03 = _mapping("SKR03", SKR03_ACCOUNTS, SKR03_WATCHED, SKR03_RANGES)
-SKR04 = _mapping("SKR04", SKR04_ACCOUNTS, SKR04_WATCHED, SKR04_RANGES)
+SKR03 = _mapping("SKR03", SKR03_ACCOUNTS, SKR03_WATCHED, SKR03_WATCHED_FOR_HINTS, SKR03_RANGES)
+SKR04 = _mapping("SKR04", SKR04_ACCOUNTS, SKR04_WATCHED, SKR04_WATCHED_FOR_HINTS, SKR04_RANGES)
 
 DEFAULTS = MappingProxyType({"SKR03": SKR03, "SKR04": SKR04})
 

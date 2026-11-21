@@ -9,16 +9,18 @@ from steuerbote.ustva.defaults import (
 	SKR03_IGNORED,
 	SKR03_RANGES,
 	SKR03_WATCHED,
+	SKR03_WATCHED_FOR_HINTS,
 	SKR04,
 	SKR04_ACCOUNTS,
 	SKR04_IGNORED,
 	SKR04_RANGES,
 	SKR04_WATCHED,
+	SKR04_WATCHED_FOR_HINTS,
 	default_mapping,
 	with_ranges,
 )
 from steuerbote.ustva.kennzahlen import LATEST_YEAR, UnknownYearError
-from steuerbote.ustva.mapping import AccountRule, Side
+from steuerbote.ustva.mapping import AccountRule, Side, WatchedAccount, WatchLevel
 
 CREDIT = Side.CREDIT
 DEBIT = Side.DEBIT
@@ -382,6 +384,14 @@ WATCHED = (
 	(None, "6939"),
 )
 
+# Accounts watched for a hint, as twins: other operating income that the charts give the Zusatzfunktion
+# "Umsatzsteuer" (M 8194-8603 and M 8605-8613, in SKR04 M 4830-4837) but not the mark "U".
+WATCHED_FOR_HINTS = (
+	("8603", "4830"),
+	("8605", "4835"),
+	("8606", "4832"),
+)
+
 # Accounts the defaults deliberately leave without Kennzahl, as twins.
 IGNORED = (
 	("1543", "1456"),
@@ -437,7 +447,7 @@ IGNORED = (
 	("8589", None),
 	(None, "1427"),
 	(None, "1460"),
-	(None, "1490"),
+	("1390", "1490"),
 	(None, "1491"),
 	# non-deductible Vorsteuer
 	("2170", None),
@@ -492,6 +502,8 @@ IGNORED = (
 	("3794", None),
 	("3796", None),
 	("3798", None),
+	("3551", "5551"),
+	("3557", None),
 	("3558", "5558"),
 	("3559", "5559"),
 	(None, "1184"),
@@ -579,6 +591,7 @@ class RangesTest(TestCase):
 			(SKR04, SKR04_RANGES, SKR04_IGNORED),
 		):
 			ignored_accounts = with_ranges(ignored, ranges)
+			levels = {watched.account_number: watched.level for watched in mapping.watched}
 			for start in ranges:
 				for member in with_ranges((start,), ranges)[1:]:
 					with self.subTest(chart=mapping.chart, member=member):
@@ -592,7 +605,7 @@ class RangesTest(TestCase):
 						for check in mapping.checks:
 							self.assertEqual(member in check.base_accounts, start in check.base_accounts)
 							self.assertEqual(member in check.tax_accounts, start in check.tax_accounts)
-						self.assertEqual(member in mapping.watched, start in mapping.watched)
+						self.assertEqual(levels.get(member), levels.get(start))
 						self.assertEqual(member in ignored_accounts, start in ignored_accounts)
 
 
@@ -682,11 +695,37 @@ class MirrorTest(TestCase):
 class WatchedTest(TestCase):
 	def test_skr03_watched_accounts(self):
 		self.assertEqual(_listed(SKR03_WATCHED), _declared(WATCHED, 0))
-		self.assertEqual(SKR03.watched, with_ranges(SKR03_WATCHED, SKR03_RANGES))
+		self.assertEqual(SKR03.watched_at(WatchLevel.BLOCKING), with_ranges(SKR03_WATCHED, SKR03_RANGES))
 
 	def test_skr04_watched_accounts(self):
 		self.assertEqual(_listed(SKR04_WATCHED), _declared(WATCHED, 1))
-		self.assertEqual(SKR04.watched, with_ranges(SKR04_WATCHED, SKR04_RANGES))
+		self.assertEqual(SKR04.watched_at(WatchLevel.BLOCKING), with_ranges(SKR04_WATCHED, SKR04_RANGES))
+
+	def test_skr03_accounts_watched_for_hints(self):
+		self.assertEqual(_listed(SKR03_WATCHED_FOR_HINTS), _declared(WATCHED_FOR_HINTS, 0))
+		self.assertEqual(
+			SKR03.watched_at(WatchLevel.HINT), with_ranges(SKR03_WATCHED_FOR_HINTS, SKR03_RANGES)
+		)
+
+	def test_skr04_accounts_watched_for_hints(self):
+		self.assertEqual(_listed(SKR04_WATCHED_FOR_HINTS), _declared(WATCHED_FOR_HINTS, 1))
+		self.assertEqual(
+			SKR04.watched_at(WatchLevel.HINT), with_ranges(SKR04_WATCHED_FOR_HINTS, SKR04_RANGES)
+		)
+
+	def test_the_accounts_watched_for_hints_follow_those_that_block(self):
+		for mapping, blocking, hinted, ranges in (
+			(SKR03, SKR03_WATCHED, SKR03_WATCHED_FOR_HINTS, SKR03_RANGES),
+			(SKR04, SKR04_WATCHED, SKR04_WATCHED_FOR_HINTS, SKR04_RANGES),
+		):
+			with self.subTest(chart=mapping.chart):
+				self.assertEqual(
+					mapping.watched,
+					(
+						*(WatchedAccount(number) for number in with_ranges(blocking, ranges)),
+						*(WatchedAccount(number, WatchLevel.HINT) for number in with_ranges(hinted, ranges)),
+					),
+				)
 
 
 class IgnoredTest(TestCase):
@@ -702,11 +741,12 @@ class IgnoredTest(TestCase):
 			(SKR04, SKR04_IGNORED, SKR04_RANGES),
 		):
 			checked = {account for check in mapping.checks for account in check.tax_accounts}
+			watched = {watched.account_number for watched in mapping.watched}
 			for account in with_ranges(ignored, ranges):
 				with self.subTest(chart=mapping.chart, account=account):
 					self.assertIsNone(mapping.rule_for(account))
 					self.assertNotIn(account, checked)
-					self.assertNotIn(account, mapping.watched)
+					self.assertNotIn(account, watched)
 
 
 class BadDebtTest(TestCase):

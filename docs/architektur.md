@@ -8,7 +8,7 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 
 | Modul | Aufgabe |
 |---|---|
-| `steuerbote/ledger.py` | liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns, mit Frappe |
+| `steuerbote/ledger.py` | liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns und die Namen und Bezeichnungen von Konten, mit Frappe |
 | `steuerbote/invoices.py` | liest die eingereichten Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise, mit Frappe |
 | `steuerbote/ustva/plausibility.py` | stellt die Kennzahlen einer Meldung neben Vorperiode und Vorjahr und leitet die Hinweise aus Rechnungen, Hauptbuch und Vergleich ab, im Kern ohne Frappe |
 | `steuerbote/mapping_sync.py` | macht aus den Zeilen der Kontenzuordnung die `Mapping` des Kerns und kürzt die Vorgaben auf die Konten eines Unternehmens |
@@ -35,7 +35,7 @@ So läuft „Berechnen“ an einer Meldung:
 3. Die Kontenzuordnung des Unternehmens wird über `mapping_sync.rows_to_mapping` zur `Mapping` des Kerns, geprüft gegen den Vordruck des Jahres der Meldung.
 4. `calculate()` rechnet Kennzahlen, Summen, Kz 83 und Verprobung.
 5. `bridge.py` schreibt das Ergebnis in die Tabellen der Meldung. Bei jedem Speichern rechnet der Kern Summen und Kz 83 aus den gemeldeten Beträgen neu, damit Korrekturen mit Begründung darin eingehen.
-6. `build_comparison` rechnet Vorperiode und Vorjahr aus dem Hauptbuch, `build_hints` liest die Rechnungen des Zeitraums; beide füllen die Tabellen „Vorperiodenvergleich“ und „Hinweise“, siehe [Vorperiodenvergleich und Hinweise](#vorperiodenvergleich-und-hinweise).
+6. `build_comparison` rechnet Vorperiode und Vorjahr aus dem Hauptbuch, `build_hints` liest die Rechnungen des Zeitraums und nimmt aus dem Ergebnis des Kerns die Salden der beobachteten Konten der Stufe „Hinweis“; beide füllen die Tabellen „Vorperiodenvergleich“ und „Hinweise“, siehe [Vorperiodenvergleich und Hinweise](#vorperiodenvergleich-und-hinweise).
 
 ## DocTypes
 
@@ -74,7 +74,7 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 | `chart` | Kontenrahmen | bestimmt die Vorgabe für „Vorgaben laden“ |
 | `rules` | Zuordnungen | Tabelle „Regel der Kontenzuordnung Umsatzsteuer“: Konto, Kontonummer (aus dem Konto), Kennzahl, Seite (Haben oder Soll), Steuersatz (%; leer oder 0 heißt kein Satz, die Tabelle zeigt ihn dann leer), Zusätzliche Kennzahl und Seite der zusätzlichen Kennzahl |
 | `checks` | Verprobungen | Tabelle „Verprobung der Kontenzuordnung Umsatzsteuer“: Bezeichnung, Grundlagenkonten und Steuerkonten (Kontonummern, durch Kommas getrennt), Seite |
-| `watched` | Beobachtete Konten | Tabelle „Beobachtetes Konto der Kontenzuordnung Umsatzsteuer“: Konto und Kontonummer |
+| `watched` | Beobachtete Konten | Tabelle „Beobachtetes Konto der Kontenzuordnung Umsatzsteuer“: Konto, Kontonummer und Stufe: „Sperrt“ (Vorgabe) hält die Meldung bei einem Saldo an, „Hinweis“ ergibt dann nur einen Hinweis |
 
 ### Umsatzsteuer-Voranmeldung (`VAT Return`)
 
@@ -93,10 +93,10 @@ Einreichbar, Nummernkreis `UStVA-.{year}.-.#####`: Das Jahr im Namen ist das Jah
 | `kennzahlen` | Kennzahlen | Tabelle „Kennzahl der Umsatzsteuer-Voranmeldung“: Kennzahl, Zeile im Vordruck, Beschreibung, Art des Betrags, Betrag laut Hauptbuch, Betrag laut Vordruck, Korrigierter Betrag, Begründung der Korrektur und Gemeldeter Betrag |
 | `output_tax`, `input_tax`, `other_tax` | Umsatzsteuer (Zeile 37), Vorsteuer (Zeilen 38 bis 44), Andere Steuerbeträge (Zeilen 46 und 47) | Summen über die gemeldeten Beträge |
 | `sondervorauszahlung`, `kz83` | Sondervorauszahlung (Kz 39), Verbleibende Vorauszahlung oder verbleibender Überschuss (Kz 83) | |
-| `ready` | Bereit zur Abgabe | alle Verprobungen gehen auf und kein beobachtetes Konto hat einen Saldo |
+| `ready` | Bereit zur Abgabe | alle Verprobungen gehen auf und kein beobachtetes Konto der Stufe „Sperrt“ hat einen Saldo |
 | `checks` | Verprobung | Tabelle „Verprobung der Umsatzsteuer-Voranmeldung“: Verprobung, Berechnete Steuer, Gebuchte Steuer, Unterschied, Abweichende Belege und Verprobung aufgegangen |
 | `deviations` | Abweichende Belege | Tabelle „Abweichender Beleg der Verprobung“: Verprobung, Belegtyp, Belegnr., Berechnete Steuer, Gebuchte Steuer und Unterschied |
-| `unmapped` | Beobachtete Konten mit Saldo | Tabelle „Beobachtetes Konto mit Saldo“: Kontonummer, Konto, Soll und Haben |
+| `unmapped` | Beobachtete Konten mit Saldo | Tabelle „Beobachtetes Konto mit Saldo“: Kontonummer, Konto, Soll und Haben der Konten der Stufe „Sperrt“; den Saldo eines Kontos der Stufe „Hinweis“ nennt ein Hinweis |
 | `accounts_without_number` | Konten ohne Kontonummer | Zahl der Konten, die in keine Kennzahl eingehen können |
 | `hints` | Hinweise | Tabelle „Hinweis zur Umsatzsteuer-Voranmeldung“: Art (Hinweis oder Warnung), Code, Nachricht, Belegtyp, Belegnr. und Partei; füllt „Berechnen“, hält die Meldung nie an |
 | `comparison` | Vorperiodenvergleich | Tabelle „Vorperiodenvergleich der Umsatzsteuer-Voranmeldung“: Kennzahl, Beschreibung, Dieser Zeitraum, Vorperiode, Vorjahr, Differenz zur Vorperiode, Differenz (%) und Auffällig; füllt „Berechnen“ |
@@ -214,8 +214,8 @@ Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cen
 
 ## Kontenzuordnung je Unternehmen
 
-- **Vorgaben laden.** Die Schaltfläche füllt die Tabellen aus der Vorgabe für SKR03 oder SKR04, gekürzt auf die Konten des Unternehmens mit Kontonummer, die Buchungen aufnehmen. Regeln und beobachtete Konten bleiben, wenn es ihr Konto gibt. Eine Verprobung behält ihre vorhandenen Grundlagen und Steuerkonten und entfällt, wenn auf einer Seite keines bleibt. Ein Hinweis nennt die Konten der Vorgabe, die dem Unternehmen fehlen. Für einen eigenen Kontenrahmen gibt es keine Vorgabe.
-- **Prüfung beim Speichern.** Jedes Konto gehört zum Unternehmen und ist keine Kontengruppe. Der Kern prüft die Zuordnung gegen den neuesten Vordruck: jedes Konto nur einmal, nur Kennzahlen mit Betrag, ein Steuersatz nur dort, wo der Vordruck eine eigene Steuer-Kennzahl hat, Verprobungen und beobachtete Konten ohne Widerspruch.
+- **Vorgaben laden.** Die Schaltfläche füllt die Tabellen aus der Vorgabe für SKR03 oder SKR04, gekürzt auf die Konten des Unternehmens mit Kontonummer, die Buchungen aufnehmen. Regeln und beobachtete Konten bleiben, wenn es ihr Konto gibt. Ein beobachtetes Konto behält die Stufe, die seine Zeile vorher hatte; eines, das neu dazukommt, bekommt die Stufe der Vorgabe. Eine Verprobung behält ihre vorhandenen Grundlagen und Steuerkonten und entfällt, wenn auf einer Seite keines bleibt. Ein Hinweis nennt die Konten der Vorgabe, die dem Unternehmen fehlen. Für einen eigenen Kontenrahmen gibt es keine Vorgabe.
+- **Prüfung beim Speichern.** Jedes Konto gehört zum Unternehmen und ist keine Kontengruppe. Der Kern prüft die Zuordnung gegen den neuesten Vordruck: jedes Konto nur einmal, nur Kennzahlen mit Betrag, ein Steuersatz nur dort, wo der Vordruck eine eigene Steuer-Kennzahl hat, Verprobungen und beobachtete Konten ohne Widerspruch, jedes beobachtete Konto nur einmal.
 - „Berechnen“ prüft dieselbe Zuordnung noch einmal gegen den Vordruck des Jahres der Meldung.
 
 ## Lebenslauf einer Meldung
@@ -223,8 +223,8 @@ Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cen
 | Status | Bedeutung |
 |---|---|
 | Entwurf | angelegt und noch nicht berechnet, oder Unternehmen, Jahr, Abgaberhythmus oder Nummer des Zeitraums haben sich geändert; das verwirft eine Berechnung |
-| Berechnet | berechnet, aber nicht bereit: Eine Verprobung weicht ab oder ein beobachtetes Konto hat einen Saldo |
-| Bereit | berechnet, alle Verprobungen gehen auf und kein beobachtetes Konto hat einen Saldo |
+| Berechnet | berechnet, aber nicht bereit: Eine Verprobung weicht ab oder ein beobachtetes Konto der Stufe „Sperrt“ hat einen Saldo |
+| Bereit | berechnet, alle Verprobungen gehen auf und kein beobachtetes Konto der Stufe „Sperrt“ hat einen Saldo |
 | Abgegeben | eingereicht; das setzt eine Berechnung voraus und, wenn die Meldung nicht bereit ist, eine Begründung in den Anmerkungen |
 | Ersetzt | für denselben Zeitraum ist später eine berichtigte Anmeldung abgegeben worden |
 
@@ -240,13 +240,13 @@ Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cen
 
 ## Vorperiodenvergleich und Hinweise
 
-„Berechnen“ füllt an der Meldung zwei Tabellen, die beim Prüfen helfen und nichts ändern: Kein Betrag, keine Summe und nicht, ob die Meldung bereit ist, hängt von ihnen ab. Bereit ist eine Meldung weiter genau dann, wenn alle Verprobungen aufgehen und kein beobachtetes Konto einen Saldo hat. Beide Tabellen zeigen den Stand der letzten Berechnung, eine Korrektur danach erst nach dem nächsten „Berechnen“. Ihre Abschnitte erscheinen im Formular nur mit Zeilen.
+„Berechnen“ füllt an der Meldung zwei Tabellen, die beim Prüfen helfen und nichts ändern: Kein Betrag, keine Summe und nicht, ob die Meldung bereit ist, hängt von ihnen ab. Bereit ist eine Meldung weiter genau dann, wenn alle Verprobungen aufgehen und kein beobachtetes Konto der Stufe „Sperrt“ einen Saldo hat; ein Saldo auf einem Konto der Stufe „Hinweis“ ändert daran nichts. Beide Tabellen zeigen den Stand der letzten Berechnung, eine Korrektur danach erst nach dem nächsten „Berechnen“. Ihre Abschnitte erscheinen im Formular nur mit Zeilen.
 
 **Vorperiodenvergleich.** Je Kennzahl stehen der gemeldete Betrag (nach Korrekturen), der Betrag der Vorperiode und der des Vorjahres, die Differenz zur Vorperiode und ihr Anteil am Betrag der Vorperiode. Vorperiode ist der vorige Zeitraum im selben Abgaberhythmus, Vorjahr derselbe Zeitraum ein Jahr früher, wie im Bericht „UStVA Kennzahlen“. Beide rechnet `build_comparison` in `vat_return.py` aus dem Hauptbuch, mit derselben Abfrage und der Kontenzuordnung auf dem Vordruck ihres Jahres, im letzten Zeitraum eines Jahres mit Kz 39. Frühere Meldungen liest es nicht: Das Hauptbuch ist die einzige Quelle der Kennzahlen, und der Vergleich geht auch, bevor es eine frühere Meldung gibt. Kennt Steuerbote die Kennzahlen eines Jahres nicht, heute 2025, oder passt die Kontenzuordnung nicht zu seinem Vordruck, bleiben die Werte dieses Zeitraums im Formular leer, und ein Hinweis nennt den Grund. Ein solcher Zeitraum kostet keine Abfrage; mit beiden Vergleichszeiträumen fragt „Berechnen“ das Hauptbuch höchstens dreimal ab.
 
 Auffällig ist eine Kennzahl, wenn ihre Änderung gegenüber der Vorperiode beide Schwellen der Einstellungen übersteigt: „Schwelle Vorperiodenvergleich (%)“ als Anteil am Betrag der Vorperiode und „Schwelle Vorperiodenvergleich (EUR)“ als Betrag, ohne Eintrag 50 % und 100 EUR. Gleichstand mit einer Schwelle ist nicht auffällig, eine Änderung gegenüber 0 übersteigt jede Prozentschwelle. Es ist dieselbe Regel wie bei „Nur Abweichungen“ im Bericht (`Thresholds.exceeded` in `report/ustva_kennzahlen/comparison.py`).
 
-**Hinweise.** Jeder Hinweis ist ein Satz mit den Beträgen im Zahlenformat der Site und, wo es sie gibt, mit Beleg und Partei. Eine Warnung betrifft eine Rechnung, die wahrscheinlich falsch ist, ein Hinweis einen Unterschied, den jemand erklären sollte; Warnungen stehen oben. Die Rechnungen liest `steuerbote/invoices.py`: die eingereichten Ausgangsrechnungen des Zeitraums je Erlöskonto und die Eingangsrechnungen je Aufwandskonto der Kz 46 und 84, ohne Eröffnungsrechnungen, Gutschriften mit negativen Beträgen. Netto ist der Nettobetrag der Artikel in Firmenwährung, die Steuer die, die ERPNext je Artikel und Steuerzeile berechnet hat (Item Wise Tax Detail), das Land das der Anschrift auf der Rechnung und die USt-IdNr. die des Kunden oder Lieferanten. Welche Kennzahl eine Rechnungszeile betrifft, sagt die Kontenzuordnung.
+**Hinweise.** Jeder Hinweis ist ein Satz mit den Beträgen im Zahlenformat der Site und, wo es sie gibt, mit Beleg und Partei. Eine Warnung betrifft eine Rechnung, die wahrscheinlich falsch ist, ein Hinweis einen Unterschied, den jemand erklären sollte; Warnungen stehen oben. Die Rechnungen liest `steuerbote/invoices.py`: die eingereichten Ausgangsrechnungen des Zeitraums je Erlöskonto und die Eingangsrechnungen je Aufwandskonto der Kz 46 und 84, ohne Eröffnungsrechnungen, Gutschriften mit negativen Beträgen. Netto ist der Nettobetrag der Artikel in Firmenwährung, die Steuer die, die ERPNext je Artikel und Steuerzeile berechnet hat (Item Wise Tax Detail), das Land das der Anschrift auf der Rechnung und die USt-IdNr. die des Kunden oder Lieferanten. Welche Kennzahl eine Rechnungszeile betrifft, sagt die Kontenzuordnung. Hat ein Konto, das die Kontenzuordnung auf der Stufe „Hinweis“ beobachtet, im Zeitraum einen Saldo, nennt ein Hinweis seine Kontonummer, seine Bezeichnung (das Feld „Kontoname“, gelesen von `ledger.account_labels`), Soll, Haben und Saldo; Soll und Haben rechnet der Kern (`hinted` in `calculate()`).
 
 | Code | Art | Bedeutung |
 |---|---|---|
@@ -255,6 +255,7 @@ Auffällig ist eine Kennzahl, wenn ihre Änderung gegenüber der Vorperiode beid
 | `NULLSATZ-OHNE-GRUND` | Warnung | Eine Rechnung bucht auf ein Konto der Kz 81 oder 86, aber ohne Steuer. |
 | `STEUER-ABWEICHUNG` | Warnung | Die Steuer einer Rechnung auf einem Konto der Kz 81 oder 86 weicht um mehr als 1 Cent von 19 % oder 7 % des Nettobetrags auf diesem Konto ab. |
 | `ABGLEICH-RECHNUNGEN` | Hinweis | Für Kz 81, 86, 41, 21, 45, 46 oder 84 weicht die Summe der Rechnungen um mehr als 1 EUR vom Betrag laut Hauptbuch ab, etwa wegen einer Journalbuchung auf einem Erlöskonto. |
+| `KONTO-BEOBACHTET` | Hinweis | Ein Konto, das die Kontenzuordnung auf der Stufe „Hinweis“ beobachtet, hat im Zeitraum einen Saldo. Er geht in keine Kennzahl ein; ob er in die Voranmeldung gehört, klärt das Unternehmen, siehe [Beobachtete Konten mit Hinweis](ustva-kennzahlen.md#beobachtete-konten-mit-hinweis). |
 | `ABWEICHUNG-VORPERIODE` | Hinweis | Eine Kennzahl ist im Vorperiodenvergleich auffällig. |
 | `KEIN-KATALOG` | Hinweis | Steuerbote kennt die Kennzahlen des Jahres eines Vergleichszeitraums nicht, seine Werte bleiben leer. |
 | `ZUORDNUNG-JAHRGANG` | Hinweis | Die Kontenzuordnung passt nicht zum Vordruck des Jahres eines Vergleichszeitraums, seine Werte bleiben leer. |
@@ -388,7 +389,7 @@ Das Druckformat gibt einen Vordruck USt 1 H im Stil der Voranmeldung aus, auf A4
 
 Steuerbote ersetzt keine Steuerberatung. Diese Punkte entscheidet die Steuerberatung für jedes Unternehmen, bevor die erste Meldung abgegeben wird:
 
-1. **Einordnung von Handelsergebnissen.** Ob Erträge und Aufwendungen aus dem Handel, etwa mit Wertpapieren, Devisen oder Derivaten, in der Voranmeldung erscheinen, als nicht steuerbar, steuerfrei ohne Vorsteuerabzug (Kz 48) oder steuerpflichtig, und auf welche Konten sie dafür gebucht werden. Konten ohne Regel gehen in keine Kennzahl ein.
-2. **Vorsteueraufteilung nach § 15 Absatz 4 UStG.** Hat ein Unternehmen auch Umsätze, die den Vorsteuerabzug ausschließen, ist die Vorsteuer aufzuteilen. Steuerbote meldet die Vorsteuer so, wie sie gebucht ist, und teilt nichts auf. Aufteilung und Buchung des nicht abziehbaren Teils sind abzustimmen.
+1. **Einordnung von Handelsergebnissen.** Ob Erträge und Aufwendungen aus dem Handel, etwa mit Wertpapieren, Devisen oder Derivaten, in der Voranmeldung erscheinen, als nicht steuerbar, steuerfrei ohne Vorsteuerabzug (Kz 48) oder steuerpflichtig, und auf welche Konten sie dafür gebucht werden. Konten ohne Regel gehen in keine Kennzahl ein. Ergebniskonten wie 2654 „Erträge aus anderen Wertpapieren und Ausleihungen des Umlaufvermögens“ oder 2166 „Aufwendungen aus Bewertung Finanzmittelfonds“ halten je Geschäft nur Gewinn oder Verlust. Eine Bemessungsgrundlage für Kz 48 liefern sie nicht, denn der Umsatz „wird … nach dem Entgelt bemessen“ (§ 10 Abs. 1 Satz 1 UStG): Gehört der Handel in die Voranmeldung, braucht Kz 48 die Entgelte selbst, auf einem Konto mit Regel wie 8100 (SKR04: 4100) oder als Korrektur mit Begründung. Bis die Steuerberatung entschieden hat, kann das Unternehmen solche Konten auf der Stufe „Hinweis“ beobachten (siehe [Beobachtete Konten mit Hinweis](ustva-kennzahlen.md#beobachtete-konten-mit-hinweis)).
+2. **Vorsteueraufteilung nach § 15 Absatz 4 UStG.** Hat ein Unternehmen auch Umsätze, die den Vorsteuerabzug ausschließen, ist die Vorsteuer aufzuteilen. Steuerbote meldet die Vorsteuer so, wie sie gebucht ist, und teilt nichts auf. Aufteilung und Buchung des nicht abziehbaren Teils sind abzustimmen. Aufzuteilen ist auch, was das Unternehmen zugleich für nichtunternehmerische Tätigkeiten bezieht, etwa für eine Vermögensverwaltung: Sonstige Leistungen sind „entsprechend der beabsichtigten Verwendung aufzuteilen“ (UStAE 15.2c Abs. 2 Satz 1 Nr. 1), und eine Leistung allein für nichtunternehmerische Tätigkeiten gehört gar nicht zum Unternehmen (UStAE 15.2c Abs. 1 Satz 2).
 3. **Freigabe der Kontenzuordnung.** Die Vorgaben für SKR03 und SKR04 sind von keiner Steuerberatung bestätigt. Die Kontenzuordnung jedes Unternehmens, mit Verprobungen und beobachteten Konten, gibt die Steuerberatung frei.
 4. **Voranmeldungszeitraum.** Ob monatlich, vierteljährlich oder keine Voranmeldung abzugeben ist, legt das Finanzamt fest (§ 18 Absatz 2 UStG), ebenso Dauerfristverlängerung und Sondervorauszahlung. Die Einträge in den Einstellungen sind je Jahr mit den Bescheiden abzugleichen.

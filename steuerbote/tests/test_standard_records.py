@@ -14,7 +14,7 @@ from unittest import TestCase
 from xml.etree import ElementTree
 
 from steuerbote import hooks
-from steuerbote.ustva import KENNZAHLEN
+from steuerbote.ustva import KENNZAHLEN, WatchLevel
 
 APP = Path(__file__).resolve().parents[1]
 MODULE = APP / "steuerbote"
@@ -31,6 +31,15 @@ VAT_RETURN_SCRIPT = MODULE / "doctype" / "vat_return" / "vat_return.js"
 TRANSMISSION_SCRIPT = APP / "public" / "js" / "elster_transmission.js"
 MAPPING = MODULE / "doctype" / "vat_return_mapping"
 MAPPING_RULE = MODULE / "doctype" / "vat_return_mapping_rule" / "vat_return_mapping_rule.json"
+WATCHED_ACCOUNT = MODULE / "doctype" / "vat_return_watched_account" / "vat_return_watched_account.json"
+MAPPING_DOCTYPES = (
+	"vat_return_mapping",
+	"vat_return_mapping_rule",
+	"vat_return_mapping_check",
+	"vat_return_watched_account",
+)
+# The charts of the mapping read the same in every language.
+CHART_NAMES = frozenset({"SKR03", "SKR04", "Eigener Kontenrahmen"})
 DOCK = APP / "dock" / "steuerbote" / "steuerbote.json"
 PERMISSIONS = APP / "permissions.py"
 PUBLIC = APP / "public"
@@ -741,3 +750,48 @@ class MappingRuleFilesTest(TestCase):
 		(rate,) = (field for field in read_json(MAPPING_RULE)["fields"] if field["fieldname"] == "tax_rate")
 		self.assertEqual(rate["fieldtype"], "Float")
 		self.assertTrue(german(rate["description"]).endswith(" Leer oder 0: kein Satz."))
+
+
+class WatchedAccountFilesTest(TestCase):
+	"""A watched account holds the return or only adds a hint, by the level its row of the mapping gives it."""
+
+	def setUp(self):
+		(self.level,) = (
+			field for field in read_json(WATCHED_ACCOUNT)["fields"] if field["fieldname"] == "level"
+		)
+
+	def test_the_level_offers_the_levels_of_the_core_and_blocks_unless_set(self):
+		self.assertEqual(self.level["fieldtype"], "Select")
+		self.assertEqual(self.level["options"].split("\n"), [level.value for level in WatchLevel])
+		self.assertEqual((self.level["default"], self.level["reqd"]), (WatchLevel.BLOCKING.value, 1))
+
+	def test_the_table_of_the_mapping_shows_account_and_level(self):
+		shown = [
+			field["fieldname"] for field in read_json(WATCHED_ACCOUNT)["fields"] if field.get("in_list_view")
+		]
+		self.assertEqual(shown, ["account", "level"])
+
+	def test_the_levels_read_in_german(self):
+		self.assertEqual(
+			[german(option) for option in self.level["options"].split("\n")], ["Sperrt", "Hinweis"]
+		)
+		self.assertEqual(german(self.level["label"]), "Stufe")
+		self.assertEqual(
+			german(self.level["description"]),
+			"Sperrt: Ein Saldo auf dem Konto hält die Meldung an. Hinweis: Ein Saldo ergibt nur einen Hinweis an "
+			"der Meldung.",
+		)
+
+	def test_every_text_of_the_mapping_is_translated(self):
+		texts = set()
+		for name in MAPPING_DOCTYPES:
+			definition = read_json(MODULE / "doctype" / name / f"{name}.json")
+			texts.add(definition["name"])
+			for field in definition["fields"]:
+				texts.update(field[key] for key in ("label", "description") if field.get(key))
+				if field["fieldtype"] == "Select":
+					texts.update(option for option in field["options"].split("\n") if option)
+		for script in ("vat_return_mapping.js", "vat_return_mapping.py"):
+			texts.update(TRANSLATED_LITERAL.findall((MAPPING / script).read_text(encoding="utf-8")))
+		self.assertIn("Watch Level", texts)
+		self.assertEqual(untranslated(texts - CHART_NAMES), [])
