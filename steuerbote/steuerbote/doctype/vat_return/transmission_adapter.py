@@ -11,6 +11,7 @@ import frappe
 from frappe.utils import cint, get_bench_path
 
 from steuerbote.eric import runtime, service
+from steuerbote.eric.datenart import Datenart
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.proxy import Proxy, parse
 from steuerbote.eric.result import Operation, TransmissionResult
@@ -49,9 +50,11 @@ def settings_proxy() -> Proxy | None:
 	return parse(settings.proxy_url, settings.proxy_user, proxy_password)
 
 
-def detect_runtime(year: int, operation: Operation, hersteller_id: str, log_dir: Path) -> RuntimeInfo | None:
-	"""The newest released runtime with the plugin of the year; for Prüfen and Testsenden a beta when no
-	released runtime has that plugin, or None.
+def detect_runtime(
+	datenart: Datenart, operation: Operation, hersteller_id: str, log_dir: Path
+) -> RuntimeInfo | None:
+	"""The newest released runtime with the plugin of the Datenart, such as the UStVA of a year; for Prüfen and
+	Testsenden a beta when no released runtime has that plugin, or None.
 
 	A beta sends no real case (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 2.3), so Senden never gets one;
 	steuerbote.eric.runtime.detect prefers a released runtime whenever a beta is allowed. The runtime carries
@@ -60,7 +63,7 @@ def detect_runtime(year: int, operation: Operation, hersteller_id: str, log_dir:
 	"""
 	return runtime.detect(
 		runtime_root(),
-		year=year,
+		datenart=datenart,
 		allow_beta=operation is not Operation.SEND,
 		log_dir=log_dir,
 		hersteller_id=hersteller_id,

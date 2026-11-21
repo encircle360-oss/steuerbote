@@ -1,6 +1,5 @@
 from datetime import date
 from decimal import Decimal
-from pathlib import Path
 from unittest import TestCase
 
 from steuerbote.elster import zm_xml
@@ -31,8 +30,6 @@ from steuerbote.zm.errors import ZmError
 from steuerbote.zm.lines import NOT_A_VAT_ID, Art, Meldezeile
 from steuerbote.zm.period import ReportingPeriod
 
-DOC = Path(__file__).resolve().parents[3] / "docs" / "zm.md"
-
 # The examples of BZSt „Berichtigung einer ZM“ all concern the Spanish Unternehmer P.
 P = "ES111111112"
 WRONG = "ES111111113"
@@ -42,15 +39,6 @@ MARCH = ReportingPeriod.month(2026, 3)
 
 def raised(context) -> tuple[str, tuple[object, ...]]:
 	return context.exception.template, context.exception.values
-
-
-def doc_table(heading: str) -> list[list[str]]:
-	"""The cells of each row of the table under the heading of docs/zm.md, without its head."""
-	text = DOC.read_text(encoding="utf-8")
-	section = text[text.index(f"\n{heading}\n") + len(heading) + 2 :]
-	section = section[: section.find("\n#")]
-	lines = [line for line in section.splitlines() if line.startswith("|")]
-	return [[cell.strip() for cell in line.strip().strip("|").split("|")] for line in lines[2:]]
 
 
 class NutzdatenTest(TestCase):
@@ -502,28 +490,6 @@ class MeldezeitraumTest(TestCase):
 		self.assertEqual(raised(context), (zm_xml.TOO_OLD, ("Dezember 2015", 2016)))
 
 
-class TransmissionTest(TestCase):
-	def test_zmdo_is_a_datenart_of_elster_extern_sent_with_send_auth(self):
-		"""ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 8-28: Verfahren ElsterExtern, Datenart ZMDO, send-Auth „Ja“,
-		send-NoSig „Nein“."""
-		self.assertEqual(
-			(zm_xml.VERFAHREN, zm_xml.DATENART, zm_xml.VORGANG), ("ElsterExtern", "ZMDO", "send-Auth")
-		)
-
-	def test_the_datenart_version_and_plugin_of_zmdo(self):
-		"""Datenartversionmatrix.ods: datenartVersion ZMDO without a year, Plugin-Bibliothek checkZMDO, on Linux
-		lib<eric_plugin_bibliothek>.so (Entwicklerhandbuch, Kap. 3.1.6.1)."""
-		self.assertEqual(
-			(zm_xml.DATENART_VERSION, zm_xml.PLUGIN, zm_xml.PLUGIN_LIBRARY),
-			("ZMDO", "checkZMDO", "libcheckZMDO.so"),
-		)
-
-	def test_the_recipient_is_bf(self):
-		"""Tabelle 8-28: <Empfaenger> with the attribute id "L"; Jahresdokumentation ZMDO 2: EmpfaengerName BF with
-		the NutzdatenHeader version 11."""
-		self.assertEqual((zm_xml.EMPFAENGER_ID, zm_xml.EMPFAENGER), ("L", "BF"))
-
-
 class XmlErrorTest(TestCase):
 	def test_formats_its_template_with_the_values(self):
 		error = XmlError(zm_xml.LINE_TWICE, AUSTRIA, "L")
@@ -544,22 +510,3 @@ class XmlErrorTest(TestCase):
 		self.assertEqual(set(zm_xml.MESSAGES), templates)
 		self.assertEqual(set(zm_xml.LABELS), labels)
 		self.assertEqual({field.label for field in zm_xml.ANSCHRIFT.values()}, labels)
-
-
-class DocsTest(TestCase):
-	def test_the_documentation_names_what_the_transmission_needs(self):
-		"""docs/zm.md, „Was die Übermittlung braucht“."""
-		cells = {row[0]: row[1] for row in doc_table("### Was die Übermittlung braucht")}
-		expected = {
-			"Verfahren": zm_xml.VERFAHREN,
-			"Datenart": zm_xml.DATENART,
-			"Vorgang": zm_xml.VORGANG,
-			"datenartVersion": zm_xml.DATENART_VERSION,
-			"Plugin": zm_xml.PLUGIN,
-		}
-		self.assertEqual({name: cells[name].split("`")[1] for name in expected}, expected)
-		self.assertIn(f"`{zm_xml.PLUGIN_LIBRARY}`", cells["Plugin"])
-		self.assertIn(
-			f'`<Empfaenger id="{zm_xml.EMPFAENGER_ID}">{zm_xml.EMPFAENGER}</Empfaenger>`',
-			cells["Empfänger im NutzdatenHeader"],
-		)

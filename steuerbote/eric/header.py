@@ -9,15 +9,17 @@ and puts the ELSTER namespace on <Elster> itself (API-Referenz, EricCreateTH).
 
 The limits of the header fields come from the ElsterBasisSchema of the documentation package:
 HerstellerIDSType and NutzdatenBlockTicketSType in headerbasis_datentypen.xsd, the Hersteller element
-in ndh000011.xsd and the 256 characters of DatenLieferantExternSType. For UStVA the NutzdatenHeader
-names the Finanzamt in <Empfaenger id="F"> and the data are sent with send-Auth only (Entwicklerhandbuch,
-Tabelle 8-8).
+in ndh000011.xsd and the 256 characters of DatenLieferantExternSType. The datenartVersion names the Datenart
+of the delivery (steuerbote.eric.datenart), and the Datenart where the NutzdatenHeader sends it: the UStVA to
+the Finanzamt in <Empfaenger id="F"> (Entwicklerhandbuch, Tabelle 8-8), ZMDO to <Empfaenger id="L">BF</Empfaenger>
+(Tabelle 8-28).
 """
 
 import re
 from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
+from steuerbote.eric.datenart import Datenart, of_version
 from steuerbote.eric.result import ERROR, TESTMERKER, Message, Operation
 
 ILLUSTRATION_HERSTELLER_ID = "74931"
@@ -25,7 +27,6 @@ ILLUSTRATION_HERSTELLER_ID = "74931"
 
 HEADER_CODE = "SB-HEADER"
 
-_DATENART_VERSION = re.compile(r"UStVA_(?P<year>\d{4})")
 _DECLARATION = re.compile(r"<\?xml[^>]*\?>")
 
 
@@ -37,33 +38,13 @@ class EnvelopeHeader:
 	datenlieferant: str
 	produkt_name: str
 	produkt_version: str
-	empfaenger_finanzamt: str
-	"""Bundesfinanzamtsnummer, four digits."""
+	empfaenger: str
+	"""The recipient in <Empfaenger> of the NutzdatenHeader: the Bundesfinanzamtsnummer of four digits for a
+	Datenart that goes to the Finanzamt, such as the UStVA, else the recipient of the Datenart, BF for ZMDO."""
 	datenart_version: str
-	"""Such as UStVA_2026 (Datenartversionmatrix.ods)."""
+	"""Such as UStVA_2026 or ZMDO (Datenartversionmatrix.ods), which names the Datenart of the delivery."""
 	testmerker: str | None
 	nutzdaten_ticket: str
-
-
-@dataclass(frozen=True, slots=True)
-class Datenart:
-	verfahren: str
-	datenart: str
-	vorgang: str
-	year: int
-
-	@property
-	def plugin_library(self) -> str:
-		"""The plugin file ERiC loads for the year, checkUStVA_<Jahr> in the Datenartversionmatrix."""
-		return f"libcheckUStVA_{self.year}.so"
-
-
-def datenart(datenart_version: str) -> Datenart:
-	"""Verfahren, Datenart and Vorgang of a datenartVersion; steuerbote knows the UStVA only."""
-	match = _DATENART_VERSION.fullmatch(datenart_version)
-	if match is None:
-		raise ValueError(f"unknown datenartVersion {datenart_version!r}, expected UStVA_<year>")
-	return Datenart("ElsterAnmeldung", "UStVA", "send-Auth", int(match["year"]))
 
 
 def datenteil(nutzdaten_xml: str, header: EnvelopeHeader) -> str:
@@ -73,11 +54,12 @@ def datenteil(nutzdaten_xml: str, header: EnvelopeHeader) -> str:
 	because the whole delivery is one UTF-8 document.
 	"""
 	nutzdaten = without_declaration(nutzdaten_xml)
+	kind = of_version(header.datenart_version)
 	return (
 		"<DatenTeil><Nutzdatenblock>"
 		'<NutzdatenHeader version="11">'
 		f"<NutzdatenTicket>{escape(header.nutzdaten_ticket)}</NutzdatenTicket>"
-		f'<Empfaenger id="F">{escape(header.empfaenger_finanzamt)}</Empfaenger>'
+		f'<Empfaenger id="{kind.recipient_id}">{escape(header.empfaenger)}</Empfaenger>'
 		f"<Hersteller><ProduktName>{escape(header.produkt_name)}</ProduktName>"
 		f"<ProduktVersion>{escape(header.produkt_version)}</ProduktVersion></Hersteller>"
 		"</NutzdatenHeader>"
@@ -125,8 +107,11 @@ def problems(
 			"HerstellerID",
 			f"Die Daten nennen die Hersteller-ID {header.hersteller_id}, eingerichtet ist {own_hersteller_id}.",
 		)
-	if not re.fullmatch(r"\d{4}", header.empfaenger_finanzamt):
-		refuse("Empfaenger", "Die Bundesfinanzamtsnummer besteht aus vier Ziffern.")
+	kind = _datenart(header.datenart_version)
+	if kind is not None:
+		recipient = _recipient_problem(kind, header.empfaenger)
+		if recipient:
+			refuse("Empfaenger", recipient)
 	if not 1 <= len(header.nutzdaten_ticket) <= 32:
 		refuse("NutzdatenTicket", "Das NutzdatenTicket hat 1 bis 32 Zeichen.")
 	if not 1 <= len(header.produkt_name) <= 50 or "elster" in header.produkt_name.casefold():
@@ -135,6 +120,25 @@ def problems(
 		refuse("ProduktVersion", "Die Produktversion hat 1 bis 50 Zeichen.")
 	if not header.datenlieferant.strip() or len(header.datenlieferant) > 256:
 		refuse("DatenLieferant", "Der Datenlieferant ist angegeben und hat höchstens 256 Zeichen.")
-	if not _DATENART_VERSION.fullmatch(header.datenart_version):
+	if kind is None:
 		refuse("datenartVersion", f"Die datenartVersion {header.datenart_version!r} ist unbekannt.")
 	return tuple(found)
+
+
+def _datenart(datenart_version: str) -> Datenart | None:
+	try:
+		return of_version(datenart_version)
+	except ValueError:
+		return None
+
+
+def _recipient_problem(kind: Datenart, empfaenger: str) -> str | None:
+	if kind.recipient is None:
+		return (
+			None
+			if re.fullmatch(r"\d{4}", empfaenger)
+			else "Die Bundesfinanzamtsnummer besteht aus vier Ziffern."
+		)
+	if empfaenger != kind.recipient:
+		return f"Die Datenart {kind.name} geht an den Empfänger {kind.recipient}, nicht an {empfaenger!r}."
+	return None

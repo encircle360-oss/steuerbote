@@ -28,6 +28,7 @@ from frappe.utils import add_days, getdate, today
 import steuerbote
 from steuerbote.eric import runtime as eric_runtime
 from steuerbote.eric import secrets, service
+from steuerbote.eric.datenart import ustva
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import (
 	ERROR,
@@ -204,7 +205,7 @@ class TestTransmission(TransmissionTestCase):
 				datenlieferant=COMPANY,
 				produkt_name="steuerbote",
 				produkt_version=steuerbote.__version__,
-				empfaenger_finanzamt="9123",
+				empfaenger="9123",
 				datenart_version="UStVA_2026",
 				testmerker=None,
 				nutzdaten_ticket="1",
@@ -295,7 +296,7 @@ class TestTransmission(TransmissionTestCase):
 			("Erfolgreich", "accepted", 0, TICKET, None, "44.3.6.0"),
 		)
 		log_dir = eric_log_root() / transmission.name
-		self.assertEqual(fake.detections, [(2026, Operation.SEND, "12345", log_dir)])
+		self.assertEqual(fake.detections, [(ustva(2026), Operation.SEND, "12345", log_dir)])
 		(run,) = fake.runs
 		self.assertEqual((run["certificate"], run["password"]), (CERTIFICATE, PIN))
 		self.assertEqual(run["runtime"], replace(RUNTIME, hersteller_id="12345", log_dir=log_dir))
@@ -883,7 +884,7 @@ class TestFilingState(TransmissionTestCase):
 			def detect(
 				root,
 				*,
-				year,
+				datenart,
 				allow_beta,
 				log_dir,
 				hersteller_id,
@@ -898,7 +899,7 @@ class TestFilingState(TransmissionTestCase):
 					self.subTest(installed=len(installed), operation=operation),
 					patch.object(eric_runtime, "detect", side_effect=detect),
 				):
-					found = transmission_adapter.detect_runtime(2026, operation, "12345", log_dir)
+					found = transmission_adapter.detect_runtime(ustva(2026), operation, "12345", log_dir)
 					self.assertEqual(found and found.version, runtime_info and runtime_info.version)
 
 	def test_the_runtime_carries_the_confirmation_without_which_the_service_runs_no_eric(self):
@@ -907,7 +908,7 @@ class TestFilingState(TransmissionTestCase):
 			datenlieferant=DATENLIEFERANT,
 			produkt_name="steuerbote",
 			produkt_version=steuerbote.__version__,
-			empfaenger_finanzamt="9198",
+			empfaenger="9198",
 			datenart_version="UStVA_2026",
 			testmerker=None,
 			nutzdaten_ticket="1",
@@ -915,7 +916,7 @@ class TestFilingState(TransmissionTestCase):
 		checked = TransmissionResult(Operation.VALIDATE, True, False, RUNTIME.version, None, None)
 		answer = WorkerOutput(0, json.dumps(checked.to_dict()).encode(), "")
 
-		def detect(root, *, year, allow_beta, log_dir, hersteller_id, confirmed_privacy_notice):
+		def detect(root, *, datenart, allow_beta, log_dir, hersteller_id, confirmed_privacy_notice):
 			return replace(
 				RUNTIME,
 				log_dir=log_dir,
@@ -932,7 +933,7 @@ class TestFilingState(TransmissionTestCase):
 				patch.object(service, "wait_for", return_value=answer),
 			):
 				runtime_info = transmission_adapter.detect_runtime(
-					2026, Operation.VALIDATE, "12345", Path("/srv/eric/log")
+					ustva(2026), Operation.VALIDATE, "12345", Path("/srv/eric/log")
 				)
 				self.assertIs(runtime_info.confirmed_privacy_notice, bool(confirmed))
 				if confirmed:

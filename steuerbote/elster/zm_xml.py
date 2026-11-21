@@ -13,12 +13,9 @@ without a byte order mark (HB 5.3.2). Unlike the Voranmeldung with its Kz 09 the
 the TransferHeader names it, which EricCreateTH writes. Mein ELSTER imports no XML for the ZM; its form takes
 the CSV file of steuerbote.zm.csv_file.
 
-What the transmission needs besides the Nutzdaten: the Verfahren ElsterExtern, the Datenart ZMDO and the Vorgang
-send-Auth, the only one ZMDO allows (HB Tabelle 8-28); the datenartVersion ZMDO, which has no year, and the
-plugin checkZMDO (Datenartversionmatrix.ods), on Linux libcheckZMDO.so (HB Kap. 3.1.6.1); and in the
-NutzdatenHeader <Empfaenger id="L">BF</Empfaenger> (HB Tabelle 8-28; JD, EmpfaengerTyp L and EmpfaengerName BF
-for the NutzdatenHeader version 11), BF being the „Bundesamt für Finanzen“ of BundeslandSType in
-headerbasis_datentypen.xsd, today the BZSt.
+What the transmission needs besides the Nutzdaten, the Verfahren ElsterExtern, the Datenart ZMDO, the Vorgang
+send-Auth, the datenartVersion ZMDO with the plugin checkZMDO and the recipient BF of the NutzdatenHeader, describes
+steuerbote.eric.datenart.ZMDO, the one place for the parameters of every Datenart.
 
 The rules:
 
@@ -71,15 +68,6 @@ from steuerbote.zm.errors import ZmError
 from steuerbote.zm.lines import Art, Meldezeile
 from steuerbote.zm.period import Kind, ReportingPeriod
 from steuerbote.zm.rhythm import check_notices
-
-VERFAHREN = "ElsterExtern"
-DATENART = "ZMDO"
-VORGANG = "send-Auth"
-DATENART_VERSION = "ZMDO"
-PLUGIN = "checkZMDO"
-PLUGIN_LIBRARY = f"lib{PLUGIN}.so"
-EMPFAENGER_ID = "L"
-EMPFAENGER = "BF"
 
 NAMESPACE = "http://www.elster.de/elsterxml/schema/v11"
 VERSION = "000005"

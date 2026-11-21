@@ -15,6 +15,7 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import getdate
 
 from steuerbote.eric import secrets
+from steuerbote.eric.datenart import ustva
 from steuerbote.eric.result import ERROR, HINT, UNKNOWN_MESSAGE, Message, Operation, Outcome
 from steuerbote.steuerbote.doctype.vat_return_extension.test_vat_return_extension import (
 	money,
@@ -112,7 +113,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 			(operation, runtime_info, certificate, password), (Operation.VALIDATE, None, None, None)
 		)
 		self.assertEqual(
-			(header.datenart_version, header.empfaenger_finanzamt, header.hersteller_id, header.testmerker),
+			(header.datenart_version, header.empfaenger, header.hersteller_id, header.testmerker),
 			("UStVA_2026", "9123", "00000", None),
 		)
 		for element in (
@@ -193,7 +194,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 			("12345", "UStVA_2026", None),
 		)
 		self.assertIn("<Kz09>12345</Kz09>", run["nutzdaten"])
-		self.assertEqual(fake.detections[0][:3], (2026, Operation.SEND, "12345"))
+		self.assertEqual(fake.detections[0][:3], (ustva(2026), Operation.SEND, "12345"))
 		self.assertEqual(self.attachment(transmission, "protocol_pdf").get_content(), PROTOCOL)
 		self.assertIn((2026, 1, money(4000)), prepayments(COMPANY))
 		with self.assertRaises(secrets.SecretsExpired):

@@ -2,14 +2,12 @@ from dataclasses import replace
 from unittest import TestCase
 from xml.etree import ElementTree
 
-from steuerbote.eric.header import (
-	ILLUSTRATION_HERSTELLER_ID,
-	Datenart,
-	EnvelopeHeader,
-	datenart,
-	datenteil,
-	problems,
-)
+from lxml import etree
+
+from steuerbote.elster import ust1h_xml, ustva_xml
+from steuerbote.elster.tests import eric_schema, examples, zm_examples
+from steuerbote.eric.datenart import ZMDO, Datenart, ustva
+from steuerbote.eric.header import ILLUSTRATION_HERSTELLER_ID, EnvelopeHeader, datenteil, problems
 from steuerbote.eric.result import ERROR, TESTMERKER, Operation
 
 NUTZDATEN = (
@@ -23,24 +21,26 @@ HEADER = EnvelopeHeader(
 	datenlieferant="Beispiel GmbH; Erika Beispiel; 089 1234567",
 	produkt_name="Steuerbote",
 	produkt_version="0.1.0",
-	empfaenger_finanzamt="9198",
+	empfaenger="9198",
 	datenart_version="UStVA_2026",
 	testmerker=None,
 	nutzdaten_ticket="1",
 )
+# The Zusammenfassende Meldung goes to the Länderkürzel BF (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 8-28).
+ZM_HEADER = replace(HEADER, empfaenger="BF", datenart_version="ZMDO")
 
 
-class DatenartTest(TestCase):
-	def test_ustva_is_an_elster_anmeldung_sent_with_authentication(self):
-		self.assertEqual(datenart("UStVA_2026"), Datenart("ElsterAnmeldung", "UStVA", "send-Auth", 2026))
-
-	def test_names_the_plugin_library_of_the_year(self):
-		self.assertEqual(datenart("UStVA_2027").plugin_library, "libcheckUStVA_2027.so")
-
-	def test_refuses_other_datenart_versions(self):
-		for version in ("ESt_2026", "UStVA_26", "UStVA_2026 ", "ustva_2026", "UStVA-2026", ""):
-			with self.subTest(version=version), self.assertRaises(ValueError):
-				datenart(version)
+def delivery(datenteil_xml: str, kind: Datenart, testmerker: bool) -> bytes:
+	"""The whole delivery as EricCreateTH completes the DatenTeil: the TransferHeader of the Datenart before it and
+	the namespace of ElsterXML 11 on <Elster> alone (API-Referenz, EricCreateTH)."""
+	test = f"<Testmerker>{TESTMERKER}</Testmerker>" if testmerker else ""
+	return (
+		'<Elster xmlns="http://www.elster.de/elsterxml/schema/v11"><TransferHeader version="11">'
+		f"<Verfahren>{kind.verfahren}</Verfahren><DatenArt>{kind.name}</DatenArt><Vorgang>{kind.vorgang}</Vorgang>"
+		f"{test}<HerstellerID>12345</HerstellerID><DatenLieferant>Beispiel GmbH</DatenLieferant>"
+		"<Datei><Verschluesselung>CMSEncryptedData</Verschluesselung><Kompression>GZIP</Kompression></Datei>"
+		f"</TransferHeader>{datenteil_xml}</Elster>"
+	).encode()
 
 
 class DatenteilTest(TestCase):
@@ -73,6 +73,18 @@ class DatenteilTest(TestCase):
 		):
 			with self.subTest(prefix=prefix):
 				self.assertIn(f"<Nutzdaten>{NUTZDATEN}</Nutzdaten>", datenteil(prefix + NUTZDATEN, HEADER))
+
+	def test_sends_the_zm_to_the_laenderkuerzel_bf(self):
+		"""ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 8-28: <Empfaenger> with the attribute id "L"."""
+		root = ElementTree.fromstring(datenteil(zm_examples.nutzdaten(), ZM_HEADER))
+		header = root.find("Nutzdatenblock/NutzdatenHeader")
+		self.assertEqual(
+			(header.find("Empfaenger").attrib, header.findtext("Empfaenger")), ({"id": "L"}, "BF")
+		)
+		nutzdaten = root.find("Nutzdatenblock/Nutzdaten")
+		self.assertEqual(
+			[child.tag for child in nutzdaten], ["{http://www.elster.de/elsterxml/schema/v11}zm"]
+		)
 
 	def test_escapes_the_header_values(self):
 		text = datenteil(NUTZDATEN, replace(HEADER, produkt_name="A & B <C>"))
@@ -113,7 +125,7 @@ class ProblemsTest(TestCase):
 
 	def test_names_each_field_out_of_shape(self):
 		cases = {
-			"Empfaenger": {"empfaenger_finanzamt": "919"},
+			"Empfaenger": {"empfaenger": "919"},
 			"NutzdatenTicket": {"nutzdaten_ticket": "x" * 33},
 			"ProduktName": {"produkt_name": "ELSTER-Helfer"},
 			"ProduktVersion": {"produkt_version": ""},
@@ -123,6 +135,19 @@ class ProblemsTest(TestCase):
 		for field, change in cases.items():
 			with self.subTest(field=field):
 				self.assertEqual(self.fields(replace(HEADER, **change)), [field])
+
+	def test_the_recipient_is_the_one_of_the_datenart(self):
+		"""The UStVA goes to a Bundesfinanzamtsnummer (Tabelle 8-8), ZMDO to BF (Tabelle 8-28)."""
+		self.assertEqual(self.fields(ZM_HEADER, Operation.SEND, own_hersteller_id="12345"), [])
+		self.assertEqual(self.fields(replace(ZM_HEADER, empfaenger="9198")), ["Empfaenger"])
+		self.assertEqual(self.fields(replace(HEADER, empfaenger="BF")), ["Empfaenger"])
+		(refused,) = problems(replace(ZM_HEADER, empfaenger="9198"), Operation.VALIDATE)
+		self.assertIn("BF", refused.text)
+
+	def test_an_unknown_datenart_version_leaves_the_recipient_unchecked(self):
+		self.assertEqual(
+			self.fields(replace(HEADER, datenart_version="ESt_2026", empfaenger="x")), ["datenartVersion"]
+		)
 
 	def test_limits_follow_the_schema(self):
 		self.assertEqual(self.fields(replace(HEADER, nutzdaten_ticket="x" * 32)), [])
@@ -135,3 +160,30 @@ class ProblemsTest(TestCase):
 
 	def test_the_product_name_must_not_contain_elster_in_any_case(self):
 		self.assertEqual(self.fields(replace(HEADER, produkt_name="Mein Elster")), ["ProduktName"])
+
+
+class DeliverySchemaTest(TestCase):
+	"""The DatenTeil of each Datenart in the TransferHeader that EricCreateTH writes from its description, against the
+	schema of the whole delivery in the ERiC documentation 44.3.6.0."""
+
+	def assert_valid(self, schema: etree.XMLSchema, document: bytes) -> None:
+		if not schema.validate(etree.ElementTree(etree.fromstring(document))):
+			self.fail(str(schema.error_log))
+
+	def test_the_voranmeldung_and_form_ust_1_h_are_deliveries_of_the_ustva(self):
+		schema = eric_schema.envelope_schema(2026)
+		filer, created = examples.filer(), examples.CREATED
+		for name, nutzdaten in (
+			("Voranmeldung", ustva_xml.to_nutzdaten(filer, examples.voranmeldung(), created, "12345")),
+			("USt 1 H", ust1h_xml.to_nutzdaten(filer, examples.anmeldung(), created, "12345")),
+		):
+			for testmerker in (True, False):
+				with self.subTest(name=name, testmerker=testmerker):
+					self.assert_valid(schema, delivery(datenteil(nutzdaten, HEADER), ustva(2026), testmerker))
+
+	def test_the_zm_is_a_delivery_of_zmdo(self):
+		schema = eric_schema.zm_envelope_schema()
+		for testmerker in (True, False):
+			with self.subTest(testmerker=testmerker):
+				document = delivery(datenteil(zm_examples.nutzdaten(), ZM_HEADER), ZMDO, testmerker)
+				self.assert_valid(schema, document)

@@ -2,16 +2,26 @@
 
 Without an ERiC runtime steuerbote answers with this simulation, so the whole way from the button to the
 record of the Übermittlung can be used and tested before a Hersteller-ID exists. It checks what can be
-checked without ERiC: the header of the delivery, that the Nutzdaten are XML without a DTD, with the root
-Anmeldungssteuern in the namespace of the year, and, with the ERiC documentation at hand, the Nutzdaten against
-UStVA-<Jahr>.xsd of Datenarten/ElsterAnmeldung/UStVA/Schema/<Jahr>/. The variable STEUERBOTE_ERIC_DOC_DIR names
-the unzipped documentation package or its directory Dokumentation.
+checked without ERiC: the header of the delivery, that the Nutzdaten are XML without a DTD and begin with the
+element of their Datenart in its namespace (steuerbote.eric.datenart), the rules of the Jahresdokumentation of the
+Datenart on their structure, and, with the ERiC documentation at hand, the Nutzdaten against the schema of the
+Datenart. The variable STEUERBOTE_ERIC_DOC_DIR names the unzipped documentation package or its directory
+Dokumentation.
 
 The Datenart UStVA holds form USt 1 H next to the Voranmeldung (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 2-13),
 and the schema leaves the rules that tie its elements together to ERiC. Of these the simulation checks those
 on the structure, from the sheet "Anmeldungssteuern - Regeln" of the Jahresdokumentation UStVA 2026: the
 Steuerfall holds exactly one of the three contexts (110085099), each context the fields it requires (CONTEXTS),
-and a context's Jahr is the year of the Datenart (110085047, 110085130, 110085131).
+and a context's Jahr is the year of the Datenart (110085047, 110085130, 110085131). Its schema is
+UStVA-<Jahr>.xsd in the namespace of the year.
+
+The Zusammenfassende Meldung is the Datenart ZMDO. Of the rules of Jahresdokumentation_ZMDO_2.ods, sheet "ZMDO -
+Regeln", the simulation checks those on the structure: the fields the Unternehmer, its Meldezeilen and their
+Meldezeitraum require (ZM_REQUIRED), at least one Meldezeile (170045002), each with its Art, USt-IdNr. and sum
+(ZM_LINE), no USt-IdNr. and Art twice (170045003 to 170045005, ZM_TWICE), and at most ZM_MAX_LINES Meldezeilen,
+the "max. Zeilen" of the fields of a Meldezeile on the sheet "ZMDO - Felder". The element zm comes in the version
+000005 of zm_000005.xsd, a schema without a namespace that the simulation includes into the namespace of
+ElsterXML 11, as elster11_Zm_000005_extern.xsd does.
 
 A test send or send that passes answers with a Transferticket "SIM-" and the first 28 hexadecimal digits
 of the SHA-256 of the Nutzdaten, a form no Transferticket of ERiC has, and with a one-page PDF saying that
@@ -22,20 +32,19 @@ This module is pure Python and never imports Frappe; lxml is imported only for t
 
 import hashlib
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import NamedTuple
 from xml.etree import ElementTree
 
-from steuerbote.eric.header import EnvelopeHeader, datenart, problems, without_declaration
+from steuerbote.eric.datenart import Datenart, of_version
+from steuerbote.eric.header import EnvelopeHeader, problems, without_declaration
 from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Message, Operation, Outcome, TransmissionResult
 
 DOCUMENTATION_VARIABLE = "STEUERBOTE_ERIC_DOC_DIR"
 SIMULATED_VERSION = "simulation"
 TICKET_PREFIX = "SIM-"
-NAMESPACE = "http://finkonsens.de/elster/elsteranmeldung/ustva/v{year}"
-SCHEMA = "Datenarten/ElsterAnmeldung/UStVA/Schema/{year}/UStVA-{year}.xsd"
 PDF_TITLE = "Simulation, keine Übermittlung"
 
 SIMULATION_NOTICE = Message(
@@ -44,6 +53,7 @@ SIMULATION_NOTICE = Message(
 STRUCTURE_ONLY = (
 	"Die Simulation prüft nur Aufbau, Kontext und Pflichtfelder, nicht das XSD des Jahres {year}: {reason}"
 )
+ZM_STRUCTURE_ONLY = "Die Simulation prüft nur Aufbau und Pflichtfelder, nicht gegen {schema}: {reason}"
 
 
 class Required(NamedTuple):
@@ -106,6 +116,82 @@ ONE_CONTEXT = (
 )
 
 
+class ZmField(NamedTuple):
+	"""A field the rules of ZMDO require, by its path below the element zm or a Meldezeile, an attribute after
+	@, with the Fehlercode of its rule and what the message says."""
+
+	path: str
+	code: str
+	text: str
+
+	@property
+	def name(self) -> str:
+		return self.path.replace("@", "/").rpartition("/")[2]
+
+
+ZM_REQUIRED = (
+	ZmField("unternehmer/knri", "170015001", "Die USt-IdNr. des Unternehmers ist ein Pflichtfeld"),
+	ZmField(
+		"unternehmer/zulassNr/zulnr1",
+		"170015021",
+		"Der Paginierbuchstabe der Teilnehmernummer ist ein Pflichtfeld",
+	),
+	ZmField(
+		"unternehmer/zulassNr/zulnr2", "170015023", "Der zweite Teil der Teilnehmernummer ist ein Pflichtfeld"
+	),
+	ZmField("unternehmer/anschrift/name", "170025001", "Der Name des Unternehmens ist ein Pflichtfeld"),
+	ZmField("unternehmer/anschrift/strasse", "170025002", "Die Straße des Unternehmens ist ein Pflichtfeld"),
+	ZmField("unternehmer/anschrift/ort", "170025003", "Der Ort des Unternehmens ist ein Pflichtfeld"),
+	ZmField("unternehmer/anschrift/staat", "170025004", "Der Staat des Unternehmens ist ein Pflichtfeld"),
+	ZmField("unternehmer/zm-zeilen@waehrung", "170015004", "Die Währung ist ein Pflichtfeld"),
+	ZmField("unternehmer/zm-zeilen@meldeart", "170015005", "Die Meldeart ist ein Pflichtfeld"),
+	ZmField(
+		"unternehmer/zm-zeilen/anzeige",
+		"170015006",
+		"Die Angabe zur Anzeige der monatlichen Abgabe ist ein Pflichtfeld",
+	),
+	ZmField(
+		"unternehmer/zm-zeilen/widerruf",
+		"170015009",
+		"Die Angabe zum Widerruf der Anzeige ist ein Pflichtfeld",
+	),
+	ZmField("unternehmer/zm-zeilen/mzr/quart", "170015014", "Der Meldezeitraum ist ein Pflichtfeld"),
+	ZmField("unternehmer/zm-zeilen/mzr/jahr", "170015018", "Das Jahr des Meldezeitraums ist ein Pflichtfeld"),
+)
+ZM_LINES = "unternehmer/zm-zeilen/zeile"
+ZM_NO_LINE = ZmField(
+	"zeile",
+	"170045002",
+	"Die Zusammenfassende Meldung braucht eine Meldezeile, Nullmeldungen sind nicht zulässig",
+)
+ZM_LINE = (
+	ZmField("@umsatzart", "170045011", "Die Art der Leistung ist in jeder Meldezeile ein Pflichtfeld"),
+	ZmField("knre", "170045008", "Die USt-IdNr. des Erwerbers ist in jeder Meldezeile ein Pflichtfeld"),
+	ZmField("betrag", "170045007", "Die Summe ist in jeder Meldezeile ein Pflichtfeld"),
+)
+ZM_TWICE: MappingProxyType[str, str] = MappingProxyType(
+	{"D": "170045003", "L": "170045004", "S": "170045005"}
+)
+"""The rule that refuses a second Meldezeile of the same USt-IdNr., by Art."""
+ZM_MAX_LINES = 5000
+MELDEARTEN: MappingProxyType[str, str] = MappingProxyType({"10": "Erstmeldung", "11": "Berichtigung"})
+"""The attribute meldeart of zm-zeilen: 10 „Erstmeldung“, 11 „berichtigte Anmeldung“ (meldeart_Type of the XSD)."""
+
+type Structure = tuple[ElementTree.Element | None, Message | None]
+
+
+class Checks(NamedTuple):
+	"""How the simulation checks the Nutzdaten of a Datenart and what its protocol says of them.
+
+	``structure`` takes the parsed Nutzdaten and returns what the protocol reads, or the error of their structure;
+	``filing`` gives the lines of the protocol from it; ``structure_only`` says why the schema was not checked.
+	"""
+
+	structure: Callable[[ElementTree.Element, Datenart], Structure]
+	filing: Callable[[ElementTree.Element, Datenart], list[str]]
+	structure_only: Callable[[Datenart, str], str]
+
+
 class Simulation:
 	def __init__(self, documentation: Path | None = None):
 		"""documentation: the unzipped ERiC documentation; by default the directory STEUERBOTE_ERIC_DOC_DIR names."""
@@ -117,16 +203,15 @@ class Simulation:
 		messages = [SIMULATION_NOTICE]
 		errors = list(problems(header, operation))
 		if not errors:
-			year = datenart(header.datenart_version).year
-			context, structure = _structure(nutzdaten_xml, year)
+			kind = of_version(header.datenart_version)
+			checks = CHECKS[kind.name]
+			found, structure = _structure(nutzdaten_xml, kind, checks)
 			errors.extend(structure)
 			if not structure:
-				schema_errors, unchecked = self._schema_errors(without_declaration(nutzdaten_xml), year)
+				schema_errors, unchecked = self._schema_errors(without_declaration(nutzdaten_xml), kind)
 				errors.extend(schema_errors)
 				if unchecked:
-					messages.append(
-						Message("SIM-001", STRUCTURE_ONLY.format(year=year, reason=unchecked), HINT)
-					)
+					messages.append(Message("SIM-001", checks.structure_only(kind, unchecked), HINT))
 		if errors:
 			return TransmissionResult(
 				operation,
@@ -142,21 +227,23 @@ class Simulation:
 			return TransmissionResult(operation, True, True, SIMULATED_VERSION, None, None, tuple(messages))
 		digest = hashlib.sha256(nutzdaten_xml.encode()).hexdigest()
 		ticket = TICKET_PREFIX + digest[:28]
-		pdf = placeholder_pdf(PDF_TITLE, _protocol_lines(operation, header, context, year, ticket, digest))
+		filing = checks.filing(found, kind)
+		pdf = placeholder_pdf(PDF_TITLE, _protocol_lines(operation, header, filing, ticket, digest))
 		return TransmissionResult(
 			operation, True, True, SIMULATED_VERSION, ticket, testmerker, tuple(messages), protocol_pdf=pdf
 		)
 
-	def _schema_errors(self, nutzdaten: str, year: int) -> tuple[list[Message], str | None]:
-		"""The errors against the XSD of the year, and why the check did not run, if it did not."""
-		schema_path = self._schema(year)
+	def _schema_errors(self, nutzdaten: str, kind: Datenart) -> tuple[list[Message], str | None]:
+		"""The errors against the XSD of the Datenart, and why the check did not run, if it did not."""
+		schema_path = self._schema(kind)
 		if schema_path is None:
-			return [], f"Die ERiC-Dokumentation mit UStVA-{year}.xsd fehlt ({DOCUMENTATION_VARIABLE})."
+			name = Path(kind.schema).name
+			return [], f"Die ERiC-Dokumentation mit {name} fehlt ({DOCUMENTATION_VARIABLE})."
 		try:
 			from lxml import etree
 		except ImportError:
 			return [], "lxml ist nicht installiert."
-		schema = etree.XMLSchema(etree.parse(str(schema_path)))
+		schema = etree.XMLSchema(_in_its_namespace(etree, schema_path, kind))
 		parser = etree.XMLParser(resolve_entities=False, no_network=True)
 		document = etree.fromstring(nutzdaten.encode(), parser)
 		if schema.validate(document):
@@ -166,14 +253,28 @@ class Simulation:
 			for error in schema.error_log
 		], None
 
-	def _schema(self, year: int) -> Path | None:
+	def _schema(self, kind: Datenart) -> Path | None:
 		if self._documentation is None:
 			return None
 		for directory in (self._documentation, *sorted(self._documentation.glob("ERiC-*/Dokumentation"))):
-			path = directory / SCHEMA.format(year=year)
+			path = directory / kind.schema
 			if path.is_file():
 				return path
 		return None
+
+
+def _in_its_namespace(etree, schema_path: Path, kind: Datenart):
+	"""The XSD as lxml takes it. A schema without a target namespace, zm_000005.xsd, is included into the
+	namespace of its Datenart, as elster11_Zm_000005_extern.xsd includes it into the one of ElsterXML 11."""
+	document = etree.parse(str(schema_path))
+	if document.getroot().get("targetNamespace"):
+		return document
+	wrapper = (
+		f'<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="{kind.namespace}" '
+		f'targetNamespace="{kind.namespace}" elementFormDefault="qualified">'
+		f'<xs:include schemaLocation="{schema_path.resolve().as_uri()}"/></xs:schema>'
+	)
+	return etree.fromstring(wrapper.encode())
 
 
 def placeholder_pdf(title: str, lines: Sequence[str]) -> bytes:
@@ -208,8 +309,10 @@ def placeholder_pdf(title: str, lines: Sequence[str]) -> bytes:
 	return bytes(pdf)
 
 
-def _structure(nutzdaten_xml: str, year: int) -> tuple[ElementTree.Element | None, list[Message]]:
-	"""The one context of the Nutzdaten, or the errors of their structure."""
+def _structure(
+	nutzdaten_xml: str, kind: Datenart, checks: Checks
+) -> tuple[ElementTree.Element | None, list[Message]]:
+	"""What the protocol reads of the Nutzdaten, or the errors of their structure."""
 	text = without_declaration(nutzdaten_xml)
 	if "<!DOCTYPE" in text:
 		return None, [Message("SIM-002", "Die Nutzdaten dürfen keine DTD enthalten.", ERROR)]
@@ -217,16 +320,20 @@ def _structure(nutzdaten_xml: str, year: int) -> tuple[ElementTree.Element | Non
 		root = ElementTree.fromstring(text)  # noqa: S314 - refused above if it carries a DTD
 	except ElementTree.ParseError as error:
 		return None, [Message("SIM-002", f"Die Nutzdaten sind kein wohlgeformtes XML: {error}.", ERROR)]
-	namespace = NAMESPACE.format(year=year)
-	if root.tag != f"{{{namespace}}}Anmeldungssteuern":
-		return None, [
-			Message(
-				"SIM-003",
-				f"Die Nutzdaten beginnen nicht mit Anmeldungssteuern im Namensraum {namespace}.",
-				ERROR,
-				"Anmeldungssteuern",
-			)
-		]
+	found, error = checks.structure(root, kind)
+	return (None, [error]) if error else (found, [])
+
+
+def _anmeldungssteuern(root: ElementTree.Element, kind: Datenart) -> Structure:
+	"""The one context of the Steuerfall of the UStVA, or the error of its structure."""
+	namespace = kind.namespace
+	if root.tag != f"{{{namespace}}}{kind.root}":
+		return None, Message(
+			"SIM-003",
+			f"Die Nutzdaten beginnen nicht mit {kind.root} im Namensraum {namespace}.",
+			ERROR,
+			kind.root,
+		)
 	contexts = [
 		child
 		for steuerfall in root.iterfind(f"{{{namespace}}}Steuerfall")
@@ -234,19 +341,109 @@ def _structure(nutzdaten_xml: str, year: int) -> tuple[ElementTree.Element | Non
 		if _local_name(child) in CONTEXTS
 	]
 	if len(contexts) != 1:
-		return None, [Message("SIM-006", ONE_CONTEXT, ERROR, "Steuerfall")]
+		return None, Message("SIM-006", ONE_CONTEXT, ERROR, "Steuerfall")
 	(context,) = contexts
 	rules = CONTEXTS[_local_name(context)]
 	for field in rules.required:
 		if context.find(f"{{{namespace}}}{field.element}") is None:
-			return None, [Message("SIM-004", f"{field.text} (Regel {field.code}).", ERROR, field.element)]
+			return None, Message("SIM-004", f"{field.text} (Regel {field.code}).", ERROR, field.element)
 	jahr = context.findtext(f"{{{namespace}}}Jahr")
-	if jahr is not None and jahr.strip() != str(year):
+	if jahr is not None and jahr.strip() != str(kind.year):
 		wrong_year = (
-			f"Das Jahr {jahr.strip()} ist nicht das Jahr der Datenart, {year} (Regel {rules.year_rule})."
+			f"Das Jahr {jahr.strip()} ist nicht das Jahr der Datenart, {kind.year} (Regel {rules.year_rule})."
 		)
-		return None, [Message("SIM-007", wrong_year, ERROR, "Jahr")]
-	return context, []
+		return None, Message("SIM-007", wrong_year, ERROR, "Jahr")
+	return context, None
+
+
+def _ustva_filing(context: ElementTree.Element, kind: Datenart) -> list[str]:
+	def value(name: str) -> str:
+		return context.findtext(f"{{{kind.namespace}}}{name}", default="").strip()
+
+	form = CONTEXTS[_local_name(context)].form
+	if form is None:
+		return [f"Zeitraum: {value('Zeitraum')}/{value('Jahr')}", f"Kennzahl 83: {value('Kz83')}"]
+	kz38 = [f"Kennzahl 38: {value('Kz38')}"] if context.find(f"{{{kind.namespace}}}Kz38") is not None else []
+	return [f"Vordruck: {form} {value('Jahr')}", *kz38]
+
+
+def _ustva_structure_only(kind: Datenart, reason: str) -> str:
+	return STRUCTURE_ONLY.format(year=kind.year, reason=reason)
+
+
+def _zm(root: ElementTree.Element, kind: Datenart) -> Structure:
+	"""The element zm of the Zusammenfassende Meldung, or the error of its structure."""
+	if root.tag != f"{{{kind.namespace}}}{kind.root}" or root.get("version") != kind.root_version:
+		begins = f"Die Nutzdaten beginnen nicht mit {kind.root} in der Version {kind.root_version}"
+		return None, Message("SIM-003", f"{begins} im Namensraum {kind.namespace}.", ERROR, kind.root)
+	for field in ZM_REQUIRED:
+		if not _zm_value(root, field.path, kind):
+			return None, _missing(field)
+	lines = root.findall(_zm_path(ZM_LINES, kind))
+	if not lines:
+		return None, _missing(ZM_NO_LINE)
+	if len(lines) > ZM_MAX_LINES:
+		too_many = (
+			f"Die Nutzdaten haben {len(lines)} Meldezeilen, ZMDO nimmt höchstens {ZM_MAX_LINES} (max. Zeilen der "
+			"Meldezeile in der Jahresdokumentation ZMDO)."
+		)
+		return None, Message("SIM-009", too_many, ERROR, "zeile")
+	seen = set()
+	for line in lines:
+		for field in ZM_LINE:
+			if not _zm_value(line, field.path, kind):
+				return None, _missing(field)
+		vat_id, art = _zm_value(line, "knre", kind), _zm_value(line, "@umsatzart", kind)
+		if (vat_id, art) in seen and art in ZM_TWICE:
+			twice = (
+				f"Die Meldezeile {vat_id} {art} steht mehr als einmal in den Nutzdaten; ihre Beträge gehören in "
+				f"eine Zeile (Regel {ZM_TWICE[art]})."
+			)
+			return None, Message("SIM-008", twice, ERROR, "zeile")
+		seen.add((vat_id, art))
+	return root, None
+
+
+def _zm_filing(root: ElementTree.Element, kind: Datenart) -> list[str]:
+	meldeart = _zm_value(root, "unternehmer/zm-zeilen@meldeart", kind)
+	quart = _zm_value(root, "unternehmer/zm-zeilen/mzr/quart", kind)
+	jahr = _zm_value(root, "unternehmer/zm-zeilen/mzr/jahr", kind)
+	return [
+		f"Meldezeitraum: {quart}/{jahr}",
+		f"Meldeart: {meldeart} ({MELDEARTEN.get(meldeart, 'unbekannt')})",
+		f"Meldezeilen: {len(root.findall(_zm_path(ZM_LINES, kind)))}",
+	]
+
+
+def _zm_structure_only(kind: Datenart, reason: str) -> str:
+	return ZM_STRUCTURE_ONLY.format(schema=Path(kind.schema).name, reason=reason)
+
+
+CHECKS: MappingProxyType[str, Checks] = MappingProxyType(
+	{
+		"UStVA": Checks(_anmeldungssteuern, _ustva_filing, _ustva_structure_only),
+		"ZMDO": Checks(_zm, _zm_filing, _zm_structure_only),
+	}
+)
+"""The checks of each Datenart of steuerbote.eric.datenart, by its name."""
+
+
+def _zm_path(path: str, kind: Datenart) -> str:
+	return "/".join(f"{{{kind.namespace}}}{part}" for part in path.split("/")) if path else "."
+
+
+def _zm_value(element: ElementTree.Element, path: str, kind: Datenart) -> str:
+	"""The text of the element at the path below ``element``, or of its attribute after @; empty without one."""
+	where, _, attribute = path.partition("@")
+	found = element.find(_zm_path(where, kind))
+	if found is None:
+		return ""
+	value = found.get(attribute) if attribute else found.text
+	return (value or "").strip()
+
+
+def _missing(field: ZmField) -> Message:
+	return Message("SIM-004", f"{field.text} (Regel {field.code}).", ERROR, field.name)
 
 
 def _local_name(element: ElementTree.Element) -> str:
@@ -254,24 +451,8 @@ def _local_name(element: ElementTree.Element) -> str:
 
 
 def _protocol_lines(
-	operation: Operation,
-	header: EnvelopeHeader,
-	context: ElementTree.Element,
-	year: int,
-	ticket: str,
-	digest: str,
+	operation: Operation, header: EnvelopeHeader, filing: list[str], ticket: str, digest: str
 ) -> list[str]:
-	namespace = NAMESPACE.format(year=year)
-
-	def value(name: str) -> str:
-		return context.findtext(f"{{{namespace}}}{name}", default="").strip()
-
-	form = CONTEXTS[_local_name(context)].form
-	if form is None:
-		filing = [f"Zeitraum: {value('Zeitraum')}/{value('Jahr')}", f"Kennzahl 83: {value('Kz83')}"]
-	else:
-		kz38 = [f"Kennzahl 38: {value('Kz38')}"] if context.find(f"{{{namespace}}}Kz38") is not None else []
-		filing = [f"Vordruck: {form} {value('Jahr')}", *kz38]
 	return [
 		"Diese Übermittlung wurde nur simuliert. Es wurde nichts an ELSTER übermittelt.",
 		"",

@@ -8,8 +8,9 @@ never imports Frappe.
 
 The worker reads one JSON object from standard input and writes one to standard output:
 
-	{"command": "process", "operation": "validate" | "test_send" | "send", "nutzdaten": "<Anmeldungssteuern …>",
-	 "header": {…}, "runtime": {…}, "certificate_secret": "<PKCS#12 in base64>" | null,
+	{"command": "process", "operation": "validate" | "test_send" | "send",
+	 "nutzdaten": "<Anmeldungssteuern …>" | "<zm …>", "header": {…}, "runtime": {…},
+	 "certificate_secret": "<PKCS#12 in base64>" | null,
 	 "certificate_password": "…" | null, "proxy": {"host": …, "port": …, "username": …, "password": …} | null}
 		answers with a TransmissionResult as JSON; a proxy goes into the settings of ERiC before anything is
 		sent (steuerbote.eric.proxy)
@@ -27,8 +28,10 @@ so neither a core file nor a debugger of the same user can read what it holds.
 
 Prüfen is EBV-9 of the handbook (Tabelle 6-2): Hinweisprüfung, validation and a preview PDF, without
 encryption parameters. Testsenden and Senden are EBV-6 with send-Auth, the only way to send a UStVA
-(Tabelle 8-8): validation, sending and the Übertragungsprotokoll, signed with the certificate. ERiC 44
-talks to one server and gives the Transferticket in its answer only (ERiC-Releasenotes 44.3.6.0,
+(Tabelle 8-8) and a ZMDO (Tabelle 8-28): validation, sending and the Übertragungsprotokoll, signed with the
+certificate („Daten werden signiert versendet.“, Tabelle 5-2). The Verfahren, the Datenart and the Vorgang of
+the TransferHeader and the datenartVersion are those of the Datenart the header names (steuerbote.eric.datenart).
+ERiC 44 talks to one server and gives the Transferticket in its answer only (ERiC-Releasenotes 44.3.6.0,
 Kap. 5.2.7), read with EricGetErrormessagesFromXMLAnswer (Kap. 6.2.4).
 
 EricBearbeiteVorgang reads, validates, prepares with signature and encryption, sends and prints, in this
@@ -71,7 +74,8 @@ from steuerbote.eric.api import (
 	EricLibrary,
 	ProcessResult,
 )
-from steuerbote.eric.header import EnvelopeHeader, datenart, datenteil, problems
+from steuerbote.eric.datenart import of_version
+from steuerbote.eric.header import EnvelopeHeader, datenteil, problems
 from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.result import (
 	ERROR,
@@ -150,8 +154,8 @@ BEFORE_TRANSFER = frozenset(
 		610301201,  # IO_READER_UNBEKANNTE_XML_ENTITY
 		610301252,  # IO_DATENTEILNOTFOUND
 		610301253,  # IO_DATENTEILENDNOTFOUND
-		# Certificate, PIN, signature and encryption, which prepare the data before they are sent; a UStVA
-		# uses the certificate only to sign (Abbildung 6-6; Kap. 5.1.3.3, 5.2).
+		# Certificate, PIN, signature and encryption, which prepare the data before they are sent; send-Auth
+		# uses the certificate only to sign (Abbildung 6-6; Kap. 5.1.3.3, 5.2; Tabelle 5-2).
 		610001028,  # GLOBAL_NUR_PORTALZERTIFIKAT_ERLAUBT
 		610201101,  # CRYPT_E_INVALID_HANDLE
 		610201106,  # CRYPT_E_PIN_WRONG
@@ -312,11 +316,11 @@ def process(request: Request) -> TransmissionResult:
 					certificate = library.open_certificate_from_bytes(
 						request.certificate, request.password.encode()
 					)
-				kind = datenart(header.datenart_version)
+				kind = of_version(header.datenart_version)
 				xml = library.create_transfer_header(
 					datenteil(request.nutzdaten, header),
 					verfahren=kind.verfahren,
-					datenart=kind.datenart,
+					datenart=kind.name,
 					vorgang=kind.vorgang,
 					testmerker=header.testmerker,
 					hersteller_id=header.hersteller_id,

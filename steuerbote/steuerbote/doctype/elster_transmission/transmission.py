@@ -11,9 +11,10 @@ failed, a test send or send as unknown, since it may have reached ELSTER. Certif
 arguments of the job: stash_certificate keeps them encrypted for a few minutes, and the job takes them back once
 by their token.
 
-A document that transmits has the fields company, year and transmission_in_progress and provides
-nutzdaten(hersteller_id), the Nutzdaten for ERiC; check_transmittable(), which refuses a document that cannot go
-yet; and check_can_be_sent(), the guards of Senden, which files the document once.
+A document that transmits has the fields company, year and transmission_in_progress and provides datenart(), the
+Datenart it goes as (steuerbote.eric.datenart); nutzdaten(hersteller_id), the Nutzdaten for ERiC;
+check_transmittable(), which refuses a document that cannot go yet; and check_can_be_sent(), the guards of Senden,
+which files the document once.
 """
 
 import base64
@@ -408,10 +409,11 @@ def envelope_header(
 	doc: Document, settings: Document, operation: Operation, simulation: bool
 ) -> EnvelopeHeader:
 	"""The header of the delivery. Its Hersteller-ID is the one of the ERiC Settings, which the runtime and
-	Kz 09 of the Nutzdaten carry as well; only the simulation runs without one.
+	Kz 09 of the Nutzdaten of the UStVA carry as well; only the simulation runs without one.
 
-	Voranmeldung and form USt 1 H are both the datenartVersion UStVA_<Jahr>, which the Datenartversionmatrix of
-	the ERiC documentation 44.3.6.0 gives „Mit UStDV und UStSV“, with the plugin checkUStVA_<Jahr>.
+	The document names its Datenart. Voranmeldung and form USt 1 H are both the datenartVersion UStVA_<Jahr>,
+	which the Datenartversionmatrix of the ERiC documentation 44.3.6.0 gives „Mit UStDV und UStSV“, with the
+	plugin checkUStVA_<Jahr>, for the Finanzamt of the Steuernummer; the Zusammenfassende Meldung is ZMDO for BF.
 	"""
 	hersteller_id = settings.hersteller_id or (SIMULATION_HERSTELLER_ID if simulation else "")
 	datenlieferant = settings.datenlieferant or (doc.company if simulation else "")
@@ -419,13 +421,14 @@ def envelope_header(
 		frappe.throw(_("Enter the Hersteller-ID in the ERiC Settings."))
 	if not datenlieferant:
 		frappe.throw(_("Enter the Datenlieferant in the ERiC Settings."))
+	kind = doc.datenart()
 	return EnvelopeHeader(
 		hersteller_id=hersteller_id,
 		datenlieferant=datenlieferant,
 		produkt_name=settings.produkt_name or DEFAULT_PRODUKT_NAME,
 		produkt_version=steuerbote.__version__,
-		empfaenger_finanzamt=finanzamt_of(doc.company),
-		datenart_version=f"UStVA_{cint(doc.year)}",
+		empfaenger=kind.recipient or finanzamt_of(doc.company),
+		datenart_version=kind.version,
 		testmerker=TESTMERKER if operation is Operation.TEST_SEND else None,
 		nutzdaten_ticket=NUTZDATEN_TICKET,
 	)
@@ -459,14 +462,22 @@ def _discard_certificate(token: str | None) -> None:
 
 
 def _installed_runtime(doc: Document, operation: Operation, hersteller_id: str, transmission: Document):
-	"""The runtime for the year of the document; ERiC writes its eric.log beside the site, one per run."""
+	"""The runtime with the plugin of the Datenart of the document; ERiC writes its eric.log beside the site, one
+	per run."""
 	log_dir = eric_log_root() / transmission.name
-	runtime_info = transmission_adapter.detect_runtime(cint(doc.year), operation, hersteller_id, log_dir)
+	kind = doc.datenart()
+	runtime_info = transmission_adapter.detect_runtime(kind, operation, hersteller_id, log_dir)
+	if runtime_info is None and kind.year is None:
+		frappe.throw(
+			_(
+				"No installed ERiC runtime has the plugin {0} of the Datenart {1}. Install a runtime with it in the ERiC Settings; a beta serves Prüfen and Testsenden only."
+			).format(kind.plugin, kind.name)
+		)
 	if runtime_info is None:
 		frappe.throw(
 			_(
 				"No installed ERiC runtime serves {0}. Install the runtime for this year in the ERiC Settings; a beta serves Testsenden only."
-			).format(cint(doc.year))
+			).format(kind.year)
 		)
 	return runtime_info
 

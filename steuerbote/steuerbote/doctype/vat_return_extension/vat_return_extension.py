@@ -36,6 +36,7 @@ from frappe.utils import cint, escape_html, formatdate, getdate
 from steuerbote import dauerfrist, dauerfrist_sources, holiday_list
 from steuerbote.dauerfrist import Context, FormError, layout_for
 from steuerbote.elster import ust1h_xml, ustva_xml
+from steuerbote.eric import datenart as eric_datenart
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
 	FILED_VIA,
@@ -256,6 +257,11 @@ class VATReturnExtension(Transmittable, Document):
 			transferticket=ticket or None,
 			filed_on=filed_date,
 		).name
+
+	def datenart(self) -> eric_datenart.Datenart:
+		"""The Datenart UStVA of the year of the form, which holds form USt 1 H (ERiC-Entwicklerhandbuch
+		44.3.6.0, Tabelle 2-13)."""
+		return eric_datenart.ustva(cint(self.year))
 
 	def nutzdaten(self, hersteller_id: str) -> str:
 		"""The Nutzdaten for ERiC: form USt 1 H as the form holds it, with the Hersteller-ID in Kz 09."""

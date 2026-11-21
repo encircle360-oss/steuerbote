@@ -59,8 +59,8 @@ class FakeEric:
 	def patch(self):
 		return patch.multiple(transmission_adapter, run=self.run, detect_runtime=self.detect_runtime)
 
-	def detect_runtime(self, year, operation, hersteller_id, log_dir):
-		self.detections.append((year, operation, hersteller_id, log_dir))
+	def detect_runtime(self, datenart, operation, hersteller_id, log_dir):
+		self.detections.append((datenart, operation, hersteller_id, log_dir))
 		return replace(RUNTIME, hersteller_id=hersteller_id, log_dir=log_dir)
 
 	def run(self, operation, nutzdaten_xml, header, runtime_info, certificate_secret, certificate_password):
