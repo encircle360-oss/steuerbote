@@ -341,6 +341,7 @@ Der Bericht zeigt für einen Zeitraum, aus welchen Buchungen jede Kennzahl beste
 - Kennt Steuerbote die Kennzahlen eines Vergleichsjahres nicht, etwa 2025, oder passt die Kontenzuordnung nicht zu dessen Vordruck, bleibt die Spalte leer, ohne Vorperiode auch die Differenz. Eine Zeile am Anfang des Berichts nennt den Grund, etwa „Kein Vergleich mit Dezember 2025: Steuerbote kennt die Kennzahlen für 2025 noch nicht.“
 - **Nur Abweichungen** zeigt nur die Kennzahlen und Summen, deren Differenz zur Vorperiode beide Schwellen überschreitet, den Betrag in Euro und den Anteil am Betrag der Vorperiode, jeweils mit ihren Belegen. Die Schwellen kommen aus den Einstellungen des Unternehmens, „Schwelle Vorperiodenvergleich (%)“ und „Schwelle Vorperiodenvergleich (EUR)“; ohne Eintrag gelten 50 % und 100 EUR. Eine Änderung gegenüber 0 überschreitet jede Prozentschwelle. Ohne Vorperiode blendet der Filter nichts aus.
 - Der Bericht zeigt das Hauptbuch, keine Meldung: Korrekturen einer Meldung erscheinen darin nicht.
+- Frappe schreibt eine Textspalte eines Berichts als HTML in die Seite. Nur „Drucken“ enthält HTML mit Absicht; Kennzahl, Bezeichnung und Partei maskiert der Formatierer des Berichts (`ustva_kennzahlen.js`), bevor Frappe sie zeigt, so dass etwa der Name eines Kunden nie als Code läuft. Der Export nach CSV oder Excel nimmt die Werte, wie sie sind.
 
 ## Arbeitsbereich „Steuern“ und Seitenleiste
 
