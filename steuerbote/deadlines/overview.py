@@ -2,10 +2,10 @@
 
 A deadline is filed when a document of its period carries the filing mark, open while a document of it does not,
 and missing without a document. The filing mark is the day the document was filed, which the caller reads from the
-document: a VAT Return is filed once it is submitted, or sent through Steuerbote with an outcome that ELSTER
-accepted or that is unknown, even if it was cancelled since (vat_return.filings); a Recapitulative Statement and a
-VAT Return Extension are filed once their filing is noted, and an extension cancelled for its correction stays
-filed with the Finanzamt.
+document: a VAT Return, a Recapitulative Statement and a VAT Return Extension are filed once they are submitted, or
+sent through Steuerbote with an outcome that ELSTER accepted or that is unknown, even if they were cancelled or
+discarded since (transmission.filings), and an extension cancelled for its correction stays filed with the
+Finanzamt.
 
 A Zusammenfassende Meldung is owed only for a Meldezeitraum with something to report: „Sog. „Nullmeldungen“ sind
 nicht abzugeben“ (Anleitung zur ZM, III.1; steuerbote.zm.lines). Without a document the rules alone cannot tell,
