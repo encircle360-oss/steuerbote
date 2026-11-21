@@ -132,6 +132,11 @@ class TestVATReturn(IntegrationTestCase):
 	def kennzahl(self, doc, number: str):
 		return next(row for row in doc.kennzahlen if row.kennzahl == number)
 
+	def roll_back_afterwards(self) -> None:
+		"""Undo what the test files or sends, so that its period stays open for the tests after it."""
+		frappe.db.savepoint("vat_return_test")
+		self.addCleanup(frappe.db.rollback, save_point="vat_return_test")
+
 	def amounts(self, doc) -> dict[str, Decimal]:
 		return {row.kennzahl: money(row.final) for row in doc.kennzahlen}
 
@@ -272,6 +277,18 @@ class TestVATReturn(IntegrationTestCase):
 		correction.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		first.reload()
 		self.assertEqual((first.status, correction.status), ("Ersetzt", "Abgegeben"))
+
+	def test_the_status_of_a_filed_return_stays_as_filed(self):
+		"""Whether a return counts as filed, for its period and for the base of the Dauerfristverlängerung, follows
+		its status: once submitted, only the filing of a corrected return replaces it."""
+		self.roll_back_afterwards()
+		doc = self.calculated(2)
+		doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		doc.reload()
+		doc.status = "Ersetzt"
+		with self.assertRaises(frappe.UpdateAfterSubmitError):
+			doc.save()
+		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "status"), "Abgegeben")
 
 	def test_cancelling_a_correction_restores_the_return_it_replaced(self):
 		first = self.calculated(7)

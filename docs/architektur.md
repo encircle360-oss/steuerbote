@@ -189,7 +189,7 @@ Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung und Dauerfristverlängerung 
 
 ### Feld an der Journalbuchung
 
-Steuerbote ergänzt die Journalbuchung (Journal Entry) um das Feld „Nicht in der Umsatzsteuer-Voranmeldung“ (`steuerbote_exclude_from_vat_return`). Es kommt als Fixture der App und lässt eine Buchung aus der Meldung heraus, etwa die Verrechnung der Steuerkonten mit dem Finanzamt.
+Steuerbote ergänzt die Journalbuchung (Journal Entry) um das Feld „Nicht in der Umsatzsteuer-Voranmeldung“ (`steuerbote_exclude_from_vat_return`). Es kommt als Fixture der App und lässt eine Buchung aus der Meldung heraus, etwa die Verrechnung der Steuerkonten mit dem Finanzamt. Der Haken wird gesetzt, bevor die Journalbuchung gebucht wird: Danach lässt er sich nicht mehr ändern, denn er bestimmt, was ein schon abgegebener Zeitraum meldet. Soll eine gebuchte Buchung anders zählen, wird sie storniert und mit „Ändern“ neu gebucht; für einen abgegebenen Zeitraum geht die Änderung als berichtigte Anmeldung (Kz 10) an das Finanzamt.
 
 ## Die Abfrage des Hauptbuchs
 
@@ -228,6 +228,7 @@ Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cen
 | Abgegeben | eingereicht; das setzt eine Berechnung voraus und, wenn die Meldung nicht bereit ist, eine Begründung in den Anmerkungen |
 | Ersetzt | für denselben Zeitraum ist später eine berichtigte Anmeldung abgegeben worden |
 
+- Den Status setzt nur Steuerbote. An einer eingereichten Meldung ändert ihn niemand von Hand: Er entscheidet, ob ein Zeitraum abgegeben ist und welche Meldung in die Grundlage der Sondervorauszahlung eingeht (`dauerfrist_sources.py`). Auf „Ersetzt“ setzt ihn die Abgabe einer berichtigten Anmeldung, zurück auf „Abgegeben“ ihr Stornieren.
 - „Berechnen“ geht, solange die Meldung nicht eingereicht ist, und lässt Korrekturen mit Begründung stehen.
 - Ein Zeitraum wird je Unternehmen einmal abgegeben. Jede weitere Meldung für einen abgegebenen Zeitraum muss eine berichtigte Anmeldung (Kz 10) sein. Wird sie abgegeben, stehen die früheren Meldungen des Zeitraums auf „Ersetzt“; wird sie storniert, steht die zuletzt ersetzte wieder auf „Abgegeben“.
 - Als abgegeben zählt ein Zeitraum, sobald eine seiner Meldungen eingereicht ist oder eine seiner Meldungen über Steuerbote gesendet wurde, mit Annahme durch ELSTER oder unbekanntem Ergebnis, auch wenn sie danach storniert wurde. Diese Regel prüfen Senden, die Datei für Mein ELSTER und die Vermerke einer Abgabe (`_refuse_second_filing`); das Speichern lehnt eine zweite Meldung ohne Kz 10 ab, sobald eine Meldung des Zeitraums eingereicht ist (`_refuse_second_return`).
