@@ -393,16 +393,11 @@ class TestVATReturn(IntegrationTestCase):
 		self.assertEqual((doc.ready, doc.status, doc.unmapped), (1, "Bereit", []))
 		self.assertEqual(self.amounts(doc), {"83": money(0)})
 		watched = [row for row in doc.hints if row.code == "KONTO-BEOBACHTET"]
-		self.assertEqual(
-			[(row.severity, row.text) for row in watched],
-			[
-				(
-					"Hinweis",
-					f"Konto 8603 Sonstige betriebliche Erträge hat einen Saldo von {euros('250')} im Haben "
-					f"(Soll {euros('0')}, Haben {euros('250')}), geht aber in keine Kennzahl ein.",
-				)
-			],
+		text = (
+			f"Konto 8603 Sonstige betriebliche Erträge hat einen Saldo von {euros('250')} im Haben "
+			f"(Soll {euros('0')}, Haben {euros('250')}), geht aber in keine Kennzahl ein."
 		)
+		self.assertEqual([(row.severity, row.text) for row in watched], [("Hinweis", text)])
 		self.assertFalse(any(row.voucher_type or row.voucher_no or row.party for row in watched))
 
 	def test_a_second_return_for_a_filed_period_must_be_a_correction(self):
