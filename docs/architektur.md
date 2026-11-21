@@ -43,7 +43,7 @@ DocTypes heißen nach der Konvention von Frappe englisch. Die Oberfläche zeigt 
 
 ### Einstellungen Umsatzsteuer-Voranmeldung (`VAT Return Settings`)
 
-Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
+Ein Dokument je Unternehmen, sein Name ist das Unternehmen. Anlegen und ändern dürfen es Accounts Manager und System Manager, Accounts User lesen es nur: Steuernummer, Voranmeldungszeiträume, Sondervorauszahlung und Toleranz entscheiden, was an welches Finanzamt geht, und Steuerbote liest sie bei jedem Vorgang neu, siehe [Übermittlung an ELSTER](uebermittlung.md#die-vorgänge).
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
