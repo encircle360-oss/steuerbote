@@ -424,17 +424,67 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 			(lambda: doc.mark_filed_outside(filed_via="mein_elster"), "submit it with Buchen"),
 			(doc.calculate, "as it was sent"),
 			(doc.confirm_vat_ids, "as it was sent"),
+			(doc.make_csv_file, f"transmitted already with Transferticket {TICKET}"),
 		):
 			with self.subTest(message=message), self.assertRaisesRegex(frappe.ValidationError, message):
 				attempt()
 			doc.reload()
-		doc.remarks = "Nachträglich"
+		with self.assertRaisesRegex(frappe.ValidationError, "as it was sent"):
+			doc.discard()
+		# Frappe keeps the action of a refused discard on the document; the next request loads it anew.
+		doc = frappe.get_doc(DOCTYPE, doc.name)
+		doc.lines[0].update({"override": 1, "override_reason": "Nachträglich berichtigt"})
 		with self.assertRaisesRegex(frappe.ValidationError, "as it was sent"):
 			doc.save()
 		doc.reload()
+		doc.remarks = "Nachträglich"
+		doc.save()
+		doc.reload()
+		doc.lines[0].override = 1
+		with self.assertRaisesRegex(frappe.ValidationError, "as it was sent"):
+			doc.submit()
+		doc.reload()
 		doc.submit()
 		self.assertEqual(
-			(doc.docstatus, doc.status, doc.filed_via, doc.transferticket), (1, "Abgegeben", "eric", TICKET)
+			(doc.docstatus, doc.status, doc.filed_via, doc.transferticket, doc.remarks),
+			(1, "Abgegeben", "eric", TICKET, "Nachträglich"),
+		)
+
+	def test_a_statement_whose_send_has_an_unknown_outcome_keeps_all_but_its_remarks(self):
+		"""The BZSt may have the statement as it was sent: until Mein ELSTER shows whether it arrived, a save changes
+		nothing but the remarks, nothing rewrites its lines or makes its file, and noting the filing submits it."""
+		self.use_runtime()
+		doc = self.calculated(9)
+		fake = FakeEric(outcome=Outcome.UNKNOWN, messages=(LOST, UNKNOWN_MESSAGE))
+		transmission, _, _ = self.transmitted(doc, "send", fake, self.stash(doc))
+		refused = f"Whether {transmission.name} reached ELSTER is unknown"
+		for attempt in (doc.calculate, doc.confirm_vat_ids, doc.make_csv_file):
+			with (
+				self.subTest(attempt=attempt.__name__),
+				self.assertRaisesRegex(frappe.ValidationError, refused),
+			):
+				attempt()
+			doc.reload()
+		with self.assertRaisesRegex(frappe.ValidationError, refused):
+			doc.discard()
+		# Frappe keeps the action of a refused discard on the document; the next request loads it anew.
+		doc = frappe.get_doc(DOCTYPE, doc.name)
+		for change in (
+			lambda: doc.lines[0].update({"override": 1, "override_reason": "Nachträglich berichtigt"}),
+			lambda: doc.update({"anzeige": 1, "remarks": "Mit Anzeige"}),
+			lambda: doc.update({"filed_via": "mein_elster", "transferticket": MEIN_ELSTER_TICKET}),
+		):
+			change()
+			with self.assertRaisesRegex(frappe.ValidationError, refused):
+				doc.save()
+			doc.reload()
+		doc.remarks = "In Mein ELSTER nachgesehen"
+		doc.save()
+		doc.mark_filed_outside(filed_via="mein_elster", transferticket=MEIN_ELSTER_TICKET)
+		doc.reload()
+		self.assertEqual(
+			(doc.docstatus, doc.status, doc.filed_via, doc.transferticket, doc.remarks),
+			(1, "Abgegeben", "mein_elster", MEIN_ELSTER_TICKET, "In Mein ELSTER nachgesehen"),
 		)
 
 	def test_one_transmission_at_a_time(self):

@@ -376,6 +376,40 @@ def line_rows(
 	return [rows[key] for key in sorted(rows, key=line_order)]
 
 
+def amounts_kept(
+	statement: Statement,
+	period: ReportingPeriod,
+	held: ReadOnlyMapping[tuple[str, Art], Decimal] | None,
+	stored: Row,
+) -> bool:
+	"""Whether ``stored`` holds the lines and the sums of each Art that the statement gives: line by line its exact
+	amount, the amount it reports, what was filed for it and whether the file reports it.
+
+	A filing writes the lines the statement holds, which every save builds from its vouchers and overrides
+	(line_rows), and what they report is what a later Berichtigung corrects (filed_meldezeilen). Built again before
+	a transmission, a file or a filing, they differ when they were changed past the save, or when the filing sends
+	other overrides than the statement holds.
+	"""
+	built = {_line_key(row): _line_amounts(row) for row in line_rows(statement, {}, period, held)}
+	kept = {_line_key(row): _line_amounts(row) for row in stored.get("lines") or ()}
+	return kept == built and all(
+		to_amount(stored.get(field)) == amount for field, amount in totals(statement.meldezeilen).items()
+	)
+
+
+def _line_key(row: Row) -> tuple[str, str]:
+	return (str(row.get("vat_id") or ""), str(row.get("art") or ""))
+
+
+def _line_amounts(row: Row) -> tuple[Decimal, Decimal, Decimal, int]:
+	return (
+		to_amount(row.get("amount")),
+		to_amount(row.get("reported")),
+		to_amount(row.get("filed_amount")),
+		int(row.get("in_file") or 0),
+	)
+
+
 def _line_row(line: Line) -> dict[str, Any]:
 	party = next((name.strip() for item in line.vouchers if (name := item.party or "").strip()), "")
 	return {

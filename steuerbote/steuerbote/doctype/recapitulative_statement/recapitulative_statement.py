@@ -7,8 +7,11 @@ and rule to the core in steuerbote.zm: the lines per USt-IdNr. and Art (lines.bu
 (reconciliation.reconcile) and the earlier Meldezeiträume (comparison). bridge.py maps the results onto the
 tables. Every save rebuilds the lines from the vouchers Berechnen stored, the overrides of the lines and the
 latest confirmations, so an override with a Begründung lifts the block of its line at once; the threshold and
-the reconciliation with the ledger hold the statement back until "Berechnen" finds them gone. The file for Mein
-ELSTER and the filing read the ledger again and wait for Berechnen when it books other vouchers by then.
+the reconciliation with the ledger hold the statement back until "Berechnen" finds them gone. Frappe keeps no
+read-only field from a save through its API, so a save keeps the rest of what Berechnen stored, the status and the
+filing, and a new statement starts as a draft. The file for Mein ELSTER and the filing read the ledger again and
+wait for Berechnen when it books other vouchers by then; they and every transmission build the lines again from
+the stored vouchers and overrides and refuse lines that differ from them.
 
 "USt-IdNrn. prüfen" (confirm_vat_ids) asks the BZSt about each USt-IdNr. the lines report, in a background job,
 one query after the other and none repeated (steuerbote.vatid), and keeps every query as a VAT ID Confirmation.
@@ -26,7 +29,8 @@ ZMDO (nutzdaten, steuerbote.elster.zm_xml), with the Unternehmer from the VAT Re
 steuerbote.eric, through the worker of an installed runtime or the simulation; every run is recorded as an ELSTER
 Transmission, and so is every note of a filing. Only a Senden that ELSTER accepted submits the statement, which
 files it through ERiC with its Transferticket, and a Berichtigung filed so replaces the statements before it. Until
-then a statement ELSTER accepted is filed as it was sent: nothing of it changes, and Buchen submits it. A
+then a statement ELSTER accepted is filed as it was sent, and so is one whose Senden has an unknown outcome: nothing
+of it changes but its remarks, and Buchen submits it, after an unknown outcome the note of its filing. A
 Meldezeitraum counts as filed once a statement of it is submitted or sent through Steuerbote, accepted or with an
 unknown outcome; a further statement of it is a Berichtigung.
 """
@@ -96,7 +100,12 @@ REPLACED = "Ersetzt"
 
 PERIOD_FIELDS = ("company", "year", "period_kind", "period_index")
 CALCULATED_TABLES = ("lines", "vouchers", "reconciliation", "comparison", "hints")
+# What Berechnen stores besides the lines and the hints, which every save builds anew.
+STORED_TABLES = ("vouchers", "reconciliation", "comparison")
 TOTALS = ("total_l", "total_d", "total_s")
+# What the form lets the user enter on a line; Berechnen and every save find the rest.
+LINE_INPUT = ("vat_id", "art", "override", "override_reason")
+FILING_FIELDS = ("filed_via", "filed_on", "transferticket", "filing_note", "filed_by")
 
 LOCK_FIELD = "confirmation_in_progress"
 CONFIRMATION_JOB = (
@@ -184,27 +193,27 @@ class RecapitulativeStatement(Transmittable, Document):
 		self.set_onload("elster_run", self.latest_run())
 
 	def before_insert(self) -> None:
-		"""A new statement starts as a draft that Berechnen has not read yet, whatever the rows it was made with
-		say; only the lines of its own and the overrides stay."""
+		"""A new statement starts as a draft that Berechnen has not read and nobody filed, whatever the rows it was
+		made with say: its lines keep what the form lets the user enter, the lines of its own and the overrides."""
+		self.set("lines", [{field: row.get(field) for field in LINE_INPUT} for row in self.lines])
 		for table in ("vouchers", "reconciliation", "comparison", "hints"):
 			self.set(table, [])
-		self.update({"ready": 0, "status": DRAFT, **dict.fromkeys(TOTALS, 0)})
+		self.update({"ready": 0, "status": DRAFT, **dict.fromkeys(TOTALS, 0), **dict.fromkeys(FILING_FIELDS)})
 
 	def validate(self) -> None:
 		self.refuse_changes_while_transmitting()
 		self._refuse_changes_while_confirming()
-		self._refuse_changes_after_an_accepted_send()
+		self.refuse_changes_after_sending(FILING_FIELDS if self.flags.filed_outside else ())
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
 		covered = self._set_period()
 		period = covered.period
 		self._check_correction()
 		self._refuse_second_statement(covered)
-		self._discard_calculation_of_another_period()
+		self._keep_the_filing()
 		with zm_errors():
 			check_notices(period, bool(cint(self.anzeige)), bool(cint(self.widerruf)))
-		if not self.flags.calculating:
-			self._apply_lines(covered)
+		self._keep_the_calculation(covered)
 
 	def before_submit(self) -> None:
 		"""A statement is filed by a Senden ELSTER accepted, with what came back, or by the note of its filing,
@@ -218,6 +227,7 @@ class RecapitulativeStatement(Transmittable, Document):
 			)
 		if sent:
 			self._check_ready_to_file()
+			self._require_amounts_as_stored(self.get_doc_before_save() or self)
 			self.update(
 				{
 					"filed_via": FILED_THROUGH_ERIC,
@@ -229,6 +239,7 @@ class RecapitulativeStatement(Transmittable, Document):
 			)
 		else:
 			self._check_fit_for_filing()
+			self._require_amounts_as_stored(self.get_doc_before_save() or self)
 		self.status = FILED
 
 	def before_cancel(self) -> None:
@@ -253,7 +264,7 @@ class RecapitulativeStatement(Transmittable, Document):
 			frappe.throw(_("Only a draft Zusammenfassende Meldung can be calculated."))
 		self.refuse_changes_while_transmitting()
 		self._refuse_changes_while_confirming()
-		self._refuse_changes_after_an_accepted_send()
+		self.refuse_if_sent()
 		covered = self._set_period()
 		period = covered.period
 		settings = settings_for(self.company)
@@ -312,7 +323,7 @@ class RecapitulativeStatement(Transmittable, Document):
 			frappe.throw(_("Calculate the statement before confirming its USt-IdNrn."))
 		if cint(self.transmission_in_progress):
 			frappe.throw(_("A transmission of {0} is running. Wait for its result.").format(self.name))
-		self._refuse_changes_after_an_accepted_send()
+		self.refuse_if_sent()
 		self._close_stale_confirmation()
 		requester(self.company)
 		numbers = bridge.numbers_to_confirm(self.lines)
@@ -376,7 +387,7 @@ class RecapitulativeStatement(Transmittable, Document):
 				"meldeart": bridge.BERICHTIGUNG,
 				"corrects": self.name,
 				"lines": [
-					{name: row.get(name) for name in ("vat_id", "art", "override", "override_reason")}
+					{field: row.get(field) for field in LINE_INPUT}
 					for row in self.lines
 					if (row.override_reason or "").strip()
 				],
@@ -508,12 +519,19 @@ class RecapitulativeStatement(Transmittable, Document):
 			frappe.throw(_("Calculate the statement before transmitting it."))
 		if cint(self.confirmation_in_progress):
 			frappe.throw(_("The USt-IdNrn. of this statement are being confirmed. Wait for the result."))
+		self._require_amounts_as_stored(self)
 
 	def check_can_be_sent(self) -> None:
 		"""Senden files the statement, once: it needs the statement fit for filing, the ledger of its months as
 		Berechnen read it and no earlier filing of its Meldezeitraum."""
 		self._check_ready_to_file()
 		self._require_unchanged_ledger(self._coverage())
+		self._refuse_sent_statement()
+		self._refuse_second_filing()
+
+	def _refuse_sent_statement(self) -> None:
+		"""The BZSt has a statement whose Senden through Steuerbote ELSTER accepted, or may have it when the outcome
+		is unknown: it is neither sent again nor made into the file for Mein ELSTER."""
 		sent = self.filings()
 		if sent and sent[0].status == UNKNOWN:
 			frappe.throw(
@@ -527,7 +545,6 @@ class RecapitulativeStatement(Transmittable, Document):
 					"This statement was transmitted already with Transferticket {0}. A change goes to the BZSt as a Berichtigung."
 				).format(sent[0].transferticket)
 			)
-		self._refuse_second_filing()
 
 	def _lacks_mandatory_values(self) -> bool:
 		return (
@@ -678,36 +695,40 @@ class RecapitulativeStatement(Transmittable, Document):
 				).format(later[0], self.period_label)
 			)
 
-	def _discard_calculation_of_another_period(self) -> None:
+	def _keep_the_filing(self) -> None:
+		"""Only the note of a filing sets the filing on a save, and a Senden ELSTER accepted sets it when it submits
+		the statement (before_submit); every other save keeps it as stored."""
 		before = self.get_doc_before_save()
-		if not before or self.flags.calculating:
+		if before is not None and not self.flags.filed_outside:
+			self.update({field: before.get(field) for field in FILING_FIELDS})
+
+	def _keep_the_calculation(self, covered: Coverage) -> None:
+		"""Rebuild the lines on every save, so that an override lifts its block at once and a confirmation counts
+		as soon as it is stored.
+
+		Frappe keeps no read-only field from a save through the API, so a save takes only the overrides and the
+		lines of its own from the rows it sends: the status, the vouchers, the reconciliation and the comparison
+		stay as Berechnen stored them, and so do the findings of the threshold, the reconciliation and the
+		comparison among the hints; each USt-IdNr. counts with its latest VAT ID Confirmation. Another company or
+		Meldezeitraum discards the calculation instead. A new statement is a draft (before_insert), so a calculated
+		one was saved.
+		"""
+		before = self.get_doc_before_save()
+		if before is None or self.flags.calculating:
 			return
 		if any(str(before.get(field)) != str(self.get(field)) for field in PERIOD_FIELDS):
 			for table in CALCULATED_TABLES:
 				self.set(table, [])
 			self.update({"ready": 0, "status": DRAFT, **dict.fromkeys(TOTALS, 0)})
-
-	def _apply_lines(self, covered: Coverage) -> None:
-		"""Rebuild the lines on every save, so that an override lifts its block at once and a confirmation counts
-		as soon as it is stored.
-
-		Frappe keeps no read-only field from a save through the API, so a save takes only the overrides and the
-		lines of its own from the rows it sends: the status is the stored one unless the calculation was just
-		discarded, the vouchers and the findings of the threshold, the reconciliation and the comparison stay as
-		Berechnen stored them, and each USt-IdNr. counts with its latest VAT ID Confirmation. A new statement is a
-		draft (before_insert), so a calculated one was saved.
-		"""
-		before = self.get_doc_before_save()
-		if before is None:
 			return
-		if self.status != DRAFT:
-			self.update({"status": before.status, "ready": before.ready})
+		self.update({"status": before.status, "ready": before.ready})
+		for table in STORED_TABLES:
+			self.set(table, _rows(before.get(table)))
 		if self.status not in (CALCULATED, READY):
+			self.set("lines", [{field: row.get(field) for field in LINE_INPUT} for row in self.lines])
+			self.set("hints", _rows(before.hints))
+			self.update({field: before.get(field) for field in TOTALS})
 			return
-		self.set(
-			"vouchers",
-			[row.as_dict(no_default_fields=True, no_child_table_fields=True) for row in before.vouchers],
-		)
 		with zm_errors():
 			amounts = bridge.voucher_amounts(self.vouchers)
 			overrides = bridge.overrides_of(self.lines)
@@ -801,9 +822,27 @@ class RecapitulativeStatement(Transmittable, Document):
 			return
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the statement before making the file for Mein ELSTER."))
+		self._refuse_sent_statement()
 		self._refuse_second_filing()
 		self._require_explanation()
 		self._require_unchanged_ledger(self._coverage())
+		self._require_amounts_as_stored(self)
+
+	def _require_amounts_as_stored(self, stored: Document) -> None:
+		"""A filing carries the lines the statement holds, which every save builds from its vouchers and overrides,
+		and what the lines report is what a later Berichtigung corrects: built again, they are the lines and the
+		sums ``stored`` holds, or nothing is transmitted, made into a file or filed."""
+		period = self._chosen_period()
+		with zm_errors():
+			statement = bridge.statement_of(self.vouchers, self.lines, self._figures())
+			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
+			kept = bridge.amounts_kept(statement, period, held, stored)
+		if not kept:
+			frappe.throw(
+				_(
+					"The lines of {0} do not agree with its vouchers and overrides as stored. Reload the statement, and calculate it again if they still do not agree."
+				).format(self.name)
+			)
 
 	def _require_unchanged_ledger(self, covered: Coverage) -> None:
 		"""Berechnen reads the ledger once: a file or a filing goes with the lines only while the ledger of their
@@ -875,19 +914,6 @@ class RecapitulativeStatement(Transmittable, Document):
 		frappe.db.get_value(DOCTYPE, self.name, "name", for_update=True)
 		self.reload()
 
-	def _refuse_changes_after_an_accepted_send(self) -> None:
-		"""A statement ELSTER accepted is filed as it was sent, even when its submission failed: a change would file
-		other lines than the BZSt has."""
-		if self.is_new() or self.docstatus != 0:
-			return
-		accepted = self.accepted_send()
-		if accepted:
-			frappe.throw(
-				_(
-					"ELSTER accepted {0} with Transferticket {1}, so it is filed as it was sent: submit it with Buchen. A change goes to the BZSt as a Berichtigung afterwards."
-				).format(self.name, accepted.transferticket)
-			)
-
 	def _refuse_changes_while_confirming(self) -> None:
 		"""The job writes the confirmations onto the lines, so the statement stays as it is while it runs."""
 		if self.is_new() or self.flags.confirming:
@@ -910,6 +936,11 @@ class RecapitulativeStatement(Transmittable, Document):
 		return bool(cint(self.confirmation_in_progress)) and not is_job_enqueued(
 			confirmation_job_id(self.name)
 		)
+
+
+def _rows(rows: Iterable[Document]) -> list[dict]:
+	"""Rows of a table as they were stored, for a save to keep them."""
+	return [row.as_dict(no_default_fields=True, no_child_table_fields=True) for row in rows]
 
 
 @contextmanager
