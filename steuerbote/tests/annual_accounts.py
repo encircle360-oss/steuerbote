@@ -98,7 +98,7 @@ ACCOUNTS = {
 		None,
 	),
 	"4120": ("Gehälter", "Expense", "is.netIncome.regular.operatingTC.staff.salaries", None, None),
-	"4210": ("Miete", "Expense", "is.netIncome.regular.operatingTC.otherCost.leaseFix.other", None, None),
+	"4210": ("Miete", "Expense", "is.netIncome.regular.operatingTC.otherCost.leaseFix", None, None),
 	"4320": ("Gewerbesteuer", "Expense", "is.netIncome.tax.gewst", None, None),
 }
 CLOSING_ACCOUNT = "0860"
