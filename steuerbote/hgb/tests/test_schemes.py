@@ -10,6 +10,7 @@ from steuerbote.hgb.schemes import (
 	Direction,
 	Level,
 	SchemeError,
+	VermerkKind,
 	balance_sheet_scheme,
 )
 from steuerbote.hgb.size import SizeClass, UnknownYearError
@@ -318,3 +319,166 @@ class SizeClassFormTest(TestCase):
 		self.assertTrue(self.scheme.shows("bs.ass.currAss.receiv", SizeClass.KLEIN))
 		self.assertFalse(self.scheme.shows("bs.ass.currAss.receiv", SizeClass.KLEINST))
 		self.assertFalse(self.scheme.shows("bs.ass", SizeClass.GROSS))
+
+
+RECEIVABLES = VermerkKind.RECEIVABLES_OVER_ONE_YEAR
+UP_TO_ONE = VermerkKind.LIABILITIES_UP_TO_ONE_YEAR
+OVER_ONE = VermerkKind.LIABILITIES_OVER_ONE_YEAR
+SHAREHOLDERS = VermerkKind.SHAREHOLDERS
+LIABILITY_ITEMS = (
+	"bs.eqLiab.liab.bank",
+	"bs.eqLiab.liab.advPaym",
+	"bs.eqLiab.liab.trade",
+	"bs.eqLiab.liab.notes",
+	"bs.eqLiab.liab.assocComp",
+	"bs.eqLiab.liab.particip",
+	"bs.eqLiab.liab.shareholders",
+)
+RECEIVABLE_ITEMS = (
+	"bs.ass.currAss.receiv.trade",
+	"bs.ass.currAss.receiv.affil",
+	"bs.ass.currAss.receiv.particip",
+	"bs.ass.currAss.receiv.other",
+	"bs.ass.currAss.receiv.shareholders",
+)
+
+
+class VermerkeTest(TestCase):
+	"""The „davon“ amounts each class notes at its positions."""
+
+	def setUp(self):
+		self.scheme = balance_sheet_scheme(2026)
+
+	def shown(self, size_class):
+		return {
+			position.concept: [vermerk.kind for vermerk in self.scheme.vermerke(position.concept, size_class)]
+			for position in self.scheme.visible(size_class)
+			if self.scheme.vermerke(position.concept, size_class)
+		}
+
+	def test_kleinst_notes_the_remaining_terms_and_the_shareholders_at_its_letters(self):
+		self.assertEqual(
+			self.shown(SizeClass.KLEINST),
+			{
+				"bs.ass.fixAss": [SHAREHOLDERS],
+				"bs.ass.currAss": [RECEIVABLES, SHAREHOLDERS],
+				"bs.eqLiab.liab": [UP_TO_ONE, OVER_ONE, SHAREHOLDERS],
+			},
+		)
+
+	def test_klein_notes_them_at_its_roman_numerals_and_adds_capital_and_profit_carried_forward(self):
+		self.assertEqual(
+			self.shown(SizeClass.KLEIN),
+			{
+				"bs.ass.fixAss.fin": [SHAREHOLDERS],
+				"bs.ass.currAss.receiv": [RECEIVABLES, SHAREHOLDERS],
+				"bs.eqLiab.equity.subscribed": [VermerkKind.UNCALLED_CAPITAL],
+				"bs.eqLiab.equity.profitLoss": [VermerkKind.PROFIT_CARRIED_FORWARD],
+				"bs.eqLiab.liab": [UP_TO_ONE, OVER_ONE, SHAREHOLDERS],
+			},
+		)
+
+	def test_the_larger_classes_note_the_remaining_terms_at_each_item(self):
+		expected = {
+			"bs.ass.fixAss.fin": [SHAREHOLDERS],
+			"bs.ass.currAss.receiv": [SHAREHOLDERS],
+			**{concept: [RECEIVABLES] for concept in RECEIVABLE_ITEMS},
+			"bs.eqLiab.equity.subscribed": [VermerkKind.UNCALLED_CAPITAL],
+			"bs.eqLiab.equity.profitLoss": [VermerkKind.PROFIT_CARRIED_FORWARD],
+			"bs.eqLiab.liab": [SHAREHOLDERS],
+			"bs.eqLiab.liab.securities": [VermerkKind.CONVERTIBLE, UP_TO_ONE, OVER_ONE],
+			**{concept: [UP_TO_ONE, OVER_ONE] for concept in LIABILITY_ITEMS},
+			"bs.eqLiab.liab.other": [VermerkKind.TAXES, VermerkKind.SOCIAL_SECURITY, UP_TO_ONE, OVER_ONE],
+		}
+		self.assertEqual(self.shown(SizeClass.MITTELGROSS), expected)
+		self.assertEqual(self.shown(SizeClass.GROSS), expected)
+
+	def test_names_the_concept_of_each_vermerk_where_it_is_shown(self):
+		def concepts(concept, size_class):
+			return [vermerk.concept for vermerk in self.scheme.vermerke(concept, size_class)]
+
+		self.assertEqual(
+			concepts("bs.ass.currAss", SizeClass.KLEINST),
+			["bs.ass.currAss.receiv.above1year", "bs.ass.currAss.receiv.shareholder"],
+		)
+		self.assertEqual(
+			concepts("bs.eqLiab.liab", SizeClass.KLEIN),
+			["bs.eqLiab.liab.upTo1year", "bs.eqLiab.liab.above1year", "bs.eqLiab.liab.ofWhichToShareholders"],
+		)
+		self.assertEqual(
+			concepts("bs.eqLiab.liab.bank", SizeClass.GROSS),
+			["bs.eqLiab.liab.bank.upTo1year", "bs.eqLiab.liab.bank.above1year"],
+		)
+		self.assertEqual(
+			concepts("bs.eqLiab.liab.other", SizeClass.GROSS),
+			[
+				"bs.eqLiab.liab.other.theroffTax",
+				"bs.eqLiab.liab.other.thereoffSocSec",
+				"bs.eqLiab.liab.other.upTo1year",
+				"bs.eqLiab.liab.other.above1year",
+			],
+		)
+		self.assertEqual(
+			concepts("bs.ass.fixAss.fin", SizeClass.KLEIN), ["bs.ass.fixAss.fin.LoansToShareholder"]
+		)
+		self.assertEqual(
+			concepts("bs.eqLiab.equity.profitLoss", SizeClass.KLEIN),
+			["bs.eqLiab.equity.profitLoss.retainedEarnings"],
+		)
+
+	def test_a_vermerk_covers_the_position_it_names_as_its_scope(self):
+		for position in self.scheme.positions():
+			for vermerk in position.vermerke:
+				with self.subTest(position=position.concept, vermerk=vermerk.kind):
+					scope = self.scheme.position(vermerk.scope)
+					self.assertIn(scope, list(position.walk()))
+		currAss = self.scheme.position("bs.ass.currAss")
+		self.assertEqual({vermerk.scope for vermerk in currAss.vermerke}, {"bs.ass.currAss.receiv"})
+		self.assertEqual(
+			{vermerk.scope for vermerk in self.scheme.position("bs.ass.fixAss").vermerke},
+			{"bs.ass.fixAss.fin"},
+		)
+		self.assertEqual(
+			{vermerk.scope for vermerk in self.scheme.position("bs.eqLiab.liab").vermerke}, {"bs.eqLiab.liab"}
+		)
+
+	def test_cites_the_law_of_each_vermerk(self):
+		references = {
+			RECEIVABLES: "§ 268 Abs. 4 Satz 1 HGB",
+			UP_TO_ONE: "§ 268 Abs. 5 Satz 1 HGB",
+			OVER_ONE: "§ 268 Abs. 5 Satz 1 HGB",
+			SHAREHOLDERS: "§ 42 Abs. 3 GmbHG",
+			VermerkKind.CONVERTIBLE: "§ 266 Abs. 3 C. 1. HGB",
+			VermerkKind.TAXES: "§ 266 Abs. 3 C. 8. HGB",
+			VermerkKind.SOCIAL_SECURITY: "§ 266 Abs. 3 C. 8. HGB",
+			VermerkKind.UNCALLED_CAPITAL: "§ 272 Abs. 1 Satz 2 HGB",
+			VermerkKind.PROFIT_CARRIED_FORWARD: "§ 268 Abs. 1 Satz 2 HGB",
+		}
+		for position in self.scheme.positions():
+			for vermerk in position.vermerke:
+				with self.subTest(position=position.concept, vermerk=vermerk.kind):
+					self.assertEqual(vermerk.reference, references[vermerk.kind])
+					self.assertTrue(vermerk.label.startswith(("davon ", "nicht eingeforderte")))
+
+	def test_the_shareholder_vermerke_take_the_separate_items_and_the_davon_concepts_of_the_taxonomy(self):
+		liabilities = self.scheme.vermerke("bs.eqLiab.liab", SizeClass.KLEIN)[-1]
+		self.assertEqual(
+			liabilities.members,
+			(
+				"bs.eqLiab.liab.shareholders",
+				"bs.eqLiab.liab.trade.shareholders",
+				"bs.eqLiab.liab.other.shareholders",
+			),
+		)
+		receivables = self.scheme.vermerke("bs.ass.currAss.receiv", SizeClass.KLEIN)[-1]
+		self.assertEqual(
+			receivables.members,
+			("bs.ass.currAss.receiv.shareholders", "bs.ass.currAss.receiv.other.shareholders"),
+		)
+		loans = self.scheme.vermerke("bs.ass.fixAss.fin", SizeClass.KLEIN)[0]
+		self.assertEqual(
+			loans.members, ("bs.ass.fixAss.fin.loansToSharehold", "bs.ass.fixAss.fin.otherLoans.partners")
+		)
+
+	def test_a_position_the_class_does_not_show_notes_nothing(self):
+		self.assertEqual(self.scheme.vermerke("bs.ass.currAss.receiv", SizeClass.KLEINST), ())
