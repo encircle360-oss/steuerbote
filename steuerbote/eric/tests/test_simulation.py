@@ -22,6 +22,7 @@ from steuerbote.eric.simulation import Checks, erklaerung
 from steuerbote.eric.simulation import bilanz as bilanz_checks
 from steuerbote.eric.simulation import gewst as gewst_checks
 from steuerbote.eric.simulation import kst as kst_checks
+from steuerbote.jahresmeldung import documentation
 
 # Invented Nutzdaten of an Erklärung: its main form and its Vorsatz, as elster/vorsatz.py writes it.
 NUTZDATEN = (
@@ -350,14 +351,10 @@ class VorsatzRulesTest(TestCase):
 
 	def test_cite_the_fehlercode_and_the_text_of_their_rule(self):
 		for kind in (ust(2026), kst(2025), gewst(2025)):
-			path = (
-				eric_schema.erklaerung_directory(kind.name)
-				/ "Jahresdokumentation"
-				/ f"Jahresdokumentation_{kind.root}_{kind.year}.ods"
-			)
+			path = documentation.jahresdokumentation_path(eric_schema.documentation(), kind)
 			texts = {
 				row["Fehlercode"]: re.sub(r"\$(\w+)\$", r"\1", row["Fehler- /Hinweistext"])
-				for row in eric_schema.sheet(path, "Vorsatz - Regeln")
+				for row in documentation.read(path).vordruck("Vorsatz").rules
 			}
 			for field in (*erklaerung.VORSATZ, erklaerung.STEUERNUMMER_RULE):
 				with self.subTest(datenart=kind.version, code=field.code):
