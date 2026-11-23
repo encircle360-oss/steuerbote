@@ -24,7 +24,8 @@ kind beside the rule of its account, and so is a row for the annual return only 
 account; both come after the other items. The body holds them in parts of their own, annual_fields and annual_rules,
 and only when there are any, so that a mapping without them keeps the body, the stored defaults and the file it had,
 and the body of a file of an earlier version reads as before. annual_rows_for_accounts and annual_default_items give
-the rows for the annual return of the defaults of a chart for the accounts a company has.
+the rows for the annual return of the defaults of a chart for the accounts a company has. check_annual_rows is what
+saving a mapping checks of them.
 
 A row holds what Frappe stores: an empty Float field is 0, an empty Data or Select field is "" or None,
 and a rule's account number is the one fetched from its account. The DocType's own validate runs before
@@ -42,7 +43,8 @@ from typing import Any, NamedTuple
 from steuerbote.mappings.transfer import canonical_json
 from steuerbote.ustjahr.defaults import CHARTS as ANNUAL_CHARTS
 from steuerbote.ustjahr.defaults import annual_rules, role_defaults
-from steuerbote.ustjahr.split import AnnualRule, Choice, Split, split
+from steuerbote.ustjahr.form import catalogue_for as annual_catalogue_for
+from steuerbote.ustjahr.split import ANNUAL_MAPPED, AnnualRule, Choice, Split, SplitError, split
 from steuerbote.ustva import (
 	AccountRule,
 	Mapping,
@@ -266,6 +268,55 @@ def annual_split(
 	mapping = rows_to_mapping(chart, rule_rows, check_rows, watched_rows, year)
 	roles = role_defaults(chart, year) if chart in ANNUAL_CHARTS else None
 	return split(mapping, choices_of_rows(rule_rows), roles, annual_rules_of_rows(annual_rows))
+
+
+def check_annual_rows(
+	chart: str,
+	rule_rows: Iterable[Row],
+	check_rows: Iterable[Row],
+	watched_rows: Iterable[Row],
+	annual_rows: Iterable[Row],
+	year: int,
+) -> None:
+	"""Refuse an annual field, a paragraph or a row for the annual return only that does not fit form USt 2 A of
+	``year``: SplitError, or MappingError for a row the core cannot read.
+
+	The Voranmeldung needs no line of the annual return, so an account whose Kennzahl splits into lines without a
+	default, such as Kz 64, and that has neither an annual field nor a role naming one of them, is left to the annual
+	return, which asks for its line; for this check it takes the first of them. An account of a Kennzahl without any
+	line, Kz 39, whose Sondervorauszahlung the annual return takes into its Vorauszahlungssoll, is left out unless its
+	rule names an annual field or a paragraph, and is never one for the annual return only. Rules that the form of the
+	Voranmeldung of ``year`` does not take leave the check to the Voranmeldung, which checks them against the form of
+	its own year first: a later year may know a Kennzahl that the latest form of the annual return does not.
+	"""
+	rule_rows = tuple(rule_rows)
+	choices, annual = choices_of_rows(rule_rows), annual_rules_of_rows(annual_rows)
+	try:
+		mapping = rows_to_mapping(chart, rule_rows, check_rows, watched_rows, year)
+	except MappingError:
+		return
+	catalogue = annual_catalogue_for(year)
+	roles = dict(role_defaults(chart, year)) if chart in ANNUAL_CHARTS else {}
+	chosen = {choice.account_number for choice in choices}
+	rules = []
+	for rule in mapping.rules:
+		lines = catalogue.children(rule.kennzahl)
+		if not lines and rule.account_number not in chosen:
+			continue
+		rules.append(rule)
+		elements = {line.element for line in lines}
+		if (
+			lines
+			and catalogue.default_child(rule.kennzahl) is None
+			and roles.get(rule.account_number) not in elements
+		):
+			roles[rule.account_number] = lines[0].element
+	for annual_rule in annual:
+		mapped = mapping.rule_for(annual_rule.account_number)
+		if mapped is not None and mapped not in rules:
+			raise SplitError(ANNUAL_MAPPED, annual_rule.account_number, mapped.kennzahl)
+	checked = Mapping(chart, tuple(rules), mapping.checks, mapping.watched, year)
+	split(checked, choices, roles, annual)
 
 
 def annual_rows_for_accounts(chart: str, year: int, existing_numbers: Set[str]) -> list[dict[str, Any]]:
