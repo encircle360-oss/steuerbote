@@ -12,7 +12,7 @@ The annual filings round by the rules of their own laws and of the Jahresdokumen
 function below with its source.
 """
 
-from decimal import ROUND_DOWN, ROUND_FLOOR, ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 
 EURO = Decimal("1")
 CENT = Decimal("0.01")
@@ -70,6 +70,18 @@ def truncate_cents(amount: Decimal) -> Decimal:
 	„Bruchteile eines Cents bleiben außer Ansatz.“ (§ 4 Satz 3 SolZG)
 	"""
 	return _without_negative_zero(require_decimal(amount).quantize(CENT, rounding=ROUND_DOWN))
+
+
+def ceil_euro(amount: Decimal) -> Decimal:
+	"""Round up to whole euros, where the rules of the Jahresdokumentation say Aufrunden.
+
+	Jahresdokumentation_E30_2025.ods rounds up the sum of the single gains of § 8b Abs. 2 KStG, given in cents, to
+	their total in whole euros, Aufrunden(Summe(.../Einzel*/E8561211)) (rule 8956040, GK), and the 70 % of the
+	Gesamtbetrag der Einkünfte above the million deducted in full, up to which § 10d Abs. 2 Satz 1 EStG lets a loss be
+	deducted, Aufrunden({[E8008501] - [E8008502] - [E8008601]} * 0.7) (rule 8900170, Verluste). A negative amount goes
+	up as well, towards zero.
+	"""
+	return _without_negative_zero(require_decimal(amount).quantize(EURO, rounding=ROUND_CEILING))
 
 
 def _without_negative_zero(amount: Decimal) -> Decimal:
