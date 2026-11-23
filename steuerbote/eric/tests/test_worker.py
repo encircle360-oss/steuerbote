@@ -142,6 +142,15 @@ class ValidateTest(WorkerTestCase):
 		self.assertIn('<Empfaenger id="F">9198</Empfaenger>', self.stub.recorded("datenpuffer"))
 		self.assertEqual(self.stub.recorded("datenart_version"), "UStVA_2026")
 
+	def test_passes_the_datenlieferant_of_the_nutzdaten_header_to_eric(self):
+		datenlieferant = "Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; Deutschland; ; "
+		header = replace(HEADER, nutzdaten_datenlieferant=datenlieferant)
+		self.run_operation(Operation.VALIDATE, header=asdict(header))
+		self.assertIn(
+			f"</Hersteller><DatenLieferant>{datenlieferant}</DatenLieferant></NutzdatenHeader>",
+			self.stub.recorded("datenpuffer"),
+		)
+
 	def test_initialises_with_the_runtime_and_its_log_directory(self):
 		self.run_operation(Operation.VALIDATE)
 		self.assertEqual(self.stub.recorded("plugin_path"), str(self.lib_dir))
@@ -456,6 +465,13 @@ class ProtocolTest(WorkerTestCase):
 				self.assertEqual(stdout, b"")
 				self.assertTrue(stderr.startswith("steuerbote.eric.worker: invalid request:"))
 				self.assertNotIn(PIN, stderr)
+
+	def test_refuses_a_datenlieferant_of_the_nutzdaten_header_that_is_no_text(self):
+		request = self.request(Operation.VALIDATE)
+		request["header"] = asdict(HEADER) | {"nutzdaten_datenlieferant": 4711}
+		code, stdout, stderr = self.serve(request)
+		self.assertEqual((code, stdout), (worker.EXIT_INVALID_REQUEST, b""))
+		self.assertEqual(stderr, "steuerbote.eric.worker: invalid request: header.nutzdaten_datenlieferant\n")
 
 	def test_names_only_the_type_of_an_unexpected_error(self):
 		with mock.patch.object(worker, "process", side_effect=ValueError(PIN)):

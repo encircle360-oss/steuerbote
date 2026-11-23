@@ -6,8 +6,14 @@ from lxml import etree
 
 from steuerbote.elster import ust1h_xml, ustva_xml
 from steuerbote.elster.tests import eric_schema, examples, zm_examples
-from steuerbote.eric.datenart import ZMDO, Datenart, ustva
-from steuerbote.eric.header import ILLUSTRATION_HERSTELLER_ID, EnvelopeHeader, datenteil, problems
+from steuerbote.eric.datenart import ZMDO, Datenart, bilanz, gewst, kst, ust, ustva
+from steuerbote.eric.header import (
+	ILLUSTRATION_HERSTELLER_ID,
+	EnvelopeHeader,
+	datenteil,
+	nutzdaten_datenlieferant,
+	problems,
+)
 from steuerbote.eric.result import ERROR, TESTMERKER, Operation
 
 NUTZDATEN = (
@@ -28,6 +34,11 @@ HEADER = EnvelopeHeader(
 )
 # The Zusammenfassende Meldung goes to the Länderkürzel BF (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 8-28).
 ZM_HEADER = replace(HEADER, empfaenger="BF", datenart_version="ZMDO")
+# The ten parts of the DatenLieferant of an E-Bilanz (Kap. 9.7.1), invented.
+ERSTELLER = (
+	"Beispiel GmbH; Hauptstraße; 1; a; Hinterhaus; 80331; München; Deutschland; 089 1234567; info@example.org"
+)
+BILANZ_HEADER = replace(HEADER, datenart_version="Bilanz_6.9", nutzdaten_datenlieferant=ERSTELLER)
 
 
 def delivery(datenteil_xml: str, kind: Datenart, testmerker: bool) -> bytes:
@@ -85,6 +96,22 @@ class DatenteilTest(TestCase):
 		self.assertEqual(
 			[child.tag for child in nutzdaten], ["{http://www.elster.de/elsterxml/schema/v11}zm"]
 		)
+
+	def test_writes_the_datenlieferant_of_the_nutzdaten_header_after_the_hersteller(self):
+		"""ndh000011.xsd: DatenLieferant follows Hersteller; the E-Bilanz names it there (Kap. 9.7.1)."""
+		header = ElementTree.fromstring(datenteil("<EBilanz/>", BILANZ_HEADER)).find(
+			"Nutzdatenblock/NutzdatenHeader"
+		)
+		self.assertEqual(
+			[child.tag for child in header], ["NutzdatenTicket", "Empfaenger", "Hersteller", "DatenLieferant"]
+		)
+		self.assertEqual(header.findtext("DatenLieferant"), ERSTELLER)
+		escaped = datenteil("<EBilanz/>", replace(BILANZ_HEADER, nutzdaten_datenlieferant="A & B <C>"))
+		self.assertIn("<DatenLieferant>A &amp; B &lt;C&gt;</DatenLieferant>", escaped)
+
+	def test_a_header_without_it_writes_none(self):
+		header = ElementTree.fromstring(datenteil(NUTZDATEN, HEADER)).find("Nutzdatenblock/NutzdatenHeader")
+		self.assertEqual([child.tag for child in header], ["NutzdatenTicket", "Empfaenger", "Hersteller"])
 
 	def test_escapes_the_header_values(self):
 		text = datenteil(NUTZDATEN, replace(HEADER, produkt_name="A & B <C>"))
@@ -158,8 +185,71 @@ class ProblemsTest(TestCase):
 		self.assertEqual(self.fields(replace(HEADER, datenlieferant="x" * 256)), [])
 		self.assertEqual(self.fields(replace(HEADER, datenlieferant="x" * 257)), ["DatenLieferant"])
 
+	def test_the_bilanz_needs_the_datenlieferant_of_its_nutzdaten_header_in_ten_parts(self):
+		"""Kap. 9.7.1: „Name des Erstellers; Strasse; Hausnummer; Hausnummerzusatz; Adresszusatz; PLZ; Ort; Land;
+		Telefon; E-Mail-Adresse“, at most 256 characters."""
+		field = "NutzdatenHeader/DatenLieferant"
+		self.assertEqual(self.fields(BILANZ_HEADER, Operation.SEND, own_hersteller_id="12345"), [])
+		nine = ERSTELLER.rpartition(";")[0]
+		eleven = ERSTELLER + "; Erika Beispiel"
+		for case, datenlieferant in {
+			"none": None,
+			"empty": "",
+			"nine parts": nine,
+			"eleven parts": eleven,
+			"no name": "; Hauptstraße; 1; ; ; 80331; München; Deutschland; ; ",
+			"too long": ERSTELLER + "x" * (257 - len(ERSTELLER)),
+		}.items():
+			with self.subTest(case):
+				header = replace(BILANZ_HEADER, nutzdaten_datenlieferant=datenlieferant)
+				self.assertEqual(self.fields(header), [field])
+		longest = ERSTELLER + "x" * (256 - len(ERSTELLER))
+		self.assertEqual(self.fields(replace(BILANZ_HEADER, nutzdaten_datenlieferant=longest)), [])
+		(refused,) = problems(replace(BILANZ_HEADER, nutzdaten_datenlieferant=nine), Operation.VALIDATE)
+		self.assertIn("zehn", refused.text)
+
+	def test_another_datenart_may_name_a_datenlieferant_of_at_most_256_characters(self):
+		"""DatenLieferantInternSType of headerbasis_datentypen.xsd."""
+		self.assertEqual(self.fields(replace(HEADER, nutzdaten_datenlieferant="Beispiel GmbH")), [])
+		self.assertEqual(
+			self.fields(replace(HEADER, nutzdaten_datenlieferant="x" * 257)),
+			["NutzdatenHeader/DatenLieferant"],
+		)
+
 	def test_the_product_name_must_not_contain_elster_in_any_case(self):
 		self.assertEqual(self.fields(replace(HEADER, produkt_name="Mein Elster")), ["ProduktName"])
+
+
+class NutzdatenDatenlieferantTest(TestCase):
+	def test_joins_the_ten_parts_of_the_bilanz_as_the_handbook_writes_them(self):
+		"""The example of Kap. 9.7.1 separates the parts with a semicolon and a blank."""
+		self.assertEqual(
+			nutzdaten_datenlieferant(
+				name="Beispiel GmbH",
+				street="Hauptstraße",
+				house_number="1",
+				house_number_suffix="a",
+				address_supplement="Hinterhaus",
+				postal_code="80331",
+				city="München",
+				country="Deutschland",
+				phone="089 1234567",
+				email="info@example.org",
+			),
+			ERSTELLER,
+		)
+
+	def test_keeps_the_place_of_a_part_that_is_missing(self):
+		self.assertEqual(
+			nutzdaten_datenlieferant(
+				name=" Beispiel GmbH ",
+				street="Hauptstraße",
+				house_number="1",
+				postal_code="80331",
+				city="München",
+			),
+			"Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; ; ; ",
+		)
 
 
 class DeliverySchemaTest(TestCase):
@@ -187,3 +277,37 @@ class DeliverySchemaTest(TestCase):
 			with self.subTest(testmerker=testmerker):
 				document = delivery(datenteil(zm_examples.nutzdaten(), ZM_HEADER), ZMDO, testmerker)
 				self.assert_valid(schema, document)
+
+	def test_the_erklaerungen_are_deliveries_of_elster_erklaerung(self):
+		"""The Nutzdaten of the examples of the documentation, in the DatenTeil of a header of their Datenart."""
+		for kind, example in (
+			(ust(2026), "USt_2026.xml"),
+			(kst(2025), "kst_2025_ok.xml"),
+			(gewst(2025), "GewSt_2025.xml"),
+		):
+			with self.subTest(datenart=kind.version):
+				document = etree.parse(
+					str(eric_schema.erklaerung_directory(kind.name) / "Beispiele" / example)
+				)
+				((nutzdaten,),) = document.getroot().iter(
+					"{http://www.elster.de/elsterxml/schema/v11}Nutzdaten"
+				)
+				empfaenger = nutzdaten.findtext(f"{{{kind.namespace}}}Vorsatz/{{{kind.namespace}}}StNr")[:4]
+				header = replace(HEADER, datenart_version=kind.version, empfaenger=empfaenger)
+				schema = eric_schema.erklaerung_envelope_schema(kind.name, kind.root, kind.year)
+				for testmerker in (True, False):
+					with self.subTest(testmerker=testmerker):
+						text = etree.tostring(nutzdaten, encoding="unicode")
+						self.assert_valid(schema, delivery(datenteil(text, header), kind, testmerker))
+
+	def test_the_bilanz_is_a_delivery_of_elster_bilanz_with_the_datenlieferant_of_its_nutzdaten_header(self):
+		"""ebilanz_000002.xsd, with a stand-in for the XBRL instance schema (eric_schema.bilanz_envelope_schema)."""
+		document = etree.fromstring(eric_schema.bilanz_example("6.9"))
+		((nutzdaten,),) = document.iter("{http://www.elster.de/elsterxml/schema/v11}Nutzdaten")
+		text = etree.tostring(nutzdaten, encoding="unicode")
+		for testmerker in (True, False):
+			with self.subTest(testmerker=testmerker):
+				self.assert_valid(
+					eric_schema.bilanz_envelope_schema(),
+					delivery(datenteil(text, BILANZ_HEADER), bilanz("6.9"), testmerker),
+				)
