@@ -18,6 +18,7 @@ APP = Path(__file__).resolve().parents[3]
 DOCS = APP.parent / "docs"
 PAGE = DOCS / "jahresabschluss.md"
 ARCHITECTURE = DOCS / "architektur.md"
+DISCLOSURE = DOCS / "offenlegung.md"
 SETUP = DOCS / "einrichtung.md"
 DOCTYPES = APP / "steuerbote" / "doctype"
 TRANSLATIONS = APP / "translations" / "de.csv"
@@ -179,8 +180,14 @@ class PageTest(TestCase):
 			"| `annual_accounts/` mit `steuerbote/annual_accounts_sources.py` und `steuerbote/headcount.py` |",
 			text,
 		)
-		self.assertIn("## Jahresabschluss", text)
+		annual = text.split("\n## Jahresmeldungen\n", 1)[1].split("\n## ", 1)[0]
+		self.assertIn("\n### Jahresabschluss\n", annual)
+		self.assertIn("](jahresabschluss.md)", annual)
+
+	def test_the_page_of_the_offenlegung_names_the_document_that_exists(self):
+		text = DISCLOSURE.read_text(encoding="utf-8")
 		self.assertIn("](jahresabschluss.md)", text)
+		self.assertNotIn("er ist in Arbeit", text)
 
 
 def vars_of(accounts: bridge.AppropriationAccounts) -> tuple[str, ...]:
