@@ -10,10 +10,11 @@ Dokumentation.
 
 The Datenart UStVA holds form USt 1 H next to the Voranmeldung (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 2-13),
 and the schema leaves the rules that tie its elements together to ERiC. Of these the simulation checks those
-on the structure, from the sheet "Anmeldungssteuern - Regeln" of the Jahresdokumentation UStVA 2026: the
-Steuerfall holds exactly one of the three contexts (110085099), each context the fields it requires (CONTEXTS),
-and a context's Jahr is the year of the Datenart (110085047, 110085130, 110085131). Its schema is
-UStVA-<Jahr>.xsd in the namespace of the year.
+on the structure, from the sheet "Anmeldungssteuern - Regeln" of the Jahresdokumentationen UStVA 2026 and, from
+the beta ERiC 45.1.5.0, 2027, which keeps them: the Steuerfall holds exactly one of the three contexts (110085099),
+each context the fields it requires (CONTEXTS), and a context's Jahr is the year of the Datenart (110085047,
+110085130, 110085131). Of the Hinweise it gives those of HINTS, from 2027 the one on a delivery of a new vehicle
+in Kz 44 (11085156), and leaves the others to ERiC. Its schema is UStVA-<Jahr>.xsd in the namespace of the year.
 
 The Zusammenfassende Meldung is the Datenart ZMDO. Of the rules of Jahresdokumentation_ZMDO_2.ods, sheet "ZMDO -
 Regeln", the simulation checks those on the structure: the fields the Unternehmer, its Meldezeilen and their
@@ -128,6 +129,29 @@ ONE_CONTEXT = (
 )
 
 
+class Hint(NamedTuple):
+	"""A rule of kind Hinweis on a field of a context, from the first year whose Jahresdokumentation has it, with the
+	Fehlercode of its rule and what the message says."""
+
+	context: str
+	element: str
+	code: str
+	text: str
+	first_year: int
+
+
+HINTS = (
+	Hint(
+		"Umsatzsteuervoranmeldung",
+		"Kz44",
+		"11085156",
+		"Kennzahl 44 enthält Lieferungen neuer Fahrzeuge an Abnehmer ohne USt-IdNr.: Jede ist auch dem "
+		"Bundeszentralamt für Steuern zu melden (§ 18c UStG, § 1 Absatz 1 FzgLiefgMeldV).",
+		2027,
+	),
+)
+
+
 class ZmField(NamedTuple):
 	"""A field the rules of ZMDO require, by its path below the element zm or a Meldezeile, an attribute after
 	@, with the Fehlercode of its rule and what the message says."""
@@ -217,6 +241,7 @@ class Simulation:
 				errors.extend(schema_errors)
 				if unchecked:
 					messages.append(Message("SIM-001", checks.structure_only(kind, unchecked), HINT))
+				messages.extend(checks.hints(found, kind))
 		if errors:
 			return TransmissionResult(
 				operation,
@@ -372,6 +397,18 @@ def _ustva_filing(context: ElementTree.Element, kind: Datenart) -> list[str]:
 	return [f"Vordruck: {form} {value('Jahr')}", *kz38]
 
 
+def _ustva_hints(context: ElementTree.Element, kind: Datenart) -> tuple[Message, ...]:
+	"""The Hinweise of the year of the Datenart that the fields of the context set off."""
+	name = _local_name(context)
+	return tuple(
+		Message(hint.code, hint.text, HINT, hint.element)
+		for hint in HINTS
+		if hint.context == name
+		and kind.year >= hint.first_year
+		and context.find(f"{{{kind.namespace}}}{hint.element}") is not None
+	)
+
+
 def _ustva_structure_only(kind: Datenart, reason: str) -> str:
 	return STRUCTURE_ONLY.format(year=kind.year, reason=reason)
 
@@ -426,7 +463,7 @@ def _zm_structure_only(kind: Datenart, reason: str) -> str:
 
 CHECKS: MappingProxyType[str, Checks] = MappingProxyType(
 	{
-		"UStVA": Checks(_anmeldungssteuern, _ustva_filing, _ustva_structure_only),
+		"UStVA": Checks(_anmeldungssteuern, _ustva_filing, _ustva_structure_only, hints=_ustva_hints),
 		"ZMDO": Checks(_zm, _zm_filing, _zm_structure_only),
 		"USt": ust.CHECKS,
 		"KSt": kst.CHECKS,
