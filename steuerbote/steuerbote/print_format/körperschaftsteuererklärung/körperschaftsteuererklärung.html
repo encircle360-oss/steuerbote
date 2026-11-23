@@ -1,0 +1,78 @@
+{#-
+	Körperschaftsteuererklärung in the order of the forms: KSt 1, Anlagen GK, ZVE, Z, Verluste and WA and KSt 1 F with
+	the values the return files, as layout.print_sections() of the module gives them through income_tax_print(), each
+	field with its line and the Beschreibung of the Jahresdokumentation, which is the Drucktext of the form; the numbers
+	of the Anteilseigner stay out. Then the computation, the corrections, the findings and the remarks. While the forms
+	of the year are those of the Jahresdokumentation of the year before, the print says so. Mein ELSTER imports no
+	Körperschaftsteuererklärung, so this print is what is typed in there. The print computes nothing.
+-#}
+{%- set annual = doc.annual_print() -%}
+{%- set form = doc.income_tax_print() -%}
+{%- set tax_office = frappe.db.get_value("VAT Return Settings", doc.company, "tax_office") -%}
+{%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
+{% include "steuerbote/templates/includes/annual_filing/style.html" %}
+<div class="sb-annual">
+	<h1>Körperschaftsteuererklärung {{ doc.year }}</h1>
+	{%- if form.provisional %}
+	<p class="sb-subtitle">vorläufig (Jahresdokumentation {{ form.documentation_year }})</p>
+	{%- endif %}
+	{%- if doc.is_correction %}
+	<p class="sb-subtitle">Berichtigung, eine neue und vollständige Erklärung</p>
+	{%- endif %}
+	{%- set head_rows = [("Vorgang", "01 Veranlagung")] -%}
+	{%- if tax_office %}{%- set head_rows = [("Finanzamt", tax_office)] + head_rows -%}{%- endif %}
+	{% include "steuerbote/templates/includes/annual_filing/head.html" %}
+
+	<table class="sb-lines">
+		<colgroup>
+			<col class="sb-line">
+			<col>
+			<col class="sb-instance">
+			<col class="sb-num">
+		</colgroup>
+		<thead>
+			<tr>
+				<th class="sb-line">Zeile</th>
+				<th>Bezeichnung</th>
+				<th class="sb-instance">Nr.</th>
+				<th class="sb-num">Wert</th>
+			</tr>
+		</thead>
+		{%- for section in form.sections %}
+		<tbody class="sb-group">
+			<tr class="sb-section"><td colspan="4">{{ section.title | e }}</td></tr>
+			{%- for row in section.rows %}
+			<tr>
+				<td class="sb-line">{{ row.line | e }}</td>
+				<td>{{ row.label | e }}</td>
+				<td class="sb-instance">{{ row.instance | e }}</td>
+				<td class="sb-num">{{ row.value | e }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+		{%- endfor %}
+	</table>
+
+	<h2>Berechnung</h2>
+	<table class="sb-head">
+		<tr><td class="sb-label">Jahresüberschuss (Anlage GK Zeile 11)</td><td class="sb-value">{{ money(doc.net_income) }}</td></tr>
+		<tr><td class="sb-label">Einkünfte aus Gewerbebetrieb (Anlage GK Zeile 300)</td><td class="sb-value">{{ money(doc.business_income) }}</td></tr>
+		<tr><td class="sb-label">Summe der Einkünfte (Anlage ZVE Zeile 32)</td><td class="sb-value">{{ money(doc.sum_of_income) }}</td></tr>
+		<tr><td class="sb-label">Gesamtbetrag der Einkünfte (Anlage ZVE Zeile 53)</td><td class="sb-value">{{ money(doc.total_income) }}</td></tr>
+		<tr><td class="sb-label">Zu versteuerndes Einkommen (Anlage ZVE Zeile 70)</td><td class="sb-value">{{ money(doc.zve) }}</td></tr>
+		<tr><td class="sb-label">Körperschaftsteuer (Anlage ZVE Zeile 71)</td><td class="sb-value">{{ money(doc.kst) }}</td></tr>
+		<tr><td class="sb-label">Solidaritätszuschlag</td><td class="sb-value">{{ money(doc.solz) }}</td></tr>
+		<tr><td class="sb-label">Anrechenbare Kapitalertragsteuer (Anlage WA Zeile 2)</td><td class="sb-value">{{ money(doc.capital_gains_tax_credit) }}</td></tr>
+		<tr><td class="sb-label">Anrechenbarer Solidaritätszuschlag (Anlage WA Zeile 3)</td><td class="sb-value">{{ money(doc.solz_credit) }}</td></tr>
+		<tr><td class="sb-label">Vorauszahlungen Körperschaftsteuer</td><td class="sb-value">{{ money(doc.kst_prepayments) }}</td></tr>
+		<tr><td class="sb-label">Vorauszahlungen Solidaritätszuschlag</td><td class="sb-value">{{ money(doc.solz_prepayments) }}</td></tr>
+		<tr><td class="sb-label">Abschlusszahlung oder Erstattung Körperschaftsteuer</td><td class="sb-value">{{ money(doc.kst_balance) }}</td></tr>
+		<tr><td class="sb-label">Abschlusszahlung oder Erstattung Solidaritätszuschlag</td><td class="sb-value">{{ money(doc.solz_balance) }}</td></tr>
+		<tr><td class="sb-label">Steuerliches Einlagekonto zum Schluss (KSt 1 F Zeile 152)</td><td class="sb-value">{{ money(doc.einlagekonto) }}</td></tr>
+	</table>
+
+	{% include "steuerbote/templates/includes/annual_filing/corrections.html" %}
+	{% include "steuerbote/templates/includes/annual_filing/findings.html" %}
+	{% include "steuerbote/templates/includes/annual_filing/remarks.html" %}
+	{% include "steuerbote/templates/includes/annual_filing/footer.html" %}
+</div>
