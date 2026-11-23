@@ -311,6 +311,26 @@ class ErklaerungDocumentationTest(TestCase):
 				self.assertEqual(codes(result), ["SIM-000"])
 
 
+class VorsatzRulesTest(TestCase):
+	"""The rules of the Vorsatz the simulation checks, against the sheets „Vorsatz - Regeln“ of the Jahresdokumentationen
+	of USt 2026, KSt 2025 and GewSt 2025."""
+
+	def test_cite_the_fehlercode_and_the_text_of_their_rule(self):
+		for kind in (ust(2026), kst(2025), gewst(2025)):
+			path = (
+				eric_schema.erklaerung_directory(kind.name)
+				/ "Jahresdokumentation"
+				/ f"Jahresdokumentation_{kind.root}_{kind.year}.ods"
+			)
+			texts = {
+				row["Fehlercode"]: re.sub(r"\$(\w+)\$", r"\1", row["Fehler- /Hinweistext"])
+				for row in eric_schema.sheet(path, "Vorsatz - Regeln")
+			}
+			for field in (*erklaerung.VORSATZ, erklaerung.STEUERNUMMER_RULE):
+				with self.subTest(datenart=kind.version, code=field.code):
+					self.assertEqual(texts[field.code], f"{field.text}.")
+
+
 class BilanzTest(SimulationTestCase):
 	"""The E-Bilanz: the wrapper of ebilanz_000002.xsd around the XBRL instance, which the simulation does not check
 	against a schema, as ERiC does not (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 9-20)."""
