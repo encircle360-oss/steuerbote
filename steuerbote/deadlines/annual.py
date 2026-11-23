@@ -38,6 +38,17 @@ of a calendar year is not filed „binnen 14 Monaten nach Ablauf des Kalenderjah
 zu dem in der Anordnung bestimmten Zeitpunkt“ (§ 152 Abs. 2 Nr. 1 and 3 AO). The overview lists the deadlines; it
 computes no surcharge.
 
+Documents. Each annual kind is filed by the documents of one DocType of DOCTYPES, read by the fields every annual
+document carries (steuerbote.jahresmeldung.lifecycle.standard_fields); the modules of the annual filings bring these
+DocTypes, so a site may lack those of AWAITING_DOCTYPES, and the Frappe layer leaves out a deadline whose DocType it
+lacks, since no document could file it. An Erklärung and the E-Bilanz are filed once they are submitted, which only an
+accepted Senden or the note of their filing does, or once they were sent through Steuerbote with an outcome that ELSTER
+accepted or that is unknown, cancelled or not, since the Finanzamt has them or may have them (docs/architektur.md,
+„Lebenslauf einer Meldung“). Submitting the Jahresabschluss is its Feststellung (§ 42a Abs. 2 Satz 1 GmbHG), which a
+cancelled one no longer holds, and it is offengelegt once it is übermittelt or eingestellt: „Für die Wahrung der
+Fristen [...] ist der Zeitpunkt der Übermittlung der Unterlagen maßgebend“ (§ 325 Abs. 4 Satz 2 HGB), so after its
+upload it stays offengelegt even when a change cancels and replaces it.
+
 A year is the VZ, the EZ and the year the Wirtschaftsjahr ends in, which is how the annual documents count it
 (steuerbote.jahresmeldung.lifecycle.standard_fields). The first year is 2026 (docs/roadmap.md, „Ab 2026“), or the year
 of the founding if later. This module is pure Python and never imports Frappe.
@@ -47,10 +58,12 @@ from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
+from types import MappingProxyType
 
 from steuerbote.deadlines.obligations import Kind, Obligation
 from steuerbote.hgb import disclosure
 from steuerbote.hgb.size import SizeClass
+from steuerbote.jahresmeldung.lifecycle import SUBMITTED, Status
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import (
 	SizeRecord,
 	YearSettings,
@@ -72,6 +85,15 @@ KINDS = (
 """The kinds of the annual deadlines, in the order a year lists them."""
 DECEMBER = 12
 LAST_OF_DECEMBER = 31
+OPENING_BALANCE_FIELD = "statement_type"
+OPENING_BALANCE = "Eröffnungsbilanz"
+"""The field of the E-Bilanz that keeps its Bilanzart, which the E-Bilanz adds to its key (KEY_FIELDS,
+docs/jahresmeldungen.md), and the Bilanzart of the Eröffnungsbilanz of § 5b Abs. 1 Satz 4 EStG beside the
+Jahresabschluss."""
+UPLOAD = "upload"
+"""How the filing of a Jahresabschluss uploaded to the Unternehmensregister is noted (filed_via, one of FILED_VIA of
+steuerbote.jahresmeldung.lifecycle)."""
+TRANSMITTED = (Status.TRANSMITTED, Status.PUBLISHED)
 
 
 class Note(Enum):
@@ -224,6 +246,79 @@ def annual_due(
 		),
 		None,
 	)
+
+
+@dataclass(frozen=True, slots=True)
+class AnnualDocType:
+	"""What an annual DocType files: its kinds of deadline, and the field that tells an Eröffnungsbilanz apart where
+	the DocType has one."""
+
+	kinds: tuple[Kind, ...]
+	opening_balance_field: str | None = None
+
+
+DOCTYPES: MappingProxyType[str, AnnualDocType] = MappingProxyType(
+	{
+		"Annual VAT Return": AnnualDocType((Kind.UMSATZSTEUERERKLAERUNG,)),
+		"Corporate Income Tax Return": AnnualDocType((Kind.KOERPERSCHAFTSTEUERERKLAERUNG,)),
+		"Trade Tax Return": AnnualDocType((Kind.GEWERBESTEUERERKLAERUNG,)),
+		"Electronic Balance Sheet": AnnualDocType(
+			(Kind.E_BILANZ,), opening_balance_field=OPENING_BALANCE_FIELD
+		),
+		"Annual Accounts": AnnualDocType((Kind.FESTSTELLUNG, Kind.OFFENLEGUNG)),
+	}
+)
+"""The DocTypes of the annual documents by name, as company_data_to_be_ignored in hooks.py names them, with what
+each files. A module whose DocType files its deadlines otherwise than by the fields every annual document carries
+extends its entry here."""
+AWAITING_DOCTYPES = (
+	"Annual VAT Return",
+	"Electronic Balance Sheet",
+	"Corporate Income Tax Return",
+	"Trade Tax Return",
+	"Annual Accounts",
+)
+"""The annual DocTypes that come with their modules, so that a site may lack them: the Frappe layer reads each only
+where the site has it, and the deadlines it files appear with it."""
+
+
+@dataclass(frozen=True, slots=True)
+class AnnualDocument:
+	"""An annual document as the deadlines read it: its name, its year, its status and the day it last changed, its
+	docstatus, how and when its filing was noted (filed_via, filed_on), the day a Senden or the note of a filing outside
+	Steuerbote files it (steuerbote.steuerbote.doctype.elster_transmission.transmission.filings), and whether it is the
+	Eröffnungsbilanz of the E-Bilanz."""
+
+	name: str
+	year: int
+	status: str
+	modified: date
+	docstatus: int = 0
+	filed_via: str | None = None
+	filed_on: date | None = None
+	sent_on: date | None = None
+	opening_balance: bool = False
+
+	@property
+	def period(self) -> int | OpeningBalance:
+		return OpeningBalance(self.year) if self.opening_balance else self.year
+
+
+def filing_day(kind: Kind, document: AnnualDocument) -> date | None:
+	"""The day the document filed its deadline of ``kind``, None while it does not."""
+	if kind not in KINDS:
+		raise ValueError(f"{kind.value} is no annual filing")
+	if kind is Kind.FESTSTELLUNG:
+		return document.modified if document.docstatus == SUBMITTED else None
+	if kind is Kind.OFFENLEGUNG:
+		uploaded = document.filed_via == UPLOAD and document.filed_on is not None
+		if not uploaded and document.status not in TRANSMITTED:
+			return None
+	elif document.sent_on is not None:
+		return document.sent_on
+	elif document.docstatus != SUBMITTED:
+		return None
+	return document.filed_on or document.modified
 
 
 def _notes_of(deadline: disclosure.Deadline) -> tuple[Note, ...]:
