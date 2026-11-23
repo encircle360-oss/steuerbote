@@ -3,6 +3,7 @@
 from datetime import date
 from unittest import TestCase
 
+from steuerbote.ustjahr import form
 from steuerbote.ustjahr.years import (
 	LATEST_YEAR,
 	YEARS,
@@ -47,6 +48,23 @@ class YearTableTest(TestCase):
 			YEARS[UNKNOWN_YEAR] = YEARS[LATEST_YEAR]  # type: ignore[index]
 		with self.assertRaises(AttributeError):
 			YEARS[2026].year = UNKNOWN_YEAR  # type: ignore[misc]
+
+
+class PartsTest(TestCase):
+	"""Every table of a year holds exactly the years of the table, so a new year fails here until it is whole."""
+
+	def test_every_table_holds_exactly_the_years(self):
+		for name, table in (("CATALOGUES of steuerbote/ustjahr/form.py", form.CATALOGUES),):
+			with self.subTest(table=name):
+				self.assertEqual(sorted(table), list(YEARS))
+
+	def test_the_data_of_each_year_cite_its_bmf_letter(self):
+		for year in YEARS.values():
+			with self.subTest(year=year.year):
+				self.assertIn(year.letter, " ".join((form.__doc__ or "").split()))
+
+	def test_the_latest_year_is_the_latest_of_every_table(self):
+		self.assertEqual(max(form.CATALOGUES), LATEST_YEAR)
 
 
 class UnknownYearTest(TestCase):
