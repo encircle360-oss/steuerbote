@@ -103,6 +103,7 @@ def _fiscal(report: Report, taxonomy: Taxonomy, published: Collection[str] | Non
 		*checks.calculation(report, taxonomy),
 		*checks.oberpositionen(report, taxonomy),
 		*checks.summenmussfelder(report, taxonomy),
+		*checks.kontensalden(report, taxonomy, facets),
 		*checks.contexts(writer.instance(report, taxonomy)),
 	)
 

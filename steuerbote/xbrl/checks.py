@@ -173,6 +173,10 @@ class Code(StrEnum):
 	ENTITY = "XBRL-UNTERNEHMEN"
 	NOT_PUBLISHED = "XBRL-NICHT-OFFENZULEGEN"
 	PRIOR_YEAR_AMOUNT = "XBRL-VORJAHRESBETRAG"
+	ACCOUNT_BALANCE_MISSING = "170195106"
+	SEVERAL_WITHOUT_ACCOUNT = "170195108"
+	ONLY_WITHOUT_ACCOUNT = "170195109"
+	ACCOUNT_WITHOUT_ACCOUNT = "170195110"
 
 
 @dataclass(frozen=True, slots=True)
@@ -881,3 +885,126 @@ def _special_balance_only(taxonomy: Taxonomy, facts: Iterable[Fact]) -> bool:
 def _euro(value: Decimal) -> str:
 	"""An amount as the German text writes it, such as 1.234,56 €."""
 	return f"{value:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".") + " €"
+
+
+ACCOUNT_BALANCES = "de-gaap-ci:detailedInformation.accountBalances"
+ACCOUNT_BALANCE_PARTS = MappingProxyType(
+	{
+		"position": "de-gaap-ci:detailedInformation.accountbalances.positionName",
+		"number": "de-gaap-ci:detailedInformation.accountbalances.accountNumber",
+		"description": "de-gaap-ci:detailedInformation.accountbalances.accountDescription",
+		"not_possible": "de-gaap-ci:detailedInformation.accountbalances.notPossible",
+	}
+)
+KONTENSALDEN_COMPONENTS = (BILANZ, EROEFFNUNGSBILANZ, GUV, GUV_MICROBILG)
+"""„Für die Berichtsteile Bilanz, Eröffnungsbilanz ohne GuV, GuV, GuV nach MicroBilG der Kern- und Branchentaxonomie
+sowie der Spezialtaxonomien gilt, dass zu jeder werthaltig übermittelten rechnerisch verknüpften Position, zu der keine
+werthaltige rechnerisch verknüpfte Unterposition vorliegt, das Tupel „Kontensalden zu einer Position“ mindestens einmal
+zu übermitteln ist.“ (Technischer Leitfaden zur HGB-Taxonomie 6.10, Stand 08.06.2026, B.12.1)"""
+
+
+def kontensalden(report: Report, taxonomy: Taxonomy, facets: Facets) -> tuple[Finding, ...]:
+	"""The Kontensalden of a taxonomy with the variant „ohne Konteninformationen“, 6.10 and later (Leitfaden 6.10,
+	B.12.1 and B.12.2), as the structural errors of Jahresdokumentation_Bilanz_Taxonomie_6_10.ods (ERiC documentation
+	45.1.5.0) check them, each by its Fehlercode:
+
+	- 170195106: with the Kontensalden announced, a valued position of Bilanz or GuV without a valued position below it
+	  in the calculation has a Kontensaldo, with or without account information;
+	- 170195107 asks the same of the positions of a Betrieb gewerblicher Art or wirtschaftlicher Geschäftsbetrieb in the
+	  hypercubes of the steuerliche Gewinnermittlung für besondere Fälle, which a GmbH does not send, so only the facts
+	  without members count;
+	- 170195108: a position has at most one Kontensaldo without account information, „Konto nicht vorhanden oder
+	  nicht übermittelbar“ true;
+	- 170195109: a position of another component, whose Kontensalden are voluntary, has not only one, and that one
+	  without account information;
+	- 170195110: a Kontensaldo without account information names neither Kontonummer nor Kontobeschreibung.
+
+	The taxonomy 6.9 has none of these rules and no part notPossible."""
+	if not taxonomy.has(ACCOUNT_BALANCE_PARTS["not_possible"]):
+		return ()
+	entries: dict[str, list[dict[str, object]]] = {}
+	for fact, _ in report.tuples():
+		if fact.concept != ACCOUNT_BALANCES:
+			continue
+		parts = {
+			key: next((child.value for child in fact.children if child.concept == concept), None)
+			for key, concept in ACCOUNT_BALANCE_PARTS.items()
+		}
+		position = _with_prefix(str(parts["position"] or ""))
+		entries.setdefault(position, []).append(parts)
+	findings = []
+	if KONTENNACHWEIS.code in facets.components:
+		findings.extend(_missing_kontensalden(report, taxonomy, facets, entries))
+	for position, found in entries.items():
+		without = [parts for parts in found if parts["not_possible"] is True]
+		label = taxonomy.label(position) if taxonomy.has(position) else position
+		if len(without) > 1:
+			findings.append(
+				Finding(
+					Code.SEVERAL_WITHOUT_ACCOUNT,
+					f"Zu „{label}“ stehen {len(without)} Kontensalden ohne Konteninformationen; erlaubt ist höchstens "
+					"einer.",
+					_rule_source(taxonomy, "B.12.1", Code.SEVERAL_WITHOUT_ACCOUNT),
+					position,
+				)
+			)
+		if len(found) == 1 and without and not _kontensalden_required(taxonomy, position):
+			findings.append(
+				Finding(
+					Code.ONLY_WITHOUT_ACCOUNT,
+					f"Zu „{label}“, einer Position außerhalb von Bilanz und GuV, steht nur ein Kontensaldo ohne "
+					"Konteninformationen.",
+					_rule_source(taxonomy, "B.12.2", Code.ONLY_WITHOUT_ACCOUNT),
+					position,
+				)
+			)
+		if any(parts["number"] is not None or parts["description"] is not None for parts in without):
+			findings.append(
+				Finding(
+					Code.ACCOUNT_WITHOUT_ACCOUNT,
+					f"Ein Kontensaldo zu „{label}“ nennt Kontonummer oder Kontobeschreibung, obwohl „Konto nicht vorhanden "
+					"oder nicht übermittelbar“ wahr ist.",
+					_rule_source(taxonomy, "B.12.1", Code.ACCOUNT_WITHOUT_ACCOUNT),
+					position,
+				)
+			)
+	return tuple(findings)
+
+
+def _missing_kontensalden(
+	report: Report, taxonomy: Taxonomy, facets: Facets, entries: dict[str, list[dict[str, object]]]
+) -> Iterator[Finding]:
+	valued = dict.fromkeys(
+		item.concept
+		for item, ancestors in report.items()
+		if not ancestors and item.value is not None and not item.period.prior and not item.dimensions
+	)
+	announced = [component for component in KONTENSALDEN_COMPONENTS if component.code in facets.components]
+	for name in valued:
+		component = next((found for found in announced if found.holds(taxonomy, name)), None)
+		calculation = taxonomy.calculation.get(component.role) if component is not None else None
+		if calculation is None or name not in calculation or name in entries:
+			continue
+		if any(arc.child in valued for arc in calculation.children(name)):
+			continue
+		yield Finding(
+			Code.ACCOUNT_BALANCE_MISSING,
+			f"Zu „{taxonomy.label(name)}“ fehlt der Kontensaldo: Jede werthaltige Position der {component.label}, unter "
+			"der keine rechnerisch verknüpfte Position einen Wert hat, braucht mindestens einen, ohne Konto mit „Konto "
+			"nicht vorhanden oder nicht übermittelbar“.",
+			_rule_source(taxonomy, "B.12.1", Code.ACCOUNT_BALANCE_MISSING),
+			name,
+		)
+
+
+def _kontensalden_required(taxonomy: Taxonomy, name: str) -> bool:
+	return any(component.holds(taxonomy, name) for component in KONTENSALDEN_COMPONENTS)
+
+
+def _rule_source(taxonomy: Taxonomy, sections: str, code: Code) -> str:
+	version = taxonomy.version.replace(".", "_")
+	return f"{_source(taxonomy, sections)}; Jahresdokumentation_Bilanz_Taxonomie_{version}.ods, Strukturelle Fehler {code.value}"
+
+
+def _with_prefix(name: str) -> str:
+	return name if ":" in name else f"{GAAP_PREFIX}:{name}"
