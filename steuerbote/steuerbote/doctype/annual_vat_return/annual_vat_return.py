@@ -54,7 +54,7 @@ from steuerbote.ledger import account_names
 from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, AnnualFiling, Calculation
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
-from steuerbote.steuerbote.doctype.annual_vat_return import bridge
+from steuerbote.steuerbote.doctype.annual_vat_return import bridge, layout
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import Transmittable
 from steuerbote.steuerbote.doctype.vat_return import bridge as vat_return_bridge
 from steuerbote.steuerbote.doctype.vat_return.vat_return import settings_for
@@ -250,6 +250,16 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 		if to_amount(self.kz820) > 0 and self.filed_on:
 			due = soll.payment_due(getdate(self.filed_on), holidays(self.company))
 		self.payment_due = due
+
+	# What the print format reads.
+
+	def annual_vat_print(self) -> dict[str, Any]:
+		"""The sections of form USt 2 A with the values the return files and its Grundstücke, for the print format
+		„Umsatzsteuererklärung“ (layout.print_sections)."""
+		year = self._year()
+		with core_errors():
+			values = self._filed_values(self._rows(self.LINES))
+		return {"sections": layout.print_sections(year, values, self._grundstuecke())}
 
 	# The rules of a save.
 
