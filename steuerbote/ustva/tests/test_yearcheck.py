@@ -22,14 +22,33 @@ from steuerbote.ustva import kennzahlen, yearcheck
 from steuerbote.ustva.documentation import read
 from steuerbote.ustva.kennzahlen import Kind
 from steuerbote.ustva.tests import eric_documentation
-from steuerbote.ustva.yearcheck import Data, Difference, check, data_for, differences, main, missing
-from steuerbote.ustva.years import LATEST_YEAR, YEARS
+from steuerbote.ustva.yearcheck import (
+	Data,
+	Difference,
+	check,
+	data_for,
+	differences,
+	main,
+	missing,
+	passes_over,
+)
+from steuerbote.ustva.years import LATEST_YEAR, YEARS, Year
 
 APP_ROOT = Path(__file__).resolve().parents[3]
 DF = Context.DAUERFRISTVERLAENGERUNG.value
 SVZ = Context.UMSATZSTEUERSONDERVORAUSZAHLUNG.value
 USTVA = "Umsatzsteuervoranmeldung"
 UNKNOWN_YEAR = LATEST_YEAR + 1
+# A year whose data come from the beta of a later release of ERiC, before the BMF letter with its forms.
+PROVISIONAL = Year(
+	UNKNOWN_YEAR,
+	None,
+	None,
+	None,
+	provisional=True,
+	documentation="Beta ERiC 99.1.0.0",
+	form_year=LATEST_YEAR,
+)
 
 
 def kennzahl(data: Data, number: str, **changes: object) -> Data:
@@ -492,6 +511,51 @@ class CommandTest(SyntheticTestCase):
 		self.assertEqual((exited.exception.code, stdout.getvalue()), (0, ""))
 
 
+class ProvisionalYearTest(SyntheticTestCase):
+	"""A provisional year comes from the documentation of a later release, which a documentation of an earlier one does
+	not hold: the 44.3.6.0 of the CI knows nothing of 2027, whose data come from the beta 45.1.5.0."""
+
+	def run_main(self, *arguments: str) -> tuple[int, str, str]:
+		stdout, stderr = io.StringIO(), io.StringIO()
+		with mock.patch.object(yearcheck, "YEARS", MappingProxyType({**YEARS, UNKNOWN_YEAR: PROVISIONAL})):
+			code = main(list(arguments), stdout, stderr)
+		return code, stdout.getvalue(), stderr.getvalue()
+
+	def test_passes_over_a_provisional_year_whose_jahresdokumentation_the_documentation_lacks(self):
+		directory = self.written()
+		with mock.patch.object(yearcheck, "YEARS", MappingProxyType({**YEARS, UNKNOWN_YEAR: PROVISIONAL})):
+			self.assertTrue(passes_over(directory, UNKNOWN_YEAR))
+			self.assertFalse(passes_over(directory, 2026))
+		self.assertEqual(self.run_main(str(directory)), (0, "", ""))
+
+	def test_checks_a_provisional_year_whose_jahresdokumentation_the_documentation_holds(self):
+		eric_documentation.write(self.directory, eric_documentation.documented(self.data, UNKNOWN_YEAR))
+		with mock.patch.object(yearcheck, "YEARS", MappingProxyType({**YEARS, UNKNOWN_YEAR: PROVISIONAL})):
+			self.assertFalse(passes_over(self.written(), UNKNOWN_YEAR))
+		code, stdout, _ = self.run_main(str(self.written()))
+		self.assertEqual(code, 1)
+		self.assertIn(f"{UNKNOWN_YEAR} is missing in CATALOGUES of steuerbote/ustva/kennzahlen.py", stdout)
+
+	def test_a_provisional_year_named_needs_its_documentation(self):
+		code, stdout, stderr = self.run_main(str(self.written()), str(UNKNOWN_YEAR))
+		self.assertEqual((code, stdout), (2, ""))
+		self.assertIn(f"Jahresdokumentation_UStVA_{UNKNOWN_YEAR}.ods cannot be read", stderr)
+
+	def test_a_final_year_needs_its_documentation(self):
+		directory = self.written()
+		(
+			directory
+			/ "Datenarten/ElsterAnmeldung/UStVA/Jahresdokumentation/Jahresdokumentation_UStVA_2026.ods"
+		).unlink()
+		self.assertFalse(passes_over(directory, 2026))
+		code, _, stderr = self.run_main(str(directory))
+		self.assertEqual(code, 2)
+		self.assertIn("Jahresdokumentation_UStVA_2026.ods cannot be read", stderr)
+
+	def test_a_year_outside_the_table_is_not_passed_over(self):
+		self.assertFalse(passes_over(self.written(), UNKNOWN_YEAR))
+
+
 class DocumentationTest(TestCase):
 	"""Every year of the year table against the ERiC documentation; skipped without it, see eric_schema.py."""
 
@@ -501,7 +565,10 @@ class DocumentationTest(TestCase):
 		cls.documentation = eric_schema.documentation()
 
 	def test_every_year_agrees_with_its_documentation(self):
+		"""Every year the documentation holds; a provisional year it does not hold has a test of its own below."""
 		for year in YEARS:
+			if passes_over(self.documentation, year):
+				continue
 			with self.subTest(year=year):
 				self.assertEqual([str(difference) for difference in check(self.documentation, year)], [])
 

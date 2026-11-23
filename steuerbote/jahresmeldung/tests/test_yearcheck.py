@@ -42,6 +42,7 @@ from steuerbote.ustjahr import form as ustjahr_form
 from steuerbote.ustjahr import rules as ustjahr_rules
 from steuerbote.ustva import kennzahlen
 from steuerbote.ustva import yearcheck as ustva_yearcheck
+from steuerbote.ustva import years as ustva_years
 from steuerbote.ustva.documentation import DocumentationError
 from steuerbote.ustva.tests import eric_documentation
 
@@ -211,6 +212,34 @@ class UStVATest(SyntheticTestCase):
 				"UStVA 2027, schema 2026, version: 2026; UStVA-2027.xsd: 2027",
 			],
 		)
+
+
+class ProvisionalUStVATest(SyntheticTestCase):
+	"""A provisional year of the UStVA comes from the documentation of a later release of ERiC (steuerbote/ustva/years.py):
+	a run without years passes over it where the documentation holds no Jahresdokumentation of it, a year named needs
+	it."""
+
+	def setUp(self):
+		super().setUp()
+		year = ustva_years.LATEST_YEAR + 1
+		provisional = ustva_years.Year(
+			year, None, None, None, provisional=True, documentation="Beta ERiC 99.1.0.0", form_year=year - 1
+		)
+		table = MappingProxyType({**ustva_years.YEARS, year: provisional})
+		for target in (ustva_years, ustva_yearcheck):
+			patcher = mock.patch.object(target, "YEARS", table)
+			patcher.start()
+			self.addCleanup(patcher.stop)
+		self.year = year
+
+	def test_a_run_without_years_passes_over_it(self):
+		self.assertLines(arguments=("UStVA",))
+		self.assertLines()
+
+	def test_a_year_named_needs_its_jahresdokumentation(self):
+		code, found, errors = self.run_main("UStVA", str(self.year))
+		self.assertEqual((code, found), (2, []))
+		self.assertIn(f"Jahresdokumentation_UStVA_{self.year}.ods cannot be read", errors)
 
 
 class UStFormCatalogueTest(SyntheticTestCase):
