@@ -821,7 +821,8 @@ def _anlagenspiegel(root: ElementTree.Element, kind: Datenart, header: EnvelopeH
 
 
 def _taxonomy_checks(root: ElementTree.Element, kind: Datenart, header: EnvelopeHeader) -> Message | None:
-	"""The first Mussfeld the instance lacks or the first calculation it gets wrong, with a registered taxonomy."""
+	"""The first Mussfeld the instance lacks, the first calculation it gets wrong or, from taxonomy 6.10 on, the first
+	position its Kontensalden get wrong (steuerbote.xbrl.checks.kontensalden()), with a registered taxonomy."""
 	view = _TAXONOMIES.get(kind.taxonomy or "")
 	instance = root.find(XBRL)
 	shell = version_of(kind.taxonomy).fiscal_shell if view is not None else ""
@@ -848,6 +849,7 @@ def _taxonomy_checks(root: ElementTree.Element, kind: Datenart, header: Envelope
 		*checks.components(report, taxonomy, facets),
 		*checks.mussfelder(report, taxonomy, facets),
 		*checks.calculation(report, taxonomy),
+		*checks.kontensalden(report, taxonomy, facets),
 	)
 	finding = next((finding for finding in found if finding.blocking), None)
 	if finding is None:
