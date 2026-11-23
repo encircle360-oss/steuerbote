@@ -239,12 +239,18 @@ class BalanceSheetMapping(Document):
 	@frappe.whitelist(methods=["POST"])
 	def load_defaults(self) -> list[str]:
 		"""Replace the rows by the defaults of the chart, reduced to the ledger accounts of the company, and note the
-		version of the defaults and the rows they gave. A watched account keeps the level its row had; the rows kept as
-		taken over hold the level of the defaults, so that Vorgaben aktualisieren sees a kept level as the user's own.
-		Returns the numbers of the accounts of the company the defaults give no place, for the message of the form."""
+		version of the defaults and the rows they gave. A watched account keeps the level its row had, by the number of
+		the row or, before Frappe has fetched it, of its account; the rows kept as taken over hold the level of the
+		defaults, so that Vorgaben aktualisieren sees a kept level as the user's own. Returns the numbers of the
+		accounts of the company the defaults give no place, for the message of the form."""
 		self._require_defaults()
 		names = self._account_names()
-		levels = {row.account_number: row.level for row in self.watched if row.account_number}
+		numbers = {name: number for number, name in names.items()}
+		levels = {
+			number: row.level
+			for row in self.watched
+			if (number := row.account_number or numbers.get(row.account))
+		}
 		self._set_rows(defaults_rows(self.chart, self.taxonomy_version, names.keys(), levels), names)
 		self._note_defaults(names.keys())
 		return list(without_defaults(self.chart, self.taxonomy_version, names.keys()))
