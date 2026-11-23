@@ -1,7 +1,11 @@
+import csv
+import errno
 import hashlib
 import json
 import os
+import re
 import shutil
+import sys
 import tempfile
 import warnings
 import zipfile
@@ -14,14 +18,22 @@ from steuerbote.eric import runtime
 from steuerbote.eric.datenart import ZMDO, ustva
 from steuerbote.eric.runtime import (
 	MANIFEST,
+	NO_GLIBC,
+	OLD_GLIBC,
+	OTHER_PACKAGE,
+	PLATFORM_MESSAGES,
+	UNSUPPORTED_SITE,
+	Check,
 	RuntimeInfo,
 	RuntimeInstallError,
 	RuntimeIntegrityError,
+	UnsupportedPlatform,
 	detect,
 	install_from_archive,
 	installations,
 	is_beta,
 	platform_check,
+	platform_refusal,
 	record_listed_versions,
 	status,
 	verify,
@@ -46,6 +58,11 @@ ELSEWHERE = {
 	f"{ROOT}/Linux-x86_64/Beispiel/ericdemo-python/eric.py": b"demo",
 	f"{ROOT}/Windows-x86_64/dll/ericapi.dll": b"MZ",
 }
+# ERiC needs Linux x86_64 with glibc 2.28 or newer; the tests that install take it as the platform of the site,
+# whatever platform runs them: sys.platform, machine and glibc as os.confstr names it.
+SUPPORTED_SITE = ("linux", "x86_64", "glibc 2.41")
+TRANSLATIONS = Path(__file__).parents[2] / "translations" / "de.csv"
+PLACEHOLDER = re.compile(r"\{\d+\}")
 
 
 def sha256(data: bytes) -> str:
@@ -53,10 +70,17 @@ def sha256(data: bytes) -> str:
 
 
 class ArchiveTestCase(TestCase):
+	site: tuple[str, str, str | None] | None = SUPPORTED_SITE
+	"""The platform of the site the tests install on; None for the one that runs them."""
+
 	def setUp(self):
 		self.directory = Path(tempfile.mkdtemp(prefix="steuerbote-eric-runtime-"))
 		self.addCleanup(shutil.rmtree, self.directory)
 		self.root = self.directory / "eric"
+		if self.site is not None:
+			site = mock.patch.object(runtime, "_platform", return_value=self.site)
+			site.start()
+			self.addCleanup(site.stop)
 
 	def jar(
 		self, members: Mapping[str, bytes], name: str = "ERiC-44.3.6.0-Linux-x86_64.jar", **special
@@ -373,6 +397,104 @@ class RefusalTest(ArchiveTestCase):
 		self.assertEqual(list(self.root.iterdir()), [])
 
 
+class UnsupportedSiteTest(ArchiveTestCase):
+	"""ERiC for Linux runs on Intel 64 and AMD64 (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 2-1) with glibc 2.28 or
+	newer (Kap. 2.4.4.5). On any other site the probe would fail only once the libraries are unpacked, so the
+	installation refuses the site before it reads the archive."""
+
+	site = None
+
+	def test_refuses_a_site_on_arm64_before_it_reads_the_archive_or_writes_a_file(self):
+		path, checksum = self.jar(LIBRARIES)
+		probed = []
+		for archive in (path, self.directory / "fehlt.jar"):
+			with (
+				self.subTest(archive=archive.name),
+				mock.patch.object(runtime.platform, "machine", return_value="aarch64"),
+				self.assertRaises(UnsupportedPlatform) as raised,
+			):
+				install_from_archive(archive, checksum, self.root, probe=probed.append)
+			self.assertEqual(
+				(raised.exception.template, raised.exception.values),
+				(UNSUPPORTED_SITE, (sys.platform, "aarch64")),
+			)
+			self.assertEqual(
+				str(raised.exception),
+				f"ERiC runs on Linux x86_64 only; this site runs on {sys.platform} aarch64.",
+			)
+			self.assertIsInstance(raised.exception, RuntimeInstallError)
+			self.assertFalse(self.root.exists())
+		self.assertEqual(probed, [])
+
+	def test_refuses_a_site_without_glibc_or_with_one_older_than_2_28(self):
+		path, checksum = self.jar(LIBRARIES)
+		for libc, template, values in (
+			(None, NO_GLIBC, ()),
+			("glibc 2.27", OLD_GLIBC, ("glibc 2.27",)),
+		):
+			with (
+				self.subTest(libc=libc),
+				mock.patch.object(runtime, "_platform", return_value=("linux", "x86_64", libc)),
+				self.assertRaises(UnsupportedPlatform) as raised,
+			):
+				install_from_archive(path, checksum, self.root)
+			self.assertEqual((raised.exception.template, raised.exception.values), (template, values))
+			self.assertFalse(self.root.exists())
+
+	def test_installs_on_linux_x86_64_with_glibc_2_28(self):
+		path, checksum = self.jar(LIBRARIES)
+		with mock.patch.object(runtime, "_platform", return_value=("linux", "x86_64", "glibc 2.28")):
+			self.assertEqual(install_from_archive(path, checksum, self.root).version, "44.3.6.0")
+
+
+class OtherPackageTest(ArchiveTestCase):
+	"""ELSTER ships ERiC as a package per platform, ERiC-<version>-<os>.jar, which unpacks to the directory <os> below
+	ERiC-<version> (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 3.1, Kap. 3.1.2 with Tabelle 3-1, Kap. 3.1.4 with
+	Tabelle 3-2). Steuerbote installs the one for Linux-x86_64 only and refuses another, by its name or by what it holds,
+	before it unpacks a file."""
+
+	def assertRefusedAs(self, path: Path, checksum: str, other: str) -> None:
+		with self.assertRaises(UnsupportedPlatform) as raised:
+			install_from_archive(path, checksum, self.root)
+		self.assertEqual(
+			(raised.exception.template, raised.exception.values), (OTHER_PACKAGE, (path.name, other))
+		)
+		self.assertEqual(
+			str(raised.exception),
+			f"{path.name} is the ERiC package for {other}; Steuerbote installs only the one for Linux x86_64.",
+		)
+		self.assertFalse(self.root.exists())
+
+	def test_refuses_a_package_whose_name_names_another_platform(self):
+		"""Even with libraries for Linux inside: the name is what the operator chose and what the manifest records."""
+		for other in ("AIX-ppc64", "Darwin-universal", "Linux-ppc64le", "Windows-x86", "Windows-x86_64"):
+			with self.subTest(other=other):
+				self.assertRefusedAs(*self.jar(LIBRARIES, name=f"ERiC-44.3.6.0-{other}.jar"), other)
+
+	def test_refuses_a_package_named_for_another_platform_before_reading_it(self):
+		missing = self.directory / "ERiC-44.3.6.0-Windows-x86_64.jar"
+		self.assertRefusedAs(missing, "0" * 64, "Windows-x86_64")
+
+	def test_refuses_a_package_that_holds_another_platform(self):
+		for other, members in (
+			("Windows-x86_64", {f"{ROOT}/Windows-x86_64/dll/ericapi.dll": b"MZ"}),
+			("Linux-ppc64le", {f"{ROOT}/Linux-ppc64le/lib/libericapi.so": b"ericapi"}),
+		):
+			with self.subTest(other=other):
+				self.assertRefusedAs(
+					*self.jar(members | {"META-INF/MANIFEST.MF": b""}, name="eric.jar"), other
+				)
+
+	def test_a_name_without_a_platform_of_eric_leaves_the_platform_to_the_content(self):
+		"""Only the platforms of Tabelle 3-1 count in a name, so a copy saved under another name installs by what it
+		holds, here Linux-x86_64 beside another platform."""
+		for name in ("ERiC-44.3.6.0-Linux-x86_64 (1).jar", "ERiC-44.3.6.0.jar", "eric.jar"):
+			with self.subTest(name=name):
+				path, checksum = self.jar(LIBRARIES | ELSEWHERE, name=name)
+				self.assertEqual(install_from_archive(path, checksum, self.root).version, "44.3.6.0")
+				shutil.rmtree(self.root)
+
+
 class BetaTest(TestCase):
 	def test_the_first_delivery_of_a_main_release_is_the_beta(self):
 		self.assertTrue(is_beta("45.1.5.0"))
@@ -575,6 +697,76 @@ class PlatformTest(TestCase):
 				check = platform_check(system, machine, libc)
 				self.assertFalse(check.ok)
 				self.assertEqual(check.name, "platform")
+
+	def test_names_what_refuses_a_platform_for_the_installation_to_translate(self):
+		for site, template, values in (
+			(("darwin", "arm64", None), UNSUPPORTED_SITE, ("darwin", "arm64")),
+			(("linux", "aarch64", "glibc 2.41"), UNSUPPORTED_SITE, ("linux", "aarch64")),
+			(("linux", "x86_64", None), NO_GLIBC, ()),
+			(("linux", "x86_64", "musl"), NO_GLIBC, ()),
+			(("linux", "x86_64", "glibc 2.27"), OLD_GLIBC, ("glibc 2.27",)),
+		):
+			with self.subTest(site=site):
+				refusal = platform_refusal(*site)
+				self.assertEqual((refusal.template, refusal.values), (template, values))
+		self.assertIsNone(platform_refusal("linux", "x86_64", "glibc 2.28"))
+
+	def test_the_status_page_shows_the_platform_in_german_as_the_installation_decides(self):
+		"""„Laufzeitumgebung prüfen“ shows the texts of the operator, which are German, for the platform the installation
+		takes and for each it refuses."""
+		for site, ok, detail in (
+			(("linux", "x86_64", "glibc 2.41"), True, "Linux x86_64 mit glibc 2.41."),
+			(
+				("linux", "aarch64", "glibc 2.41"),
+				False,
+				"ERiC läuft nur unter Linux x86_64, nicht unter linux aarch64.",
+			),
+			(("linux", "x86_64", None), False, "Keine glibc gefunden; ERiC braucht glibc 2.28 oder neuer."),
+			(
+				("linux", "x86_64", "glibc 2.27"),
+				False,
+				"ERiC braucht glibc 2.28 oder neuer, hier ist glibc 2.27.",
+			),
+		):
+			with self.subTest(site=site):
+				self.assertEqual(platform_check(*site), Check("platform", ok, detail))
+				self.assertEqual(platform_refusal(*site) is None, ok)
+
+
+class SiteTest(TestCase):
+	"""The platform of the site as the status page and the installation read it: the system as sys.platform names it,
+	the machine and the glibc that os.confstr names."""
+
+	def test_reads_the_machine_and_the_glibc_of_the_site(self):
+		with (
+			mock.patch.object(runtime.platform, "machine", return_value="aarch64"),
+			mock.patch.object(runtime.os, "confstr", return_value="glibc 2.41") as confstr,
+		):
+			self.assertEqual(runtime._platform(), (sys.platform, "aarch64", "glibc 2.41"))
+		confstr.assert_called_once_with("CS_GNU_LIBC_VERSION")
+
+	def test_a_site_whose_c_library_names_no_glibc_has_none(self):
+		"""musl knows the name CS_GNU_LIBC_VERSION but not its value, so os.confstr raises OSError there, and a system
+		without the name raises ValueError; platform.libc_ver of the standard library expects both as well."""
+		for error in (
+			OSError(errno.EINVAL, "Invalid argument"),
+			ValueError("unrecognized configuration name"),
+		):
+			with self.subTest(error=error), mock.patch.object(runtime.os, "confstr", side_effect=error):
+				self.assertIsNone(runtime._platform()[2])
+
+
+class PlatformMessagesTest(TestCase):
+	def test_every_refusal_of_a_platform_is_listed_for_its_translation(self):
+		self.assertEqual(set(PLATFORM_MESSAGES), {UNSUPPORTED_SITE, NO_GLIBC, OLD_GLIBC, OTHER_PACKAGE})
+
+	def test_every_refusal_of_a_platform_reads_in_german_with_its_placeholders(self):
+		with TRANSLATIONS.open(encoding="utf-8", newline="") as file:
+			german = dict(csv.reader(file))
+		self.assertEqual(sorted(set(PLATFORM_MESSAGES) - german.keys()), [])
+		for template in PLATFORM_MESSAGES:
+			with self.subTest(template=template):
+				self.assertCountEqual(PLACEHOLDER.findall(german[template]), PLACEHOLDER.findall(template))
 
 
 class StatusTest(ArchiveTestCase):

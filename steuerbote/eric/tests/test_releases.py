@@ -663,6 +663,10 @@ class InstalledTestCase(TestCase):
 		self.directory = Path(tempfile.mkdtemp(prefix="steuerbote-eric-releases-"))
 		self.addCleanup(shutil.rmtree, self.directory)
 		self.root = self.directory / "eric"
+		# ERiC installs on Linux x86_64 with glibc only; the invented archives install whatever platform runs the tests.
+		site = mock.patch.object(runtime, "_platform", return_value=("linux", "x86_64", "glibc 2.41"))
+		site.start()
+		self.addCleanup(site.stop)
 
 	def install(
 		self,

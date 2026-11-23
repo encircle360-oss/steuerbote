@@ -16,7 +16,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest import TestCase, mock
 
-from steuerbote.eric import service
+from steuerbote.eric import runtime, service
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.result import ERROR, TESTMERKER, Operation, Outcome
@@ -528,7 +528,9 @@ class VersionTest(ServiceTestCase):
 			jar.writestr(f"{lib}/plugins2/libcommonData.so", b"")
 			jar.writestr(f"{lib}/plugins2/libcheckUStVA_2026.so", b"")
 		checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
-		info = install_from_archive(archive, checksum, self.directory / "eric", probe=library_versions)
+		# The stub loads wherever the tests run, ERiC and so its installation only on Linux x86_64 with glibc.
+		with mock.patch.object(runtime, "_platform", return_value=("linux", "x86_64", "glibc 2.41")):
+			info = install_from_archive(archive, checksum, self.directory / "eric", probe=library_versions)
 		self.assertTrue((info.lib_dir / "libericapi.so").is_file())
 		(installation,) = installations(self.directory / "eric")
 		self.assertEqual(
