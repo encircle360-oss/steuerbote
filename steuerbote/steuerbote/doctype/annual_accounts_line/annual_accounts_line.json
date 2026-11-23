@@ -1,0 +1,159 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 20:00:00.000000",
+ "description": "A position of the Bilanz of § 266 HGB or an item of the GuV of § 275 HGB with its amount, the amount of the previous year and the accounts behind it, computed by Calculate and corrected with a reason.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "statement",
+  "marker",
+  "label",
+  "concept",
+  "level",
+  "parent_concept",
+  "column_break_amounts",
+  "amount",
+  "prior",
+  "correction",
+  "correction_reason",
+  "reported",
+  "shown",
+  "takes_correction",
+  "sources",
+  "manual"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "statement",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Part of the Statement",
+   "options": "Aktiva\nPassiva\nGuV",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "marker",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Outline Marker",
+   "read_only": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "label",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Line Label",
+   "read_only": 1
+  },
+  {
+   "description": "The position of the HGB-Taxonomie, or of its Vermerk, without the prefix de-gaap-ci.",
+   "fieldname": "concept",
+   "fieldtype": "Data",
+   "label": "Taxonomy Concept",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "level",
+   "fieldtype": "Select",
+   "label": "Level of the Scheme",
+   "options": "Summe\nBuchstabe\nrömische Zahl\narabische Zahl\nKleinbuchstabe\nVermerk",
+   "read_only": 1
+  },
+  {
+   "fieldname": "parent_concept",
+   "fieldtype": "Data",
+   "label": "Position Above",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "prior",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Previous Year",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "correction",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Override Amount",
+   "options": "Company:company:default_currency",
+   "read_only_depends_on": "eval:!doc.takes_correction"
+  },
+  {
+   "fieldname": "correction_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Override",
+   "read_only_depends_on": "eval:!doc.takes_correction"
+  },
+  {
+   "columns": 2,
+   "fieldname": "reported",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount of the Statement",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "shown",
+   "fieldtype": "Check",
+   "label": "Shown in the Statement",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "A line that takes balances itself: no total, no result, no position with positions under it and no Vermerk.",
+   "fieldname": "takes_correction",
+   "fieldtype": "Check",
+   "label": "Correctable",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sources",
+   "fieldtype": "Small Text",
+   "label": "Source Accounts",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "manual",
+   "fieldtype": "Check",
+   "label": "Line by Hand",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual Accounts Line",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

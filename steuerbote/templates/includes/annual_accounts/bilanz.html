@@ -1,0 +1,50 @@
+{#-
+	The Bilanz in Kontoform, „Die Bilanz ist in Kontoform aufzustellen.“ (§ 266 Abs. 1 Satz 1 HGB): the Aktiva on the
+	left and the Passiva on the right, each line with its marker, its label and the amounts of the year and, where the
+	Jahresabschluss has one, of the previous year (§ 265 Abs. 2 Satz 1 HGB), the Vermerke under their position and the
+	totals of both sides last. accounts is doc.annual_accounts_print().
+-#}
+{%- set accounts = accounts if accounts is defined else doc.annual_accounts_print() -%}
+{%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
+{%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
+{%- macro side(line, with_prior) -%}
+{%- if line %}
+				<td class="sb-account{% if line.vermerk %} sb-vermerk{% elif line.level == 'römische Zahl' %} sb-level-2{% elif line.level == 'arabische Zahl' %} sb-level-3{% elif line.level == 'Kleinbuchstabe' %} sb-level-4{% endif %}">{% if line.marker %}{{ line.marker | e }} {% endif %}{{ line.label | e }}</td>
+				<td class="sb-num">{{ money(line.amount) }}</td>
+				{%- if with_prior %}
+				<td class="sb-num">{{ money(line.prior) }}</td>
+				{%- endif %}
+{%- else %}
+				<td class="sb-account"></td>
+				<td class="sb-num"></td>
+				{%- if with_prior %}
+				<td class="sb-num"></td>
+				{%- endif %}
+{%- endif %}
+{%- endmacro -%}
+{%- set with_prior = doc.has_prior -%}
+<h2>Bilanz zum {{ day(doc.to_date) }}</h2>
+<table class="sb-lines sb-bilanz">
+	<thead>
+		<tr>
+			<th class="sb-account">Aktiva</th>
+			<th class="sb-num">{{ day(doc.to_date) }}</th>
+			{%- if with_prior %}
+			<th class="sb-num">{{ day(doc.prior_to_date) }}</th>
+			{%- endif %}
+			<th class="sb-account">Passiva</th>
+			<th class="sb-num">{{ day(doc.to_date) }}</th>
+			{%- if with_prior %}
+			<th class="sb-num">{{ day(doc.prior_to_date) }}</th>
+			{%- endif %}
+		</tr>
+	</thead>
+	<tbody>
+		{%- for left, right in accounts.account_form %}
+		<tr{% if loop.last %} class="sb-sum"{% endif %}>
+			{{- side(left, with_prior) }}
+			{{- side(right, with_prior) }}
+		</tr>
+		{%- endfor %}
+	</tbody>
+</table>

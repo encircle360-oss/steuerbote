@@ -121,6 +121,10 @@ testpaths = [
     "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_layout.py",
     "steuerbote/steuerbote/doctype/trade_tax_return/test_bridge.py",
     "steuerbote/steuerbote/report/ertragsteuer_kontennachweis/test_attribution.py",
+    "steuerbote/steuerbote/doctype/annual_accounts/test_annual_accounts_files.py",
+    "steuerbote/steuerbote/doctype/annual_accounts/test_bridge.py",
+    "steuerbote/steuerbote/doctype/annual_accounts/test_docs.py",
+    "steuerbote/steuerbote/doctype/annual_accounts/test_layout.py",
 ]
 # The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
 addopts = "--strict-markers --ignore=steuerbote/eric/tests/test_secrets.py"
@@ -163,6 +167,8 @@ source = [
     "steuerbote.steuerbote.doctype.corporate_income_tax_return.layout",
     "steuerbote.steuerbote.doctype.trade_tax_return.bridge",
     "steuerbote.steuerbote.report.ertragsteuer_kontennachweis.attribution",
+    "steuerbote.steuerbote.doctype.annual_accounts.bridge",
+    "steuerbote.steuerbote.doctype.annual_accounts.layout",
 ]
 omit = ["*/tests/*", "*/steuerbote/eric/secrets.py"]
 branch = true

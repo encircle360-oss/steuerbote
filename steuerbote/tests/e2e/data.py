@@ -82,3 +82,10 @@ INCOME_TAX_COMPANY = "Steuerbote E2E Ertragsteuern GmbH"
 INCOME_TAX_ABBR = "STE2K"
 # Until ELSTER publishes the forms of YEAR, both returns take those of the Jahresdokumentation of the year before.
 DOCUMENTATION_YEAR = YEAR - 1
+
+# A sixth company with Annual Filing Settings and its Jahresabschluss of YEAR, calculated: the balances are those of the
+# invented Kleinstkapitalgesellschaft of steuerbote/hgb/tests/companies.py, since the test site has no HGB-Taxonomie to
+# place books with. Its Feststellung, which comes after the fiscal year, is open.
+ACCOUNTS_COMPANY = "Steuerbote E2E Jahresabschluss GmbH"
+ACCOUNTS_ABBR = "STE2J"
+ACCOUNTS_DIRECTOR = "Erika Beispiel"

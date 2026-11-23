@@ -17,12 +17,22 @@ Of the annual filings, the seed makes the Umsatzsteuererklärung of the first co
 A fifth company has SKR03 accounts, Annual Filing Settings, the Kontenzuordnung Ertragsteuern of "Vorgaben laden"
 and a ledger of 2026, with its Körperschaft- and Gewerbesteuererklärung for the year, calculated; nothing of it
 goes to ELSTER.
+
+A sixth company has Annual Filing Settings and its Jahresabschluss for the year, calculated from the balances of the
+invented Kleinstkapitalgesellschaft of steuerbote/hgb/tests/companies.py, which the seed hands Berechnen in place of
+the books, since the site has no HGB-Taxonomie to place them with. The Print Settings write PDF files with PlutoPrint,
+which needs no browser on the server.
 """
+
+from datetime import date
+from unittest.mock import patch
 
 import frappe
 from frappe.model.document import Document
 from frappe.utils import today
 
+from steuerbote import annual_accounts_sources
+from steuerbote.hgb.tests import companies
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import SEND, SUCCEEDED, UNKNOWN
 from steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation import store
 from steuerbote.tests import income_tax
@@ -87,6 +97,7 @@ def run() -> None:
 	make_extension()
 	calculate_annual_vat_return()
 	make_income_tax_returns()
+	make_annual_accounts()
 	make_sent_drafts()
 	make_setup_company()
 	make_mapping_company()
@@ -434,3 +445,49 @@ def make_income_tax_returns() -> None:
 		income_tax.post_once(company, accounts, "Journal Entry", voucher_no, posting_date, rows)
 	draft("Corporate Income Tax Return", {"company": company, "year": data.YEAR}).calculate()
 	draft("Trade Tax Return", {"company": company, "year": data.YEAR}).calculate()
+
+
+ACCOUNTS_SETTINGS = {
+	"legal_form": "GmbH",
+	"registered_seat": "Musterstadt",
+	"register_court": "Amtsgericht Musterstadt",
+	"register_type": "HRB",
+	"register_number": "99905",
+	"street": "Musterweg",
+	"house_number": "12",
+	"postal_code": "12345",
+	"city": "Musterstadt",
+	"country": "Germany",
+	"directors": [
+		{
+			"director_name": data.ACCOUNTS_DIRECTOR,
+			"role": "Geschäftsführerin",
+			"from_date": "2020-01-01",
+			"signs": 1,
+		}
+	],
+}
+
+
+def make_annual_accounts() -> None:
+	"""The company of ACCOUNTS_COMPANY with its Jahresabschluss of the year, calculated from the balances of the invented
+	Kleinstkapitalgesellschaft; the Angaben, the Feststellung and the signatures stay open."""
+	company = data.ACCOUNTS_COMPANY
+	make_company(company, data.ACCOUNTS_ABBR)
+	ensure_fiscal_year(company, INVOICE_DATE)
+	if not frappe.db.exists("Annual Filing Settings", company):
+		frappe.get_doc({"doctype": "Annual Filing Settings", "company": company, **ACCOUNTS_SETTINGS}).insert(
+			ignore_permissions=True
+		)
+	sources = annual_accounts_sources.Sources(
+		companies.KLEINST_2026,
+		companies.KLEINST_2025,
+		(date(data.YEAR - 1, 1, 1), date(data.YEAR - 1, 12, 31)),
+		companies.PARENTS,
+		(),
+		"SKR03",
+		None,
+	)
+	with patch.object(annual_accounts_sources, "statement_sources", return_value=sources):
+		draft("Annual Accounts", {"company": company, "year": data.YEAR}).calculate()
+	frappe.db.set_single_value("Print Settings", "pdf_generator", "PlutoPrint")
