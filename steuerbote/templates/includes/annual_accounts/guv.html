@@ -1,0 +1,33 @@
+{#-
+	The Gewinn- und Verlustrechnung nach dem Gesamtkostenverfahren (§ 275 Abs. 2 HGB), the items with an amount in
+	either year, each with the amount of the previous year where the Jahresabschluss has one. A Kleinstkapitalgesellschaft
+	and a small company draw it up but do not disclose it (§ 326 Abs. 1 Satz 1 and Abs. 2 Satz 1 HGB). accounts is
+	doc.annual_accounts_print().
+-#}
+{%- set accounts = accounts if accounts is defined else doc.annual_accounts_print() -%}
+{%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
+{%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
+<h2>Gewinn- und Verlustrechnung für die Zeit vom {{ day(doc.from_date) }} bis {{ day(doc.to_date) }}</h2>
+<p class="sb-note">Gesamtkostenverfahren (§ 275 Abs. 2 HGB)</p>
+<table class="sb-lines">
+	<thead>
+		<tr>
+			<th class="sb-account">Posten</th>
+			<th class="sb-num">{{ doc.year }}</th>
+			{%- if doc.has_prior %}
+			<th class="sb-num">Vorjahr</th>
+			{%- endif %}
+		</tr>
+	</thead>
+	<tbody>
+		{%- for line in accounts.guv %}
+		<tr{% if loop.last %} class="sb-sum"{% endif %}>
+			<td class="sb-account{% if line.vermerk %} sb-vermerk{% elif line.level == 'Kleinbuchstabe' %} sb-level-2{% endif %}">{% if line.marker %}{{ line.marker | e }} {% endif %}{{ line.label | e }}</td>
+			<td class="sb-num">{{ money(line.amount) }}</td>
+			{%- if doc.has_prior %}
+			<td class="sb-num">{{ money(line.prior) }}</td>
+			{%- endif %}
+		</tr>
+		{%- endfor %}
+	</tbody>
+</table>

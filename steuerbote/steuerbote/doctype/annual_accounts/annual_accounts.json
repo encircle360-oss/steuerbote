@@ -1,0 +1,787 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-11-23 20:00:00.000000",
+ "description": "The Jahresabschluss of a GmbH or UG for one fiscal year: Bilanz and GuV from the general ledger through the Balance Sheet Mapping, the Angaben of its size class, its Feststellung, the Ergebnisverwendung and its Offenlegung at the Unternehmensregister.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "year",
+  "is_correction",
+  "corrects",
+  "column_break_head",
+  "status",
+  "ready",
+  "deadline",
+  "disclosure_deadline",
+  "fiscal_year",
+  "from_date",
+  "to_date",
+  "amended_from",
+  "size_section",
+  "bilanzsumme",
+  "umsatzerloese",
+  "employees_counted",
+  "headcount_detail",
+  "employees_override",
+  "employees_override_reason",
+  "employees",
+  "column_break_size",
+  "prior_bilanzsumme",
+  "prior_umsatzerloese",
+  "prior_employees",
+  "prior_criteria_source",
+  "prior_size_class",
+  "size_class_computed",
+  "size_basis",
+  "size_class_override",
+  "size_class_override_reason",
+  "size_class",
+  "statement_section",
+  "presentation",
+  "net_income",
+  "carried_forward",
+  "equity",
+  "column_break_statement",
+  "has_prior",
+  "prior_from_date",
+  "prior_to_date",
+  "statement_data",
+  "lines_section",
+  "lines",
+  "prior_section",
+  "prior_entries",
+  "column_break_prior",
+  "prior_net_income",
+  "prior_source",
+  "notes_section",
+  "firma",
+  "sitz",
+  "register_court",
+  "register_number",
+  "column_break_notes",
+  "legal_form",
+  "in_liquidation",
+  "notes",
+  "adoption_section",
+  "adopted_on",
+  "resolution_file",
+  "signatories",
+  "column_break_adoption",
+  "ug_reserve_minimum",
+  "appropriation_reserve",
+  "appropriation_dividend",
+  "appropriation_carried",
+  "appropriation_entry",
+  "disclosure_section",
+  "disclosure_mode",
+  "column_break_disclosure",
+  "preview_file",
+  "xbrl_file",
+  "submission_section",
+  "channel",
+  "transmitted_on",
+  "transmitted_by",
+  "order_number",
+  "confirmation_file",
+  "kleinst_notice",
+  "column_break_submission",
+  "published_on",
+  "receipt_file",
+  "fees",
+  "findings_section",
+  "findings",
+  "filing_section",
+  "filed_via",
+  "filed_on",
+  "transferticket",
+  "column_break_filing",
+  "filed_by",
+  "filing_note",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "default": "JA-.{year}.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "JA-.{year}.-.#####",
+   "print_hide": 1,
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "remember_last_selected_value": 1,
+   "reqd": 1
+  },
+  {
+   "description": "The year the fiscal year ends in.",
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_correction",
+   "fieldtype": "Check",
+   "label": "Correction",
+   "read_only": 1
+  },
+  {
+   "fieldname": "corrects",
+   "fieldtype": "Link",
+   "label": "Corrects",
+   "options": "Annual Accounts",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Entwurf",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Entwurf\nBerechnet\nFestgestellt\nÜbermittelt\nEingestellt\nErsetzt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ready",
+   "fieldtype": "Check",
+   "label": "Ready to File",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "The last day of the Feststellung (§ 42a Abs. 2 Satz 1 GmbHG), as Offene Fristen lists it.",
+   "fieldname": "deadline",
+   "fieldtype": "Date",
+   "label": "Due Date",
+   "read_only": 1
+  },
+  {
+   "description": "The last day of the Übermittlung to the Unternehmensregister (§ 325 Abs. 1a Satz 1 HGB), as Offene Fristen lists it.",
+   "fieldname": "disclosure_deadline",
+   "fieldtype": "Date",
+   "label": "Disclosure Due",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fiscal_year",
+   "fieldtype": "Link",
+   "label": "Fiscal Year",
+   "options": "Fiscal Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Annual Accounts",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "size_section",
+   "fieldtype": "Section Break",
+   "label": "Size Class"
+  },
+  {
+   "description": "The Aktiva without the Fehlbetrag not covered by the Eigenkapital (§ 267 Abs. 4a HGB).",
+   "fieldname": "bilanzsumme",
+   "fieldtype": "Currency",
+   "label": "Bilanzsumme",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "umsatzerloese",
+   "fieldtype": "Currency",
+   "label": "Umsatzerlöse",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "The average of the employees of the company on the four quarter ends, without the Employment Types the Annual Filing Settings leave out (§ 267 Abs. 5 HGB).",
+   "fieldname": "employees_counted",
+   "fieldtype": "Float",
+   "label": "Arbeitnehmer Counted",
+   "read_only": 1
+  },
+  {
+   "fieldname": "headcount_detail",
+   "fieldtype": "Small Text",
+   "label": "Arbeitnehmer per Quarter End",
+   "read_only": 1
+  },
+  {
+   "description": "Only where the employees count otherwise, such as part-timers or a Geschäftsführer: counts once it has its reason, also zero.",
+   "fieldname": "employees_override",
+   "fieldtype": "Float",
+   "label": "Arbeitnehmer by Hand"
+  },
+  {
+   "fieldname": "employees_override_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Arbeitnehmer by Hand"
+  },
+  {
+   "bold": 1,
+   "fieldname": "employees",
+   "fieldtype": "Float",
+   "label": "Arbeitnehmer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_size",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "prior_bilanzsumme",
+   "fieldtype": "Currency",
+   "label": "Bilanzsumme of the Previous Year",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "prior_umsatzerloese",
+   "fieldtype": "Currency",
+   "label": "Umsatzerlöse of the Previous Year",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "prior_employees",
+   "fieldtype": "Float",
+   "label": "Arbeitnehmer of the Previous Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "prior_criteria_source",
+   "fieldtype": "Data",
+   "label": "Criteria of the Previous Year From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "prior_size_class",
+   "fieldtype": "Select",
+   "label": "Size Class of the Previous Year",
+   "options": "\nKleinst\nKlein\nMittelgroß\nGroß",
+   "read_only": 1
+  },
+  {
+   "description": "By two of three criteria on two consecutive Abschlussstichtage, the first after a Neugründung (§ 267 Abs. 4, § 267a HGB).",
+   "fieldname": "size_class_computed",
+   "fieldtype": "Select",
+   "label": "Size Class Decided",
+   "options": "\nKleinst\nKlein\nMittelgroß\nGroß",
+   "read_only": 1
+  },
+  {
+   "fieldname": "size_basis",
+   "fieldtype": "Data",
+   "label": "Basis of the Size Class",
+   "read_only": 1
+  },
+  {
+   "fieldname": "size_class_override",
+   "fieldtype": "Select",
+   "label": "Size Class by Hand",
+   "options": "\nKleinst\nKlein\nMittelgroß\nGroß"
+  },
+  {
+   "fieldname": "size_class_override_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Size Class by Hand"
+  },
+  {
+   "bold": 1,
+   "fieldname": "size_class",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Size Class Applied",
+   "options": "\nKleinst\nKlein\nMittelgroß\nGroß",
+   "read_only": 1
+  },
+  {
+   "fieldname": "statement_section",
+   "fieldtype": "Section Break",
+   "label": "Bilanz and GuV"
+  },
+  {
+   "description": "Left empty, a save sets it by the legal form: an UG after part of the appropriation, since it forms its gesetzliche Rücklage in the Bilanz of the year (§ 5a Abs. 3 Satz 1 GmbHG), a GmbH before it. After part of the appropriation the Bilanzgewinn takes the place of the Jahresüberschuss and the Gewinnvortrag (§ 268 Abs. 1 Satz 2 HGB).",
+   "fieldname": "presentation",
+   "fieldtype": "Select",
+   "label": "Presentation of the Result",
+   "options": "\nvor Verwendung des Jahresergebnisses\nnach teilweiser Verwendung des Jahresergebnisses"
+  },
+  {
+   "fieldname": "net_income",
+   "fieldtype": "Currency",
+   "label": "Jahresergebnis",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "carried_forward",
+   "fieldtype": "Currency",
+   "label": "Gewinnvortrag/Verlustvortrag",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "equity",
+   "fieldtype": "Currency",
+   "label": "Eigenkapital",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_statement",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "has_prior",
+   "fieldtype": "Check",
+   "label": "With Previous Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "prior_from_date",
+   "fieldtype": "Date",
+   "label": "Previous Fiscal Year From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "prior_to_date",
+   "fieldtype": "Date",
+   "label": "Previous Fiscal Year To",
+   "read_only": 1
+  },
+  {
+   "fieldname": "statement_data",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Inputs of the Statement",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "lines_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "cannot_add_rows": 1,
+   "cannot_delete_rows": 1,
+   "description": "The Bilanz of the size class with its Vermerke and the GuV, filled by Calculate. A correction of a line that takes balances files another amount and needs a reason; Calculate takes it into the totals and the Jahresergebnis.",
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Positions of Bilanz and GuV",
+   "options": "Annual Accounts Line"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "prior_section",
+   "fieldtype": "Section Break",
+   "label": "Previous Year by Hand"
+  },
+  {
+   "description": "Only where the books have no previous year: the figures of the last festgestellter Jahresabschluss at their positions (§ 265 Abs. 2 Satz 1 HGB). They take the place of the books of the previous year.",
+   "fieldname": "prior_entries",
+   "fieldtype": "Table",
+   "label": "Previous Year by Hand",
+   "options": "Annual Accounts Prior Entry"
+  },
+  {
+   "fieldname": "column_break_prior",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Without the items of the GuV of the previous year, its Jahresüberschuss or Jahresfehlbetrag.",
+   "fieldname": "prior_net_income",
+   "fieldtype": "Currency",
+   "label": "Jahresergebnis of the Previous Year",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "prior_source",
+   "fieldtype": "Small Text",
+   "label": "Source of the Previous Year by Hand"
+  },
+  {
+   "fieldname": "notes_section",
+   "fieldtype": "Section Break",
+   "label": "Angaben"
+  },
+  {
+   "fieldname": "firma",
+   "fieldtype": "Data",
+   "label": "Firma",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sitz",
+   "fieldtype": "Data",
+   "label": "Sitz",
+   "read_only": 1
+  },
+  {
+   "fieldname": "register_court",
+   "fieldtype": "Data",
+   "label": "Register Court",
+   "read_only": 1
+  },
+  {
+   "fieldname": "register_number",
+   "fieldtype": "Data",
+   "label": "Register Number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_notes",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "legal_form",
+   "fieldtype": "Data",
+   "label": "Legal Form",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Where the company is in liquidation or being wound up, the Jahresabschluss says so (§ 264 Abs. 1a Satz 2 HGB).",
+   "fieldname": "in_liquidation",
+   "fieldtype": "Check",
+   "label": "In Liquidation"
+  },
+  {
+   "cannot_add_rows": 1,
+   "cannot_delete_rows": 1,
+   "description": "The Angaben the size class owes, filled by Calculate: a Kleinstkapitalgesellschaft under its Bilanz (§ 264 Abs. 1 Satz 5 HGB), a small company in its Anhang. Answer each with ja, nein or entfällt.",
+   "fieldname": "notes",
+   "fieldtype": "Table",
+   "label": "Angaben",
+   "options": "Annual Accounts Note"
+  },
+  {
+   "fieldname": "adoption_section",
+   "fieldtype": "Section Break",
+   "label": "Feststellung and Ergebnisverwendung"
+  },
+  {
+   "description": "The day the shareholders adopted the Jahresabschluss (§ 42a Abs. 2 GmbHG). Submitting the document is its Feststellung and records the day in the Annual Filing Settings.",
+   "fieldname": "adopted_on",
+   "fieldtype": "Date",
+   "label": "Adopted On",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "resolution_file",
+   "fieldtype": "Attach",
+   "label": "Resolution of the Shareholders",
+   "no_copy": 1
+  },
+  {
+   "description": "Every Geschäftsführer signs with the date (§ 245 Satz 1 HGB); Calculate starts the table with the Geschäftsführer of the Annual Filing Settings.",
+   "fieldname": "signatories",
+   "fieldtype": "Table",
+   "label": "Signatories",
+   "no_copy": 1,
+   "options": "Annual Accounts Signatory"
+  },
+  {
+   "fieldname": "column_break_adoption",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "For an UG a quarter of the Jahresüberschuss less a Verlustvortrag (§ 5a Abs. 3 Satz 1 GmbHG).",
+   "fieldname": "ug_reserve_minimum",
+   "fieldtype": "Currency",
+   "label": "Minimum of the Gesetzliche Rücklage",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "What the shareholders put into the Gewinnrücklagen, an UG into its gesetzliche Rücklage.",
+   "fieldname": "appropriation_reserve",
+   "fieldtype": "Currency",
+   "label": "Into the Reserves",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "What the shareholders distribute.",
+   "fieldname": "appropriation_dividend",
+   "fieldtype": "Currency",
+   "label": "Distribution",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "appropriation_carried",
+   "fieldtype": "Currency",
+   "label": "Vortrag auf neue Rechnung",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "appropriation_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry of the Ergebnisverwendung",
+   "no_copy": 1,
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "disclosure_section",
+   "fieldtype": "Section Break",
+   "label": "Offenlegung"
+  },
+  {
+   "description": "A Kleinstkapitalgesellschaft deposits its Bilanz unless the Annual Filing Settings say otherwise (§ 326 Abs. 2 HGB); every other class publishes.",
+   "fieldname": "disclosure_mode",
+   "fieldtype": "Select",
+   "label": "Disclosure",
+   "options": "\nHinterlegung\nVeröffentlichung"
+  },
+  {
+   "fieldname": "column_break_disclosure",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "preview_file",
+   "fieldtype": "Attach",
+   "label": "Preview of the Offenlegung",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "xbrl_file",
+   "fieldtype": "Attach",
+   "label": "XBRL for the Unternehmensregister",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "submission_section",
+   "fieldtype": "Section Break",
+   "label": "Übermittlung to the Unternehmensregister"
+  },
+  {
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "label": "Channel",
+   "no_copy": 1,
+   "options": "\nXBRL-Upload\nWebformular\nSteuerberatung",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transmitted_on",
+   "fieldtype": "Date",
+   "label": "Transmitted On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "transmitted_by",
+   "fieldtype": "Data",
+   "label": "Transmitted By",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "order_number",
+   "fieldtype": "Data",
+   "label": "Order Number",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "confirmation_file",
+   "fieldtype": "Attach",
+   "label": "Order Confirmation",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "kleinst_notice",
+   "fieldtype": "Check",
+   "label": "Hinterlegung Box Ticked",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_submission",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "published_on",
+   "fieldtype": "Date",
+   "label": "Published On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "receipt_file",
+   "fieldtype": "Attach",
+   "label": "Receipt",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "fees",
+   "fieldtype": "Currency",
+   "label": "Fees",
+   "no_copy": 1,
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "findings_section",
+   "fieldtype": "Section Break",
+   "label": "Findings"
+  },
+  {
+   "fieldname": "findings",
+   "fieldtype": "Table",
+   "label": "Findings",
+   "options": "Annual Filing Finding",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_section",
+   "fieldtype": "Section Break",
+   "label": "Filing"
+  },
+  {
+   "fieldname": "filed_via",
+   "fieldtype": "Select",
+   "label": "Filed Via",
+   "options": "\neric\nmein_elster\nother_way\nupload",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filed_on",
+   "fieldtype": "Date",
+   "label": "Filed On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transferticket",
+   "fieldtype": "Data",
+   "label": "Transferticket",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_filing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filed_by",
+   "fieldtype": "Link",
+   "label": "Noted By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_note",
+   "fieldtype": "Small Text",
+   "label": "How and When Filed",
+   "read_only": 1
+  },
+  {
+   "description": "Required to adopt a Jahresabschluss that is not ready: why it is correct nonetheless.",
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-11-23 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual Accounts",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 0,
+ "row_format": "Dynamic",
+ "search_fields": "company,year",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,55 @@
+{#-
+	Upload zum Unternehmensregister: the steps of steuerbote/hgb/upload.py for the class and the way it discloses, the
+	Testplattform first before the first real upload, the fees of the register and of the identification, the fields of
+	the web form, which are unverified, and what the Jahresabschluss records afterwards. accounts is
+	doc.annual_accounts_print().
+-#}
+{%- set accounts = accounts if accounts is defined else doc.annual_accounts_print() -%}
+{%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
+{%- set upload = accounts.upload -%}
+{%- if upload %}
+<h2>Upload zum Unternehmensregister</h2>
+<ol class="sb-steps">
+	{%- for step in upload.steps %}
+	<li>
+		<p class="sb-angabe-label">{{ step.title | e }}</p>
+		<p class="sb-angabe-text">{{ step.text | e }}</p>
+		<p class="sb-source">Quelle: {{ step.sources | join("; ") | e }}</p>
+	</li>
+	{%- endfor %}
+</ol>
+<h3>Kosten je Jahresabschluss</h3>
+<table class="sb-lines">
+	<tbody>
+		<tr><td>Gebühr des Registers<p class="sb-source">{{ upload.filing_reference | e }}</p></td><td class="sb-num">{{ money(upload.filing) }} €</td></tr>
+		<tr><td>Jahresgebühr<p class="sb-source">{{ upload.yearly_reference | e }}</p></td><td class="sb-num">{{ money(upload.yearly) }} €</td></tr>
+		<tr class="sb-sum"><td>Zusammen</td><td class="sb-num">{{ money(upload.total) }} €</td></tr>
+	</tbody>
+</table>
+<h3>Identifizierung vor der ersten Übermittlung, einmal und auf eine der Arten</h3>
+<table class="sb-lines">
+	<tbody>
+		{%- for method in upload.identification %}
+		<tr><td>{{ method.label | e }}<p class="sb-source">{{ method.reference | e }}</p></td><td class="sb-num">{{ money(method.fee) }} €</td></tr>
+		{%- endfor %}
+	</tbody>
+</table>
+<h3>Felder des Webformulars</h3>
+{%- if not upload.web_form.verified %}
+<p class="sb-unverified">Nicht geprüft: Die Felder sind aus dem Gliederungsschema der Bilanz abgeleitet, nicht am Webformular selbst abgelesen.</p>
+{%- endif %}
+<table class="sb-lines">
+	<tbody>
+		{%- for field in upload.web_form.fields %}
+		<tr><td class="sb-code">{{ field.marker | e }}</td><td>{{ field.label | e }}</td></tr>
+		{%- endfor %}
+		<tr><td class="sb-code"></td><td>Textfeld: {{ upload.web_form.text_field | e }}</td></tr>
+	</tbody>
+</table>
+<h3>Nach dem Upload festhalten</h3>
+<table class="sb-head">
+	{%- for record in upload.records %}
+	<tr><td class="sb-label">{{ record.label | e }}</td><td class="sb-value">{{ record.text | e }}</td></tr>
+	{%- endfor %}
+</table>
+{%- endif %}

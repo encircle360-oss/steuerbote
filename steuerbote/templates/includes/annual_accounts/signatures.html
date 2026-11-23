@@ -1,0 +1,12 @@
+{#-
+	The day of the Feststellung, which the disclosed Jahresabschluss names (§ 328 Abs. 1a Satz 1 HGB), and every
+	signature with the place, the date and „gez.“: „Der Jahresabschluß ist vom Kaufmann unter Angabe des Datums zu
+	unterzeichnen.“ (§ 245 Satz 1 HGB) accounts is doc.annual_accounts_print().
+-#}
+{%- set accounts = accounts if accounts is defined else doc.annual_accounts_print() -%}
+{%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
+<h2>Feststellung und Unterzeichnung</h2>
+<p class="sb-note">{% if doc.adopted_on %}Festgestellt am {{ day(doc.adopted_on) }}.{% else %}Noch nicht festgestellt.{% endif %}</p>
+{%- for line in accounts.signatures %}
+<p class="sb-signature">{{ line | e }}</p>
+{%- endfor %}

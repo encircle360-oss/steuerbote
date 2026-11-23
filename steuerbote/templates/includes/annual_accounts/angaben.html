@@ -1,0 +1,25 @@
+{#-
+	The data of § 264 Abs. 1a HGB and the Angaben answered „ja“: a Kleinstkapitalgesellschaft states them „unter der
+	Bilanz“ (§ 264 Abs. 1 Satz 5 HGB), a small company in its Anhang. The print format sets shown_notes, all the Angaben
+	or, for the Vorschau der Offenlegung, those the class discloses; accounts is doc.annual_accounts_print().
+-#}
+{%- set accounts = accounts if accounts is defined else doc.annual_accounts_print() -%}
+{%- set shown_notes = shown_notes if shown_notes is defined else accounts.notes -%}
+{%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
+<h2>{{ "Angaben unter der Bilanz" if accounts.kleinst else "Anhang" }}</h2>
+<table class="sb-head">
+	{%- for label, value in accounts.register %}
+	<tr><td class="sb-label">{{ label | e }}</td><td class="sb-value">{{ value | e }}</td></tr>
+	{%- endfor %}
+</table>
+{%- for note in shown_notes %}
+<div class="sb-angabe">
+	<p class="sb-angabe-label">{{ note.label | e }}</p>
+	{%- if note.text %}
+	<p class="sb-angabe-text">{{ note.text | e }}</p>
+	{%- endif %}
+	{%- if note.amount is not none %}
+	<p class="sb-angabe-text">{% if note.code == "ARBEITNEHMER" %}Durchschnittliche Zahl der Arbeitnehmer: {{ ("%g" % note.amount) | replace(".", ",") }}{% else %}Betrag: {{ money(note.amount) }}{% endif %}</p>
+	{%- endif %}
+</div>
+{%- endfor %}

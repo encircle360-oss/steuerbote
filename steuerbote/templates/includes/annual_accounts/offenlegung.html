@@ -1,0 +1,30 @@
+{#-
+	Vorschau der Offenlegung: what the Unternehmensregister receives of the Jahresabschluss and who sees it, from
+	steuerbote/hgb/disclosure.py for the class and the way it discloses: a Kleinstkapitalgesellschaft its Bilanz with
+	the Angaben under it, open only on request where it deposits (§ 326 Abs. 2, § 9 Abs. 6 Satz 3 HGB), a small company
+	its Bilanz and its Anhang without what concerns the GuV (§ 326 Abs. 1 HGB); then the day of the Feststellung, the
+	signatures and the upload. Nothing of the GuV is disclosed. accounts is doc.annual_accounts_print().
+-#}
+{%- set accounts = accounts if accounts is defined else doc.annual_accounts_print() -%}
+{%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
+{%- set visible = accounts.visibility -%}
+<h1>Vorschau der Offenlegung</h1>
+<p class="sb-subtitle">Jahresabschluss zum {{ day(doc.to_date) }}, {{ doc.company | e }}</p>
+{%- if visible %}
+<table class="sb-head">
+	<tr><td class="sb-label">Art</td><td class="sb-value">{{ "Hinterlegung" if visible.deposited else "Veröffentlichung" }} ({{ visible.reference | e }})</td></tr>
+	<tr><td class="sb-label">Übermittelt werden</td><td class="sb-value">{{ visible.parts | join(", ") | e }}{% if visible.below_balance_sheet %}, mit den Angaben unter der Bilanz{% endif %}</td></tr>
+	<tr><td class="sb-label">Nicht offengelegt</td><td class="sb-value">die Gewinn- und Verlustrechnung</td></tr>
+	{%- if doc.disclosure_deadline %}
+	<tr><td class="sb-label">Zu übermitteln bis</td><td class="sb-value">{{ day(doc.disclosure_deadline) }}</td></tr>
+	{%- endif %}
+</table>
+<p class="sb-notice">{{ visible.notice | e }}</p>
+{% include "steuerbote/templates/includes/annual_accounts/bilanz.html" %}
+{%- set shown_notes = accounts.published_notes %}
+{% include "steuerbote/templates/includes/annual_accounts/angaben.html" %}
+{% include "steuerbote/templates/includes/annual_accounts/signatures.html" %}
+{% include "steuerbote/templates/includes/annual_accounts/upload.html" %}
+{%- else %}
+<p class="sb-notice">Für diese Größenklasse bereitet Steuerbote die Offenlegung nicht vor; sie übernimmt die Steuerberatung oder der Abschlussprüfer (§§ 325, 327 HGB).</p>
+{%- endif %}
