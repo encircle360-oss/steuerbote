@@ -2,6 +2,7 @@ from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.ustva.rounding import (
+	ceil_euro,
 	floor_euro,
 	floor_hundred,
 	require_decimal,
@@ -141,3 +142,27 @@ class TruncateCentsTest(TestCase):
 	def test_rejects_floats(self):
 		with self.assertRaises(TypeError):
 			truncate_cents(917.4)
+
+
+class CeilEuroTest(TestCase):
+	"""„Aufrunden“ in the rules 8956040 and 8900170 of Jahresdokumentation_E30_2025.ods."""
+
+	def test_rounds_up_to_whole_euros(self):
+		self.assertEqual(ceil_euro(Decimal("1000.01")), Decimal("1001"))
+		self.assertEqual(
+			ceil_euro((Decimal("1500000") - Decimal("1000000")) * Decimal("0.7")), Decimal("350000")
+		)
+		self.assertEqual(ceil_euro(Decimal("333.33") * Decimal("0.7")), Decimal("234"))
+
+	def test_keeps_whole_amounts(self):
+		self.assertEqual(ceil_euro(Decimal("1000.00")), Decimal("1000"))
+
+	def test_goes_up_for_negative_amounts_as_well(self):
+		self.assertEqual(ceil_euro(Decimal("-1000.99")), Decimal("-1000"))
+
+	def test_never_returns_negative_zero(self):
+		self.assertEqual(str(ceil_euro(Decimal("-0.40"))), "0")
+
+	def test_rejects_floats(self):
+		with self.assertRaises(TypeError):
+			ceil_euro(1000.01)
