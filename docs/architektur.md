@@ -533,6 +533,8 @@ Umsatzsteuererklärung, E-Bilanz, Körperschaft- und Gewerbesteuererklärung und
 | `jahresmeldung/overrides.py` | Korrekturen mit Begründung, Zeilen von Hand, gemeldete Beträge, was „Berechnen“ und ein Speichern von den Zeilen behalten |
 | `jahresmeldung/findings.py` | Befunde mit Code, Art, Nachricht und Referenz; ein Fehler hält „Bereit“ an |
 | `jahresmeldung/corrections.py` | die Berichtigung je Datenart: Kz 110 der USt, neue vollständige KSt- und GewSt-Erklärung, Status des Berichts der E-Bilanz, Änderung eines Auftrags an das Unternehmensregister |
+| `jahresmeldung/documentation.py` | liest die Jahresdokumentationen der ERiC-Dokumentation als Daten: E50, E30, E20, UStVA und die der HGB-Taxonomie, je Vordruck Kontexte, Felder, Regeln, Kennzahlen und Texte, „Allg. Information“ mit Versionslabel, Namensraum und Vordrucken, die Regelliste und die strukturellen Fehler der E-Bilanz, das Schema einer Erklärung und die Zeilen der Datenartversionmatrix; die Kataloge der Module vergleichen sich damit |
+| `jahresmeldung/yearcheck.py` | die Jahresprüfung `python -m steuerbote.jahresmeldung.yearcheck`: je Datenart ein Eintrag, der die Daten eines Jahres oder einer Taxonomie mit der ERiC-Dokumentation vergleicht und je Abweichung eine Zeile schreibt, was ein Jahreswechsel ändern muss, siehe [Entwicklung, Jahresprüfung](entwicklung.md#jahresprüfung) |
 | `annual_filing_finding` | die Tabelle „Befunde“ jedes Belegs (`Annual Filing Finding`) |
 
 Felder, Hooks und Methoden, auf die die Module bauen, beschreibt [Jahresmeldungen](jahresmeldungen.md).
