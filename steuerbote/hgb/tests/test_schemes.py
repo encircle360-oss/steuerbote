@@ -5,13 +5,14 @@ from unittest import TestCase
 from steuerbote.hgb import size
 from steuerbote.hgb.schemes import (
 	BALANCE_SHEETS,
+	LEVELS,
 	BalanceSheetScheme,
 	Direction,
 	Level,
 	SchemeError,
 	balance_sheet_scheme,
 )
-from steuerbote.hgb.size import UnknownYearError
+from steuerbote.hgb.size import SizeClass, UnknownYearError
 
 # § 266 Abs. 2 and 3 HGB, as read on gesetze-im-internet.de on 23 November 2026, with the items § 42 Abs. 3 GmbHG
 # shows separately and those §§ 268 and 272 HGB add.
@@ -234,3 +235,86 @@ class BalanceSheetYearsTest(TestCase):
 			balance_sheet_scheme(2027)
 		with self.assertRaises(TypeError):
 			balance_sheet_scheme("2026")  # type: ignore[arg-type]
+
+
+class SizeClassFormTest(TestCase):
+	"""§ 266 Abs. 1 HGB: Kleinst shows the letters, klein the letters and roman numerals, the others every item."""
+
+	def setUp(self):
+		self.scheme = balance_sheet_scheme(2026)
+
+	def concepts(self, size_class):
+		return [position.concept for position in self.scheme.visible(size_class)]
+
+	def test_kleinst_shows_the_positions_with_letters(self):
+		self.assertEqual(
+			self.concepts(SizeClass.KLEINST),
+			[
+				"bs.ass.fixAss",
+				"bs.ass.currAss",
+				"bs.ass.prepaidExp",
+				"bs.ass.defTax",
+				"bs.ass.SurplusFromOffsetting",
+				"bs.ass.deficitNotCoveredByCapital",
+				"bs.eqLiab.equity",
+				"bs.eqLiab.accruals",
+				"bs.eqLiab.liab",
+				"bs.eqLiab.defIncome",
+				"bs.eqLiab.defTax",
+			],
+		)
+
+	def test_klein_shows_the_letters_and_the_roman_numerals(self):
+		self.assertEqual(
+			self.concepts(SizeClass.KLEIN),
+			[
+				"bs.ass.fixAss",
+				"bs.ass.fixAss.intan",
+				"bs.ass.fixAss.tan",
+				"bs.ass.fixAss.fin",
+				"bs.ass.currAss",
+				"bs.ass.currAss.inventory",
+				"bs.ass.currAss.receiv",
+				"bs.ass.currAss.securities",
+				"bs.ass.currAss.cashEquiv",
+				"bs.ass.prepaidExp",
+				"bs.ass.defTax",
+				"bs.ass.SurplusFromOffsetting",
+				"bs.ass.deficitNotCoveredByCapital",
+				"bs.eqLiab.equity",
+				"bs.eqLiab.equity.subscribed",
+				"bs.eqLiab.equity.capRes",
+				"bs.eqLiab.equity.revenueRes",
+				"bs.eqLiab.equity.retainedEarnings",
+				"bs.eqLiab.equity.netIncome",
+				"bs.eqLiab.equity.profitLoss",
+				"bs.eqLiab.equity.deficitNotCoveredByCapital",
+				"bs.eqLiab.accruals",
+				"bs.eqLiab.liab",
+				"bs.eqLiab.defIncome",
+				"bs.eqLiab.defTax",
+			],
+		)
+
+	def test_mittelgross_and_gross_show_every_position(self):
+		every = [
+			position.concept for position in self.scheme.positions() if position.level is not Level.TOTAL
+		]
+		self.assertEqual(self.concepts(SizeClass.MITTELGROSS), every)
+		self.assertEqual(self.concepts(SizeClass.GROSS), every)
+
+	def test_cites_the_sentence_of_section_266_for_each_class(self):
+		self.assertEqual(
+			{size_class: form.reference for size_class, form in LEVELS.items()},
+			{
+				SizeClass.KLEINST: "§ 266 Abs. 1 Satz 4 HGB",
+				SizeClass.KLEIN: "§ 266 Abs. 1 Satz 3 HGB",
+				SizeClass.MITTELGROSS: "§ 266 Abs. 1 Satz 2 HGB",
+				SizeClass.GROSS: "§ 266 Abs. 1 Satz 2 HGB",
+			},
+		)
+
+	def test_knows_whether_a_class_shows_a_position(self):
+		self.assertTrue(self.scheme.shows("bs.ass.currAss.receiv", SizeClass.KLEIN))
+		self.assertFalse(self.scheme.shows("bs.ass.currAss.receiv", SizeClass.KLEINST))
+		self.assertFalse(self.scheme.shows("bs.ass", SizeClass.GROSS))
