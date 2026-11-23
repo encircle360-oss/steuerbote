@@ -237,7 +237,6 @@ class Taxonomy610Test(TestCase):
 			*BOOKS[:-1], AccountBalance("7600", "Podatek łączny", "is.netIncome.tax", D("9000.00"))
 		)
 		self.assertEqual(codes(found), ["EB-KONTENSALDEN"])
-
 		self.assertNotIn(gaap("is.netIncome.tax"), [line.concept for line in found.lines])
 
 	def test_the_rule_of_6_9_for_a_component_without_a_kontensaldo_is_gone(self):

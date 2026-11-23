@@ -1147,7 +1147,6 @@ class TestERiCVersions(IntegrationTestCase):
 				"taxonomy_6_10",
 			],
 		)
-
 		self.assertFalse(checks["minimum"]["ok"])
 		self.assertIn("libericapi.so 43.1.2.0 statt mindestens 43.2.6.0", checks["minimum"]["detail"])
 		self.assertEqual(

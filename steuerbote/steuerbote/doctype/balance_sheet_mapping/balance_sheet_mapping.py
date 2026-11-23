@@ -130,7 +130,6 @@ class BalanceSheetMapping(Document):
 		excluded: DF.Table[BalanceSheetMappingExcludedAccount]
 		rules: DF.Table[BalanceSheetMappingRule]
 		taxonomy_version: DF.Literal["6.9", "6.10"]
-
 		watched: DF.Table[BalanceSheetMappingWatchedAccount]
 	# end: auto-generated types
 

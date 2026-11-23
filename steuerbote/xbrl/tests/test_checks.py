@@ -1101,5 +1101,4 @@ class KontensaldenTest(TestCase):
 		"""6.9 asks one Kontensaldo for Bilanz and GuV each (structural error 170195104), which the E-Bilanz checks
 		itself (steuerbote/ebilanz/kontennachweis.py)."""
 		report_ = complete(elements=("B", "GuV", "BVV", "KS"))
-
 		self.assertEqual(checks.kontensalden(report_, mini.view(), Facets.of(report_)), ())

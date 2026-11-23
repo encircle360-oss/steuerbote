@@ -129,7 +129,6 @@ def kontennachweis(calculation: Calculation, *, reason: str = "") -> Kontennachw
 	if taxonomy.has(NOT_POSSIBLE):
 		return _of_6_10(calculation, lines, findings)
 	findings.extend(_announced(calculation, lines))
-
 	findings.extend(_ahead(calculation, lines))
 	return Kontennachweis(tuple(lines), "", tuple(findings))
 

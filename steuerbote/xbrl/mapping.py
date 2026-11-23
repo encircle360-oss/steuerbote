@@ -309,7 +309,6 @@ class Mapping:
 	watched: tuple[Watched, ...] = ()
 	excluded: tuple[Excluded, ...] = ()
 	taxonomy_version: str = FIRST.version
-
 	_by_number: MappingProxyType[str, Place] = field(init=False, repr=False, compare=False)
 
 	def __post_init__(self) -> None:

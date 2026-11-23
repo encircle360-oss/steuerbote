@@ -44,7 +44,6 @@
    "label": "HGB Taxonomy",
    "options": "6.9\n6.10",
    "read_only": 1,
-
    "reqd": 1
   },
   {
