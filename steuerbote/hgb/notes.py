@@ -17,15 +17,19 @@ Verlustrechnung betreffenden Angaben nicht zu enthalten.“ (§ 326 Abs. 1 Satz 
 the Feststellung but not published; whether § 285 Nr. 31 counts among them is unverified.
 
 An item is required, or required only where its fact exists (a Haftungsverhältnis, a Vorschuss); the Annual
-Accounts answer each with ja, nein or entfällt. Mittelgroß and groß have a fuller Anhang, which Steuerbote does not
+Accounts answer each with ja, nein or entfällt, and a ja with a text or an amount (answer_problems()). Mittelgroß and groß have a fuller Anhang, which Steuerbote does not
 prepare. Every item awaits the review of a Steuerberatung. Text of §§ 264, 265, 268, 277, 284, 285, 288, 326 HGB as
 read on gesetze-im-internet.de on 23 November 2026.
 """
 
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import Enum
+from decimal import Decimal
+from enum import Enum, StrEnum
 
 from steuerbote.hgb.size import SizeClass
+from steuerbote.hgb.statement import Finding, Severity
 
 
 class NotesError(ValueError):
@@ -285,3 +289,89 @@ def catalogue(size_class: SizeClass, *, equity_zero: bool = False) -> tuple[Cata
 			raise NotesError(
 				f"Steuerbote prepares the Anhang of Kleinst and klein only, not of a {size_class.value}"
 			)
+
+
+class Answer(Enum):
+	YES = "ja"
+	NO = "nein"
+	NOT_APPLICABLE = "entfällt"
+
+
+@dataclass(frozen=True, slots=True)
+class NoteAnswer:
+	"""The answer of the Annual Accounts to an item, as a row of the table Angaben holds it."""
+
+	code: str
+	answer: Answer
+	text: str = ""
+	amount: Decimal | None = None
+
+	def __post_init__(self) -> None:
+		if self.amount is not None and not isinstance(self.amount, Decimal):
+			raise TypeError(f"amount must be Decimal, not {type(self.amount).__name__}")
+
+
+class NoteCode(StrEnum):
+	UNANSWERED = "JA-ANGABE-OFFEN"
+	DENIED = "JA-ANGABE-PFLICHT"
+	EMPTY = "JA-ANGABE-LEER"
+	UNKNOWN = "JA-ANGABE-UNBEKANNT"
+	TWICE = "JA-ANGABE-DOPPELT"
+
+
+def answer_problems(entries: Iterable[CatalogueEntry], answers: Iterable[NoteAnswer]) -> tuple[Finding, ...]:
+	"""What the answers leave open: an item without an answer, a required one without ja, a ja without text or
+	amount, an answer to an item the class does not owe and one answered twice; each holds the Jahresabschluss
+	back."""
+	entries, answers = tuple(entries), tuple(answers)
+	by_code = {entry.item.code: entry for entry in entries}
+	counts = Counter(answer.code for answer in answers)
+	findings: list[Finding] = []
+	for entry in entries:
+		item = entry.item
+		if not counts[item.code]:
+			findings.append(
+				_finding(NoteCode.UNANSWERED, f"Die Angabe „{item.label}“ ist nicht beantwortet.", item)
+			)
+	seen: set[str] = set()
+	for answer in answers:
+		entry = by_code.get(answer.code)
+		if entry is None:
+			findings.append(
+				Finding(
+					NoteCode.UNKNOWN,
+					Severity.ERROR,
+					f"Die Angabe {answer.code} gehört nicht zu den Angaben dieses Jahresabschlusses.",
+					"§ 264 Abs. 1 Satz 5, §§ 284 bis 288 HGB",
+					answer.code,
+				)
+			)
+			continue
+		item = entry.item
+		if answer.code in seen:
+			findings.append(
+				_finding(NoteCode.TWICE, f"Die Angabe „{item.label}“ ist mehrfach beantwortet.", item)
+			)
+			continue
+		seen.add(answer.code)
+		if entry.requirement is Requirement.REQUIRED and answer.answer is not Answer.YES:
+			findings.append(
+				_finding(
+					NoteCode.DENIED,
+					f"Die Angabe „{item.label}“ ist Pflicht; „{answer.answer.value}“ genügt nicht.",
+					item,
+				)
+			)
+		elif answer.answer is Answer.YES and not answer.text.strip() and answer.amount is None:
+			findings.append(
+				_finding(
+					NoteCode.EMPTY,
+					f"Die Angabe „{item.label}“ trifft zu, hat aber weder Text noch Betrag.",
+					item,
+				)
+			)
+	return tuple(findings)
+
+
+def _finding(code: NoteCode, text: str, item: NoteItem) -> Finding:
+	return Finding(code, Severity.ERROR, text, item.reference, item.code)

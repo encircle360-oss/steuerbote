@@ -179,9 +179,10 @@ class Code(StrEnum):
 @dataclass(frozen=True, slots=True)
 class Finding:
 	"""What holds the Jahresabschluss back (an error) or what someone should look at (a hint), as one German
-	sentence with its source; ``concept`` and ``amount`` name the balance it is about."""
+	sentence with its source; ``concept`` and ``amount`` name what it is about. ``code`` is a Code of this module
+	or a code of steuerbote.hgb.notes and steuerbote.hgb.disclosure."""
 
-	code: Code
+	code: str
 	severity: Severity
 	text: str
 	reference: str
