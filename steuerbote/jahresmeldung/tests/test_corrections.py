@@ -4,6 +4,7 @@ from unittest import TestCase
 from lxml import etree
 
 from steuerbote.elster.tests import eric_schema
+from steuerbote.jahresmeldung import documentation
 from steuerbote.jahresmeldung.corrections import (
 	BERICHTIGUNGEN,
 	BILANZ,
@@ -26,6 +27,7 @@ from steuerbote.jahresmeldung.corrections import (
 	revision_status,
 	revision_status_concept,
 )
+from steuerbote.ustva.documentation import Row
 
 GCD = "http://www.xbrl.de/taxonomies/de-gcd-2025-04-01"
 
@@ -161,19 +163,15 @@ class CorrectionDocumentationTest(TestCase):
 	"""The fields and rules of a Berichtigung against the Jahresdokumentationen and the examples of the ERiC
 	documentation 44.3.6.0."""
 
-	def rows(self, name: str, root: str, year: int, sheet: str) -> list[dict[str, str]]:
+	def rows(self, name: str, root: str, year: int, sheet: str) -> tuple[Row, ...]:
 		path = (
 			eric_schema.erklaerung_directory(name)
 			/ "Jahresdokumentation"
 			/ f"Jahresdokumentation_{root}_{year}.ods"
 		)
-		return [
-			row
-			for row in eric_schema.sheet(path, sheet)
-			if row["Änderungsinformation"] != "GEAENDERT_ALTE_VERSION"
-		]
+		return documentation.read(path).sheet(sheet)
 
-	def fields(self, name: str, root: str, year: int, form: str) -> dict[str, dict[str, str]]:
+	def fields(self, name: str, root: str, year: int, form: str) -> dict[str, Row]:
 		return {row["Name"]: row for row in self.rows(name, root, year, f"{form} - Felder")}
 
 	def test_kz_110_is_a_yes_field_of_line_3(self):
