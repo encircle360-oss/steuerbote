@@ -3,6 +3,8 @@ documentation 44.3.6.0, which has KSt and GewSt up to 2025."""
 
 import copy
 import csv
+from collections.abc import Mapping
+from functools import cache
 from pathlib import Path
 from types import MappingProxyType
 from unittest import TestCase
@@ -15,6 +17,8 @@ from steuerbote.elster.tests.examples import TEST_STEUERNUMMER
 from steuerbote.elster.ustva_xml import XmlError
 from steuerbote.elster.vorsatz import Vorsatz, append_to, copyright_text
 from steuerbote.eric.datenart import Datenart, bilanz, gewst, kst, ust, ustva
+from steuerbote.jahresmeldung import documentation
+from steuerbote.ustva.documentation import Row
 
 TRANSLATIONS = Path(__file__).resolve().parents[2] / "translations" / "de.csv"
 COPYRIGHT = "(c) 2026 Beispiel Software GmbH, München"
@@ -155,6 +159,13 @@ class TranslationsTest(TestCase):
 		self.assertEqual(sorted({*vorsatz.MESSAGES, *vorsatz.LABELS} - translated), [])
 
 
+@cache
+def vorsatz_fields(kind: Datenart) -> Mapping[str, Row]:
+	"""The current rows of „Vorsatz - Felder“ of the Jahresdokumentation of the Datenart by their names, read once."""
+	path = documentation.jahresdokumentation_path(eric_schema.documentation(), kind)
+	return MappingProxyType({row["Name"]: row for row in documentation.read(path).vordruck("Vorsatz").fields})
+
+
 class VorsatzDocumentationTest(TestCase):
 	"""The Vorsatz against the sheets „Vorsatz - Felder“ of the Jahresdokumentationen, the schemas of the Nutzdaten and
 	the examples of the ERiC documentation."""
@@ -162,17 +173,8 @@ class VorsatzDocumentationTest(TestCase):
 	KINDS = (ust(2026), kst(2025), gewst(2025))
 	EXAMPLES = MappingProxyType({"USt": "USt_2026.xml", "KSt": "kst_2025_ok.xml", "GewSt": "GewSt_2025.xml"})
 
-	def fields(self, kind: Datenart) -> dict[str, dict[str, str]]:
-		path = (
-			eric_schema.erklaerung_directory(kind.name)
-			/ "Jahresdokumentation"
-			/ f"Jahresdokumentation_{kind.root}_{kind.year}.ods"
-		)
-		return {
-			row["Name"]: row
-			for row in eric_schema.sheet(path, "Vorsatz - Felder")
-			if row["Änderungsinformation"] != "GEAENDERT_ALTE_VERSION"
-		}
+	def fields(self, kind: Datenart) -> Mapping[str, Row]:
+		return vorsatz_fields(kind)
 
 	def test_the_jahresdokumentation_gives_the_lengths_and_the_required_texts(self):
 		for kind in self.KINDS:
