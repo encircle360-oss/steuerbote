@@ -7,6 +7,7 @@ from unittest import TestCase
 from steuerbote.hgb.size import (
 	HEADCOUNT_CONVENTIONS,
 	YEARS,
+	Basis,
 	Counting,
 	Criteria,
 	SizeClass,
@@ -14,12 +15,14 @@ from steuerbote.hgb.size import (
 	Thresholds,
 	UnknownYearError,
 	average_employees,
+	decide,
 	exceeds,
 	headcount_dates,
 	indicated_class,
 	thresholds_for,
 )
 
+CLOSING_2025 = date(2025, 12, 31)
 CLOSING_2026 = date(2026, 12, 31)
 
 
@@ -231,3 +234,79 @@ class HeadcountConventionsTest(TestCase):
 		for convention in HEADCOUNT_CONVENTIONS:
 			with self.subTest(who=convention.who):
 				self.assertEqual(convention.counting is Counting.UNVERIFIED, convention.reference == "")
+
+
+KLEINST_2025 = Criteria(CLOSING_2025, Decimal("200000"), Decimal("400000"), Decimal("3"))
+KLEIN_2025 = Criteria(CLOSING_2025, Decimal("2000000"), Decimal("3000000"), Decimal("12"))
+MITTEL_2025 = Criteria(CLOSING_2025, Decimal("9000000"), Decimal("20000000"), Decimal("60"))
+KLEINST_2026 = Criteria(CLOSING_2026, Decimal("210000"), Decimal("420000"), Decimal("3.5"))
+KLEIN_2026 = Criteria(CLOSING_2026, Decimal("2100000"), Decimal("3100000"), Decimal("12.75"))
+MITTEL_2026 = Criteria(CLOSING_2026, Decimal("9100000"), Decimal("21000000"), Decimal("61"))
+GROSS_2026 = Criteria(CLOSING_2026, Decimal("30000000"), Decimal("60000000"), Decimal("300"))
+
+
+class TwoClosingDatesTest(TestCase):
+	"""§ 267 Abs. 4 Satz 1 HGB: a class changes only when two consecutive Abschlussstichtage call for it."""
+
+	def test_the_class_both_closing_dates_point_to_applies(self):
+		decision = decide(KLEIN_2026, KLEIN_2025, SizeClass.KLEIN)
+		self.assertEqual(
+			(
+				decision.year,
+				decision.indicated,
+				decision.previous_indicated,
+				decision.applied,
+				decision.basis,
+			),
+			(2026, SizeClass.KLEIN, SizeClass.KLEIN, SizeClass.KLEIN, Basis.CONFIRMED),
+		)
+		self.assertTrue(decision.decided)
+
+	def test_falling_below_on_two_closing_dates_changes_the_class(self):
+		decision = decide(KLEINST_2026, KLEINST_2025, SizeClass.KLEIN)
+		self.assertEqual((decision.applied, decision.basis), (SizeClass.KLEINST, Basis.CONFIRMED))
+
+	def test_exceeding_on_two_closing_dates_changes_the_class(self):
+		decision = decide(KLEIN_2026, KLEIN_2025, SizeClass.KLEINST)
+		self.assertEqual((decision.applied, decision.basis), (SizeClass.KLEIN, Basis.CONFIRMED))
+
+	def test_exceeding_on_one_closing_date_keeps_the_class_of_the_previous_year(self):
+		decision = decide(KLEIN_2026, KLEINST_2025, SizeClass.KLEINST)
+		self.assertEqual(
+			(decision.indicated, decision.previous_indicated, decision.applied, decision.basis),
+			(SizeClass.KLEIN, SizeClass.KLEINST, SizeClass.KLEINST, Basis.CARRIED),
+		)
+
+	def test_falling_below_on_one_closing_date_keeps_it_as_well(self):
+		decision = decide(KLEINST_2026, KLEIN_2025, SizeClass.KLEIN)
+		self.assertEqual((decision.applied, decision.basis), (SizeClass.KLEIN, Basis.CARRIED))
+
+	def test_a_company_growing_by_two_classes_moves_by_the_one_both_dates_exceed(self):
+		decision = decide(GROSS_2026, MITTEL_2025, SizeClass.KLEIN)
+		self.assertEqual((decision.applied, decision.basis), (SizeClass.MITTELGROSS, Basis.CARRIED))
+
+	def test_a_company_shrinking_by_two_classes_moves_by_the_one_both_dates_fall_below(self):
+		decision = decide(MITTEL_2026, KLEIN_2025, SizeClass.GROSS)
+		self.assertEqual((decision.applied, decision.basis), (SizeClass.MITTELGROSS, Basis.CARRIED))
+
+	def test_the_class_of_the_previous_year_is_needed_only_when_the_dates_disagree(self):
+		self.assertEqual(decide(KLEIN_2026, KLEIN_2025).applied, SizeClass.KLEIN)
+		undecided = decide(KLEIN_2026, KLEINST_2025)
+		self.assertEqual((undecided.applied, undecided.basis, undecided.decided), (None, None, False))
+
+	def test_without_the_previous_closing_date_only_an_unchanged_class_applies(self):
+		decision = decide(KLEIN_2026, previous_class=SizeClass.KLEIN)
+		self.assertEqual(
+			(decision.previous_indicated, decision.applied, decision.basis),
+			(None, SizeClass.KLEIN, Basis.CARRIED),
+		)
+		self.assertIsNone(decide(KLEIN_2026, previous_class=SizeClass.KLEINST).applied)
+		self.assertIsNone(decide(KLEIN_2026).applied)
+
+	def test_the_previous_closing_date_lies_before_the_current_one(self):
+		with self.assertRaises(SizeError):
+			decide(KLEIN_2025, KLEIN_2026, SizeClass.KLEIN)
+
+	def test_measures_both_closing_dates_with_the_thresholds_of_the_year_decided(self):
+		with self.assertRaises(UnknownYearError):
+			decide(Criteria(date(2027, 12, 31), Decimal("1"), Decimal("1"), Decimal("1")), KLEIN_2026)
