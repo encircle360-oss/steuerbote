@@ -1,3 +1,5 @@
+from dataclasses import FrozenInstanceError
+from datetime import date
 from unittest import TestCase
 
 from steuerbote.steuerbote.doctype.annual_filing_settings import rules as rules_module
@@ -9,12 +11,16 @@ from steuerbote.steuerbote.doctype.annual_filing_settings.rules import (
 	LegalForm,
 	SettingsError,
 	StreetSplit,
+	YearSettings,
+	check_years,
+	early_request_window,
 	elster_text,
 	german_postal_code,
 	legal_form,
 	legal_status,
 	rechtsform,
 	split_street,
+	year_settings,
 )
 
 
@@ -177,6 +183,91 @@ class AddressTest(TestCase):
 
 	def test_german_postal_code_returns_the_code(self):
 		self.assertEqual(german_postal_code("10115"), "10115")
+
+
+class YearSettingsTest(TestCase):
+	def test_a_year_without_anything_set(self):
+		year = YearSettings(2026)
+		self.assertFalse(year.advisor_prepares)
+		self.assertEqual(
+			year.early_requests,
+			{
+				"Umsatzsteuererklärung": None,
+				"Körperschaftsteuererklärung": None,
+				"Gewerbesteuererklärung": None,
+			},
+		)
+		with self.assertRaises(FrozenInstanceError):
+			year.year = 2027  # type: ignore[misc]
+
+	def test_the_year_has_four_digits(self):
+		for value in (0, 999, 10000, True, 2026.0, "2026", None):
+			with self.subTest(value=value), self.assertRaisesRegex(SettingsError, "is not a four-digit year"):
+				YearSettings(value)  # type: ignore[arg-type]
+
+	def test_the_finanzamt_asks_early_only_for_erklaerungen_a_steuerberatung_prepares(self):
+		"""§ 149 Abs. 4 Satz 1 AO: „Erklärungen im Sinne des Absatzes 3“."""
+		self.assertEqual(
+			YearSettings(2026, advisor_prepares=True, early_request_kst=date(2027, 9, 30)).early_requests[
+				"Körperschaftsteuererklärung"
+			],
+			date(2027, 9, 30),
+		)
+		with self.assertRaises(SettingsError) as raised:
+			YearSettings(2026, early_request_gewst=date(2027, 9, 30))
+		self.assertEqual(
+			str(raised.exception),
+			"The Finanzamt can ask for the Gewerbesteuererklärung of 2026 early only when a Steuerberatung prepares "
+			"it (§ 149 Abs. 4 AO).",
+		)
+
+	def test_an_early_request_lies_from_the_deadline_of_absatz_2_on_and_before_the_end_of_february(self):
+		"""§ 149 Abs. 4 AO: before the last day of February of the second year, never shorter than seven months."""
+		self.assertEqual(early_request_window(2026), (date(2027, 7, 31), date(2028, 2, 29)))
+		self.assertEqual(early_request_window(2027), (date(2028, 7, 31), date(2029, 2, 28)))
+		for day in (date(2027, 7, 31), date(2028, 2, 28)):
+			with self.subTest(day=day):
+				YearSettings(2026, advisor_prepares=True, early_request_ust=day)
+		for day in (date(2027, 7, 30), date(2028, 2, 29), date(2028, 3, 1)):
+			with self.subTest(day=day), self.assertRaises(SettingsError) as raised:
+				YearSettings(2026, advisor_prepares=True, early_request_ust=day)
+		self.assertEqual(
+			str(raised.exception),
+			"The Finanzamt can ask for the Umsatzsteuererklärung of 2026 for a day from 31. Juli 2027 on and before "
+			"29. Februar 2028 (§ 149 Abs. 4 AO), not for 1. März 2028.",
+		)
+
+	def test_a_kleinunternehmer_files_no_umsatzsteuererklaerung_to_ask_for(self):
+		"""§ 19 Abs. 1 Satz 2 UStG: § 18 Absatz 1 bis 4 UStG do not apply."""
+		YearSettings(2026, kleinunternehmer=True, advisor_prepares=True, early_request_kst=date(2027, 8, 31))
+		with self.assertRaisesRegex(
+			SettingsError, "A Kleinunternehmer files no Umsatzsteuererklärung for 2026"
+		):
+			YearSettings(
+				2026, kleinunternehmer=True, advisor_prepares=True, early_request_ust=date(2027, 8, 31)
+			)
+
+	def test_an_exemption_under_264_3_hgb_states_its_reason(self):
+		YearSettings(2026, exempt_264_3=True, exempt_264_3_reason="Konzernabschluss der Muttergesellschaft")
+		for reason in (None, "", "  "):
+			with (
+				self.subTest(reason=reason),
+				self.assertRaisesRegex(
+					SettingsError, "The exemption of 2026 under § 264 Abs. 3 HGB needs its reason."
+				),
+			):
+				YearSettings(2026, exempt_264_3=True, exempt_264_3_reason=reason)
+
+	def test_a_year_has_one_row(self):
+		years = [YearSettings(2026), YearSettings(2027)]
+		check_years(years)
+		with self.assertRaisesRegex(SettingsError, "The year 2026 is entered twice."):
+			check_years([*years, YearSettings(2026, advisor_prepares=True)])
+
+	def test_finds_the_settings_of_a_year(self):
+		years = [YearSettings(2026, advisor_prepares=True), YearSettings(2027)]
+		self.assertTrue(year_settings(years, 2026).advisor_prepares)
+		self.assertIsNone(year_settings(years, 2025))
 
 
 class SettingsErrorTest(TestCase):
