@@ -20,6 +20,13 @@ it, so the balances of the books add up to a position through the calculation li
 (steuerbote.hgb.statement). The statement computes the totals, the Jahresüberschuss/Jahresfehlbetrag from the
 income statement and the Fehlbetrag; no balance lands on them (``computed``).
 
+How much of the balance sheet a class shows is § 266 Abs. 1 HGB (LEVELS): „Kleinstkapitalgesellschaften (§ 267a)
+brauchen nur eine verkürzte Bilanz aufzustellen, in die nur die in den Absätzen 2 und 3 mit Buchstaben
+bezeichneten Posten gesondert und in der vorgeschriebenen Reihenfolge aufgenommen werden“ (Satz 4), klein the
+positions „mit Buchstaben und römischen Zahlen“ (Satz 3), mittelgroß and groß every position (Satz 2). The
+Fehlbetrag stands with the letters, the Bilanzgewinn and the Fehlbetrag within the Eigenkapital with the roman
+numerals, the separate items of § 42 Abs. 3 GmbHG with the arabic ones.
+
 A fiscal year names its schemes by the year it ends in, as steuerbote.hgb.size names its thresholds: both tables
 hold the same years. Text of § 266 HGB and § 42 GmbHG as read on gesetze-im-internet.de on 23 November 2026.
 """
@@ -29,7 +36,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
 
-from steuerbote.hgb.size import UnknownYearError
+from steuerbote.hgb.size import SizeClass, UnknownYearError
 
 
 class SchemeError(LookupError):
@@ -73,6 +80,25 @@ class Position:
 
 
 @dataclass(frozen=True, slots=True)
+class Form:
+	"""The levels of the balance sheet a class shows, with the sentence of § 266 Abs. 1 HGB that sets them."""
+
+	levels: frozenset[Level]
+	reference: str
+
+
+_EVERY_LEVEL = frozenset({Level.LETTER, Level.ROMAN, Level.ARABIC})
+LEVELS: MappingProxyType[SizeClass, Form] = MappingProxyType(
+	{
+		SizeClass.KLEINST: Form(frozenset({Level.LETTER}), "§ 266 Abs. 1 Satz 4 HGB"),
+		SizeClass.KLEIN: Form(frozenset({Level.LETTER, Level.ROMAN}), "§ 266 Abs. 1 Satz 3 HGB"),
+		SizeClass.MITTELGROSS: Form(_EVERY_LEVEL, "§ 266 Abs. 1 Satz 2 HGB"),
+		SizeClass.GROSS: Form(_EVERY_LEVEL, "§ 266 Abs. 1 Satz 2 HGB"),
+	}
+)
+
+
+@dataclass(frozen=True, slots=True)
 class BalanceSheetScheme:
 	year: int
 	taxonomy: str
@@ -109,6 +135,14 @@ class BalanceSheetScheme:
 		"""The position the one of ``concept`` lies under, None for the total of a side."""
 		self.position(concept)
 		return self._parents.get(concept)
+
+	def shows(self, concept: str, size_class: SizeClass) -> bool:
+		"""Whether the balance sheet of ``size_class`` shows the position as a line of its own."""
+		return self.position(concept).level in LEVELS[size_class].levels
+
+	def visible(self, size_class: SizeClass) -> tuple[Position, ...]:
+		"""The positions the balance sheet of ``size_class`` shows, in their order, without the totals."""
+		return tuple(position for position in self.positions() if position.level in LEVELS[size_class].levels)
 
 
 _ROMAN = frozenset({"I", "II", "III", "IV", "V"})
