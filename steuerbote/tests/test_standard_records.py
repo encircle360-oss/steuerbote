@@ -37,6 +37,7 @@ MAPPING_DOCTYPES = (
 	"vat_return_mapping_rule",
 	"vat_return_mapping_check",
 	"vat_return_watched_account",
+	"vat_return_annual_rule",
 )
 # The charts of the mapping read the same in every language.
 CHART_NAMES = frozenset({"SKR03", "SKR04", "Eigener Kontenrahmen"})

@@ -1,19 +1,22 @@
 """The form of the VAT Return Mapping, read from its files without a bench: the methods it calls are whitelisted
-for POST, „Steuervorlagen prüfen“ and „Vorgaben aktualisieren“ read in German, and their dialogs escape what the site
-holds."""
+for POST, „Steuervorlagen prüfen“ and „Vorgaben aktualisieren“ read in German, their dialogs escape what the site
+holds, and the rows for the annual return have their fields and read in German."""
 
 import ast
 import csv
+import json
 import re
 from pathlib import Path
 from unittest import TestCase
 
-from steuerbote.mapping_sync import CHECK_FIELDS, RULE_FIELDS
+from steuerbote.mapping_sync import ANNUAL_RULE_FIELDS, CHECK_FIELDS, CHOICE_FIELDS, RULE_FIELDS
 from steuerbote.mappings import transfer
 from steuerbote.mappings.diff import Change, Origin
+from steuerbote.ustjahr import split
 
 APP = Path(__file__).resolve().parents[3]
 FOLDER = APP / "steuerbote" / "doctype" / "vat_return_mapping"
+DOCTYPES = APP / "steuerbote" / "doctype"
 TRANSLATIONS = APP / "translations" / "de.csv"
 DIFFERENCES_SCRIPT = APP / "public" / "js" / "mapping_differences.js"
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
@@ -107,7 +110,9 @@ class DifferencesFilesTest(TestCase):
 		fields = labels_of(self.source, "FIELD_LABELS")
 		self.assertEqual(set(changes), {change.name for change in Change})
 		self.assertEqual(set(origins), {origin.name for origin in Origin})
-		self.assertEqual(set(fields), {"place", "level", *RULE_FIELDS, *CHECK_FIELDS})
+		self.assertEqual(
+			set(fields), {"place", "level", *RULE_FIELDS, *CHECK_FIELDS, *CHOICE_FIELDS, *ANNUAL_RULE_FIELDS}
+		)
 		labels = {*changes.values(), *origins.values(), *fields.values()}
 		self.assertEqual(sorted(labels - german.keys()), [])
 
@@ -171,3 +176,68 @@ class MappingFileFilesTest(TestCase):
 			with self.subTest(part=part):
 				self.assertIn(part, upload["body"])
 		self.assertNotIn("make_attachments_public", upload["body"])
+
+
+def definition(name: str) -> dict:
+	return json.loads((DOCTYPES / name / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def fields_of(name: str) -> dict[str, dict]:
+	return {field["fieldname"]: field for field in definition(name)["fields"]}
+
+
+class AnnualRowsFilesTest(TestCase):
+	"""What the annual return reads of the mapping: the annual field and paragraph of a rule, and the rows of the
+	accounts only the annual return reads, „Zuordnung nur für die Umsatzsteuererklärung“."""
+
+	def setUp(self):
+		self.script = (FOLDER / "vat_return_mapping.js").read_text(encoding="utf-8")
+
+	def test_a_rule_names_its_annual_field_and_paragraph_by_choice(self):
+		rule = fields_of("vat_return_mapping_rule")
+		for name in CHOICE_FIELDS:
+			with self.subTest(field=name):
+				self.assertEqual(rule[name]["fieldtype"], "Data")
+				self.assertFalse(rule[name].get("reqd"))
+		self.assertEqual(definition("vat_return_mapping_rule")["field_order"][-2:], list(CHOICE_FIELDS))
+
+	def test_a_row_for_the_annual_return_only_names_account_field_side_and_paragraph(self):
+		annual = definition("vat_return_annual_rule")
+		self.assertEqual(
+			(annual["name"], annual["istable"], annual["module"]), ("VAT Return Annual Rule", 1, "Steuerbote")
+		)
+		self.assertEqual(annual["field_order"], ["account", "account_number", *ANNUAL_RULE_FIELDS])
+		fields = fields_of("vat_return_annual_rule")
+		self.assertEqual((fields["account"]["fieldtype"], fields["account"]["options"]), ("Link", "Account"))
+		self.assertEqual(fields["account_number"]["fetch_from"], "account.account_number")
+		self.assertEqual(fields["side"]["options"].split("\n"), ["credit", "debit"])
+		self.assertEqual(
+			{name for name, field in fields.items() if field.get("reqd")}, {"account", "annual_field", "side"}
+		)
+
+	def test_the_mapping_holds_the_rows_for_the_annual_return_only_after_its_watched_accounts(self):
+		mapping = definition("vat_return_mapping")
+		self.assertEqual(mapping["field_order"][-2:], ["watched", "annual_rules"])
+		table = fields_of("vat_return_mapping")["annual_rules"]
+		self.assertEqual((table["fieldtype"], table["options"]), ("Table", "VAT Return Annual Rule"))
+
+	def test_the_form_offers_the_accounts_of_the_company_and_vorgaben_laden_replaces_the_rows_too(self):
+		self.assertIn('for (const table of ["rules", "watched", "annual_rules"])', self.script)
+		self.assertIn('["rules", "checks", "watched", "annual_rules"].some(', self.script)
+
+	def test_the_rows_for_the_annual_return_read_in_german(self):
+		german = translations()
+		self.assertEqual(german["VAT Return Annual Rule"], "Zuordnung nur für die Umsatzsteuererklärung")
+		self.assertEqual(
+			german["Rules for the Annual Return Only"], "Zuordnungen nur für die Umsatzsteuererklärung"
+		)
+		self.assertEqual(german["Annual Return Field"], "Feld der Umsatzsteuererklärung")
+		self.assertEqual(german["Paragraph of the Exemption"], "Paragraf der Steuerbefreiung")
+		messages = set(TRANSLATED_LITERAL.findall(self.script)) | set(
+			TRANSLATED_LITERAL.findall((FOLDER / "vat_return_mapping.py").read_text(encoding="utf-8"))
+		)
+		self.assertEqual(sorted(messages - german.keys()), [])
+
+	def test_every_message_of_the_split_reads_in_german(self):
+		"""Saving shows what the core of the annual return refuses (steuerbote/ustjahr/split.py)."""
+		self.assertEqual(sorted(set(split.MESSAGES) - translations().keys()), [])
