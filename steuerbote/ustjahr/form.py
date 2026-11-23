@@ -267,6 +267,30 @@ class Rule:
 
 
 @dataclass(frozen=True, slots=True)
+class Finding:
+	"""What a check of the annual return reports.
+
+	``code`` is the Fehlercode of a rule of the JD, such as 30639, or a code of Steuerbote such as NACHSTEUER-ZEILE;
+	an error blocks the return, a hint does not. ``template`` and ``values`` make the message, so that the Frappe
+	layer can translate the template before formatting it, and ``fields`` name the fields it concerns.
+	"""
+
+	code: str
+	severity: Severity
+	template: str
+	values: tuple[object, ...] = ()
+	fields: tuple[str, ...] = ()
+
+	@property
+	def text(self) -> str:
+		return self.template.format(*self.values)
+
+	@property
+	def blocking(self) -> bool:
+		return self.severity is Severity.ERROR
+
+
+@dataclass(frozen=True, slots=True)
 class Catalogue:
 	"""Form USt 2 A of one year: its fields in the order of the schema, and the rules of its Jahresdokumentation."""
 
