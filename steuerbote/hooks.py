@@ -1,3 +1,5 @@
+from pathlib import Path
+
 app_name = "steuerbote"
 app_title = "Steuerbote"
 app_publisher = "encircle360 GmbH"
@@ -34,13 +36,26 @@ fixtures = [
 
 # ERPNext's "Delete Company Transactions" (Transaction Deletion Record) deletes the documents of every DocType
 # linked to the company with frappe.db.delete, past on_trash, unless the DocType is listed here: the filings and
-# the proof of the confirmations of USt-IdNrn. record what went to the tax authorities.
+# the proof of the confirmations of USt-IdNrn. record what went to the tax authorities, and the Annual Filing
+# Settings hold what no ledger gives again, such as the day of the Feststellung of a Jahresabschluss and the
+# Vorträge and Vorauszahlungen of the notices. The annual documents join once the app brings their DocType: the
+# record links each name of the list to its DocType and refuses one without it.
+_ANNUAL_DOCUMENTS = (
+	"Annual VAT Return",
+	"Electronic Balance Sheet",
+	"Corporate Income Tax Return",
+	"Trade Tax Return",
+	"Annual Accounts",
+)
+_DOCTYPES = Path(__file__).resolve().parent / "steuerbote" / "doctype"
 company_data_to_be_ignored = [
 	"VAT ID Confirmation",
 	"Recapitulative Statement",
 	"VAT Return Extension",
 	"VAT Return",
 	"ELSTER Transmission",
+	"Annual Filing Settings",
+	*(name for name in _ANNUAL_DOCUMENTS if (_DOCTYPES / name.lower().replace(" ", "_")).is_dir()),
 ]
 
 # The files of an ELSTER Transmission and the answer kept with a VAT ID Confirmation stay as they were stored.
