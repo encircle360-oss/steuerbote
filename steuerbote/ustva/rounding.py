@@ -54,5 +54,15 @@ def floor_euro(amount: Decimal) -> Decimal:
 	return _without_negative_zero(require_decimal(amount).quantize(EURO, rounding=ROUND_FLOOR))
 
 
+def floor_hundred(amount: Decimal) -> Decimal:
+	"""Round down to full 100 euros: the Gewerbeertrag.
+
+	„Der Gewerbeertrag ist auf volle 100 Euro nach unten abzurunden“ (§ 11 Abs. 1 Satz 3 GewStG). A negative amount
+	goes down as well, to the next lower multiple of 100.
+	"""
+	hundreds = (require_decimal(amount) / HUNDRED).quantize(EURO, rounding=ROUND_FLOOR)
+	return _without_negative_zero(hundreds * HUNDRED)
+
+
 def _without_negative_zero(amount: Decimal) -> Decimal:
 	return amount + ZERO
