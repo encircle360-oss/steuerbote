@@ -10,8 +10,12 @@ Unternehmensregister, Stand September 2025). The version is the one of the fisca
 
 build(statement, size, notes, disclosure, gcd) gives the Instance: the facts of steuerbote/xbrl/facts.py, the view
 they reference, the company, the periods, the concepts the class publishes and what holds the file back. It needs no
-taxonomy, so the Annual Accounts can build it and show its findings before anyone installs one. write(instance,
-taxonomy) writes it through the writer of steuerbote/xbrl/writer.py after the checks of the profile.
+taxonomy, so the Annual Accounts can build it and show its findings before anyone installs one. With the taxonomy of
+its version in its view, report(instance, taxonomy) makes it the Report of the profile, check(instance, taxonomy)
+gives the findings of the checks of the profile with the concepts the class publishes, and write(instance, taxonomy)
+gives the file through the writer of steuerbote/xbrl/writer.py: one XML document, as the Publikations-Plattform takes
+one file per order (steuerbote/hgb/upload.py). write() raises a HeldBackError while a finding of the instance or of
+the checks is an error; a hint holds nothing back.
 
 Balance sheet. The statement of steuerbote/hgb/statement.py in full euros (in_full_euros(); that the register wants
 full euros is unverified, so the amounts carry decimals="0"): the positions the class shows, „nur die in den Absätzen
@@ -145,13 +149,16 @@ from steuerbote.hgb.statement import (
 from steuerbote.jahresmeldung.corrections import RevisionStatus, revision_status_concept
 from steuerbote.ustva.period import day_label
 from steuerbote.ustva.rounding import apportion_full_euros, half_up_euro
-from steuerbote.xbrl.facts import Entity, Fact, Item, Period, Periods, Tuple, amount, choice
+from steuerbote.xbrl import checks, writer
+from steuerbote.xbrl.facts import Entity, Fact, Item, Period, Periods, Report, Tuple, amount, choice
 from steuerbote.xbrl.profiles import DISCLOSURE
-from steuerbote.xbrl.taxonomy import View
+from steuerbote.xbrl.taxonomy import Taxonomy, View
 from steuerbote.xbrl.versions import Version, for_fiscal_year
 
 REGISTER_SCHEME = "http://www.handelsregister.de"
 """The scheme of the identifier of the company: its Registergericht and Registernummer."""
+MONETARY_DECIMALS = 0
+"""The decimals of the amounts: full euros, as in_full_euros() gives the statement."""
 GAAP = "de-gaap-ci:"
 GCD = "de-gcd:genInfo."
 WJ = Period.WIRTSCHAFTSJAHR
@@ -177,6 +184,15 @@ _CHARACTERS_REFERENCE = "Einheitliche Elster-Datenschnittstelle XML, Kap. 2.2; E
 
 class InstanceError(ValueError):
 	"""The inputs do not make an Offenlegung Steuerbote writes."""
+
+
+class HeldBackError(InstanceError):
+	"""Errors hold the file back: findings of the instance, or of the checks of the profile DISCLOSURE."""
+
+	def __init__(self, findings: Iterable[Finding | checks.Finding]) -> None:
+		self.findings = tuple(findings)
+		codes = ", ".join(dict.fromkeys(str(finding.code) for finding in self.findings))
+		super().__init__(f"the file of the Offenlegung is held back: {codes}")
 
 
 class Code(StrEnum):
@@ -328,6 +344,40 @@ def build(
 		tuple(dict.fromkeys(_published(sheet.scheme, size))),
 		findings,
 	)
+
+
+def report(instance: Instance, taxonomy: Taxonomy) -> Report:
+	"""The instance as a report of the profile DISCLOSURE, referencing the entry points of its view."""
+	if taxonomy.version != instance.version.version or taxonomy.view is not instance.view:
+		raise InstanceError(
+			f"the instance takes the HGB-Taxonomie {instance.version.version} in the view {instance.view}, not "
+			f"{taxonomy.version} in the view {taxonomy.view}"
+		)
+	return DISCLOSURE.report(
+		taxonomy, instance.entity, instance.periods, instance.facts, monetary_decimals=MONETARY_DECIMALS
+	)
+
+
+def check(instance: Instance, taxonomy: Taxonomy) -> tuple[checks.Finding, ...]:
+	"""The findings of the checks of the profile DISCLOSURE, with the concepts the class publishes."""
+	return DISCLOSURE.check(report(instance, taxonomy), taxonomy, published=instance.published)
+
+
+def write(instance: Instance, taxonomy: Taxonomy) -> bytes:
+	"""The file of the Offenlegung, once no error of the instance and none of the checks of the profile holds it
+	back."""
+	held = [finding for finding in instance.findings if finding.blocking]
+	if held:
+		raise HeldBackError(held)
+	built = report(instance, taxonomy)
+	found = [
+		finding
+		for finding in DISCLOSURE.check(built, taxonomy, published=instance.published)
+		if finding.blocking
+	]
+	if found:
+		raise HeldBackError(found)
+	return writer.write(built, taxonomy)
 
 
 def _require_fit(
