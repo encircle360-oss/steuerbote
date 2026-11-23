@@ -26,11 +26,12 @@ from steuerbote.ustva import years
 ELSTER = "{http://www.elster.de/elsterxml/schema/v11}"
 XS = "{http://www.w3.org/2001/XMLSchema}"
 DOC = Path(__file__).resolve().parents[3] / "docs" / "zm.md"
+ERIC_DOC = DOC.with_name("eric.md")
 
 
-def doc_table(heading: str) -> list[list[str]]:
-	"""The cells of each row of the table under the heading of docs/zm.md, without its head."""
-	text = DOC.read_text(encoding="utf-8")
+def doc_table(heading: str, doc: Path = DOC) -> list[list[str]]:
+	"""The cells of each row of the table under the heading of docs/zm.md or another page, without its head."""
+	text = doc.read_text(encoding="utf-8")
 	section = text[text.index(f"\n{heading}\n") + len(heading) + 2 :]
 	section = section[: section.find("\n#")]
 	lines = [line for line in section.splitlines() if line.startswith("|")]
@@ -522,3 +523,52 @@ class DocsTest(TestCase):
 			f'`<Empfaenger id="{ZMDO.recipient_id}">{ZMDO.recipient}</Empfaenger>`',
 			cells["Empfänger im NutzdatenHeader"],
 		)
+
+
+class AnnualDocsTest(TestCase):
+	"""docs/eric.md, „Erklärungen und E-Bilanz“: a column each for USt, KSt, GewSt and the E-Bilanz."""
+
+	KINDS = (ust(2026), kst(2026), gewst(2026), bilanz("6.9"))
+
+	def rows(self) -> dict[str, list[str]]:
+		return {row[0]: row[1:5] for row in doc_table("### Erklärungen und E-Bilanz", ERIC_DOC)}
+
+	def code(self, cell: str) -> str:
+		return cell.split("`")[1]
+
+	def test_names_verfahren_datenart_version_and_plugin_of_each(self):
+		rows = self.rows()
+		for kind, *cells in zip(
+			self.KINDS,
+			rows["Verfahren, DatenArt"],
+			rows["datenartVersion"],
+			rows["Plugin"],
+			strict=True,
+		):
+			with self.subTest(datenart=kind.name):
+				placeholder = "<Taxonomie>" if kind.taxonomy else "<Jahr>"
+				value = kind.taxonomy or str(kind.year)
+				self.assertEqual(
+					[cell.split("`")[1::2] for cell in cells],
+					[
+						[kind.verfahren, kind.name],
+						[kind.version.replace(value, placeholder)],
+						[kind.plugin.replace(value.replace(".", "_"), placeholder)],
+					],
+				)
+
+	def test_names_unterfallart_pruefen_and_printout_of_each(self):
+		rows = self.rows()
+		for kind, unterfallart, check, printout, datenlieferant in zip(
+			self.KINDS,
+			rows["Unterfallart im Vorsatz"],
+			rows["Prüfen"],
+			rows["Nach dem Senden"],
+			rows["DatenLieferant im NutzdatenHeader"],
+			strict=True,
+		):
+			with self.subTest(datenart=kind.name):
+				self.assertEqual(unterfallart, f"`{kind.unterfallart}`" if kind.unterfallart else "keiner")
+				self.assertTrue(check.startswith("EBV-9" if kind.preview_on_check else "EBV-8"))
+				self.assertTrue(printout.startswith(kind.printout))
+				self.assertEqual(datenlieferant.startswith("zehn Teile"), kind.nutzdaten_datenlieferant)
