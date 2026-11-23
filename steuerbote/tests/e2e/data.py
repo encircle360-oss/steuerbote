@@ -50,3 +50,13 @@ REVERSE_CHARGE_TAX = 57
 # A user with the role Accounts User alone: the tests set its password through the Administrator.
 ACCOUNTANT = "steuerbote-e2e-buchhaltung@example.com"
 ACCOUNTANT_ROLE = "Accounts User"
+
+# A second company, whose drafts went to ELSTER: ELSTER accepted the Senden of its VAT Return for MONTH and of its
+# Dauerfristverlängerung while their submission failed, and the Senden of its Recapitulative Statement for MONTH
+# has an unknown outcome. Each draft keeps all but its remarks.
+SENT_COMPANY = "Steuerbote E2E Gesendet GmbH"
+SENT_ABBR = "STE2G"
+# The Transferticket of the accepted Senden, invented in the form of TransferTicketSType of the ELSTER Basisschema.
+TRANSFERTICKET = "e2026e2etransferticketerfunden01"
+# What the form of such a draft says above its fields after ELSTER accepted its Senden.
+ACCEPTED_NOTE = f"Mit Transferticket {TRANSFERTICKET} übermittelt: nur noch Buchen oder berichtigen; Anmerkungen bleiben änderbar."

@@ -572,6 +572,7 @@
 "Transmit to the Finanzamt","Senden"
 "Transmitted with Transferticket {0}, but the return could not be submitted: {1} Do not send it again; submit the return once the cause is resolved.","Mit Transferticket {0} übermittelt, aber die Meldung ließ sich nicht einreichen: {1} Bitte nicht erneut senden, sondern die Meldung mit „Buchen“ einreichen, sobald die Ursache behoben ist."
 "Transmitted with Transferticket {0}, but {1} could not be submitted: {2} Do not send it again; submit it once the cause is resolved.","Mit Transferticket {0} übermittelt, aber {1} ließ sich nicht einreichen: {2} Bitte nicht erneut senden, sondern mit „Buchen“ einreichen, sobald die Ursache behoben ist."
+"Transmitted with Transferticket {0}: only Buchen or a correction is left; the remarks can still change.","Mit Transferticket {0} übermittelt: nur noch Buchen oder berichtigen; Anmerkungen bleiben änderbar."
 "Umsatzsteuersondervorauszahlung","Anmeldung der Sondervorauszahlung"
 "VAT ID","USt-IdNr."
 "VAT ID Confirmation","USt-IdNr.-Bestätigung"

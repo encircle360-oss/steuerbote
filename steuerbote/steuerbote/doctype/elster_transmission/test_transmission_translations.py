@@ -47,6 +47,7 @@ UNTRANSLATED = frozenset(
 FRAMEWORK_LABELS = frozenset(
 	{
 		"Code",
+		"Discard",
 		"Document",
 		"Document Type",
 		"Field",

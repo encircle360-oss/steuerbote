@@ -572,13 +572,17 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		"""As on the VAT Return: hints never stop a check (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.2.4.1)."""
 		doc = self.calculated(10)
 		doc.run_method("onload")
-		self.assertEqual(doc.get_onload("elster"), {"simulation": True, "stale": False, "sent": False})
+		self.assertEqual(
+			doc.get_onload("elster"), {"simulation": True, "stale": False, "sent": False, "locked": None}
+		)
 		self.assertIsNone(doc.get_onload("elster_run"))
 		hint = Message("17004518", "Die USt-IdNr. ist unschlüssig.", HINT)
 		transmission, _, _ = self.transmitted(doc, "validate", FakeEric(messages=(hint,)))
 		self.use_runtime()
 		doc.run_method("onload")
-		self.assertEqual(doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False})
+		self.assertEqual(
+			doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False, "locked": None}
+		)
 		self.assertEqual(
 			{key: doc.get_onload("elster_run")[key] for key in ("name", "status", "errors", "hints")},
 			{"name": transmission.name, "status": "Erfolgreich", "errors": 0, "hints": 1},

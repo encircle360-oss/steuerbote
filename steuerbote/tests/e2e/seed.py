@@ -5,16 +5,19 @@
 A company with SKR03 accounts, its VAT Return Settings and the mapping of "Vorgaben laden", three invoices of
 October 2026, a VAT ID Confirmation, a VAT Return for September filed in Mein ELSTER, a calculated VAT Return and
 Recapitulative Statement for October, a draft Dauerfristverlängerung for 2026, ERiC Settings that simulate and a user
-with the role Accounts User alone. Every record is invented (steuerbote/tests/e2e/data.py) and made once, so the
-seed runs again on the same site without a change; a second run only calculates the documents again. It also
-marks the setup wizard complete and sets the language of the Administrator and the user to German, so that the
-desk opens as a German accountant sees it. Take a site of its own for it, never one with real data.
+with the role Accounts User alone. A second company without accounts has the drafts of October and of 2026 that went
+to ELSTER, each with the record of its Senden. Every record is invented (steuerbote/tests/e2e/data.py) and made once,
+so the seed runs again on the same site without a change; a second run only calculates the documents of the first
+company again. It also marks the setup wizard complete and sets the language of the Administrator and the user to
+German, so that the desk opens as a German accountant sees it. Take a site of its own for it, never one with real
+data.
 """
 
 import frappe
 from frappe.model.document import Document
 from frappe.utils import today
 
+from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import SEND, SUCCEEDED, UNKNOWN
 from steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation import store
 from steuerbote.tests.e2e import data
 from steuerbote.tests.helpers import (
@@ -68,6 +71,7 @@ def run() -> None:
 	calculate_vat_return()
 	calculate_recapitulative_statement()
 	make_extension()
+	make_sent_drafts()
 	simulate_eric()
 	make_desk_users()
 	frappe.clear_cache()
@@ -101,13 +105,13 @@ def complete_company(accounts: dict[str, str]) -> None:
 	frappe.db.set_value("Company", data.COMPANY, "default_bank_account", accounts[BANK])
 
 
-def make_settings_once() -> None:
+def make_settings_once(company: str = data.COMPANY) -> None:
 	"""Monthly filing with Dauerfristverlängerung, and the ZM monthly with the sonstige Leistungen in their own
 	month, through all of the year."""
-	if frappe.db.exists("VAT Return Settings", data.COMPANY):
+	if frappe.db.exists("VAT Return Settings", company):
 		return
 	make_settings(
-		data.COMPANY,
+		company,
 		[(data.YEAR, "monthly", 1)],
 		[(data.YEAR, True, "1100.00")],
 		ust_idnr=data.OWN_VAT_ID,
@@ -222,6 +226,34 @@ def make_extension() -> None:
 	"""The Dauerfristverlängerung of the year as a draft: no Voranmeldung of the year before is filed, so
 	Berechnen asks for the base by hand, which the test of the form expects."""
 	draft("VAT Return Extension", {"company": data.COMPANY, "year": data.YEAR})
+
+
+def make_sent_drafts() -> None:
+	"""The drafts of SENT_COMPANY as the background job leaves them after a real Senden (transmission.py): ELSTER
+	accepted the VAT Return and the Dauerfristverlängerung, but submitting them failed, and whether the
+	Recapitulative Statement reached ELSTER is unknown. The return and the statement are calculated first, as only a
+	calculated document is sent; the Dauerfristverlängerung has no filed Voranmeldung of the year before that
+	Berechnen could read."""
+	company = data.SENT_COMPANY
+	make_company(company, data.SENT_ABBR)
+	make_settings_once(company)
+	if not frappe.db.exists("VAT Return Mapping", company):
+		make_mapping(company)
+	month = {"company": company, "year": data.YEAR, "period_index": data.MONTH}
+	sent_once(draft("VAT Return", {**month, "rhythm": "monthly"}), SUCCEEDED, calculate=True)
+	sent_once(draft("Recapitulative Statement", {**month, "period_kind": "month"}), UNKNOWN, calculate=True)
+	sent_once(draft("VAT Return Extension", {"company": company, "year": data.YEAR}), SUCCEEDED)
+
+
+def sent_once(doc: Document, status: str, calculate: bool = False) -> None:
+	"""The record of a real Senden of the draft with the status, unless it has one: a simulated run reaches no
+	Finanzamt and keeps nothing (filings in transmission.py)."""
+	if doc.sent_record():
+		return
+	if calculate:
+		doc.calculate()
+	transferticket = data.TRANSFERTICKET if status == SUCCEEDED else None
+	doc.new_transmission(SEND, simulated=False, status=status, transferticket=transferticket)
 
 
 def draft(doctype: str, fields: dict) -> Document:

@@ -17,13 +17,15 @@ frappe.ui.form.on("Recapitulative Statement", {
 		}
 		release_stale_transmission(frm);
 		offer_buchen_only_for_an_accepted_send(frm);
+		remove_discard_when_locked_as_sent(frm);
 		const draft = frm.doc.docstatus === 0 && !frm.is_new();
 		const calculated = ["Berechnet", "Bereit"].includes(frm.doc.status);
 		const free = draft && !frm.doc.confirmation_in_progress && !transmission_blocked(frm);
-		if (free) {
+		const changeable = free && !locked_as_sent(frm);
+		if (changeable) {
 			frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
 		}
-		if (free && calculated) {
+		if (changeable && calculated) {
 			frm.add_custom_button(__("Confirm VAT IDs"), () => confirm_vat_ids(frm));
 		}
 		if (can_make_csv_file(frm.doc)) {
@@ -232,7 +234,7 @@ function show_intro(frm) {
 	if (!frm.is_new() && frm.doc.docstatus === 0) {
 		if (frm.doc.confirmation_in_progress) {
 			notes.push(__("The USt-IdNrn. are being confirmed. The form reloads when the confirmation has finished."));
-		} else {
+		} else if (!locked_as_sent(frm)) {
 			notes.push(
 				__(
 					"Calculate reads the ledger of the months of the Meldezeitraum. Confirm VAT IDs asks the BZSt about each USt-IdNr. of the lines. The CSV file goes into the form Zusammenfassende Meldung of Mein ELSTER; note the filing afterwards with Filed in Mein ELSTER."

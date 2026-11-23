@@ -19,7 +19,7 @@ Das Schreiben führt für die Voranmeldungszeiträume ab Januar 2026 vier Vordru
 
 [`kennzahlen.py`](../steuerbote/ustva/kennzahlen.py) führt einen Katalog je Jahr des Vordrucks (`CATALOGUES`), bisher für 2026, für die Jahre der Jahrestabelle `YEARS` in [`years.py`](../steuerbote/ustva/years.py). Der Katalog 2026 folgt dem Vordruck USt 1 A 2026 Zeile für Zeile. [`test_kennzahlen.py`](../steuerbote/ustva/tests/test_kennzahlen.py) hält jede Kennzahl mit Zeile, Art, Wirkung, Steuersatz und Steuer-Kennzahl so fest, wie sie auf dem Vordruck steht, und prüft den Katalog dagegen. `catalogue_for(year)` wählt den Katalog nach dem Jahr des Zeitraums, `KENNZAHLEN` ist der neueste (`LATEST_YEAR`). Für ein Jahr ohne Katalog gibt es einen `UnknownYearError`.
 
-Vordruck und Anleitung ändern sich jedes Jahr. Deshalb kommt zu jedem Jahreswechsel ein Katalog für das neue Jahr dazu, Zeile für Zeile gegen das neue BMF-Schreiben geprüft, siehe [Jahreswechsel](#jahreswechsel).
+Vordruck und Anleitung ändern sich jedes Jahr. Deshalb kommt zu jedem Jahreswechsel ein Katalog für das neue Jahr dazu, Zeile für Zeile gegen das neue BMF-Schreiben geprüft, siehe [Jahreswechsel](#jahreswechsel). Der erste Katalog ist der für 2026; Kataloge für frühere Jahre sind nicht geplant, siehe [Roadmap](roadmap.md#grundsätze).
 
 Die Kontenbezeichnungen auf dieser Seite stammen aus den DATEV-Kontenrahmen nach dem Bilanzrichtlinie-Umsetzungsgesetz, gültig für 2026:
 

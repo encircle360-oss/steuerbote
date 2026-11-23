@@ -627,13 +627,40 @@ class TestTransmission(TransmissionTestCase):
 	def test_the_form_learns_whether_eric_is_simulated(self):
 		doc = self.new_return(3)
 		doc.run_method("onload")
-		self.assertEqual(doc.get_onload("elster"), {"simulation": True, "stale": False, "sent": False})
+		self.assertEqual(
+			doc.get_onload("elster"), {"simulation": True, "stale": False, "sent": False, "locked": None}
+		)
 		self.use_runtime()
 		doc.run_method("onload")
-		self.assertEqual(doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False})
+		self.assertEqual(
+			doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False, "locked": None}
+		)
 		self.use_runtime(privacy_notice_confirmed=0)
 		doc.run_method("onload")
 		self.assertFalse(doc.get_onload("elster")["simulation"])
+
+	def test_the_form_learns_the_senden_after_which_the_draft_stays_as_it_was_sent(self):
+		"""refuse_if_sent keeps all but the remarks of a draft whose real Senden ELSTER accepted or left
+		unknown. The form hides what it refuses and names that Senden: by its Transferticket, or by its ELSTER
+		Transmission while the outcome is unknown. A Testsenden goes to no Finanzamt, and a filed return is no
+		draft."""
+		frappe.db.savepoint("sent_returns")
+		self.addCleanup(frappe.db.rollback, save_point="sent_returns")
+		tested, unknown, accepted = (self.calculated(3) for _ in range(3))
+		tested.new_transmission("test_send", simulated=False, status="Erfolgreich", transferticket=TICKET)
+		lost = unknown.new_transmission("send", simulated=False, status="Unbekannt")
+		sent = accepted.new_transmission("send", simulated=False, status="Erfolgreich", transferticket=TICKET)
+		for doc, locked in (
+			(tested, None),
+			(unknown, {"transmission": lost.name, "status": "Unbekannt", "transferticket": None}),
+			(accepted, {"transmission": sent.name, "status": "Erfolgreich", "transferticket": TICKET}),
+		):
+			doc.run_method("onload")
+			with self.subTest(doc=doc.name):
+				self.assertEqual(doc.get_onload("elster")["locked"], locked)
+		accepted.submit()
+		accepted.run_method("onload")
+		self.assertIsNone(accepted.get_onload("elster")["locked"])
 
 	def test_the_form_names_the_errors_and_hints_of_the_latest_run(self):
 		"""ERiC's hints never stop a check (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.2.4.1), so the form of the

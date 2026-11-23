@@ -10,7 +10,8 @@ frappe.ui.form.on("VAT Return Extension", {
 	refresh(frm) {
 		release_stale_transmission(frm);
 		offer_buchen_only_for_an_accepted_send(frm);
-		if (frm.doc.docstatus === 0 && !frm.is_new()) {
+		remove_discard_when_locked_as_sent(frm);
+		if (frm.doc.docstatus === 0 && !frm.is_new() && !locked_as_sent(frm)) {
 			frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
 		}
 		show_intro(frm);
@@ -35,10 +36,11 @@ function form_texts() {
 	};
 }
 
-// Without ERiC, Senden is not possible, and Mein ELSTER takes no file for form USt 1 H.
+// Without ERiC, Senden is not possible, and Mein ELSTER takes no file for form USt 1 H. A form locked as sent is
+// neither calculated nor entered again.
 function show_intro(frm) {
 	const notes = elster_notes(frm, form_texts());
-	if (!frm.is_new() && frm.doc.docstatus === 0 && eric_simulates(frm)) {
+	if (!frm.is_new() && frm.doc.docstatus === 0 && eric_simulates(frm) && !locked_as_sent(frm)) {
 		notes.push(
 			__(
 				"Mein ELSTER has no upload for form USt 1 H. Until Senden runs with an installed ERiC runtime and a Hersteller-ID, calculate the form, enter it in Mein ELSTER by hand, with Kz 38 as the Sondervorauszahlung if the company files monthly, and then note the filing here with Entered in Mein ELSTER."
