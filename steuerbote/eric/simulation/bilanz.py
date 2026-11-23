@@ -68,7 +68,7 @@ from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import ERROR, Message
 from steuerbote.eric.simulation import Checks, Structure
 from steuerbote.kst.years import RuleExpectation
-from steuerbote.xbrl.versions import UnknownTaxonomyError, version_of
+from steuerbote.xbrl.versions import UnknownTaxonomyError, Version, version_of
 
 if TYPE_CHECKING:
 	from steuerbote.xbrl.facts import Report
@@ -110,7 +110,6 @@ FISCAL_YEAR_END = "genInfo.report.period.fiscalYearEnd"
 CLOSING_DATE = "genInfo.report.period.balSheetClosingDate"
 PREVIOUS_BEGIN = "genInfo.report.period.fiscalPreviousYearBegin"
 PREVIOUS_END = "genInfo.report.period.fiscalPreviousYearEnd"
-PREVIOUS_CLOSING_DATE = "genInfo.report.period.balSheetClosingDatePreviousYear"
 FIXED_ASSETS = "dim_changes.nt.ass.gross"
 FIXED_ASSETS_SHORT = "dim_changes.nt.ass.gross_short"
 ENTRIES = ("hbst.transfer.bsAss", "hbst.transfer.bsEqLiab", "hbst.transfer.isChangeNetIncome")
@@ -294,13 +293,13 @@ def _always(*terms: str) -> Callable[[str], tuple[str, ...]]:
 	return lambda version: terms
 
 
-def _given(name: str) -> str:
+def _not_given(name: str) -> str:
 	return f"FeldNichtAngegeben(gcd:{name})"
 
 
 def _gcd_rule(code: str, name: str, field: str, label: str, *, nil: bool = False) -> BilanzRule:
 	"""A rule that the GCD gives a position: werthaltig, or for a date not NIL."""
-	term = f"FeldAngegeben(gcd:{field}.NIL)" if nil else _given(field)
+	term = f"FeldAngegeben(gcd:{field}.NIL)" if nil else _not_given(field)
 	return BilanzRule(
 		code,
 		name,
@@ -311,7 +310,7 @@ def _gcd_rule(code: str, name: str, field: str, label: str, *, nil: bool = False
 	)
 
 
-def _version_window(kind: Datenart):
+def _version_window(kind: Datenart) -> Version | None:
 	try:
 		return version_of(kind.taxonomy)
 	except UnknownTaxonomyError:
@@ -436,7 +435,7 @@ RULES: tuple[BilanzRule, ...] = (
 			and not instance.special_balance
 			and not instance.company_number(ST13)
 		),
-		_always('[gcd:genInfo.report.id.statementType]!="statementType.EB"', _given(ST13)),
+		_always('[gcd:genInfo.report.id.statementType]!="statementType.EB"', _not_given(ST13)),
 	),
 	BilanzRule(
 		"170205026",
@@ -449,7 +448,9 @@ RULES: tuple[BilanzRule, ...] = (
 			and not instance.company_number(ST13)
 			and not instance.company_number(BF4)
 		),
-		_always('[gcd:genInfo.report.id.statementType]=="statementType.EB"', _given(ST13), _given(BF4)),
+		_always(
+			'[gcd:genInfo.report.id.statementType]=="statementType.EB"', _not_given(ST13), _not_given(BF4)
+		),
 	),
 	BilanzRule(
 		"170205001",
@@ -539,7 +540,7 @@ RULES: tuple[BilanzRule, ...] = (
 			and not instance.separate_tables
 			and not instance.announced("B")
 		),
-		_always(_given(f"{REPORT_ELEMENT}.reportElements.B")),
+		_always(_not_given(f"{REPORT_ELEMENT}.reportElements.B")),
 	),
 	BilanzRule(
 		"170205091",
@@ -553,7 +554,7 @@ RULES: tuple[BilanzRule, ...] = (
 			and not instance.has("microBilG")
 			and not instance.announced("GuV")
 		),
-		_always(_given(f"{REPORT_ELEMENT}.reportElements.GuV")),
+		_always(_not_given(f"{REPORT_ELEMENT}.reportElements.GuV")),
 	),
 	BilanzRule(
 		"170405021",
@@ -566,7 +567,10 @@ RULES: tuple[BilanzRule, ...] = (
 			and not instance.announced("B")
 			and not instance.announced("EB")
 		),
-		_always(_given(f"{REPORT_ELEMENT}.reportElements.B"), _given(f"{REPORT_ELEMENT}.reportElements.EB")),
+		_always(
+			_not_given(f"{REPORT_ELEMENT}.reportElements.B"),
+			_not_given(f"{REPORT_ELEMENT}.reportElements.EB"),
+		),
 	),
 	BilanzRule(
 		"170205021",
@@ -610,7 +614,7 @@ RULES: tuple[BilanzRule, ...] = (
 			and (instance.announced("GuV") or instance.announced("GuVMicroBilG"))
 			and not instance.given(TRANSMISSION_OPTION)
 		),
-		_always(_given(f"{REPORT_ELEMENT}.reportElements.BVV")),
+		_always(_not_given(f"{REPORT_ELEMENT}.reportElements.BVV")),
 	),
 	BilanzRule(
 		"170405002",
@@ -618,7 +622,7 @@ RULES: tuple[BilanzRule, ...] = (
 		"Die Kontensalden sind nicht angekündigt, und das GCD sagt nicht, warum.",
 		f"{REPORT_ELEMENT}.reportElements.KS",
 		lambda instance, kind, header: not instance.announced("KS") and not instance.given(NOT_YET_POSSIBLE),
-		_always(_given(f"{REPORT_ELEMENT}.reportElements.KS"), _given(NOT_YET_POSSIBLE)),
+		_always(_not_given(f"{REPORT_ELEMENT}.reportElements.KS"), _not_given(NOT_YET_POSSIBLE)),
 	),
 	BilanzRule(
 		"170205095",
