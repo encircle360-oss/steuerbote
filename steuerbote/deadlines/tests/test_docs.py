@@ -8,6 +8,7 @@ from unittest import TestCase
 from steuerbote.deadlines import (
 	Kind,
 	Status,
+	annual,
 	sondervorauszahlungen,
 	voranmeldungen,
 	zusammenfassende_meldungen,
@@ -93,7 +94,10 @@ def german_date(text: str) -> date:
 
 class DocsTest(TestCase):
 	def test_names_the_kinds_of_the_deadlines(self):
-		self.assertEqual([row[0] for row in rows("## Welche Fristen")[:3]], [kind.value for kind in Kind])
+		self.assertEqual(
+			[row[0] for row in rows("## Welche Fristen")[:3]],
+			[kind.value for kind in Kind if kind not in annual.KINDS],
+		)
 
 	def test_names_the_status_of_a_deadline(self):
 		self.assertEqual(
