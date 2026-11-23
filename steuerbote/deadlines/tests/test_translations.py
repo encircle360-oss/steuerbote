@@ -1,14 +1,15 @@
 """Every text the deadlines show has a German translation in translations/de.csv: the report Offene Fristen, the
-reminder and its e-mail, the Deadline Reminder, the reminder fields of the VAT Return Settings and the entries of
-the workspace and the sidebar."""
+reminder and its e-mail with the notes of the annual deadlines, the Deadline Reminder, the reminder fields of the VAT
+Return Settings and the entries of the workspace and the sidebar."""
 
+import ast
 import csv
 import json
 import re
 from pathlib import Path
 from unittest import TestCase
 
-from steuerbote.deadlines import Kind, Status
+from steuerbote.deadlines import Kind, Note, Status
 
 APP = Path(__file__).resolve().parents[2]
 MODULE = APP / "steuerbote"
@@ -103,6 +104,20 @@ class TranslationsTest(TestCase):
 			[german(label) for label in labels], ["Fristen", "Fristerinnerungen", "Offene Fristen"]
 		)
 		self.assertEqual([label for label in labels if len(german(label)) > LONGEST_LABEL], [])
+
+	def test_every_note_of_a_deadline_has_a_text(self):
+		tree = ast.parse((MODULE / "deadlines.py").read_text(encoding="utf-8"))
+		(function,) = [
+			node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "note_texts"
+		]
+		(returned,) = [node.value for node in ast.walk(function) if isinstance(node, ast.Return)]
+		self.assertIsInstance(returned, ast.Dict)
+		self.assertEqual([key.attr for key in returned.keys], [note.name for note in Note])
+
+	def test_the_new_columns_read_short_in_german(self):
+		self.assertEqual(
+			[german("State of the Document"), german("Deadline Note")], ["Stand des Belegs", "Hinweis"]
+		)
 
 	def test_translations_keep_the_placeholders(self):
 		texts = literals(

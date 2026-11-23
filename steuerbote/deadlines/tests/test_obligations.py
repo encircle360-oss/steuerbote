@@ -243,5 +243,19 @@ class ObligationsTest(TestCase):
 	def test_the_kinds_are_named_as_the_filings(self):
 		self.assertEqual(
 			[kind.value for kind in Kind],
-			["Umsatzsteuer-Voranmeldung", "Zusammenfassende Meldung", "Sondervorauszahlung"],
+			[
+				"Umsatzsteuer-Voranmeldung",
+				"Zusammenfassende Meldung",
+				"Sondervorauszahlung",
+				"Umsatzsteuererklärung",
+				"Körperschaftsteuererklärung",
+				"Gewerbesteuererklärung",
+				"E-Bilanz",
+				"Feststellung Jahresabschluss",
+				"Offenlegung Jahresabschluss",
+			],
 		)
+
+	def test_an_obligation_has_no_notes_unless_given(self):
+		owed = Obligation(Kind.SONDERVORAUSZAHLUNG, 2027, "2027", date(2027, 2, 10))
+		self.assertEqual((owed.coverage, owed.notes), (None, ()))

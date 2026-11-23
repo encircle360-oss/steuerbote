@@ -1,5 +1,6 @@
 """The deadlines of a company within a horizon: filed, open or missing, the overdue ones until they are filed, and
-a Zusammenfassende Meldung only for a Meldezeitraum with something to report."""
+a Zusammenfassende Meldung only for a Meldezeitraum with something to report; with Annual Filing Settings also the
+annual deadlines, from the annual documents the site has."""
 
 from dataclasses import replace
 from datetime import date
@@ -7,14 +8,21 @@ from unittest import TestCase
 
 from steuerbote.deadlines import (
 	DOCUMENT_TYPES,
+	AnnualDocument,
+	AnnualRules,
 	CompanyRules,
 	Deadline,
 	Filing,
 	Kind,
+	Note,
+	OpeningBalance,
 	Status,
+	annual_filings,
 	new_document_values,
 	upcoming,
 )
+from steuerbote.jahresmeldung.lifecycle import Status as DocumentStatus
+from steuerbote.steuerbote.doctype.annual_filing_settings import rules as annual_settings
 from steuerbote.steuerbote.doctype.vat_return_settings.rules import PeriodRule, Prepayment
 from steuerbote.ustva.period import Period
 from steuerbote.zm import rhythm as zm_rhythm
@@ -37,6 +45,23 @@ ZM_OCTOBER = ReportingPeriod.month(2026, 10)
 VA = Kind.VORANMELDUNG
 ZM = Kind.ZUSAMMENFASSENDE_MELDUNG
 SVZ = Kind.SONDERVORAUSZAHLUNG
+UST = Kind.UMSATZSTEUERERKLAERUNG
+KST = Kind.KOERPERSCHAFTSTEUERERKLAERUNG
+GEWST = Kind.GEWERBESTEUERERKLAERUNG
+EBILANZ = Kind.E_BILANZ
+FESTSTELLUNG = Kind.FESTSTELLUNG
+OFFENLEGUNG = Kind.OFFENLEGUNG
+# A Tuesday. The small company keeps its annual filings in Steuerbote since 1 January 2027 and has no Steuerberatung;
+# 31 July 2027 is a Saturday.
+SUMMER = date(2027, 7, 20)
+ANNUAL = AnnualRules(
+	size_history=(
+		annual_settings.SizeRecord(date(2026, 12, 31), annual_settings.SizeClass.KLEIN, "Jahresabschluss"),
+	),
+	since=date(2027, 1, 1),
+)
+ANNUAL_RULES = CompanyRules(COMPANY, annual=ANNUAL)
+ERKLAERUNGEN = date(2027, 8, 2)
 
 
 def deadline(kind, period, label, due, status=Status.MISSING, document=None) -> Deadline:
@@ -205,8 +230,22 @@ class CompanyRulesTest(TestCase):
 	def test_each_kind_is_filed_with_its_doctype(self):
 		self.assertEqual(
 			dict(DOCUMENT_TYPES),
-			{VA: "VAT Return", ZM: "Recapitulative Statement", SVZ: "VAT Return Extension"},
+			{
+				VA: "VAT Return",
+				ZM: "Recapitulative Statement",
+				SVZ: "VAT Return Extension",
+				UST: "Annual VAT Return",
+				KST: "Corporate Income Tax Return",
+				GEWST: "Trade Tax Return",
+				EBILANZ: "Electronic Balance Sheet",
+				FESTSTELLUNG: "Annual Accounts",
+				OFFENLEGUNG: "Annual Accounts",
+			},
 		)
+
+	def test_has_no_annual_rules_without_annual_filing_settings(self):
+		self.assertIsNone(CompanyRules(COMPANY).annual)
+		self.assertIs(ANNUAL_RULES.annual, ANNUAL)
 
 
 class NewDocumentValuesTest(TestCase):
@@ -240,3 +279,176 @@ class NewDocumentValuesTest(TestCase):
 			new_document_values(deadline(SVZ, 2027, "2027", date(2027, 2, 10))),
 			{"company": COMPANY, "year": 2027},
 		)
+
+
+class AnnualDeadlinesTest(TestCase):
+	def test_lists_the_annual_deadlines_of_the_annual_filing_settings(self):
+		self.assertEqual(
+			upcoming(ANNUAL_RULES, (), SUMMER, 30),
+			[
+				deadline(UST, 2026, "2026", ERKLAERUNGEN),
+				deadline(KST, 2026, "2026", ERKLAERUNGEN),
+				deadline(GEWST, 2026, "2026", ERKLAERUNGEN),
+				replace(deadline(EBILANZ, 2026, "2026", ERKLAERUNGEN), notes=(Note.WITH_KST,)),
+			],
+		)
+		self.assertEqual(
+			[(item.kind, item.due) for item in upcoming(ANNUAL_RULES, (), SUMMER, 165)[4:]],
+			[(FESTSTELLUNG, date(2027, 11, 30)), (OFFENLEGUNG, date(2027, 12, 31))],
+		)
+
+	def test_sets_them_beside_the_voranmeldungen_by_due_date(self):
+		rules = replace(ANNUAL_RULES, period_rules=(PeriodRule(2026, "monthly"),), since=date(2027, 7, 1))
+		found = upcoming(rules, (), SUMMER, 30)
+		self.assertEqual(
+			[(item.kind, item.period_label, item.due) for item in found],
+			[
+				(VA, "Juni 2027", date(2027, 7, 12)),
+				*[(kind, "2026", ERKLAERUNGEN) for kind in (UST, KST, GEWST, EBILANZ)],
+				(VA, "Juli 2027", date(2027, 8, 10)),
+			],
+		)
+
+	def test_the_day_of_the_annual_filing_settings_leaves_out_what_was_overdue_before_them(self):
+		autumn = date(2027, 9, 1)
+		self.assertEqual(len(upcoming(ANNUAL_RULES, (), autumn, 0)), 4)
+		late = replace(ANNUAL_RULES, annual=replace(ANNUAL, since=date(2027, 8, 3)))
+		self.assertEqual(upcoming(late, (), autumn, 0), [])
+		draft = [Filing(KST, 2026, "KSt-2026-00001", document_status=DocumentStatus.CALCULATED)]
+		self.assertEqual([item.kind for item in upcoming(late, draft, autumn, 0)], [KST])
+
+	def test_the_day_of_the_vat_return_settings_leaves_the_annual_deadlines_alone(self):
+		rules = replace(ANNUAL_RULES, since=date(2027, 9, 1))
+		self.assertEqual(len(upcoming(rules, (), date(2027, 9, 1), 0)), 4)
+
+	def test_leaves_out_a_kind_whose_doctype_the_site_lacks(self):
+		document_types = {KST: "Steuerbote Test Annual Filing", VA: "VAT Return"}
+		found = upcoming(ANNUAL_RULES, (), SUMMER, 30, document_types=document_types)
+		self.assertEqual(
+			[(item.kind, item.document_type) for item in found], [(KST, "Steuerbote Test Annual Filing")]
+		)
+
+	def test_a_document_keeps_its_deadline_open_with_its_status(self):
+		filings = [Filing(KST, 2026, "KSt-2026-00001", document_status=DocumentStatus.READY)]
+		found = upcoming(ANNUAL_RULES, filings, SUMMER, 30)[1]
+		self.assertEqual(
+			found,
+			replace(
+				deadline(KST, 2026, "2026", ERKLAERUNGEN, Status.OPEN, "KSt-2026-00001"),
+				document_status=DocumentStatus.READY,
+			),
+		)
+
+	def test_a_filed_document_files_its_deadline_with_its_status(self):
+		filings = [
+			Filing(GEWST, 2026, "GewSt-2026-00002", document_status=DocumentStatus.DRAFT),
+			Filing(GEWST, 2026, "GewSt-2026-00001", date(2027, 7, 1), DocumentStatus.FILED),
+		]
+		found = upcoming(ANNUAL_RULES, filings, SUMMER, 30)[2]
+		self.assertEqual(
+			(found.status, found.document_name, found.document_status),
+			(Status.FILED, "GewSt-2026-00001", DocumentStatus.FILED),
+		)
+
+	def test_the_founding_year_lists_the_eroeffnungsbilanz_beside_the_e_bilanz(self):
+		rules = CompanyRules(COMPANY, annual=AnnualRules(founded_on=date(2026, 4, 1)))
+		filings = [
+			Filing(EBILANZ, OpeningBalance(2026), "EB-2026-00001", date(2027, 6, 1), DocumentStatus.FILED)
+		]
+		found = [item for item in upcoming(rules, filings, SUMMER, 30) if item.kind is EBILANZ]
+		self.assertEqual(
+			[(item.period_label, item.status, item.document_name, item.notes) for item in found],
+			[
+				("2026", Status.MISSING, None, (Note.WITH_KST,)),
+				("Eröffnungsbilanz 2026", Status.FILED, "EB-2026-00001", (Note.OPENING_BALANCE,)),
+			],
+		)
+
+	def test_the_notes_of_the_jahresabschluss_come_with_its_deadlines(self):
+		rules = CompanyRules(COMPANY, annual=AnnualRules())
+		found = upcoming(rules, (), SUMMER, 60)
+		self.assertEqual((found[-1].kind, found[-1].notes), (FESTSTELLUNG, (Note.ASSUMED_CLASS,)))
+
+	def test_a_deadline_has_no_document_status_or_notes_unless_given(self):
+		found = deadline(VA, NOVEMBER, "November 2026", date(2026, 12, 10))
+		self.assertEqual((found.document_status, found.notes), (None, ()))
+		self.assertIsNone(Filing(VA, NOVEMBER, "UStVA-2026-00011").document_status)
+
+
+# A document of the annual filings as the site gives it, changed last on 4 May 2027.
+MODIFIED = date(2027, 5, 4)
+
+
+def annual_document(name: str, status: str, docstatus: int = 0, **fields) -> AnnualDocument:
+	return AnnualDocument(name, 2026, status, MODIFIED, docstatus=docstatus, **fields)
+
+
+class AnnualFilingsTest(TestCase):
+	def test_a_document_files_each_kind_of_its_doctype(self):
+		accounts = annual_document("JA-2026-00001", DocumentStatus.ADOPTED, 1)
+		self.assertEqual(
+			annual_filings((FESTSTELLUNG, OFFENLEGUNG), [accounts]),
+			[
+				Filing(FESTSTELLUNG, 2026, "JA-2026-00001", MODIFIED, DocumentStatus.ADOPTED),
+				Filing(OFFENLEGUNG, 2026, "JA-2026-00001", None, DocumentStatus.ADOPTED),
+			],
+		)
+
+	def test_keeps_the_order_of_the_documents(self):
+		documents = [
+			annual_document("KSt-2026-00002", DocumentStatus.DRAFT),
+			annual_document("KSt-2026-00001", DocumentStatus.FILED, 1, filed_on=date(2027, 5, 2)),
+		]
+		self.assertEqual(
+			annual_filings((KST,), documents),
+			[
+				Filing(KST, 2026, "KSt-2026-00002", None, DocumentStatus.DRAFT),
+				Filing(KST, 2026, "KSt-2026-00001", date(2027, 5, 2), DocumentStatus.FILED),
+			],
+		)
+
+	def test_a_cancelled_document_counts_only_where_it_filed(self):
+		cancelled = annual_document(
+			"JA-2026-00001", DocumentStatus.REPLACED, 2, filed_via="upload", filed_on=date(2027, 10, 1)
+		)
+		self.assertEqual(
+			annual_filings((FESTSTELLUNG, OFFENLEGUNG), [cancelled]),
+			[Filing(OFFENLEGUNG, 2026, "JA-2026-00001", date(2027, 10, 1), DocumentStatus.REPLACED)],
+		)
+		self.assertEqual(
+			annual_filings((KST,), [annual_document("KSt-2026-00001", DocumentStatus.FILED, 2)]), []
+		)
+
+	def test_an_eroeffnungsbilanz_files_its_own_period(self):
+		opening = annual_document("EB-2026-00001", DocumentStatus.FILED, 1, opening_balance=True)
+		self.assertEqual(
+			annual_filings((EBILANZ,), [opening]),
+			[Filing(EBILANZ, OpeningBalance(2026), "EB-2026-00001", MODIFIED, DocumentStatus.FILED)],
+		)
+
+
+class NewAnnualDocumentValuesTest(TestCase):
+	def test_an_annual_document_takes_its_year(self):
+		for kind in (UST, KST, GEWST, EBILANZ, FESTSTELLUNG, OFFENLEGUNG):
+			with self.subTest(kind=kind):
+				self.assertEqual(
+					new_document_values(deadline(kind, 2026, "2026", ERKLAERUNGEN)),
+					{"company": COMPANY, "year": 2026},
+				)
+
+	def test_the_eroeffnungsbilanz_takes_its_bilanzart(self):
+		opening = OpeningBalance(2026)
+		self.assertEqual(
+			new_document_values(deadline(EBILANZ, opening, opening.label, ERKLAERUNGEN)),
+			{"company": COMPANY, "year": 2026, "statement_type": "Eröffnungsbilanz"},
+		)
+
+
+class AnnualSizeClassTest(TestCase):
+	def test_a_large_company_adopts_within_eight_months(self):
+		history = (
+			annual_settings.SizeRecord(date(2026, 12, 31), annual_settings.SizeClass.GROSS, "Prüfbericht"),
+		)
+		rules = CompanyRules(COMPANY, annual=AnnualRules(size_history=history))
+		(found,) = [item for item in upcoming(rules, (), SUMMER, 60) if item.kind is FESTSTELLUNG]
+		self.assertEqual((found.due, found.notes), (date(2027, 8, 31), ()))

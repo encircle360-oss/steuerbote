@@ -1,5 +1,6 @@
 """The records the deadlines come with fit together, read from their files without a bench: the report Offene
-Fristen, the Deadline Reminder, the fields of the VAT Return Settings and the daily job in hooks.py."""
+Fristen, the Deadline Reminder, the fields of the VAT Return Settings, the daily job in hooks.py and the DocTypes of the
+annual filings, which come with their modules."""
 
 import ast
 import csv
@@ -9,7 +10,7 @@ from pathlib import Path
 from unittest import TestCase
 
 from steuerbote import hooks
-from steuerbote.deadlines import DOCUMENT_TYPES, Kind
+from steuerbote.deadlines import DOCUMENT_TYPES, Kind, annual
 
 APP = Path(__file__).resolve().parents[2]
 MODULE = APP / "steuerbote"
@@ -27,6 +28,17 @@ def read_json(path: Path) -> dict:
 
 def module_body(path: Path) -> list[ast.stmt]:
 	return ast.parse(path.read_text(encoding="utf-8")).body
+
+
+def literal(path: Path, name: str) -> object:
+	"""The literal value the module assigns to the name at its top level."""
+	(value,) = [
+		node.value
+		for node in module_body(path)
+		if isinstance(node, ast.Assign)
+		and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)
+	]
+	return ast.literal_eval(value)
 
 
 def constants(path: Path) -> dict[str, object]:
@@ -72,6 +84,12 @@ class ReportFilesTest(TestCase):
 		values = constants(REPORT / "offene_fristen.py")
 		self.assertEqual(re.findall(r'fieldname: "(\w+)"', script), [values["COMPANY"], values["HORIZON"]])
 		self.assertEqual(re.findall(r"default: (\d+)", script), [str(values["DEFAULT_HORIZON"])])
+
+	def test_the_reminder_shows_the_columns_of_the_report_without_the_company(self):
+		fieldnames = [column["fieldname"] for column in literal(REPORT / "offene_fristen.py", "COLUMNS")]
+		self.assertEqual(fieldnames[0], "company")
+		self.assertEqual(list(literal(MODULE / "deadlines.py", "EMAIL_COLUMNS")), fieldnames[1:])
+		self.assertEqual(fieldnames[-2:], ["document_status", "note"])
 
 	def test_the_report_and_the_job_name_the_same_report(self):
 		self.assertEqual(
@@ -123,9 +141,12 @@ class ReminderFilesTest(TestCase):
 		(document,) = [node for node in controller if isinstance(node, ast.ClassDef)]
 		self.assertIn("autoname", {node.name for node in document.body if isinstance(node, ast.FunctionDef)})
 
-	def test_each_kind_is_filed_with_a_doctype_of_the_module(self):
+	def test_each_kind_is_filed_with_a_doctype_of_the_module_or_awaits_it(self):
 		names = {read_json(path)["name"] for path in (MODULE / "doctype").glob("*/*.json")}
-		self.assertLessEqual(set(DOCUMENT_TYPES.values()), names)
+		self.assertLessEqual(set(DOCUMENT_TYPES.values()) - names, set(annual.AWAITING_DOCTYPES))
+		self.assertLessEqual(
+			{doctype for kind, doctype in DOCUMENT_TYPES.items() if kind not in annual.KINDS}, names
+		)
 
 
 class SettingsFilesTest(TestCase):

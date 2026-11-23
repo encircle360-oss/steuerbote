@@ -1,6 +1,7 @@
 """The daily reminder of the deadlines on a site: one e-mail per company and day with the deadlines not filed and
 links to their documents, a Deadline Reminder for each, never twice for a deadline on one day, nothing without
-recipients, and records that nobody changes."""
+recipients, and records that nobody changes; with Annual Filing Settings also the annual deadlines, with their
+notes, for every company whose VAT Return Settings name recipients."""
 
 from datetime import date
 from unittest.mock import patch
@@ -10,6 +11,8 @@ from frappe.tests import IntegrationTestCase
 
 from steuerbote.steuerbote import deadlines
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import reminder_name
+from steuerbote.tests import annual_deadlines
+from steuerbote.tests.annual_deadlines import FILING_DOCTYPE, insert_annual, make_annual_company
 from steuerbote.tests.helpers import (
 	make_account,
 	make_company,
@@ -239,3 +242,119 @@ class TestDeadlineReminder(IntegrationTestCase):
 		first.period_label = "2028"
 		with self.assertRaisesRegex(frappe.ValidationError, "cannot be changed"):
 			first.save(ignore_permissions=True)
+
+
+# Files no Voranmeldung, keeps its annual filings in Steuerbote since 4 January 2027 and has no Steuerberatung; its
+# VAT Return Settings name the recipients and fourteen days of notice.
+ANNUAL_COMPANY = "Steuerbote Test Jahreserinnerung GmbH"
+# Has Annual Filing Settings, but no VAT Return Settings, and so nobody to remind.
+ANNUAL_ONLY = "Steuerbote Test Jahreserinnerung ohne UStVA GmbH"
+# A Tuesday: the Erklärungen of 2026 are due on Monday, 2 August 2027, in 13 days.
+SUMMER = "2027-07-20 06:00:00"
+ERKLAERUNGEN = date(2027, 8, 2)
+
+
+class TestAnnualDeadlineReminder(IntegrationTestCase):
+	"""The annual deadlines in the reminder, from the test DocTypes in place of those of the annual filings."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		annual_deadlines.install()
+		make_annual_company(ANNUAL_COMPANY, "STFA", "2027-01-04 08:00:00")
+		make_settings(ANNUAL_COMPANY, [(2026, "none", 1)], deadline_recipients=RECIPIENTS, reminder_days=14)
+		make_annual_company(ANNUAL_ONLY, "STFU", "2027-01-04 08:00:00")
+
+	def setUp(self):
+		frappe.db.savepoint("annual_deadline_reminder_test")
+		self.addCleanup(frappe.db.rollback, save_point="annual_deadline_reminder_test")
+		self.enterContext(annual_deadlines.use_test_doctypes())
+
+	def send(self, day: str = SUMMER):
+		with self.freeze_time(day), patch.object(frappe, "sendmail") as sendmail:
+			deadlines.send_reminders()
+		return sendmail
+
+	def error_logs(self, company: str) -> set[str]:
+		return set(frappe.get_all("Error Log", filters={"reference_name": company}, pluck="name"))
+
+	def mail_to(self, sendmail, company: str) -> dict | None:
+		found = [call.kwargs for call in sendmail.call_args_list if call.kwargs["reference_name"] == company]
+		return found[0] if found else None
+
+	def reminders(self, company: str = ANNUAL_COMPANY) -> set[tuple]:
+		return {
+			(row.kind, row.period_label, row.due_date, row.sent_on)
+			for row in frappe.get_all(
+				"Deadline Reminder",
+				filters={"company": company},
+				fields=["kind", "period_label", "due_date", "sent_on"],
+			)
+		}
+
+	def test_reminds_of_the_annual_deadlines_with_their_notes(self):
+		mail = self.mail_to(self.send(), ANNUAL_COMPANY)
+		message = mail["message"]
+		self.assertIn(
+			"<th>Art</th><th>Zeitraum</th><th>Fällig am</th><th>Tage</th><th>Status</th><th>Beleg</th>"
+			"<th>Stand des Belegs</th><th>Hinweis</th>",
+			message,
+		)
+		for kind in ("Umsatzsteuererklärung", "Körperschaftsteuererklärung", "Gewerbesteuererklärung"):
+			with self.subTest(kind=kind):
+				self.assertIn(
+					f"<td>{kind}</td><td>2026</td><td>02.08.2027</td><td>13</td><td>Fehlt</td>", message
+				)
+		self.assertIn("<td></td><td>Keine eigene Frist: mit der Körperschaftsteuererklärung</td>", message)
+		self.assertIn(
+			"/desk/steuerbote-test-annual-filing/new?company=Steuerbote+Test+Jahreserinnerung+GmbH&amp;year=2026"
+			'">Erstellen</a>',
+			message,
+		)
+		self.assertNotIn("Feststellung Jahresabschluss", message)
+		self.assertEqual(
+			self.reminders(),
+			{
+				(kind, "2026", ERKLAERUNGEN, date(2027, 7, 20))
+				for kind in (
+					"Umsatzsteuererklärung",
+					"Körperschaftsteuererklärung",
+					"Gewerbesteuererklärung",
+					"E-Bilanz",
+				)
+			},
+		)
+
+	def test_leaves_out_what_is_filed(self):
+		insert_annual(
+			FILING_DOCTYPE, ANNUAL_COMPANY, "Abgegeben", 1, filed_via="other_way", filed_on="2027-07-15"
+		)
+		message = self.mail_to(self.send(), ANNUAL_COMPANY)["message"]
+		self.assertNotIn("<td>Körperschaftsteuererklärung</td>", message)
+		self.assertIn("<td>E-Bilanz</td><td>2026</td><td>02.08.2027</td><td>13</td><td>Fehlt</td>", message)
+		self.assertEqual({row[0] for row in self.reminders()}, {"E-Bilanz"})
+
+	def test_names_the_state_of_the_document_of_an_open_deadline(self):
+		draft = insert_annual(FILING_DOCTYPE, ANNUAL_COMPANY, "Berechnet")
+		message = self.mail_to(self.send(), ANNUAL_COMPANY)["message"]
+		self.assertIn(
+			f'/desk/steuerbote-test-annual-filing/{draft}">{draft}</a></td><td>Berechnet</td><td></td>',
+			message,
+		)
+
+	def test_a_company_without_vat_return_settings_has_nobody_to_remind(self):
+		logged = self.error_logs(ANNUAL_ONLY)
+		self.assertIsNone(self.mail_to(self.send(), ANNUAL_ONLY))
+		self.assertEqual(self.reminders(ANNUAL_ONLY), set())
+		self.assertEqual(self.error_logs(ANNUAL_ONLY), logged)
+		with patch.object(frappe, "sendmail") as sendmail:
+			self.assertFalse(deadlines.remind(ANNUAL_ONLY, date(2027, 7, 20)))
+		sendmail.assert_not_called()
+
+	def test_the_job_asks_every_company_with_vat_return_or_annual_filing_settings(self):
+		asked = []
+		with patch.object(deadlines, "remind", lambda company, today: asked.append(company)):
+			self.send()
+		self.assertIn(ANNUAL_COMPANY, asked)
+		self.assertIn(ANNUAL_ONLY, asked)
+		self.assertEqual(asked, sorted(set(asked)))

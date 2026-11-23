@@ -17,6 +17,9 @@ The rules and their sources are those of the cores; this module asks them period
   has it, and later for a company whose Voranmeldungen begin later in the year. A quarterly filer applies for
   the extension once and pays no Sondervorauszahlung (§ 47 Absatz 1 UStDV), so it owes nothing here.
 
+The annual filings, from the Umsatzsteuererklärung to the Offenlegung of the Jahresabschluss, are the kinds of
+steuerbote.deadlines.annual, which owes them from the Annual Filing Settings.
+
 This module is pure Python and never imports Frappe.
 """
 
@@ -24,12 +27,16 @@ from collections.abc import Collection, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from steuerbote import dauerfrist
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
 from steuerbote.ustva.period import Period, Rhythm
 from steuerbote.zm import rhythm as zm_rhythm
 from steuerbote.zm.period import ReportingPeriod
+
+if TYPE_CHECKING:
+	from steuerbote.deadlines.annual import Note, OpeningBalance
 
 MONTHS_PER_YEAR = 12
 
@@ -40,21 +47,30 @@ class Kind(Enum):
 	VORANMELDUNG = "Umsatzsteuer-Voranmeldung"
 	ZUSAMMENFASSENDE_MELDUNG = "Zusammenfassende Meldung"
 	SONDERVORAUSZAHLUNG = "Sondervorauszahlung"
+	UMSATZSTEUERERKLAERUNG = "Umsatzsteuererklärung"
+	KOERPERSCHAFTSTEUERERKLAERUNG = "Körperschaftsteuererklärung"
+	GEWERBESTEUERERKLAERUNG = "Gewerbesteuererklärung"
+	E_BILANZ = "E-Bilanz"
+	FESTSTELLUNG = "Feststellung Jahresabschluss"
+	OFFENLEGUNG = "Offenlegung Jahresabschluss"
 
 
 @dataclass(frozen=True, slots=True)
 class Obligation:
 	"""A filing the settings owe: its kind, its period, the label of the period and the day it is due.
 
-	``period`` is the Voranmeldungszeitraum, the Meldezeitraum or, for the Sondervorauszahlung, the year it is
-	paid for. ``coverage`` holds the months a Meldezeitraum reports and is None for the other kinds.
+	``period`` is the Voranmeldungszeitraum, the Meldezeitraum or, for the Sondervorauszahlung and the annual filings,
+	the year; the Eröffnungsbilanz of the founding year has a period of its own beside the year of the E-Bilanz.
+	``coverage`` holds the months a Meldezeitraum reports and is None for the other kinds. ``notes`` say what the day
+	rests on where it is more than the rule of its kind, such as a Steuerberatung or an unknown size class.
 	"""
 
 	kind: Kind
-	period: Period | ReportingPeriod | int
+	period: Period | ReportingPeriod | int | OpeningBalance
 	label: str
 	due: date
 	coverage: zm_rhythm.Coverage | None = None
+	notes: tuple[Note, ...] = ()
 
 
 def obligations(
