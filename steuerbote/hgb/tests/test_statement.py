@@ -1,5 +1,6 @@
 """The balance sheet and the income statement of a size class from the balances of the books."""
 
+import random
 from decimal import Decimal
 from unittest import TestCase
 
@@ -13,6 +14,7 @@ from steuerbote.hgb.statement import (
 	Severity,
 	build,
 	entered,
+	in_full_euros,
 	ug_reserve_minimum,
 )
 
@@ -743,3 +745,161 @@ class UgReserveTest(TestCase):
 	):
 		self.assertEqual(ug_reserve_minimum(Decimal("800.00"), Decimal("-1000.00")), Decimal("0.00"))
 		self.assertEqual(ug_reserve_minimum(Decimal("-500.00"), Decimal("4000.00")), Decimal("0.00"))
+
+
+EURO = Decimal("1")
+
+
+def whole(value: Decimal | None) -> bool:
+	return value is None or value == value.quantize(EURO)
+
+
+def visible_children(sheet, lines):
+	"""Each line of a side with the lines right under it among those the class shows."""
+	concepts = {line.position.concept for line in lines}
+	children: dict[str, list] = {line.position.concept: [] for line in lines}
+	for line in lines:
+		parent = sheet.scheme.parent(line.position.concept)
+		while parent is not None and parent.concept not in concepts:
+			parent = sheet.scheme.parent(parent.concept)
+		if parent is not None:
+			children[parent.concept].append(line)
+	return children
+
+
+class FullEurosTest(TestCase):
+	"""The Jahresabschluss of the Offenlegung in full euros, with every total still the sum of its lines."""
+
+	def test_rounds_every_line_to_full_euros_and_keeps_the_sums(self):
+		statement = in_full_euros(build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS))
+		sheet = statement.balance_sheet
+		self.assertEqual(
+			[(line.position.concept, line.amount) for line in sheet.aktiva if line.amount],
+			[
+				("bs.ass.currAss", Decimal("44280")),
+				("bs.ass.currAss.receiv", Decimal("6350")),
+				("bs.ass.currAss.cashEquiv", Decimal("37930")),
+			],
+		)
+		self.assertEqual((sheet.aktiva_total, sheet.passiva_total), (Decimal("44280"),) * 2)
+		self.assertEqual(sheet.line("bs.eqLiab.equity.subscribed").amount, Decimal("25000"))
+
+	def test_the_jahresueberschuss_of_both_statements_stays_the_same(self):
+		books = (*BOOKS, Balance(SALES_19, Decimal("-0.40")), Balance(BANK, Decimal("0.40")))
+		statement = in_full_euros(build(2026, SizeClass.KLEIN, books, parents=PARENTS))
+		self.assertEqual(statement.income_statement.net_income, Decimal("10500"))
+		self.assertEqual(statement.balance_sheet.line("bs.eqLiab.equity.netIncome").amount, Decimal("10500"))
+		self.assertEqual(statement.income_statement.line(SALES).amount, Decimal("60000"))
+		self.assertEqual(statement.income_statement.sales, Decimal("60000"))
+
+	def test_rounds_the_vermerke_within_their_lines(self):
+		books = (
+			Balance(BANK, Decimal("2681.20")),
+			Balance(TRADE_PAYABLES, Decimal("-2380.60"), remaining_term=SHORT),
+			Balance(SHAREHOLDER_LOAN, Decimal("-300.60"), remaining_term=LONG),
+		)
+		line = in_full_euros(build(2026, SizeClass.KLEIN, books, parents=PARENTS)).balance_sheet.line(
+			"bs.eqLiab.liab"
+		)
+		self.assertEqual(line.amount, Decimal("2681"))
+		self.assertEqual(
+			vermerke(line),
+			{
+				VermerkKind.LIABILITIES_UP_TO_ONE_YEAR: Decimal("2380"),
+				VermerkKind.LIABILITIES_OVER_ONE_YEAR: Decimal("301"),
+				VermerkKind.SHAREHOLDERS: Decimal("301"),
+			},
+		)
+
+	def test_rounds_the_previous_year_and_the_figures_of_the_size_criteria_too(self):
+		prior = (*PRIOR_BOOKS, Balance(BANK, Decimal("0.60")), Balance(SALES_19, Decimal("-0.60")))
+		statement = in_full_euros(build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS, prior=prior))
+		sheet, income = statement.balance_sheet, statement.income_statement
+		self.assertEqual(sheet.line("bs.ass.currAss.cashEquiv").prior, Decimal("27001"))
+		self.assertEqual(
+			(sheet.prior_aktiva_total, sheet.prior_passiva_total, sheet.prior_bilanzsumme),
+			(Decimal("30001"),) * 3,
+		)
+		self.assertEqual((income.prior_net_income, income.prior_sales), (Decimal("3001"), Decimal("40001")))
+		self.assertEqual(
+			(sheet.bilanzsumme, sheet.equity, sheet.deficit),
+			(Decimal("44280"), Decimal("38500"), Decimal("0")),
+		)
+
+	def test_keeps_the_findings(self):
+		books = (*BOOKS, Balance("bs.unknown.concept", Decimal("5.00")))
+		statement = build(2026, SizeClass.KLEIN, books, parents=PARENTS)
+		self.assertEqual(in_full_euros(statement).findings, statement.findings)
+
+	def test_every_line_stays_within_a_euro_and_every_total_the_sum_of_its_lines(self):
+		randomness = random.Random(20261231)  # noqa: S311 - invented books, repeatable, no secret
+		for round_ in range(60):
+			books = random_books(randomness)
+			prior = random_books(randomness)
+			for size_class in (SizeClass.KLEINST, SizeClass.KLEIN, SizeClass.GROSS):
+				exact = build(2026, size_class, books, parents=VERMERK_PARENTS, prior=prior)
+				rounded = in_full_euros(exact)
+				with self.subTest(round=round_, size_class=size_class):
+					self.check_full_euros(exact, rounded)
+
+	def check_full_euros(self, exact, rounded):
+		sheet = rounded.balance_sheet
+		self.assertEqual(sheet.aktiva_total, sheet.passiva_total)
+		self.assertEqual(sheet.prior_aktiva_total, sheet.prior_passiva_total)
+		for exact_lines, lines in (
+			(exact.balance_sheet.aktiva, sheet.aktiva),
+			(exact.balance_sheet.passiva, sheet.passiva),
+			(exact.income_statement.lines, rounded.income_statement.lines),
+		):
+			for before, after in zip(exact_lines, lines, strict=True):
+				self.assertTrue(whole(after.amount) and whole(after.prior))
+				self.assertLess(abs(after.amount - before.amount), EURO)
+				self.assertLess(abs(after.prior - before.prior), EURO)
+				for vermerk in after.vermerke:
+					self.assertTrue(whole(vermerk.amount) and whole(vermerk.prior))
+		for lines in (sheet.aktiva, sheet.passiva):
+			for concept, children in visible_children(sheet, lines).items():
+				if children:
+					line = sheet.line(concept)
+					self.assertEqual(line.amount, sum(child.amount for child in children))
+					self.assertEqual(line.prior, sum(child.prior for child in children))
+		income = rounded.income_statement
+		self.assertEqual(income.line("is.netIncome").amount, income.net_income)
+		self.assertEqual(
+			income.net_income,
+			income.line("is.netIncome.eat").amount - income.line("is.netIncome.otherTaxes").amount,
+		)
+		if sheet.size_class is not SizeClass.KLEINST:
+			self.assertEqual(sheet.line("bs.eqLiab.equity.netIncome").amount, income.net_income)
+			self.assertEqual(sheet.line("bs.eqLiab.equity.netIncome").prior, income.prior_net_income)
+
+
+def random_books(randomness: random.Random) -> tuple[Balance, ...]:
+	"""Invented books with cents everywhere that balance, as books do."""
+
+	def cents(low: int, high: int) -> Decimal:
+		return Decimal(randomness.randint(low * 100, high * 100)) / 100
+
+	sales, rent, salaries, pensions = cents(10000, 90000), cents(0, 20000), cents(0, 50000), cents(0, 3000)
+	receivables, loan, payables, social, other = (
+		cents(0, 9000),
+		cents(0, 5000),
+		cents(0, 7000),
+		cents(0, 2000),
+		cents(0, 900),
+	)
+	net_income = sales - rent - salaries - pensions
+	bank = Decimal("25000") + net_income + payables + social + other - receivables - loan
+	return (
+		Balance(BANK, bank),
+		Balance(TRADE_RECEIVABLES, receivables, remaining_term=SHORT),
+		Balance(LOAN_RECEIVABLE, loan, remaining_term=LONG),
+		Balance(SUBSCRIBED, Decimal("-25000")),
+		Balance(TRADE_PAYABLES, -payables, remaining_term=SHORT),
+		Balance(SOCIAL_SECURITY, -social, remaining_term=SHORT),
+		Balance("bs.eqLiab.liab.other.other", -other, shareholder=True, remaining_term=LONG),
+		Balance(SALES_19, -sales),
+		Balance(RENT, rent),
+		Balance(MANAGER, salaries),
+		Balance(PENSIONS, pensions),
+	)
