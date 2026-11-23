@@ -10,6 +10,7 @@ from unittest import TestCase
 
 from steuerbote.jahresmeldung import findings
 from steuerbote.jahresmeldung.findings import Severity
+from steuerbote.jahresmeldung.lifecycle import ACCOUNTS, FILING, standard_fields
 
 APP = Path(__file__).resolve().parents[1]
 MODULE = APP / "steuerbote"
@@ -19,6 +20,11 @@ TRANSLATIONS = APP / "translations" / "de.csv"
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 # Labels Frappe translates itself; the app keeps out of their translations.
 FRAMEWORK_LABELS = frozenset({"Code", "Discard", "Kind", "Message", "Reference", "Remarks"})
+# The labels of the standard fields that Frappe and ERPNext translate themselves (frappe/locale/de.po and
+# erpnext/locale/de.po of version 16), and Transferticket, which is German already.
+STANDARD_LABELS_OF_THE_FRAMEWORK = frozenset(
+	{"Due Date", "Fiscal Year", "From Date", "Remarks", "Status", "To Date", "Transferticket"}
+)
 
 
 def read_json(path: Path) -> dict:
@@ -95,6 +101,15 @@ class BaseFilesTest(TestCase):
 
 	def test_the_framework_labels_are_left_to_the_framework(self):
 		self.assertEqual(sorted(FRAMEWORK_LABELS & translated()), [])
+
+	def test_every_label_of_the_standard_fields_is_translated(self):
+		labels = {
+			field.label
+			for lifecycle in (FILING, ACCOUNTS)
+			for field in standard_fields(lifecycle, "Annual VAT Return", transmits=True)
+		}
+		self.assertIn("Correction", labels)
+		self.assertEqual(sorted(labels - translated() - STANDARD_LABELS_OF_THE_FRAMEWORK), [])
 
 
 SCRIPT = APP / "public" / "js" / "annual_filing.js"
@@ -296,3 +311,90 @@ class HooksFilesTest(TestCase):
 	def test_names_no_doctype_the_app_does_not_bring(self):
 		"""The record of the deletion links each name to its DocType and refuses one that does not exist."""
 		self.assertEqual(sorted(set(self.kept) - doctypes_of_the_app()), [])
+
+
+DOCS = APP.parent / "docs"
+PAGE = DOCS / "jahresmeldungen.md"
+ARCHITECTURE = DOCS / "architektur.md"
+TRANSMISSION_DOCS = DOCS / "uebermittlung.md"
+TRANSMISSION_DOCTYPE = MODULE / "doctype" / "elster_transmission"
+
+
+def public_members(source: str, name: str) -> list[str]:
+	"""The attributes and methods of a class of a Python module that do not start with an underscore."""
+	(cls,) = (node for node in ast.parse(source).body if isinstance(node, ast.ClassDef) and node.name == name)
+	members = []
+	for node in cls.body:
+		if isinstance(node, ast.FunctionDef):
+			members.append(node.name)
+		elif isinstance(node, ast.AnnAssign):
+			members.append(node.target.id)
+		elif isinstance(node, ast.Assign):
+			members.extend(target.id for target in node.targets)
+	return [member for member in members if not member.startswith("_")]
+
+
+def documented(text: str) -> set[str]:
+	"""The names a page writes as code outside its code blocks, a call such as `move_on(event)` by its name."""
+	prose = re.sub(r"^```.*?^```$", "", text, flags=re.DOTALL | re.MULTILINE)
+	return {re.sub(r"\(.*\)$", "", name) for name in re.findall(r"`([^`]+)`", prose)}
+
+
+class DocsFilesTest(TestCase):
+	"""docs/jahresmeldungen.md names what a module of an annual document builds on, and the architecture and the page
+	on the transmission to ELSTER name the base and what it changed of the ELSTER Transmission."""
+
+	def setUp(self):
+		self.page = documented(PAGE.read_text(encoding="utf-8"))
+		self.base = BASE.read_text(encoding="utf-8")
+
+	def test_names_every_hook_attribute_and_method_of_the_base(self):
+		members = public_members(self.base, "AnnualFiling")
+		self.assertIn("compute", members)
+		self.assertEqual(sorted(set(members) - self.page), [])
+
+	def test_names_what_berechnen_of_a_module_returns(self):
+		self.assertEqual(sorted({"Calculation", *public_members(self.base, "Calculation")} - self.page), [])
+
+	def test_names_the_functions_and_texts_a_form_hands_the_script(self):
+		scripts = SCRIPT.read_text(encoding="utf-8") + TRANSMISSION_SCRIPT.read_text(encoding="utf-8")
+		texts = set(re.findall(r"\btexts\.(\w+)", scripts))
+		self.assertTrue({"berichtigung", "send"} <= texts)
+		self.assertEqual(sorted({"annual_filing_setup", "annual_filing_refresh", *texts} - self.page), [])
+
+	def test_names_every_print_include_and_what_it_reads(self):
+		(body,) = re.findall(
+			r"def annual_print\(self\) -> dict\[str, Any\]:(.*?)\n\tdef ", self.base, re.DOTALL
+		)
+		read = {f"{part}.html" for part in PARTS} | set(re.findall(r'"(\w+)":', body)) | {"head_rows"}
+		self.assertEqual(sorted(read - self.page), [])
+
+	def test_the_architecture_names_the_base_and_links_its_page(self):
+		text = ARCHITECTURE.read_text(encoding="utf-8")
+		self.assertIn("| `steuerbote/steuerbote/annual_filing.py` |", text)
+		self.assertIn("](jahresmeldungen.md)", text)
+
+	def test_the_architecture_names_every_document_of_the_elster_transmission(self):
+		source = (TRANSMISSION_DOCTYPE / "elster_transmission.py").read_text(encoding="utf-8")
+		(assignment,) = (
+			node
+			for node in ast.parse(source).body
+			if isinstance(node, ast.Assign) and [target.id for target in node.targets] == ["DOCUMENT_TYPES"]
+		)
+		document_types = [element.value for element in assignment.value.elts]
+		self.assertIn("Electronic Balance Sheet", document_types)
+		(row,) = (
+			line
+			for line in ARCHITECTURE.read_text(encoding="utf-8").splitlines()
+			if line.startswith("| `document_type`, `document`, `company` |")
+		)
+		self.assertEqual(sorted(set(document_types) - documented(row)), [])
+
+	def test_the_docs_name_the_printout_by_the_label_of_its_field(self):
+		fields = read_json(TRANSMISSION_DOCTYPE / "elster_transmission.json")["fields"]
+		(label,) = (field["label"] for field in fields if field["fieldname"] == "protocol_pdf")
+		with TRANSLATIONS.open(encoding="utf-8", newline="") as file:
+			german = dict(csv.reader(file))[label]
+		for path in (ARCHITECTURE, TRANSMISSION_DOCS):
+			with self.subTest(page=path.name):
+				self.assertIn(german, path.read_text(encoding="utf-8"))
