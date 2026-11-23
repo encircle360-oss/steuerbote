@@ -126,6 +126,17 @@ YEARS: MappingProxyType[int, Year] = MappingProxyType(
 			"https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Steuerarten/Umsatzsteuer/"
 			"2025-12-29-vordruckmuster-USt-voranmeldung-2026.pdf",
 		),
+		# On 23 November 2026 the BMF had published no letter with the forms of 2027, its latest letter being of 13
+		# November 2026, and ERiC 45 was a beta.
+		2027: Year(
+			2027,
+			None,
+			None,
+			None,
+			provisional=True,
+			documentation="Beta ERiC 45.1.5.0",
+			form_year=2026,
+		),
 	}
 )
 LATEST_YEAR = max(YEARS)

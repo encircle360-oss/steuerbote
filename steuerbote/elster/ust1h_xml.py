@@ -35,7 +35,8 @@ into the DatenTeil.
 The rules (JD, sheet "Anmeldungssteuern - Regeln"):
 
 - One context per file (110085099), without Unternehmer, Berater or Mandant, so that Kz 09 holds the Hersteller-ID
-  alone (110085046).
+  alone (110085046); from 2027 its format takes nothing else (Jahresdokumentation_UStVA_2027.ods of the beta ERiC
+  45.1.5.0, which drops that rule).
 - Jahr is the year of the schema (110085130, 110085131) and required (110085048); the Steuernummer of the filer is
   required (110085044), the Wirtschafts-Identifikationsnummer is written when the filer has one (11085154).
 - Kz 09 carries the Hersteller-ID in both contexts (110085045), checked as for the Voranmeldung.

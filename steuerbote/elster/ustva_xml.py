@@ -3,7 +3,10 @@
 Sources are the ERiC documentation 44.3.6.0 (https://download.elster.de/download/eric/eric_44/), cited as
 HB for ERiC-Entwicklerhandbuch.pdf and JD for Jahresdokumentation_UStVA_2026.ods with its rules by
 Fehlercode, and the ELSTER help "Benutzeranleitung zum Hochladen von Formulardaten"
-(https://www.elster.de/eportal/helpGlobal?themaGlobal=ustva_upload, retrieved 18 November 2026).
+(https://www.elster.de/eportal/helpGlobal?themaGlobal=ustva_upload, retrieved 18 November 2026). The schema of
+2027 comes provisionally from the documentation of Beta ERiC 45.1.5.0
+(https://download.elster.de/download/eric/eric_45/): UStVA-2027.xsd orders the elements as UStVA-2026.xsd does and
+gives Kz 09 five digits alone, which is what the writer writes there in every year.
 
 One tree serves both ways of filing:
 
@@ -168,21 +171,29 @@ class Schema:
 		return ("Jahr", "Zeitraum", "Steuernummer", "WIdNr", "Kz09", *kennzahlen, "Kz500_Begruendung")
 
 
-# UStVA-2026.xsd, type Umsatzsteuervoranmeldung_m472961002_CType; JD: Formatkennzeichen % for Kz 37 and
-# Kz 39, U for Kz 50.
+# UStVA-2026.xsd and UStVA-2027.xsd, type Umsatzsteuervoranmeldung_m472961002_CType; JD of both years:
+# Formatkennzeichen % for Kz 37 and Kz 39, U for Kz 50.
+_ORDER_2026 = (
+	*("10", "21", "22", "26", "29", "35", "36", "37", "39", "41", "42", "43", "44", "45", "46"),
+	*("47", "48", "49", "50", "59", "60", "61", "62", "63", "64", "65", "66", "67", "69", "70"),
+	*("73", "74", "76", "77", "80", "81", "83", "84", "85", "86", "87", "89", "91", "93", "90"),
+	*("94", "95", "96", "98", "500"),
+)
+_UNSIGNED_2026 = frozenset({"37", "39", "50"})
 SCHEMAS: MappingProxyType[int, Schema] = MappingProxyType(
 	{
 		2026: Schema(
 			year=2026,
 			namespace="http://finkonsens.de/elster/elsteranmeldung/ustva/v2026",
-			order=(
-				*("10", "21", "22", "26", "29", "35", "36", "37", "39", "41", "42", "43", "44", "45", "46"),
-				*("47", "48", "49", "50", "59", "60", "61", "62", "63", "64", "65", "66", "67", "69", "70"),
-				*("73", "74", "76", "77", "80", "81", "83", "84", "85", "86", "87", "89", "91", "93", "90"),
-				*("94", "95", "96", "98", "500"),
-			),
-			unsigned=frozenset({"37", "39", "50"}),
-		)
+			order=_ORDER_2026,
+			unsigned=_UNSIGNED_2026,
+		),
+		2027: Schema(
+			year=2027,
+			namespace="http://finkonsens.de/elster/elsteranmeldung/ustva/v2027",
+			order=_ORDER_2026,
+			unsigned=_UNSIGNED_2026,
+		),
 	}
 )
 
