@@ -166,6 +166,7 @@ source = [
     "steuerbote.steuerbote.doctype.trade_tax_return.bridge",
     "steuerbote.steuerbote.report.ertragsteuer_kontennachweis.attribution",
     "steuerbote.steuerbote.doctype.annual_accounts.bridge",
+    "steuerbote.steuerbote.doctype.annual_accounts.layout",
 ]
 omit = ["*/tests/*", "*/steuerbote/eric/secrets.py"]
 branch = true
