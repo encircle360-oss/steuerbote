@@ -368,6 +368,24 @@ def festgestellt(answers: Iterable[str] = ()) -> Document:
 	return doc
 
 
+def amended(cancelled: Document) -> Document:
+	"""The amendment of a cancelled Jahresabschluss, calculated on the books of today, which keeps its Angaben and
+	signatories, adopted again on ADOPTED_ON and submitted; call it on a day after the adoption (AFTER_ADOPTION)."""
+	doc = frappe.copy_doc(cancelled)
+	doc.update({"docstatus": 0, "amended_from": cancelled.name})
+	doc.insert()
+	doc.calculate()
+	doc.reload()
+	doc.adopted_on = ADOPTED_ON
+	for row in doc.signatories:
+		row.signed_on = ADOPTED_ON
+	doc.save()
+	doc.calculate()
+	doc.reload()
+	doc.submit()
+	return doc
+
+
 def finding_codes(doc: Document) -> list[str]:
 	return [row.code for row in doc.findings]
 
