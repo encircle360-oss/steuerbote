@@ -1,0 +1,99 @@
+// Steuerbote einrichten: Einrichten sets up the company chosen, and the table says what each step did. The server
+// side is steuerbote/steuerbote/setup.py; ?company= in the address chooses the company.
+
+const SETUP_METHOD = "steuerbote.steuerbote.setup.set_up";
+const OUTCOMES = {
+	created: { label: __("Made"), indicator: "green" },
+	skipped: { label: __("Skipped"), indicator: "gray" },
+	undecided: { label: __("Open"), indicator: "orange" },
+	failed: { label: __("Failed"), indicator: "red" },
+	blocked: { label: __("Not Run"), indicator: "red" },
+};
+
+frappe.pages["steuerbote-setup"].on_page_load = function (wrapper) {
+	const page = frappe.ui.make_app_page({
+		parent: wrapper,
+		title: __("Set Up Steuerbote"),
+		single_column: true,
+	});
+	const company = page.add_field({
+		fieldname: "company",
+		label: __("Company"),
+		fieldtype: "Link",
+		options: "Company",
+		reqd: 1,
+		default: frappe.defaults.get_user_default("Company"),
+	});
+	const report = $('<div class="steuerbote-setup-report"></div>');
+	$(page.main).append(
+		$('<p class="text-muted steuerbote-setup-intro"></p>').text(
+			__(
+				"Makes what a company needs for the Umsatzsteuer-Voranmeldung and leaves what it has: the VAT Return Settings, the VAT Return Mapping with the defaults of SKR03 or SKR04 and, where § 18 Absatz 2 UStG decides it, the first Voranmeldungszeitraum. A second run changes nothing."
+			)
+		),
+		report
+	);
+	page.set_primary_action(__("Set Up"), () => set_up(company.get_value(), report));
+	wrapper.steuerbote_setup = { company };
+};
+
+frappe.pages["steuerbote-setup"].on_page_show = function (wrapper) {
+	const chosen = frappe.route_options && frappe.route_options.company;
+	if (chosen && wrapper.steuerbote_setup) {
+		frappe.route_options = null;
+		wrapper.steuerbote_setup.company.set_value(chosen);
+	}
+};
+
+function set_up(company, report) {
+	if (!company) {
+		frappe.msgprint(__("Choose the company to set up."));
+		return;
+	}
+	frappe
+		.call({ method: SETUP_METHOD, args: { company }, freeze: true, freeze_message: __("Setting up …") })
+		.then((response) => show_report(report, response.message));
+}
+
+function show_report(report, result) {
+	const escape = frappe.utils.escape_html;
+	const rows = result.steps.map((step) => {
+		const outcome = OUTCOMES[step.outcome];
+		const notes = step.notes.map(
+			(note) =>
+				`<li class="${note.open ? "steuerbote-setup-open" : ""}">${
+					note.open ? `<b>${__("Open")}:</b> ` : ""
+				}${escape(note.text)}</li>`
+		);
+		const document = step.doctype
+			? `<a href="${escape(frappe.utils.get_form_link(step.doctype, step.name))}">${escape(
+					step.document_label
+			  )}</a>`
+			: "";
+		return `<tr data-step="${escape(step.key)}">
+			<td>${escape(step.label)}</td>
+			<td><span class="indicator-pill ${outcome.indicator}">${escape(outcome.label)}</span></td>
+			<td><ul class="list-unstyled">${notes.join("")}</ul></td>
+			<td>${document}</td>
+		</tr>`;
+	});
+	const company = escape(result.company);
+	const open = result.steps.some(
+		(step) => !["created", "skipped"].includes(step.outcome) || step.notes.some((note) => note.open)
+	);
+	let summary = result.changed
+		? __("Steuerbote is set up for {0}.", [company])
+		: __("Nothing changed: {0} was set up already.", [company]);
+	if (open) {
+		summary += " " + __("The open points below are still to do.");
+	}
+	report.html(`
+		<p class="steuerbote-setup-summary">${summary}</p>
+		<table class="table table-bordered">
+			<thead><tr><th>${__("Step")}</th><th>${__("Step Outcome")}</th><th>${__("Step Notes")}</th><th>${__(
+				"Document"
+			)}</th></tr></thead>
+			<tbody>${rows.join("")}</tbody>
+		</table>
+	`);
+}

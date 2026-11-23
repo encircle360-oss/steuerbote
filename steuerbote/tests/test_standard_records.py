@@ -117,6 +117,10 @@ def report_names() -> set[str]:
 	return {read_json(path)["name"] for path in (MODULE / "report").glob("*/*.json")}
 
 
+def page_names() -> set[str]:
+	return {read_json(path)["name"] for path in (MODULE / "page").glob("*/*.json")}
+
+
 def doctypes_with_a_list() -> set[str]:
 	"""The DocTypes of the module that are not child tables, the ones Frappe's sidebar links to."""
 	definitions = (read_json(path) for path in (MODULE / "doctype").glob("*/*.json"))
@@ -266,6 +270,7 @@ class WorkspaceFilesTest(TestCase):
 				("DocType", "VAT Return Mapping", "List"),
 				("Report", "UStVA Kennzahlen", ""),
 				("Report", "Offene Fristen", ""),
+				("Page", "steuerbote-setup", ""),
 			},
 		)
 		doctypes = doctype_names() | {DAUERFRIST_DOCTYPE}
@@ -273,6 +278,8 @@ class WorkspaceFilesTest(TestCase):
 			with self.subTest(target=target):
 				if kind == "DocType":
 					self.assertIn(target, doctypes)
+				elif kind == "Page":
+					self.assertIn(target, page_names())
 				else:
 					self.assertIn(target, report_names())
 
@@ -323,6 +330,7 @@ class WorkspaceFilesTest(TestCase):
 				("VAT Return Settings", "List"): "Einstellungen",
 				("VAT Return Mapping", "List"): "Kontenzuordnung",
 				("Offene Fristen", ""): "Offene Fristen",
+				("steuerbote-setup", ""): "Einrichten",
 			},
 		)
 		self.assertEqual([label for label in labels.values() if len(label) > LONGEST_LABEL], [])

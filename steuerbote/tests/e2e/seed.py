@@ -6,7 +6,8 @@ A company with SKR03 accounts, its VAT Return Settings and the mapping of "Vorga
 October 2026, a VAT ID Confirmation, a VAT Return for September filed in Mein ELSTER, a calculated VAT Return and
 Recapitulative Statement for October, a draft Dauerfristverlängerung for 2026, ERiC Settings that simulate and a user
 with the role Accounts User alone. A second company without accounts has the drafts of October and of 2026 that went
-to ELSTER, each with the record of its Senden. Every record is invented (steuerbote/tests/e2e/data.py) and made once,
+to ELSTER, each with the record of its Senden. A third company has SKR03 accounts and nothing else, for Steuerbote
+einrichten. Every record is invented (steuerbote/tests/e2e/data.py) and made once,
 so the seed runs again on the same site without a change; a second run only calculates the documents of the first
 company again. It also marks the setup wizard complete and sets the language of the Administrator and the user to
 German, so that the desk opens as a German accountant sees it. Take a site of its own for it, never one with real
@@ -48,6 +49,13 @@ ACCOUNTS = {
 	"1400": ("Forderungen aus Lieferungen und Leistungen", "Asset"),
 	"1600": ("Verbindlichkeiten aus Lieferungen und Leistungen", "Liability"),
 }
+# SKR03 numbers of the company that Steuerbote einrichten sets up: those that tell the chart and a watched account.
+SETUP_ACCOUNTS = {
+	"8400": ("Erlöse 19 % USt", "Income"),
+	"1776": ("Umsatzsteuer 19 %", "Liability"),
+	"1576": ("Abziehbare Vorsteuer 19 %", "Asset"),
+	"1548": ("Vorsteuer im Folgejahr abziehbar", "Asset"),
+}
 # The default bank account of the company, whose balance a chart of ERPNext's home workspace shows.
 BANK = "1200"
 # The Datenlieferant that the file for Mein ELSTER names.
@@ -72,6 +80,7 @@ def run() -> None:
 	calculate_recapitulative_statement()
 	make_extension()
 	make_sent_drafts()
+	make_setup_company()
 	simulate_eric()
 	make_desk_users()
 	frappe.clear_cache()
@@ -243,6 +252,14 @@ def make_sent_drafts() -> None:
 	sent_once(draft("VAT Return", {**month, "rhythm": "monthly"}), SUCCEEDED, calculate=True)
 	sent_once(draft("Recapitulative Statement", {**month, "period_kind": "month"}), UNKNOWN, calculate=True)
 	sent_once(draft("VAT Return Extension", {"company": company, "year": data.YEAR}), SUCCEEDED)
+
+
+def make_setup_company() -> None:
+	"""The company of Steuerbote einrichten: accounts only. Its browser test removes what an earlier run set up."""
+	make_company(data.SETUP_COMPANY, data.SETUP_ABBR)
+	for number, (name, root_type) in SETUP_ACCOUNTS.items():
+		if not frappe.db.exists("Account", {"company": data.SETUP_COMPANY, "account_number": number}):
+			make_account(data.SETUP_COMPANY, number, name, root_type)
 
 
 def sent_once(doc: Document, status: str, calculate: bool = False) -> None:

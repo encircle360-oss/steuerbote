@@ -15,9 +15,12 @@ SHORTCUTS = (
 	"Neue ZM",
 	"Zusammenf. Meldungen",
 	"USt-IdNr.-Prüfungen",
+	"Einrichten",
 	"Einstellungen",
 	"Kontenzuordnung",
 )
+# The shortcut to the page Steuerbote einrichten, which only a System Manager or an Accounts Manager opens.
+SETUP_SHORTCUT = "Einrichten"
 
 COMPANY = "Steuerbote E2E GmbH"
 ABBR = "STE2E"
@@ -56,6 +59,12 @@ ACCOUNTANT_ROLE = "Accounts User"
 # has an unknown outcome. Each draft keeps all but its remarks.
 SENT_COMPANY = "Steuerbote E2E Gesendet GmbH"
 SENT_ABBR = "STE2G"
+# A third company with SKR03 accounts and nothing else, which the browser test of Steuerbote einrichten sets up.
+SETUP_COMPANY = "Steuerbote E2E Einrichtung GmbH"
+SETUP_ABBR = "STE2S"
+# Its rules, tax checks and watched accounts with the defaults of SKR03: 8400 and 1576, 8400 against 1776, and 1548.
+SETUP_MAPPING = {"rules": 2, "checks": 1, "watched": 1}
+
 # The Transferticket of the accepted Senden, invented in the form of TransferTicketSType of the ELSTER Basisschema.
 TRANSFERTICKET = "e2026e2etransferticketerfunden01"
 # What the form of such a draft says above its fields after ELSTER accepted its Senden.

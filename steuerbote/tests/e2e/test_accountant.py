@@ -1,6 +1,8 @@
 """The desk of a user with the role Accounts User alone: the entry Steuern on the rail and the workspace work for
 it, and what only a System Manager may open stays hidden.
 
+The page Steuerbote einrichten is for a System Manager or an Accounts Manager, so its shortcut stays hidden.
+
 The module imports neither pytest nor Playwright, see conftest.py.
 """
 
@@ -18,7 +20,8 @@ def test_an_accountant_opens_steuern_from_the_rail_of_erpnext(accountant, expect
 	accountant.open_steuern_from_the_rail()
 	page = accountant.page
 	expect(page).to_have_url(re.compile(f"{re.escape(data.WORKSPACE_ROUTE)}$"))
-	expect(page.locator(".shortcut-widget-box")).to_have_count(len(data.SHORTCUTS))
+	expect(page.locator(".shortcut-widget-box")).to_have_count(len(data.SHORTCUTS) - 1)
+	expect(page.locator(f'.shortcut-widget-box[aria-label="{data.SETUP_SHORTCUT}"]')).to_have_count(0)
 	sidebar = page.locator(".body-sidebar")
 	for label in SIDEBAR:
 		expect(sidebar.get_by_text(label, exact=True)).to_be_visible()
