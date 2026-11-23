@@ -626,7 +626,7 @@ Der Beleg „Jahresabschluss“ (`Annual Accounts`) bringt den Kern unter `steue
 - **Feststellung.** `check_filing()` hält „Buchen“ mit `bridge.filing_problems()` an, `on_submit()` und `on_cancel()` schreiben und löschen den Tag der Feststellung in den Einstellungen Jahresmeldungen (`record_adoption`). Übermittlung und Einstellung gehen über `move_on()` der Grundlage, die Felder des Uploads mit `db_set`, denn kein Feld des Belegs ändert sich nach dem Buchen durch ein Speichern.
 - **Offenlegung.** `make_disclosure_preview()` druckt das Druckformat mit dem Merker `offenlegung` als PDF, `make_xbrl()` schreibt mit `xbrl_export.offenlegung()` die Datei oder die Befunde, die sie anhalten, `make_appropriation_entry()` legt die Journalbuchung der Ergebnisverwendung im Entwurf an.
 
-## E-Bilanz
+### E-Bilanz
 
 Der Beleg E-Bilanz (`Electronic Balance Sheet`) bringt den Kern unter `steuerbote/ebilanz` auf die Grundlage der Jahresmeldungen; was er liest, rechnet, prüft und druckt, beschreibt [E-Bilanz](ebilanz.md), die Taxonomie, auf der er rechnet, [HGB-Taxonomie](taxonomie.md). Sein Schlüssel ist Unternehmen, Jahr und Bilanzart (`KEY_FIELDS`), seine Zeilen sind die Positionen (`LINES`), nach dem Namen der Position geschlüsselt (`LINE_COLUMNS`).
 
