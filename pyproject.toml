@@ -107,6 +107,8 @@ testpaths = [
     "steuerbote/mappings",
     "steuerbote/jahresmeldung",
     "steuerbote/xbrl",
+    "steuerbote/steuerbote/doctype/annual_vat_return/test_annual_vat_return_files.py",
+    "steuerbote/steuerbote/doctype/annual_vat_return/test_bridge.py",
 ]
 # The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
 addopts = "--strict-markers --ignore=steuerbote/eric/tests/test_secrets.py"
