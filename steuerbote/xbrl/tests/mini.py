@@ -4,9 +4,9 @@ The real package may not be passed on, so the tests of steuerbote/xbrl run again
 german-gaap-taxonomy-v6.9-2025-04-01-xbrl.zip: the modules de-gcd-2025-04-01 and de-gaap-ci-2025-04-01, each with its
 schema, entry points and linkbases, a role schema reached by a relative path into the other module, labels with a
 fiscal variant that prohibits and replaces some of them, the fiscal references with Mussfelder, legal forms, GuV
-formats and „notPermittedFor“, validity dates, tuples with sequences and choices, and the table of the Anlagenspiegel
-with its hypercube, dimensions and primary items. A file of the Konzernsicht (-group) is in the package but in no entry
-point Steuerbote reads, as in the real one.
+formats, „notPermittedFor“ and the positions of a Sonder- or Ergänzungsbilanz, validity dates, tuples with sequences
+and choices, the Anhang, and the table of the Anlagenspiegel with its hypercube, dimensions and primary items. A file
+of the Konzernsicht (-group) is in the package but in no entry point Steuerbote reads, as in the real one.
 
 The labels and amounts are invented; the names follow the real taxonomy where a test needs a familiar position, and
 are made up elsewhere. ``write(directory)`` writes the package, ``archive(directory)`` zips it as esteuer.de
@@ -194,6 +194,7 @@ GCD_CONCEPTS: list[Concept] = [
 			f"reportElements.STU|requirement={MUSS}",
 			f"reportElements.EB|requirement={MUSS}",
 			f"reportElements.SGE|requirement={MUSS};forms=EU,PG",
+			"reportElements.SA",
 		),
 		group_max="unbounded",
 		requirement=MUSS,
@@ -319,6 +320,14 @@ GCD_CONCEPTS: list[Concept] = [
 		legal_forms=("PG",),
 		requirement=MUSS,
 	),
+	tuple_of(
+		"genInfo.report.id.accordingTo",
+		"Bericht gehört zu",
+		"sequence",
+		Particle("de-gcd:genInfo.report.id.accordingTo.name"),
+		sonder_ergaenzung_only=True,
+	),
+	item("genInfo.report.id.accordingTo.name", "Name Gesamthand", type=STRING, period="duration"),
 ]
 
 GAAP_CONCEPTS: list[Concept] = [
@@ -400,6 +409,20 @@ GAAP_CONCEPTS: list[Concept] = [
 	item(
 		"bs.eqLiab.equity.netIncome", "Jahresüberschuss/Jahresfehlbetrag", balance="credit", requirement=MUSS
 	),
+	item(
+		"bs.eqLiab.equity.netIncome.taxBalanceGenerally",
+		"Eigenkapital, steuerlicher Ausgleichsposten",
+		balance="credit",
+		requirement=SUMME,
+		not_permitted=("handelsrechtlich",),
+	),
+	item(
+		"bs.eqLiab.equity.netIncome.taxBalanceGenerally.changePresentYear",
+		"steuerlicher Ausgleichsposten, Zuführungen/Minderungen lfd. Jahr",
+		balance="credit",
+		requirement=RECHNERISCH,
+		not_permitted=("handelsrechtlich",),
+	),
 	item("bs.eqLiab.liab", "Verbindlichkeiten", balance="credit", requirement=SUMME),
 	item(
 		"bs.eqLiab.liab.bank",
@@ -412,6 +435,12 @@ GAAP_CONCEPTS: list[Concept] = [
 		"davon mit einer Restlaufzeit bis zu einem Jahr",
 		balance="credit",
 		requirement=None,
+	),
+	item(
+		"bs.eqLiab.liab.colEntity",
+		"Verbindlichkeiten gegenüber Gesellschaft/Gesamthand",
+		balance="credit",
+		sonder_ergaenzung_only=True,
 	),
 	item(
 		"is.netIncome",
@@ -469,6 +498,9 @@ GAAP_CONCEPTS: list[Concept] = [
 		period="duration",
 		requirement=MUSS,
 	),
+	item("nt", "Anhang", type=STRING, period="duration"),
+	item("nt.reg", "Anlagenverzeichnis", type=STRING, period="duration"),
+	item("nt.otherInfo", "Sonstige Angaben", type=STRING, period="duration"),
 	item(
 		"detailedInformation",
 		"Detailinformationen zu Positionen",
@@ -601,9 +633,12 @@ BALANCE_SHEET_PRESENTATION = _relations(
 	bs.eqLiab.equity.subscribed > bs.eqLiab.equity.subscribed.corp
 	bs.eqLiab.equity.subscribed > bs.eqLiab.equity.subscribed.limitedLiablePartners
 	bs.eqLiab.equity > bs.eqLiab.equity.netIncome
+	bs.eqLiab.equity > bs.eqLiab.equity.netIncome.taxBalanceGenerally
+	bs.eqLiab.equity.netIncome.taxBalanceGenerally > bs.eqLiab.equity.netIncome.taxBalanceGenerally.changePresentYear
 	bs.eqLiab > bs.eqLiab.liab
 	bs.eqLiab.liab > bs.eqLiab.liab.bank
 	bs.eqLiab.liab.bank > bs.eqLiab.liab.bank.upTo1year
+	bs.eqLiab.liab > bs.eqLiab.liab.colEntity
 	"""
 )
 BALANCE_SHEET_CALCULATION = _relations(
@@ -625,8 +660,11 @@ BALANCE_SHEET_CALCULATION = _relations(
 	bs.eqLiab.equity.subscribed > bs.eqLiab.equity.subscribed.corp
 	bs.eqLiab.equity.subscribed > bs.eqLiab.equity.subscribed.limitedLiablePartners
 	bs.eqLiab.equity > bs.eqLiab.equity.netIncome
+	bs.eqLiab.equity > bs.eqLiab.equity.netIncome.taxBalanceGenerally
+	bs.eqLiab.equity.netIncome.taxBalanceGenerally > bs.eqLiab.equity.netIncome.taxBalanceGenerally.changePresentYear
 	bs.eqLiab > bs.eqLiab.liab
 	bs.eqLiab.liab > bs.eqLiab.liab.bank
+	bs.eqLiab.liab > bs.eqLiab.liab.colEntity
 	"""
 )
 INCOME_STATEMENT_ARCS = _relations(
@@ -638,6 +676,13 @@ INCOME_STATEMENT_ARCS = _relations(
 	"""
 )
 MICROBILG_ARCS = _relations("ismi.netIncome > ismi.netIncome.netSales 1")
+NOTES_ARCS = _relations(
+	"""
+	nt > nt.reg
+	nt > nt.otherInfo
+	"""
+)
+"""The Anhang outside its tables, de-gaap-ci-2025-04-01-presentation-notes.xml."""
 TRANSFERS_TAX_ASSETS_ARCS = _relations(
 	"""
 	BVV.profitLoss > BVV.profitLoss.assetsCurrentYear 1
@@ -707,6 +752,7 @@ GCD_PRESENTATION = _relations(
 	genInfo.report.id.reportElement > genInfo.report.id.reportElement.reportElements.STU
 	genInfo.report.id.reportElement > genInfo.report.id.reportElement.reportElements.EB
 	genInfo.report.id.reportElement > genInfo.report.id.reportElement.reportElements.SGE
+	genInfo.report.id.reportElement > genInfo.report.id.reportElement.reportElements.SA
 	genInfo > genInfo.report.id.statementType
 	genInfo.report.id.statementType > genInfo.report.id.statementType.statementType.E
 	genInfo.report.id.statementType > genInfo.report.id.statementType.statementType.EB
@@ -736,6 +782,8 @@ GCD_PRESENTATION = _relations(
 	genInfo.company.id.shareholder.ShareDivideKey > genInfo.company.id.shareholder.ShareDivideKey.numerator
 	genInfo.company.id.shareholder.ShareDivideKey > genInfo.company.id.shareholder.ShareDivideKey.denominator
 	genInfo > genInfo.company.id.optionKStGs1a
+	genInfo > genInfo.report.id.accordingTo
+	genInfo.report.id.accordingTo > genInfo.report.id.accordingTo.name
 	"""
 )
 FISCAL_LABELS = {
@@ -1215,6 +1263,7 @@ def _gaap_files(directory: Path) -> dict[Path, bytes]:
 			DETAILED_INFORMATION_ARCS,
 			schema_name,
 		),
+		f"{GAAP}-presentation-notes.xml": ("presentation", NOTES, NOTES_ARCS, schema_name),
 		f"{GAAP}-presentation-transfersCommercialCodeToTax.xml": (
 			"presentation",
 			TRANSFERS_TO_TAX,
