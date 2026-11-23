@@ -107,6 +107,12 @@ class Vordruck:
 		"""The fields a filing holds: all but those marked „Internes ERiC Feld“, which ERiC fills itself."""
 		return tuple(row for row in self.fields if row.get(INTERNAL) != YES)
 
+	@property
+	def index_fields(self) -> tuple[str, ...]:
+		"""The names of the fields marked „Indexfeld“, which number the instances of a Vordruck that repeats, such as
+		the Wirtschaftsjahr WJ of Anlage GK."""
+		return tuple(row.get("Name", "") for row in self.fields if row.get("Indexfeld") == YES)
+
 	def rules_of(self, code: str) -> tuple[Row, ...]:
 		"""The rules of the Fehlercode: one, unless the Vordruck has none or the documentation names it twice."""
 		return tuple(row for row in self.rules if row.get("Fehlercode") == code)
@@ -182,13 +188,15 @@ class Leaf:
 @dataclass(frozen=True, slots=True)
 class Schema:
 	"""What <root>-<Jahr>.xsd says: its namespace, the fixed version of the root, the leaves of each Vordruck in the
-	order of its sequences, and the values of each type that enumerates them."""
+	order of its sequences, the values of each type that enumerates them, and the maxOccurs of each Vordruck and
+	context that may repeat, by its path below the root such as GK or KSt1/AE/Einzel."""
 
 	file: str
 	namespace: str | None
 	version: str | None
 	vordrucke: Mapping[str, tuple[Leaf, ...]]
 	enumerations: Mapping[str, tuple[str, ...]]
+	repeats: Mapping[str, str]
 
 
 def find(directory: Path) -> Path:
@@ -273,7 +281,12 @@ def read_schema(path: Path, root: str) -> Schema:
 	elements = {element.get("name"): element.get("type", "") for element in top.iterfind(f"{_XS}element")}
 	root_type = types.get(elements.get(root, ""))
 	version = None if root_type is None else root_type.find(f"{_XS}attribute[@name='version']")
-	vordrucke = {name: tuple(_leaves(types, type_name, ())) for name, type_name in _sequence(root_type)}
+	vordrucke = {name: tuple(_leaves(types, type_name, ())) for name, type_name, _ in _sequence(root_type)}
+	repeats: dict[str, str] = {}
+	for name, type_name, most in _sequence(root_type):
+		if most != "1":
+			repeats[name] = most
+		_repeats(types, type_name, name, repeats)
 	enumerations = {
 		name: values
 		for node in (*top.iter(f"{_XS}complexType"), *top.iter(f"{_XS}simpleType"))
@@ -286,6 +299,7 @@ def read_schema(path: Path, root: str) -> Schema:
 		None if version is None else version.get("fixed"),
 		MappingProxyType(vordrucke),
 		MappingProxyType(enumerations),
+		MappingProxyType(repeats),
 	)
 
 
@@ -339,12 +353,12 @@ def _texts(file: str, sheet: str, rows: Sequence[Sequence[str]]) -> tuple[Text, 
 	return tuple(texts)
 
 
-def _sequence(complex_type: ElementTree.Element | None) -> list[tuple[str, str]]:
-	"""The name and type of each element of the xs:sequence of a complex type, none without one."""
+def _sequence(complex_type: ElementTree.Element | None) -> list[tuple[str, str, str]]:
+	"""The name, type and maxOccurs of each element of the xs:sequence of a complex type, none without one."""
 	if complex_type is None:
 		return []
 	return [
-		(element.get("name", ""), element.get("type", ""))
+		(element.get("name", ""), element.get("type", ""), element.get("maxOccurs", "1"))
 		for element in complex_type.iterfind(f"{_XS}sequence/{_XS}element")
 	]
 
@@ -353,10 +367,25 @@ def _leaves(types: Mapping[str, ElementTree.Element], type_name: str, path: tupl
 	"""The leaves below a complex type: an element whose type has a sequence of its own is a context, any other a
 	field."""
 	found = []
-	for name, child in _sequence(types.get(type_name)):
-		child_type = types.get(child)
-		if child_type is not None and child_type.find(f"{_XS}sequence") is not None:
+	for name, child, _ in _sequence(types.get(type_name)):
+		if _is_context(types, child):
 			found.extend(_leaves(types, child, (*path, name)))
 		else:
 			found.append(Leaf("/".join(path), name, child))
 	return found
+
+
+def _repeats(
+	types: Mapping[str, ElementTree.Element], type_name: str, path: str, found: dict[str, str]
+) -> None:
+	"""The maxOccurs of the contexts below a complex type that may repeat, by their path."""
+	for name, child, most in _sequence(types.get(type_name)):
+		if _is_context(types, child):
+			if most != "1":
+				found[f"{path}/{name}"] = most
+			_repeats(types, child, f"{path}/{name}", found)
+
+
+def _is_context(types: Mapping[str, ElementTree.Element], type_name: str) -> bool:
+	complex_type = types.get(type_name)
+	return complex_type is not None and complex_type.find(f"{_XS}sequence") is not None
