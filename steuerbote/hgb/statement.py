@@ -41,7 +41,10 @@ term of the rule for § 268 Abs. 4 and 5 HGB, the shareholder flag of the rule o
 Abs. 3 GmbHG, a „davon“ concept for the rest (steuerbote.hgb.schemes). A balance without a remaining term where
 the balance sheet of the class notes one is an error, since the Vermerk would be wrong. Where uncalled
 contributions are offset, the position takes the name the law gives it: „der verbleibende Betrag ist als Posten
-„Eingefordertes Kapital“ in der Hauptspalte der Passivseite auszuweisen“ (§ 272 Abs. 1 Satz 2 HGB).
+„Eingefordertes Kapital“ in der Hauptspalte der Passivseite auszuweisen“ (§ 272 Abs. 1 Satz 2 HGB). Own shares
+keep the name: their Nennbetrag is a Vermerk in the Vorspalte (§ 272 Abs. 1a Satz 1 HGB), and the line gives what
+remains. The taxonomy wants both deductions as positive amounts („programmtechnisch abzuziehen“); their Vermerke
+here are negative, in the direction of the Gezeichnetes Kapital.
 
 Ergebnisverwendung. „Die Bilanz darf auch unter Berücksichtigung der vollständigen oder teilweisen Verwendung des
 Jahresergebnisses aufgestellt werden. Wird die Bilanz unter Berücksichtigung der teilweisen Verwendung des
@@ -258,8 +261,8 @@ class IncomeStatement:
 class BalanceSheet:
 	"""The balance sheet of a size class: the lines of each side, their totals, the Eigenkapital and the
 	Bilanzsumme of § 267 Abs. 4a HGB, the totals and the Bilanzsumme also of the previous year, and the Gezeichnetes
-	Kapital at its Nennbetrag before uncalled contributions are offset (§ 272 Abs. 1 Satz 1 und 2 HGB), which a
-	Kleinst shows only within „A. Eigenkapital“."""
+	Kapital at its Nennbetrag before uncalled contributions and own shares are offset (§ 272 Abs. 1 Satz 1 und 2,
+	Abs. 1a Satz 1 HGB), which a Kleinst shows only within „A. Eigenkapital“."""
 
 	scheme: BalanceSheetScheme
 	size_class: SizeClass
@@ -417,8 +420,9 @@ class _Books:
 		self.aktiva_total = self.sheet.amount(balance_scheme.aktiva.concept)
 		self.passiva_total = self.sheet.amount(balance_scheme.passiva.concept)
 		self.bilanzsumme = self.aktiva_total - self.sheet.amount(DEFICIT)
-		uncalled = self.sheet.noted[(SUBSCRIBED, VermerkKind.UNCALLED_CAPITAL)]
-		self.subscribed_capital = self.sheet.amount(SUBSCRIBED) - uncalled
+		offsets = (VermerkKind.UNCALLED_CAPITAL, VermerkKind.OWN_SHARES)
+		offset = sum((self.sheet.noted[(SUBSCRIBED, kind)] for kind in offsets), ZERO)
+		self.subscribed_capital = self.sheet.amount(SUBSCRIBED) - offset
 		if self.aktiva_total != self.passiva_total:
 			self.findings.append(_not_balanced(self.aktiva_total - self.passiva_total))
 

@@ -40,7 +40,9 @@ A Vermerk notes which part of a position is of a kind („davon“), each with i
 - „Anleihen, davon konvertibel“ and „sonstige Verbindlichkeiten, davon aus Steuern, davon im Rahmen der sozialen
   Sicherheit“ (§ 266 Abs. 3 C. 1. and 8. HGB).
 - „Die nicht eingeforderten ausstehenden Einlagen auf das gezeichnete Kapital sind von dem Posten „Gezeichnetes
-  Kapital“ offen abzusetzen“ (§ 272 Abs. 1 Satz 2 HGB).
+  Kapital“ offen abzusetzen“ (§ 272 Abs. 1 Satz 2 HGB), and „Der Nennbetrag oder, falls ein solcher nicht
+  vorhanden ist, der rechnerische Wert von erworbenen eigenen Anteilen ist in der Vorspalte offen von dem Posten
+  „Gezeichnetes Kapital“ abzusetzen.“ (§ 272 Abs. 1a Satz 1 HGB)
 - „ein vorhandener Gewinn- oder Verlustvortrag ist in den Posten „Bilanzgewinn/Bilanzverlust“ einzubeziehen und
   in der Bilanz gesondert anzugeben“ (§ 268 Abs. 1 Satz 2 HGB).
 
@@ -99,6 +101,7 @@ class VermerkKind(Enum):
 	TAXES = "aus Steuern"
 	SOCIAL_SECURITY = "im Rahmen der sozialen Sicherheit"
 	UNCALLED_CAPITAL = "nicht eingeforderte ausstehende Einlagen"
+	OWN_SHARES = "eigene Anteile"
 	PROFIT_CARRIED_FORWARD = "Gewinnvortrag/Verlustvortrag"
 	PENSIONS = "für Altersversorgung"
 	AFFILIATED = "verbundene Unternehmen"
@@ -558,6 +561,13 @@ _PASSIVA_2026 = Position(
 						"bs.eqLiab.equity.subscribed.unpaidCap",
 						"§ 272 Abs. 1 Satz 2 HGB",
 						("bs.eqLiab.equity.subscribed.unpaidCap",),
+					),
+					Vermerk(
+						VermerkKind.OWN_SHARES,
+						"eigene Anteile",
+						"bs.eqLiab.equity.subscribed.ownSharesdeducted",
+						"§ 272 Abs. 1a Satz 1 HGB",
+						("bs.eqLiab.equity.subscribed.ownSharesdeducted",),
 					),
 				),
 			),
