@@ -1,4 +1,5 @@
-"""What the Körperschaftsteuer carries from one year to the next: the Verlustabzug of § 10d EStG (Anlage Verluste).
+"""What the Körperschaftsteuer carries from one year to the next: the Verlustabzug of § 10d EStG (Anlage Verluste)
+and the Termingeschäfte of § 15 Absatz 4 Satz 3 EStG.
 
 § 10d EStG (Stand Art. 1 G v. 15.10.2026 I Nr. 307), which § 8 Absatz 1 KStG applies:
 - Absatz 1 Satz 1: „Negative Einkünfte, die bei der Ermittlung des Gesamtbetrags der Einkünfte nicht ausgeglichen
@@ -32,13 +33,30 @@ the best split.
 
 The 70 % share is that of the VZ (steuerbote.kst.years), the 1 Million Euro is ``Year.loss_unlimited``.
 minimum_taxation() is the rule of both, which § 15 Absatz 4 Satz 2 EStG and § 10a GewStG apply in their own way.
+
+§ 15 Absatz 4 EStG: losses „dürfen weder mit anderen Einkünften aus Gewerbebetrieb noch mit Einkünften aus anderen
+Einkunftsarten ausgeglichen werden; sie dürfen auch nicht nach § 10d abgezogen werden“ (Satz 1), „Die Verluste
+mindern jedoch nach Maßgabe des § 10d die Gewinne, die der Steuerpflichtige in dem unmittelbar vorangegangenen und
+in den folgenden Wirtschaftsjahren ... erzielt hat oder erzielt“ (Satz 2), and Satz 3: „Die Sätze 1 und 2 gelten
+entsprechend für Verluste aus Termingeschäften, durch die der Steuerpflichtige einen Differenzausgleich oder einen
+durch den Wert einer veränderlichen Bezugsgröße bestimmten Geldbetrag oder Vorteil erlangt.“ The gains and losses
+of the year net within the pool; derivatives() adds a net loss back in Anlage GK line 51 (E8002104, „Dazu: Nicht
+ausgleichsfähige Verluste aus Termingeschäften nach § 15 Absatz 4 Satz 3 EStG ...“) and carries it forward, and sets a
+net gain against the carry-forward in line 52 (E8002105, „Davon ab: Verrechnung von Gewinnen aus Termingeschäften
+des laufenden Jahres mit dem Verlustvortrag ...“), after the rule of § 10d as minimum_taxation() applies it. Both
+lines are whole euros without a direction, so half up. Steuerbote does not carry a loss back into the preceding
+year's gains from Termingeschäfte; that and hedges of shares (Satz 5) are for the Steuerberatung.
+
+For the Gewerbesteuer § 15 Absatz 4 EStG does not apply (R 7.1 Absatz 3 Satz 1 Nummer 4 with Absatz 4 Satz 3
+GewStR 2009): steuerbote.gewst.chain reverses lines 51 and 52.
 """
 
 from dataclasses import dataclass
 from decimal import Decimal
 
+from steuerbote.kst.holdings import Amount
 from steuerbote.kst.years import HUNDRED, Year
-from steuerbote.ustva.rounding import EURO, ZERO, ceil_euro, require_decimal
+from steuerbote.ustva.rounding import CENT, EURO, ZERO, ceil_euro, half_up_euro, require_decimal
 
 
 def minimum_taxation(
@@ -119,6 +137,45 @@ def loss_deduction(
 		carry_forward - unlimited - limited,
 		False,
 	)
+
+
+@dataclass(frozen=True, slots=True)
+class Derivatives:
+	"""The Termingeschäfte of the year: the gains and losses in cents, the carry-forward of the pool at the end of the
+	previous VZ and at the end of this one in whole euros, and the lines 51 (``added_back``) and 52 (``offset``)."""
+
+	gains: Decimal
+	losses: Decimal
+	carry_forward: Decimal
+	added_back: Amount
+	offset: Amount
+	remaining: Decimal
+
+	@property
+	def net(self) -> Decimal:
+		return self.gains - self.losses
+
+
+def derivatives(year: Year, gains: Decimal, losses: Decimal, carry_forward: Decimal) -> Derivatives:
+	"""The pool of § 15 Absatz 4 Satz 3 EStG from the categories derivatives_gain and derivatives_loss."""
+	for amount, what in ((gains, "the gains"), (losses, "the losses")):
+		if not require_decimal(amount).is_finite() or amount != amount.quantize(CENT) or amount < ZERO:
+			raise ValueError(
+				f"{what} from Termingeschäfte must be an amount in cents of at least 0, not {amount}"
+			)
+	_require_euros(carry_forward, "the Verlustvortrag of § 15 Absatz 4 EStG")
+	net = gains - losses
+	if net < ZERO:
+		added_back = Amount(-net, half_up_euro(-net))
+		return Derivatives(
+			gains, losses, carry_forward, added_back, _NONE, carry_forward + added_back.declared
+		)
+	first, limited = minimum_taxation(half_up_euro(net), carry_forward, year.loss_unlimited, year.loss_share)
+	offset = Amount(first + limited, first + limited)
+	return Derivatives(gains, losses, carry_forward, _NONE, offset, carry_forward - offset.declared)
+
+
+_NONE = Amount(ZERO, ZERO)
 
 
 def _require_euros(amount: Decimal, what: str, negative: bool = False) -> None:
