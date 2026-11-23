@@ -61,13 +61,50 @@ Positions. check() tells what the rules may not name, against a view of the taxo
 Each Problem has an English template for the form of the mapping and a German sentence for the findings of a
 document, as the findings of steuerbote/xbrl/checks.py and steuerbote/hgb/statement.py read.
 
+Placement. place() puts the balances of the books (Books, as steuerbote/balances.py reads them) on their positions,
+for the balance sheet of a purpose: the Handelsbilanz, the Steuerbilanz or, with Purpose.BOTH, the Einheitsbilanz.
+
+- Signs: „Entspricht die Soll/Haben-Auszeichnung eines Kontos der Soll/Haben-Auszeichnung der Position, dann ist der
+  Kontensaldo unverändert zu weiteren zugeordneten Konten zu addieren ... Bei abweichenden Soll/Haben-Auszeichnungen
+  eines Kontos, ist der Kontosaldo mit „-1“ zu multiplizieren“ (Leitfaden A.13). A balance is debit minus credit; its
+  value is that on a debit position and the negative on a credit one, so Erlösschmälerungen on an account of the
+  Umsatzerlöse lower them. A balance on the other side of a position goes to the position for the opposite balance,
+  where the rule names one, and there counts as it is.
+- A „davon“ position is in no calculation, „Mit „NIL“ übermittelte „leere“ Mussfelder“ aside (Leitfaden B.14.11), and
+  the taxonomy 6.10 holds: „Zu rechnerisch nicht verknüpften Positionen darf das Tupel „Kontensalden zu einer
+  Position“ nicht übermittelt werden“ (Technischer Leitfaden 6.10, B.12.1). A balance on one counts in the position
+  the presentation puts it under, the nearest a calculation holds (Placed.position); the Offenlegung reads the „davon“
+  position itself for its Vermerk (Placed.concept, steuerbote/hgb/statement.py).
+- Completeness: „Der Jahresabschluß hat sämtliche Vermögensgegenstände, Schulden, Rechnungsabgrenzungsposten sowie
+  Aufwendungen und Erträge zu enthalten“ (§ 246 Abs. 1 Satz 1 HGB). A balance on an account without a place in the
+  mapping, on one without an account number, on a watched one at the level blocking and on a refused position is an
+  error, which holds the E-Bilanz and the Jahresabschluss back from „Bereit“ (steuerbote/jahresmeldung/findings.py).
+  A watched account at the level hint, an account outside the Bilanz and the GuV and a rule of another purpose leave
+  their balance out with a hint; the documents check that Aktiva and Passiva still agree.
+- Auffangpositionen, „erkennbar durch die Formulierungen im beschreibenden Text „nicht zuordenbar“ oder „ohne
+  Zuordnung““ (Leitfaden A.10.4), take a balance with a hint, since they serve only where „eine durch Mussfelder
+  vorgegebene Differenzierung ... nicht aus der Buchhaltung ableitbar“ is.
+- With the fiscal year, a position not valid in it is an error: „Die Übermittelbarkeit kann zeitlich eingeschränkt
+  sein“ (Leitfaden B.11, B.14.4.1).
+- The result of earlier fiscal years that no Period Closing Voucher closed (Books.earlier_result) goes to the closing
+  account, as a Period Closing Voucher books it there (closing_account_head of ERPNext 16), with a hint: the
+  Gewinnvortrag or Verlustvortrag (§ 266 Abs. 3 A. IV. HGB). Without a closing account it is an error, since the
+  balance sheet would lack it. The Period Closing Voucher of the fiscal year itself is never read.
+- A view of another version than the mapping names is an error: the positions of a version are the „amtlich
+  vorgeschriebener Datensatz“ of its letter (§ 5b Abs. 1 Satz 1 EStG; steuerbote/xbrl/versions.py).
+
+Findings are those of steuerbote/xbrl/checks.py in kind: a Code, Fehler or Hinweis, a German sentence and its source,
+with the account, the position and the balance they are about.
+
 Errors are MappingError with an English template and its values, which the Frappe layer translates; MESSAGES and the
 templates of REFUSALS are those templates. This module is pure Python and never imports Frappe.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from collections.abc import Mapping as ReadOnlyMapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import date
+from decimal import Decimal
 from enum import StrEnum
 from types import MappingProxyType
 
@@ -77,7 +114,9 @@ from steuerbote.xbrl.taxonomy import (
 	BALANCE_SHEET,
 	GAAP_PREFIX,
 	INCOME_STATEMENT,
+	LABEL,
 	NOT_PERMITTED_SUBMISSION,
+	Balance,
 	IncomeStatementFormat,
 	LegalForm,
 	Taxonomy,
@@ -528,3 +567,365 @@ def _within(taxonomy: Taxonomy, concepts: Iterable[str], scopes: Iterable[str]) 
 
 def _qualified(concept: str) -> str:
 	return concept if ":" in concept else f"{GAAP_PREFIX}:{concept}"
+
+
+ZERO = Decimal(0)
+CATCH_ALL_WORDS = ("nicht zuordenbar", "ohne Zuordnung")
+"""The words that mark an Auffangposition in its label (Leitfaden A.10.4)."""
+COMPLETENESS = "§ 246 Abs. 1 Satz 1 HGB"
+_PURPOSES = MappingProxyType(
+	{Purpose.COMMERCIAL: ("Handelsbilanz", "HB"), Purpose.TAX: ("Steuerbilanz", "SB")}
+)
+
+
+@dataclass(frozen=True, slots=True)
+class AccountBalance:
+	"""The balance of an account of the books: its name in ERPNext, its number, empty without one, its label, its
+	part, and debit and credit in euros and cents."""
+
+	account: str
+	number: str
+	label: str
+	part: Part
+	debit: Decimal = ZERO
+	credit: Decimal = ZERO
+
+	def __post_init__(self) -> None:
+		for name in ("debit", "credit"):
+			if not isinstance(getattr(self, name), Decimal):
+				raise TypeError(f"the {name} of account {self.account} is a Decimal")
+
+	@property
+	def amount(self) -> Decimal:
+		"""Debit minus credit."""
+		return self.debit - self.credit
+
+
+@dataclass(frozen=True, slots=True)
+class Books:
+	"""The balances of a fiscal year or of an Eröffnungsbilanz, and the result of earlier fiscal years that no Period
+	Closing Voucher closed, as debit minus credit of the profit and loss accounts."""
+
+	balances: tuple[AccountBalance, ...] = ()
+	earlier_result: Decimal = ZERO
+
+	def __post_init__(self) -> None:
+		object.__setattr__(self, "balances", tuple(self.balances))
+
+
+class Severity(StrEnum):
+	ERROR = "Fehler"
+	HINT = "Hinweis"
+
+
+class Code(StrEnum):
+	UNPLACED = "BILANZ-OHNE-PLATZ"
+	NO_NUMBER = "BILANZ-OHNE-KONTONUMMER"
+	WATCHED = "BILANZ-BEOBACHTET"
+	EXCLUDED = "BILANZ-AUSSERHALB"
+	PURPOSE = "BILANZ-ABSCHLUSSZWECK"
+	POSITION = "BILANZ-POSITION"
+	NOT_VALID = "BILANZ-NICHT-GUELTIG"
+	CATCH_ALL = "BILANZ-AUFFANGPOSITION"
+	EARLIER_RESULT = "BILANZ-ERGEBNISVORTRAG"
+	NO_CLOSING_ACCOUNT = "BILANZ-ABSCHLUSSKONTO"
+	TAXONOMY = "BILANZ-TAXONOMIE"
+
+
+@dataclass(frozen=True, slots=True)
+class Finding:
+	"""What placing the balances found: a German sentence with its source, and the account (its number, or its name
+	without one), the position and the balance it is about."""
+
+	code: Code
+	severity: Severity
+	text: str
+	source: str
+	account: str = ""
+	concept: str = ""
+	amount: Decimal | None = None
+
+	@property
+	def blocking(self) -> bool:
+		return self.severity is Severity.ERROR
+
+
+@dataclass(frozen=True, slots=True)
+class Placed:
+	"""A balance on its position: ``concept`` is the position the rule gives it, ``position`` the one its value counts
+	in, the same but for a „davon“ position, and ``value`` the balance in the direction of ``position``."""
+
+	balance: AccountBalance
+	rule: Rule
+	concept: str
+	position: str
+	value: Decimal
+
+	@property
+	def amount(self) -> Decimal:
+		return self.balance.amount
+
+
+@dataclass(frozen=True, slots=True)
+class Placement:
+	"""The balances on their positions, those left out of the balance sheet, and what holds it back or wants a
+	look."""
+
+	placed: tuple[Placed, ...]
+	left_out: tuple[AccountBalance, ...]
+	findings: tuple[Finding, ...]
+
+	@property
+	def ready(self) -> bool:
+		"""Whether no finding holds the documents back."""
+		return not any(finding.blocking for finding in self.findings)
+
+
+def place(
+	mapping: Mapping,
+	books: Books,
+	taxonomy: Taxonomy,
+	purpose: Purpose,
+	*,
+	closing_account: str | None = None,
+	fiscal_year: tuple[date, date] | None = None,
+) -> Placement:
+	"""The balances of the books on their positions in the balance sheet of the purpose, with the earlier result on the
+	closing account and, given the fiscal year, only positions valid in it."""
+	findings: list[Finding] = []
+	if taxonomy.version != mapping.taxonomy_version:
+		findings.append(
+			Finding(
+				Code.TAXONOMY,
+				Severity.ERROR,
+				f"Die Bilanzzuordnung nennt die Positionen der HGB-Taxonomie {mapping.taxonomy_version}, der Beleg "
+				f"rechnet mit der Taxonomie {taxonomy.version}.",
+				"§ 5b Abs. 1 Satz 1 EStG",
+			)
+		)
+	balances = _with_earlier_result(books, closing_account, findings)
+	placed: list[Placed] = []
+	left_out: list[AccountBalance] = []
+	for balance in balances:
+		if not balance.amount:
+			continue
+		found = list(_findings_of(mapping, balance, taxonomy, purpose, fiscal_year))
+		item = None if _left_out(found) else _placed(mapping, balance, taxonomy)
+		findings.extend(found)
+		if item is None:
+			left_out.append(balance)
+		else:
+			placed.append(item)
+	return Placement(tuple(placed), tuple(left_out), tuple(findings))
+
+
+def catch_all(taxonomy: Taxonomy, concept: str) -> bool:
+	"""Whether the position is an Auffangposition by the words of its label (Leitfaden A.10.4)."""
+	label = taxonomy.label(_qualified(concept), LABEL)
+	return any(words in label for words in CATCH_ALL_WORDS)
+
+
+def position_of(taxonomy: Taxonomy, concept: str) -> str:
+	"""The position the value of a position counts in: itself where a calculation of its part holds it, else the
+	nearest above it in the presentation that one holds."""
+	part = part_of(taxonomy, concept)
+	name = _qualified(concept)
+	calculation = taxonomy.calculation.get(part.role) if part is not None else None
+	if calculation is None or name in calculation:
+		return _unqualified(name)
+	above = taxonomy.presentation[part.role].ancestors(name)
+	return _unqualified(next((ancestor for ancestor in above if ancestor in calculation), name))
+
+
+def _with_earlier_result(
+	books: Books, closing_account: str | None, findings: list[Finding]
+) -> tuple[AccountBalance, ...]:
+	result = books.earlier_result
+	if not result:
+		return books.balances
+	if closing_account is None:
+		findings.append(
+			Finding(
+				Code.NO_CLOSING_ACCOUNT,
+				Severity.ERROR,
+				"Das Ergebnis früherer Geschäftsjahre schließt kein Periodenabschlussbeleg ab, und kein Abschlusskonto "
+				"nimmt es auf: Buchen Sie den Periodenabschlussbeleg, oder bestimmen Sie das Abschlusskonto in den "
+				"Einstellungen Jahresmeldungen.",
+				"§ 266 Abs. 3 A. IV. HGB",
+				amount=result,
+			)
+		)
+		return books.balances
+	kind = "Verlust" if result > 0 else "Gewinn"
+	findings.append(
+		Finding(
+			Code.EARLIER_RESULT,
+			Severity.HINT,
+			f"Den {kind} früherer Geschäftsjahre schließt kein Periodenabschlussbeleg ab; Steuerbote rechnet ihn wie "
+			f"ein Periodenabschlussbeleg dem Abschlusskonto {closing_account} zu.",
+			"§ 266 Abs. 3 A. IV. HGB",
+			closing_account,
+			amount=result,
+		)
+	)
+	debit, credit = (result, ZERO) if result > 0 else (ZERO, -result)
+	balances = list(books.balances)
+	for index, balance in enumerate(balances):
+		if balance.number == closing_account:
+			balances[index] = replace(balance, debit=balance.debit + debit, credit=balance.credit + credit)
+			return tuple(balances)
+	closing = AccountBalance(closing_account, closing_account, "", Part.BALANCE_SHEET, debit, credit)
+	return (*balances, closing)
+
+
+def _findings_of(
+	mapping: Mapping,
+	balance: AccountBalance,
+	taxonomy: Taxonomy,
+	purpose: Purpose,
+	fiscal_year: tuple[date, date] | None,
+) -> Iterator[Finding]:
+	"""What the balance of an account wants: why it goes to no position, or what to look at where it goes."""
+	name, amount = _named(balance), balance.amount
+	if not balance.number:
+		yield Finding(
+			Code.NO_NUMBER,
+			Severity.ERROR,
+			f"Das Konto {balance.account} hat einen Saldo, aber keine Kontonummer, unter der die Bilanzzuordnung es "
+			"nennen könnte: Geben Sie ihm eine.",
+			COMPLETENESS,
+			balance.account,
+			amount=amount,
+		)
+		return
+	number = balance.number
+	place = mapping.place_of(number)
+	match place:
+		case None:
+			yield Finding(
+				Code.UNPLACED,
+				Severity.ERROR,
+				f"{name} hat einen Saldo, aber keinen Platz in der Bilanzzuordnung: Ordnen Sie es einer Position zu, "
+				"oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt.",
+				COMPLETENESS,
+				number,
+				amount=amount,
+			)
+		case Watched(level=WatchLevel.BLOCKING):
+			yield Finding(
+				Code.WATCHED,
+				Severity.ERROR,
+				f"{name} hat einen Saldo, aber die Bilanzzuordnung beobachtet es ohne Position: Ordnen Sie es einer "
+				"Position zu.",
+				COMPLETENESS,
+				number,
+				amount=amount,
+			)
+		case Watched():
+			yield Finding(
+				Code.WATCHED,
+				Severity.HINT,
+				f"{name} hat einen Saldo; die Bilanzzuordnung beobachtet es ohne Position, sein Saldo geht in keine "
+				"Position ein.",
+				COMPLETENESS,
+				number,
+				amount=amount,
+			)
+		case Excluded(reason=reason):
+			yield Finding(
+				Code.EXCLUDED,
+				Severity.HINT,
+				f"{name} hat einen Saldo, liegt aber außerhalb von Bilanz und GuV ({reason}); sein Saldo geht in "
+				"keine Position ein.",
+				COMPLETENESS,
+				number,
+				amount=amount,
+			)
+		case Rule() if not place.counts_for(purpose):
+			statement, mark = _PURPOSES[place.purpose]
+			yield Finding(
+				Code.PURPOSE,
+				Severity.HINT,
+				f"{name} ist nur für die {statement} gebucht (Abschlusszweck {mark}) und geht nicht in diese Bilanz "
+				"ein.",
+				"DATEV-Kontenrahmen SKR 03 und SKR 04, Fußnote 4",
+				number,
+				place.concept,
+				amount,
+			)
+		case _:
+			yield from _rule_findings(place, balance, taxonomy, fiscal_year)
+
+
+def _rule_findings(
+	rule: Rule, balance: AccountBalance, taxonomy: Taxonomy, fiscal_year: tuple[date, date] | None
+) -> Iterator[Finding]:
+	name, amount = _named(balance), balance.amount
+	problems = rule_problems(rule, taxonomy, balance.part)
+	for problem in problems:
+		yield Finding(
+			Code.POSITION,
+			Severity.ERROR,
+			problem.text,
+			problem.source,
+			balance.number,
+			str(problem.values[1]),
+			amount,
+		)
+	if problems:
+		return
+	concept = _concept_for(rule, amount, taxonomy)
+	if fiscal_year is not None and not taxonomy.concept(concept).valid_for(*fiscal_year):
+		begin, end = fiscal_year
+		yield Finding(
+			Code.NOT_VALID,
+			Severity.ERROR,
+			f"{name} geht in die Position {concept}, die im Wirtschaftsjahr vom {begin:%d.%m.%Y} bis "
+			f"{end:%d.%m.%Y} nicht übermittelt werden darf.",
+			"Technischer Leitfaden zur HGB-Taxonomie 6.9, B.11, B.14.4.1",
+			balance.number,
+			concept,
+			amount,
+		)
+	if catch_all(taxonomy, concept):
+		yield Finding(
+			Code.CATCH_ALL,
+			Severity.HINT,
+			f"{name} geht in die Auffangposition „{taxonomy.label(_qualified(concept))}“ ({concept}): Prüfen Sie, ob "
+			"die Buchführung eine genauere Position hergibt.",
+			"Technischer Leitfaden zur HGB-Taxonomie 6.9, A.10.4",
+			balance.number,
+			concept,
+			amount,
+		)
+
+
+def _left_out(found: Iterable[Finding]) -> bool:
+	"""Whether the findings of a balance keep it from its position: every one but the hint on an Auffangposition."""
+	return any(finding.code is not Code.CATCH_ALL for finding in found)
+
+
+def _placed(mapping: Mapping, balance: AccountBalance, taxonomy: Taxonomy) -> Placed:
+	rule = mapping.place_of(balance.number)
+	concept = _concept_for(rule, balance.amount, taxonomy)
+	position = position_of(taxonomy, concept)
+	return Placed(balance, rule, concept, position, _value(taxonomy, position, balance.amount))
+
+
+def _concept_for(rule: Rule, amount: Decimal, taxonomy: Taxonomy) -> str:
+	"""The position a balance goes to: the opposite position for one on the other side of the rule's position."""
+	side = taxonomy.concept(rule.concept).balance
+	other_side = (amount < 0) if side is Balance.DEBIT else (amount > 0)
+	return rule.opposite if rule.opposite is not None and other_side else rule.concept
+
+
+def _value(taxonomy: Taxonomy, concept: str, amount: Decimal) -> Decimal:
+	return amount if taxonomy.concept(concept).balance is Balance.DEBIT else -amount
+
+
+def _named(balance: AccountBalance) -> str:
+	return " ".join(part for part in ("Konto", balance.number, balance.label) if part)
+
+
+def _unqualified(name: str) -> str:
+	return name.removeprefix(f"{GAAP_PREFIX}:")
