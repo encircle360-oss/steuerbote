@@ -73,6 +73,11 @@ and 38, which Steuerbote does not file (Scope.TRAVEL_AND_MARGIN in steuerbote/us
 role_defaults() gives the annual field of each account of a chart by the role of the account and annual_rules() the
 accounts only the annual return reads, members of their DATEV ranges included. A company with a chart of its own has
 neither: its rules name their annual fields, and its rows for the annual return their accounts, themselves.
+
+The defaults of a year have a version, the chart, „USt“ for the Datenart of the annual return, the year of the form and
+the revision of the defaults, such as SKR03 USt 2026.1 (defaults_version()). Every change of the defaults of a year
+raises its revision in REVISIONS, so that the same version always means the same defaults: test_defaults.py pins the
+content of each version.
 """
 
 from collections.abc import Mapping as ReadOnlyMapping
@@ -158,6 +163,8 @@ ANNUAL_ACCOUNTS: MappingProxyType[int, tuple[tuple[str, str, Side], ...]] = Mapp
 	{2026: _ANNUAL_2026}
 )
 
+REVISIONS: MappingProxyType[int, int] = MappingProxyType({2026: 1})
+
 # The accounts of the roles the defaults of the Voranmeldung give no rule, and those of the purposes above.
 SKR03_ANNUAL_ACCOUNTS = MappingProxyType(
 	{
@@ -218,6 +225,13 @@ def annual_rules(chart: str, year: int) -> tuple[AnnualRule, ...]:
 		for purpose, field, side in ANNUAL_ACCOUNTS[year]
 		for member in with_ranges((accounts[purpose],), ranges)
 	)
+
+
+def defaults_version(chart: str, year: int) -> str:
+	"""The version of the defaults of the chart for the year of the form, such as SKR03 USt 2026.1."""
+	_chart(chart)
+	year_of(year)
+	return f"{chart} USt {year}.{REVISIONS[year]}"
 
 
 def _chart(chart: str) -> tuple[ReadOnlyMapping[str, str | None], ReadOnlyMapping[str, str]]:

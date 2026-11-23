@@ -8,7 +8,9 @@ the ERiC documentation 44.3.6.0: „USt, <Jahr>: ab 2015, USt_<Jahr>, checkUSt_<
 - the fields, Kennzahlen and rules of form USt 2 A from Jahresdokumentation_E50_<Jahr>.ods, with the BMF letter
   of the forms of the year: CATALOGUES in steuerbote/ustjahr/form.py;
 - the rules of that Jahresdokumentation that Steuerbote checks without ERiC: LOCAL_RULES in
-  steuerbote/ustjahr/rules.py.
+  steuerbote/ustjahr/rules.py;
+- the defaults of the charts SKR03 and SKR04 for the lines of the form: ROLE_FIELDS, ANNUAL_ACCOUNTS and their
+  REVISIONS in steuerbote/ustjahr/defaults.py.
 
 YEARS names the years with the BMF letter of their forms. The letter for the annual return is not the letter of
 the Voranmeldung, although the BMF signed both on the same day, so this table does not share the entries of
