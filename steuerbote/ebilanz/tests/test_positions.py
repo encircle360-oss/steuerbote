@@ -12,6 +12,7 @@ from steuerbote.ebilanz.positions import (
 	Finding,
 	Mark,
 	StatementType,
+	euro,
 	finding_of,
 	leitfaden,
 	qualified,
@@ -208,6 +209,7 @@ class PositionsTest(TestCase):
 		self.assertEqual(
 			rule(view(), "170205010"), "Jahresdokumentation_Bilanz_Taxonomie_6_9.ods, Regel 170205010"
 		)
+		self.assertEqual(euro(Decimal("-1234567.5")), "-1.234.567,50 €")
 
 
 class MussfelderTest(TestCase):
