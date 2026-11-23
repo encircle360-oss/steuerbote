@@ -1,5 +1,6 @@
 """ELSTER-Übermittlung: the record of one Prüfen, Testsenden or Senden of a VAT Return, a Dauerfristverlängerung
-(VAT Return Extension) or a Zusammenfassende Meldung (Recapitulative Statement), or of its filing outside Steuerbote.
+(VAT Return Extension), a Zusammenfassende Meldung (Recapitulative Statement) or an annual document, an Erklärung or
+the E-Bilanz, or of its filing outside Steuerbote.
 
 It names its document by document_type and document, a Dynamic Link. Only the server writes it: transmit of the
 document (transmission.py) creates it while the run waits for its background job, the job completes it with the
@@ -14,8 +15,18 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
-# The documents that go to ELSTER through ERiC.
-DOCUMENT_TYPES = ("VAT Return", "VAT Return Extension", "Recapitulative Statement")
+# The documents that go to ELSTER through ERiC. The DocTypes of the annual documents come with their modules, under
+# the names stage 3 fixed for them: the Umsatzsteuererklärung, the E-Bilanz, the Körperschaft- and the
+# Gewerbesteuererklärung.
+DOCUMENT_TYPES = (
+	"VAT Return",
+	"VAT Return Extension",
+	"Recapitulative Statement",
+	"Annual VAT Return",
+	"Electronic Balance Sheet",
+	"Corporate Income Tax Return",
+	"Trade Tax Return",
+)
 
 VALIDATE = "validate"
 TEST_SEND = "test_send"

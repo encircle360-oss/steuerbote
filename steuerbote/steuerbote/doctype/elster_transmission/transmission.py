@@ -2,7 +2,9 @@
 
 Three documents go to ELSTER this way: the VAT Return (Umsatzsteuer-Voranmeldung) and the VAT Return Extension
 (form USt 1 H, Dauerfristverlängerung), both of the Datenart UStVA, and the Recapitulative Statement
-(Zusammenfassende Meldung) of the Datenart ZMDO. All inherit Transmittable, so that every run goes the same way.
+(Zusammenfassende Meldung) of the Datenart ZMDO. The annual documents follow with their modules, the Erklärungen
+USt, KSt and GewSt and the E-Bilanz, through the base steuerbote/steuerbote/annual_filing.py. All inherit
+Transmittable, so that every run goes the same way.
 transmit checks the document and puts the run into a background job, run_transmission, which writes the Nutzdaten
 of the document, hands them to steuerbote.eric, through the worker of an installed runtime or the simulation, and
 records the result. While it runs, the document is locked and cannot change, so that the job files exactly what it
@@ -16,9 +18,13 @@ whose outcome is unknown, the Finanzamt or the BZSt has the document as it was s
 draft changes then but its remarks, Buchen submits it as it is, and after an unknown outcome the note of its filing.
 
 A document that transmits has the fields company, year and transmission_in_progress and provides datenart(), the
-Datenart it goes as (steuerbote.eric.datenart); nutzdaten(hersteller_id), the Nutzdaten for ERiC;
-check_transmittable(), which refuses a document that cannot go yet; and check_can_be_sent(), the guards of Senden,
-which files the document once.
+Datenart it goes as (steuerbote.eric.datenart); nutzdaten(hersteller_id), the Nutzdaten for ERiC, which an
+Erklärung writes without the Hersteller-ID; check_transmittable(), which refuses a document that cannot go yet; and
+check_can_be_sent(), the guards of Senden, which files the document once. It may provide elster_tax_number(), the
+Steuernummer whose Finanzamt receives it, by default that of the VAT Return Settings, and nutzdaten_datenlieferant(),
+the DatenLieferant of the NutzdatenHeader that the E-Bilanz names. What ERiC prints after a send, its printout(), is
+the Übertragungsprotokoll or, for an Erklärung, the Freizeichnungsdokument (steuerbote.eric.datenart); the record
+keeps either in protocol_pdf.
 """
 
 import base64
@@ -36,6 +42,7 @@ from frappe.utils.background_jobs import is_job_enqueued
 
 import steuerbote
 from steuerbote.eric import secrets
+from steuerbote.eric.datenart import FREIZEICHNUNGSDOKUMENT, Datenart
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import TESTMERKER, Operation, Outcome
 from steuerbote.eric.runtime import RuntimeIntegrityError
@@ -85,8 +92,9 @@ class Transmittable:
 
 	def elster_state(self) -> dict:
 		"""For the banner and the buttons of the form: whether ERiC runs as a simulation, whether the lock of a
-		transmission is stale, whether ELSTER accepted the document while its submission failed, and the Senden that
-		locks the draft, which then keeps all but its remarks (refuse_if_sent), with status and Transferticket."""
+		transmission is stale, whether ELSTER accepted the document while its submission failed, the Senden that
+		locks the draft, which then keeps all but its remarks (refuse_if_sent), with status and Transferticket, and
+		what ERiC prints after a send of it."""
 		simulation = frappe.get_cached_doc(ERIC_SETTINGS).simulation
 		draft = self.docstatus == 0 and not self.is_new()
 		sent = self.sent_record() if draft else None
@@ -98,7 +106,23 @@ class Transmittable:
 			"stale": draft and self._has_stale_transmission(),
 			"sent": draft and self.was_accepted(),
 			"locked": locked,
+			"printout": self.printout(),
 		}
+
+	def printout(self) -> str:
+		"""What ERiC prints after an accepted send of the document: the Übertragungsprotokoll, or the
+		Freizeichnungsdokument of an Erklärung (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.4.3 and 5.1.4.4)."""
+		return self.datenart().printout
+
+	def elster_tax_number(self) -> str:
+		"""The 13-digit Steuernummer the document goes under, whose Finanzamt receives it: that of the VAT Return
+		Settings."""
+		return vat_return_tax_number(self.company)
+
+	def nutzdaten_datenlieferant(self) -> str | None:
+		"""The DatenLieferant of the NutzdatenHeader, which the envelope carries for a Datenart that names one; the
+		E-Bilanz does (steuerbote/steuerbote/annual_filing.py), the documents of the UStVA and ZMDO name none."""
+		return None
 
 	@frappe.whitelist(methods=["POST"])
 	def transmit(self, operation: str, token: str | None = None) -> str:
@@ -507,8 +531,9 @@ def run_transmission(name: str, operation: str, transmission: str) -> None:
 	result = None
 	frappe.db.savepoint("elster_transmission")
 	try:
-		result, nutzdaten = _call_eric(frappe.get_doc(doctype, name), Operation(operation), transmission)
-		_record_result(transmission, result, nutzdaten)
+		doc = frappe.get_doc(doctype, name)
+		result, nutzdaten = _call_eric(doc, Operation(operation), transmission)
+		_record_result(transmission, result, nutzdaten, doc.datenart())
 		if _files_the_document(result):
 			_file_sent_document(doctype, name, transmission)
 	except Exception as error:
@@ -557,6 +582,8 @@ def envelope_header(
 	The document names its Datenart. Voranmeldung and form USt 1 H are both the datenartVersion UStVA_<Jahr>,
 	which the Datenartversionmatrix of the ERiC documentation 44.3.6.0 gives „Mit UStDV und UStSV“, with the
 	plugin checkUStVA_<Jahr>, for the Finanzamt of the Steuernummer; the Zusammenfassende Meldung is ZMDO for BF.
+	The Steuernummer is the one the document goes under (elster_tax_number), and a Datenart whose NutzdatenHeader names
+	the DatenLieferant, the E-Bilanz, takes the one of the document.
 	"""
 	hersteller_id = settings.hersteller_id or (SIMULATION_HERSTELLER_ID if simulation else "")
 	datenlieferant = settings.datenlieferant or (doc.company if simulation else "")
@@ -570,19 +597,26 @@ def envelope_header(
 		datenlieferant=datenlieferant,
 		produkt_name=settings.produkt_name or DEFAULT_PRODUKT_NAME,
 		produkt_version=steuerbote.__version__,
-		empfaenger=kind.recipient or finanzamt_of(doc.company),
+		empfaenger=kind.recipient or finanzamt(doc),
 		datenart_version=kind.version,
 		testmerker=TESTMERKER if operation is Operation.TEST_SEND else None,
 		nutzdaten_ticket=NUTZDATEN_TICKET,
+		nutzdaten_datenlieferant=doc.nutzdaten_datenlieferant() if kind.nutzdaten_datenlieferant else None,
 	)
 
 
-def finanzamt_of(company: str) -> str:
-	"""The Bundesfinanzamtsnummer: "die ersten 4 Stellen der 13-stelligen Steuernummer" (ERiC-API-Referenz)."""
+def finanzamt(doc: Document) -> str:
+	"""The Bundesfinanzamtsnummer: "die ersten 4 Stellen der 13-stelligen Steuernummer" (ERiC-API-Referenz), of the
+	Steuernummer the document goes under."""
+	return doc.elster_tax_number()[:4]
+
+
+def vat_return_tax_number(company: str) -> str:
+	"""The 13-digit Steuernummer of the VAT Return Settings of the company."""
 	elster_tax_number = frappe.db.get_value(SETTINGS_DOCTYPE, company, "elster_tax_number")
 	if not elster_tax_number:
 		frappe.throw(_("The VAT Return Settings of {0} have no ELSTER Steuernummer.").format(company))
-	return elster_tax_number[:4]
+	return elster_tax_number
 
 
 def _take_certificate(doc: Document, transmission: Document) -> tuple[bytes | None, str | None]:
@@ -642,7 +676,7 @@ def _files_the_document(result) -> bool:
 	return result.operation is Operation.SEND and result.outcome is Outcome.ACCEPTED and not result.simulated
 
 
-def _record_result(transmission: Document, result, nutzdaten: str) -> None:
+def _record_result(transmission: Document, result, nutzdaten: str, kind: Datenart) -> None:
 	transmission.reload()
 	transmission.update(
 		{
@@ -659,12 +693,18 @@ def _record_result(transmission: Document, result, nutzdaten: str) -> None:
 	response = result.server_response_xml
 	files = {
 		"xml": ("nutzdaten.xml", nutzdaten.encode()),
-		"protocol_pdf": ("protokoll.pdf", result.protocol_pdf),
+		"protocol_pdf": (printout_file(kind), result.protocol_pdf),
 		"response_xml": ("serverantwort.xml", response.encode() if response else None),
 	}
 	for fieldname, (suffix, content) in files.items():
 		transmission.set(fieldname, _attach_to_transmission(transmission, fieldname, suffix, content))
 	record(transmission)
+
+
+def printout_file(kind: Datenart) -> str:
+	"""The end of the name of the file of what ERiC prints: freizeichnungsdokument.pdf for an Erklärung, else
+	protokoll.pdf, the Übertragungsprotokoll or the preview of a check."""
+	return "freizeichnungsdokument.pdf" if kind.printout == FREIZEICHNUNGSDOKUMENT else "protokoll.pdf"
 
 
 def _message_rows(result) -> list[dict]:

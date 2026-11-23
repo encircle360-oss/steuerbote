@@ -22,7 +22,10 @@ the same way, so AnnualFiling generalises the rules of the VAT Return and the Zu
   cancelled and amended when it changes. A Berichtigung that is filed, and the amendment of a cancelled
   Jahresabschluss, replace the filings of their key.
 - A document that goes to ELSTER keeps all but its remarks after an accepted Senden or one whose outcome is unknown
-  (Transmittable.refuse_changes_after_sending).
+  (Transmittable.refuse_changes_after_sending). Its envelope takes the Steuernummer of elster_tax_number, that of the
+  Annual Filing Settings for the KSt, the GewSt and the E-Bilanz where they have one, and the DatenLieferant of
+  nutzdaten_datenlieferant for the E-Bilanz; the Vorsatz of an Erklärung carries the copyright notice of the ERiC
+  Settings (vorsatz).
 
 The hooks a module implements, its fields and the API are listed in docs/jahresmeldungen.md.
 """
@@ -37,6 +40,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, cstr, escape_html, getdate
 
+from steuerbote.elster import vorsatz as elster_vorsatz
+from steuerbote.eric import header as eric_header
 from steuerbote.jahresmeldung import findings, lifecycle, overrides
 from steuerbote.jahresmeldung.findings import Finding, Severity
 from steuerbote.jahresmeldung.lifecycle import (
@@ -48,24 +53,33 @@ from steuerbote.jahresmeldung.lifecycle import (
 	Problem,
 	Status,
 )
+from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
 	MEIN_ELSTER,
 	OTHER_WAY,
 	SUCCEEDED,
+	UNKNOWN,
 )
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import (
 	TRANSMISSION,
 	Transmittable,
 	filings,
 )
+from steuerbote.steuerbote.doctype.eric_settings.eric_settings import vorsatz_copyright
 from steuerbote.steuerbote.doctype.vat_return.vat_return import TRANSFERTICKET
+from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 
 FINDINGS_TABLE = "findings"
 FILING_FIELDS = ("filed_via", "filed_on", "transferticket", "filing_note", "filed_by")
 # Set when the document is made, by Berichtigung anlegen or the API; every later save keeps them.
 INSERT_ONLY_FIELDS = ("is_correction", "corrects")
 FILED_THROUGH_ERIC = "eric"
+SETTINGS_DOCTYPE = "VAT Return Settings"
+# The Steuernummer of the Körperschaft- and the Gewerbesteuererklärung and of the E-Bilanz may differ from the one of
+# the Umsatzsteuer (Annual Filing Settings.income_tax_number).
+INCOME_TAX_DATENARTEN = frozenset({"KSt", "GewSt", "Bilanz"})
+GERMANY_IN_GERMAN = "Deutschland"
 RECALCULATE = "SB-NEU-BERECHNEN"
 
 
@@ -119,6 +133,10 @@ class AnnualFiling:
 	def correction_values(self) -> dict[str, Any]:
 		"""The values a Berichtigung of this document starts with, beyond its key and its lines."""
 		return {}
+
+	def bescheiddaten(self) -> bool:
+		"""Whether the Vorsatz of an Erklärung asks for the Bescheiddaten for electronic retrieval (Bescheid 1)."""
+		return False
 
 	# Frappe.
 
@@ -398,6 +416,125 @@ class AnnualFiling:
 		except LifecycleError as error:
 			self._refuse(error)
 
+	def refuse_sent_document(self) -> None:
+		"""The Finanzamt has a document whose Senden through Steuerbote ELSTER accepted, or may have it when the outcome
+		is unknown: it is neither sent again nor made into a file to file it another way."""
+		sent = self.filings()
+		if sent and sent[0].status == UNKNOWN:
+			frappe.throw(
+				_(
+					"Whether {0} reached ELSTER is unknown. Check in Mein ELSTER whether it arrived: if it did, note its filing; if not, a System Manager deletes {0}, then it can be sent again."
+				).format(sent[0].name)
+			)
+		if sent:
+			frappe.throw(
+				_(
+					"{0} was transmitted already with Transferticket {1}. A change goes to the Finanzamt as a Berichtigung."
+				).format(self.name, sent[0].transferticket)
+			)
+
+	def tax_numbers(self) -> tuple[str | None, str | None]:
+		"""The Steuernummer of the document as the Finanzamt gave it and in the 13 digits of ELSTER."""
+		if self._income_tax_number():
+			settings = settings_of(self.company)
+			if settings and settings.elster_income_tax_number:
+				return settings.income_tax_number, settings.elster_income_tax_number
+		values = (
+			frappe.db.get_value(SETTINGS_DOCTYPE, self.company, ["tax_number", "elster_tax_number"]) or ()
+		)
+		return tuple(values) if values else (None, None)
+
+	# Transmittable.
+
+	def elster_tax_number(self) -> str:
+		"""The 13-digit Steuernummer the Erklärung or the E-Bilanz goes under: that of the Annual Filing Settings for the
+		Körperschaft- and the Gewerbesteuererklärung and the E-Bilanz when they have one, else that of the VAT Return
+		Settings."""
+		_, number = self.tax_numbers()
+		if not number:
+			frappe.throw(
+				_("The VAT Return Settings of {0} have no ELSTER Steuernummer.").format(self.company)
+			)
+		return number
+
+	def nutzdaten_datenlieferant(self) -> str | None:
+		"""The DatenLieferant of the NutzdatenHeader of the E-Bilanz in its ten parts (ERiC-Entwicklerhandbuch 44.3.6.0,
+		Kap. 9.7.1): the name of the company and its address from the Annual Filing Settings, phone and email from the
+		Datenlieferant of the VAT Return Settings, and Germany as Deutschland, as the example there writes it."""
+		settings = settings_of(self.company)
+		if settings is None:
+			frappe.throw(
+				_("Enter the Annual Filing Settings of {0} first.").format(escape_html(self.company)),
+				title=_("Annual Filing Settings"),
+			)
+		address = settings.get_address()
+		contact = frappe.db.get_value(SETTINGS_DOCTYPE, self.company, ["phone", "email"], as_dict=True) or {}
+		parts = {
+			"name": frappe.db.get_value("Company", self.company, "company_name") or self.company,
+			"street": address.street or "",
+			"house_number": address.house_number or "",
+			"house_number_suffix": address.house_number_suffix or "",
+			"address_supplement": address.supplement or "",
+			"postal_code": address.postal_code or "",
+			"city": address.city or "",
+			"country": GERMANY_IN_GERMAN if address.in_germany else address.country or "",
+			"phone": contact.get("phone") or "",
+			"email": contact.get("email") or "",
+		}
+		with_semicolon = [value for value in parts.values() if ";" in value]
+		if with_semicolon:
+			frappe.throw(
+				_("The DatenLieferant of the E-Bilanz takes no semicolon in its parts: {0}").format(
+					escape_html(with_semicolon[0])
+				)
+			)
+		return eric_header.nutzdaten_datenlieferant(**parts)
+
+	def vorsatz(self) -> elster_vorsatz.Vorsatz:
+		"""The Vorsatz of an Erklärung (steuerbote/elster/vorsatz.py): the Steuernummer of elster_tax_number, the name of
+		the company and its address from the Annual Filing Settings as the Absender, and the copyright notice of the ERiC
+		Settings."""
+		settings = settings_of(self.company)
+		if settings is None:
+			frappe.throw(
+				_("Enter the Annual Filing Settings of {0} first.").format(escape_html(self.company)),
+				title=_("Annual Filing Settings"),
+			)
+		address = settings.get_address()
+		with xml_errors(_("ELSTER Transmission")):
+			return elster_vorsatz.Vorsatz(
+				steuernummer=self.elster_tax_number(),
+				name=frappe.db.get_value("Company", self.company, "company_name") or self.company,
+				street=address.street_line or "",
+				city=address.city or "",
+				copyright=vorsatz_copyright(),
+				postal_code=address.postal_code if address.in_germany else None,
+				bescheiddaten=self.bescheiddaten(),
+			)
+
+	def check_transmittable(self) -> None:
+		"""A calculated draft whose amounts are those its lines give; an Erklärung also needs its Vorsatz."""
+		if self.docstatus != 0:
+			frappe.throw(
+				_(
+					"{0} is no draft and is not transmitted. A filed document is corrected by a Berichtigung."
+				).format(self.name)
+			)
+		if self.status not in self.LIFECYCLE.calculated:
+			frappe.throw(_("Calculate {0} before transmitting it.").format(self.name))
+		self.require_amounts_as_stored(self)
+		if self.datenart().unterfallart:
+			self.vorsatz()
+
+	def check_can_be_sent(self) -> None:
+		"""Senden files the document, once: it needs the document fit for filing, no Senden of it before and no filing of
+		its key."""
+		self.check_fit_for_filing()
+		self.refuse_sent_document()
+		self.refuse_second_filing()
+
+	# The rules of a save.
+
 	def _keep_insert_only_fields(self) -> None:
 		before = self.get_doc_before_save()
 		if before is not None:
@@ -492,6 +629,9 @@ class AnnualFiling:
 			row.set(columns.reported, self._lines(overrides.reported, row.as_dict(), columns))
 
 	# Helpers.
+
+	def _income_tax_number(self) -> bool:
+		return self.transmits and self.datenart().name in INCOME_TAX_DATENARTEN
 
 	def _key_of(self, doc: Mapping[str, Any] | Document) -> tuple:
 		return tuple(cstr(doc.get(fieldname)) for fieldname in self.KEY_FIELDS)
