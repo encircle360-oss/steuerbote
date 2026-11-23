@@ -74,6 +74,7 @@ testpaths = [
     "steuerbote/steuerbote/doctype/elster_transmission/test_messages.py",
     "steuerbote/steuerbote/doctype/elster_transmission/test_transmission_files.py",
     "steuerbote/steuerbote/doctype/elster_transmission/test_transmission_translations.py",
+    "steuerbote/steuerbote/doctype/income_tax_mapping/test_income_tax_mapping_files.py",
     "steuerbote/steuerbote/doctype/recapitulative_statement/test_bridge.py",
     "steuerbote/steuerbote/doctype/recapitulative_statement/test_translations.py",
     "steuerbote/steuerbote/doctype/vat_id_confirmation/test_records.py",
