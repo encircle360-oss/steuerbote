@@ -18,6 +18,12 @@ YEARS names the years Steuerbote files, each with the BMF letter of its forms. E
 years (steuerbote/ustva/tests/test_years.py), and ``python -m steuerbote.ustva.yearcheck`` compares the data of a
 year with the ERiC documentation; docs/entwicklung.md, section Jahreswechsel, describes how a year is added.
 
+The beta of the main release of ERiC brings the Jahresdokumentation and the schema of the coming year in mid
+November, the BMF letter with its forms follows in December (ERiC-Entwicklerhandbuch, Kap. 2.3; the letter for 2026
+is of 29 December 2025). A year added in between is ``provisional``: its data come from the documentation of the beta,
+its lines and labels from the form of the year before, and the documents of the year say so until both are
+published and the year is made final.
+
 The Zusammenfassende Meldung is no part of a year. Its Datenart ZMDO has one datenartVersion and one plugin for
 every year, ZMDO and checkZMDO without year or version (Datenartversionmatrix.ods), and its schema has a version
 of its own, 000005 since 15 October 2020 (zm_000005.xsd in Datenarten/ElsterExtern/ZMDO/Schema/5). The year of
@@ -56,19 +62,47 @@ class UnknownYearError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Year:
-	"""A year Steuerbote files, with the BMF letter that publishes its forms USt 1 A, USt 1 E, USt 1 H and USt 5 E."""
+	"""A year Steuerbote files, with the BMF letter that publishes its forms USt 1 A, USt 1 E, USt 1 H and USt 5 E.
+
+	A ``provisional`` year has no letter yet: its data come from the Jahresdokumentation and the schema of the year in
+	the ``documentation`` of a beta of ERiC, its lines, labels and print layout from the form of ``form_year``.
+	"""
 
 	year: int
-	letter_date: date
-	reference: str
+	letter_date: date | None
+	reference: str | None
 	"""The Geschäftszeichen (GZ) of the letter."""
-	url: str
+	url: str | None
+	provisional: bool = False
+	documentation: str | None = None
+	"""The release of ERiC whose documentation the data of a provisional year come from, such as Beta ERiC 45.1.5.0."""
+	form_year: int | None = None
+	"""The year of the form whose lines, labels and print layout the year takes, the year itself unless given."""
+
+	def __post_init__(self) -> None:
+		if not self.provisional and None in (self.letter_date, self.reference, self.url):
+			raise ValueError(f"{self.year}: a final year names the BMF letter of its forms")
+		if self.provisional and not self.documentation:
+			raise ValueError(f"{self.year}: a provisional year names the documentation it comes from")
+		if self.form_year is None:
+			object.__setattr__(self, "form_year", self.year)
 
 	@property
-	def letter(self) -> str:
-		"""The letter as the docstrings of the data of the year cite it."""
+	def letter(self) -> str | None:
+		"""The letter as the docstrings of the data of the year cite it, None before the BMF publishes it."""
 		day = self.letter_date
+		if day is None:
+			return None
 		return f"BMF letter of {day.day} {MONTHS[day.month - 1]} {day.year} (GZ {self.reference})"
+
+	@property
+	def source(self) -> str:
+		"""What the docstrings of the data of the year cite: the letter of a final year, the Jahresdokumentation of the
+		documentation of a provisional one."""
+		letter = self.letter
+		if self.provisional or letter is None:
+			return f"Jahresdokumentation_UStVA_{self.year}.ods of the documentation of {self.documentation}"
+		return letter
 
 	@property
 	def datenart_version(self) -> str:

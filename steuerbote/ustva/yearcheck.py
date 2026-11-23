@@ -20,7 +20,10 @@ It compares
   Datenartversionmatrix.ods, and those of ZMDO (steuerbote/eric/datenart.py) with its row, which names no year.
 
 A year that a table lacks is a year in the making: the command names those tables and compares the part of the
-latest year in its place, so that its lines are what the new year changes.
+latest year in its place, so that its lines are what the new year changes. A provisional year comes from the
+documentation of a later release of ERiC than the one the CI pins, such as 2027 from Beta ERiC 45.1.5.0 against
+44.3.6.0: without years the command passes over it where the documentation holds no Jahresdokumentation of it
+(passes_over), and named it ends the check as any year without its documentation does.
 """
 
 import argparse
@@ -131,6 +134,14 @@ def differences(year_documentation: YearDocumentation, data: Data) -> tuple[Diff
 	)
 
 
+def passes_over(documentation_directory: Path, year: int) -> bool:
+	"""Whether a run without years leaves the year out: a provisional year whose Jahresdokumentation the directory
+	Dokumentation does not hold, since its release came before the one the year comes from."""
+	entry = YEARS.get(year)
+	jahresdokumentation = documentation.jahresdokumentation_path(documentation_directory, year)
+	return entry is not None and entry.provisional and not jahresdokumentation.is_file()
+
+
 def check(directory: Path, year: int) -> tuple[Difference, ...]:
 	"""The differences between the data of the year and its documentation in the directory."""
 	return differences(documentation.read(documentation.find(directory), year), data_for(year))
@@ -153,7 +164,7 @@ def main(
 	lines: list[str] = []
 	try:
 		root = documentation.find(arguments.documentation)
-		for year in arguments.years or YEARS:
+		for year in arguments.years or [year for year in YEARS if not passes_over(root, year)]:
 			year_documentation = documentation.read(root, year)
 			lacking = missing(year)
 			if lacking:
