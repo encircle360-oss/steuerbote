@@ -1,6 +1,7 @@
 """The files of the base of the annual documents, read without a bench: the child DocType Annual Filing Finding, the
 methods the forms call and the German of every text."""
 
+import ast
 import csv
 import json
 import re
@@ -17,7 +18,7 @@ FINDING = MODULE / "doctype" / "annual_filing_finding" / "annual_filing_finding.
 TRANSLATIONS = APP / "translations" / "de.csv"
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 # Labels Frappe translates itself; the app keeps out of their translations.
-FRAMEWORK_LABELS = frozenset({"Code", "Kind", "Message", "Reference"})
+FRAMEWORK_LABELS = frozenset({"Code", "Discard", "Kind", "Message", "Reference", "Remarks"})
 
 
 def read_json(path: Path) -> dict:
@@ -94,3 +95,69 @@ class BaseFilesTest(TestCase):
 
 	def test_the_framework_labels_are_left_to_the_framework(self):
 		self.assertEqual(sorted(FRAMEWORK_LABELS & translated()), [])
+
+
+SCRIPT = APP / "public" / "js" / "annual_filing.js"
+TRANSMISSION_SCRIPT = APP / "public" / "js" / "elster_transmission.js"
+SCRIPT_LITERAL = re.compile(r"\b__\(\s*\"((?:[^\"\\]|\\.)*)\"")
+# German terms that read the same in every language.
+UNTRANSLATED = frozenset({"Transferticket"})
+
+
+def parameters(source: str, method: str) -> list[str]:
+	"""The parameters of a method of a class of a Python module, without self."""
+	(function,) = (
+		node
+		for node in ast.walk(ast.parse(source))
+		if isinstance(node, ast.FunctionDef) and node.name == method
+	)
+	return [argument.arg for argument in function.args.args[1:]]
+
+
+class FormScriptFilesTest(TestCase):
+	"""The pieces the forms of the annual documents share, which a form includes after elster_transmission.js when it
+	goes to ELSTER."""
+
+	def setUp(self):
+		self.script = SCRIPT.read_text(encoding="utf-8")
+		self.base = BASE.read_text(encoding="utf-8")
+
+	def test_the_methods_the_script_calls_are_those_of_the_base_whitelisted_for_post(self):
+		methods = set(re.findall(r'frm\.call\("(\w+)"', self.script))
+		self.assertEqual(methods, {"calculate", "make_correction", "mark_filed_outside"})
+		for method in sorted(methods):
+			with self.subTest(method=method):
+				self.assertRegex(self.base, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+
+	def test_the_note_of_a_filing_sends_what_the_base_takes(self):
+		(sent,) = re.findall(r'frm\.call\("mark_filed_outside", \{([^}]*)\}', self.script)
+		self.assertEqual(
+			[argument.split(":")[0].strip() for argument in sent.split(",") if argument.strip()],
+			parameters(self.base, "mark_filed_outside"),
+		)
+
+	def test_the_script_reads_the_state_the_base_hands_the_form(self):
+		self.assertIn('self.set_onload("annual_filing", self.annual_state())', self.base)
+		self.assertIn("frm.doc.__onload.annual_filing", self.script)
+		for key in ("calculated", "filings", "filed_outside", "submitted_by_hand", "can_correct"):
+			with self.subTest(key=key):
+				self.assertIn(f'"{key}"', self.base)
+				self.assertIn(f"state.{key}", self.script)
+
+	def test_a_draft_that_goes_to_elster_is_filed_through_it_and_never_by_buchen_alone(self):
+		self.assertIn("frm.show_submit_message = () => {};", self.script)
+		self.assertIn("offer_buchen_only_for_an_accepted_send(frm);", self.script)
+
+	def test_every_text_of_the_script_is_translated(self):
+		texts = set(SCRIPT_LITERAL.findall(self.script))
+		self.assertIn("Make Berichtigung", texts)
+		self.assertEqual(sorted(texts - translated() - UNTRANSLATED - FRAMEWORK_LABELS), [])
+
+
+class TransmissionScriptFilesTest(TestCase):
+	def test_the_certificate_dialog_names_what_eric_prints_after_the_send(self):
+		script = TRANSMISSION_SCRIPT.read_text(encoding="utf-8")
+		self.assertIn("elster_state(frm).printout", script)
+		self.assertEqual(
+			sorted(set(SCRIPT_LITERAL.findall(script)) - translated() - UNTRANSLATED - FRAMEWORK_LABELS), []
+		)
