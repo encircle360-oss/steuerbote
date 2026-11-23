@@ -420,6 +420,7 @@ So läuft „Berechnen“:
 | Meldezeilen, Rundung auf ganze Euro, Sperren, Abgleich, Vorperiodenvergleich, Berichtigung und CSV-Datei der Zusammenfassenden Meldung | `steuerbote/zm` |
 | Bestätigung der USt-IdNrn. und ihr Ergebnis | `steuerbote/vatid`, `vat_id_confirmation/records.py` |
 | Grundlage, Sondervorauszahlung (Kz 38), Fristen und Zeitraum der Anrechnung der Dauerfristverlängerung, Vordruck USt 1 H mit Feldern und Regeln des Jahres | `steuerbote/dauerfrist`, Feiertage aus `steuerbote/holiday_list.py` |
+| Körperschaftsteuer mit Solidaritätszuschlag und Abschlusszahlung, steuerliches Einlagekonto, Gewerbeertrag, Messbetrag und Gewerbesteuer, Vorschläge für die Rückstellungen | `steuerbote/kst` und `steuerbote/gewst`, siehe [Rechenkern der Ertragsteuern](#rechenkern-der-ertragsteuern) |
 
 ## Bericht „UStVA Kennzahlen“
 
@@ -486,3 +487,23 @@ Steuerbote ersetzt keine Steuerberatung. Diese Punkte entscheidet die Steuerbera
 2. **Vorsteueraufteilung nach § 15 Absatz 4 UStG.** Hat ein Unternehmen auch Umsätze, die den Vorsteuerabzug ausschließen, ist die Vorsteuer aufzuteilen. Steuerbote meldet die Vorsteuer so, wie sie gebucht ist, und teilt nichts auf. Aufteilung und Buchung des nicht abziehbaren Teils sind abzustimmen. Aufzuteilen ist auch, was das Unternehmen zugleich für nichtunternehmerische Tätigkeiten bezieht, etwa für eine Vermögensverwaltung: Sonstige Leistungen sind „entsprechend der beabsichtigten Verwendung aufzuteilen“ (UStAE 15.2c Abs. 2 Satz 1 Nr. 1), und eine Leistung allein für nichtunternehmerische Tätigkeiten gehört gar nicht zum Unternehmen (UStAE 15.2c Abs. 1 Satz 2).
 3. **Freigabe der Kontenzuordnung.** Die Vorgaben für SKR03 und SKR04 sind von keiner Steuerberatung bestätigt. Die Kontenzuordnung jedes Unternehmens, mit Verprobungen und beobachteten Konten, gibt die Steuerberatung frei.
 4. **Voranmeldungszeitraum.** Ob monatlich, vierteljährlich oder keine Voranmeldung abzugeben ist, legt das Finanzamt fest (§ 18 Absatz 2 UStG), ebenso Dauerfristverlängerung und Sondervorauszahlung. Die Einträge in den Einstellungen sind je Jahr mit den Bescheiden abzugleichen.
+
+## Rechenkern der Ertragsteuern
+
+Körperschaftsteuer und Gewerbesteuer einer GmbH oder UG rechnen die Kerne `steuerbote/kst` und `steuerbote/gewst`, reines Python ohne Frappe. Sie nehmen die Buchungszeilen der Erfolgskonten des Wirtschaftsjahres als `LedgerLine` aus `steuerbote/ustva`, ohne Abschluss- und Eröffnungsbuchungen, die Kontenzuordnung Ertragsteuern des Unternehmens und was Einstellungen, Bescheide und Steuerbescheinigungen sagen. Die Belege der Erklärungen, Vordrucke und XML bauen darauf auf.
+
+| Modul | Aufgabe |
+|---|---|
+| `kst/years.py` | Veranlagungszeiträume: Steuersatz nach § 23 KStG (15 %, ab 2028 sinkend bis 10 % ab 2032), Solidaritätszuschlag, Grenzen von § 10d EStG (70 %, ab 2028 60 %), § 9 und § 8b KStG, § 4, § 4h und § 7g EStG; 2026 vorläufig mit den Vordrucken der Jahresdokumentation E30 2025; was die Jahresprüfung vergleicht (`RuleExpectation`) |
+| `kst/categories.py` | Kategorien der Kontenzuordnung Ertragsteuern, Klassen der Handelsergebnisse und `classify()`, das die Buchungen je Kategorie summiert und die Belege dahinter behält |
+| `kst/holdings.py` | § 8b KStG je Beteiligung: steuerfreie Bezüge ab 10 % zu Beginn des Kalenderjahres, Streubesitz darunter, § 8b Absatz 7 nur nach den Einstellungen, Anlage GK Zeilen 156 bis 201 |
+| `kst/losses.py` | Verlustabzug nach § 10d EStG (Anlage Verluste), Termingeschäfte nach § 15 Absatz 4 Satz 3 EStG (Anlage GK Zeilen 51 und 52), Zuwendungen (Anlage Z) |
+| `kst/chain.py` | die Schritte vom Jahresüberschuss bis zur Abschlusszahlung als Daten (`STEPS`) und `compute()` mit den Zeilen von Anlage GK und Anlage ZVE, Körperschaftsteuer, Solidaritätszuschlag, Anrechnung, Vorauszahlungen und Befunden |
+| `kst/einlagekonto.py` | Fortschreibung des steuerlichen Einlagekontos nach § 27 KStG für KSt 1 F, auch von 0 auf 0 |
+| `kst/provisions.py` | Vorschläge für die Rückstellungen von Körperschaftsteuer, Solidaritätszuschlag und Gewerbesteuer als Zeilen einer Journalbuchung im Entwurf, auf den Konten von SKR03 und SKR04 |
+| `gewst/years.py` | Erhebungszeiträume: Messzahl 3,5 %, Hinzurechnungen nach § 8 Nummer 1 mit 200.000 € Freibetrag, Kürzungen nach § 9 Nummer 1, 2a, 7 und 5, § 10a, Mindesthebesatz 200 % und ab 2027 280 % |
+| `gewst/chain.py` | Gewerbeertrag aus der Summe der Einkünfte der Körperschaftsteuer ohne die Wirkung von § 15 Absatz 4 EStG, Anlage BEG je Beteiligung, Fehlbeträge, Messbetrag, Gewerbesteuer und Abschlusszahlung |
+
+Jeder Schritt nennt sein Gesetz, seinen Vordruck, seine Zeile und Feldkennung; jede Zeile hält den Betrag in Cent, den erklärten Betrag und die Buchungen und Zeilen von Hand dahinter. Die Summen bildet der Kern aus den erklärten Beträgen, so wie die Regeln der Jahresdokumentation sie nachrechnen. Gerundet wird nur über `steuerbote/ustva/rounding.py`: die Körperschaftsteuer und der Messbetrag auf volle Euro nach unten, der Gewerbeertrag auf volle 100 € nach unten, der Solidaritätszuschlag ohne Bruchteile eines Cents, was die Jahresdokumentation aufrundet nach oben, die übrigen erklärten Beträge kaufmännisch. Ob ELSTER die kaufmännische Rundung so erwartet, ist nicht bestätigt; das klären die ELSTER-Hotline oder eine Steuerberatung.
+
+Ein Handelskonto ohne Klasse hält die Erklärung an: Ob seine Ergebnisse aus Anteilen, aus Termingeschäften, aus Investmentfonds oder aus voll steuerpflichtigen Geschäften stammen, legt die Steuerberatung fest, die Vorgaben legen es nicht fest. Ebenso halten Salden auf ausländischen Steuern und Investmentfonds die Erklärung an, bis eigene Module die Anlage AESt und das Investmentsteuergesetz rechnen. Weil Anlage GK jede Steuer vom Einkommen wieder hinzurechnet, ändern gebuchte Rückstellungen das zu versteuernde Einkommen nicht.
