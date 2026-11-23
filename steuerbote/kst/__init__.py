@@ -11,4 +11,6 @@ This package is pure Python. It never imports Frappe, so it can be tested withou
 - losses.py: what carries over from year to year, the Verlustabzug of § 10d EStG (loss_deduction, Anlage Verluste),
   the Termingeschäfte of § 15 Absatz 4 Satz 3 EStG (derivatives, Anlage GK lines 51 and 52) and the Zuwendungen of
   § 9 Absatz 1 Nummer 2 KStG (donations, Anlage Z); minimum_taxation() is the rule of § 10d Absatz 2.
+- chain.py: the steps of the computation as data (STEPS, Step, step), from the Jahresüberschuss to the
+  Abschlusszahlung.
 """
