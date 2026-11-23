@@ -1,0 +1,77 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 20:00:00.000000",
+ "description": "A Grundstück of line 95 that was first used in the year, with the Vorsteuer deducted for it.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "location",
+  "first_use",
+  "kind_of_use",
+  "extent_of_use",
+  "input_tax_total",
+  "input_tax_deducted"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "location",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Location of the Grundstück"
+  },
+  {
+   "columns": 2,
+   "fieldname": "first_use",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "First Actual Use"
+  },
+  {
+   "columns": 2,
+   "fieldname": "kind_of_use",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Kind of Use in the First Year"
+  },
+  {
+   "columns": 1,
+   "description": "With two decimals, as the form takes it.",
+   "fieldname": "extent_of_use",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Extent of Use in the First Year",
+   "precision": "2"
+  },
+  {
+   "columns": 1,
+   "description": "In whole euros.",
+   "fieldname": "input_tax_total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Vorsteuer Incurred in All",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "columns": 1,
+   "description": "In whole euros, in the Investitionsphase.",
+   "fieldname": "input_tax_deducted",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Vorsteuer Deducted in Earlier Years",
+   "options": "Company:company:default_currency"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual VAT Return Property",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

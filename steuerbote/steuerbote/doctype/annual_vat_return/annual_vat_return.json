@@ -1,0 +1,759 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-11-23 20:00:00.000000",
+ "description": "The Umsatzsteuererklärung of a company for one year, form USt 2 A, computed from the general ledger and reconciled with the filed Voranmeldungen.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "year",
+  "is_correction",
+  "corrects",
+  "column_break_head",
+  "status",
+  "ready",
+  "deadline",
+  "fiscal_year",
+  "from_date",
+  "to_date",
+  "transmission_in_progress",
+  "amended_from",
+  "lines_section",
+  "lines",
+  "soll_section",
+  "soll_voranmeldungen",
+  "soll_credited",
+  "sondervorauszahlung",
+  "soll_computed",
+  "column_break_soll",
+  "soll_override",
+  "soll_override_reason",
+  "vorauszahlungssoll",
+  "kz816",
+  "kz820",
+  "payment_due",
+  "sums_section",
+  "line_41",
+  "line_50",
+  "line_62",
+  "line_64",
+  "line_70",
+  "line_74",
+  "line_93",
+  "line_108_deductible",
+  "line_108_repayable",
+  "line_109",
+  "column_break_sums",
+  "line_110",
+  "line_111",
+  "line_112",
+  "line_113",
+  "line_114",
+  "line_115",
+  "line_116",
+  "line_117",
+  "line_118",
+  "line_122",
+  "details_section",
+  "kz129",
+  "kz136",
+  "bescheid",
+  "column_break_details",
+  "kz500",
+  "kz500_text",
+  "section_15a",
+  "kz370",
+  "properties",
+  "kz371",
+  "kz372",
+  "kz369",
+  "column_break_15a",
+  "change_by_sale",
+  "change_by_withdrawal",
+  "change_of_taxation",
+  "change_of_small_business",
+  "change_of_use",
+  "change_of_letting",
+  "change_of_own_use",
+  "change_for_other_reasons",
+  "change_reason",
+  "reconciliation_section",
+  "periods",
+  "reconciliation",
+  "verprobung_section",
+  "checks",
+  "deviations",
+  "unmapped",
+  "findings_section",
+  "findings",
+  "filing_section",
+  "filed_via",
+  "filed_on",
+  "transferticket",
+  "column_break_filing",
+  "filed_by",
+  "filing_note",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "default": "UStE-.{year}.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "UStE-.{year}.-.#####",
+   "print_hide": 1,
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "remember_last_selected_value": 1,
+   "reqd": 1
+  },
+  {
+   "description": "The calendar year of the return, its Besteuerungszeitraum; it chooses form USt 2 A.",
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Kz 110: a Berichtigung of the return filed for the year, made with Make Berichtigung.",
+   "fieldname": "is_correction",
+   "fieldtype": "Check",
+   "label": "Correction",
+   "read_only": 1
+  },
+  {
+   "fieldname": "corrects",
+   "fieldtype": "Link",
+   "label": "Corrects",
+   "options": "Annual VAT Return",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Entwurf",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Entwurf\nBerechnet\nBereit\nAbgegeben\nErsetzt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ready",
+   "fieldtype": "Check",
+   "label": "Ready to File",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline",
+   "fieldtype": "Date",
+   "label": "Due Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fiscal_year",
+   "fieldtype": "Link",
+   "label": "Fiscal Year",
+   "options": "Fiscal Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Set while Prüfen, Testsenden or Senden runs; the return cannot change until it ends.",
+   "fieldname": "transmission_in_progress",
+   "fieldtype": "Check",
+   "label": "Transmission Running",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Annual VAT Return",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "lines_section",
+   "fieldtype": "Section Break",
+   "label": "Lines of the Return"
+  },
+  {
+   "description": "The fields of form USt 2 A with an amount, filled by Calculate. A correction files another amount and needs a reason; a line by hand names its field and gives its amount as the correction, with a reason, and Calculate takes it into the line of its field.",
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Lines of the Return",
+   "options": "Annual VAT Return Line"
+  },
+  {
+   "fieldname": "soll_section",
+   "fieldtype": "Section Break",
+   "label": "Vorauszahlungssoll and Abschlusszahlung"
+  },
+  {
+   "description": "The sum of Kz 83 of the latest filed Voranmeldung of each period of the year.",
+   "fieldname": "soll_voranmeldungen",
+   "fieldtype": "Currency",
+   "label": "Kz 83 of the Voranmeldungen",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "soll_credited",
+   "fieldtype": "Currency",
+   "label": "Kz 39 of the Voranmeldungen",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "The Sondervorauszahlung of the year in the VAT Return Settings, in a year with Dauerfristverlängerung.",
+   "fieldname": "sondervorauszahlung",
+   "fieldtype": "Currency",
+   "label": "Sondervorauszahlung of the Settings",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "Kz 83 of the Voranmeldungen and the Sondervorauszahlung; for a Berichtigung the Kz 816 of the return it corrects.",
+   "fieldname": "soll_computed",
+   "fieldtype": "Currency",
+   "label": "Vorauszahlungssoll Calculated",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_soll",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Only where the Finanzamt set another Vorauszahlungssoll, in a Bescheid or an estimate: line 125 then files this amount, which needs a reason.",
+   "fieldname": "soll_override",
+   "fieldtype": "Currency",
+   "label": "Vorauszahlungssoll by the Finanzamt",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "soll_override_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Vorauszahlungssoll"
+  },
+  {
+   "bold": 1,
+   "fieldname": "vorauszahlungssoll",
+   "fieldtype": "Currency",
+   "label": "Vorauszahlungssoll (Line 125)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "kz816",
+   "fieldtype": "Currency",
+   "label": "Remaining Umsatzsteuer or Surplus (Kz 816)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "kz820",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Abschlusszahlung or Refund (Kz 820)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "One month after the return arrived, set when it is filed (§ 18 Absatz 4 Satz 1 UStG); a refund has none.",
+   "fieldname": "payment_due",
+   "fieldtype": "Date",
+   "label": "Abschlusszahlung Due",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sums_section",
+   "fieldtype": "Section Break",
+   "label": "Sums of the Form"
+  },
+  {
+   "fieldname": "line_41",
+   "fieldtype": "Currency",
+   "label": "Line 41",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_50",
+   "fieldtype": "Currency",
+   "label": "Line 50 (Kz 237)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_62",
+   "fieldtype": "Currency",
+   "label": "Line 62",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_64",
+   "fieldtype": "Currency",
+   "label": "Line 64",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_70",
+   "fieldtype": "Currency",
+   "label": "Line 70",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_74",
+   "fieldtype": "Currency",
+   "label": "Line 74",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_93",
+   "fieldtype": "Currency",
+   "label": "Line 93",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_108_deductible",
+   "fieldtype": "Currency",
+   "label": "Line 108 Deductible (Kz 357)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_108_repayable",
+   "fieldtype": "Currency",
+   "label": "Line 108 Repayable (Kz 359)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_109",
+   "fieldtype": "Currency",
+   "label": "Line 109",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_sums",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "line_110",
+   "fieldtype": "Currency",
+   "label": "Line 110",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_111",
+   "fieldtype": "Currency",
+   "label": "Line 111",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_112",
+   "fieldtype": "Currency",
+   "label": "Line 112",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_113",
+   "fieldtype": "Currency",
+   "label": "Line 113",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_114",
+   "fieldtype": "Currency",
+   "label": "Line 114",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_115",
+   "fieldtype": "Currency",
+   "label": "Line 115",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_116",
+   "fieldtype": "Currency",
+   "label": "Line 116",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_117",
+   "fieldtype": "Currency",
+   "label": "Line 117",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_118",
+   "fieldtype": "Currency",
+   "label": "Line 118",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line_122",
+   "fieldtype": "Currency",
+   "label": "Line 122",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "details_section",
+   "fieldtype": "Section Break",
+   "label": "Further Details"
+  },
+  {
+   "default": "0",
+   "fieldname": "kz129",
+   "fieldtype": "Check",
+   "label": "Offset Requested or Refund Assigned (Kz 129)"
+  },
+  {
+   "description": "Line 18: the day the company switched from the Kleinunternehmer-Regelung to the Regelbesteuerung in the year, the day Kz 70 of the Voranmeldung of that period names; Calculate gives a hint where they differ.",
+   "fieldname": "kz136",
+   "fieldtype": "Date",
+   "label": "Date of the Switch from the Kleinunternehmer-Regelung (Kz 136)"
+  },
+  {
+   "default": "0",
+   "description": "The Vorsatz asks the Finanzamt to provide the Bescheiddaten for electronic retrieval (Bescheid 1); otherwise it asks for none (2).",
+   "fieldname": "bescheid",
+   "fieldtype": "Check",
+   "label": "Provide the Bescheiddaten for Retrieval"
+  },
+  {
+   "fieldname": "column_break_details",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "kz500",
+   "fieldtype": "Select",
+   "label": "Supplementary Information in the Return (Kz 500)",
+   "options": "\n1\n2\n3\n4"
+  },
+  {
+   "description": "Line 23: the Ergänzende Angaben zur Steuererklärung that Kz 500 announces.",
+   "fieldname": "kz500_text",
+   "fieldtype": "Small Text",
+   "label": "Supplementary Information",
+   "mandatory_depends_on": "eval:doc.kz500"
+  },
+  {
+   "fieldname": "section_15a",
+   "fieldtype": "Section Break",
+   "label": "Berichtigung des Vorsteuerabzugs (§ 15a UStG)"
+  },
+  {
+   "default": "0",
+   "description": "Line 95: Grundstücke, Grundstücksteile, Gebäude or Gebäudeteile with deducted Vorsteuer that were first actually used in the year; list each of them below.",
+   "fieldname": "kz370",
+   "fieldtype": "Check",
+   "label": "Grundstücke First Used in the Year (Kz 370)"
+  },
+  {
+   "depends_on": "eval:doc.kz370",
+   "fieldname": "properties",
+   "fieldtype": "Table",
+   "label": "Grundstücke (Line 95)",
+   "options": "Annual VAT Return Property"
+  },
+  {
+   "default": "0",
+   "fieldname": "kz371",
+   "fieldtype": "Check",
+   "label": "Changed Conditions: Grundstücke of the Last 10 Years (Kz 371)"
+  },
+  {
+   "default": "0",
+   "fieldname": "kz372",
+   "fieldtype": "Check",
+   "label": "Changed Conditions: Other Wirtschaftsgüter of the Last 5 Years (Kz 372)"
+  },
+  {
+   "default": "0",
+   "fieldname": "kz369",
+   "fieldtype": "Check",
+   "label": "Changed Conditions: Wirtschaftsgüter Used Once (Kz 369)"
+  },
+  {
+   "fieldname": "column_break_15a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "change_by_sale",
+   "fieldtype": "Check",
+   "label": "Changed by a Veräußerung (Line 99)"
+  },
+  {
+   "default": "0",
+   "fieldname": "change_by_withdrawal",
+   "fieldtype": "Check",
+   "label": "Changed by a Lieferung under § 3 Absatz 1b UStG (Line 99)"
+  },
+  {
+   "default": "0",
+   "fieldname": "change_of_taxation",
+   "fieldtype": "Check",
+   "label": "Changed by a Wechsel der Besteuerungsform under § 15a Absatz 7 UStG (Line 99)"
+  },
+  {
+   "default": "0",
+   "fieldname": "change_of_small_business",
+   "fieldtype": "Check",
+   "label": "Changed by a Wechsel der Besteuerungsform under the Kleinunternehmer-Regelung (Line 100)"
+  },
+  {
+   "default": "0",
+   "fieldname": "change_of_use",
+   "fieldtype": "Check",
+   "label": "Changed by a Nutzungsänderung (Line 101)"
+  },
+  {
+   "default": "0",
+   "fieldname": "change_of_letting",
+   "fieldtype": "Check",
+   "label": "Change between Taxable and Exempt Letting or of the Key of Mixed Use (Line 102)"
+  },
+  {
+   "default": "0",
+   "fieldname": "change_of_own_use",
+   "fieldtype": "Check",
+   "label": "Change between Exempt Letting and Own Use (Line 103)"
+  },
+  {
+   "default": "0",
+   "fieldname": "change_for_other_reasons",
+   "fieldtype": "Check",
+   "label": "Changed for Other Reasons (Line 104)"
+  },
+  {
+   "depends_on": "eval:doc.change_for_other_reasons",
+   "fieldname": "change_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason of the Change (Line 104)"
+  },
+  {
+   "fieldname": "reconciliation_section",
+   "fieldtype": "Section Break",
+   "label": "Reconciliation with the Voranmeldungen"
+  },
+  {
+   "cannot_add_rows": 1,
+   "cannot_delete_rows": 1,
+   "description": "Each Voranmeldungszeitraum of the year, filled by Calculate. A period whose Voranmeldung is due and not filed holds the return, unless its row says why the return is filed without it.",
+   "fieldname": "periods",
+   "fieldtype": "Table",
+   "label": "Voranmeldungszeiträume",
+   "options": "Annual VAT Return Period"
+  },
+  {
+   "description": "Each Kennzahl of the Voranmeldung and Kz 820: the difference of the return to the filed Voranmeldungen in its parts. An unexplained rest holds the return.",
+   "fieldname": "reconciliation",
+   "fieldtype": "Table",
+   "label": "Per Kennzahl",
+   "options": "Annual VAT Return Reconciliation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "verprobung_section",
+   "fieldtype": "Section Break",
+   "label": "Verprobung"
+  },
+  {
+   "fieldname": "checks",
+   "fieldtype": "Table",
+   "label": "Verprobung",
+   "options": "VAT Return Check",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deviations",
+   "fieldtype": "Table",
+   "label": "Deviating Vouchers",
+   "options": "VAT Return Deviation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unmapped",
+   "fieldtype": "Table",
+   "label": "Watched Accounts with a Balance",
+   "options": "VAT Return Unmapped Account",
+   "read_only": 1
+  },
+  {
+   "fieldname": "findings_section",
+   "fieldtype": "Section Break",
+   "label": "Findings"
+  },
+  {
+   "fieldname": "findings",
+   "fieldtype": "Table",
+   "label": "Findings",
+   "options": "Annual Filing Finding",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_section",
+   "fieldtype": "Section Break",
+   "label": "Filing"
+  },
+  {
+   "fieldname": "filed_via",
+   "fieldtype": "Select",
+   "label": "Filed Via",
+   "options": "\neric\nmein_elster\nother_way\nupload",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filed_on",
+   "fieldtype": "Date",
+   "label": "Filed On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transferticket",
+   "fieldtype": "Data",
+   "label": "Transferticket",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_filing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filed_by",
+   "fieldtype": "Link",
+   "label": "Noted By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_note",
+   "fieldtype": "Small Text",
+   "label": "How and When Filed",
+   "read_only": 1
+  },
+  {
+   "description": "Required to file a return that is not ready: why it is correct nonetheless.",
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-11-23 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual VAT Return",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 0,
+ "row_format": "Dynamic",
+ "search_fields": "company,year",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

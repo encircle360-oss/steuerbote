@@ -1,0 +1,139 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 20:00:00.000000",
+ "description": "A field of form USt 2 A with its amount: computed by Calculate, corrected with a reason, or a line by hand.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "feldkennung",
+  "label",
+  "kennzahl",
+  "line",
+  "formatkennzeichen",
+  "ustva",
+  "paragraph",
+  "column_break_amounts",
+  "ledger_amount",
+  "form_amount",
+  "correction",
+  "correction_reason",
+  "reported",
+  "manual"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "description": "The Feldkennung of the field, such as E3006201; a line by hand may name its Kennzahl instead, such as 320.",
+   "fieldname": "feldkennung",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Field Code",
+   "read_only_depends_on": "eval:!doc.manual",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "label",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "kennzahl",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kennzahl",
+   "read_only": 1
+  },
+  {
+   "fieldname": "line",
+   "fieldtype": "Int",
+   "label": "Form Line",
+   "read_only": 1
+  },
+  {
+   "fieldname": "formatkennzeichen",
+   "fieldtype": "Data",
+   "label": "Format Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ustva",
+   "fieldtype": "Data",
+   "label": "Kennzahl of the Voranmeldung",
+   "read_only": 1
+  },
+  {
+   "description": "For lines 46, 52 and 54: the paragraph of the exempt sales, „Umsätze nach § … UStG“, from the mapping rules of the accounts, or of a line by hand.",
+   "fieldname": "paragraph",
+   "fieldtype": "Small Text",
+   "label": "Paragraph of the Exemption",
+   "read_only_depends_on": "eval:!doc.manual"
+  },
+  {
+   "fieldname": "column_break_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ledger_amount",
+   "fieldtype": "Currency",
+   "label": "Ledger Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "form_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Form Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "correction",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Override Amount",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "correction_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Override"
+  },
+  {
+   "columns": 2,
+   "fieldname": "reported",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount Filed",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "manual",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Line by Hand",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual VAT Return Line",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

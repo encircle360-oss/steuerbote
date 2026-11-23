@@ -1,0 +1,136 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 20:00:00.000000",
+ "description": "A Voranmeldungszeitraum of the year: Kz 83 and Kz 39 as filed against Kz 83 on today's ledger.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "period_label",
+  "period_code",
+  "due",
+  "vat_return",
+  "column_break_amounts",
+  "kz83",
+  "kz39",
+  "kz83_now",
+  "difference",
+  "late",
+  "corrections",
+  "cause",
+  "waiver_reason"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "period_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Return Period",
+   "read_only": 1
+  },
+  {
+   "fieldname": "period_code",
+   "fieldtype": "Data",
+   "label": "Period Code",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "The VAT Return Settings require a Voranmeldung for the period.",
+   "fieldname": "due",
+   "fieldtype": "Check",
+   "label": "Voranmeldung Due",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "vat_return",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "VAT Return",
+   "options": "VAT Return",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "fieldname": "kz83",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Kz 83",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "kz39",
+   "fieldtype": "Currency",
+   "label": "Kz 39",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "kz83_now",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Kz 83 per Today's Ledger",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "difference",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Difference",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "late",
+   "fieldtype": "Currency",
+   "label": "Late Postings",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "corrections",
+   "fieldtype": "Currency",
+   "label": "Corrections without Posting",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "cause",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Cause of the Difference",
+   "options": "\nNo Difference\nLate Postings\nCorrections without Posting\nLate Postings and Corrections\nNot Filed",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "Why the return is filed without the Voranmeldung of the period, such as one filed outside Steuerbote; without it a due period that is not filed holds the return.",
+   "fieldname": "waiver_reason",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Reason without a Voranmeldung"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual VAT Return Period",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
