@@ -22,6 +22,7 @@ from steuerbote.mappings import transfer
 from steuerbote.steuerbote.doctype.balance_sheet_mapping import balance_sheet_mapping
 from steuerbote.tests.helpers import make_account, make_company
 from steuerbote.ustva import WatchLevel
+from steuerbote.xbrl import changes
 from steuerbote.xbrl.mapping import (
 	AccountBalance,
 	Books,
@@ -32,7 +33,9 @@ from steuerbote.xbrl.mapping import (
 	Part,
 	Purpose,
 )
-from steuerbote.xbrl.tests import positions
+from steuerbote.xbrl.taxonomy import View
+from steuerbote.xbrl.tests import mini, positions
+from steuerbote.xbrl.tests import test_changes as lift_case
 
 # The tests build their own companies and accounts and need none of ERPNext's test records.
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Account"]
@@ -469,3 +472,168 @@ class IntegrationTestBalanceSheetMappingAccounts(MappingTestCase):
 			frappe.ValidationError, "No account of the company with an account number"
 		):
 			stored.watch_accounts_without_place()
+
+
+# Two more SKR04 accounts on positions the mini taxonomy 6.10 renames and removes (steuerbote/xbrl/tests/mini.py).
+LIFTED_ACCOUNTS = {"0440": ("Andere Anlagen, alt", "Asset"), "1350": ("Kryptowerte", "Asset")}
+
+
+class IntegrationTestBalanceSheetMappingLift(MappingTestCase):
+	"""Auf neue Taxonomie heben from 6.9 to 6.10 through the changes of the mini taxonomies (steuerbote/xbrl/tests/
+	test_changes.py), against the mini taxonomy 6.10 with the positions of the tests installed, and the file of a
+	mapping of 6.9 imported into one of 6.10."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		make_company(TARGET, "STBLY")
+		make_accounts(TARGET)
+		for company in (COMPANY, TARGET):
+			for number, (label, root_type) in LIFTED_ACCOUNTS.items():
+				if not frappe.db.get_value("Account", {"company": company, "account_number": number}):
+					make_account(company, number, label, root_type)
+		cls.views = {
+			"6.9": positions.view(),
+			"6.10": positions.with_positions(
+				mini.view(View.FISCAL, mini.VERSION_6_10),
+				positions.BALANCE_SHEET_POSITIONS,
+				positions.INCOME_STATEMENT_POSITIONS,
+			),
+		}
+
+	def setUp(self):
+		super().setUp()
+		self.installed_versions(self.views)
+		patcher = patch.object(changes, "CHANGES", MappingProxyType({"6.10": lift_case.MINI_CHANGES}))
+		patcher.start()
+		self.addCleanup(patcher.stop)
+		frappe.delete_doc_if_exists(MAPPING, TARGET, force=True)
+
+	def installed_versions(self, views) -> None:
+		"""The installed taxonomies by version; a version without a view is one Taxonomie einrichten has not installed."""
+		patcher = patch.object(balance_sheet_mapping, "position_taxonomy", side_effect=views.get)
+		patcher.start()
+		self.addCleanup(patcher.stop)
+
+	def mapping_of_6_9(self, company: str = COMPANY):
+		accounts = {
+			number: frappe.db.get_value("Account", {"company": company, "account_number": number})
+			for number in ("1800", "2900", "4400", "0440", "1350", "1460", "9000")
+		}
+		return self.new_mapping(
+			company,
+			rules=[
+				{"account": accounts["1800"], "concept": BANK, "opposite_concept": BANK_LIABILITY},
+				{"account": accounts["2900"], "concept": SUBSCRIBED},
+				{"account": accounts["4400"], "concept": SALES},
+				{"account": accounts["0440"], "concept": lift_case.OLD_EQUIPMENT},
+				{"account": accounts["1350"], "concept": lift_case.CRYPTO},
+			],
+			watched=[{"account": accounts["1460"], "level": WatchLevel.HINT.value}],
+			excluded=[{"account": accounts["9000"], "reason": "Saldenvorträge der Klasse 9"}],
+		).insert()
+
+	def test_the_lift_takes_the_rows_to_the_positions_of_6_10_and_keeps_those_before(self):
+		mapping = self.mapping_of_6_9()
+		before = mapping.current_items()
+		found = mapping.lift_taxonomy("6.10")
+		stored = frappe.get_doc(MAPPING, COMPANY)
+		self.assertEqual((stored.taxonomy_version, stored.previous_taxonomy_version), ("6.10", "6.9"))
+		self.assertEqual(load_items(stored.previous_rows), before)
+		self.assertEqual(
+			rows(stored),
+			{
+				"rules": [
+					("1800", BANK, BANK_LIABILITY, "both", 0, None),
+					("2900", SUBSCRIBED, None, "both", 0, None),
+					("4400", SALES, None, "both", 0, None),
+					("1350", lift_case.DIGITAL, None, "both", 0, None),
+				],
+				"watched": [("1460", "hint"), ("0440", "blocking")],
+				"excluded": [("9000", "Saldenvorträge der Klasse 9")],
+			},
+		)
+		self.assertEqual(
+			found,
+			{
+				"version": "6.10",
+				"previous": "6.9",
+				"renamed": [{"account": "1350", "old": lift_case.CRYPTO, "new": lift_case.DIGITAL}],
+				"to_decide": [
+					{
+						"account": "0440",
+						"position": lift_case.OLD_EQUIPMENT,
+						"text": f"Die HGB-Taxonomie 6.10 hat die Position {lift_case.OLD_EQUIPMENT} nicht mehr.",
+					}
+				],
+				"mussfelder": [{"position": lift_case.GRUNDSTEUER, "label": "Grundsteuer"}],
+			},
+		)
+
+	def test_the_lift_needs_the_taxonomy_of_the_later_version_installed(self):
+		self.installed_versions({"6.9": self.views["6.9"]})
+		mapping = self.mapping_of_6_9()
+		with self.assertRaisesRegex(frappe.ValidationError, "The HGB-Taxonomie 6.10 is not installed"):
+			mapping.lift_taxonomy("6.10")
+		self.assertEqual(frappe.get_doc(MAPPING, COMPANY).taxonomy_version, "6.9")
+
+	def test_the_lift_climbs_to_a_later_version_only(self):
+		mapping = self.mapping_of_6_9()
+		mapping.lift_taxonomy("6.10")
+		lifted = frappe.get_doc(MAPPING, COMPANY)
+		for target in ("6.10", "6.9", "6.8"):
+			with (
+				self.subTest(target=target),
+				self.assertRaisesRegex(
+					frappe.ValidationError, "names the positions of the HGB-Taxonomie 6.10"
+				),
+			):
+				lifted.lift_taxonomy(target)
+
+	def test_the_rows_before_the_lift_are_a_file_of_the_previous_version(self):
+		mapping = self.mapping_of_6_9()
+		with self.assertRaisesRegex(frappe.ValidationError, "was never lifted"):
+			mapping.export_previous_mapping()
+		before = mapping.current_items()
+		mapping.lift_taxonomy("6.10")
+		exported = frappe.get_doc(MAPPING, COMPANY).export_previous_mapping()
+		self.assertTrue(exported["file_name"].endswith("-Taxonomie-6.9.json"))
+		file = frappe.get_doc("File", {"file_url": exported["file_url"]})
+		self.assertEqual((file.is_private, file.attached_to_name), (1, COMPANY))
+		data = json.loads(exported["content"])
+		self.assertEqual(data["body"], file_body("6.9", before, None))
+
+	def test_a_file_of_6_9_comes_into_a_mapping_of_6_10_lifted(self):
+		text = self.mapping_of_6_9().export_mapping()["content"]
+		target = self.new_mapping(TARGET).insert()
+		target.lift_taxonomy("6.10")
+		target = frappe.get_doc(MAPPING, TARGET)
+		comparison = target.compare_with_file(content=text)
+		self.assertEqual(comparison["lifted_from"], "6.9")
+		chosen = [difference["id"] for difference in comparison["differences"]]
+		target.import_file(content=text, chosen=chosen)
+		imported = rows(frappe.get_doc(MAPPING, TARGET))
+		self.assertIn(("1350", lift_case.DIGITAL, None, "both", 0, None), imported["rules"])
+		self.assertIn(("0440", "blocking"), imported["watched"])
+
+	def test_a_file_of_6_10_stays_out_of_a_mapping_of_6_9(self):
+		source = self.mapping_of_6_9()
+		source.lift_taxonomy("6.10")
+		text = frappe.get_doc(MAPPING, COMPANY).export_mapping()["content"]
+		target = self.new_mapping(TARGET).insert()
+		with self.assertRaisesRegex(frappe.ValidationError, "names those of 6.9"):
+			target.compare_with_file(content=text)
+
+	def test_a_version_without_defaults_says_so(self):
+		mapping = self.mapping_of_6_9()
+		mapping.lift_taxonomy("6.10")
+		lifted = frappe.get_doc(MAPPING, COMPANY)
+		with (
+			patch.object(
+				ebilanz_defaults, "DEFAULTS", MappingProxyType({"6.9": ebilanz_defaults.DEFAULTS["6.9"]})
+			),
+			self.assertRaisesRegex(
+				frappe.ValidationError, "There are no defaults of SKR04 for the HGB-Taxonomie 6.10"
+			),
+		):
+			lifted.load_defaults()
