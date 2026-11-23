@@ -873,7 +873,7 @@ class BilanzTest(SyntheticTestCase):
 	def test_compares_the_rules_a_module_of_the_e_bilanz_computes(self):
 		def expected_rules(version: str) -> tuple[RuleExpectation, ...]:
 			return (
-				RuleExpectation("170205010", "Kontext", ("[bs.ass]!=[bs.eqLiab]",)),
+				RuleExpectation("170205010", "Kontext", ("[gaap:bs.ass]!=[gaap:bs.eqLiab]",)),
 				RuleExpectation("170205015", "Header", (f"version{version}",)),
 			)
 

@@ -221,11 +221,17 @@ def list_type(field_: Field) -> str:
 
 
 def bilanz_jahresdokumentation() -> Documented:
-	"""Jahresdokumentation_Bilanz_Taxonomie_6_9.ods with a rule of the Vordruck Kontext and one of the Header."""
+	"""Jahresdokumentation_Bilanz_Taxonomie_6_9.ods with the rules of the Vordruck Kontext that the modules of the
+	E-Bilanz compute (yearcheck.BILANZ_EXPECTING), their Prüfbedingungen of their terms, and a rule of the Header."""
 	documented = Documented(information=["Dokumentation erzeugt für Version v6_9 Versionslabel 1.6"])
-	documented.rows("Kontext", "Regeln").append(
-		{"Name": "AktivaUngleichPassiva", "Fehlercode": "170205010", "Prüfbedingung": "[bs.ass]!=[bs.eqLiab]"}
-	)
+	for expectation in (found for expecting in yearcheck.BILANZ_EXPECTING for found in expecting("6.9")):
+		documented.rows(expectation.form, "Regeln").append(
+			{
+				"Name": f"Regel_{expectation.code}",
+				"Fehlercode": expectation.code,
+				"Prüfbedingung": " und ".join(expectation.terms),
+			}
+		)
 	documented.rows("Header", "Regeln").append(
 		{"Name": "UnerlaubterEmpfaengerTyp", "Fehlercode": "170205015"}
 	)

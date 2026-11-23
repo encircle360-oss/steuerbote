@@ -16,7 +16,8 @@ reports less than zero, so that a correction changes what Berechnen checked. The
 ELSTER as the Körperschaftsteuererklärung of its year with an empty KSt1, whose schema ERiC 44.3.6.0 does not have
 yet; under structure_only() the simulation checks its structure and its Vorsatz without the rules of the Vordrucke of
 the year (steuerbote.eric.simulation.kst), which refuse an empty KSt1. With the kind Bilanz it goes as the E-Bilanz
-of taxonomy 6.9, in the frame of ebilanz_000002.xsd. All names, numbers and addresses are invented.
+of taxonomy 6.9, in the frame of ebilanz_000002.xsd around an instance without facts, which structure_only() checks
+for its frame alone. All names, numbers and addresses are invented.
 """
 
 import json
@@ -36,6 +37,7 @@ from lxml import etree
 
 from steuerbote.elster import vorsatz
 from steuerbote.eric import datenart, fake
+from steuerbote.eric.simulation import bilanz as bilanz_checks
 from steuerbote.eric.simulation import erklaerung
 from steuerbote.eric.simulation import kst as kst_checks
 from steuerbote.jahresmeldung import overrides
@@ -214,9 +216,11 @@ def use_controller() -> Iterator[None]:
 
 @contextmanager
 def structure_only() -> Iterator[None]:
-	"""While it lasts, the simulation checks a Körperschaftsteuererklärung for its structure and its Vorsatz alone."""
+	"""While it lasts, the simulation checks a Körperschaftsteuererklärung for its structure and its Vorsatz alone, and
+	an E-Bilanz for its frame without the rules of its instance (steuerbote.eric.simulation.bilanz)."""
 	structure = erklaerung.checks(kst_checks.TITLE, kst_checks.MAIN_FORM)
-	with patch.object(fake, "CHECKS", MappingProxyType({**fake.CHECKS, datenart.kst(2026).name: structure})):
+	checks = {datenart.kst(2026).name: structure, datenart.bilanz(TAXONOMY).name: bilanz_checks.FRAME}
+	with patch.object(fake, "CHECKS", MappingProxyType({**fake.CHECKS, **checks})):
 		yield
 
 
