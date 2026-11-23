@@ -30,6 +30,17 @@ def module_body(path: Path) -> list[ast.stmt]:
 	return ast.parse(path.read_text(encoding="utf-8")).body
 
 
+def literal(path: Path, name: str) -> object:
+	"""The literal value the module assigns to the name at its top level."""
+	(value,) = [
+		node.value
+		for node in module_body(path)
+		if isinstance(node, ast.Assign)
+		and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)
+	]
+	return ast.literal_eval(value)
+
+
 def constants(path: Path) -> dict[str, object]:
 	"""The literal values the module assigns to names at its top level."""
 	return {
@@ -73,6 +84,12 @@ class ReportFilesTest(TestCase):
 		values = constants(REPORT / "offene_fristen.py")
 		self.assertEqual(re.findall(r'fieldname: "(\w+)"', script), [values["COMPANY"], values["HORIZON"]])
 		self.assertEqual(re.findall(r"default: (\d+)", script), [str(values["DEFAULT_HORIZON"])])
+
+	def test_the_reminder_shows_the_columns_of_the_report_without_the_company(self):
+		fieldnames = [column["fieldname"] for column in literal(REPORT / "offene_fristen.py", "COLUMNS")]
+		self.assertEqual(fieldnames[0], "company")
+		self.assertEqual(list(literal(MODULE / "deadlines.py", "EMAIL_COLUMNS")), fieldnames[1:])
+		self.assertEqual(fieldnames[-2:], ["document_status", "note"])
 
 	def test_the_report_and_the_job_name_the_same_report(self):
 		self.assertEqual(
