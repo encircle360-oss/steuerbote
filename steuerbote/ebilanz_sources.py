@@ -15,6 +15,9 @@
   none in the founding year.
 - The Betriebsvermögen of the Steuerbilanz the filed E-Bilanz of the previous year reported (filed_tax_equity), and the
   check of the installed taxonomy (taxonomy_check), as „Laufzeitumgebung prüfen“ reports it.
+- For the Körperschaftsteuererklärung: the E-Bilanz of the year whose Jahresüberschuss Anlage GK line 11 takes
+  (ebilanz_for_income_tax), and the filed E-Bilanz of a year (filed_ebilanz) with the gezeichnetes Kapital of its
+  Steuerbilanz (subscribed_capital) for KSt 1 F lines 17 and 18.
 """
 
 from datetime import date, timedelta
@@ -42,6 +45,11 @@ from steuerbote.xbrl.mapping import Books
 from steuerbote.xbrl.versions import TAXONOMIES
 
 DOCTYPE = "Electronic Balance Sheet"
+POSITION = "Electronic Balance Sheet Position"
+SUBSCRIBED = "bs.eqLiab.equity.subscribed"
+INCOME_TAX_STATUSES = (Status.CALCULATED, Status.READY, Status.FILED)
+"""What an E-Bilanz has to be for the Körperschaftsteuererklärung to take its Jahresüberschuss: calculated, ready or
+filed; a draft that Berechnen has not read holds no figures, and a replaced one gave way to its Berichtigung."""
 GROUP_BY_ASSET = "Asset"
 DISPOSALS = ("value_of_sold_asset", "value_of_scrapped_asset", "value_of_capitalized_asset")
 
@@ -205,7 +213,14 @@ def previous_fiscal_year(company: str, from_date: date) -> tuple[date, date] | N
 def filed_tax_equity(company: str, year: int) -> Decimal | None:
 	"""The Betriebsvermögen of the Steuerbilanz that the filed E-Bilanz of the Jahresabschluss of the year reported,
 	the latest that no Berichtigung replaced; None without one."""
-	filed = frappe.get_all(
+	name = filed_ebilanz(company, year)
+	return None if name is None else to_amount(frappe.db.get_value(DOCTYPE, name, "tax_equity"))
+
+
+def filed_ebilanz(company: str, year: int) -> str | None:
+	"""The filed E-Bilanz of the Jahresabschluss of the company and year, the latest that no Berichtigung replaced;
+	None without one."""
+	found = frappe.get_all(
 		DOCTYPE,
 		filters={
 			"company": company,
@@ -214,11 +229,40 @@ def filed_tax_equity(company: str, year: int) -> Decimal | None:
 			"docstatus": 1,
 			"status": Status.FILED.value,
 		},
-		fields=["tax_equity"],
 		order_by="creation desc",
 		limit=1,
+		pluck="name",
 	)
-	return to_amount(filed[0].tax_equity) if filed else None
+	return found[0] if found else None
+
+
+def subscribed_capital(name: str) -> Decimal:
+	"""The gezeichnetes Kapital the Steuerbilanz of an E-Bilanz reports, its position „Gezeichnetes Kapital“
+	[bs.eqLiab.equity.subscribed]; 0 without the position."""
+	return to_amount(
+		frappe.db.get_value(
+			POSITION,
+			{"parent": name, "parenttype": DOCTYPE, "concept": SUBSCRIBED, "manual": 0},
+			"tax_amount",
+		)
+	)
+
+
+def ebilanz_for_income_tax(company: str, year: int, named: str | None) -> str | None:
+	"""The E-Bilanz whose Jahresüberschuss the Körperschaftsteuererklärung of the company and year takes for Anlage GK
+	line 11: the one named, while it is the Jahresabschluss of the key, calculated or filed and not replaced, else the
+	newest such E-Bilanz; None without one, so that line 11 is the Jahresüberschuss of the books."""
+	filters = {
+		"company": company,
+		"year": year,
+		"statement_type": JAHRESABSCHLUSS,
+		"docstatus": ["!=", 2],
+		"status": ["in", [status.value for status in INCOME_TAX_STATUSES]],
+	}
+	if named and frappe.db.exists(DOCTYPE, {"name": named, **filters}):
+		return named
+	found = frappe.get_all(DOCTYPE, filters=filters, order_by="creation desc", limit=1, pluck="name")
+	return found[0] if found else None
 
 
 def taxonomy_check(version: str) -> tuple[bool, str]:
