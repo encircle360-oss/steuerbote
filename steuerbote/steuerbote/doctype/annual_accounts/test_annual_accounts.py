@@ -17,15 +17,18 @@ from steuerbote.steuerbote.doctype.annual_accounts import layout
 from steuerbote.tests import annual_accounts as data
 from steuerbote.tests.annual_accounts import KLEIN, KLEINST, blocking, codes, line
 
-# The companies, their accounts, Fiscal Years, employees and the custom field of the Employee are made by the tests.
+# The tests make the companies, their accounts, Fiscal Years, employees, Journal Entries and the custom field of the
+# Employee themselves, and need no test records of users or DocTypes.
 IGNORE_TEST_RECORD_DEPENDENCIES = [
 	"Account",
 	"Annual Accounts",
 	"Company",
 	"Custom Field",
+	"DocType",
 	"Employee",
 	"Fiscal Year",
 	"Journal Entry",
+	"User",
 ]
 
 DOCTYPE = data.DOCTYPE

@@ -14,8 +14,6 @@ from steuerbote.steuerbote.doctype.annual_accounts.bridge import Employee
 from steuerbote.tests import annual_accounts as data
 from steuerbote.tests.helpers import make_company
 
-IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Custom Field", "Employee"]
-
 COMPANY = data.Company("Steuerbote Test Arbeitnehmer GmbH", "STAN", "99903", ())
 NEIGHBOUR = data.Company("Steuerbote Test Arbeitnehmer Nachbar GmbH", "STAO", "99904", ())
 CLOSING = date(2026, 12, 31)

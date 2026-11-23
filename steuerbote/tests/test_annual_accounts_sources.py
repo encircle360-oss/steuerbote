@@ -15,8 +15,6 @@ from steuerbote.tests import annual_accounts as data
 from steuerbote.tests.annual_accounts import KLEINST
 from steuerbote.tests.helpers import make_company
 
-IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "Fiscal Year"]
-
 WITHOUT_SETTINGS = "Steuerbote Test Jahresabschluss ohne Einstellungen GmbH"
 BANK = "bs.ass.currAss.cashEquiv.bank"
 CARRIED_FORWARD = "bs.eqLiab.equity.retainedEarnings"
