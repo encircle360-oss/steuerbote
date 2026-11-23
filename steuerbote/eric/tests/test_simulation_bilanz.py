@@ -11,10 +11,12 @@ from xml.etree import ElementTree
 from lxml import etree
 
 from steuerbote.ebilanz.anlagenspiegel import Row, ValueType
-from steuerbote.ebilanz.instance import Sources
-from steuerbote.ebilanz.tests.taxonomy import view
-from steuerbote.ebilanz.tests.test_gcd import OPENING
-from steuerbote.ebilanz.tests.test_instance import EQUITY, OPENING_BOOKS, built
+from steuerbote.ebilanz.instance import Sources, build
+from steuerbote.ebilanz.positions import structure
+from steuerbote.ebilanz.tests.taxonomy import view, view_6_10
+from steuerbote.ebilanz.tests.test_calculation import case
+from steuerbote.ebilanz.tests.test_gcd import MASTER, OPENING
+from steuerbote.ebilanz.tests.test_instance import EQUITY, OPENING_BOOKS, SOURCES, built
 from steuerbote.ebilanz.tests.test_ueberleitung import ACCRUAL, HANDELSBILANZ, SALES
 from steuerbote.ebilanz.tests.test_ueberleitung import SOFTWARE as SELFMADE
 from steuerbote.elster import ebilanz_xml
@@ -603,4 +605,35 @@ class Taxonomy610RulesTest(TestCase):
 				f"FeldNichtAngegeben(gcd:{ELEMENTS}.KS)",
 				f"FeldNichtAngegeben(gcd:{ELEMENTS}.transmissionNotYetPossible)",
 			),
+		)
+
+
+GAAP_6_10 = "{http://www.xbrl.de/taxonomies/de-gaap-ci-2026-04-01}"
+
+
+class Taxonomy610Test(TestCase):
+	"""With the mini taxonomy 6.10 registered for 6.10: the Kontensalden of an E-Bilanz of the Datenart Bilanz_6.10
+	by the structural errors 170195106 to 170195110 of its Jahresdokumentation (steuerbote.xbrl.checks.kontensalden())."""
+
+	@classmethod
+	def setUpClass(cls):
+		cls.nutzdaten = ebilanz_xml.to_nutzdaten(build(structure(view_6_10(), case()), MASTER, SOURCES))
+
+	def setUp(self):
+		bilanz.register_taxonomy("6.10", view_6_10)
+		self.addCleanup(bilanz.unregister_taxonomy, "6.10")
+
+	def test_the_e_bilanz_of_steuerbote_passes(self):
+		self.assertEqual(errors(self.nutzdaten, HEADER_6_10), [])
+
+	def test_170195106_a_valued_position_without_a_kontensaldo(self):
+		"""The Jahresüberschuss of the Bilanz without its Kontensaldo without account information."""
+
+		def without_the_last_kontensaldo(root: etree._Element) -> None:
+			*_rest, last = root.iter(f"{GAAP_6_10}detailedInformation.accountBalances")
+			last.getparent().remove(last)
+
+		self.assertEqual(
+			errors(changed(self.nutzdaten, without_the_last_kontensaldo), HEADER_6_10),
+			[("170195106", "de-gaap-ci:bs.eqLiab.equity.netIncome")],
 		)
