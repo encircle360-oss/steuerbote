@@ -554,6 +554,34 @@ class RateAndPairTest(TestCase):
 				self.assertEqual(CATALOGUE.field(base).line, CATALOGUE.field(tax).line)
 
 
+class ParagraphTest(TestCase):
+	"""Lines 46, 52 and 54 name the paragraph of their sales in a text field of the same line."""
+
+	def test_three_lines_name_their_paragraph(self):
+		named = {field.element: field.paragraph for field in CATALOGUE.fields if field.paragraph is not None}
+		self.assertEqual(named, {"E3103902": "E3103901", "E3104502": "E3104501", "E3104902": "E3104901"})
+		for amount, text in named.items():
+			with self.subTest(amount=amount):
+				self.assertIs(CATALOGUE.field(text).format, Format.TEXT)
+				self.assertEqual(CATALOGUE.field(text).line, CATALOGUE.field(amount).line)
+				self.assertIs(CATALOGUE.field(text).source, Source.DETAIL)
+
+	def test_refuses_a_paragraph_that_is_no_text_of_the_same_line(self):
+		for text in ("E3103801", "E3104501", "E9999999"):
+			with (
+				self.subTest(text=text),
+				self.assertRaisesRegex(ValueError, f"E3103902: {text} is no text of line 46"),
+			):
+				Catalogue(
+					2026,
+					tuple(
+						replace(field, paragraph=text) if field.element == "E3103902" else field
+						for field in CATALOGUE.fields
+					),
+					CATALOGUE.rules,
+				)
+
+
 class SumsTest(TestCase):
 	def test_the_sums_and_differences_of_the_form(self):
 		sums = {field.element: field.parts for field in CATALOGUE.fields if field.parts}
