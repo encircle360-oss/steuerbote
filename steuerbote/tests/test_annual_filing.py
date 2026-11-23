@@ -3,6 +3,8 @@ steuerbote/tests/annual_document.py: the start as a draft of its Fiscal Year, Be
 by hand, what a save keeps, one draft and one filing per key, the Berichtigung, the note of a filing and the amounts
 computed again before it."""
 
+import html
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -10,7 +12,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, getdate, today
 
-from steuerbote.jahresmeldung import corrections, overrides
+from steuerbote.jahresmeldung import corrections, lifecycle, overrides
 from steuerbote.tests import annual_document
 from steuerbote.tests.annual_document import COMPANY, DOCTYPE, LINE_DOCTYPE, LINES, NEGATIVE, source
 from steuerbote.tests.transmitting import TICKET, TRANSMISSION, Transmitting
@@ -451,3 +453,98 @@ class TestWhatAModuleCalls(AnnualFilingTestCase):
 		doc.append("lines", {"key": "C", "correction": 5, "correction_reason": "Von Hand"})
 		doc.save()
 		self.assertEqual(doc.manual_lines(), (overrides.ManualLine("C", Decimal("5.00"), "Von Hand"),))
+
+
+INCLUDES = "steuerbote/templates/includes/annual_filing"
+# A print format of a module in short: the shared parts around a line of its own in the head.
+PRINT_FORMAT = (
+	"{% set annual = doc.annual_print() %}"
+	f'{{% include "{INCLUDES}/style.html" %}}'
+	'<div class="sb-annual">'
+	'{% set head_rows = [("Finanzamt", "München")] %}'
+	f'{{% include "{INCLUDES}/head.html" %}}'
+	f'{{% include "{INCLUDES}/corrections.html" %}}'
+	f'{{% include "{INCLUDES}/findings.html" %}}'
+	f'{{% include "{INCLUDES}/remarks.html" %}}'
+	f'{{% include "{INCLUDES}/footer.html" %}}'
+	"</div>"
+)
+
+
+def cells(markup: str) -> str:
+	"""The printed text with every table cell closed by " |", so that a line reads as one string."""
+	text = re.sub(r"<(style|script)\b.*?</\1>", " ", markup, flags=re.DOTALL | re.IGNORECASE)
+	text = re.sub(r"</t[dh]>", " |", text)
+	text = re.sub(r"<br\s*/?>", " ", text)
+	text = re.sub(r"<[^>]+>", " ", text)
+	return re.sub(r"\s+", " ", html.unescape(text))
+
+
+class TestPrint(AnnualFilingTestCase):
+	"""The shared parts of the print formats, templates/includes/annual_filing, on the test document."""
+
+	def printed(self, doc) -> str:
+		return cells(frappe.render_template(PRINT_FORMAT, {"doc": doc}))
+
+	def test_the_head_names_company_steuernummer_year_due_date_and_document(self):
+		doc = self.calculated()
+		elster = frappe.db.get_value("VAT Return Settings", COMPANY, "elster_tax_number")
+		text = self.printed(doc)
+		for expected in (
+			f"Unternehmen | {COMPANY} |",
+			"Steuernummer | 123/456/78901 |",
+			f"Steuernummer im ELSTER-Format | {elster} |",
+			"Jahr | 2026 |",
+			"Geschäftsjahr | 01.01.2026 bis 31.12.2026 |",
+			"Fällig am | 31.07.2027 |",
+			"Finanzamt | München |",
+			f"Beleg | {doc.name}, Bereit |",
+		):
+			with self.subTest(expected=expected):
+				self.assertIn(expected, text)
+		for missing in ("Berichtigung zu", "Abgegeben am", "Korrekturen", "Befunde", "Anmerkungen"):
+			with self.subTest(missing=missing):
+				self.assertNotIn(missing, text)
+
+	def test_lists_the_corrections_the_lines_by_hand_the_findings_and_the_remarks(self):
+		doc = self.calculated(*LINES, SOURCE_ERROR)
+		doc.lines[0].correction = 90
+		doc.lines[0].correction_reason = REASON
+		doc.append("lines", {"key": "C", "correction": 5, "correction_reason": "Von Hand"})
+		doc.remarks = "Mit der Steuerberatung abgestimmt."
+		doc.save()
+		text = self.printed(doc)
+		for expected in (
+			"Korrekturen und Zeilen von Hand",
+			f"A | Umsätze | 100,00 | 90,00 | {REASON} |",
+			"C | Zeile von Hand | | 5,00 | Von Hand |",
+			"Befunde",
+			"Fehler | SB-NEU-BERECHNEN |",
+			"Fehler | SB-QUELLE | Ein Konto ohne Zuordnung hat einen Saldo. | Konto 1590 |",
+			"Anmerkungen Mit der Steuerberatung abgestimmt.",
+		):
+			with self.subTest(expected=expected):
+				self.assertIn(expected, text)
+
+	def test_a_filed_berichtigung_names_what_it_corrects_and_how_and_when_it_was_filed(self):
+		first = self.filed(self.calculated())
+		correction = self.filed(frappe.get_doc(DOCTYPE, first.make_correction()))
+		text = self.printed(correction)
+		self.assertIn(f"Beleg | {correction.name}, Abgegeben |", text)
+		self.assertIn(f"Berichtigung zu | {first.name} |", text)
+		self.assertIn(f"Abgegeben am | {getdate(today()):%d.%m.%Y}, in Mein ELSTER |", text)
+
+	def test_the_footer_leaves_mein_elster_out_for_the_e_bilanz_and_names_the_offenlegung_of_the_jahresabschluss(
+		self,
+	):
+		doc = self.calculated()
+		self.assertIn(
+			"Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.", self.printed(doc)
+		)
+		self.assertIn("Dieser Ausdruck ist keine Abgabe.", self.printed(doc))
+		doc.FILED_OUTSIDE = ("other_way",)
+		text = self.printed(doc)
+		self.assertIn("Zum Abgleich mit der Steuerberatung.", text)
+		self.assertNotIn("Mein ELSTER", text)
+		doc.LIFECYCLE = lifecycle.ACCOUNTS
+		self.assertIn("Dieser Ausdruck ist keine Offenlegung.", self.printed(doc))

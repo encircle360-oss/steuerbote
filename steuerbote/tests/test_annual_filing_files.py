@@ -161,3 +161,94 @@ class TransmissionScriptFilesTest(TestCase):
 		self.assertEqual(
 			sorted(set(SCRIPT_LITERAL.findall(script)) - translated() - UNTRANSLATED - FRAMEWORK_LABELS), []
 		)
+
+
+INCLUDES = APP / "templates" / "includes" / "annual_filing"
+PARTS = ("style", "head", "corrections", "findings", "remarks", "footer")
+HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
+CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')
+CLASS_SELECTOR = re.compile(r"\.(-?[A-Za-z_][\w-]*)")
+# Frappe's print stylesheet styles bare classes such as .label (inline, 75 %, bold), so the includes name their classes
+# with a prefix of their own, as the print formats of the app do.
+PRINT_CLASS_PREFIX = "sb-"
+
+
+def include(part: str) -> str:
+	return (INCLUDES / f"{part}.html").read_text(encoding="utf-8")
+
+
+class PrintIncludesFilesTest(TestCase):
+	"""The shared parts of the print formats of the annual documents (contract of stage 3, 2.5): A4, black and grey,
+	classes of their own, and the footer for the Steuerberatung and Mein ELSTER."""
+
+	def setUp(self):
+		self.style = include("style")
+		self.parts = {part: include(part) for part in PARTS}
+
+	def test_prints_on_a4_in_black_and_grey(self):
+		self.assertIn("size: A4 portrait", self.style)
+		for part, text in self.parts.items():
+			for colour in HEX_COLOUR.findall(text):
+				with self.subTest(part=part, colour=colour):
+					channels = colour if len(colour) == 3 else (colour[0:2], colour[2:4], colour[4:6])
+					self.assertEqual(len(set(channels)), 1)
+			with self.subTest(part=part):
+				self.assertNotIn("<img", text)
+				self.assertNotRegex(text, r"\b(rgb|hsl)a?\(")
+
+	def test_keeps_to_classes_of_its_own_and_styles_each_it_uses(self):
+		used = {
+			name
+			for text in self.parts.values()
+			for value in CLASS_ATTRIBUTE.findall(text)
+			for name in value.split()
+		}
+		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", self.style)))
+		self.assertNotIn("label", used | styled)
+		self.assertEqual(
+			sorted(name for name in used | styled if not name.startswith(PRINT_CLASS_PREFIX)), []
+		)
+		self.assertEqual(sorted(used - styled), [])
+
+	def test_the_head_pairs_each_label_with_its_value(self):
+		labels = re.findall(
+			r'<tr><td class="sb-label">([^<{]+)</td><td class="sb-value">', self.parts["head"]
+		)
+		self.assertEqual(
+			labels,
+			[
+				"Unternehmen",
+				"Steuernummer",
+				"Steuernummer im ELSTER-Format",
+				"Jahr",
+				"Geschäftsjahr",
+				"Fällig am",
+				"Beleg",
+				"Berichtigung zu",
+				"Abgegeben am",
+			],
+		)
+		self.assertIn("head_rows", self.parts["head"])
+
+	def test_the_footer_names_the_steuerberatung_and_mein_elster_but_for_the_e_bilanz(self):
+		footer = self.parts["footer"]
+		self.assertIn("Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.", footer)
+		self.assertIn("Zum Abgleich mit der Steuerberatung.", footer)
+		self.assertIn("Dieser Ausdruck ist keine Abgabe.", footer)
+		self.assertIn("Dieser Ausdruck ist keine Offenlegung.", footer)
+
+	def test_the_parts_read_only_what_the_base_hands_them(self):
+		source = BASE.read_text(encoding="utf-8")
+		(body,) = re.findall(r"def annual_print\(self\) -> dict\[str, Any\]:(.*?)\n\tdef ", source, re.DOTALL)
+		provided = set(re.findall(r'"(\w+)":', body))
+		for part, text in self.parts.items():
+			with self.subTest(part=part):
+				self.assertEqual(sorted(set(re.findall(r"\bannual\.(\w+)", text)) - provided), [])
+				self.assertEqual(
+					sorted(
+						set(re.findall(r"\brow\.(\w+)", text))
+						- provided
+						- {"severity", "code", "text", "reference", "get_formatted"}
+					),
+					[],
+				)
