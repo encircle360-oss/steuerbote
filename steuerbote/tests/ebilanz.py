@@ -18,6 +18,7 @@ HGB-Taxonomie 6.9 for each account but the Geldtransit. A test class makes the r
 set_for_the_test). Every name, number and amount is invented.
 """
 
+import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from datetime import date
@@ -236,11 +237,12 @@ def make_company_with_books() -> dict[str, str]:
 
 
 def make_mapping(accounts: dict[str, str]) -> None:
-	"""The Balance Sheet Mapping of RULES, unless the company has one; saving checks its positions against the taxonomy
-	the caller has installed."""
+	"""The Balance Sheet Mapping of RULES, unless the company has one, saved as without the taxonomy: the label of a
+	position can be longer than the field of a rule takes, as the 150 characters of „…, auf Sachanlagen, übrige
+	Abschreibungen auf Sachanlagen“ against 140, and Berechnen checks the positions against the taxonomy anyway."""
 	if frappe.db.exists(MAPPING, COMPANY):
 		return
-	frappe.get_doc(
+	mapping = frappe.get_doc(
 		{
 			"doctype": MAPPING,
 			"company": COMPANY,
@@ -256,7 +258,10 @@ def make_mapping(accounts: dict[str, str]) -> None:
 				for number, concept in RULES.items()
 			],
 		}
-	).insert(ignore_permissions=True)
+	)
+	mapping.flags.taxonomy_noted = True
+	with configured(None):
+		mapping.insert(ignore_permissions=True)
 
 
 def make_assets(accounts: dict[str, str]) -> None:
@@ -437,9 +442,9 @@ def taxonomy_root() -> Path:
 
 @contextmanager
 def configured(root: Path | None) -> Iterator[None]:
-	"""common_site_config.json of the bench naming root as the directory of the taxonomies, the empty directory of
-	the test for none."""
-	config = frappe._dict({TAXONOMY_ROOT: str(root)} if root else {})
+	"""common_site_config.json of the bench naming root as the directory of the taxonomies; for None an empty
+	directory of its own, so that no taxonomy is installed."""
+	config = frappe._dict({TAXONOMY_ROOT: str(root or tempfile.mkdtemp(prefix="steuerbote-ohne-taxonomie-"))})
 	with patch.object(transmission_adapter, "common_site_config", return_value=config):
 		yield
 

@@ -6,10 +6,8 @@ Prüfen in the simulation, XBRL exportieren, the filing and the Berichtigung, th
 Positionen. Every name, number and amount is invented.
 """
 
-import tempfile
 from datetime import date
 from decimal import Decimal
-from pathlib import Path
 from unittest.mock import patch
 
 import frappe
@@ -113,9 +111,8 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		cls.root = taxonomy_root()
-		with configured(cls.root):
-			cls.account = make_company_with_books()
-			make_mapping(cls.account)
+		cls.account = make_company_with_books()
+		make_mapping(cls.account)
 
 	def setUp(self):
 		self.enterContext(configured(self.root))
@@ -324,7 +321,7 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 			doc = self.calculated()
 		self.assertEqual((doc.ready, blocking_codes(doc)), (0, ["SB-TAXONOMIE"]))
 		self.assertIn("weicht vom Manifest ab", doc.findings[0].text)
-		with configured(Path(tempfile.mkdtemp())):
+		with configured(None):
 			doc = new_document()
 			with self.assertRaisesRegex(frappe.ValidationError, "The HGB-Taxonomie 6.9 is not installed"):
 				doc.calculate()
