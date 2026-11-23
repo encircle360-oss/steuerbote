@@ -9,6 +9,9 @@ the script writes again. Arelle (arelle-release in requirements-dev.txt) validat
 - the examples of the ERiC documentation on the Kerntaxonomie it calls valid, read into the facts of
   steuerbote/xbrl/facts.py (steuerbote/xbrl/tests/instances.py) and written by steuerbote/xbrl/writer.py in the view
   FISCAL;
+- the E-Bilanz of an invented GmbH as an Einheitsbilanz, a Handelsbilanz with its Überleitung, an Eröffnungsbilanz and
+  as a UG, as steuerbote/ebilanz/instance.py builds it in the view FISCAL, ready after the checks of that profile
+  (steuerbote/ebilanz/tests/test_real_taxonomy.py);
 - the Offenlegung of an invented GmbH as a Kleinstkapitalgesellschaft and as a small company, with both closing dates
   and the data of § 264 Abs. 1a HGB, in the views of the profile DISCLOSURE, after the checks of that profile.
 
@@ -31,6 +34,7 @@ from pathlib import Path
 
 from arelle import CntlrCmdLine
 
+from steuerbote.ebilanz.tests.test_real_taxonomy import invented
 from steuerbote.elster.tests.eric_schema import VARIABLE as DOCUMENTATION_VARIABLE
 from steuerbote.elster.tests.eric_schema import documentation
 from steuerbote.xbrl import writer
@@ -129,6 +133,10 @@ def documents(installation: Installation) -> Iterator[tuple[str, bytes]]:
 			f"fiscal-{name}",
 			writer.write(FISCAL.report(fiscal, report.entity, report.periods, report.facts), fiscal),
 		)
+	for name, ebilanz in invented(fiscal):
+		if not ebilanz.ready:
+			raise SystemExit("\n".join(f"{finding.code}: {finding.text}" for finding in ebilanz.findings))
+		yield f"ebilanz-{name}.xbrl", ebilanz.xml()
 	for kleinst, positions in ((True, KLEINST), (False, KLEIN)):
 		taxonomy = installation.view(DISCLOSURE.view(kleinst=kleinst))
 		report = DISCLOSURE.report(taxonomy, ENTITY, PERIODS, disclosure(positions))

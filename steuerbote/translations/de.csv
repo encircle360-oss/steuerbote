@@ -895,6 +895,7 @@
 "The DatenLieferant of the E-Bilanz takes no semicolon in its parts: {0}","Der Datenlieferant der E-Bilanz nimmt in seinen Teilen kein Semikolon: {0}"
 "The Datenlieferant has at most {0} characters.","Der Datenlieferant hat höchstens {0} Zeichen."
 "The Dauerfristverlängerung of {0} is entered twice.","Die Dauerfristverlängerung für {0} ist doppelt eingetragen."
+"The E-Bilanz has {0} bytes; ERiC takes at most {1} bytes of Nutzdaten.","Die E-Bilanz hat {0} Byte; ERiC nimmt höchstens {1} Byte Nutzdaten auf."
 "The ERiC runtime of the ERiC Settings is not on the server any more. Install it again.","Die ERiC-Laufzeitumgebung der ERiC-Einstellungen liegt nicht mehr auf dem Server. Bitte neu installieren."
 "The Employment Type {0} is listed twice.","Die Art der Beschäftigung {0} ist doppelt eingetragen."
 "The Erklärungen of the year are due on the last day of February of the second year after it (§ 149 Abs. 3 AO); USt 2 A line 127, KSt 1 line 100.","Die Erklärungen des Jahres sind am letzten Tag des Monats Februar des zweiten folgenden Jahres fällig (§ 149 Abs. 3 AO); USt 2 A Zeile 127, KSt 1 Zeile 100."

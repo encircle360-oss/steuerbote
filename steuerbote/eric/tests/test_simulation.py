@@ -368,6 +368,16 @@ class BilanzTest(SimulationTestCase):
 	"""The E-Bilanz: the wrapper of ebilanz_000002.xsd around the XBRL instance, which the simulation does not check
 	against a schema, as ERiC does not (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 9-20)."""
 
+	def setUp(self):
+		super().setUp()
+		# The invented E-Bilanz has an instance without facts, which the rules of the Jahresdokumentation refuse: these
+		# tests check the frame, and those rules have tests of their own (test_simulation_bilanz.py).
+		patcher = mock.patch.object(
+			fake, "CHECKS", MappingProxyType({**fake.CHECKS, bilanz("6.9").name: bilanz_checks.FRAME})
+		)
+		patcher.start()
+		self.addCleanup(patcher.stop)
+
 	def refused_bilanz(self, data: str) -> Message:
 		return self.refused(data, bilanz("6.9"), BILANZ_HEADER)
 
@@ -445,10 +455,14 @@ class BilanzTest(SimulationTestCase):
 
 class BilanzDocumentationTest(TestCase):
 	def test_the_example_of_the_documentation_is_valid(self):
+		"""Sent to the Finanzamt its NutzdatenHeader names, as rule 170205001 wants it for its Steuernummer."""
 		document = etree.fromstring(eric_schema.bilanz_example("6.9"))
 		((data,),) = document.iter("{http://www.elster.de/elsterxml/schema/v11}Nutzdaten")
+		(empfaenger,) = document.iter("{http://www.elster.de/elsterxml/schema/v11}Empfaenger")
 		result = Simulation(eric_schema.documentation()).run(
-			Operation.VALIDATE, etree.tostring(data, encoding="unicode"), BILANZ_HEADER
+			Operation.VALIDATE,
+			etree.tostring(data, encoding="unicode"),
+			replace(BILANZ_HEADER, empfaenger=empfaenger.text),
 		)
 		self.assertIs(result.outcome, Outcome.VALID)
 
