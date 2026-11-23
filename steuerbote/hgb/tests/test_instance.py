@@ -6,9 +6,20 @@ from datetime import date
 from decimal import Decimal
 from unittest import TestCase
 
-from steuerbote.hgb.disclosure import Mode, publication
-from steuerbote.hgb.instance import REGISTER_SCHEME, InstanceError, Notes, build
-from steuerbote.hgb.notes import RegisterData
+from steuerbote.hgb.disclosure import Mode, Signature, publication
+from steuerbote.hgb.instance import REGISTER_SCHEME, SLOTS, Code, InstanceError, Notes, build
+from steuerbote.hgb.notes import (
+	CATALOGUE,
+	AdvanceKind,
+	Answer,
+	Contingency,
+	ContingentLiability,
+	NoteAnswer,
+	OfficerAdvance,
+	OfficerGroup,
+	RegisterData,
+	catalogue,
+)
 from steuerbote.hgb.schemes import balance_sheet_scheme
 from steuerbote.hgb.size import SizeClass
 from steuerbote.hgb.statement import Balance, ProfitPresentation, in_full_euros
@@ -643,3 +654,490 @@ class CompanyTest(TestCase):
 		Kleinst nor klein is one."""
 		found = gcd_items(klein())
 		self.assertIs(found["company.disclosureCriterion.scope.CapitalMarketOrientationHGBs264d"], False)
+
+
+def angaben(instance) -> dict[tuple[str, Period], object]:
+	"""The items of the GAAP module outside the balance sheet by concept without prefix and period."""
+	return {
+		(concept.removeprefix(A), period): value
+		for (concept, period), value in items(instance).items()
+		if (concept.startswith(A) and not concept.startswith(f"{A}bs."))
+		or concept.startswith(f"{A}bs.contingLiab")
+	}
+
+
+def text(instance, concept: str) -> str:
+	return angaben(instance)[(concept, Period.WIRTSCHAFTSJAHR)]
+
+
+def answered(notes: Notes, code: str, answer: Answer, text: str = "", amount: Decimal | None = None) -> Notes:
+	others = tuple(entry for entry in notes.answers if entry.code != code)
+	return replace(notes, answers=(*others, NoteAnswer(code, answer, text, amount)))
+
+
+WJ = Period.WIRTSCHAFTSJAHR
+BELOW = "notesBelowBalanceSheet.geninfo"
+
+
+class RegisterDataTest(TestCase):
+	"""„In dem Jahresabschluss sind die Firma, der Sitz, das Registergericht und die Nummer, unter der die
+	Gesellschaft in das Handelsregister eingetragen ist, anzugeben.“ (§ 264 Abs. 1a Satz 1 HGB), as
+	notesBelowBalanceSheet.geninfo.* (RegisterData.concepts())."""
+
+	def test_firm_seat_court_and_number_under_the_balance_sheet(self):
+		found = angaben(kleinst())
+		self.assertEqual(
+			(
+				found[(f"{BELOW}.company", WJ)],
+				found[(f"{BELOW}.location", WJ)],
+				found[(f"{BELOW}.court", WJ)],
+				found[(f"{BELOW}.number", WJ)],
+			),
+			("Beispiel Werkstatt GmbH", "Musterstadt", "Amtsgericht Musterstadt", "HRB 12345"),
+		)
+		self.assertNotIn((f"{BELOW}.liquidationOrWindingUp", WJ), found)
+		self.assertEqual(angaben(klein())[(f"{BELOW}.number", WJ)], "HRB 67890")
+
+	def test_a_company_in_liquidation_says_so(self):
+		"""„Befindet sich die Gesellschaft in Liquidation oder Abwicklung, ist auch diese Tatsache anzugeben.“ (§ 264
+		Abs. 1a Satz 2 HGB)"""
+		register = replace(KLEINST_NOTES.register, in_liquidation=True)
+		found = angaben(kleinst(notes=replace(KLEINST_NOTES, register=register)))
+		self.assertEqual(
+			found[(f"{BELOW}.liquidationOrWindingUp", WJ)], "Die Gesellschaft befindet sich in Liquidation."
+		)
+
+
+class ContingenciesTest(TestCase):
+	"""„Für die in § 251 bezeichneten Haftungsverhältnisse sind ... die Haftungsverhältnisse jeweils gesondert unter
+	Angabe der gewährten Pfandrechte und sonstigen Sicherheiten anzugeben und ... Verpflichtungen betreffend die
+	Altersversorgung und Verpflichtungen gegenüber verbundenen oder assoziierten Unternehmen jeweils gesondert zu
+	vermerken.“ (§ 268 Abs. 7 HGB) A Kleinst states them under the balance sheet (§ 264 Abs. 1 Satz 5 Nr. 1 HGB),
+	klein in the Anhang, each kind at the Abschlussstichtag in full euros under bs.contingLiab."""
+
+	def test_each_kind_with_its_total(self):
+		found = angaben(kleinst())
+		self.assertEqual(found[("bs.contingLiab", ST)], Decimal("15000"))
+		self.assertEqual(found[("bs.contingLiab.guarantees", ST)], Decimal("15000"))
+		self.assertNotIn(("bs.contingLiab", PRIOR), found)
+
+	def test_the_part_towards_the_group_and_for_pensions_separately(self):
+		found = angaben(klein())
+		self.assertEqual(found[("bs.contingLiab", ST)], Decimal("80000"))
+		self.assertEqual(found[("bs.contingLiab.warranty", ST)], Decimal("30000"))
+		self.assertEqual(found[("bs.contingLiab.collateralisation", ST)], Decimal("50000"))
+		self.assertEqual(found[("bs.contingLiab.collateralisation.assoc", ST)], Decimal("50000"))
+		self.assertNotIn(("bs.contingLiab.collateralisation.pension", ST), found)
+		self.assertNotIn(("bs.contingLiab.warranty.assoc", ST), found)
+
+	def test_in_full_euros_adding_up_to_their_total(self):
+		contingent = (
+			ContingentLiability(Contingency.GUARANTEES, Decimal("1000.60"), pensions=True),
+			ContingentLiability(Contingency.WARRANTIES, Decimal("500.60")),
+		)
+		found = angaben(kleinst(notes=replace(KLEINST_NOTES, contingent=contingent)))
+		self.assertEqual(found[("bs.contingLiab", ST)], Decimal("1501"))
+		self.assertEqual(
+			found[("bs.contingLiab.guarantees", ST)] + found[("bs.contingLiab.warranty", ST)], Decimal("1501")
+		)
+		self.assertEqual(
+			found[("bs.contingLiab.guarantees.pension", ST)], found[("bs.contingLiab.guarantees", ST)]
+		)
+
+	def test_the_securities_granted_in_the_text(self):
+		self.assertIn(
+			"Verbindlichkeiten aus Bürgschaften, gewährte Pfandrechte und sonstige Sicherheiten: Abtretung von "
+			"Forderungen aus Lieferungen und Leistungen",
+			text(kleinst(), "ntmi.other"),
+		)
+		self.assertIn(
+			"Haftungsverhältnisse aus der Bestellung von Sicherheiten für fremde Verbindlichkeiten, gewährte "
+			"Pfandrechte und sonstige Sicherheiten: Grundschuld auf dem Geschäftsgebäude",
+			text(klein(), "nt.otherInfo.contingLiab"),
+		)
+
+	def test_a_total_without_its_kinds(self):
+		notes = answered(
+			replace(KLEINST_NOTES, contingent=()),
+			"HAFTUNGSVERHAELTNISSE",
+			Answer.YES,
+			amount=Decimal("700.40"),
+		)
+		found = angaben(kleinst(notes=notes))
+		self.assertEqual(found[("bs.contingLiab", ST)], Decimal("700"))
+		self.assertNotIn(("bs.contingLiab.guarantees", ST), found)
+
+	def test_where_the_gcd_says_they_stand(self):
+		"""„Allokation der Haftungsverhältnisse“: under the balance sheet or in the Anhang."""
+		self.assertEqual(
+			chosen(kleinst(), "report.id.reportElement.allocation.contingencies"), ("toBalance",)
+		)
+		self.assertEqual(chosen(klein(), "report.id.reportElement.allocation.contingencies"), ("inNotes",))
+		notes = answered(replace(KLEINST_NOTES, contingent=()), "HAFTUNGSVERHAELTNISSE", Answer.NO)
+		self.assertNotIn("report.id.reportElement.allocation.contingencies", tuples(kleinst(notes=notes)))
+
+
+class KleinstAngabenTest(TestCase):
+	"""„Kleinstkapitalgesellschaften (§ 267a) brauchen den Jahresabschluss nicht um einen Anhang zu erweitern, wenn
+	sie 1. die in § 268 Absatz 7 genannten Angaben, 2. die in § 285 Nummer 9 Buchstabe c genannten Angaben ... unter
+	der Bilanz angeben.“ (§ 264 Abs. 1 Satz 5 HGB)"""
+
+	def test_the_vorschuesse_and_kredite_to_the_management(self):
+		"""„die gewährten Vorschüsse und Kredite unter Angabe der Zinssätze, der wesentlichen Bedingungen und der
+		gegebenenfalls im Geschäftsjahr zurückgezahlten oder erlassenen Beträge sowie die zugunsten dieser Personen
+		eingegangenen Haftungsverhältnisse“, „jeweils für jede Personengruppe“ (§ 285 Nr. 9 Buchst. c HGB)."""
+		self.assertEqual(
+			text(kleinst(), "nt.relationships.creditsToMembers"),
+			"Mitglieder des Geschäftsführungsorgans: Vorschüsse und Kredite 8.000 €, Zinssatz 3,5 % im Jahr; "
+			"wesentliche Bedingungen: Laufzeit bis zum 31. Dezember 2028, Tilgung in Jahresraten; im Geschäftsjahr "
+			"zurückgezahlt 2.000 €.",
+		)
+
+	def test_the_rates_and_guarantees_of_several_advances(self):
+		advances = (
+			OfficerAdvance(
+				OfficerGroup.MANAGEMENT, AdvanceKind.ADVANCE, Decimal("1000.00"), Decimal("0"), "Reisekosten"
+			),
+			OfficerAdvance(
+				OfficerGroup.MANAGEMENT,
+				AdvanceKind.LOAN,
+				Decimal("2000.40"),
+				Decimal("4.00"),
+				"Laufzeit drei Jahre",
+				waived=Decimal("100.00"),
+				guarantees="Bürgschaft gegenüber der Hausbank",
+			),
+			OfficerAdvance(
+				OfficerGroup.ADVISORY_BOARD, AdvanceKind.LOAN, Decimal("500"), Decimal("2.5"), "jederzeit"
+			),
+		)
+		notes = answered(
+			replace(KLEINST_NOTES, advances=advances), "ORGANKREDITE", Answer.YES, "Alle sind besichert."
+		)
+		self.assertEqual(
+			text(kleinst(notes=notes), "nt.relationships.creditsToMembers"),
+			"Mitglieder des Geschäftsführungsorgans: Vorschüsse und Kredite 3.000 €, Zinssätze 0 % und 4 % im Jahr; "
+			"wesentliche Bedingungen: Reisekosten; Laufzeit drei Jahre; im Geschäftsjahr erlassen 100 €; zu ihren "
+			"Gunsten eingegangene Haftungsverhältnisse: Bürgschaft gegenüber der Hausbank.\n\n"
+			"Mitglieder des Beirats: Vorschüsse und Kredite 500 €, Zinssatz 2,5 % im Jahr; wesentliche Bedingungen: "
+			"jederzeit.\n\n"
+			"Alle sind besichert.",
+		)
+
+	def test_the_vermerke_it_cannot_report_stand_under_the_balance_sheet(self):
+		"""The taxonomy has the „davon“ concept of the receivables from shareholders only under „B. II.“, which a
+		Kleinst does not show, so the Vermerk at „B.“ stands as text."""
+		self.assertIn(
+			"B. Umlaufvermögen, davon Forderungen gegen Gesellschafter: 2.500 € (Vorjahr: 1.500 €)",
+			text(kleinst(), "ntmi.other"),
+		)
+
+	def test_the_first_year_states_no_previous_year_in_the_text(self):
+		instance = kleinst(
+			statement=statement(2026, KLEINST, KLEINST_2026, parents=PARENTS),
+			gcd=replace(KLEINST_GCD, periods=FIRST_YEAR),
+		)
+		self.assertIn(
+			"B. Umlaufvermögen, davon Forderungen gegen Gesellschafter: 2.500 €\n",
+			text(instance, "ntmi.other"),
+		)
+
+	def test_zusaetzliche_angaben_and_why_the_eigenkapital_is_zero(self):
+		"""„sind nach Satz 2 erforderliche zusätzliche Angaben unter der Bilanz zu machen“ (§ 264 Abs. 2 Satz 4 HGB);
+		„Kleinstkapitalgesellschaften haben unter der Bilanz darzulegen, warum gegebenenfalls das Stammkapital
+		aufgebraucht und daher das Eigenkapital mit Null ausgewiesen ist.“ (Bundesamt für Justiz, FAQ zu Inhalts- und
+		Formverstößen)"""
+		books = (
+			Balance(BANK, Decimal("1000.00")),
+			Balance(SUBSCRIBED, Decimal("-25000.00")),
+			Balance("bs.eqLiab.equity.retainedEarnings", Decimal("30000.00")),
+			Balance("bs.eqLiab.liab.trade", Decimal("-6000.00"), remaining_term=companies.SHORT),
+		)
+		notes = answered(
+			answered(
+				KLEINST_NOTES,
+				"ZUSAETZLICHE-ANGABEN",
+				Answer.YES,
+				"Die Gesellschafterin hat einen Rangrücktritt erklärt.",
+			),
+			"EIGENKAPITAL-NULL",
+			Answer.YES,
+			"Das Stammkapital ist durch die Verluste der Anlaufjahre aufgebraucht.",
+		)
+		instance = kleinst(
+			statement=statement(2026, KLEINST, books, parents=PARENTS),
+			notes=notes,
+			gcd=replace(KLEINST_GCD, periods=FIRST_YEAR),
+		)
+		self.assertEqual(instance.findings, ())
+		paragraphs = text(instance, "ntmi.other").split("\n\n")
+		self.assertIn("Die Gesellschafterin hat einen Rangrücktritt erklärt.", paragraphs)
+		self.assertIn("Das Stammkapital ist durch die Verluste der Anlaufjahre aufgebraucht.", paragraphs)
+		self.assertLess(
+			paragraphs.index("Die Gesellschafterin hat einen Rangrücktritt erklärt."),
+			paragraphs.index("Das Stammkapital ist durch die Verluste der Anlaufjahre aufgebraucht."),
+		)
+
+	def test_a_zero_eigenkapital_asks_for_its_explanation(self):
+		books = (
+			Balance(BANK, Decimal("1000.00")),
+			Balance(SUBSCRIBED, Decimal("-25000.00")),
+			Balance("bs.eqLiab.equity.retainedEarnings", Decimal("30000.00")),
+			Balance("bs.eqLiab.liab.trade", Decimal("-6000.00"), remaining_term=companies.SHORT),
+		)
+		instance = kleinst(
+			statement=statement(2026, KLEINST, books, parents=PARENTS),
+			gcd=replace(KLEINST_GCD, periods=FIRST_YEAR),
+		)
+		self.assertIn("EIGENKAPITAL-NULL", {finding.concept for finding in instance.findings})
+
+	def test_the_signatures_with_place_and_day(self):
+		"""„Der Jahresabschluß ist vom Kaufmann unter Angabe des Datums zu unterzeichnen.“ (§ 245 Satz 1 HGB) „Nach
+		§ 245 HGB ist beim Jahresabschluss die Angabe aller Unterzeichner sowie des Datums erforderlich.“
+		(Publikations-Plattform, „Übermittlung von Jahresabschlüssen“) A Kleinst has no Anhang, so they close the
+		text under its balance sheet."""
+		self.assertTrue(
+			text(kleinst(), "ntmi.other").endswith(
+				"Musterstadt, 12. Mai 2027: gez. Erika Beispiel, Geschäftsführerin"
+			)
+		)
+		self.assertFalse(
+			[concept for concept, _ in angaben(kleinst()) if concept.startswith("nt.directorsSign")]
+		)
+
+	def test_an_angabe_answered_no_states_nothing(self):
+		notes = answered(replace(KLEINST_NOTES, advances=()), "ORGANKREDITE", Answer.NO)
+		self.assertNotIn(("nt.relationships.creditsToMembers", WJ), angaben(kleinst(notes=notes)))
+
+
+class AnhangTest(TestCase):
+	"""„Auf kleine Kapitalgesellschaften (§ 267 Abs. 1) ist § 325 Abs. 1 mit der Maßgabe anzuwenden, daß die
+	Mitglieder des vertretungsberechtigten Organs nur die Bilanz und den Anhang zu übermitteln haben. Der Anhang braucht
+	die die Gewinn- und Verlustrechnung betreffenden Angaben nicht zu enthalten.“ (§ 326 Abs. 1 HGB)"""
+
+	def test_each_angabe_under_its_position_of_the_anhang(self):
+		found = angaben(klein())
+		self.assertTrue(
+			found[("nt.genInfo.measurement", WJ)].startswith("Die immateriellen Vermögensgegenstände")
+		)
+
+	def test_two_angaben_of_one_position_one_after_the_other(self):
+		self.assertEqual(
+			text(klein(), "nt.otherInfo.contingLiab").split("\n\n"),
+			[
+				"Haftungsverhältnisse aus der Bestellung von Sicherheiten für fremde Verbindlichkeiten, gewährte "
+				"Pfandrechte und sonstige Sicherheiten: Grundschuld auf dem Geschäftsgebäude",
+				"Aus Mietverträgen für Lagerflächen bestehen sonstige finanzielle Verpflichtungen von 96.000 €.",
+			],
+		)
+
+	def test_an_amount_the_taxonomy_takes_as_text_follows_it(self):
+		self.assertEqual(
+			text(klein(), "nt.bsInfo.totalAmountLiabOver5Years"),
+			"Verbindlichkeiten gegenüber Kreditinstituten mit einer Restlaufzeit von mehr als fünf Jahren, durch eine "
+			"Grundschuld auf dem Geschäftsgebäude gesichert (120.000 €)",
+		)
+		notes = answered(KLEIN_NOTES, "VERBINDLICHKEITEN", Answer.YES, amount=Decimal("99.50"))
+		self.assertEqual(text(klein(notes=notes), "nt.bsInfo.totalAmountLiabOver5Years"), "100 €")
+
+	def test_the_average_number_of_employees(self):
+		"""„die durchschnittliche Zahl der während des Geschäftsjahrs beschäftigten Arbeitnehmer“ (§ 285 Nr. 7 HGB,
+		without the groups for klein, § 288 Abs. 1 Nr. 2 HGB), „Durchschnittliche Zahl der Beschäftigten“."""
+		(employees,) = (fact for fact in klein().facts if fact.concept == f"{A}nt.employeesAveragePeriod")
+		self.assertEqual((employees.period, employees.value, employees.decimals), (WJ, Decimal("23.75"), 2))
+		notes = answered(KLEIN_NOTES, "ARBEITNEHMER", Answer.YES, amount=Decimal("24"))
+		(whole,) = (
+			fact for fact in klein(notes=notes).facts if fact.concept == f"{A}nt.employeesAveragePeriod"
+		)
+		self.assertEqual((whole.value, whole.decimals), (Decimal("24"), 0))
+
+	def test_the_number_of_employees_needs_its_number(self):
+		notes = answered(KLEIN_NOTES, "ARBEITNEHMER", Answer.YES, "Im Jahresdurchschnitt 24 Arbeitnehmer.")
+		instance = klein(notes=notes)
+		(finding,) = (finding for finding in instance.findings if finding.code == Code.NUMBER)
+		self.assertEqual(finding.concept, "ARBEITNEHMER")
+		self.assertFalse([fact for fact in instance.facts if fact.concept == f"{A}nt.employeesAveragePeriod"])
+
+	def test_what_concerns_the_income_statement_is_withheld(self):
+		texts = " ".join(str(value) for value in angaben(klein()).values())
+		self.assertNotIn("einmaligen Ertrag", texts)
+
+	def test_an_angabe_answered_entfaellt_states_nothing(self):
+		self.assertNotIn(("nt.assocComp.parentsNameSmall", WJ), angaben(klein()))
+
+	def test_the_signatures_of_the_geschaeftsfuehrung(self):
+		"""„Unterschrift der Geschäftsleitung“ with its place, its day and each person, whom the Bundesamt für Justiz
+		expects named with the day (§ 245 Satz 1 HGB)."""
+		instance = klein()
+		found = angaben(instance)
+		self.assertEqual(found[("nt.directorsSign.place", WJ)], "Musterstadt")
+		self.assertEqual(found[("nt.directorsSign.date", WJ)], date(2027, 6, 30))
+		signed = [fact for fact in instance.facts if fact.concept == f"{A}nt.directorsSign.type"]
+		self.assertEqual(
+			[
+				(
+					fact.children[0].value,
+					fact.children[1].children[0].value,
+					len(fact.children[1].children),
+				)
+				for fact in signed
+			],
+			[("Geschäftsführerin", "Erika Beispiel", 1), ("Geschäftsführer", "Max Muster", 1)],
+		)
+
+	def test_signatures_of_different_days_name_each_day(self):
+		signatures = (
+			Signature("Erika Beispiel", "Geschäftsführerin", "Musterstadt", date(2027, 6, 30)),
+			Signature("Max Muster", "Geschäftsführer", "Musterdorf", date(2027, 7, 2)),
+		)
+		instance = klein(notes=replace(KLEIN_NOTES, signatures=signatures))
+		found = angaben(instance)
+		self.assertNotIn(("nt.directorsSign.date", WJ), found)
+		self.assertNotIn(("nt.directorsSign.place", WJ), found)
+		persons = [fact.children[1] for fact in instance.facts if fact.concept == f"{A}nt.directorsSign.type"]
+		self.assertEqual(
+			[[child.value for child in person.children] for person in persons],
+			[["Erika Beispiel", "Musterstadt, 30. Juni 2027"], ["Max Muster", "Musterdorf, 2. Juli 2027"]],
+		)
+
+	def test_without_signatures_no_block(self):
+		instance = klein(notes=replace(KLEIN_NOTES, signatures=()))
+		self.assertFalse(
+			[concept for concept, _ in angaben(instance) if concept.startswith("nt.directorsSign")]
+		)
+
+
+class SlotsTest(TestCase):
+	"""Every Angabe a class publishes has its place in the taxonomy, and nothing else has one."""
+
+	def test_each_published_angabe_of_a_kleinst_stands_under_the_balance_sheet(self):
+		entries = catalogue(KLEINST, equity_zero=True)
+		self.assertEqual(
+			tuple(slot.code for slot in SLOTS[KLEINST]),
+			tuple(entry.item.code for entry in entries if entry.published),
+		)
+
+	def test_each_published_angabe_of_klein_stands_in_the_anhang(self):
+		entries = catalogue(KLEIN)
+		self.assertEqual(
+			tuple(slot.code for slot in SLOTS[KLEIN]),
+			tuple(entry.item.code for entry in entries if entry.published),
+		)
+
+	def test_a_kleinst_takes_the_concepts_of_the_catalogue(self):
+		by_code = {item.code: item.concept for item in CATALOGUE}
+		for slot in SLOTS[KLEINST]:
+			with self.subTest(code=slot.code):
+				self.assertIn(by_code[slot.code], (slot.text, slot.amount))
+
+	def test_the_published_concepts_hold_every_place_of_an_angabe(self):
+		for size_class, instance in ((KLEINST, kleinst()), (KLEIN, klein())):
+			published = set(instance.published)
+			for slot in SLOTS[size_class]:
+				with self.subTest(code=slot.code):
+					self.assertLessEqual(
+						{concept for concept in (slot.text, slot.amount) if concept}, published
+					)
+			self.assertLessEqual(set(RegisterData.concepts().values()), published)
+			for kind in Contingency:
+				self.assertLessEqual({kind.concept, kind.pensions_concept, kind.group_concept}, published)
+
+	def test_the_published_concepts_are_the_facts_of_the_gaap_module(self):
+		for instance in (kleinst(), klein()):
+			reported = {
+				fact.concept.removeprefix(A)
+				for fact in _all_facts(instance.facts)
+				if fact.concept.startswith(A)
+			}
+			self.assertLessEqual(reported, set(instance.published))
+
+
+def _all_facts(facts):
+	for fact in facts:
+		yield fact
+		if isinstance(fact, Tuple):
+			yield from _all_facts(fact.children)
+
+
+class FindingsTest(TestCase):
+	"""What holds the file back: whatever holds the Jahresabschluss back, and what the file cannot carry."""
+
+	def test_the_invented_companies_are_complete(self):
+		self.assertEqual(kleinst().findings, ())
+		self.assertEqual(klein().findings, ())
+
+	def test_an_unanswered_angabe(self):
+		notes = replace(KLEIN_NOTES, answers=KLEIN_NOTES.answers[1:])
+		codes = {finding.code for finding in klein(notes=notes).findings}
+		self.assertIn("JA-ANGABE-OFFEN", codes)
+
+	def test_an_advance_without_its_rate(self):
+		advance = replace(KLEINST_NOTES.advances[0], interest_rate=None)
+		codes = {
+			finding.code for finding in kleinst(notes=replace(KLEINST_NOTES, advances=(advance,))).findings
+		}
+		self.assertIn("JA-ORGANKREDIT-ZINSSATZ", codes)
+
+	def test_register_data_without_the_seat(self):
+		register = replace(KLEINST_NOTES.register, sitz=" ")
+		codes = {
+			finding.code for finding in kleinst(notes=replace(KLEINST_NOTES, register=register)).findings
+		}
+		self.assertIn("JA-REGISTERANGABEN", codes)
+
+	def test_the_errors_of_the_statement_of_both_years(self):
+		books = (*KLEINST_2026, Balance("bs.ass.other", Decimal("10.00")))
+		instance = kleinst(statement=statement(2026, KLEINST, books, parents=PARENTS, prior=KLEINST_2025))
+		codes = {finding.code for finding in instance.findings}
+		self.assertIn("JA-RECHENPOSTEN", codes)
+		self.assertIn("JA-BILANZ-UNGLEICH", codes)
+		self.assertTrue(all(finding.blocking for finding in instance.findings))
+
+	def test_a_feststellung_within_the_fiscal_year(self):
+		codes = {
+			finding.code
+			for finding in kleinst(gcd=replace(KLEINST_GCD, adopted_on=date(2026, 12, 31))).findings
+		}
+		self.assertEqual(codes, {"JA-FESTSTELLUNG-DATUM"})
+
+	def test_entries_of_an_angabe_answered_otherwise(self):
+		notes = answered(KLEINST_NOTES, "HAFTUNGSVERHAELTNISSE", Answer.NO)
+		(finding,) = kleinst(notes=notes).findings
+		self.assertEqual((finding.code, finding.concept), (Code.ENTRIES, "HAFTUNGSVERHAELTNISSE"))
+		self.assertNotIn(("bs.contingLiab", ST), angaben(kleinst(notes=notes)))
+		notes = answered(KLEINST_NOTES, "ORGANKREDITE", Answer.NOT_APPLICABLE)
+		(finding,) = kleinst(notes=notes).findings
+		self.assertEqual((finding.code, finding.concept), (Code.ENTRIES, "ORGANKREDITE"))
+
+	def test_an_amount_beside_entries_of_another_total(self):
+		notes = answered(KLEINST_NOTES, "HAFTUNGSVERHAELTNISSE", Answer.YES, amount=Decimal("14000.00"))
+		(finding,) = kleinst(notes=notes).findings
+		self.assertEqual((finding.code, finding.amount), (Code.AMOUNT, Decimal("14000.00")))
+		agreeing = answered(KLEINST_NOTES, "HAFTUNGSVERHAELTNISSE", Answer.YES, amount=Decimal("15000.00"))
+		self.assertEqual(kleinst(notes=agreeing).findings, ())
+
+	def test_characters_the_file_cannot_take(self):
+		"""Texts keep to the characters of ELSTER, the writer refuses others (steuerbote/xbrl/writer.py); the common
+		typographic ones are replaced (steuerbote/elster/charset.py)."""
+		register = replace(KLEINST_NOTES.register, firma="Łódź Werkstatt GmbH")
+		instance = kleinst(notes=replace(KLEINST_NOTES, register=register))
+		(finding,) = instance.findings
+		self.assertEqual(finding.code, Code.CHARACTERS)
+		self.assertIn("U+0141", finding.text)
+		self.assertIn("U+017A", finding.text)
+		self.assertEqual(gcd_items(instance)["company.id.name"], "ód Werkstatt GmbH")
+
+	def test_typographic_characters_are_replaced_and_lines_kept(self):
+		notes = answered(
+			KLEIN_NOTES,
+			"BEWERTUNGSMETHODEN",
+			Answer.YES,
+			"Waren zum \N{DOUBLE LOW-9 QUOTATION MARK}gleitenden\N{LEFT DOUBLE QUOTATION MARK} Durchschnitt.\n"
+			"Forderungen \N{EN DASH} zum Nennwert.",
+		)
+		instance = klein(notes=notes)
+		self.assertEqual(instance.findings, ())
+		self.assertEqual(
+			text(instance, "nt.genInfo.measurement"),
+			'Waren zum "gleitenden" Durchschnitt.\nForderungen - zum Nennwert.',
+		)
