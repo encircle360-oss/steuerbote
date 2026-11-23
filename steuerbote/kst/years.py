@@ -255,6 +255,15 @@ class RuleExpectation:
 		return f"{self.form} - Regeln"
 
 	def missing_terms(self, condition: str) -> tuple[str, ...]:
-		"""The terms that the Prüfbedingung lacks, blanks and line breaks aside."""
+		"""The terms that the Prüfbedingung lacks, blanks and line breaks aside. A term with a leading plus, the sign of
+		a field in a sum, is also found where it opens the sum, after „{“ or „!=“."""
 		written = "".join(condition.split())
-		return tuple(term for term in self.terms if term not in written)
+		return tuple(term for term in self.terms if not _found(term, written))
+
+
+def _found(term: str, written: str) -> bool:
+	if term in written:
+		return True
+	if term.startswith("+"):
+		return f"{{{term[1:]}" in written or f"!={term[1:]}" in written
+	return False

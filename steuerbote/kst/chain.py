@@ -48,6 +48,9 @@ declares; a Solidaritätszuschlag of the Steuerbescheinigungen that is not 5.5 %
 0.05 € (rule 8912019); Entgelte für Schulden of 3 Millionen Euro or more, from which the Zinsschranke of § 4h EStG and
 § 8a KStG may apply, which Steuerbote does not compute; an Investitionsabzugsbetrag with a profit beyond 200 000
 Euro without it (§ 7g Absatz 1 Satz 2 Nummer 1 Buchstabe b EStG).
+
+expected_rules() names the rules of the Jahresdokumentation E30 that this module computes, with the factors of the
+VZ and the fields of its sums, for the year check (steuerbote.kst.years.RuleExpectation).
 """
 
 from collections.abc import Iterable
@@ -66,7 +69,7 @@ from steuerbote.kst.losses import (
 	donations,
 	loss_deduction,
 )
-from steuerbote.kst.years import HUNDRED, Year, year_of
+from steuerbote.kst.years import HUNDRED, RuleExpectation, Year, factor, year_of
 from steuerbote.ustva.calculation import LedgerLine
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import (
@@ -1186,3 +1189,37 @@ def _sum(manual: Iterable[ManualLine]) -> Decimal:
 
 def _is_cents(amount: Decimal) -> bool:
 	return require_decimal(amount).is_finite() and amount == amount.quantize(CENT)
+
+
+def expected_rules(year: int) -> tuple[RuleExpectation, ...]:
+	"""The rules of the Jahresdokumentation E30 of Anlage GK, Anlage ZVE and Anlage WA that compute() computes."""
+	data = year_of(year)
+	five = factor(data.p8b_percent)
+	return (
+		RuleExpectation("8906062", GK, _signed(BUSINESS_INCOME)),
+		RuleExpectation("8956047", GK, _signed(P8B_TOTAL)),
+		RuleExpectation("8956007", GK, ("[E8560401]!=Aufrunden(Summe(", "E8560404))")),
+		RuleExpectation("8956020", GK, (f"Abrunden([E8560401]*{five})",)),
+		RuleExpectation("8956040", GK, ("[E8561212]!=Aufrunden(Summe(", "E8561211))")),
+		RuleExpectation("8956044", GK, ("[E8561410]!=Abrunden(Summe(", "E8561403))")),
+		RuleExpectation("8905506", GK, ("[E8561220]!=Aufrunden(Summe(", "E8561210))")),
+		RuleExpectation("8956042", GK, (f"Abrunden(Summe(E8561212,E8561220,E8561237)*{five})",)),
+		RuleExpectation("8900549", ZVE, ("[E8004904]!=[E8109901",)),
+		RuleExpectation("8900207", ZVE, _signed("sum_of_income")),
+		RuleExpectation("8900413", ZVE, _signed("total_income")),
+		# The zu versteuerndes Einkommen of rule 8900431 starts again from the Summe der Einkünfte.
+		RuleExpectation("8900431", ZVE, ("+[E8005401]", "-[E8005601]", "-[E8007001]")),
+		RuleExpectation("8900331", ZVE, (f"Abrunden([E8007504]*{factor(data.rate)})",)),
+		RuleExpectation(
+			"8912019", WA, (f"[E8120401]*{factor(data.solz_rate)}UngleichMitToleranz5[E8120601]",)
+		),
+	)
+
+
+def _signed(total: str) -> tuple[str, ...]:
+	"""The fields of the steps that feed a total, each with its sign, as a rule of the Jahresdokumentation sums them."""
+	return tuple(
+		f"{'+' if item.sign > 0 else '-'}[{item.field}]"
+		for item in STEPS
+		if item.total == total and item.field
+	)

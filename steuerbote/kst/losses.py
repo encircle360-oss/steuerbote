@@ -63,13 +63,16 @@ their sum (8900204); line 7 (E8006101), the deductible part, the lower of line 6
 Einkünfte, or there is none (8900101). Only Zuwendungen for the purposes of §§ 52 to 54 AO with a receipt count;
 donations to political parties or without a qualifying recipient are added back but never deducted, so the caller
 passes the Zuwendungen of its receipts.
+
+expected_rules() names the rules of Anlage Verluste, Anlage Z and Anlage ZVE that this module computes, with the
+limits of the VZ, for the year check (steuerbote.kst.years.RuleExpectation).
 """
 
 from dataclasses import dataclass
 from decimal import Decimal
 
 from steuerbote.kst.holdings import Amount
-from steuerbote.kst.years import HUNDRED, Year
+from steuerbote.kst.years import HUNDRED, RuleExpectation, Year, factor, year_of
 from steuerbote.ustva.rounding import CENT, EURO, ZERO, ceil_euro, half_up_euro, require_decimal
 
 
@@ -257,3 +260,32 @@ def _require_euros(amount: Decimal, what: str, negative: bool = False) -> None:
 	):
 		bound = "" if negative else " of at least 0"
 		raise ValueError(f"{what} must be whole euros{bound}, not {amount}")
+
+
+def expected_rules(year: int) -> tuple[RuleExpectation, ...]:
+	"""The rules of the Jahresdokumentation E30 that loss_deduction() and donations() compute."""
+	data = year_of(year)
+	income = factor(data.donation_income_percent)
+	turnover = factor(data.donation_turnover_per_mille / 10)
+	return (
+		RuleExpectation("8900184", "Verluste", ("[E8008601]!=Min(", f",{data.loss_unlimited})")),
+		RuleExpectation(
+			"8900170",
+			"Verluste",
+			(f"Aufrunden({{[E8008501]-[E8008502]-[E8008601]}}*{factor(data.loss_share)}))",),
+		),
+		RuleExpectation(
+			"8900347",
+			"Verluste",
+			("[E8009201]!=[E8007801]", "+[E8008001]", "-[E8008102]", "-[E8008602]", "-[E8008801]"),
+		),
+		RuleExpectation("8900342", "Verluste", ("[E8008401]!=[E8007801]", "+[E8008001]", "-[E8008102]")),
+		RuleExpectation("8900124", "Verluste", (f"Min({data.loss_carry_back},[E8008001]",)),
+		RuleExpectation("8900114", "ZVE", ("[E8007001]!=Summe(E8008601,E8008801",)),
+		RuleExpectation("8900204", "Z", ("[E8009701]!={[E8009401]", "+[E8005602]")),
+		RuleExpectation("8901012", "Z", ("[E8005602]!=Aufrunden(Summe(", "E8005604))")),
+		RuleExpectation("8901005", "Z", (f"Min(Aufrunden({{[E8005401]*{income}}})",)),
+		RuleExpectation("8901006", "Z", (f"Min(Aufrunden({{Summe(E8006001,E8001101)*{turnover}}})",)),
+		RuleExpectation("8900351", "Z", ("[E8010101]!=[E8009401]", "+[E8005602]", "-[E8006101]")),
+		RuleExpectation("8900101", "Z", (f"Aufrunden({{[E8005401]*{income}",)),
+	)

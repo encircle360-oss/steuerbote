@@ -57,6 +57,8 @@ are exact, since only the Gewerbeertrag is rounded. Other Hinzurechnungen and Kร
 in Steuerbote's scope; costs that would need the latter give a hint.
 
 The findings are steuerbote.kst.chain.Finding: a missing Hebesatz and one below the minimum hold the filing back.
+expected_rules() names the rules of GewSt 1 A and Anlage BEG that this module computes, for the year check
+(steuerbote.kst.years.RuleExpectation).
 """
 
 from dataclasses import dataclass
@@ -69,7 +71,8 @@ from steuerbote.kst.categories import Category
 from steuerbote.kst.chain import Finding, KstResult, Line, Severity, Source, Step
 from steuerbote.kst.holdings import Exemption, HoldingDividends
 from steuerbote.kst.losses import minimum_taxation
-from steuerbote.kst.years import HUNDRED
+from steuerbote.kst.years import HUNDRED, RuleExpectation, factor
+from steuerbote.kst.years import year_of as kst_year_of
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import (
 	CENT,
@@ -558,3 +561,18 @@ def _require_euros(amount: Decimal, what: str) -> None:
 
 def _is_cents(amount: Decimal) -> bool:
 	return require_decimal(amount).is_finite() and amount == amount.quantize(CENT)
+
+
+def expected_rules(year: int) -> tuple[RuleExpectation, ...]:
+	"""The rules of the Jahresdokumentation E20 that compute() computes; the 95 % of Anlage BEG line 15 keep what
+	ยง 8b Absatz 5 KStG of the year leaves."""
+	year_of(year)
+	kept = factor(HUNDRED - kst_year_of(year).p8b_percent)
+	return (
+		RuleExpectation("40000", GEWST1A, ("KeinFeldAngegeben(E4001703",)),
+		RuleExpectation("40053", GEWST1A, ("[E4003403]!=Aufrunden(Summe(", "E4009221))")),
+		RuleExpectation("40954", "BEG", (f"[E4051501]!=Abrunden({kept}*[E4051201]))",)),
+		RuleExpectation("40958", "BEG", ("[E4051701]!=Min([E4050801],[E4051601])",)),
+		RuleExpectation("40959", "BEG", ("[E4051801]!=Min([E4050901],{[E4051601]-[E4051701]})",)),
+		RuleExpectation("40965", "BEG", ("[E4051901]!=Aufrunden({[E4051601]-Summe(E4051701,E4051801)}))",)),
+	)

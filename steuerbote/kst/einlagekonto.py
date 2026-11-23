@@ -36,7 +36,8 @@ KSt 1 F of Jahresdokumentation_E30_2025.ods (ERiC documentation 44.3.6.0), in wh
 - line 152 (E8245601), the Endbestand: line 42 less line 50 plus lines 91, 92 and 95, the part of rule 8924445 that
   applies to a GmbH of Steuerbote's scope; mandatory with line 42 (8920227).
 
-roll_forward() gives the lines and, as steuerbote.kst.chain.Finding, what holds KSt 1 F back.
+roll_forward() gives the lines and, as steuerbote.kst.chain.Finding, what holds KSt 1 F back; expected_rules() names
+the rules of KSt 1 F it computes, for the year check (steuerbote.kst.years.RuleExpectation).
 """
 
 from dataclasses import dataclass
@@ -44,6 +45,7 @@ from decimal import Decimal
 from enum import StrEnum
 
 from steuerbote.kst.chain import Finding, Severity
+from steuerbote.kst.years import RuleExpectation, year_of
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import EURO, ZERO, require_decimal
 
@@ -161,3 +163,27 @@ def _require_euros(amount: Decimal, what: str, negative: bool = False) -> None:
 	):
 		bound = "" if negative else " of at least 0"
 		raise ValueError(f"{what} must be whole euros{bound}, not {amount}")
+
+
+def expected_rules(year: int) -> tuple[RuleExpectation, ...]:
+	"""The rules of KSt 1 F of the Jahresdokumentation E30 that roll_forward() computes; they hold no factor."""
+	year_of(year)
+	form = "KSt1F"
+	return (
+		RuleExpectation("8920021", form, ("Max({[E8201001]-[E8201101]-[E8201201]},0)",)),
+		RuleExpectation(
+			"8920011",
+			form,
+			(
+				"FeldAngegeben(E8200502)",
+				"NichtAlleFelderOderKeinFeldAngegeben(E8201001,E8201101,E8201201,E8201301)",
+			),
+		),
+		RuleExpectation("8924401", form, ("[E8240501]!={[E8240302]-[E8240401]}",)),
+		RuleExpectation("8920076", form, ("Max(Min([E8241717],[E8240501],[E8122003]),0)",)),
+		RuleExpectation(
+			"8924445", form, ("+[E8240103]", "-[E8242201]", "+[E8241501]", "+[E8241502]", "+[E8241601]")
+		),
+		RuleExpectation("8920227", form, ("FeldNichtAngegeben(E8245601)",)),
+		RuleExpectation("8924512", form, ("KeinFeldAngegeben(E8240102,E8240104,E8240103,E8240201)",)),
+	)
