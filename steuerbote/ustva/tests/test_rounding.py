@@ -3,6 +3,7 @@ from unittest import TestCase
 
 from steuerbote.ustva.rounding import (
 	floor_euro,
+	floor_hundred,
 	require_decimal,
 	tax_from_base,
 	to_cents,
@@ -97,3 +98,24 @@ class FloorEuroTest(TestCase):
 	def test_rejects_floats(self):
 		with self.assertRaises(TypeError):
 			floor_euro(16680.5)
+
+
+class FloorHundredTest(TestCase):
+	"""§ 11 Abs. 1 Satz 3 GewStG: „Der Gewerbeertrag ist auf volle 100 Euro nach unten abzurunden“."""
+
+	def test_rounds_the_gewerbeertrag_down_to_full_hundreds(self):
+		self.assertEqual(floor_hundred(Decimal("107654.32")), Decimal("107600"))
+		self.assertEqual(floor_hundred(Decimal("99.99")), Decimal("0"))
+
+	def test_keeps_full_hundreds(self):
+		self.assertEqual(floor_hundred(Decimal("107600")), Decimal("107600"))
+
+	def test_goes_down_for_negative_amounts_as_well(self):
+		self.assertEqual(floor_hundred(Decimal("-150")), Decimal("-200"))
+
+	def test_writes_whole_euros(self):
+		self.assertEqual(str(floor_hundred(Decimal("107654.32"))), "107600")
+
+	def test_rejects_floats(self):
+		with self.assertRaises(TypeError):
+			floor_hundred(107654.32)
