@@ -42,14 +42,25 @@ Körperschaftsteuer or the Gewerbesteuer without a category yet, such as an acco
 (Programmverbindung K or G) that the defaults leave open: at the blocking level a balance on it holds the filing back,
 at the hint level it only gives a hint, as for the watched accounts of the Umsatzsteuer-Voranmeldung
 (steuerbote.ustva.mapping).
+
+classify() sums the ledger lines of the Wirtschaftsjahr per category, in the direction of the category, and keeps
+the postings behind each amount as a Contribution per account and voucher, so that a report can show the entries
+behind each line of the declaration. The lines are those of steuerbote.ustva (LedgerLine): one posting on one account
+in cents, with the key "<voucher type>:<voucher name>" of its voucher; lines without a voucher count as one. An
+account without rule counts in no category, only in the Jahresüberschuss. The Classification also lists what holds
+the filing back: the trading accounts without class that have a balance (``unclassified``), the later categories
+with a balance (``later``) and the watched accounts with a balance by level (``watched``, ``hinted``).
 """
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from decimal import Decimal
 from enum import Enum, StrEnum
 from types import MappingProxyType
 
+from steuerbote.ustva.calculation import AccountBalance, LedgerLine
 from steuerbote.ustva.mapping import MappingError, WatchedAccount, WatchLevel, is_account_number
+from steuerbote.ustva.rounding import ZERO
 
 
 class Category(StrEnum):
@@ -291,6 +302,116 @@ class Mapping:
 
 	def watched_at(self, level: WatchLevel) -> frozenset[str]:
 		return frozenset(item.account_number for item in self.watched if item.level is level)
+
+
+@dataclass(frozen=True, slots=True)
+class Contribution:
+	"""What the postings of one voucher on one account add to a category."""
+
+	category: Category
+	account_number: str
+	voucher: str | None
+	debit: Decimal
+	credit: Decimal
+
+	@property
+	def amount(self) -> Decimal:
+		"""Debit less credit for an expense, credit less debit for an income."""
+		if CATEGORIES[self.category].nature is Nature.EXPENSE:
+			return self.debit - self.credit
+		return self.credit - self.debit
+
+
+@dataclass(frozen=True, slots=True)
+class CategoryAmount:
+	category: Category
+	contributions: tuple[Contribution, ...]
+
+	@property
+	def amount(self) -> Decimal:
+		return sum((contribution.amount for contribution in self.contributions), ZERO)
+
+
+@dataclass(frozen=True, slots=True)
+class Classification:
+	"""The amounts of the categories that have postings, and what holds the filing back."""
+
+	amounts: MappingProxyType[Category, CategoryAmount]
+	unclassified: tuple[AccountBalance, ...]
+	watched: tuple[AccountBalance, ...]
+	hinted: tuple[AccountBalance, ...]
+
+	def amount(self, *categories: Category) -> Decimal:
+		"""The sum of the categories, 0 for one without postings."""
+		return sum((self.amounts[c].amount for c in categories if c in self.amounts), ZERO)
+
+	def contributions(self, *categories: Category) -> tuple[Contribution, ...]:
+		return tuple(
+			contribution
+			for category in categories
+			if category in self.amounts
+			for contribution in self.amounts[category].contributions
+		)
+
+	@property
+	def later(self) -> tuple[Category, ...]:
+		"""The categories Steuerbote does not compute yet that have a balance."""
+		return tuple(category for category in self.amounts if category in LATER and self.amount(category))
+
+
+def classify(lines: Iterable[LedgerLine], mapping: Mapping) -> Classification:
+	"""The ledger lines of the Wirtschaftsjahr by category; see the module docstring."""
+	totals: dict[str, dict[str | None, list[Decimal]]] = {}
+	for line in lines:
+		total = totals.setdefault(line.account_number, {}).setdefault(line.voucher, [ZERO, ZERO])
+		total[0] += line.debit
+		total[1] += line.credit
+	contributions: dict[Category, list[Contribution]] = {}
+	balances: dict[str, list[Decimal]] = {}
+	for account, vouchers in totals.items():
+		rule = mapping.rule_for(account)
+		balance = balances.setdefault(account, [ZERO, ZERO])
+		for voucher, (debit, credit) in vouchers.items():
+			balance[0] += debit
+			balance[1] += credit
+			category = None if rule is None else _category(rule, debit, credit)
+			if category is not None:
+				contribution = Contribution(category, account, voucher, debit, credit)
+				contributions.setdefault(category, []).append(contribution)
+	ordered = sorted(contributions, key=list(Category).index)
+	return Classification(
+		amounts=MappingProxyType({c: CategoryAmount(c, tuple(contributions[c])) for c in ordered}),
+		unclassified=_with_balance(balances, _unclassified(mapping)),
+		watched=_with_balance(balances, mapping.watched_at(WatchLevel.BLOCKING)),
+		hinted=_with_balance(balances, mapping.watched_at(WatchLevel.HINT)),
+	)
+
+
+def _category(rule: AccountRule, debit: Decimal, credit: Decimal) -> Category | None:
+	"""The category the postings of a voucher on the account of the rule count in, if any."""
+	if rule.category is not Category.TRADING_UNCLASSIFIED or rule.trading_class is None:
+		return rule.category
+	split = TRADING_CATEGORIES[rule.trading_class]
+	if split is None or credit == debit:
+		return None
+	gain, loss = split
+	return gain if credit > debit else loss
+
+
+def _unclassified(mapping: Mapping) -> frozenset[str]:
+	return frozenset(
+		rule.account_number
+		for rule in mapping.rules
+		if rule.category is Category.TRADING_UNCLASSIFIED and rule.trading_class is None
+	)
+
+
+def _with_balance(balances: dict[str, list[Decimal]], accounts: frozenset[str]) -> tuple[AccountBalance, ...]:
+	return tuple(
+		AccountBalance(account, debit, credit)
+		for account, (debit, credit) in sorted(balances.items())
+		if account in accounts and debit != credit
+	)
 
 
 def _sequence(value: Iterable, message: str) -> tuple:
