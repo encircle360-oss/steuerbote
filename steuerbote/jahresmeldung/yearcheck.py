@@ -37,7 +37,9 @@ What each check compares, JD standing for the Jahresdokumentation of the year:
 - Bilanz: each version of TAXONOMIES (steuerbote/xbrl/versions.py) with its Jahresdokumentation_Bilanz_Taxonomie, the
   rules a module of the E-Bilanz computes of it (BILANZ_EXPECTING, functions of the version) and its row in the
   matrix; a year by the versions of its fiscal year, that of BILANZ_TAXONOMIES of steuerbote/eric/releases.py or else
-  those the BMF letters allow for it (versions.allowed_for).
+  those the BMF letters allow for it (versions.allowed_for). A version newer than every one the documentation
+  documents comes from a later release of ERiC, such as 6.10, which the documentation 45.1.5.0 holds and 44.3.6.0 does
+  not: run without versions, the command leaves it out, and named it is checked like any other.
 
 A module plugs in where its data are: a new table of a year joins the tables of its check, a new module of the core
 that computes rules of the JD the ``expecting`` of its IncomeTax, and a module that computes rules of the E-Bilanz
@@ -517,6 +519,20 @@ def _collect(lines_of: Iterator[str], lines: list[str], errors: list[str]) -> No
 		errors.append(str(error))
 
 
+def ahead_of_bilanz(root: Path, version: int | str) -> bool:
+	"""Whether the documentation documents only older versions of the HGB-Taxonomie, by their Jahresdokumentation and
+	their rows of the matrix: ERiC 44.3.6.0 ends with 6.9 (Entwicklerhandbuch, Tabelle 9-19) and has nothing to say of
+	6.10. A documentation without any version leaves none out, nor does one whose matrix cannot be read."""
+	try:
+		documented = (
+			*taxonomies(root, bilanz(versions.LATEST.version)),
+			*_bilanz_rows(datenart_versions(root)),
+		)
+	except DocumentationError:
+		return False
+	return bool(documented) and all(_version(str(version)) > _version(found) for found in documented)
+
+
 def _bilanz_year(root: Path, year: int) -> Iterator[str]:
 	subject = f"{BILANZ} {year}"
 	lacking = missing(year, BILANZ_YEAR_TABLES)
@@ -908,7 +924,7 @@ MODULES = (
 	),
 	KST_CHECK.module,
 	GEWST_CHECK.module,
-	Module(BILANZ, lambda: tuple(versions.TAXONOMIES), check_bilanz, beyond_bilanz),
+	Module(BILANZ, lambda: tuple(versions.TAXONOMIES), check_bilanz, beyond_bilanz, ahead_of_bilanz),
 )
 
 

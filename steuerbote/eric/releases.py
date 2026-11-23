@@ -88,9 +88,11 @@ SHOWN = 5
 """How many shortfalls of one runtime a check names before it counts the rest."""
 FIRST_ANNUAL_YEAR = 2026
 """The first year whose annual filings steuerbote computes (docs/roadmap.md, „Ab 2026“)."""
-BILANZ_TAXONOMIES: MappingProxyType[int, str] = MappingProxyType({2026: "6.9"})
+BILANZ_TAXONOMIES: MappingProxyType[int, str] = MappingProxyType({2026: "6.9", 2027: "6.10"})
 """The HGB-Taxonomie of the E-Bilanz of a fiscal year: 6.9 for a fiscal year beginning after 31 December 2025 (BMF
-letter of 10 June 2025, IV C 6 - S 2133-b/00064/002/006, BStBl I S. 1450)."""
+letter of 10 June 2025, IV C 6 - S 2133-b/00064/002/006, BStBl I S. 1450), 6.10 for one beginning after 31 December
+2026 (BMF letter of 8 June 2026, IV C 6 - S 2133-b/00067/002/023)."""
+
 
 type Version = tuple[int, int, int, int]
 
