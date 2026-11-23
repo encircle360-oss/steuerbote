@@ -56,6 +56,7 @@ from steuerbote.elster import gewst_xml, kst_xml, ust2a_xml, vorsatz
 from steuerbote.elster.erklaerung import Field, FormCatalogue
 from steuerbote.eric import releases
 from steuerbote.eric.datenart import Datenart, bilanz, gewst, kst, ust, ustva
+from steuerbote.eric.simulation import bilanz as bilanz_simulation
 from steuerbote.gewst import chain as gewst_chain
 from steuerbote.gewst import form as gewst_form
 from steuerbote.gewst import years as gewst_years
@@ -846,7 +847,9 @@ UST_TABLES = (
 USTVA_YEARS = Table("YEARS", "steuerbote/ustva/years.py", ustva_years.YEARS)
 BILANZ_TABLES = (Table("TAXONOMIES", "steuerbote/xbrl/versions.py", versions.TAXONOMIES),)
 BILANZ_YEAR_TABLES = (Table("BILANZ_TAXONOMIES", "steuerbote/eric/releases.py", releases.BILANZ_TAXONOMIES),)
-BILANZ_EXPECTING: tuple[Callable[[str], tuple[RuleExpectation, ...]], ...] = ()
+BILANZ_EXPECTING: tuple[Callable[[str], tuple[RuleExpectation, ...]], ...] = (
+	bilanz_simulation.expected_rules,
+)
 """The functions of the modules of the E-Bilanz that name the rules of a taxonomy they compute, by its version."""
 KST_CHECK = IncomeTax(
 	KST,
