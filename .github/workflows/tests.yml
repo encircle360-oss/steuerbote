@@ -13,6 +13,18 @@ concurrency:
   group: tests-${{ github.event.number || github.ref }}
   cancel-in-progress: true
 
+# The ERiC documentation and the HGB-Taxonomie may not be passed on, so they are not in the repository: the jobs load
+# them from ELSTER and esteuer.de and check their SHA-256. 44.3.6.0 is the productive release of ERiC; 45.1 is a beta
+# with the same 2026 schema. esteuer.de does not send its intermediate certificate, which comes from GlobalSign with
+# its SHA-256 checked.
+env:
+  ERIC_DOCUMENTATION: https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip
+  ERIC_DOCUMENTATION_SHA256: bad21c27ecce56d04fc04bccfd2dfa17b9ff2455aa878758100fc73a28492ad5
+  TAXONOMY: https://www.esteuer.de/download/taxonomie_20250618/german-gaap-taxonomy-v6.9-2025-04-01-xbrl.zip
+  TAXONOMY_SHA256: accd62202d73c036910fee118b30730f0392934afc9730617788e30a0480df87
+  INTERMEDIATE: http://secure.globalsign.com/cacert/gsgccr46dvtlsca2025.crt
+  INTERMEDIATE_SHA256: b59410f367b986e98e53a9789a6580553a74be515211d9f6ecb6e8a11e83aeaa
+
 jobs:
   core:
     name: Core (without bench)
@@ -40,31 +52,40 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
 
       - name: Download the ERiC documentation with the XML schemas
-        # The schemas may not be passed on, so they are not in the repository: the tests read them from the
-        # public documentation zip. 44.3.6.0 is the productive release; 45.1 is a beta with the same 2026 schema.
-        env:
-          ERIC_DOCUMENTATION: https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip
-          ERIC_DOCUMENTATION_SHA256: bad21c27ecce56d04fc04bccfd2dfa17b9ff2455aa878758100fc73a28492ad5
+        # The schemas, examples and Jahresdokumentationen of the UStVA, the ZMDO, every Datenart of ElsterErklaerung
+        # and ElsterBilanz, which the schema tests and the year checks read.
         run: |
           curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/eric-doc.zip" "$ERIC_DOCUMENTATION"
           echo "$ERIC_DOCUMENTATION_SHA256  $RUNNER_TEMP/eric-doc.zip" | sha256sum --check --strict
-          unzip -q "$RUNNER_TEMP/eric-doc.zip" '*/Datenarten/ElsterAnmeldung/UStVA/*' '*/Datenarten/ElsterExtern/ZMDO/*' '*/Datenarten/ElsterErklaerung/USt/*' '*/Datenarten/ElsterErklaerung/KSt/*' '*/Datenarten/ElsterErklaerung/GewSt/*' '*/Datenarten/ElsterBilanz/*' '*/Datenartversionmatrix.ods' '*/ElsterBasisSchema/*' -d "$RUNNER_TEMP/eric-doc"
+          unzip -q "$RUNNER_TEMP/eric-doc.zip" '*/Datenarten/ElsterAnmeldung/UStVA/*' '*/Datenarten/ElsterExtern/ZMDO/*' '*/Datenarten/ElsterErklaerung/*' '*/Datenarten/ElsterBilanz/*' '*/Datenartversionmatrix.ods' '*/ElsterBasisSchema/*' -d "$RUNNER_TEMP/eric-doc"
+
+      # The tests of steuerbote/xbrl install the taxonomy as the operator does, from the package of esteuer.de.
+      # It comes from a cache keyed by its SHA-256, and from esteuer.de only where the cache has none.
+      - name: Restore the HGB-Taxonomie 6.9 from the cache
+        id: taxonomy
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.9.zip
+          key: hgb-taxonomie-6.9-${{ env.TAXONOMY_SHA256 }}
 
       - name: Download the HGB-Taxonomie 6.9
-        # The taxonomy may not be passed on, so it is not in the repository: the tests of steuerbote/xbrl install it
-        # from the package of esteuer.de, as the operator does. esteuer.de does not send its intermediate certificate,
-        # which comes from GlobalSign with its SHA-256 checked.
-        env:
-          TAXONOMY: https://www.esteuer.de/download/taxonomie_20250618/german-gaap-taxonomy-v6.9-2025-04-01-xbrl.zip
-          TAXONOMY_SHA256: accd62202d73c036910fee118b30730f0392934afc9730617788e30a0480df87
-          INTERMEDIATE: http://secure.globalsign.com/cacert/gsgccr46dvtlsca2025.crt
-          INTERMEDIATE_SHA256: b59410f367b986e98e53a9789a6580553a74be515211d9f6ecb6e8a11e83aeaa
+        if: steps.taxonomy.outputs.cache-hit != 'true'
         run: |
           curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/intermediate.crt" "$INTERMEDIATE"
           echo "$INTERMEDIATE_SHA256  $RUNNER_TEMP/intermediate.crt" | sha256sum --check --strict
           { cat /etc/ssl/certs/ca-certificates.crt; openssl x509 -inform DER -in "$RUNNER_TEMP/intermediate.crt"; } > "$RUNNER_TEMP/esteuer.pem"
           curl --fail --silent --show-error --location --retry 3 --cacert "$RUNNER_TEMP/esteuer.pem" --output "$RUNNER_TEMP/taxonomy-6.9.zip" "$TAXONOMY"
           echo "$TAXONOMY_SHA256  $RUNNER_TEMP/taxonomy-6.9.zip" | sha256sum --check --strict
+
+      - name: Keep the HGB-Taxonomie 6.9 in the cache
+        if: steps.taxonomy.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.9.zip
+          key: hgb-taxonomie-6.9-${{ env.TAXONOMY_SHA256 }}
+
+      - name: Check the HGB-Taxonomie 6.9 by its SHA-256
+        run: echo "$TAXONOMY_SHA256  $RUNNER_TEMP/taxonomy-6.9.zip" | sha256sum --check --strict
 
       - name: Run the core tests with coverage
         env:
@@ -146,30 +167,40 @@ jobs:
           bench --site test_site install-app steuerbote
 
       - name: Download the ERiC documentation with the XML schemas
-        # The schemas may not be passed on, so they are not in the repository: the tests read them from the
-        # public documentation zip. 44.3.6.0 is the productive release; 45.1 is a beta with the same 2026 schema.
-        env:
-          ERIC_DOCUMENTATION: https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip
-          ERIC_DOCUMENTATION_SHA256: bad21c27ecce56d04fc04bccfd2dfa17b9ff2455aa878758100fc73a28492ad5
+        # The schemas, examples and Jahresdokumentationen of the UStVA, the ZMDO, every Datenart of ElsterErklaerung
+        # and ElsterBilanz, which the schema tests and the year checks read.
         run: |
           curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/eric-doc.zip" "$ERIC_DOCUMENTATION"
           echo "$ERIC_DOCUMENTATION_SHA256  $RUNNER_TEMP/eric-doc.zip" | sha256sum --check --strict
-          unzip -q "$RUNNER_TEMP/eric-doc.zip" '*/Datenarten/ElsterAnmeldung/UStVA/*' '*/Datenarten/ElsterExtern/ZMDO/*' '*/Datenarten/ElsterErklaerung/USt/*' '*/Datenarten/ElsterErklaerung/KSt/*' '*/Datenarten/ElsterErklaerung/GewSt/*' '*/Datenarten/ElsterBilanz/*' '*/Datenartversionmatrix.ods' '*/ElsterBasisSchema/*' -d "$RUNNER_TEMP/eric-doc"
+          unzip -q "$RUNNER_TEMP/eric-doc.zip" '*/Datenarten/ElsterAnmeldung/UStVA/*' '*/Datenarten/ElsterExtern/ZMDO/*' '*/Datenarten/ElsterErklaerung/*' '*/Datenarten/ElsterBilanz/*' '*/Datenartversionmatrix.ods' '*/ElsterBasisSchema/*' -d "$RUNNER_TEMP/eric-doc"
+
+      # The test run of the bench takes the tests of steuerbote/xbrl too, which install the package of esteuer.de.
+      # It comes from a cache keyed by its SHA-256, and from esteuer.de only where the cache has none.
+      - name: Restore the HGB-Taxonomie 6.9 from the cache
+        id: taxonomy
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.9.zip
+          key: hgb-taxonomie-6.9-${{ env.TAXONOMY_SHA256 }}
 
       - name: Download the HGB-Taxonomie 6.9
-        # The test run of the bench takes the tests of steuerbote/xbrl too, which install the package of esteuer.de.
-        # esteuer.de does not send its intermediate certificate, which comes from GlobalSign with its SHA-256 checked.
-        env:
-          TAXONOMY: https://www.esteuer.de/download/taxonomie_20250618/german-gaap-taxonomy-v6.9-2025-04-01-xbrl.zip
-          TAXONOMY_SHA256: accd62202d73c036910fee118b30730f0392934afc9730617788e30a0480df87
-          INTERMEDIATE: http://secure.globalsign.com/cacert/gsgccr46dvtlsca2025.crt
-          INTERMEDIATE_SHA256: b59410f367b986e98e53a9789a6580553a74be515211d9f6ecb6e8a11e83aeaa
+        if: steps.taxonomy.outputs.cache-hit != 'true'
         run: |
           curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/intermediate.crt" "$INTERMEDIATE"
           echo "$INTERMEDIATE_SHA256  $RUNNER_TEMP/intermediate.crt" | sha256sum --check --strict
           { cat /etc/ssl/certs/ca-certificates.crt; openssl x509 -inform DER -in "$RUNNER_TEMP/intermediate.crt"; } > "$RUNNER_TEMP/esteuer.pem"
           curl --fail --silent --show-error --location --retry 3 --cacert "$RUNNER_TEMP/esteuer.pem" --output "$RUNNER_TEMP/taxonomy-6.9.zip" "$TAXONOMY"
           echo "$TAXONOMY_SHA256  $RUNNER_TEMP/taxonomy-6.9.zip" | sha256sum --check --strict
+
+      - name: Keep the HGB-Taxonomie 6.9 in the cache
+        if: steps.taxonomy.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.9.zip
+          key: hgb-taxonomie-6.9-${{ env.TAXONOMY_SHA256 }}
+
+      - name: Check the HGB-Taxonomie 6.9 by its SHA-256
+        run: echo "$TAXONOMY_SHA256  $RUNNER_TEMP/taxonomy-6.9.zip" | sha256sum --check --strict
 
       - name: Run the Frappe tests
         working-directory: /home/runner/frappe-bench
@@ -223,3 +254,73 @@ jobs:
           name: browser-tests
           path: ${{ runner.temp }}/browser-results
           if-no-files-found: ignore
+
+  xbrl:
+    name: XBRL (Arelle)
+    runs-on: ubuntu-latest
+    # Arelle validates seven instances against the 279 files of the taxonomy in about two minutes.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install test tools
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Download the ERiC documentation with the examples of the E-Bilanz
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/eric-doc.zip" "$ERIC_DOCUMENTATION"
+          echo "$ERIC_DOCUMENTATION_SHA256  $RUNNER_TEMP/eric-doc.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/eric-doc.zip" '*/Datenarten/ElsterBilanz/*' '*/ElsterBasisSchema/*' -d "$RUNNER_TEMP/eric-doc"
+
+      # The script installs the taxonomy as the operator does, from the package of esteuer.de.
+      # It comes from a cache keyed by its SHA-256, and from esteuer.de only where the cache has none.
+      - name: Restore the HGB-Taxonomie 6.9 from the cache
+        id: taxonomy
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.9.zip
+          key: hgb-taxonomie-6.9-${{ env.TAXONOMY_SHA256 }}
+
+      - name: Download the HGB-Taxonomie 6.9
+        if: steps.taxonomy.outputs.cache-hit != 'true'
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/intermediate.crt" "$INTERMEDIATE"
+          echo "$INTERMEDIATE_SHA256  $RUNNER_TEMP/intermediate.crt" | sha256sum --check --strict
+          { cat /etc/ssl/certs/ca-certificates.crt; openssl x509 -inform DER -in "$RUNNER_TEMP/intermediate.crt"; } > "$RUNNER_TEMP/esteuer.pem"
+          curl --fail --silent --show-error --location --retry 3 --cacert "$RUNNER_TEMP/esteuer.pem" --output "$RUNNER_TEMP/taxonomy-6.9.zip" "$TAXONOMY"
+          echo "$TAXONOMY_SHA256  $RUNNER_TEMP/taxonomy-6.9.zip" | sha256sum --check --strict
+
+      - name: Keep the HGB-Taxonomie 6.9 in the cache
+        if: steps.taxonomy.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.9.zip
+          key: hgb-taxonomie-6.9-${{ env.TAXONOMY_SHA256 }}
+
+      - name: Check the HGB-Taxonomie 6.9 by its SHA-256
+        run: echo "$TAXONOMY_SHA256  $RUNNER_TEMP/taxonomy-6.9.zip" | sha256sum --check --strict
+
+      - name: Validate the instances with Arelle
+        env:
+          STEUERBOTE_ERIC_DOC_DIR: ${{ runner.temp }}/eric-doc
+        run: python -m steuerbote.xbrl.tests.arelle_validation "$RUNNER_TEMP/taxonomy-6.9.zip" --keep "$RUNNER_TEMP/xbrl"
+
+      # The instances and the logs of Arelle, never a file of the taxonomy, which the directory keeps as well.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: xbrl-instances
+          path: |
+            ${{ runner.temp }}/xbrl/*.xml
+            ${{ runner.temp }}/xbrl/*.xbrl
+            ${{ runner.temp }}/xbrl/*.log
+          if-no-files-found: ignore
+          retention-days: 7
