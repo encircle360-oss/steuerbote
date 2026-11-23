@@ -62,7 +62,9 @@ from steuerbote.steuerbote.doctype.vat_id_confirmation.confirming import Confirm
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
-from steuerbote.ustva import plausibility
+from steuerbote.tax_templates import template_accounts
+from steuerbote.ustva import plausibility, tax_templates
+from steuerbote.ustva.defaults import deliberately_without_kennzahl
 from steuerbote.vatid import Details, UrllibFetch
 from steuerbote.zm.lines import VoucherAmount
 
@@ -717,7 +719,8 @@ def build_hints(
 	comparison: plausibility.Comparison,
 ) -> tuple[plausibility.Hint, ...]:
 	"""Hinweise: the invoices of the period, their reconciliation with the ledger, the balances on the accounts
-	watched for a hint, the Vorperiodenvergleich and the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21.
+	watched for a hint, the Vorperiodenvergleich, the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21 and
+	the accounts of the tax templates without a place in the mapping.
 
 	A hint informs and never holds the return; whether it is ready follows the Verprobung and the accounts
 	watched at the blocking level alone.
@@ -732,11 +735,27 @@ def build_hints(
 	ledger = {number: value.amount for number, value in result.values.items()}
 	currency = frappe.get_cached_value("Company", doc.company, "default_currency")
 	names = account_labels(doc.company, (balance.account_number for balance in result.hinted))
-	found = plausibility.hints(
-		comparison, lines, ledger, mapping, SiteFigures(currency), result.hinted, names
-	)
+	figures = SiteFigures(currency)
+	found = plausibility.hints(comparison, lines, ledger, mapping, figures, result.hinted, names)
 	vat_ids = period_vat_ids(doc.company, period, mapping)
-	return plausibility.merged(found, vat_id_hints(doc.company, period, vat_ids.amounts))
+	return plausibility.merged(
+		found,
+		vat_id_hints(doc.company, period, vat_ids.amounts),
+		_tax_template_hints(doc.company, period, mapping, figures),
+	)
+
+
+def _tax_template_hints(
+	company: str, period: ustva.Period, mapping: ustva.Mapping, figures: plausibility.Figures
+) -> list[plausibility.Hint]:
+	"""A hint per account of the company's tax templates without a place in the mapping, with its balance in the
+	period from the same query of the ledger as Berechnen, for these accounts only."""
+	unplaced = tax_templates.without_place(
+		template_accounts(company), mapping, deliberately_without_kennzahl(mapping.chart)
+	)
+	numbers = [account.account_number for account in unplaced if account.account_number]
+	lines = load_lines(company, period.start, period.end, numbers) if numbers else []
+	return tax_templates.hints(unplaced, tax_templates.balances(lines, numbers), figures)
 
 
 class SiteFigures:

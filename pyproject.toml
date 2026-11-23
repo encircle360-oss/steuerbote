@@ -78,6 +78,7 @@ testpaths = [
     "steuerbote/steuerbote/doctype/vat_return/test_plausibility_records.py",
     "steuerbote/steuerbote/doctype/vat_return_extension/test_bridge.py",
     "steuerbote/steuerbote/doctype/vat_return_extension/test_extension_files.py",
+    "steuerbote/steuerbote/doctype/vat_return_mapping/test_mapping_form_files.py",
     "steuerbote/steuerbote/doctype/vat_return_settings/test_rules.py",
     "steuerbote/steuerbote/doctype/vat_return_settings/test_translations.py",
     "steuerbote/steuerbote/report/ustva_kennzahlen/test_attribution.py",

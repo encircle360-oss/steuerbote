@@ -18,6 +18,7 @@ steuerbote/                    Repository
 │   │   ├── calculation.py     calculate(): Buchungszeilen zu Kennzahlen, Summen, Kz 83 und Verprobung
 │   │   ├── period.py          Voranmeldungszeiträume, Fristen und ELSTER-Zeitraumcodes
 │   │   ├── plausibility.py    Vorperiodenvergleich und Hinweise aus Rechnungen, Hauptbuch und Vergleich
+│   │   ├── tax_templates.py   Konten der Steuervorlagen ohne Platz in der Kontenzuordnung und ihre Hinweise
 │   │   ├── yearcheck.py       Jahresprüfung: Daten eines Jahres gegen Jahresdokumentation, Schema und Datenartversionmatrix
 │   │   ├── documentation.py   liest diese Dateien aus der entpackten ERiC-Dokumentation
 │   │   └── tests/             Unit-Tests des Kerns
@@ -47,6 +48,7 @@ steuerbote/                    Repository
 │   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
 │   ├── invoices.py            liest die Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns, reines Python
+│   ├── tax_templates.py       liest die Konten der Steuervorlagen eines Unternehmens mit ihren Vorlagen
 │   ├── zm_sources.py          liest für die Zusammenfassende Meldung Hauptbuch, Kunden, Adressen und abgegebene Voranmeldungen
 │   ├── dauerfrist_sources.py  liest für die Dauerfristverlängerung die abgegebenen Voranmeldungen eines Jahres und das Gründungsdatum
 │   ├── holiday_list.py        liest die Feiertage der Fristen aus der Feiertagsliste des Unternehmens

@@ -25,6 +25,9 @@ frappe.ui.form.on("VAT Return Mapping", {
 				load_defaults(frm);
 			}
 		});
+		if (!frm.is_new()) {
+			frm.add_custom_button(__("Check Tax Templates"), () => check_tax_templates(frm));
+		}
 	},
 });
 
@@ -45,4 +48,69 @@ function load_defaults(frm) {
 			frappe.show_alert({ message: __("Defaults Loaded"), indicator: "green" });
 		}
 	});
+}
+
+// Steuervorlagen prüfen: the accounts of the tax templates without a place in the mapping, which one step watches at
+// the level Sperrt.
+function check_tax_templates(frm) {
+	if (frm.is_dirty()) {
+		frappe.msgprint(__("Save the mapping before checking the tax templates."));
+		return;
+	}
+	frm.call("check_tax_templates").then((r) => {
+		const accounts = r.message || [];
+		if (!accounts.length) {
+			frappe.msgprint({
+				title: __("Check Tax Templates"),
+				indicator: "green",
+				message: __("Every account of the tax templates has a place in the mapping."),
+			});
+			return;
+		}
+		show_template_accounts(frm, accounts);
+	});
+}
+
+function show_template_accounts(frm, accounts) {
+	const watchable = accounts.filter((account) => account.account_number);
+	const dialog = new frappe.ui.Dialog({
+		title: __("Check Tax Templates"),
+		size: "large",
+		fields: [{ fieldtype: "HTML", fieldname: "accounts" }],
+		primary_action_label: __("Watch at the Level Blocking"),
+		primary_action() {
+			frm.call("watch_template_accounts").then((response) => {
+				dialog.hide();
+				frm.reload_doc();
+				frappe.show_alert({
+					message: __("{0} accounts are watched at the level Blocking now.", [(response.message || []).length]),
+					indicator: "green",
+				});
+			});
+		},
+	});
+	const escape = frappe.utils.escape_html;
+	const rows = accounts.map(
+		(account) => `<tr>
+			<td>${escape(account.account_number || __("without account number"))}</td>
+			<td>${escape(account.account_name)}</td>
+			<td>${account.templates.map(escape).join("<br>")}</td>
+		</tr>`
+	);
+	dialog.fields_dict.accounts.$wrapper.html(`
+		<p>${__(
+			"These accounts of the tax templates have no place in the mapping: no rule, no Verprobung and not watched. What the templates book on them goes into no Kennzahl."
+		)}</p>
+		<table class="table table-bordered">
+			<thead><tr><th>${__("Account Number")}</th><th>${__("Account")}</th><th>${__("Tax Templates")}</th></tr></thead>
+			<tbody>${rows.join("")}</tbody>
+		</table>
+		<p class="text-muted">${__(
+			"Watching them at the level Blocking holds every return with a balance on one of them until the account has a rule. An account without account number cannot be watched; give it a number first."
+		)}</p>
+	`);
+	if (!watchable.length) {
+		dialog.get_primary_btn().hide();
+	}
+	dialog.show();
 }

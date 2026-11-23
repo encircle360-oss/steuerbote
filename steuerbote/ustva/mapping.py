@@ -166,6 +166,18 @@ class Mapping:
 		"""The numbers of the accounts watched at ``level``, in the order of the mapping."""
 		return tuple(watched.account_number for watched in self.watched if watched.level is level)
 
+	def has_place(self, account_number: str) -> bool:
+		"""Whether a rule maps the account, a Verprobung checks it as a tax account or the mapping watches it.
+
+		An account without any of these places enters no Kennzahl and holds nothing: its balance drops out of
+		the Voranmeldung unseen (calculation.py).
+		"""
+		return (
+			self.rule_for(account_number) is not None
+			or any(account_number in check.tax_accounts for check in self.checks)
+			or any(watched.account_number == account_number for watched in self.watched)
+		)
+
 	def rule_for(self, account_number: str) -> AccountRule | None:
 		for rule in self.rules:
 			if rule.account_number == account_number:
