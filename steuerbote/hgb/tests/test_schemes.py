@@ -376,7 +376,7 @@ class VermerkeTest(TestCase):
 			{
 				"bs.ass.fixAss.fin": [SHAREHOLDERS],
 				"bs.ass.currAss.receiv": [RECEIVABLES, SHAREHOLDERS],
-				"bs.eqLiab.equity.subscribed": [VermerkKind.UNCALLED_CAPITAL],
+				"bs.eqLiab.equity.subscribed": [VermerkKind.UNCALLED_CAPITAL, VermerkKind.OWN_SHARES],
 				"bs.eqLiab.equity.profitLoss": [VermerkKind.PROFIT_CARRIED_FORWARD],
 				"bs.eqLiab.liab": [UP_TO_ONE, OVER_ONE, SHAREHOLDERS],
 			},
@@ -387,7 +387,7 @@ class VermerkeTest(TestCase):
 			"bs.ass.fixAss.fin": [SHAREHOLDERS],
 			"bs.ass.currAss.receiv": [SHAREHOLDERS],
 			**{concept: [RECEIVABLES] for concept in RECEIVABLE_ITEMS},
-			"bs.eqLiab.equity.subscribed": [VermerkKind.UNCALLED_CAPITAL],
+			"bs.eqLiab.equity.subscribed": [VermerkKind.UNCALLED_CAPITAL, VermerkKind.OWN_SHARES],
 			"bs.eqLiab.equity.profitLoss": [VermerkKind.PROFIT_CARRIED_FORWARD],
 			"bs.eqLiab.liab": [SHAREHOLDERS],
 			"bs.eqLiab.liab.securities": [VermerkKind.CONVERTIBLE, UP_TO_ONE, OVER_ONE],
@@ -429,6 +429,10 @@ class VermerkeTest(TestCase):
 			concepts("bs.eqLiab.equity.profitLoss", SizeClass.KLEIN),
 			["bs.eqLiab.equity.profitLoss.retainedEarnings"],
 		)
+		self.assertEqual(
+			concepts("bs.eqLiab.equity.subscribed", SizeClass.KLEIN),
+			["bs.eqLiab.equity.subscribed.unpaidCap", "bs.eqLiab.equity.subscribed.ownSharesdeducted"],
+		)
 
 	def test_a_vermerk_covers_the_position_it_names_as_its_scope(self):
 		for position in self.scheme.positions():
@@ -456,13 +460,16 @@ class VermerkeTest(TestCase):
 			VermerkKind.TAXES: "§ 266 Abs. 3 C. 8. HGB",
 			VermerkKind.SOCIAL_SECURITY: "§ 266 Abs. 3 C. 8. HGB",
 			VermerkKind.UNCALLED_CAPITAL: "§ 272 Abs. 1 Satz 2 HGB",
+			VermerkKind.OWN_SHARES: "§ 272 Abs. 1a Satz 1 HGB",
 			VermerkKind.PROFIT_CARRIED_FORWARD: "§ 268 Abs. 1 Satz 2 HGB",
 		}
 		for position in self.scheme.positions():
 			for vermerk in position.vermerke:
 				with self.subTest(position=position.concept, vermerk=vermerk.kind):
 					self.assertEqual(vermerk.reference, references[vermerk.kind])
-					self.assertTrue(vermerk.label.startswith(("davon ", "nicht eingeforderte")))
+					self.assertTrue(
+						vermerk.label.startswith(("davon ", "nicht eingeforderte", "eigene Anteile"))
+					)
 
 	def test_the_shareholder_vermerke_take_the_separate_items_and_the_davon_concepts_of_the_taxonomy(self):
 		liabilities = self.scheme.vermerke("bs.eqLiab.liab", SizeClass.KLEIN)[-1]

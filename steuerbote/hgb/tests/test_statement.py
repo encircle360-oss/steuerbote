@@ -328,6 +328,7 @@ LOAN_RECEIVABLE = "bs.ass.currAss.receiv.other.loans"
 SOCIAL_SECURITY = "bs.eqLiab.liab.other.thereoffSocSec"
 PENSIONS = f"{GKV}.staff.social.pensions"
 UNCALLED = "bs.eqLiab.equity.subscribed.unpaidCap"
+OWN_SHARES = "bs.eqLiab.equity.subscribed.ownSharesdeducted"
 VERMERK_PARENTS = {
 	**PARENTS,
 	LOAN_RECEIVABLE: "bs.ass.currAss.receiv.other",
@@ -335,6 +336,7 @@ VERMERK_PARENTS = {
 	"bs.eqLiab.liab.other.other": "bs.eqLiab.liab.other",
 	PENSIONS: f"{GKV}.staff.social",
 	UNCALLED: "bs.eqLiab.equity.subscribed",
+	OWN_SHARES: "bs.eqLiab.equity.subscribed",
 }
 LONG = RemainingTerm.ONE_TO_FIVE_YEARS
 # The invented GmbH of BOOKS with a loan to an employee, social security and a loan of its shareholder.
@@ -448,13 +450,27 @@ class VermerkAmountsTest(TestCase):
 			(
 				"Eingefordertes Kapital",
 				Decimal("12500.00"),
-				{VermerkKind.UNCALLED_CAPITAL: Decimal("-12500.00")},
+				{VermerkKind.UNCALLED_CAPITAL: Decimal("-12500.00"), VermerkKind.OWN_SHARES: Decimal("0")},
 			),
 		)
 		plain = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS).balance_sheet.line(
 			"bs.eqLiab.equity.subscribed"
 		)
 		self.assertEqual(plain.label, "Gezeichnetes Kapital")
+
+	def test_own_shares_are_deducted_openly_from_the_gezeichnetes_kapital(self):
+		books = (*BOOKS, Balance(OWN_SHARES, Decimal("1000.00")), Balance(BANK, Decimal("-1000.00")))
+		line = build(2026, SizeClass.KLEIN, books, parents=VERMERK_PARENTS).balance_sheet.line(
+			"bs.eqLiab.equity.subscribed"
+		)
+		self.assertEqual(
+			(line.label, line.amount, vermerke(line)),
+			(
+				"Gezeichnetes Kapital",
+				Decimal("24000.00"),
+				{VermerkKind.UNCALLED_CAPITAL: Decimal("0"), VermerkKind.OWN_SHARES: Decimal("-1000.00")},
+			),
+		)
 
 
 class RemainingTermFindingsTest(TestCase):
@@ -917,7 +933,8 @@ def random_books(randomness: random.Random) -> tuple[Balance, ...]:
 
 
 class SubscribedCapitalTest(TestCase):
-	"""§ 272 Abs. 1 HGB: the Gezeichnetes Kapital at its Nennbetrag, before the uncalled contributions are offset."""
+	"""§ 272 Abs. 1 and 1a HGB: the Gezeichnetes Kapital at its Nennbetrag, before the uncalled contributions and
+	the own shares are offset."""
 
 	def test_gives_the_gezeichnetes_kapital_of_every_class(self):
 		books = (*BOOKS, Balance(UNCALLED, Decimal("12500.00")), Balance(BANK, Decimal("-12500.00")))
@@ -930,6 +947,14 @@ class SubscribedCapitalTest(TestCase):
 					(sheet.subscribed_capital, sheet.prior_subscribed_capital),
 					(Decimal("25000.00"), Decimal("25000.00")),
 				)
+
+	def test_gives_it_before_own_shares_are_deducted(self):
+		books = (*BOOKS, Balance(OWN_SHARES, Decimal("1000.00")), Balance(BANK, Decimal("-1000.00")))
+		sheet = build(2026, SizeClass.KLEIN, books, parents=VERMERK_PARENTS).balance_sheet
+		self.assertEqual(
+			(sheet.line("bs.eqLiab.equity.subscribed").amount, sheet.subscribed_capital),
+			(Decimal("24000.00"), Decimal("25000.00")),
+		)
 
 	def test_has_none_of_a_previous_year_without_one(self):
 		self.assertIsNone(
