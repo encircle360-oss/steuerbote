@@ -168,6 +168,24 @@ class FormScriptFilesTest(TestCase):
 			controller(KST).read_text(encoding="utf-8"),
 		)
 
+	def test_the_koerperschaftsteuererklaerung_names_its_e_bilanz_of_the_jahresabschluss_of_its_company_and_year(
+		self,
+	):
+		field = fields_of(KST)["electronic_balance_sheet"]
+		self.assertEqual((field["fieldtype"], field["options"]), ("Link", "Electronic Balance Sheet"))
+		self.assertFalse(field.get("read_only"))
+		self.assertIn("electronic_balance_sheet", constant(controller(KST), "INPUT_FIELDS"))
+		source = script(KST)
+		self.assertIn('frm.set_query("electronic_balance_sheet"', source)
+		for condition in (
+			"company: frm.doc.company",
+			"year: frm.doc.year",
+			'statement_type: "Jahresabschluss"',
+			'docstatus: ["!=", 2]',
+		):
+			with self.subTest(condition=condition):
+				self.assertIn(condition, source)
+
 	def test_the_gewerbesteuererklaerung_offers_the_koerperschaftsteuererklaerungen_of_its_company_and_year(
 		self,
 	):
