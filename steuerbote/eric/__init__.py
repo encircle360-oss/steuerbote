@@ -3,9 +3,10 @@
 Steuerbote never ships ERiC. An operator installs a runtime from the archive of the ELSTER developer
 area (runtime), and each call runs once in a short-lived worker process (worker, through the ctypes
 binding in api), with the parameters of the Datenart of its delivery (datenart). Without a runtime the
-simulation answers instead (fake). service.run chooses between them. releases compares the installed runtimes with
-the Mindestversionsliste of ELSTER and the plugins of the coming year. All modules but secrets are pure Python
-and never import Frappe; secrets hands certificate and PIN over to the background job.
+simulation answers instead (fake). service.run chooses between them. releases reads the Versionsinformationen of
+each installed package and compares the installed runtimes with the Mindestversionsliste of ELSTER and the plugins
+of the coming year. All modules but secrets are pure Python and never import Frappe; secrets hands certificate and
+PIN over to the background job.
 
 The package does not import the worker, so python -m steuerbote.eric.worker runs it only once.
 """
