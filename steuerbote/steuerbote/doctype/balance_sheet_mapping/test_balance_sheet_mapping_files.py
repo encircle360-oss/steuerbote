@@ -1,5 +1,6 @@
 """The Balance Sheet Mapping, read from its files without a bench: its DocTypes with the fields and options the core
-reads (steuerbote/xbrl/mapping.py, steuerbote/balance_mapping_sync.py), and every text in German."""
+reads (steuerbote/xbrl/mapping.py, steuerbote/balance_mapping_sync.py), the field that takes the labels of the positions
+in the HGB-Taxonomie 6.9 of esteuer.de (steuerbote/xbrl/tests/real.py), and every text in German."""
 
 import ast
 import csv
@@ -9,11 +10,13 @@ from pathlib import Path
 from unittest import TestCase
 
 from steuerbote import balance_mapping_sync, hooks
+from steuerbote.ebilanz.defaults import CHARTS, defaults_for
 from steuerbote.mappings import transfer
 from steuerbote.setup.steps import Step
 from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl import mapping
 from steuerbote.xbrl.mapping import REMAINING_TERMS, Purpose
+from steuerbote.xbrl.tests import real
 from steuerbote.xbrl.versions import LATEST, TAXONOMIES
 
 APP = Path(__file__).resolve().parents[3]
@@ -57,6 +60,32 @@ def fields_of(name: str) -> dict[str, dict]:
 
 def options(field: dict) -> list[str]:
 	return field["options"].split("\n")
+
+
+DATA_LENGTH = 140
+"""The characters a Data field of Frappe takes unless it sets a length of its own: saving a longer value fails with
+CharacterLengthExceededError (frappe.model.document.Document._validate_length)."""
+TEXT_FIELDS = frozenset({"Small Text", "Text"})
+TEXT_BYTES = 65_535
+"""The bytes a Small Text or a Text field takes: Frappe stores both in a text column of MariaDB
+(frappe/database/mariadb/database.py), which holds 65,535 bytes, and checks no length of its own."""
+
+
+def takes(field: dict, text: str) -> bool:
+	"""Whether saving keeps the text whole in the field."""
+	if field["fieldtype"] in TEXT_FIELDS:
+		return len(text.encode("utf-8")) <= TEXT_BYTES
+	if field["fieldtype"] == "Data":
+		return len(text) <= int(field.get("length") or DATA_LENGTH)
+	raise AssertionError(f"no length known for a field of the type {field['fieldtype']}")
+
+
+def refused(field: dict, labels: dict[str, str]) -> list[tuple[int, str]]:
+	"""Each position whose label saving refuses in the field, with the length of the label, longest first."""
+	return sorted(
+		((len(label), position) for position, label in labels.items() if not takes(field, label)),
+		reverse=True,
+	)
 
 
 class MappingDefinitionTest(TestCase):
@@ -160,7 +189,7 @@ class RowDefinitionTest(TestCase):
 		)
 		self.assertEqual((rule["concept"]["fieldtype"], rule["concept"]["reqd"]), ("Data", 1))
 		self.assertEqual(
-			(rule["concept_label"]["fieldtype"], rule["concept_label"]["read_only"]), ("Data", 1)
+			(rule["concept_label"]["fieldtype"], rule["concept_label"]["read_only"]), ("Small Text", 1)
 		)
 		self.assertEqual(
 			(rule["opposite_concept"]["fieldtype"], rule["opposite_concept"].get("reqd")), ("Data", None)
@@ -196,6 +225,39 @@ class RowDefinitionTest(TestCase):
 	def test_an_account_outside_the_bilanz_and_the_guv_names_its_reason(self):
 		reason = fields_of("balance_sheet_mapping_excluded_account")["reason"]
 		self.assertEqual((reason["fieldtype"], reason["reqd"]), ("Data", 1))
+
+
+class LabelTest(TestCase):
+	"""Saving writes the label of the position of each rule in the HGB-Taxonomie into the field Label of the Position,
+	and a label longer than the field takes fails the whole mapping: Vorgaben laden, Steuerbote einrichten and a rule
+	by hand alike."""
+
+	def setUp(self):
+		self.taxonomy = real.view()
+		self.field = fields_of("balance_sheet_mapping_rule")["concept_label"]
+
+	def test_takes_the_label_of_every_position_of_the_defaults(self):
+		"""The defaults name positions whose labels are longer than 140 characters, such as the Gebäude-Anteil of the
+		Bauten auf eigenen Grundstücken with 181 and the Abschreibungen auf Forderungen gegenüber
+		Kapitalgesellschaften, an denen eine Beteiligung besteht, with 314."""
+		labels = {
+			rule.concept: self.taxonomy.label(rule.concept)
+			for chart in sorted(CHARTS)
+			for rule in defaults_for(chart, real.VERSION.version).rules
+		}
+		self.assertGreater(max(len(label) for label in labels.values()), DATA_LENGTH)
+		self.assertEqual(refused(self.field, labels), [])
+
+	def test_takes_the_label_of_every_position_a_rule_may_name(self):
+		"""A rule by hand may name a position with a longer label than any of the defaults, up to the 507 characters
+		of bs.eqLiab.equity.revenueRes.assMeasuredAtFairValue.finalPrev."""
+		labels = {
+			name: self.taxonomy.label(name)
+			for name in self.taxonomy.concepts
+			if mapping.position_problem(self.taxonomy, "0000", name) is None
+		}
+		self.assertGreater(max(len(label) for label in labels.values()), DATA_LENGTH)
+		self.assertEqual(refused(self.field, labels), [])
 
 
 class TranslationsTest(TestCase):
