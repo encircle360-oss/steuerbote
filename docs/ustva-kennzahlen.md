@@ -538,6 +538,23 @@ In SKR04 fehlt in der Verprobung „Umsatzsteuer 7 %“ das Gegenstück zu 8630.
 
 Die Steuer zu Kz 47, 85 und 96 kommt in den Vorgaben deshalb immer aus den Grundlagenkonten, nicht aus dem gebuchten Betrag auf 1787, 1785 oder 1784 (SKR04: 3837, 3835 oder 3834). Weicht die Buchung um mehr als die Toleranz ab, geht die Verprobung nicht auf, und die Meldung ist nicht bereit.
 
+### Abgleich mit den Registern
+
+Die Verprobung prüft jeden Beleg in sich. Der Abgleich mit den Registern stellt dazu die Summen der Berichte Sales Register und Purchase Register von ERPNext neben die Beträge, die die Meldung aus dem Hauptbuch nimmt ([`registers.py`](../steuerbote/ustva/registers.py)). Welche Kennzahlen ein Bericht abgleicht, folgt den Abschnitten des Vordrucks USt 1 A 2026:
+
+| Bericht | Abschnitte des Vordrucks | Kennzahlen |
+|---|---|---|
+| Sales Register (Ausgangsrechnungen) | A. Steuerpflichtige Lieferungen, sonstige Leistungen und unentgeltliche Wertabgaben (Zeilen 13 bis 18); B. Steuerfreie Lieferungen, sonstige Leistungen und unentgeltliche Wertabgaben (Zeilen 19 bis 23); E. Ergänzende Angaben zu Umsätzen (Zeilen 33 bis 36) | 81, 86, 87, 35/36, 77, 76/80; 41, 44, 49, 43, 48; 42, 60, 21, 45 |
+| Purchase Register (Eingangsrechnungen) | C. Innergemeinschaftliche Erwerbe (Zeilen 24 bis 29); D. Leistungsempfänger als Steuerschuldner (§ 13b UStG, Zeilen 30 bis 32); aus F. die Vorsteuer aus Rechnungen, aus innergemeinschaftlichen Erwerben, die Einfuhrumsatzsteuer und die Vorsteuer aus Leistungen nach § 13b UStG (Zeilen 38 bis 41) | 91, 89, 93, 90, 95/98, 94/96; 46/47, 73/74, 84/85; 66, 61, 62, 67 |
+| keiner | Kz 63, 59 und 64, die das Unternehmen selbst berechnet (Durchschnittssätze nach § 23a UStG, Vorsteuerabzug nach § 15 Abs. 4a UStG, Berichtigung nach § 15a UStG); G. Andere Steuerbeträge (Kz 65 und 69, aus Verkäufen wie aus Einkäufen); Kz 39, 50 und 37 | — |
+
+Je Bericht gelten diese Gruppen:
+
+- **Bemessungsgrundlagen:** je Kennzahl die Summe der Konten ihrer Regeln im Bericht gegen den genauen Betrag der Kennzahl laut Hauptbuch, vor dem Runden auf volle Euro. Die Konten stehen im Bericht mit dem Nettobetrag der Artikel, die Ausgangsrechnung im Haben, die Eingangsrechnung im Soll. Inländische Umsätze zu 19 und 7 % sind Kz 81 und 86, die Leistungen nach § 13b UStG Kz 46, 73 und 84, die innergemeinschaftlichen Lieferungen und sonstigen Leistungen Kz 41, 44, 49 und 21, die innergemeinschaftlichen Erwerbe Kz 89, 93 und die übrigen des Abschnitts C. Eine zusätzliche Kennzahl wie Kz 50 bleibt außen vor, sie wiederholt einen Betrag aus den Zeilen 13 bis 18.
+- **Steuer:** je Steuerkonto, das eine Verprobung prüft oder eine Regel einer Steuer-Kennzahl zuordnet, die Steuer im Bericht gegen den Saldo des Kontos laut Hauptbuch. Das Steuerkonto einer Verprobung gehört zum Bericht ihrer Grundlagen: die Umsatzsteuer 19 % und 7 % (1776 und 1771, SKR04: 3806 und 3801) zum Sales Register, die Umsatzsteuer aus innergemeinschaftlichen Erwerben und nach § 13b UStG (etwa 1774 und 1787, SKR04: 3804 und 3837) zum Purchase Register. Die Vorsteuer (Kz 66, 61, 62 und 67) gehört zum Purchase Register. Die Steuer, die der Vordruck aus Kz 81, 86, 89 und 93 selbst berechnet, vergleicht der Abgleich nicht, denn der Vordruck rundet die Bemessungsgrundlage vorher auf volle Euro; die gebuchte Steuer der Verprobungskonten vergleicht er.
+
+Die Differenz ist der Betrag laut Hauptbuch abzüglich des Betrags laut Bericht, auf Cent gerundet. Steuer, die eine Eingangsrechnung abzieht, etwa die Umsatzsteuer nach § 13b UStG, zeigt der Purchase Register negativ; auf der Haben-Seite des Steuerkontos wird sie positiv. Was nicht verglichen werden kann, steht mit seinem Betrag in einer eigenen Zeile, ohne Differenz: Eröffnungsrechnungen, die Konten von „Bewusst ohne Kennzahl“, Konten ohne Platz in der Kontenzuordnung, beobachtete Konten, Konten von Kennzahlen, die der Bericht nicht abgleicht, und Konten ohne Kontonummer. Bucht ein Bericht im Zeitraum auf kein Konto, gleicht er nichts ab, und eine Zeile sagt das. Eine Differenz braucht vor der Abgabe eine Erklärung in ihrer Zeile oder in den Anmerkungen, siehe [Architektur](architektur.md#abgleich-mit-sales-register-und-purchase-register).
+
 ### Beobachtete Konten
 
 Diese Konten gehören zur Voranmeldung, sind in den Vorgaben aber noch keiner Kennzahl zugeordnet. Die Vorgaben beobachten sie auf der Stufe „Sperrt“: Hat eines davon im Zeitraum einen Saldo, steht es in `unmapped`, und die Meldung ist nicht bereit, bis die Firma eine Zuordnung ergänzt hat. Auf 1548 und 1725 (SKR04: 1434 und 3865) ist ein Saldo eine Frage des Zeitpunkts: Vorsteuer, die erst in einem späteren Zeitraum abziehbar ist, und Umsatzsteuer, die erst später fällig wird. Die Firma klärt sie, bevor sie meldet.

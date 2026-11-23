@@ -7,7 +7,7 @@ from unittest import TestCase
 from steuerbote.elster import ustva_xml
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.report.ustva_kennzahlen import comparison
-from steuerbote.ustva import KENNZAHLEN, LedgerLine, Period, calculate, plausibility
+from steuerbote.ustva import KENNZAHLEN, LedgerLine, Period, calculate, plausibility, registers
 from steuerbote.ustva.defaults import SKR03
 from steuerbote.vatid.result import Outcome
 
@@ -888,3 +888,207 @@ class ReplacedHintsTest(TestCase):
 			],
 		)
 		self.assertEqual(bridge.replaced_hints(stored[1:2], [], plausibility.VAT_ID_CODES), [])
+
+
+SALES = registers.Register.SALES
+PURCHASES = registers.Register.PURCHASES
+
+
+def register_row(
+	register: registers.Register, number: str | None, amount: str, opening: bool = False
+) -> registers.RegisterLine:
+	account = f"{number} - Konto - STB" if number else "Sonderkonto - STB"
+	return registers.RegisterLine(register, account, number, Decimal(amount), opening)
+
+
+def reconciliation(*extra: LedgerLine) -> tuple[registers.Row, ...]:
+	"""The invoices of the verified month against its ledger, with ``extra`` booked besides."""
+	lines = [
+		register_row(SALES, "8400", "1000.00"),
+		register_row(SALES, "1776", "190.00"),
+		register_row(PURCHASES, "3123", "300.00"),
+		register_row(PURCHASES, "1577", "57.00"),
+		register_row(PURCHASES, "1787", "-57.00"),
+		register_row(PURCHASES, "4930", "95.00"),
+	]
+	ledger = [
+		line("8400", credit="1000", voucher="Sales Invoice:A"),
+		line("1776", credit="190", voucher="Sales Invoice:A"),
+		line("3123", debit="300", voucher="Purchase Invoice:B"),
+		line("1577", debit="57", voucher="Purchase Invoice:B"),
+		line("1787", credit="57", voucher="Purchase Invoice:B"),
+		*extra,
+	]
+	return registers.reconcile(lines, ledger, SKR03)
+
+
+ACCOUNTS = {
+	"1776": "1776 - Umsatzsteuer 19 % - STB",
+	"1787": "1787 - Umsatzsteuer nach § 13b UStG 19 % - STB",
+	"1577": "1577 - Vorsteuer nach § 13b UStG 19 % - STB",
+}
+NAMES = {"1776": "Umsatzsteuer 19 %", "1787": "Umsatzsteuer nach § 13b UStG 19 %"}
+
+
+class ReconciliationRowsTest(TestCase):
+	def rows(self, *extra: LedgerLine, earlier=()):
+		return bridge.reconciliation_rows(reconciliation(*extra), KENNZAHLEN, ACCOUNTS, NAMES, earlier)
+
+	def test_a_row_per_row_of_the_reconciliation_with_its_subject_and_amounts(self):
+		found = self.rows(line("8400", credit="500", voucher="Journal Entry:JE-1"))
+		self.assertEqual(
+			[
+				(
+					row["register"],
+					row["subject"],
+					row["kennzahl"],
+					row["account"],
+					row["register_amount"],
+					row["ledger_amount"],
+					row["difference"],
+					row["compared"],
+					row["explanation"],
+				)
+				for row in found
+			],
+			[
+				(
+					"Sales Register",
+					"Kz 81 Steuerpflichtige Umsätze zum Steuersatz von 19 %",
+					"81",
+					"",
+					d("1000.00"),
+					d("1500.00"),
+					d("500.00"),
+					1,
+					"",
+				),
+				(
+					"Sales Register",
+					"Konto 1776 Umsatzsteuer 19 %",
+					"",
+					ACCOUNTS["1776"],
+					d("190.00"),
+					d("190.00"),
+					d("0"),
+					1,
+					"",
+				),
+				(
+					"Purchase Register",
+					f"Kz 46 {KENNZAHLEN['46'].label}",
+					"46",
+					"",
+					d("300.00"),
+					d("300.00"),
+					d("0"),
+					1,
+					"",
+				),
+				(
+					"Purchase Register",
+					"Konto 1787 Umsatzsteuer nach § 13b UStG 19 %",
+					"",
+					ACCOUNTS["1787"],
+					d("57.00"),
+					d("57.00"),
+					d("0"),
+					1,
+					"",
+				),
+				(
+					"Purchase Register",
+					"Konto 1577",
+					"67",
+					ACCOUNTS["1577"],
+					d("57.00"),
+					d("57.00"),
+					d("0"),
+					1,
+					"",
+				),
+				(
+					"Purchase Register",
+					"Konten ohne Platz in der Kontenzuordnung: 4930",
+					"",
+					"",
+					d("95.00"),
+					d("0"),
+					d("0"),
+					0,
+					"",
+				),
+			],
+		)
+
+	def test_berechnen_keeps_an_explanation_of_a_row_whose_amounts_stay(self):
+		journal = line("8400", credit="500", voucher="Journal Entry:JE-1")
+		earlier = [{**row, "explanation": " Privatanteil per Journalbuchung "} for row in self.rows(journal)]
+		self.assertEqual(
+			[row["explanation"] for row in self.rows(journal, earlier=earlier)],
+			["Privatanteil per Journalbuchung"] * 6,
+		)
+
+	def test_an_explanation_of_other_amounts_is_dropped(self):
+		earlier = [
+			{**row, "explanation": "Privatanteil"}
+			for row in self.rows(line("8400", credit="500", voucher="Journal Entry:JE-1"))
+		]
+		found = self.rows(line("8400", credit="600", voucher="Journal Entry:JE-1"), earlier=earlier)
+		self.assertEqual([row["explanation"] for row in found][:2], ["", "Privatanteil"])
+
+	def test_every_value_of_a_row_has_a_field_in_the_table(self):
+		fields = fields_of("vat_return_register_reconciliation")
+		self.assertEqual(sorted(self.rows()[0]), sorted(fields))
+		self.assertEqual(
+			sorted(name for name, field in fields.items() if not field.get("read_only")), ["explanation"]
+		)
+
+	def test_the_reports_are_the_options_of_the_table(self):
+		options = fields_of("vat_return_register_reconciliation")["register"]["options"].split("\n")
+		self.assertEqual(options, [register.value for register in registers.Register])
+
+
+class ExplanationsKeptTest(TestCase):
+	stored = (
+		{"name": "r1", "subject": "Kz 81", "difference": d("500.00"), "explanation": ""},
+		{
+			"name": "r2",
+			"subject": "Konto 1776",
+			"difference": d("95.00"),
+			"explanation": "Storno im Vormonat",
+		},
+	)
+
+	def test_a_save_takes_the_explanations_and_keeps_what_berechnen_stored(self):
+		sent = [
+			{"name": "r1", "subject": "Kz 86", "difference": d("0"), "explanation": " Privatanteil "},
+			{"name": "r2", "subject": "Konto 1776", "difference": d("95.00"), "explanation": ""},
+		]
+		self.assertEqual(
+			bridge.explanations_kept(self.stored, sent),
+			[
+				{"name": "r1", "subject": "Kz 81", "difference": d("500.00"), "explanation": "Privatanteil"},
+				{"name": "r2", "subject": "Konto 1776", "difference": d("95.00"), "explanation": ""},
+			],
+		)
+
+	def test_a_row_the_save_leaves_out_keeps_its_explanation_and_one_it_adds_is_not_taken(self):
+		sent = [{"name": None, "subject": "Neu", "difference": d("1"), "explanation": "x"}]
+		self.assertEqual(bridge.explanations_kept(self.stored, sent), list(self.stored))
+
+
+class UnexplainedTest(TestCase):
+	def test_names_the_rows_with_a_difference_and_no_explanation(self):
+		rows = [
+			{"subject": "Kz 81", "difference": 500.0, "explanation": None},
+			{"subject": "Konto 1776", "difference": "95.00", "explanation": "Storno im Vormonat"},
+			{"subject": "Kz 21", "difference": 0, "explanation": ""},
+			{"subject": "Konto 1576", "difference": -5.0, "explanation": "  "},
+		]
+		self.assertEqual(bridge.unexplained(rows), ["Kz 81", "Konto 1576"])
+
+	def test_a_table_without_differences_needs_no_explanation(self):
+		self.assertEqual(
+			bridge.unexplained(bridge.reconciliation_rows(reconciliation(), KENNZAHLEN, {}, {})), []
+		)
