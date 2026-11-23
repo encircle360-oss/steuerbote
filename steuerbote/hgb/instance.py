@@ -34,6 +34,33 @@ Kapital (§ 272 Abs. 1 Satz 2 und Abs. 1a Satz 1 HGB); the taxonomy takes them a
 the Gezeichnetes Kapital of a Kapitalgesellschaft (weight -1 in its calculation linkbase), so the instance reports the
 Nennbetrag as bs.eqLiab.equity.subscribed.corp beside them, and the Posten keeps what remains.
 
+GCD. The master data of the report, „ein Modul mit allgemeinen Informationen über das Dokument, den Bericht und das
+berichtende Unternehmen“ (Arbeitshilfe). Which of its fields the register needs is unverified: its documentation for
+software, „Informationen für Ersteller von Jahresabschlüssen/Finanzberichten mit XBRL-Kenntnissen und für
+Softwareanbieter“, needs an activation. So the instance states every field of de-gcd-2025-04-01 that a festgestellter
+Jahresabschluss of a small GmbH fills, each value as its label in the taxonomy names it:
+
+- the report: „Jahresabschluss“ (reportType JA), „endgültig“ (reportStatus E), the day of the Feststellung, which
+  „ist anzugeben“ (§ 328 Abs. 1a Satz 1 HGB; dateofapproval), the status of the report (revisionStatus, erstmalig
+  unless the master data name another for a changed Jahresabschluss, § 325 Abs. 1b HGB), the parts transmitted
+  (reportElement: the Bilanz and the „Angaben unterhalb der Bilanz“, for klein the „andere Anhangangaben“, § 326
+  Abs. 1 Satz 1 und Abs. 2 Satz 1 HGB), the Angaben of § 264 Abs. 1a HGB „unter der Bilanz“ and for a Kleinst its
+  Angaben nach MicroBilG there as well (allocation), „Jahresabschluss“ (statementType E), whether the balance sheet
+  shows a Bilanzgewinn (§ 268 Abs. 1 Satz 2 HGB), „deutsches Handelsrecht“ (HGBM), the „Kerntaxonomie“ (K), the
+  format of the income statement it withholds (GKV or UKV), „nicht konsolidiert/ Einzelabschluss“ (EA), the fiscal
+  year and the previous one, and no audit: „Der Jahresabschluß und der Lagebericht von Kapitalgesellschaften, die
+  nicht kleine im Sinne des § 267 Abs. 1 sind, sind durch einen Abschlußprüfer zu prüfen.“ (§ 316 Abs. 1 Satz 1 HGB);
+- the company: its firm, „Gesellschaft mit beschränkter Haftung“ also for an UG, since the taxonomy documents
+  legalStatus.UG as „Nicht vorgesehen für Bundesanzeiger, Erfassung unter "Gesellschaft mit beschränkter Haftung"“,
+  the day of its founding, its Handelsregister with court and number (§ 264 Abs. 1a HGB), its size class
+  (SizeClass.gcd) and the scheme its balance sheet follows (reportedSizeClassBs), its seat with the address, „in
+  Liquidation“ where § 264 Abs. 1a Satz 2 HGB asks for it, and that it is not kapitalmarktorientiert, „Eine
+  Kapitalgesellschaft im Sinn des § 264d gilt stets als große.“ (§ 267 Abs. 3 Satz 2 HGB);
+- the day the file is written, where the master data name it.
+
+The document leaves out the persons who prepared it (genInfo.doc.author) and the shareholders: neither is part of
+the Jahresabschluss, and the register publishes what it receives.
+
 The company. Every context names it by Registergericht and Registernummer in the scheme REGISTER_SCHEME: the register
 keeps companies by them (§ 3 Abs. 2 URV), and which identifier it expects in a context is unverified.
 
@@ -44,14 +71,24 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from types import MappingProxyType
 
+from steuerbote.elster.charset import transliterate
 from steuerbote.hgb.disclosure import Mode, Publication, Signature
 from steuerbote.hgb.notes import ContingentLiability, NoteAnswer, OfficerAdvance, RegisterData
 from steuerbote.hgb.schemes import BalanceSheetScheme, Position, VermerkKind
 from steuerbote.hgb.size import SizeClass
-from steuerbote.hgb.statement import AnnualStatement, BalanceSheet, Finding, Line, VermerkLine, in_full_euros
-from steuerbote.jahresmeldung.corrections import RevisionStatus
-from steuerbote.xbrl.facts import Entity, Fact, Item, Period, Periods, amount
+from steuerbote.hgb.statement import (
+	BILANZGEWINN,
+	AnnualStatement,
+	BalanceSheet,
+	Finding,
+	Line,
+	VermerkLine,
+	in_full_euros,
+)
+from steuerbote.jahresmeldung.corrections import RevisionStatus, revision_status_concept
+from steuerbote.xbrl.facts import Entity, Fact, Item, Period, Periods, Tuple, amount, choice
 from steuerbote.xbrl.profiles import DISCLOSURE
 from steuerbote.xbrl.taxonomy import View
 from steuerbote.xbrl.versions import Version, for_fiscal_year
@@ -59,11 +96,16 @@ from steuerbote.xbrl.versions import Version, for_fiscal_year
 REGISTER_SCHEME = "http://www.handelsregister.de"
 """The scheme of the identifier of the company: its Registergericht and Registernummer."""
 GAAP = "de-gaap-ci:"
+GCD = "de-gcd:genInfo."
 SUBSCRIBED = "bs.eqLiab.equity.subscribed"
 NENNBETRAG = "bs.eqLiab.equity.subscribed.corp"
 """„Gezeichnetes Kapital ..., gezeichnetes Kapital (Kapitalgesellschaften)“, from which the deductions are offset."""
 _DEDUCTIONS = frozenset({VermerkKind.UNCALLED_CAPITAL, VermerkKind.OWN_SHARES})
 _PREPARED = (SizeClass.KLEINST, SizeClass.KLEIN)
+_COMPONENTS = MappingProxyType({SizeClass.KLEINST: ("B", "H"), SizeClass.KLEIN: ("B", "H", "SA")})
+"""The Berichtsbestandteile: Bilanz, „Angaben unterhalb der Bilanz“ and „andere Anhangangaben“."""
+_REPORTED_SCHEMES = MappingProxyType({SizeClass.KLEINST: "Kst", SizeClass.KLEIN: "K"})
+WJ = Period.WIRTSCHAFTSJAHR
 
 
 class InstanceError(ValueError):
@@ -131,8 +173,9 @@ def build(
 	for the class ``size``, with the Angaben ``notes``, the Publication of steuerbote/hgb/disclosure.py and the master
 	data ``gcd``."""
 	_require_fit(statement, size, disclosure, gcd.periods)
-	sheet = in_full_euros(statement).balance_sheet
-	facts = tuple(_balance_sheet(sheet))
+	full = in_full_euros(statement)
+	sheet = full.balance_sheet
+	facts = (*_master_data(full, size, notes.register, gcd), *_balance_sheet(sheet))
 	return Instance(
 		size,
 		disclosure.mode,
@@ -250,3 +293,73 @@ def _published(scheme: BalanceSheetScheme, size: SizeClass) -> Iterator[str]:
 				yield vermerk.concept
 		if position.concept == SUBSCRIBED:
 			yield NENNBETRAG
+
+
+def _master_data(
+	statement: AnnualStatement, size: SizeClass, register: RegisterData, gcd: MasterData
+) -> Iterator[Fact]:
+	"""The GCD: report, periods, audit and company, in the order of de-gcd-2025-04-01-presentation.xml."""
+	periods = gcd.periods
+	if gcd.generated_on is not None:
+		yield Item(f"{GCD}doc.id.generationDate", WJ, gcd.generated_on)
+	yield _choice("report.id.reportType", "reportType.JA")
+	yield Item(f"{GCD}report.id.reportStatus.reportStatus.dateofapproval", WJ, gcd.adopted_on)
+	yield _choice("report.id.reportStatus", "reportStatus.E")
+	yield choice(f"{GCD}report.id.revisionStatus", f"de-gcd:{revision_status_concept(gcd.revision)}")
+	yield _choice("report.id.reportElement", *(f"reportElements.{code}" for code in _COMPONENTS[size]))
+	yield _choice("report.id.reportElement.allocation.genInfo", "toBalance")
+	if size is SizeClass.KLEINST:
+		yield _choice("report.id.reportElement.allocation.notesMicroBilG", "toBalance")
+	yield _choice("report.id.statementType", "statementType.E")
+	bilanzgewinn = any(line.position.concept == BILANZGEWINN for line in statement.balance_sheet.passiva)
+	yield Item(f"{GCD}report.id.incomeStatementendswithBalProfit", WJ, bilanzgewinn)
+	yield _choice("report.id.accountingStandard", "accountingStandard.HGBM")
+	yield _choice("report.id.specialAccountingStandard", "K")
+	method = statement.income_statement.scheme.method.name
+	yield _choice("report.id.incomeStatementFormat", f"incomeStatementFormat.{method}")
+	yield _choice("report.id.consolidationRange", "consolidationRange.EA")
+	yield Item(f"{GCD}report.period.fiscalYearBegin", WJ, periods.fiscal_year_begin)
+	yield Item(f"{GCD}report.period.fiscalYearEnd", WJ, periods.fiscal_year_end)
+	yield Item(f"{GCD}report.period.balSheetClosingDate", WJ, periods.balance_sheet_date)
+	if periods.prior_fiscal_year_begin is not None:
+		yield Item(f"{GCD}report.period.fiscalPreviousYearBegin", WJ, periods.prior_fiscal_year_begin)
+		yield Item(f"{GCD}report.period.fiscalPreviousYearEnd", WJ, periods.prior_fiscal_year_end)
+		yield Item(
+			f"{GCD}report.period.balSheetClosingDatePreviousYear", WJ, periods.prior_balance_sheet_date
+		)
+	yield _choice("report.audit.noAudit", "noAuditRequi")
+	yield Item(f"{GCD}company.id.name", WJ, transliterate(register.firma))
+	yield _choice("company.id.legalStatus", "legalStatus.GMBH")
+	if gcd.founded_on is not None:
+		yield Item(f"{GCD}company.id.FoundationDate", WJ, gcd.founded_on)
+	yield _choice("company.id.Incorporation.Type", "Type.HR")
+	yield Item(f"{GCD}company.id.Incorporation.court", WJ, transliterate(register.registergericht.strip()))
+	yield _choice("company.id.sizeClass", f"sizeClass.{size.gcd}")
+	yield _choice("company.id.reportedSizeClassBs", _REPORTED_SCHEMES[size])
+	yield Item(f"{GCD}company.id.location", WJ, transliterate(register.sitz))
+	if gcd.address is not None:
+		address = gcd.address
+		for part, value in (
+			("street", address.street),
+			("houseNo", address.house_number),
+			("zipCode", address.postal_code),
+			("city", address.city),
+			("country", address.country),
+		):
+			yield Item(f"{GCD}company.id.location.{part}", WJ, transliterate(value))
+	yield Tuple(
+		f"{GCD}company.id.idNo",
+		(
+			Item(
+				f"{GCD}company.id.idNo.type.companyId.HRN", WJ, transliterate(register.registernummer.strip())
+			),
+		),
+	)
+	if register.in_liquidation:
+		yield _choice("company.id.CompanyStatus", "companyStatus.L")
+	yield Item(f"{GCD}company.disclosureCriterion.scope.CapitalMarketOrientationHGBs264d", WJ, False)
+
+
+def _choice(concept: str, *values: str) -> Tuple:
+	"""A choice of the GCD, its values named below it."""
+	return choice(f"{GCD}{concept}", *(f"{GCD}{concept}.{value}" for value in values))
