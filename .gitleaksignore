@@ -1,0 +1,3 @@
+# The name of the configuration key steuerbote_taxonomy_6_9 in the first test of the HGB-Taxonomie, which the rule
+# generic-api-key takes for a secret.
+2a069eaddf668e3c51b56bd8119761ac5fb38154:steuerbote/xbrl/tests/test_versions.py:generic-api-key:103
