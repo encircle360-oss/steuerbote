@@ -12,6 +12,12 @@ The labels and amounts are invented; the names follow the real taxonomy where a 
 are made up elsewhere. ``write(directory)`` writes the package, ``archive(directory)`` zips it as esteuer.de
 publishes the real one, with the module directories at the top, and ``view()`` reads a view of it for the tests that
 only read the taxonomy, from a package written once per run.
+
+Each takes the version, 6.9 by default. The package of 6.10 is that of 6.9 in the modules of 2026-04-01 with the
+kinds of change a version brings (RELEASES): the part „Konto nicht vorhanden oder nicht übermittelbar“ of the
+Kontensalden, a new Mussfeld „Grundsteuer“ in the GuV and a position whose validity ended years ago removed, as the
+real 6.10 has them (Änderungsnachweis zum Taxonomie-Update 2026, 1. and 3.), and one position renamed, which the real
+6.10 does with none.
 """
 
 import atexit
@@ -19,17 +25,19 @@ import hashlib
 import shutil
 import tempfile
 import zipfile
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from functools import cache
 from pathlib import Path
+from types import MappingProxyType
 
 from lxml import etree
 
 from steuerbote.xbrl.taxonomy import Taxonomy, View, load
-from steuerbote.xbrl.versions import TAXONOMIES
+from steuerbote.xbrl.versions import TAXONOMIES, Version
 
 VERSION = TAXONOMIES["6.9"]
+VERSION_6_10 = TAXONOMIES["6.10"]
 GCD = VERSION.gcd
 GAAP = VERSION.gaap
 GCD_NS = VERSION.gcd_namespace
@@ -864,6 +872,7 @@ def _relationship_link(
 	prefix: str,
 	*,
 	weighted: bool = False,
+	elsewhere: Mapping[str, str] = DECLARED_ELSEWHERE,
 ) -> None:
 	link = linkbase.link(f"{kind}Link", role)
 	located: set[str] = set()
@@ -872,7 +881,7 @@ def _relationship_link(
 			if name not in located:
 				located.add(name)
 				concept = f"{prefix}_{name}"
-				_loc(link, f"{DECLARED_ELSEWHERE.get(concept, schema)}#{concept}", concept)
+				_loc(link, f"{elsewhere.get(concept, schema)}#{concept}", concept)
 		attributes = {"order": str(index)}
 		if weighted:
 			attributes["weight"] = weight
@@ -1124,39 +1133,148 @@ def _references(prefix: str, schema: str, concepts: Iterable[Concept]) -> bytes:
 	return linkbase.bytes()
 
 
-def write(directory: Path) -> Path:
-	"""Write the package into directory, the module directories at its top, and return the directory."""
-	gcd_dir = directory / GCD
-	gaap_dir = directory / GAAP
+@dataclass(frozen=True)
+class Release:
+	"""What the package of a version of the mini taxonomy holds beyond the names of its modules."""
+
+	version: Version
+	gcd_concepts: tuple[Concept, ...]
+	gaap_concepts: tuple[Concept, ...]
+	balance_sheet_presentation: tuple[tuple[str, str, str], ...]
+	balance_sheet_calculation: tuple[tuple[str, str, str], ...]
+	income_statement_arcs: tuple[tuple[str, str, str], ...]
+	detailed_information_arcs: tuple[tuple[str, str, str], ...]
+
+	@property
+	def hgbrole_namespace(self) -> str:
+		return f"http://www.xbrl.de/taxonomies/hgbrole-{self.version.released.isoformat()}"
+
+	@property
+	def hgbrole_file(self) -> str:
+		return f"hgbrole-{self.version.released.isoformat()}.xsd"
+
+
+RENAMED_6_10 = MappingProxyType(
+	{"bs.ass.currAss.cashEquiv.cryptoAssets": "bs.ass.currAss.cashEquiv.digitalAssets"}
+)
+"""The position the mini taxonomy 6.10 renames, invented."""
+REMOVED_6_10 = frozenset({"bs.ass.fixAss.tan.oldEquipment"})
+"""The position the mini taxonomy 6.10 removes: valid through 2020, as „Positionen, deren Gültigkeitsdatum mehr als
+fünf Jahre in der Vergangenheit liegt (< 31.12.2021), wurden mit den zugehörigen Referenzen entfernt.“
+(Änderungsnachweis zum Taxonomie-Update 2026, 1.)"""
+GRUNDSTEUER = item(
+	"is.netIncome.otherTaxes.GrSt", "Grundsteuer", period="duration", balance="debit", requirement=MUSS
+)
+"""The Mussfeld of 6.10: „Die neue Position „Grundsteuer“ [is.netIncome.otherTaxes.GrSt] ... erhält die
+Mussfeld-Auszeichnung sowie alle drei Rechtsformauszeichnungen.“ (Änderungsnachweis, 3.)"""
+NOT_POSSIBLE = item(
+	"detailedInformation.accountbalances.notPossible",
+	"Konto nicht vorhanden oder nicht übermittelbar",
+	type=BOOLEAN,
+	period="duration",
+)
+"""The part of the Kontensalden of 6.10 for a position without an account (Änderungsnachweis, 3.)."""
+ACCOUNT_BALANCES = "detailedInformation.accountBalances"
+
+
+def _renamed(name: str) -> str:
+	return RENAMED_6_10.get(name, name)
+
+
+def _arcs_6_10(
+	arcs: Iterable[tuple[str, str, str]], *added: tuple[str, str, str]
+) -> tuple[tuple[str, str, str], ...]:
+	"""Arcs of 6.9 in 6.10: the renamed positions under their new names, none of a removed position, then the added
+	arcs."""
+	kept = (
+		(_renamed(parent), _renamed(child), weight)
+		for parent, child, weight in arcs
+		if not {parent, child} & REMOVED_6_10
+	)
+	return (*kept, *added)
+
+
+def _gaap_concepts_6_10() -> tuple[Concept, ...]:
+	concepts: list[Concept] = []
+	for concept in GAAP_CONCEPTS:
+		if concept.name in REMOVED_6_10:
+			continue
+		if concept.name == ACCOUNT_BALANCES:
+			concept = replace(
+				concept, particles=(*concept.particles, Particle(f"de-gaap-ci:{NOT_POSSIBLE.name}", 1, 1))
+			)
+		concepts.append(replace(concept, name=_renamed(concept.name)))
+		if concept.name == "is.netIncome.tax":
+			concepts.append(GRUNDSTEUER)
+		if concept.name == "detailedInformation.accountbalances.amount":
+			concepts.append(NOT_POSSIBLE)
+	return tuple(concepts)
+
+
+RELEASES = MappingProxyType(
+	{
+		"6.9": Release(
+			VERSION,
+			tuple(GCD_CONCEPTS),
+			tuple(GAAP_CONCEPTS),
+			tuple(BALANCE_SHEET_PRESENTATION),
+			tuple(BALANCE_SHEET_CALCULATION),
+			tuple(INCOME_STATEMENT_ARCS),
+			tuple(DETAILED_INFORMATION_ARCS),
+		),
+		"6.10": Release(
+			VERSION_6_10,
+			tuple(GCD_CONCEPTS),
+			_gaap_concepts_6_10(),
+			_arcs_6_10(BALANCE_SHEET_PRESENTATION),
+			_arcs_6_10(BALANCE_SHEET_CALCULATION),
+			_arcs_6_10(INCOME_STATEMENT_ARCS, ("is.netIncome", GRUNDSTEUER.name, "-1")),
+			_arcs_6_10(DETAILED_INFORMATION_ARCS, (ACCOUNT_BALANCES, NOT_POSSIBLE.name, "1")),
+		),
+	}
+)
+"""The package of each version of the mini taxonomy."""
+
+
+def write(directory: Path, version: Version = VERSION) -> Path:
+	"""Write the package of the version into directory, the module directories at its top, and return the directory."""
+	release = RELEASES[version.version]
+	gcd_dir = directory / release.version.gcd
+	gaap_dir = directory / release.version.gaap
 	gcd_dir.mkdir(parents=True, exist_ok=True)
 	gaap_dir.mkdir(parents=True, exist_ok=True)
 	files: dict[Path, bytes] = {}
-	files |= _gcd_files(gcd_dir)
-	files |= _gaap_files(gaap_dir)
+	files |= _gcd_files(gcd_dir, release)
+	files |= _gaap_files(gaap_dir, release)
 	for path, data in files.items():
 		path.write_bytes(data)
 	return directory
 
 
-def _gcd_files(directory: Path) -> dict[Path, bytes]:
-	schema_name = f"{GCD}.xsd"
-	schema = _schema(GCD_NS, "de-gcd", {"de-hgbrole": HGBROLE_NS})
+def _gcd_files(directory: Path, release: Release) -> dict[Path, bytes]:
+	schema_name = f"{release.version.gcd}.xsd"
+	schema = _schema(release.version.gcd_namespace, "de-gcd", {"de-hgbrole": release.hgbrole_namespace})
 	appinfo = _appinfo(schema)
-	for name, kind in ((f"{GCD}-label-de.xml", "label"), (f"{GCD}-label-en.xml", "label")):
+	for name, kind in (
+		(f"{release.version.gcd}-label-de.xml", "label"),
+		(f"{release.version.gcd}-label-en.xml", "label"),
+	):
 		_linkbase_ref(appinfo, name, kind)
-	_linkbase_ref(appinfo, f"{GCD}-reference-fiscal.xml", "reference")
+	_linkbase_ref(appinfo, f"{release.version.gcd}-reference-fiscal.xml", "reference")
 	_role_type(appinfo, GCD_ROLE, "GCD (Global Common Document)", "link:presentationLink")
-	_import(schema, HGBROLE_NS, "hgbrole-2025-04-01.xsd")
+	_import(schema, release.hgbrole_namespace, release.hgbrole_file)
 	_import(schema, XBRLI, INSTANCE_XSD)
-	for concept in GCD_CONCEPTS:
+	for concept in release.gcd_concepts:
 		_element(schema, "de-gcd", concept)
 
-	hgbrole = _schema(HGBROLE_NS, "de-hgbrole")
+	hgbrole = _schema(release.hgbrole_namespace, "de-hgbrole")
 	_role_type(_appinfo(hgbrole), HGBROLE, "Rolle der HGB-Taxonomie", "link:presentationLink")
 
-	shell = _schema(f"{GCD_NS}/shell", "gcd-shell", {"de-gcd": GCD_NS})
-	_linkbase_ref(_appinfo(shell), f"{GCD}-presentation.xml", "presentation")
-	_import(shell, GCD_NS, schema_name)
+	shell = _schema(
+		f"{release.version.gcd_namespace}/shell", "gcd-shell", {"de-gcd": release.version.gcd_namespace}
+	)
+	_linkbase_ref(_appinfo(shell), f"{release.version.gcd}-presentation.xml", "presentation")
+	_import(shell, release.version.gcd_namespace, schema_name)
 
 	presentation = _Linkbase()
 	_relationship_link(
@@ -1164,25 +1282,31 @@ def _gcd_files(directory: Path) -> dict[Path, bytes]:
 	)
 	return {
 		directory / schema_name: _bytes(schema),
-		directory / "hgbrole-2025-04-01.xsd": _bytes(hgbrole),
-		directory / f"{GCD}-shell.xsd": _bytes(shell),
-		directory / f"{GCD}-presentation.xml": presentation.bytes(),
-		directory / f"{GCD}-label-de.xml": _labels("de-gcd", schema_name, GCD_CONCEPTS),
-		directory / f"{GCD}-label-en.xml": _labels("de-gcd", schema_name, GCD_CONCEPTS, language="en"),
-		directory / f"{GCD}-reference-fiscal.xml": _fiscal_references("de-gcd", schema_name, GCD_CONCEPTS),
+		directory / release.hgbrole_file: _bytes(hgbrole),
+		directory / f"{release.version.gcd}-shell.xsd": _bytes(shell),
+		directory / f"{release.version.gcd}-presentation.xml": presentation.bytes(),
+		directory / f"{release.version.gcd}-label-de.xml": _labels(
+			"de-gcd", schema_name, release.gcd_concepts
+		),
+		directory / f"{release.version.gcd}-label-en.xml": _labels(
+			"de-gcd", schema_name, release.gcd_concepts, language="en"
+		),
+		directory / f"{release.version.gcd}-reference-fiscal.xml": _fiscal_references(
+			"de-gcd", schema_name, release.gcd_concepts
+		),
 	}
 
 
-def _gaap_files(directory: Path) -> dict[Path, bytes]:
-	schema_name = f"{GAAP}.xsd"
-	dimensions_name = f"{GAAP}-dimensions.xsd"
-	labels_name = f"{GAAP}-label-de.xml"
-	schema = _schema(GAAP_NS, "de-gaap-ci", {"de-hgbrole": HGBROLE_NS})
+def _gaap_files(directory: Path, release: Release) -> dict[Path, bytes]:
+	schema_name = f"{release.version.gaap}.xsd"
+	dimensions_name = f"{release.version.gaap}-dimensions.xsd"
+	labels_name = f"{release.version.gaap}-label-de.xml"
+	schema = _schema(release.version.gaap_namespace, "de-gaap-ci", {"de-hgbrole": release.hgbrole_namespace})
 	appinfo = _appinfo(schema)
 	_linkbase_ref(appinfo, labels_name, "label")
-	_linkbase_ref(appinfo, f"{GAAP}-label-guidance-de.xml", "label")
-	_linkbase_ref(appinfo, f"{GAAP}-reference.xml", "reference")
-	_linkbase_ref(appinfo, f"{GAAP}-reference-fiscal.xml", "reference")
+	_linkbase_ref(appinfo, f"{release.version.gaap}-label-guidance-de.xml", "label")
+	_linkbase_ref(appinfo, f"{release.version.gaap}-reference.xml", "reference")
+	_linkbase_ref(appinfo, f"{release.version.gaap}-reference-fiscal.xml", "reference")
 	for role, definition in (
 		(BALANCE_SHEET, "Bilanz"),
 		(INCOME_STATEMENT, "Gewinn- und Verlustrechnung"),
@@ -1194,17 +1318,17 @@ def _gaap_files(directory: Path) -> dict[Path, bytes]:
 		(FIXED_ASSETS_TABLE, "Anlagenspiegel (brutto)"),
 	):
 		_role_type(appinfo, role, definition, "link:presentationLink")
-	_import(schema, HGBROLE_NS, f"../{GCD}/hgbrole-2025-04-01.xsd")
+	_import(schema, release.hgbrole_namespace, f"../{release.version.gcd}/{release.hgbrole_file}")
 	_import(schema, XBRLI, INSTANCE_XSD)
-	_import(schema, GAAP_NS, dimensions_name)
-	for concept in GAAP_CONCEPTS:
+	_import(schema, release.version.gaap_namespace, dimensions_name)
+	for concept in release.gaap_concepts:
 		_element(schema, "de-gaap-ci", concept)
 	_element(schema, "de-gaap-ci", item("bs.ass.groupOnly", "Nur im Konzern", balance="debit"))
 
-	dimensions = _schema(GAAP_NS, "de-gaap-ci")
+	dimensions = _schema(release.version.gaap_namespace, "de-gaap-ci")
 	dimension_appinfo = _appinfo(dimensions)
-	_linkbase_ref(dimension_appinfo, f"{GAAP}-dimensions-label-de.xml", "label")
-	_linkbase_ref(dimension_appinfo, f"{GAAP}-dimensions-reference-fiscal.xml", "reference")
+	_linkbase_ref(dimension_appinfo, f"{release.version.gaap}-dimensions-label-de.xml", "label")
+	_linkbase_ref(dimension_appinfo, f"{release.version.gaap}-dimensions-reference-fiscal.xml", "reference")
 	_import(dimensions, XBRLDT, XBRLDT_XSD)
 	for concept in DIMENSION_CONCEPTS:
 		_element(dimensions, "de-gaap-ci", concept)
@@ -1216,86 +1340,86 @@ def _gaap_files(directory: Path) -> dict[Path, bytes]:
 	)
 
 	linkbases = {
-		f"{GAAP}-presentation-balanceSheet.xml": (
+		f"{release.version.gaap}-presentation-balanceSheet.xml": (
 			"presentation",
 			BALANCE_SHEET,
-			BALANCE_SHEET_PRESENTATION,
+			release.balance_sheet_presentation,
 			schema_name,
 		),
-		f"{GAAP}-calculation-balanceSheet.xml": (
+		f"{release.version.gaap}-calculation-balanceSheet.xml": (
 			"calculation",
 			BALANCE_SHEET,
-			BALANCE_SHEET_CALCULATION,
+			release.balance_sheet_calculation,
 			schema_name,
 		),
-		f"{GAAP}-presentation-incomeStatement.xml": (
+		f"{release.version.gaap}-presentation-incomeStatement.xml": (
 			"presentation",
 			INCOME_STATEMENT,
-			INCOME_STATEMENT_ARCS,
+			release.income_statement_arcs,
 			schema_name,
 		),
-		f"{GAAP}-calculation-incomeStatement.xml": (
+		f"{release.version.gaap}-calculation-incomeStatement.xml": (
 			"calculation",
 			INCOME_STATEMENT,
-			INCOME_STATEMENT_ARCS,
+			release.income_statement_arcs,
 			schema_name,
 		),
-		f"{GAAP}-presentation-incomeStatementMicroBilG.xml": (
+		f"{release.version.gaap}-presentation-incomeStatementMicroBilG.xml": (
 			"presentation",
 			INCOME_STATEMENT_MICROBILG,
 			MICROBILG_ARCS,
 			schema_name,
 		),
-		f"{GAAP}-calculation-incomeStatementMicroBilG.xml": (
+		f"{release.version.gaap}-calculation-incomeStatementMicroBilG.xml": (
 			"calculation",
 			INCOME_STATEMENT_MICROBILG,
 			MICROBILG_ARCS,
 			schema_name,
 		),
-		f"{GAAP}-presentation-transfersTaxAssets.xml": (
+		f"{release.version.gaap}-presentation-transfersTaxAssets.xml": (
 			"presentation",
 			TRANSFERS_TAX_ASSETS,
 			TRANSFERS_TAX_ASSETS_ARCS,
 			schema_name,
 		),
-		f"{GAAP}-calculation-transfersTaxAssets.xml": (
+		f"{release.version.gaap}-calculation-transfersTaxAssets.xml": (
 			"calculation",
 			TRANSFERS_TAX_ASSETS,
 			TRANSFERS_TAX_ASSETS_ARCS,
 			schema_name,
 		),
-		f"{GAAP}-presentation-detailedInformation.xml": (
+		f"{release.version.gaap}-presentation-detailedInformation.xml": (
 			"presentation",
 			DETAILED_INFORMATION,
-			DETAILED_INFORMATION_ARCS,
+			release.detailed_information_arcs,
 			schema_name,
 		),
-		f"{GAAP}-presentation-notes.xml": ("presentation", NOTES, NOTES_ARCS, schema_name),
-		f"{GAAP}-presentation-transfersCommercialCodeToTax.xml": (
+		f"{release.version.gaap}-presentation-notes.xml": ("presentation", NOTES, NOTES_ARCS, schema_name),
+		f"{release.version.gaap}-presentation-transfersCommercialCodeToTax.xml": (
 			"presentation",
 			TRANSFERS_TO_TAX,
 			TRANSFERS_TO_TAX_ARCS,
 			schema_name,
 		),
-		f"{GAAP}-dimensions-presentation-notesTableStmOfChgInFAssGross.xml": (
+		f"{release.version.gaap}-dimensions-presentation-notesTableStmOfChgInFAssGross.xml": (
 			"presentation",
 			NOTES,
 			FIXED_ASSETS_PRESENTATION,
 			dimensions_name,
 		),
-		f"{GAAP}-dimensions-calculation-notesTableStmOfChgInFAssGross.xml": (
+		f"{release.version.gaap}-dimensions-calculation-notesTableStmOfChgInFAssGross.xml": (
 			"calculation",
 			NOTES,
 			FIXED_ASSETS_CALCULATION,
 			dimensions_name,
 		),
-		f"{GAAP}-dimensions-definition-notesTableStmOfChgInFAssGross-gen.xml": (
+		f"{release.version.gaap}-dimensions-definition-notesTableStmOfChgInFAssGross-gen.xml": (
 			"definition",
 			FIXED_ASSETS_TABLE,
 			FIXED_ASSETS_MEMBERS,
 			schema_name,
 		),
-		f"{GAAP}-presentation-balanceSheet-group.xml": (
+		f"{release.version.gaap}-presentation-balanceSheet-group.xml": (
 			"presentation",
 			BALANCE_SHEET,
 			GROUP_ARCS,
@@ -1320,66 +1444,96 @@ def _gaap_files(directory: Path) -> dict[Path, bytes]:
 			located_in,
 			"de-gaap-ci",
 			weighted=kind == "calculation",
+			elsewhere={"de-gaap-ci_nt.ass": schema_name},
 		)
 		files[directory / name] = linkbase.bytes()
-	files[directory / f"{GAAP}-dimensions-definition-notesTableStmOfChgInFAssGross.xml"] = _table_definition(
-		dimensions_name, schema_name
+	files[directory / f"{release.version.gaap}-dimensions-definition-notesTableStmOfChgInFAssGross.xml"] = (
+		_table_definition(dimensions_name, schema_name)
 	)
 
-	shell = _schema(f"{GAAP_NS}/shell", "gaap-shell", {"de-gaap-ci": GAAP_NS})
+	shell = _schema(
+		f"{release.version.gaap_namespace}/shell",
+		"gaap-shell",
+		{"de-gaap-ci": release.version.gaap_namespace},
+	)
 	shell_appinfo = _appinfo(shell)
 	commercial_linkbases = [
 		name
-		for name in (*linkbases, f"{GAAP}-dimensions-definition-notesTableStmOfChgInFAssGross.xml")
+		for name in (
+			*linkbases,
+			f"{release.version.gaap}-dimensions-definition-notesTableStmOfChgInFAssGross.xml",
+		)
 		if "MicroBilG" not in name and not name.endswith("-group.xml")
 	]
 	for name in commercial_linkbases:
 		_linkbase_ref(shell_appinfo, name, _kind_of(name))
 	_import(shell, XBRLI, INSTANCE_XSD)
-	_import(shell, GAAP_NS, schema_name)
+	_import(shell, release.version.gaap_namespace, schema_name)
 
-	microbilg = _schema(f"{GAAP_NS}/shell-microbilg", "gaap-shell-microbilg", {"de-gaap-ci": GAAP_NS})
+	microbilg = _schema(
+		f"{release.version.gaap_namespace}/shell-microbilg",
+		"gaap-shell-microbilg",
+		{"de-gaap-ci": release.version.gaap_namespace},
+	)
 	microbilg_appinfo = _appinfo(microbilg)
 	for name in commercial_linkbases:
 		if "incomeStatement" not in name:
 			_linkbase_ref(microbilg_appinfo, name, _kind_of(name))
 	for name in (
-		f"{GAAP}-presentation-incomeStatementMicroBilG.xml",
-		f"{GAAP}-calculation-incomeStatementMicroBilG.xml",
+		f"{release.version.gaap}-presentation-incomeStatementMicroBilG.xml",
+		f"{release.version.gaap}-calculation-incomeStatementMicroBilG.xml",
 	):
 		_linkbase_ref(microbilg_appinfo, name, _kind_of(name))
-	_import(microbilg, GAAP_NS, schema_name)
+	_import(microbilg, release.version.gaap_namespace, schema_name)
 
-	fiscal = _schema(f"{GAAP_NS}/shell-fiscal", "gaap-shell-fiscal", {"de-gaap-ci": GAAP_NS})
+	fiscal = _schema(
+		f"{release.version.gaap_namespace}/shell-fiscal",
+		"gaap-shell-fiscal",
+		{"de-gaap-ci": release.version.gaap_namespace},
+	)
 	fiscal_appinfo = _appinfo(fiscal)
-	_linkbase_ref(fiscal_appinfo, f"{GAAP}-label-fiscal-de.xml", "label")
-	_linkbase_ref(fiscal_appinfo, f"{GAAP}-label-fiscal-terse60-de.xml", "label")
-	_import(fiscal, f"{GAAP_NS}/shell", f"{GAAP}-shell.xsd")
+	_linkbase_ref(fiscal_appinfo, f"{release.version.gaap}-label-fiscal-de.xml", "label")
+	_linkbase_ref(fiscal_appinfo, f"{release.version.gaap}-label-fiscal-terse60-de.xml", "label")
+	_import(fiscal, f"{release.version.gaap_namespace}/shell", f"{release.version.gaap}-shell.xsd")
 
-	group = _schema(f"{GAAP_NS}/shell-group", "gaap-shell-group", {"de-gaap-ci": GAAP_NS})
-	_linkbase_ref(_appinfo(group), f"{GAAP}-presentation-balanceSheet-group.xml", "presentation")
-	_import(group, f"{GAAP_NS}/shell", f"{GAAP}-shell.xsd")
+	group = _schema(
+		f"{release.version.gaap_namespace}/shell-group",
+		"gaap-shell-group",
+		{"de-gaap-ci": release.version.gaap_namespace},
+	)
+	_linkbase_ref(
+		_appinfo(group), f"{release.version.gaap}-presentation-balanceSheet-group.xml", "presentation"
+	)
+	_import(group, f"{release.version.gaap_namespace}/shell", f"{release.version.gaap}-shell.xsd")
 
-	all_concepts = [*GAAP_CONCEPTS, item("bs.ass.groupOnly", "Nur im Konzern", balance="debit")]
+	all_concepts = [*release.gaap_concepts, item("bs.ass.groupOnly", "Nur im Konzern", balance="debit")]
 	files |= {
 		directory / schema_name: _bytes(schema),
 		directory / dimensions_name: _bytes(dimensions),
-		directory / f"{GAAP}-shell.xsd": _bytes(shell),
-		directory / f"{GAAP}-shell-microbilg.xsd": _bytes(microbilg),
-		directory / f"{GAAP}-shell-fiscal.xsd": _bytes(fiscal),
-		directory / f"{GAAP}-shell-group.xsd": _bytes(group),
+		directory / f"{release.version.gaap}-shell.xsd": _bytes(shell),
+		directory / f"{release.version.gaap}-shell-microbilg.xsd": _bytes(microbilg),
+		directory / f"{release.version.gaap}-shell-fiscal.xsd": _bytes(fiscal),
+		directory / f"{release.version.gaap}-shell-group.xsd": _bytes(group),
 		directory / labels_name: _labels("de-gaap-ci", schema_name, all_concepts),
-		directory / f"{GAAP}-label-guidance-de.xml": _guidance("de-gaap-ci", schema_name, all_concepts),
-		directory / f"{GAAP}-label-fiscal-de.xml": _fiscal_labels("de-gaap-ci", schema_name, labels_name),
-		directory / f"{GAAP}-label-fiscal-terse60-de.xml": _terse60("de-gaap-ci", schema_name),
-		directory / f"{GAAP}-reference.xml": _references("de-gaap-ci", schema_name, all_concepts),
-		directory / f"{GAAP}-reference-fiscal.xml": _fiscal_references(
-			"de-gaap-ci", schema_name, GAAP_CONCEPTS
+		directory / f"{release.version.gaap}-label-guidance-de.xml": _guidance(
+			"de-gaap-ci", schema_name, all_concepts
 		),
-		directory / f"{GAAP}-dimensions-label-de.xml": _labels(
+		directory / f"{release.version.gaap}-label-fiscal-de.xml": _fiscal_labels(
+			"de-gaap-ci", schema_name, labels_name
+		),
+		directory / f"{release.version.gaap}-label-fiscal-terse60-de.xml": _terse60(
+			"de-gaap-ci", schema_name
+		),
+		directory / f"{release.version.gaap}-reference.xml": _references(
+			"de-gaap-ci", schema_name, all_concepts
+		),
+		directory / f"{release.version.gaap}-reference-fiscal.xml": _fiscal_references(
+			"de-gaap-ci", schema_name, release.gaap_concepts
+		),
+		directory / f"{release.version.gaap}-dimensions-label-de.xml": _labels(
 			"de-gaap-ci", dimensions_name, DIMENSION_CONCEPTS
 		),
-		directory / f"{GAAP}-dimensions-reference-fiscal.xml": _fiscal_references(
+		directory / f"{release.version.gaap}-dimensions-reference-fiscal.xml": _fiscal_references(
 			"de-gaap-ci", dimensions_name, DIMENSION_CONCEPTS
 		),
 	}
@@ -1437,22 +1591,23 @@ def _table_definition(dimensions: str, schema: str) -> bytes:
 
 
 @cache
-def view(name: View = View.FISCAL) -> Taxonomy:
-	"""A view of the mini taxonomy."""
-	return load(_package(), VERSION, name)
+def view(name: View = View.FISCAL, version: Version = VERSION) -> Taxonomy:
+	"""A view of the mini taxonomy of a version."""
+	return load(_package(version), version, name)
 
 
 @cache
-def _package() -> Path:
+def _package(version: Version = VERSION) -> Path:
 	directory = Path(tempfile.mkdtemp(prefix="steuerbote-xbrl-mini-"))
 	atexit.register(shutil.rmtree, directory, ignore_errors=True)
-	return write(directory)
+	return write(directory, version)
 
 
-def archive(directory: Path, name: str = VERSION.archive_name) -> tuple[Path, str]:
-	"""The package as a zip with the module directories at its top, and its SHA-256."""
-	package = write(directory / "package")
-	path = directory / name
+def archive(directory: Path, name: str | None = None, version: Version = VERSION) -> tuple[Path, str]:
+	"""The package of a version as a zip with the module directories at its top, by default under the name of the
+	archive of esteuer.de, and its SHA-256."""
+	package = write(directory / "package", version)
+	path = directory / (name or version.archive_name)
 	with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zipped:
 		for file in sorted(package.rglob("*")):
 			if file.is_file():
