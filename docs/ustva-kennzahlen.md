@@ -1,6 +1,6 @@
 # Umsatzsteuer-Voranmeldung: Kennzahlen und Kontenzuordnung
 
-Diese Seite ist die fachliche Grundlage des Rechenkerns unter `steuerbote/ustva`: Quelle, Rundung, alle Kennzahlen des Katalogs, die Kontenzuordnung mit den Vorgaben für SKR03 und SKR04 sowie Zeiträume und Fristen. Sie ersetzt keine Steuerberatung. Lass die Einrichtung deiner Firma von deiner Steuerberatung bestätigen.
+Diese Seite ist die fachliche Grundlage des Rechenkerns unter `steuerbote/ustva`: Quelle, Rundung, alle Kennzahlen des Katalogs, die Kontenzuordnung mit den Vorgaben für SKR03 und SKR04, ihre Zeilen für die [Umsatzsteuererklärung](#kontenzuordnung-der-umsatzsteuererklärung) sowie Zeiträume und Fristen. Sie ersetzt keine Steuerberatung. Lass die Einrichtung deiner Firma von deiner Steuerberatung bestätigen.
 
 ## Quelle
 
@@ -1009,6 +1009,165 @@ ERPNext bucht die Steuer einer Rechnung auf die Konten ihrer Steuervorlagen: die
 
 In der Kontenzuordnung nennt „Steuervorlagen prüfen“ dieselben Konten und nimmt sie auf Wunsch in einem Schritt als beobachtete Konten der Stufe „Sperrt“ auf. Ein Saldo auf einem von ihnen hält die Meldung dann an, bis das Konto eine Zuordnung hat. Wie die Frappe-Schicht die Vorlagen liest, steht in [Architektur](architektur.md#prüfung-der-steuervorlagen).
 
+## Kontenzuordnung der Umsatzsteuererklärung
+
+Die Umsatzsteuererklärung (Vordruck USt 2 A 2026) liest dieselbe Kontenzuordnung wie die Voranmeldung. Sie ist aber keine Summe der Voranmeldungen: Zehn Kennzahlen der Voranmeldung verteilen sich in der Erklärung auf mehrere Zeilen, und einige Beträge kennt nur die Erklärung. Dafür trägt die Kontenzuordnung drei Angaben, die die Voranmeldung nicht liest. Quellen sind das BMF-Schreiben vom 29. Dezember 2025, GZ III C 3 - S 7344/00040/008/034, „Muster der Umsatzsteuererklärung 2026“, mit dem Vordruck USt 2 A und seiner Anleitung USt 2 E 2026 (<https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Steuerarten/Umsatzsteuer/2025-12-29-muster-USt-erklaerung-2026.pdf>), und die `Jahresdokumentation_E50_2026.ods` (Versionslabel 9.0) der ERiC-Dokumentation 44.3.6.0. Den Katalog der Felder hält [`ustjahr/form.py`](../steuerbote/ustjahr/form.py).
+
+### Felder der Umsatzsteuererklärung
+
+- **Feld der Umsatzsteuererklärung** (`annual_field`) an einer Zuordnung: die Feldkennung der Zeile, in die der Saldo des Kontos im Jahr geht, etwa E3003405 für Kz 178 in Zeile 25. Leer nimmt das Konto die Vorgabe seiner Rolle im Kontenrahmen oder die Vorgabezeile seiner Kennzahl.
+- **Paragraf der Steuerbefreiung** (`paragraph`) an einer Zuordnung: Die Zeilen 46, 52 und 54 drucken „Umsätze nach § … UStG“, „nach § 4 Nummer … UStG“ und „nach § … UStG“. Ein Betrag in einer dieser Zeilen braucht den Paragrafen, den die Zuordnung seines Kontos nennt, etwa „4 Nummer 14“, sonst meldet die Erklärung `PARAGRAF-FEHLT`. Vorgaben gibt es dafür nicht.
+- **Zuordnungen nur für die Umsatzsteuererklärung** (Tabelle `annual_rules`, „Zuordnung nur für die Umsatzsteuererklärung“): Konto, Feld der Umsatzsteuererklärung, Seite und Paragraf eines Kontos, dessen Saldo keine Kennzahl der Voranmeldung aufnimmt, etwa der Erwerb des ersten Abnehmers in einem innergemeinschaftlichen Dreiecksgeschäft für Kz 789 in Zeile 55, neu 2026. Ein beobachtetes Konto darf hier stehen. Ein Konto, das die Zuordnung einer Kennzahl zuordnet oder als Steuerkonto einer Verprobung führt, darf es nicht, sonst zählte sein Saldo doppelt.
+
+Jedes Konto bekommt seine Zeile so ([`split.py`](../steuerbote/ustjahr/split.py)):
+
+1. das Feld der Umsatzsteuererklärung seiner Zuordnung;
+2. die Vorgabe seiner Rolle im Kontenrahmen, siehe [Vorgaben der Umsatzsteuererklärung](#vorgaben-der-umsatzsteuererklärung);
+3. die Vorgabezeile seiner Kennzahl oder ihre einzige Zeile, etwa Zeile 24 für Kz 81, Zeile 46 für Kz 43, Zeile 52 für Kz 48, Zeile 85 für Kz 66 und Zeile 119 für Kz 69. Kz 65 geht in Zeile 40 (Kz 319), mit dem Hinweis `NACHSTEUER-ZEILE`.
+
+Die Zeile muss die Beträge der Kennzahl der Zuordnung nehmen. Ein Feld, das das nicht tut, lehnt die Kontenzuordnung ab; eine solche Rollenvorgabe bleibt unbeachtet, denn dann hat die Firma das Konto einer anderen Kennzahl zugeordnet, als seine Rolle nahelegt. So ergeben die Zeilen einer Kennzahl zusammen ihren Jahresbetrag, und der Abgleich mit den Voranmeldungen geht Kennzahl für Kennzahl auf. Kz 64, die Berichtigung des Vorsteuerabzugs nach § 15a UStG, hat keine Vorgabezeile: Die Art des Wirtschaftsguts entscheidet zwischen den Zeilen 105, 106 und 107, ihr Konto braucht deshalb eine Rolle oder ein Feld.
+
+Beim Speichern prüft die Kontenzuordnung jedes Feld, jeden Paragrafen und jede Zuordnung nur für die Umsatzsteuererklärung gegen den neuesten Vordruck USt 2 A (`check_annual_rows` in [`mapping_sync.py`](../steuerbote/mapping_sync.py)) und lehnt ab, was nicht passt, mit dem Grund. Die Zeile eines Kontos von Kz 64 ohne Feld und Rolle verlangt erst die Umsatzsteuererklärung, denn die Voranmeldung braucht sie nicht. `to_split(year)` gibt der Erklärung eines Jahres die Zeile jedes Kontos.
+
+„Vorgaben laden“ füllt die Zuordnungen nur für die Umsatzsteuererklärung aus den Vorgaben des Kontenrahmens für die Konten, die das Unternehmen hat, und behält Feld und Paragraf einer Zuordnung, deren Konto seine Kennzahl behält. „Vorgaben aktualisieren“ und die Datei der Zuordnung führen Feld und Paragraf eines Kontos und jede Zuordnung nur für die Umsatzsteuererklärung als eigene Zeilen, siehe [Einrichtung](einrichtung.md#vorgaben-aktualisieren). Eine Zuordnung, die ihre Vorgaben vor diesen Zeilen übernommen hat, bekommt die Zuordnungen nur für die Umsatzsteuererklärung dort als Änderungen der Vorgaben vorgeschlagen.
+
+### Vorgaben der Umsatzsteuererklärung
+
+[`ustjahr/defaults.py`](../steuerbote/ustjahr/defaults.py) bringt für SKR03 und SKR04 je Jahr des Vordrucks zwei Tabellen mit: die Zeile je Rolle (`ROLE_FIELDS`), nur wo sie nicht die Vorgabezeile ihrer Kennzahl ist, und die Konten nur für die Umsatzsteuererklärung (`ANNUAL_ACCOUNTS`). Die Rollen sind die der [Vorgaben](#vorgaben) der Voranmeldung, jedes Konto eines Kontenbereichs nimmt die Vorgabe seines ersten Kontos. Ein eigener Kontenrahmen bekommt keine Vorgaben: Seine Zuordnungen nennen ihre Felder selbst.
+
+Die Zeilen der Rollen folgen der Anleitung USt 2 E 2026:
+
+- **Unentgeltliche Wertabgaben** sind „in der Regel den entgeltlichen Lieferungen“ und „in der Regel den entgeltlichen sonstigen Leistungen gleichgestellt“ (Zeilen 24 bis 33): Entnahme und unentgeltliche Zuwendung von Gegenständen sind Lieferungen nach § 3 Absatz 1b UStG (Zeilen 25 und 28), die Verwendung von Gegenständen und die unentgeltliche Erbringung einer sonstigen Leistung sonstige Leistungen nach § 3 Absatz 9a UStG (Zeilen 26 und 29). Sachbezüge bleiben in den Zeilen 24 und 27, denn ob ein Sachbezug unentgeltlich ist, hängt vom Fall ab; das ist nicht geprüft.
+- **Steuerfreie Umsätze mit Vorsteuerabzug:** „Bitte tragen Sie in Zeile 45 steuerfreie Ausfuhrlieferungen ein (§ 4 Nummer 1 Buchstabe a, § 6 UStG)“, die Umsätze im Sinne des Offshore-Steuerabkommens gehören in Zeile 47 und die Reiseleistungen nach § 25 Absatz 2 UStG in Zeile 49 (Zeile 45, Zeilen 46 bis 50). Die Konten nach § 4 Nummer 1 Buchstabe a UStG nehmen auch Lohnveredelungen nach § 7 UStG auf, die in Zeile 46 gehören: Ein Konto, das sie hält, braucht das Feld dieser Zeile.
+- **Steuerfreie Umsätze ohne Vorsteuerabzug:** Zeile 51 nimmt die „Vermietung und Verpachtung von Grundstücken“ nach § 4 Nummer 12 UStG, Zeile 53 die Umsätze eines Kleinunternehmers nach § 19 Absatz 1 UStG und Zeile 54 die Umsätze, „die zum Gesamtumsatz nach § 19 Absatz 2 UStG gehören“, wie die Konten „zum Gesamtumsatz gehörend“ sie führen (Zeilen 51 bis 54). Jeder andere steuerfreie Umsatz ohne Vorsteuerabzug geht in Zeile 52, die Vorgabezeile von Kz 48.
+- **Vorsteuer:** Zeile 88 nimmt die Vorsteuer aus der Steuer, die der Unternehmer als Auslagerer aus einem Umsatzsteuerlager schuldet, Zeile 92 die aus innergemeinschaftlichen Dreiecksgeschäften (Zeilen 85 bis 93).
+- **Berichtigung des Vorsteuerabzugs nach § 15a UStG** nach der Art des Wirtschaftsguts: Zeile 105 für Grundstücke mit einem Berichtigungszeitraum von zehn Jahren, Zeile 106 für übrige Wirtschaftsgüter und sonstige Leistungen, Zeile 107 für solche, die nur einmalig zur Ausführung von Umsätzen verwendet werden, je mit der Spalte „nachträglich abziehbar“ und der Spalte „zurückzuzahlen“ (Zeilen 95 bis 108). DATEV führt sie als § 15a Absatz 1 UStG für unbewegliche und bewegliche Wirtschaftsgüter und § 15a Absatz 2 UStG.
+- **Steuern aus Kz 69:** die Steuer, „die der letzte Abnehmer nach § 25b Absatz 2 UStG für die Lieferung des ersten Abnehmers schuldet“, zu 19 % in Zeile 66 (Zeilen 65 bis 70), und die Steuer des Auslagerers in Zeile 63. Das Konto der Auslagerung, SKR03 1769 und SKR04 3839, beobachten die Vorgaben der Voranmeldung, denn seine Kennzahl ist dort nicht entschieden; sobald die Firma es Kz 69 zuordnet, nimmt es Zeile 63.
+
+Die steuerpflichtigen Umsätze nach §§ 25 und 25a UStG (SKR03 8198 und 8199, SKR04 4133 und 4134) bleiben außen vor: Die Zeilen 37 und 38 übermittelt Steuerbote nicht.
+
+Die Vorgaben haben einen Stand aus Kontenrahmen, „USt“ für die Umsatzsteuererklärung, Jahr des Vordrucks und Revision, heute „SKR03 USt 2026.1“ und „SKR04 USt 2026.1“ (`defaults_version` in `ustjahr/defaults.py`). Jede Änderung der Vorgaben eines Jahres erhöht seine Revision in `REVISIONS`; `DefaultsVersionTest` in [`ustjahr/tests/test_defaults.py`](../steuerbote/ustjahr/tests/test_defaults.py) hält die SHA-256-Summe des Inhalts jedes Stands fest. In der Kontenzuordnung stehen die Zeilen dieser Vorgaben bei den übernommenen Vorgaben (`defaults_rows`), so findet „Vorgaben aktualisieren“ auch ihre Änderungen; das Feld „Stand der Vorgaben“ nennt den Stand der Vorgaben der Voranmeldung. [`ustjahr/tests/test_defaults.py`](../steuerbote/ustjahr/tests/test_defaults.py) hält jede Rolle und jedes Konto beider Kontenrahmen fest und prüft die Spiegelung, [`ustjahr/tests/test_docs.py`](../steuerbote/ustjahr/tests/test_docs.py), dass die Tabellen dieses Abschnitts genau den Code zeigen.
+
+### Vorgabe der Zeilen
+
+Die Spalte Kz nennt die Kennzahl der Voranmeldung, der die Vorgaben das Konto zuordnen; „beobachtet“ heißt, dass die Vorgaben der Voranmeldung das Konto beobachten. Feld und Zeile sind die des Vordrucks USt 2 A 2026, mit der Kennzahl, die der Vordruck druckt.
+
+| SKR03 | Bezeichnung laut Kontenrahmen 2026 | Kz | Feld | Zeile |
+|---|---|---|---|---|
+| 8910 bis 8913 | Entnahme durch den Unternehmer für Zwecke außerhalb des Unternehmens (Waren) 19 % USt | 81 | E3003405 (Kz 178) | 25 |
+| 8935 bis 8937 | Unentgeltliche Zuwendung von Gegenständen 19 % USt | 81 | E3003405 (Kz 178) | 25 |
+| 8940 bis 8943 | Unentgeltliche Zuwendung von Waren 19 % USt | 81 | E3003405 (Kz 178) | 25 |
+| 8920 | Verwendung von Gegenständen für Zwecke außerhalb des Unternehmens 19 % USt | 81 | E3003505 (Kz 179) | 26 |
+| 8921 | Verwendung von Gegenständen für Zwecke außerhalb des Unternehmens 19 % USt (Fahrzeug-Nutzung) | 81 | E3003505 (Kz 179) | 26 |
+| 8922 | Verwendung von Gegenständen für Zwecke außerhalb des Unternehmens 19 % USt (Telefon-Nutzung) | 81 | E3003505 (Kz 179) | 26 |
+| 8925 bis 8927 | Unentgeltliche Erbringung einer sonstigen Leistung 19 % USt | 81 | E3003505 (Kz 179) | 26 |
+| 8915 bis 8916 | Entnahme durch den Unternehmer für Zwecke außerhalb des Unternehmens (Waren) 7 % USt | 86 | E3003703 (Kz 195) | 28 |
+| 8917 | Entnahme durch den Unternehmer für Zwecke außerhalb des Unternehmens (Waren) 7 % USt | 86 | E3003703 (Kz 195) | 28 |
+| 8945 bis 8946 | Unentgeltliche Zuwendung von Waren 7 % USt | 86 | E3003703 (Kz 195) | 28 |
+| 8947 | Unentgeltliche Zuwendung von Waren 7 % USt | 86 | E3003703 (Kz 195) | 28 |
+| 8930 | Verwendung von Gegenständen für Zwecke außerhalb des Unternehmens 7 % USt | 86 | E3003803 (Kz 196) | 29 |
+| 8931 | Verwendung von Gegenständen für Zwecke außerhalb des Unternehmens 7 % USt | 86 | E3003803 (Kz 196) | 29 |
+| 8932 | Unentgeltliche Erbringung einer sonstigen Leistung 7 % USt | 86 | E3003803 (Kz 196) | 29 |
+| 8933 | Unentgeltliche Erbringung einer sonstigen Leistung 7 % USt | 86 | E3003803 (Kz 196) | 29 |
+| 8120 | Steuerfreie Umsätze nach § 4 Nr. 1a UStG | 43 | E3103801 (Kz 752) | 45 |
+| 8807 | Erlöse aus Verkäufen Sachanlagevermögen steuerfrei § 4 Nr. 1a UStG (bei Buchverlust) | 43 | E3103801 (Kz 752) | 45 |
+| 8827 | Erlöse aus Verkäufen Sachanlagevermögen steuerfrei § 4 Nr. 1a UStG (bei Buchgewinn) | 43 | E3103801 (Kz 752) | 45 |
+| 8705 | Erlösschmälerungen aus steuerfreien Umsätzen § 4 Nr. 1a UStG | 43 | E3103801 (Kz 752) | 45 |
+| 8140 | Steuerfreie Umsätze Offshore usw. | 43 | E3104001 | 47 |
+| 8194 | Umsatzerlöse aus Reiseleistungen § 25 Abs. 2 UStG, steuerfrei | 43 | E3104101 | 49 |
+| 8105 | Steuerfreie Umsätze nach § 4 Nr. 12 UStG (Vermietung und Verpachtung) | 48 | E3104401 (Kz 286) | 51 |
+| 2751 | Erlöse aus Vermietung und Verpachtung, umsatzsteuerfrei § 4 Nr. 12 UStG | 48 | E3104401 (Kz 286) | 51 |
+| 8192 | Steuerfreie Erlöse Kleinunternehmer nach § 19 Abs. 1 UStG | 48 | E3104701 (Kz 236) | 53 |
+| 8195 | Erlöse als Kleinunternehmer nach § 19 Abs. 1 UStG (SKR03-Variante) | 48 | E3104701 (Kz 236) | 53 |
+| 8707 | Erlösschmälerungen für steuerfreie Umsätze nach § 19 Abs. 1 UStG | 48 | E3104701 (Kz 236) | 53 |
+| 8160 | Steuerfreie Umsätze ohne Vorsteuerabzug zum Gesamtumsatz gehörend, § 4 UStG | 48 | E3104902 (Kz 240) | 54 |
+| 8165 | Steuerfreie Umsätze ohne Vorsteuerabzug zum Gesamtumsatz gehörend | 48 | E3104902 (Kz 240) | 54 |
+| 1585 | Abziehbare Vorsteuer aus der Auslagerung von Gegenständen aus einem Umsatzsteuerlager | 66 | E3006503 (Kz 466) | 88 |
+| 1573 | Vorsteuer aus Erwerb als letzter Abnehmer innerhalb eines Dreiecksgeschäfts | 66 | E3006801 (Kz 760) | 92 |
+| 1558 | Nachträglich abziehbare Vorsteuer nach § 15a Abs. 1 UStG, unbewegliche Wirtschaftsgüter | 64 | E3008701 | 105 |
+| 1559 | Zurückzuzahlende Vorsteuer nach § 15a Abs. 1 UStG, unbewegliche Wirtschaftsgüter | 64 | E3008702 | 105 |
+| 1556 | Nachträglich abziehbare Vorsteuer nach § 15a Abs. 1 UStG, bewegliche Wirtschaftsgüter | 64 | E3008801 | 106 |
+| 1557 | Zurückzuzahlende Vorsteuer nach § 15a Abs. 1 UStG, bewegliche Wirtschaftsgüter | 64 | E3008802 | 106 |
+| 1528 | Nachträglich abziehbare Vorsteuer nach § 15a Abs. 2 UStG | 64 | E3008803 | 107 |
+| 1529 | Zurückzuzahlende Vorsteuer nach § 15a Abs. 2 UStG | 64 | E3008804 | 107 |
+| 1794 | Umsatzsteuer aus Erwerb als letzter Abnehmer innerhalb eines Dreiecksgeschäfts | 69 | E3101702 | 66 |
+| 1769 | Umsatzsteuer aus der Auslagerung von Gegenständen aus einem Umsatzsteuerlager | beobachtet | E3102805 (Kz 853) | 63 |
+
+| SKR04 | Bezeichnung laut Kontenrahmen 2026 | Kz | Feld | Zeile |
+|---|---|---|---|---|
+| 4620 bis 4626 | Entnahme durch den Unternehmer für Zwecke außerhalb des Unternehmens (Waren) 19 % USt | 81 | E3003405 (Kz 178) | 25 |
+| 4686 bis 4687 | Unentgeltliche Zuwendung von Gegenständen 19 % USt | 81 | E3003405 (Kz 178) | 25 |
+| 4680 bis 4684 | Unentgeltliche Zuwendung von Waren 19 % USt | 81 | E3003405 (Kz 178) | 25 |
+| 4640 bis 4644 | Verwendung von Gegenständen für Zwecke außerhalb des Unternehmens 19 % USt | 81 | E3003505 (Kz 179) | 26 |
+| 4645 | Verwendung von Gegenständen für Zwecke außerhalb des Unternehmens 19 % USt (Fahrzeug-Nutzung) | 81 | E3003505 (Kz 179) | 26 |
+| 4646 | Verwendung von Gegenständen für Zwecke außerhalb des Unternehmens 19 % USt (Telefon-Nutzung) | 81 | E3003505 (Kz 179) | 26 |
+| 4660 bis 4666 | Unentgeltliche Erbringung einer sonstigen Leistung 19 % USt | 81 | E3003505 (Kz 179) | 26 |
+| 4610 bis 4615 | Entnahme durch den Unternehmer für Zwecke außerhalb des Unternehmens (Waren) 7 % USt | 86 | E3003703 (Kz 195) | 28 |
+| 4616 | Entnahme durch den Unternehmer für Zwecke außerhalb des Unternehmens (Waren) 7 % USt | 86 | E3003703 (Kz 195) | 28 |
+| 4670 bis 4675 | Unentgeltliche Zuwendung von Waren 7 % USt | 86 | E3003703 (Kz 195) | 28 |
+| 4676 | Unentgeltliche Zuwendung von Waren 7 % USt | 86 | E3003703 (Kz 195) | 28 |
+| 4630 bis 4635 | Verwendung von Gegenständen für Zwecke außerhalb des Unternehmens 7 % USt | 86 | E3003803 (Kz 196) | 29 |
+| 4636 | Verwendung von Gegenständen für Zwecke außerhalb des Unternehmens 7 % USt | 86 | E3003803 (Kz 196) | 29 |
+| 4650 bis 4655 | Unentgeltliche Erbringung einer sonstigen Leistung 7 % USt | 86 | E3003803 (Kz 196) | 29 |
+| 4656 | Unentgeltliche Erbringung einer sonstigen Leistung 7 % USt | 86 | E3003803 (Kz 196) | 29 |
+| 4120 | Steuerfreie Umsätze nach § 4 Nr. 1a UStG | 43 | E3103801 (Kz 752) | 45 |
+| 6884 | Erlöse aus Verkäufen Sachanlagevermögen steuerfrei § 4 Nr. 1a UStG (bei Buchverlust) | 43 | E3103801 (Kz 752) | 45 |
+| 4844 | Erlöse aus Verkäufen Sachanlagevermögen steuerfrei § 4 Nr. 1a UStG (bei Buchgewinn) | 43 | E3103801 (Kz 752) | 45 |
+| 4705 | Erlösschmälerungen aus steuerfreien Umsätzen § 4 Nr. 1a UStG | 43 | E3103801 (Kz 752) | 45 |
+| 4140 | Steuerfreie Umsätze Offshore etc. | 43 | E3104001 | 47 |
+| 4139 | Umsatzerlöse aus Reiseleistungen § 25 Abs. 2 UStG, steuerfrei | 43 | E3104101 | 49 |
+| 4105 | Steuerfreie Umsätze nach § 4 Nr. 12 UStG (Vermietung und Verpachtung) | 48 | E3104401 (Kz 286) | 51 |
+| 4861 | Erlöse aus Vermietung und Verpachtung, umsatzsteuerfrei § 4 Nr. 12 UStG | 48 | E3104401 (Kz 286) | 51 |
+| 4184 | Steuerfreie Erlöse Kleinunternehmer nach § 19 Abs. 1 UStG | 48 | E3104701 (Kz 236) | 53 |
+| 4185 | Erlöse aus Kleinunternehmer i. S. d. § 19 Abs. 1 UStG (ERPNext) | 48 | E3104701 (Kz 236) | 53 |
+| 4707 | Erlösschmälerungen für steuerfreie Umsätze nach § 19 Abs. 1 UStG | 48 | E3104701 (Kz 236) | 53 |
+| 4160 | Steuerfreie Umsätze ohne Vorsteuerabzug zum Gesamtumsatz gehörend, § 4 UStG | 48 | E3104902 (Kz 240) | 54 |
+| 4165 | Steuerfreie Umsätze ohne Vorsteuerabzug zum Gesamtumsatz gehörend | 48 | E3104902 (Kz 240) | 54 |
+| 1431 | Abziehbare Vorsteuer aus der Auslagerung von Gegenständen aus einem Umsatzsteuerlager | 66 | E3006503 (Kz 466) | 88 |
+| 1436 | Vorsteuer aus Erwerb als letzter Abnehmer innerhalb eines Dreiecksgeschäfts | 66 | E3006801 (Kz 760) | 92 |
+| 1398 | Nachträglich abziehbare Vorsteuer nach § 15a Abs. 1 UStG, unbewegliche Wirtschaftsgüter | 64 | E3008701 | 105 |
+| 1399 | Zurückzuzahlende Vorsteuer nach § 15a Abs. 1 UStG, unbewegliche Wirtschaftsgüter | 64 | E3008702 | 105 |
+| 1396 | Nachträglich abziehbare Vorsteuer nach § 15a Abs. 1 UStG, bewegliche Wirtschaftsgüter | 64 | E3008801 | 106 |
+| 1397 | Zurückzuzahlende Vorsteuer nach § 15a Abs. 1 UStG, bewegliche Wirtschaftsgüter | 64 | E3008802 | 106 |
+| 1376 | Nachträglich abziehbare Vorsteuer nach § 15a Abs. 2 UStG | 64 | E3008803 | 107 |
+| 1377 | Zurückzuzahlende Vorsteuer nach § 15a Abs. 2 UStG | 64 | E3008804 | 107 |
+| 3819 | Umsatzsteuer aus Erwerb als letzter Abnehmer innerhalb eines Dreiecksgeschäfts | 69 | E3101702 | 66 |
+| 3839 | Umsatzsteuer aus der Auslagerung von Gegenständen aus einem Umsatzsteuerlager | beobachtet | E3102805 (Kz 853) | 63 |
+
+### Konten nur für die Umsatzsteuererklärung
+
+Diese Konten haben in der Voranmeldung keinen Platz oder werden dort beobachtet, siehe [Beobachtete Konten](#beobachtete-konten) und [Bewusst ohne Kennzahl](#bewusst-ohne-kennzahl). Die Erklärung liest ihren Saldo des Jahres auf der Seite der Tabelle:
+
+- **Zeile 55 (Kz 789):** „Bitte füllen Sie die Zeile 55 bei innergemeinschaftlichen Dreiecksgeschäften aus, wenn Sie der erste Abnehmer sind und Ihr Erwerb als besteuert gilt (§ 25b Absatz 3 UStG)“ (USt 2 E, Zeile 55). ERiC nimmt Kz 789 nur zusammen mit Kz 742, den Lieferungen des ersten Abnehmers (Regel 30013), und Kz 742 darf nicht kleiner sein als Kz 789 (Regel 30014).
+- **Zeile 66 (Kz 751):** „Die Bemessungsgrundlage und die Steuer, die der letzte Abnehmer nach § 25b Absatz 2 UStG für die Lieferung des ersten Abnehmers schuldet, tragen Sie bitte in den Zeilen 66, 67 und 69 ein“ (USt 2 E, Zeilen 65 bis 70): der Erwerb als letzter Abnehmer zu 19 % und seine Skonti, die die Bemessungsgrundlage mindern. DATEV führt SKR04 5792 ohne „U“, anders als SKR03 3792; beide gehen gleich ein.
+- **Zeile 63 (Kz 852):** „Tragen Sie bitte in Zeile 63 die Lieferungen ein, die den Auslagerungen von Gegenständen aus einem Umsatzsteuerlager vorangegangen sind“ (USt 2 E, Zeile 63): die Einkäufe aus einem Umsatzsteuerlager zu 7 und 19 %.
+
+Die Steuer zu den Zeilen 63 und 66 kommt über Kz 69 aus den Rollen ihrer Steuerkonten, siehe [Vorgabe der Zeilen](#vorgabe-der-zeilen).
+
+| SKR03 | Bezeichnung laut Kontenrahmen 2026 | Feld | Zeile | Seite |
+|---|---|---|---|---|
+| 3552 | Erwerb 1. Abnehmer innerhalb eines Dreiecksgeschäftes | E3100801 (Kz 789) | 55 | Soll |
+| 3089 | Erwerb Roh-, Hilfs- und Betriebsstoffe als letzter Abnehmer innerhalb Dreiecksgeschäft 19 % Vorsteuer und 19 % Umsatzsteuer | E3101701 (Kz 751) | 66 | Soll |
+| 3553 | Erwerb Waren als letzter Abnehmer innerhalb Dreiecksgeschäft 19 % Vorsteuer und 19 % Umsatzsteuer | E3101701 (Kz 751) | 66 | Soll |
+| 3792 | Erhaltene Skonti aus Erwerb Roh-, Hilfs- und Betriebsstoffe als letzter Abnehmer innerhalb Dreiecksgeschäft 19 % Vorsteuer und 19 % Umsatzsteuer | E3101701 (Kz 751) | 66 | Soll |
+| 3793 | Erhaltene Skonti aus Erwerb Waren als letzter Abnehmer innerhalb Dreiecksgeschäft 19 % Vorsteuer und 19 % Umsatzsteuer | E3101701 (Kz 751) | 66 | Soll |
+| 3075 | Einkauf Roh-, Hilfs- und Betriebsstoffe aus einem USt-Lager § 13a UStG 7 % Vorsteuer und 7 % Umsatzsteuer | E3102804 (Kz 852) | 63 | Soll |
+| 3076 | Einkauf Roh-, Hilfs- und Betriebsstoffe aus einem USt-Lager § 13a UStG 19 % Vorsteuer und 19 % Umsatzsteuer | E3102804 (Kz 852) | 63 | Soll |
+| 3560 | Waren aus einem Umsatzsteuerlager, § 13a UStG 7 % Vorsteuer und 7 % Umsatzsteuer | E3102804 (Kz 852) | 63 | Soll |
+| 3565 | Waren aus einem Umsatzsteuerlager, § 13a UStG 19 % Vorsteuer und 19 % Umsatzsteuer | E3102804 (Kz 852) | 63 | Soll |
+
+| SKR04 | Bezeichnung laut Kontenrahmen 2026 | Feld | Zeile | Seite |
+|---|---|---|---|---|
+| 5552 | Erwerb 1. Abnehmer innerhalb eines Dreiecksgeschäftes | E3100801 (Kz 789) | 55 | Soll |
+| 5189 | Erwerb Roh-, Hilfs- und Betriebsstoffe als letzter Abnehmer innerhalb Dreiecksgeschäft 19 % Vorsteuer und 19 % Umsatzsteuer | E3101701 (Kz 751) | 66 | Soll |
+| 5553 | Erwerb Waren als letzter Abnehmer innerhalb Dreiecksgeschäft 19 % Vorsteuer und 19 % Umsatzsteuer | E3101701 (Kz 751) | 66 | Soll |
+| 5792 | Erhaltene Skonti aus Erwerb Roh-, Hilfs- und Betriebsstoffe als letzter Abnehmer innerhalb Dreiecksgeschäft 19 % Vorsteuer und 19 % Umsatzsteuer | E3101701 (Kz 751) | 66 | Soll |
+| 5793 | Erhaltene Skonti aus Erwerb Waren als letzter Abnehmer innerhalb Dreiecksgeschäft 19 % Vorsteuer und 19 % Umsatzsteuer | E3101701 (Kz 751) | 66 | Soll |
+| 5175 | Einkauf Roh-, Hilfs- und Betriebsstoffe aus einem USt-Lager § 13a UStG 7 % Vorsteuer und 7 % Umsatzsteuer | E3102804 (Kz 852) | 63 | Soll |
+| 5176 | Einkauf Roh-, Hilfs- und Betriebsstoffe aus einem USt-Lager § 13a UStG 19 % Vorsteuer und 19 % Umsatzsteuer | E3102804 (Kz 852) | 63 | Soll |
+| 5560 | Waren aus einem Umsatzsteuerlager, § 13a UStG 7 % Vorsteuer und 7 % Umsatzsteuer | E3102804 (Kz 852) | 63 | Soll |
+| 5565 | Waren aus einem Umsatzsteuerlager, § 13a UStG 19 % Vorsteuer und 19 % Umsatzsteuer | E3102804 (Kz 852) | 63 | Soll |
+
 ## Ist-Versteuerung
 
 Steuerbote rechnet die Voranmeldung nach vereinbarten Entgelten (§ 16 Abs. 1 Satz 1 UStG, Soll-Versteuerung); in den Einstellungen kennt „Besteuerung“ (`taxation_type`) nur „Soll“. Dieser Abschnitt schätzt ein, was die Berechnung nach vereinnahmten Entgelten (Ist-Versteuerung) ändert, wie eine Buchhaltung sie buchen müsste, was ERPNext 16 dafür mitbringt und was Steuerbote bräuchte. Umgesetzt ist davon nichts. Die Quellen stehen am Ende des Abschnitts als [I1] bis [I12], alle am 20. November 2026 gelesen; was sie nicht belegen, steht unter [Offen zur Ist-Versteuerung](#offen-zur-ist-versteuerung).
@@ -1128,5 +1287,6 @@ Den ganzen Ablauf mit Jahrestabelle, Schema, Vordruck USt 1 H, Plugin und Releas
 5. Die neuen Ausgaben der DATEV-Kontenrahmen SKR 03 und SKR 04 („Gültig für“ das neue Jahr) gegen `defaults.py` prüfen: Nummern und Bezeichnungen aller Konten aus Regeln, Verprobungen, beobachteten und bewusst ausgenommenen Konten, die Liste der mit „U“ gekennzeichneten Konten in `tests/fixtures/datev_2026.py` als neue Ausgabe daneben anlegen (der Vollständigkeitstest `test_completeness.py` prüft die Vorgaben dagegen), und ob die Vorgaben gegen den neuen Katalog gültig sind (`default_mapping(chart, year)`). Auch hier zuerst `test_defaults.py`. Ändern sich die Vorgaben, kommt die neue Ausgabe in `DATEV_EDITION`, `REVISION` beginnt wieder bei 1, und `DIGESTS` in `test_defaults.py` bekommt die Summen der neuen Stände. Die Vorgaben werden gegen den neuesten Katalog gebaut: Nimmt eine ihrer Regeln eine Kennzahl, die der neue Vordruck nicht mehr hat, scheitert schon der Import von `defaults.py`, und die Vorgaben brauchen einen Stand je Jahr.
 6. Diese Seite aktualisieren: Quelle, Kennzahlen, Vorgaben, Verprobungen, beobachtete und bewusst ausgenommene Konten. Die Tabellen entstehen aus dem Code; [`test_docs.py`](../steuerbote/ustva/tests/test_docs.py) gleicht sie mit `defaults.py` ab und muss ohne Abweichung durchlaufen.
 7. Das XML-Schema des Jahres aus der ERiC-Dokumentation prüfen: `python -m steuerbote.ustva.yearcheck <Verzeichnis> <Jahr>` vergleicht Katalog, Schema des XML und Vordruck USt 1 H mit Jahresdokumentation und Schema des Jahres und muss ohne Ausgabe enden, siehe [Jahresprüfung](entwicklung.md#jahresprüfung).
+8. Die Umsatzsteuererklärung hat eine eigene Uhr: Ihr Vordruck für ein Jahr erscheint erst nach dessen Voranmeldungen. Mit ihm die [Vorgaben der Umsatzsteuererklärung](#vorgaben-der-umsatzsteuererklärung) gegen die Anleitung USt 2 E des Jahres prüfen und als Jahrgang in `ROLE_FIELDS`, `ANNUAL_ACCOUNTS` und `REVISIONS` von [`ustjahr/defaults.py`](../steuerbote/ustjahr/defaults.py) anlegen, die Summen der neuen Stände in `DIGESTS` von `ustjahr/tests/test_defaults.py`, und die Muster und Listen der Felder aus der Jahresdokumentation E50 des Jahres in `SCHEMAS` von [`elster/ust2a_xml.py`](../steuerbote/elster/ust2a_xml.py). [`ustjahr/tests/test_years.py`](../steuerbote/ustjahr/tests/test_years.py) schlägt fehl, bis jede Tabelle das Jahr hat; die Tests von `ust2a_xml.py` vergleichen jedes Muster mit der Jahresdokumentation.
 
 Warum ein Katalog je Jahr: ELSTER nimmt eine Meldung nur in der Datenart des Jahres ihres Zeitraums an und hält das laufende Jahr und die drei Jahre davor offen. Steuerbote wählt den Katalog deshalb nach dem Jahr des Zeitraums. So behalten frühere Zeiträume und berichtigte Anmeldungen ihre Kennzahlen, und der Katalog für ein neues Jahr kann dazukommen, sobald das BMF den Vordruck veröffentlicht.
