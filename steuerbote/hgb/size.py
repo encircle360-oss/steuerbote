@@ -18,11 +18,24 @@ entry, as the other cores add the data of a year.
 
 The criteria are the Bilanzsumme, the Umsatzerlöse „in den zwölf Monaten vor dem Abschlussstichtag“ and the
 Arbeitnehmer „im Jahresdurchschnitt“ (§ 267 Abs. 1 and 2, § 267a Abs. 1 HGB). A criterion at its threshold does
-not exceed it. Text of §§ 267, 267a HGB and Art. 93 HGBEG as read on gesetze-im-internet.de on 23 November 2026.
+not exceed it.
+
+„Als durchschnittliche Zahl der Arbeitnehmer gilt der vierte Teil der Summe aus den Zahlen der jeweils am
+31. März, 30. Juni, 30. September und 31. Dezember beschäftigten Arbeitnehmer einschließlich der im Ausland
+beschäftigten Arbeitnehmer, jedoch ohne die zu ihrer Berufsausbildung Beschäftigten.“ (§ 267 Abs. 5 HGB)
+average_employees() takes the four headcounts, which the Annual Accounts read from the employees of the company
+without the Employment Types the Annual Filing Settings leave out. HEADCOUNT_CONVENTIONS names who counts: the law
+settles staff abroad and apprentices; whether a part-timer counts as one head and a Geschäftsführer not at all
+stays unverified, as does which months the Umsatzerlöse of a short fiscal year cover, so the class of a year can be
+overridden with a Begründung. For a short first fiscal year the law names no other days, and a day before the
+founding counts nobody.
+
+Text of §§ 267, 267a HGB and Art. 93 HGBEG as read on gesetze-im-internet.de on 23 November 2026.
 
 This module imports nothing of Steuerbote, so that every part of the Jahresabschluss can name its class with it.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -31,10 +44,16 @@ from functools import total_ordering
 from types import MappingProxyType
 
 _REQUIRED_CRITERIA_ABOVE = 2
+_QUARTER_ENDS = ((3, 31), (6, 30), (9, 30), (12, 31))
+_HEADCOUNT_DAYS = len(_QUARTER_ENDS)
 
 
 class UnknownYearError(ValueError):
 	"""Steuerbote has no thresholds for the fiscal year: its entry in YEARS comes first."""
+
+
+class SizeError(ValueError):
+	"""The input cannot be measured against the thresholds, such as a headcount on the wrong days."""
 
 
 @total_ordering
@@ -176,3 +195,52 @@ def indicated_class(criteria: Criteria, thresholds: YearThresholds) -> SizeClass
 		if not exceeds(criteria, limits):
 			return size
 	return SizeClass.GROSS
+
+
+def headcount_dates(closing_date: date) -> tuple[date, ...]:
+	"""The days of § 267 Abs. 5 HGB for the year that ends on closing_date: the last four quarter ends up to it,
+	31 March, 30 June, 30 September and 31 December of a calendar year."""
+	candidates = [
+		date(year, month, day)
+		for year in (closing_date.year - 1, closing_date.year)
+		for month, day in _QUARTER_ENDS
+	]
+	return tuple(day for day in candidates if day <= closing_date)[-_HEADCOUNT_DAYS:]
+
+
+def average_employees(headcounts: Mapping[date, int], closing_date: date) -> Decimal:
+	"""The average number of Arbeitnehmer of § 267 Abs. 5 HGB: a quarter of the four headcounts, kept exactly."""
+	days = headcount_dates(closing_date)
+	if set(headcounts) != set(days):
+		expected = ", ".join(day.isoformat() for day in days)
+		raise SizeError(f"the average of § 267 Abs. 5 HGB needs the headcounts of {expected}")
+	for day in days:
+		count = headcounts[day]
+		if isinstance(count, bool) or not isinstance(count, int):
+			raise TypeError(f"the headcount of {day.isoformat()} must be an int, not {type(count).__name__}")
+		if count < 0:
+			raise ValueError(f"the headcount of {day.isoformat()} cannot be negative: {count}")
+	return Decimal(sum(headcounts[day] for day in days)) / _HEADCOUNT_DAYS
+
+
+class Counting(Enum):
+	COUNTED = "zählt"
+	NOT_COUNTED = "zählt nicht"
+	UNVERIFIED = "ungeprüft"
+
+
+@dataclass(frozen=True, slots=True)
+class HeadcountConvention:
+	"""Who counts as an Arbeitnehmer of § 267 Abs. 5 HGB; reference is empty while no primary source settles it."""
+
+	who: str
+	counting: Counting
+	reference: str
+
+
+HEADCOUNT_CONVENTIONS: tuple[HeadcountConvention, ...] = (
+	HeadcountConvention("im Ausland beschäftigte Arbeitnehmer", Counting.COUNTED, "§ 267 Abs. 5 HGB"),
+	HeadcountConvention("zu ihrer Berufsausbildung Beschäftigte", Counting.NOT_COUNTED, "§ 267 Abs. 5 HGB"),
+	HeadcountConvention("Teilzeitbeschäftigte, je Kopf gezählt", Counting.UNVERIFIED, ""),
+	HeadcountConvention("Geschäftsführer", Counting.UNVERIFIED, ""),
+)
