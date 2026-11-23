@@ -252,3 +252,47 @@ class PrintIncludesFilesTest(TestCase):
 					),
 					[],
 				)
+
+
+# The annual documents of stage 3 by the names the contract of stage 3 fixed for them; their modules bring them.
+ANNUAL_DOCUMENTS = (
+	"Annual VAT Return",
+	"Electronic Balance Sheet",
+	"Corporate Income Tax Return",
+	"Trade Tax Return",
+	"Annual Accounts",
+)
+# What went to the tax authorities and the proof of the confirmations of USt-IdNrn., kept before stage 3.
+FILINGS = (
+	"VAT ID Confirmation",
+	"Recapitulative Statement",
+	"VAT Return Extension",
+	"VAT Return",
+	"ELSTER Transmission",
+)
+
+
+def doctypes_of_the_app() -> set[str]:
+	return {read_json(path)["name"] for path in (MODULE / "doctype").glob("*/*.json")}
+
+
+class HooksFilesTest(TestCase):
+	"""ERPNext's Delete Company Transactions leaves the DocTypes of company_data_to_be_ignored alone."""
+
+	def setUp(self):
+		from steuerbote import hooks
+
+		self.kept = hooks.company_data_to_be_ignored
+
+	def test_keeps_the_filings_and_the_annual_filing_settings(self):
+		self.assertEqual(self.kept[: len(FILINGS) + 1], [*FILINGS, "Annual Filing Settings"])
+
+	def test_keeps_each_annual_document_once_the_app_brings_its_doctype(self):
+		self.assertEqual(
+			self.kept[len(FILINGS) + 1 :],
+			[name for name in ANNUAL_DOCUMENTS if name in doctypes_of_the_app()],
+		)
+
+	def test_names_no_doctype_the_app_does_not_bring(self):
+		"""The record of the deletion links each name to its DocType and refuses one that does not exist."""
+		self.assertEqual(sorted(set(self.kept) - doctypes_of_the_app()), [])
