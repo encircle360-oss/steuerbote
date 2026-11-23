@@ -14,4 +14,6 @@ This package is pure Python. It never imports Frappe, so it can be tested withou
 - chain.py: the steps of the computation as data (STEPS, Step, step), from the Jahresüberschuss to the
   Abschlusszahlung, and compute(KstInputs, figures) -> KstResult with a Line per step and the findings (Finding).
 - einlagekonto.py: roll_forward(), the steuerliches Einlagekonto of § 27 KStG in KSt 1 F.
+- provisions.py: propose(), the provisions for Körperschaftsteuer, Solidaritätszuschlag and Gewerbesteuer as rows of
+  a draft Journal Entry (ProvisionRow), on the accounts of SKR03 and SKR04 (ACCOUNTS) or of a chart of its own.
 """

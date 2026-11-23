@@ -355,7 +355,8 @@ class BegLine:
 
 @dataclass(frozen=True, slots=True)
 class GewstResult:
-	"""The computed lines of an EZ in the order of STEPS, the Anlagen BEG and the carry-forwards at its end."""
+	"""The computed lines of an EZ in the order of STEPS, the Anlagen BEG, the carry-forwards at its end, the
+	findings and the Hebesatz the Gewerbesteuer was computed with."""
 
 	year: Year
 	lines: MappingProxyType[str, Line]
@@ -363,6 +364,7 @@ class GewstResult:
 	donation_carry_forward: Decimal
 	loss_carry_forward: Decimal
 	findings: tuple[Finding, ...]
+	hebesatz: Decimal | None
 
 	@property
 	def ready(self) -> bool:
@@ -479,6 +481,7 @@ def compute(kst: KstResult, inputs: GewstInputs, figures: Figures) -> GewstResul
 		available - lines["donation_cut"].declared,
 		remaining_loss,
 		_findings(year, hebesatz, beg, figures),
+		hebesatz,
 	)
 
 
