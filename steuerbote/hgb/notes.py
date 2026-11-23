@@ -16,6 +16,19 @@ do not spare a small company (EXEMPT_FOR_KLEIN), in the order of the law. „Der
 Verlustrechnung betreffenden Angaben nicht zu enthalten.“ (§ 326 Abs. 1 Satz 2 HGB) Those items are prepared for
 the Feststellung but not published; whether § 285 Nr. 31 counts among them is unverified.
 
+Entries. The Haftungsverhältnisse are those „aus der Begebung und Übertragung von Wechseln, aus Bürgschaften,
+Wechsel- und Scheckbürgschaften und aus Gewährleistungsverträgen sowie Haftungsverhältnisse aus der Bestellung von
+Sicherheiten für fremde Verbindlichkeiten“ (§ 251 Satz 1 HGB), stated „jeweils gesondert unter Angabe der
+gewährten Pfandrechte und sonstigen Sicherheiten“, with „Verpflichtungen betreffend die Altersversorgung und
+Verpflichtungen gegenüber verbundenen oder assoziierten Unternehmen jeweils gesondert“ (§ 268 Abs. 7 HGB):
+contingencies() adds the entries up kind by kind. „Haftungsverhältnisse sind auch anzugeben, wenn ihnen
+gleichwertige Rückgriffsforderungen gegenüberstehen.“ (§ 251 Satz 2 HGB) The Vorschüsse and Kredite go to the
+members „des Geschäftsführungsorgans, eines Aufsichtsrats, eines Beirats oder einer ähnlichen Einrichtung jeweils
+für jede Personengruppe“, „unter Angabe der Zinssätze, der wesentlichen Bedingungen und der gegebenenfalls im
+Geschäftsjahr zurückgezahlten oder erlassenen Beträge sowie die zugunsten dieser Personen eingegangenen
+Haftungsverhältnisse“ (§ 285 Nr. 9 Buchst. c HGB): advances() adds them up group by group. Each kind names its
+concept of the taxonomy 6.9 under „bs.contingLiab“.
+
 An item is required, or required only where its fact exists (a Haftungsverhältnis, a Vorschuss); the Annual
 Accounts answer each with ja, nein or entfällt, and a ja with a text or an amount (answer_problems()). Mittelgroß and groß have a fuller Anhang, which Steuerbote does not
 prepare. Every item awaits the review of a Steuerberatung. Text of §§ 264, 265, 268, 277, 284, 285, 288, 326 HGB as
@@ -27,6 +40,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum, StrEnum
+from types import MappingProxyType
 
 from steuerbote.hgb.size import SizeClass
 from steuerbote.hgb.statement import Finding, Severity
@@ -317,6 +331,9 @@ class NoteCode(StrEnum):
 	EMPTY = "JA-ANGABE-LEER"
 	UNKNOWN = "JA-ANGABE-UNBEKANNT"
 	TWICE = "JA-ANGABE-DOPPELT"
+	NEGATIVE = "JA-ANGABE-NEGATIV"
+	NO_RATE = "JA-ORGANKREDIT-ZINSSATZ"
+	NO_CONDITIONS = "JA-ORGANKREDIT-BEDINGUNGEN"
 
 
 def answer_problems(entries: Iterable[CatalogueEntry], answers: Iterable[NoteAnswer]) -> tuple[Finding, ...]:
@@ -375,3 +392,204 @@ def answer_problems(entries: Iterable[CatalogueEntry], answers: Iterable[NoteAns
 
 def _finding(code: NoteCode, text: str, item: NoteItem) -> Finding:
 	return Finding(code, Severity.ERROR, text, item.reference, item.code)
+
+
+_ZERO = Decimal("0")
+_CONTINGENCIES_REFERENCE = "§ 268 Abs. 7, § 251 HGB"
+_ADVANCES_REFERENCE = "§ 285 Nr. 9 Buchst. c HGB"
+
+
+class Contingency(Enum):
+	"""The kinds of Haftungsverhältnisse of § 251 HGB in its order, each with its concept of the taxonomy 6.9."""
+
+	BILLS = "Verbindlichkeiten aus der Begebung und Übertragung von Wechseln"
+	GUARANTEES = "Verbindlichkeiten aus Bürgschaften"
+	BILL_AND_CHEQUE_GUARANTEES = "Verbindlichkeiten aus Wechsel- und Scheckbürgschaften"
+	WARRANTIES = "Verbindlichkeiten aus Gewährleistungsverträgen"
+	COLLATERAL = "Haftungsverhältnisse aus der Bestellung von Sicherheiten für fremde Verbindlichkeiten"
+
+	@property
+	def concept(self) -> str:
+		return _CONTINGENCY_CONCEPTS[self]
+
+	@property
+	def pensions_concept(self) -> str:
+		"""„davon betreffend Altersversorgung“."""
+		return f"{self.concept}.pension"
+
+	@property
+	def group_concept(self) -> str:
+		"""„davon gegenüber verbundenen/assoziierten Unternehmen“."""
+		return f"{self.concept}.assoc"
+
+
+_CONTINGENCY_CONCEPTS = MappingProxyType(
+	{
+		Contingency.BILLS: "bs.contingLiab.notes",
+		Contingency.GUARANTEES: "bs.contingLiab.guarantees",
+		Contingency.BILL_AND_CHEQUE_GUARANTEES: "bs.contingLiab.guaranteesNotes",
+		Contingency.WARRANTIES: "bs.contingLiab.warranty",
+		Contingency.COLLATERAL: "bs.contingLiab.collateralisation",
+	}
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ContingentLiability:
+	"""One Haftungsverhältnis: its kind and amount, the securities granted for it and whether it concerns the
+	Altersversorgung or verbundene or assoziierte Unternehmen."""
+
+	kind: Contingency
+	amount: Decimal
+	securities: str = ""
+	pensions: bool = False
+	group: bool = False
+
+	def __post_init__(self) -> None:
+		_require_decimal("amount", self.amount)
+
+
+@dataclass(frozen=True, slots=True)
+class ContingencyTotal:
+	kind: Contingency
+	amount: Decimal
+	pensions: Decimal
+	group: Decimal
+	securities: tuple[str, ...]
+
+
+def contingencies(entries: Iterable[ContingentLiability]) -> tuple[ContingencyTotal, ...]:
+	"""The Haftungsverhältnisse kind by kind in the order of § 251 HGB, each kind with entries once."""
+	entries = tuple(entries)
+	totals = []
+	for kind in Contingency:
+		of_kind = [entry for entry in entries if entry.kind is kind]
+		if of_kind:
+			totals.append(
+				ContingencyTotal(
+					kind,
+					sum((entry.amount for entry in of_kind), _ZERO),
+					sum((entry.amount for entry in of_kind if entry.pensions), _ZERO),
+					sum((entry.amount for entry in of_kind if entry.group), _ZERO),
+					tuple(dict.fromkeys(entry.securities for entry in of_kind if entry.securities.strip())),
+				)
+			)
+	return tuple(totals)
+
+
+class OfficerGroup(Enum):
+	MANAGEMENT = "Mitglieder des Geschäftsführungsorgans"
+	SUPERVISORY_BOARD = "Mitglieder des Aufsichtsrats"
+	ADVISORY_BOARD = "Mitglieder des Beirats"
+	SIMILAR_BODY = "Mitglieder einer ähnlichen Einrichtung"
+
+
+class AdvanceKind(Enum):
+	ADVANCE = "Vorschuss"
+	LOAN = "Kredit"
+
+
+@dataclass(frozen=True, slots=True)
+class OfficerAdvance:
+	"""A Vorschuss or Kredit to a member of an organ: the group, the amount granted, the interest rate in percent a
+	year (zero when it bears none), the essential conditions, what was repaid or waived in the fiscal year and the
+	Haftungsverhältnisse entered into for the member."""
+
+	group: OfficerGroup
+	kind: AdvanceKind
+	amount: Decimal
+	interest_rate: Decimal | None
+	conditions: str
+	repaid: Decimal = _ZERO
+	waived: Decimal = _ZERO
+	guarantees: str = ""
+
+	def __post_init__(self) -> None:
+		for name in ("amount", "repaid", "waived"):
+			_require_decimal(name, getattr(self, name))
+		if self.interest_rate is not None:
+			_require_decimal("interest_rate", self.interest_rate)
+
+
+@dataclass(frozen=True, slots=True)
+class AdvanceTotal:
+	group: OfficerGroup
+	amount: Decimal
+	repaid: Decimal
+	waived: Decimal
+	interest_rates: tuple[Decimal | None, ...]
+	conditions: tuple[str, ...]
+	guarantees: tuple[str, ...]
+
+
+def advances(entries: Iterable[OfficerAdvance]) -> tuple[AdvanceTotal, ...]:
+	"""The Vorschüsse and Kredite group by group in the order of § 285 Nr. 9 HGB, each group with entries once."""
+	entries = tuple(entries)
+	totals = []
+	for group in OfficerGroup:
+		of_group = [entry for entry in entries if entry.group is group]
+		if of_group:
+			totals.append(
+				AdvanceTotal(
+					group,
+					sum((entry.amount for entry in of_group), _ZERO),
+					sum((entry.repaid for entry in of_group), _ZERO),
+					sum((entry.waived for entry in of_group), _ZERO),
+					tuple(entry.interest_rate for entry in of_group),
+					tuple(entry.conditions for entry in of_group),
+					tuple(entry.guarantees for entry in of_group if entry.guarantees.strip()),
+				)
+			)
+	return tuple(totals)
+
+
+def entry_problems(
+	contingent: Iterable[ContingentLiability], officer_advances: Iterable[OfficerAdvance]
+) -> tuple[Finding, ...]:
+	"""What the entries leave open: a negative amount, and an advance without its interest rate or its essential
+	conditions."""
+	findings: list[Finding] = []
+	for liability in contingent:
+		if liability.amount < 0:
+			findings.append(
+				_entry_finding(
+					NoteCode.NEGATIVE,
+					f"„{liability.kind.value}“ hat einen negativen Betrag.",
+					_CONTINGENCIES_REFERENCE,
+				)
+			)
+	for advance in officer_advances:
+		label = f"{advance.kind.value} an {advance.group.value}"
+		numbers = (advance.amount, advance.repaid, advance.waived, advance.interest_rate or _ZERO)
+		if any(number < 0 for number in numbers):
+			findings.append(
+				_entry_finding(
+					NoteCode.NEGATIVE, f"Der {label} hat einen negativen Betrag.", _ADVANCES_REFERENCE
+				)
+			)
+		if advance.interest_rate is None:
+			findings.append(
+				_entry_finding(
+					NoteCode.NO_RATE,
+					f"Für den {label} fehlt der Zinssatz, null für einen zinslosen.",
+					_ADVANCES_REFERENCE,
+				)
+			)
+		if not advance.conditions.strip():
+			findings.append(
+				_entry_finding(
+					NoteCode.NO_CONDITIONS,
+					f"Für den {label} fehlen die wesentlichen Bedingungen.",
+					_ADVANCES_REFERENCE,
+				)
+			)
+	return tuple(findings)
+
+
+def _entry_finding(code: NoteCode, text: str, reference: str) -> Finding:
+	return Finding(code, Severity.ERROR, text, reference)
+
+
+def _require_decimal(name: str, value: object) -> None:
+	if not isinstance(value, Decimal):
+		raise TypeError(f"{name} must be Decimal, not {type(value).__name__}")
