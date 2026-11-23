@@ -6,6 +6,7 @@ from unittest import TestCase
 from steuerbote.hgb.notes import (
 	CATALOGUE,
 	EXEMPT_FOR_KLEIN,
+	REVIEW_ITEMS,
 	AdvanceKind,
 	Answer,
 	Contingency,
@@ -16,12 +17,14 @@ from steuerbote.hgb.notes import (
 	OfficerAdvance,
 	OfficerGroup,
 	Placement,
+	RegisterData,
 	Requirement,
 	advances,
 	answer_problems,
 	catalogue,
 	contingencies,
 	entry_problems,
+	register_problems,
 )
 from steuerbote.hgb.size import SizeClass
 from steuerbote.hgb.statement import Severity
@@ -398,3 +401,51 @@ class EntryProblemsTest(TestCase):
 				(NoteCode.NEGATIVE, "§ 285 Nr. 9 Buchst. c HGB"),
 			],
 		)
+
+
+REGISTER = RegisterData("Beispiel Werkstatt GmbH", "Musterstadt", "Amtsgericht Musterstadt", "HRB 12345")
+
+
+class RegisterDataTest(TestCase):
+	"""§ 264 Abs. 1a HGB: Firma, Sitz, Registergericht and Registernummer, and a Liquidation, in every class."""
+
+	def test_complete_data_raise_nothing(self):
+		self.assertEqual(register_problems(REGISTER), ())
+
+	def test_names_what_is_missing_in_one_error(self):
+		(finding,) = register_problems(RegisterData("Beispiel Werkstatt GmbH", " ", "", "HRB 12345"))
+		self.assertEqual(
+			(finding.code, finding.severity, finding.reference),
+			(NoteCode.REGISTER, Severity.ERROR, "§ 264 Abs. 1a HGB"),
+		)
+		self.assertIn("Sitz, Registergericht", finding.text)
+
+	def test_names_the_concepts_of_the_taxonomy_for_each_field(self):
+		self.assertEqual(
+			RegisterData.concepts(),
+			{
+				"firma": "notesBelowBalanceSheet.geninfo.company",
+				"sitz": "notesBelowBalanceSheet.geninfo.location",
+				"registergericht": "notesBelowBalanceSheet.geninfo.court",
+				"registernummer": "notesBelowBalanceSheet.geninfo.number",
+				"in_liquidation": "notesBelowBalanceSheet.geninfo.liquidationOrWindingUp",
+			},
+		)
+		self.assertFalse(REGISTER.in_liquidation)
+
+
+class ReviewItemsTest(TestCase):
+	def test_leaves_the_equity_of_a_kleinst_the_classification_of_section_285_nr_31_and_the_catalogue_to_review(
+		self,
+	):
+		self.assertEqual(
+			[(item.code, item.reference) for item in REVIEW_ITEMS],
+			[
+				("KLEINST-EIGENKAPITAL", "§ 266 Abs. 1 Satz 4 HGB, § 42 Abs. 1 GmbHG"),
+				("AUSSERGEWOEHNLICHES", "§ 285 Nr. 31, § 326 Abs. 1 Satz 2 HGB"),
+				("KATALOG", "§ 264 Abs. 1 Satz 5, §§ 284 bis 288 HGB"),
+			],
+		)
+		for item in REVIEW_ITEMS:
+			with self.subTest(code=item.code):
+				self.assertIn("Steuerberatung", item.text)
