@@ -20,18 +20,38 @@ with the defaults the mapping took over.
 A row holds what Frappe stores: an empty Check field is 0, an empty Data or Select field is "" or None, and an
 account number is the one fetched from its account. The validate of the DocType runs before Frappe checks the
 mandatory fields, so a row can still lack a value here.
+
+The balances placed on their positions (steuerbote.xbrl.mapping.place) feed both documents:
+
+- the Jahresabschluss (steuerbote/hgb/statement.py) takes statement_balances(): a Balance per account with the
+  position its rule gives it, debit minus credit, the shareholder flag and the remaining term of the rule, and the
+  account as its source. A „davon“ position goes as it is, which the statement notes as its Vermerk where one names
+  it; the Restlaufzeiten and the shareholders come from the flags.
+- the E-Bilanz takes position_values(), the value of each position its accounts count in, in the direction of the
+  position (Technischer Leitfaden zur HGB-Taxonomie 6.9, A.13), davon_values() for the „davon“ positions, and
+  kontennachweis(), one AccountLine per account with a balance: „der dem Konto zugeordneten Position (technisch:
+  QName), der Kontonummer ..., der Kontobezeichnung ... und dem Kontosaldo zum Ende-Stichtag“ (Leitfaden A.12), on the
+  position its value counts in, so that „Die Summe der Werte zum Element „Kontosaldo“ ... dem Wert der
+  Taxonomieposition entsprechen“ (Technischer Leitfaden 6.10, B.12.1) and no Kontensaldo names a position no
+  calculation holds. An account without a label is described by its name, since the elements „dürfen nicht leer
+  übermittelt werden“ (Leitfaden 6.9, B.12).
 """
 
 import json
 from collections.abc import Iterable, Set
 from collections.abc import Mapping as ReadOnlyMapping
+from dataclasses import dataclass
+from decimal import Decimal
 from types import MappingProxyType
 from typing import Any, NamedTuple
 
 from steuerbote.ebilanz.defaults import defaults_for
+from steuerbote.hgb.statement import Balance
 from steuerbote.mappings.transfer import canonical_json
 from steuerbote.ustva.mapping import WatchLevel
-from steuerbote.xbrl.mapping import Excluded, Mapping, MappingError, Purpose, Rule, Watched
+from steuerbote.xbrl.mapping import Excluded, Mapping, MappingError, Placement, Purpose, Rule, Watched
+from steuerbote.xbrl.taxonomy import GAAP_PREFIX, Taxonomy
+from steuerbote.xbrl.taxonomy import Balance as Side
 from steuerbote.xbrl.versions import LATEST
 
 Row = ReadOnlyMapping[str, Any]
@@ -228,6 +248,65 @@ def load_items(text: str) -> dict[Key, Fields]:
 	except ValueError:
 		raise MappingError(NOT_JSON) from None
 	return items_of_body(body)
+
+
+@dataclass(frozen=True, slots=True)
+class AccountLine:
+	"""A Kontensaldo of the E-Bilanz: the position the value of the account counts in, without the prefix of the GAAP
+	module, the account number, its description and its balance in the direction of the position."""
+
+	position: str
+	account_number: str
+	description: str
+	amount: Decimal
+
+	@property
+	def position_name(self) -> str:
+		"""The QName of the position, as detailedInformation.accountbalances.positionName holds it."""
+		return f"{GAAP_PREFIX}:{self.position}"
+
+
+def statement_balances(placement: Placement) -> tuple[Balance, ...]:
+	"""The placed balances as the Balance rows of the Jahresabschluss, in the order of the books."""
+	return tuple(
+		Balance(
+			item.concept, item.amount, item.rule.shareholder, item.rule.remaining_term, item.balance.account
+		)
+		for item in placement.placed
+	)
+
+
+def position_values(placement: Placement) -> dict[str, Decimal]:
+	"""The value of each position the placed balances count in, in the order the books first name them."""
+	values: dict[str, Decimal] = {}
+	for item in placement.placed:
+		values[item.position] = values.get(item.position, Decimal(0)) + item.value
+	return values
+
+
+def davon_values(placement: Placement, taxonomy: Taxonomy) -> dict[str, Decimal]:
+	"""The value of each „davon“ position the balances go to, in its own direction."""
+	values: dict[str, Decimal] = {}
+	for item in placement.placed:
+		if item.concept != item.position:
+			side = taxonomy.concept(item.concept).balance
+			value = item.amount if side is Side.DEBIT else -item.amount
+			values[item.concept] = values.get(item.concept, Decimal(0)) + value
+	return values
+
+
+def kontennachweis(placement: Placement) -> tuple[AccountLine, ...]:
+	"""One Kontensaldo per placed account, by position and account number."""
+	lines = (
+		AccountLine(
+			item.position,
+			item.balance.number,
+			item.balance.label or item.balance.account,
+			item.value,
+		)
+		for item in placement.placed
+	)
+	return tuple(sorted(lines, key=lambda line: (line.position, line.account_number)))
 
 
 def _plain_row(row: Any, fields: tuple[str, ...]) -> bool:
