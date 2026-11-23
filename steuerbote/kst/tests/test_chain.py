@@ -324,3 +324,56 @@ class ZveTest(TestCase):
 		self.assertEqual(result.losses.loss, Decimal("30000"))
 		self.assertEqual(result.losses.remaining, Decimal("21000"))
 		self.assertEqual(result.lines["loss_deduction"].declared, ZERO)
+
+
+class SettlementTest(TestCase):
+	"""The credits of Anlage WA, the Solidaritätszuschlag and the Vorauszahlungen: what is left to pay or refund."""
+
+	def test_credits_the_kapitalertragsteuer_and_the_vorauszahlungen(self):
+		result = compute(
+			inputs(
+				credit("8400", "111200.00"),
+				capital_gains_tax_credit=Decimal("5000.00"),
+				kst_prepayments=Decimal("10000.00"),
+			),
+			FIGURES,
+		)
+		self.assertEqual(result.lines["kst_remaining"].declared, Decimal("11680.00"))
+		self.assertEqual(result.kst_balance, Decimal("1680.00"))
+
+	def test_the_solidaritaetszuschlag_is_5_5_percent_of_the_tax_with_the_fractions_of_a_cent_dropped(self):
+		result = compute(inputs(credit("8400", "111200.00")), FIGURES)
+		self.assertEqual(result.solz, Decimal("917.40"))
+		result = compute(inputs(credit("8400", "6673.00")), FIGURES)
+		self.assertEqual(result.kst, Decimal("1000"))
+		self.assertEqual((result.lines["solz"].exact, result.solz), (Decimal("55.000"), Decimal("55.00")))
+		result = compute(inputs(credit("8400", "6674.00")), FIGURES)
+		self.assertEqual(result.kst, Decimal("1001"))
+		self.assertEqual((result.lines["solz"].exact, result.solz), (Decimal("55.055"), Decimal("55.05")))
+
+	def test_credits_the_solidaritaetszuschlag_on_the_kapitalertragsteuer_and_its_vorauszahlungen(self):
+		result = compute(
+			inputs(
+				credit("8400", "111200.00"),
+				capital_gains_tax_credit=Decimal("5000.00"),
+				solz_credit=Decimal("275.00"),
+				kst_prepayments=Decimal("10000.00"),
+				solz_prepayments=Decimal("550.00"),
+			),
+			FIGURES,
+		)
+		self.assertEqual(result.lines["solz_remaining"].declared, Decimal("642.40"))
+		self.assertEqual(result.solz_balance, Decimal("92.40"))
+
+	def test_a_balance_below_zero_is_a_refund(self):
+		result = compute(inputs(credit("8400", "1000.00"), kst_prepayments=Decimal("1000.00")), FIGURES)
+		self.assertEqual(result.kst_balance, Decimal("-850.00"))
+
+	def test_the_credits_and_vorauszahlungen_are_amounts_in_cents_of_at_least_zero(self):
+		for name in ("capital_gains_tax_credit", "solz_credit", "kst_prepayments", "solz_prepayments"):
+			for amount in ("-1.00", "0.001"):
+				with (
+					self.subTest(name=name, amount=amount),
+					self.assertRaisesRegex(ValueError, f"{name} must be"),
+				):
+					compute(inputs(**{name: Decimal(amount)}), FIGURES)
