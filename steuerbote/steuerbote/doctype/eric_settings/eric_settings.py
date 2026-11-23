@@ -68,7 +68,7 @@ import steuerbote
 from steuerbote.elster import ustva_xml, vorsatz
 from steuerbote.eric import proxy, releases, runtime
 from steuerbote.eric.releases import MinimumList, MinimumListError
-from steuerbote.eric.runtime import Check, RuntimeInstallError
+from steuerbote.eric.runtime import Check, RuntimeInstallError, UnsupportedPlatform
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.xbrl import taxonomy
@@ -339,12 +339,15 @@ def run_installation() -> None:
 	"""Background job of ERiCSettings.install_runtime: unpack the archive common_site_config.json names and record
 	the runtime.
 
-	The user who started the installation gets a realtime notice either way.
+	The user who started the installation gets a realtime notice either way, a refusal of the platform in their
+	language.
 	"""
 	runtime = None
 	error = None
 	try:
 		runtime = transmission_adapter.install_configured_archive()
+	except UnsupportedPlatform as refused:
+		error = _(refused.template).format(*refused.values)
 	except RuntimeInstallError as refused:
 		error = str(refused)
 	except frappe.ValidationError as refused:

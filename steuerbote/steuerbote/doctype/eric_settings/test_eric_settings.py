@@ -558,6 +558,36 @@ class TestERiCSettings(IntegrationTestCase):
 		)
 		self.assertIn("erwartet war", message["error"])
 
+	def test_an_installation_on_another_platform_says_where_eric_runs(self):
+		"""ERiC for Linux runs on Intel 64 and AMD64 only (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 2-1): the job refuses
+		the site before it reads the archive, and whoever started it reads why in their own language."""
+		self.settings()
+		logged = frappe.db.count("Error Log")
+		with (
+			self.configured(**BENCH),
+			patch.object(runtime, "_platform", return_value=("linux", "aarch64", "glibc 2.41")),
+			patch("frappe.publish_realtime") as publish,
+		):
+			run_installation()
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual((settings.installed_version or "", settings.simulation), ("", 1))
+		self.assertEqual(
+			publish.call_args.args,
+			(
+				"steuerbote_eric_installation",
+				{
+					"ok": False,
+					"version": None,
+					"error": "ERiC runs on Linux x86_64 only; this site runs on linux aarch64.",
+				},
+			),
+		)
+		self.assertEqual(frappe.db.count("Error Log"), logged)
+		self.assertEqual(
+			frappe._(runtime.UNSUPPORTED_SITE, lang="de").format("linux", "aarch64"),
+			"ERiC läuft nur auf Linux x86_64; diese Site läuft auf linux aarch64.",
+		)
+
 	def test_an_unexpected_failure_of_the_installation_is_logged(self):
 		self.settings()
 		logged = frappe.db.count("Error Log")
