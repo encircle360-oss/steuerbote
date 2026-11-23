@@ -17,6 +17,7 @@ from frappe.utils import getdate
 from steuerbote import ebilanz_sources
 from steuerbote.eric.result import Outcome
 from steuerbote.eric.runtime import Check
+from steuerbote.eric.simulation import bilanz as simulated_bilanz
 from steuerbote.steuerbote.report.e_bilanz_positionen import e_bilanz_positionen
 from steuerbote.tests.ebilanz import (
 	COMPANY,
@@ -118,6 +119,9 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 		self.enterContext(configured(self.root))
 		super().setUp()
 		self.addCleanup(discard_documents)
+		# Prüfen registers the installed taxonomy with the simulation for the whole process, in which the core tests
+		# that follow this class check their E-Bilanzen without one.
+		self.addCleanup(simulated_bilanz.unregister_taxonomy, "6.9")
 
 	def calculated(self, **fields):
 		doc = new_document(**fields)
@@ -294,8 +298,9 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 		self.addCleanup(frappe.db.delete, "Depreciation Schedule", {"parent": schedule})
 		self.addCleanup(frappe.db.delete, "Asset Depreciation Schedule", {"name": schedule})
 		doc = self.calculated(accounting_standard="HGBM", tax_finance_book=TAX_BOOK)
-		self.assertEqual(blocking_codes(doc), ["SB-ANLAGE-DOPPELT"])
-		self.assertEqual(doc.findings[0].reference, LAPTOP)
+		self.assertEqual(doc.ready, 0)
+		(finding,) = (row for row in doc.findings if row.code == "SB-ANLAGE-DOPPELT")
+		self.assertEqual((finding.blocking, finding.reference), (1, LAPTOP))
 
 	def test_a_missing_period_closing_voucher_is_a_hint_only(self):
 		set_for_the_test(self, PERIOD_CLOSING_VOUCHER_DOCTYPE, PERIOD_CLOSING_VOUCHER, docstatus=2)
@@ -321,10 +326,11 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 			doc = self.calculated()
 		self.assertEqual((doc.ready, blocking_codes(doc)), (0, ["SB-TAXONOMIE"]))
 		self.assertIn("weicht vom Manifest ab", doc.findings[0].text)
-		with configured(None):
-			doc = new_document()
-			with self.assertRaisesRegex(frappe.ValidationError, "The HGB-Taxonomie 6.9 is not installed"):
-				doc.calculate()
+		with (
+			configured(None),
+			self.assertRaisesRegex(frappe.ValidationError, "The HGB-Taxonomie 6.9 is not installed"),
+		):
+			doc.calculate()
 
 	def test_the_gcd_takes_the_address_of_the_settings(self):
 		"""Leitfaden B.14.3.1.16; rule 170205051 of the Jahresdokumentation 6.9."""
