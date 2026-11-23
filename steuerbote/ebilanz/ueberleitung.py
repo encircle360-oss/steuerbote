@@ -17,10 +17,13 @@ Wertänderung of the current fiscal year and, for a position of the Bilanz, that
 direction of the position, and why. „In der Überleitungsrechnung werden somit nicht die endgültigen Salden der
 übergeleiteten Handelsbilanzpositionen angegeben, sondern es werden Deltawerte angegeben, die zusammen mit dem Saldo
 der Handelsbilanz in Summe den Wert der Steuerbilanz ergeben.“ (A.11) Entries of a position no calculation counts,
-of a total and of the positions Steuerbote derives are refused: a total changes with the positions under it, and ERiC
-changes nothing but the position an entry names, „Es wird also nur immer der Wert einer einzelnen Position geändert“
-(B.15.1). So Steuerbote writes the change of each total as an entry of its own, as the examples of the ERiC
-documentation do (Anlagenspiegel_brutto_mitUeberleitung.xml).
+of the positions Steuerbote derives and of a total over positions with amounts or entries of their own are refused:
+such a total changes with the positions under it, and ERiC changes nothing but the position an entry names, „Es wird
+also nur immer der Wert einer einzelnen Position geändert“ (B.15.1). So Steuerbote writes the change of each total as
+an entry of its own, as the examples of the ERiC documentation do (Anlagenspiegel_brutto_mitUeberleitung.xml). A total
+the books fill themselves, with nothing below it, takes an entry as any position does: many Mussfelder of the
+taxonomy 6.9, such as „sonstige Rückstellungen“ [bs.eqLiab.accruals.other], add up positions a company may leave
+empty.
 
 Tuples. One tuple „Überleitung Handelsbilanzposten auf Steuerbilanzposten“ [hbst.transfer] per kind of the
 Überleitung, „ausschließlich Umgliederungen, ausschließlich Änderungen der Wertansätze oder beide“ (A.11), holding an
@@ -187,7 +190,10 @@ def ueberleitung(calculation: Calculation, transfers: Iterable[Transfer]) -> Ueb
 		)
 		return Ueberleitung(structure, (), handelsbilanz, findings)
 	findings: list[Finding] = []
-	kept = [transfer for transfer in transfers if _accepted(structure, transfer, findings)]
+	targets = frozenset(transfer.position for transfer in transfers)
+	kept = [
+		transfer for transfer in transfers if _accepted(structure, transfer, findings, handelsbilanz, targets)
+	]
 	groups: list[tuple[Kind, list[Transfer], dict[str, list[Decimal]]]] = []
 	for kind in Kind:
 		mine = [transfer for transfer in kept if transfer.kind is kind]
@@ -266,7 +272,13 @@ def ueberleitung(calculation: Calculation, transfers: Iterable[Transfer]) -> Ueb
 	return Ueberleitung(structure, tuple(written), steuerbilanz, tuple(findings))
 
 
-def _accepted(structure: Structure, transfer: Transfer, findings: list[Finding]) -> bool:
+def _accepted(
+	structure: Structure,
+	transfer: Transfer,
+	findings: list[Finding],
+	handelsbilanz: Mapping[tuple[str, Period], Decimal],
+	targets: frozenset[str],
+) -> bool:
 	"""Whether the transfer is one of a position of Bilanz or GuV the company changes itself, with a reason."""
 	taxonomy = structure.taxonomy
 	position = structure.position(transfer.position)
@@ -286,11 +298,18 @@ def _accepted(structure: Structure, transfer: Transfer, findings: list[Finding])
 			"Position, deren Teil sie ist.",
 			f"{source}; {rule(taxonomy, '170145133', 'Strukturelle Fehler')}",
 		)
-	elif _derived(structure, position):
+	elif position.concept in DERIVED or position.concept.startswith(TAX_BALANCE):
 		problem = (
 			"EB-UEBERLEITUNG-BERECHNET",
-			f"„{position.label}“ leitet Steuerbote selbst über: Summen aus den Positionen darunter, Ausgleichsposten, "
-			"Jahresüberschuss und Sammelposten aus den übrigen Einträgen.",
+			f"„{position.label}“ leitet Steuerbote selbst über: Ausgleichsposten, Jahresüberschuss und Sammelposten "
+			"ergeben sich aus den übrigen Einträgen.",
+			source,
+		)
+	elif _valued_below(structure, position, handelsbilanz, targets):
+		problem = (
+			"EB-UEBERLEITUNG-SUMME",
+			f"„{position.label}“ ist die Summe von Positionen mit Beträgen oder Einträgen; die Überleitung ändert diese "
+			"Positionen, und Steuerbote leitet die Summe mit ihnen über.",
 			source,
 		)
 	elif transfer.current is None and transfer.previous is None:
@@ -318,14 +337,18 @@ def _accepted(structure: Structure, transfer: Transfer, findings: list[Finding])
 	return problem is None
 
 
-def _derived(structure: Structure, position: Position) -> bool:
-	"""Whether Steuerbote writes the entry of the position itself: a total, a part of the Ausgleichsposten, the
-	Jahresüberschuss of the Bilanz or the Sammelposten."""
-	taxonomy = structure.taxonomy
-	if position.concept in DERIVED or position.concept.startswith(TAX_BALANCE):
-		return True
-	network = taxonomy.calculation[position.role]
-	return any(structure.position(arc.child) is not None for arc in network.children(position.concept))
+def _valued_below(
+	structure: Structure,
+	position: Position,
+	handelsbilanz: Mapping[tuple[str, Period], Decimal],
+	targets: frozenset[str],
+) -> bool:
+	"""Whether a position under the position in the calculation has an amount in the Handelsbilanz or an entry."""
+	period = Period.STICHTAG if position.instant else Period.WIRTSCHAFTSJAHR
+	return any(
+		structure.position(name) is not None and ((name, period) in handelsbilanz or name in targets)
+		for name in structure.taxonomy.calculation[position.role].descendants(position.concept)
+	)
 
 
 def _leaves(transfers: Iterable[Transfer]) -> dict[str, list[Decimal]]:
