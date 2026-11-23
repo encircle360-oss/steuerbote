@@ -26,6 +26,13 @@ which needs no browser on the server.
 A seventh company has SKR04 accounts, Annual Filing Settings, a Balance Sheet Mapping and a ledger of 2026, with its
 E-Bilanz for the year, calculated with the mini taxonomy of the tests of steuerbote/ebilanz in place of the
 HGB-Taxonomie, which the site of the browser tests does not have.
+
+The links between the annual documents: the seventh company also has a Jahresabschluss of 2026 as a draft that
+Berechnen has not calculated, which its E-Bilanz, calculated again, names with the hint that nothing was compared, and
+a Körperschaftsteuererklärung of 2026 that names its E-Bilanz. An eighth company has SKR04 accounts, VAT Return
+Settings, the VAT Return Mapping of SKR04, Annual Filing Settings, a sale of 2026 and its E-Bilanz of 2026 as filed
+outside Steuerbote, written as stored, whose Umsatzerlöse its Umsatzsteuererklärung, calculated, finds other than its
+sales.
 """
 
 from datetime import date
@@ -110,6 +117,8 @@ def run() -> None:
 	make_mapping_company()
 	simulate_eric()
 	make_desk_users()
+	make_annual_links()
+	make_revenue_hint()
 	frappe.clear_cache()
 
 
@@ -574,3 +583,83 @@ def make_ebilanz() -> None:
 	doc = draft("Electronic Balance Sheet", {"company": company, "year": data.YEAR})
 	with patch.object(eric_settings, "taxonomy_view", return_value=mini_taxonomy.view()):
 		doc.calculate()
+
+
+def make_annual_links() -> None:
+	"""The Jahresabschluss of the year of the company of the E-Bilanz as a draft, which its E-Bilanz, calculated again
+	with the mini taxonomy, names with the hint INTERPLAY_HINT, and its Körperschaftsteuererklärung of the year, which
+	names the E-Bilanz from its first save. Both stay uncalculated: the site has no HGB-Taxonomie for the
+	Jahresabschluss, and the company no Kontenzuordnung Ertragsteuern."""
+	company = data.EBILANZ_COMPANY
+	draft("Annual Accounts", {"company": company, "year": data.YEAR})
+	doc = draft("Electronic Balance Sheet", {"company": company, "year": data.YEAR})
+	with patch.object(eric_settings, "taxonomy_view", return_value=mini_taxonomy.view()):
+		doc.calculate()
+	draft("Corporate Income Tax Return", {"company": company, "year": data.YEAR})
+
+
+# SKR04 numbers of the company of the Umsatzerlöse: a bank, revenue at 19 % and its Umsatzsteuer.
+REVENUE_ACCOUNTS = {
+	"1800": ("Bank", "Asset"),
+	"4400": ("Erlöse 19 % USt", "Income"),
+	"3806": ("Umsatzsteuer 19 %", "Liability"),
+}
+REVENUE_LEDGER = (
+	(
+		"JV-STE2U-ERLOES",
+		f"{data.YEAR}-06-30",
+		(("1800", 142800, 0), ("4400", 0, data.REVENUE_SALES), ("3806", 0, 22800)),
+	),
+)
+# The Umsatzerlöse (GKV) of the E-Bilanz, as its table of positions names them.
+REVENUE_POSITION = "is.netIncome.regular.operatingTC.grossTradingProfit.totalOutput.netSales"
+
+
+def make_revenue_hint() -> None:
+	"""The company of REVENUE_COMPANY with its E-Bilanz of the year as filed outside Steuerbote, written as stored with
+	the Umsatzerlöse of its GuV, since the site has no HGB-Taxonomie to calculate one, and its Umsatzsteuererklärung,
+	calculated: its sales are REVENUE_SALES, the Umsatzerlöse REVENUE_EBILANZ, so Berechnen gives the hint REVENUE_HINT."""
+	company = data.REVENUE_COMPANY
+	make_company(company, data.REVENUE_ABBR)
+	accounts = income_tax.make_accounts(company, REVENUE_ACCOUNTS)
+	ensure_fiscal_year(company, INVOICE_DATE)
+	if not frappe.db.exists("VAT Return Settings", company):
+		make_settings(company, [(data.YEAR, "monthly", 1)], **DATENLIEFERANT)
+	if not frappe.db.exists("VAT Return Mapping", company):
+		make_mapping(company, "SKR04")
+	if not frappe.db.exists("Annual Filing Settings", company):
+		frappe.get_doc({"doctype": "Annual Filing Settings", "company": company, **EBILANZ_SETTINGS}).insert(
+			ignore_permissions=True
+		)
+	for voucher_no, posting_date, rows in REVENUE_LEDGER:
+		income_tax.post_once(company, accounts, "Journal Entry", voucher_no, posting_date, rows)
+	name = f"EB-{data.YEAR}-{data.REVENUE_ABBR}-1"
+	if not frappe.db.exists("Electronic Balance Sheet", name):
+		insert_record(
+			"Electronic Balance Sheet",
+			name=name,
+			company=company,
+			year=data.YEAR,
+			statement_type="Jahresabschluss",
+			accounting_standard="HAOE",
+			taxonomy_version="6.9",
+			status="Abgegeben",
+			docstatus=1,
+			filed_via="other_way",
+			filed_on=today(),
+			filing_note="Durch die Steuerberatung übermittelt.",
+		)
+		insert_record(
+			"Electronic Balance Sheet Position",
+			name=f"{name}-1",
+			parent=name,
+			parenttype="Electronic Balance Sheet",
+			parentfield="positions",
+			idx=1,
+			concept=REVENUE_POSITION,
+			label="Umsatzerlöse (GKV)",
+			computed=data.REVENUE_EBILANZ,
+			reported=data.REVENUE_EBILANZ,
+			manual=0,
+		)
+	draft("Annual VAT Return", {"company": company, "year": data.YEAR}).calculate()
