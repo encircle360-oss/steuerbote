@@ -122,11 +122,6 @@ def zm_fields() -> list[dict[str, str]]:
 	return sheet(_zmdo() / "Jahresdokumentation" / "Jahresdokumentation_ZMDO_2.ods", "ZMDO - Felder")
 
 
-def datenart_versions() -> list[dict[str, str]]:
-	"""The sheet „Datenartversionen“ of Datenartversionmatrix.ods, a row per datenartVersion."""
-	return sheet(documentation() / "Datenartversionmatrix.ods", "Datenartversionen")
-
-
 def sheet(path: Path, name: str) -> list[dict[str, str]]:
 	"""The rows of a sheet of a spreadsheet in the OpenDocument format, by the texts of its first row.
 
