@@ -6,14 +6,22 @@ from unittest import TestCase
 from steuerbote.hgb.notes import (
 	CATALOGUE,
 	EXEMPT_FOR_KLEIN,
+	AdvanceKind,
 	Answer,
+	Contingency,
+	ContingentLiability,
 	NoteAnswer,
 	NoteCode,
 	NotesError,
+	OfficerAdvance,
+	OfficerGroup,
 	Placement,
 	Requirement,
+	advances,
 	answer_problems,
 	catalogue,
+	contingencies,
+	entry_problems,
 )
 from steuerbote.hgb.size import SizeClass
 from steuerbote.hgb.statement import Severity
@@ -231,3 +239,162 @@ class AnswersTest(TestCase):
 	def test_takes_a_decimal_amount(self):
 		with self.assertRaises(TypeError):
 			NoteAnswer("ARBEITNEHMER", YES, amount=3)  # type: ignore[arg-type]
+
+
+GUARANTEE = ContingentLiability(
+	Contingency.GUARANTEES, Decimal("20000.00"), securities="Grundschuld auf dem Betriebsgrundstück"
+)
+PENSION_GUARANTEE = ContingentLiability(Contingency.GUARANTEES, Decimal("5000.00"), pensions=True)
+GROUP_COLLATERAL = ContingentLiability(
+	Contingency.COLLATERAL,
+	Decimal("12000.00"),
+	securities="Sicherungsübereignung eines Fahrzeugs",
+	group=True,
+)
+LOAN = OfficerAdvance(
+	OfficerGroup.MANAGEMENT,
+	AdvanceKind.LOAN,
+	Decimal("10000.00"),
+	Decimal("3.5"),
+	"Laufzeit bis 2029, jährliche Tilgung",
+	repaid=Decimal("2000.00"),
+)
+ADVANCE = OfficerAdvance(
+	OfficerGroup.MANAGEMENT, AdvanceKind.ADVANCE, Decimal("1500.00"), Decimal("0"), "Reisekostenvorschuss"
+)
+BOARD_LOAN = OfficerAdvance(
+	OfficerGroup.ADVISORY_BOARD,
+	AdvanceKind.LOAN,
+	Decimal("4000.00"),
+	Decimal("2"),
+	"unbesichert",
+	waived=Decimal("500"),
+)
+
+
+class ContingenciesTest(TestCase):
+	"""§ 268 Abs. 7 HGB: each kind of § 251 separately, with its securities, pensions and group noted apart."""
+
+	def test_adds_up_each_kind_of_section_251_separately_in_its_order(self):
+		self.assertEqual(
+			[
+				(total.kind, total.amount)
+				for total in contingencies((GROUP_COLLATERAL, GUARANTEE, PENSION_GUARANTEE))
+			],
+			[(Contingency.GUARANTEES, Decimal("25000.00")), (Contingency.COLLATERAL, Decimal("12000.00"))],
+		)
+
+	def test_notes_the_pensions_the_group_and_the_securities_of_each_kind(self):
+		guarantees, collateral = contingencies((GUARANTEE, PENSION_GUARANTEE, GROUP_COLLATERAL))
+		self.assertEqual(
+			(guarantees.pensions, guarantees.group, guarantees.securities),
+			(Decimal("5000.00"), Decimal("0"), ("Grundschuld auf dem Betriebsgrundstück",)),
+		)
+		self.assertEqual(
+			(collateral.pensions, collateral.group, collateral.securities),
+			(Decimal("0"), Decimal("12000.00"), ("Sicherungsübereignung eines Fahrzeugs",)),
+		)
+
+	def test_names_the_wording_and_the_concepts_of_the_taxonomy_of_each_kind(self):
+		self.assertEqual(
+			[(kind.value, kind.concept) for kind in Contingency],
+			[
+				("Verbindlichkeiten aus der Begebung und Übertragung von Wechseln", "bs.contingLiab.notes"),
+				("Verbindlichkeiten aus Bürgschaften", "bs.contingLiab.guarantees"),
+				("Verbindlichkeiten aus Wechsel- und Scheckbürgschaften", "bs.contingLiab.guaranteesNotes"),
+				("Verbindlichkeiten aus Gewährleistungsverträgen", "bs.contingLiab.warranty"),
+				(
+					"Haftungsverhältnisse aus der Bestellung von Sicherheiten für fremde Verbindlichkeiten",
+					"bs.contingLiab.collateralisation",
+				),
+			],
+		)
+		self.assertEqual(
+			(Contingency.WARRANTIES.pensions_concept, Contingency.WARRANTIES.group_concept),
+			("bs.contingLiab.warranty.pension", "bs.contingLiab.warranty.assoc"),
+		)
+
+	def test_takes_decimal_amounts(self):
+		with self.assertRaises(TypeError):
+			ContingentLiability(Contingency.GUARANTEES, 100)  # type: ignore[arg-type]
+
+
+class AdvancesTest(TestCase):
+	"""§ 285 Nr. 9 Buchst. c HGB: Vorschüsse und Kredite, jeweils für jede Personengruppe."""
+
+	def test_adds_up_the_advances_of_each_group_in_its_order(self):
+		self.assertEqual(
+			[
+				(total.group, total.amount, total.repaid, total.waived)
+				for total in advances((BOARD_LOAN, LOAN, ADVANCE))
+			],
+			[
+				(OfficerGroup.MANAGEMENT, Decimal("11500.00"), Decimal("2000.00"), Decimal("0")),
+				(OfficerGroup.ADVISORY_BOARD, Decimal("4000.00"), Decimal("0"), Decimal("500")),
+			],
+		)
+
+	def test_names_the_rates_and_the_conditions_of_each_group(self):
+		(management,) = advances((LOAN, ADVANCE))
+		self.assertEqual(management.interest_rates, (Decimal("3.5"), Decimal("0")))
+		self.assertEqual(
+			management.conditions, ("Laufzeit bis 2029, jährliche Tilgung", "Reisekostenvorschuss")
+		)
+
+	def test_names_each_group_as_the_law_does(self):
+		self.assertEqual(
+			[group.value for group in OfficerGroup],
+			[
+				"Mitglieder des Geschäftsführungsorgans",
+				"Mitglieder des Aufsichtsrats",
+				"Mitglieder des Beirats",
+				"Mitglieder einer ähnlichen Einrichtung",
+			],
+		)
+
+	def test_takes_decimal_amounts(self):
+		with self.assertRaises(TypeError):
+			OfficerAdvance(OfficerGroup.MANAGEMENT, AdvanceKind.LOAN, Decimal("1"), 3.5, "x")  # type: ignore[arg-type]
+
+
+class EntryProblemsTest(TestCase):
+	def test_complete_entries_raise_nothing(self):
+		self.assertEqual(entry_problems((GUARANTEE, GROUP_COLLATERAL), (LOAN, ADVANCE, BOARD_LOAN)), ())
+
+	def test_an_advance_needs_its_rate_and_its_essential_conditions(self):
+		no_rate = OfficerAdvance(
+			OfficerGroup.MANAGEMENT, AdvanceKind.LOAN, Decimal("100"), None, "unbesichert"
+		)
+		no_conditions = OfficerAdvance(
+			OfficerGroup.MANAGEMENT, AdvanceKind.LOAN, Decimal("100"), Decimal("1"), " "
+		)
+		findings = entry_problems((), (no_rate, no_conditions))
+		self.assertEqual(
+			[(finding.code, finding.severity, finding.reference) for finding in findings],
+			[
+				(NoteCode.NO_RATE, Severity.ERROR, "§ 285 Nr. 9 Buchst. c HGB"),
+				(NoteCode.NO_CONDITIONS, Severity.ERROR, "§ 285 Nr. 9 Buchst. c HGB"),
+			],
+		)
+
+	def test_amounts_cannot_be_negative(self):
+		findings = entry_problems(
+			(ContingentLiability(Contingency.WARRANTIES, Decimal("-1")),),
+			(
+				OfficerAdvance(
+					OfficerGroup.MANAGEMENT,
+					AdvanceKind.LOAN,
+					Decimal("1"),
+					Decimal("-1"),
+					"x",
+					repaid=Decimal("-2"),
+				),
+			),
+		)
+		self.assertEqual(
+			[(finding.code, finding.reference) for finding in findings],
+			[
+				(NoteCode.NEGATIVE, "§ 268 Abs. 7, § 251 HGB"),
+				(NoteCode.NEGATIVE, "§ 285 Nr. 9 Buchst. c HGB"),
+			],
+		)
