@@ -43,6 +43,15 @@ Freizeichnungsdokument for them, not an Übertragungsprotokoll: „Für Erkläru
 kein Übertragungsprotokoll erstellt“ (HB Kap. 5.1.4.4). The UStVA and ZMDO, which are no Erklärungssteuern, keep
 their Übertragungsprotokoll.
 
+The E-Bilanz is the Datenart Bilanz of the Verfahren ElsterBilanz, sent with send-Auth only to the Finanzamt in
+<Empfaenger id="F"> (HB Tabelle 9-20). Its datenartVersion and plugin carry the HGB-Taxonomie, not a year: Bilanz_6.9
+with checkBilanz_6_9 for „HGB-Taxonomie 6.9“ (DVM). Its Nutzdaten are the element EBilanz of ebilanz_000002.xsd with
+the stichtag and the XBRL instance, in the version 2: „Derzeit ist Version 2 dieser Schnittstelle im Einsatz“
+(E-Bilanz_Taxonomie_6_9.pdf, Kap. 2). ERiC checks no schema of them, „Nutzdatenschemavalidierung: Nein“ (HB Tabelle
+9-20), prints no copy of the data but only an Übertragungsprotokoll, and refuses the Hinweisprüfung without
+Validiere (HB Kap. 9.7.1). So Prüfen is EBV-8, Hinweisprüfung and Validiere without a preview (HB Tabelle 6-2), and
+the NutzdatenHeader names the DatenLieferant in the ten parts the Übertragungsprotokoll prints (HB Kap. 9.7.1).
+
 This module is pure Python and never imports Frappe.
 """
 
@@ -56,11 +65,15 @@ SEND_AUTH = "send-Auth"
 FINANZAMT = "F"
 LAENDERKUERZEL = "L"
 ELSTER_ERKLAERUNG = "ElsterErklaerung"
+ELSTER_BILANZ = "ElsterBilanz"
+EBILANZ_NAMESPACE = "http://rzf.fin-nrw.de/RMS/EBilanz/2016/XMLSchema"
 UEBERTRAGUNGSPROTOKOLL = "Übertragungsprotokoll"
 FREIZEICHNUNGSDOKUMENT = "Freizeichnungsdokument"
 
 _USTVA_VERSION = re.compile(r"UStVA_(?P<year>\d{4})")
 _ERKLAERUNG_VERSION = re.compile(r"(?P<prefix>USt|KSt_30|GewSt)_(?P<year>\d{4})")
+_BILANZ_VERSION = re.compile(r"Bilanz_(?P<taxonomy>.*)")
+_TAXONOMY = re.compile(r"(?P<major>\d+)\.(?P<minor>\d+)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +181,30 @@ def _erklaerung(name: str, prefix: str, root: str, unterfallart: str, year: int)
 _ERKLAERUNGEN = {"USt": ust, "KSt_30": kst, "GewSt": gewst}
 
 
+def bilanz(taxonomy: str) -> Datenart:
+	"""The Datenart Bilanz of the HGB-Taxonomie, such as 6.9: the E-Bilanz."""
+	match = _TAXONOMY.fullmatch(taxonomy)
+	if match is None:
+		raise ValueError(f"{taxonomy!r} is no HGB-Taxonomie <major>.<minor>")
+	return Datenart(
+		name="Bilanz",
+		version=f"Bilanz_{taxonomy}",
+		verfahren=ELSTER_BILANZ,
+		vorgang=SEND_AUTH,
+		recipient_id=FINANZAMT,
+		recipient=None,
+		plugin=f"checkBilanz_{match['major']}_{match['minor']}",
+		schema=f"Datenarten/{ELSTER_BILANZ}/Bilanz/Schema/ebilanz_000002.xsd",
+		namespace=EBILANZ_NAMESPACE,
+		root="EBilanz",
+		root_version="2",
+		year=None,
+		preview_on_check=False,
+		nutzdaten_datenlieferant=True,
+		taxonomy=taxonomy,
+	)
+
+
 ZMDO = Datenart(
 	name="ZMDO",
 	version="ZMDO",
@@ -186,15 +223,17 @@ ZMDO = Datenart(
 
 
 def of_version(datenart_version: str) -> Datenart:
-	"""The Datenart of a datenartVersion; steuerbote knows UStVA_<Jahr>, ZMDO, USt_<Jahr>, KSt_30_<Jahr> and
-	GewSt_<Jahr>."""
+	"""The Datenart of a datenartVersion; steuerbote knows UStVA_<Jahr>, ZMDO, USt_<Jahr>, KSt_30_<Jahr>,
+	GewSt_<Jahr> and Bilanz_<Taxonomie>."""
 	if datenart_version == ZMDO.version:
 		return ZMDO
 	if match := _USTVA_VERSION.fullmatch(datenart_version):
 		return ustva(int(match["year"]))
 	if match := _ERKLAERUNG_VERSION.fullmatch(datenart_version):
 		return _ERKLAERUNGEN[match["prefix"]](int(match["year"]))
+	if match := _BILANZ_VERSION.fullmatch(datenart_version):
+		return bilanz(match["taxonomy"])
 	raise ValueError(
-		f"unknown datenartVersion {datenart_version!r}, expected UStVA_<year>, ZMDO, USt_<year>, KSt_30_<year> or "
-		"GewSt_<year>"
+		f"unknown datenartVersion {datenart_version!r}, expected UStVA_<year>, ZMDO, USt_<year>, KSt_30_<year>, "
+		"GewSt_<year> or Bilanz_<taxonomy>"
 	)
