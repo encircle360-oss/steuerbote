@@ -66,10 +66,8 @@ Jede Jahresmeldung wird ein eigenes Modul mit eigener Planung:
 
 - **Prüfung der Steuervorlagen.** Ein Konto aus den Steuervorlagen einer Firma, das keine Kennzahl hat, meldet Steuerbote noch nicht. Bis dahin halten nur beobachtete Konten der Stufe „Sperrt“ mit Saldo eine Meldung an.
 - **Bestätigung der Kontenzuordnung.** Die Vorgaben für SKR03 und SKR04 sind noch nicht von einer Steuerberatung bestätigt. Lass deine Einrichtung in jedem Fall von deiner Steuerberatung bestätigen.
-- **Markenprüfung.** Recherche zum Namen „Steuerbote“ beim Deutschen Patent- und Markenamt vor der ersten öffentlichen Veröffentlichung.
 - **ELSTER-Konto mit Zertifikatsdatei.** Für die Übermittlung über ERiC braucht die Firma ein ELSTER-Konto mit Anmeldung per Zertifikatsdatei (.pfx). ELSTER Secure funktioniert mit ERiC nicht.
 - **Hersteller-ID.** Registrierung im ELSTER-Entwicklerbereich und Antrag auf die Hersteller-ID, siehe Paket 0a. Abgeben lässt sich auch ohne sie: von Hand oder per XML-Import in Mein ELSTER.
-- **Katalog 2025.** Ohne Katalog der Kennzahlen für 2025 bleibt der Vorperiodenvergleich mit dem Vorjahr leer, im Januar und im ersten Quartal 2026 auch der mit der Vorperiode.
 - **Gültigkeit der USt-IdNr. in der Voranmeldung.** Die Zusammenfassende Meldung lässt die USt-IdNrn. ihrer Zeilen beim Bundeszentralamt für Steuern bestätigen (§ 18e UStG), siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md). Die Hinweise der Voranmeldung prüfen weiter nur, ob ein Kunde eine USt-IdNr. hat und wo seine Anschrift liegt.
 
 Offene Punkte zu einzelnen Kennzahlen und Konten stehen in [Kennzahlen und Kontenzuordnung](ustva-kennzahlen.md).
@@ -78,6 +76,7 @@ Offene Punkte zu einzelnen Kennzahlen und Konten stehen in [Kennzahlen und Konte
 
 - **Alles je Firma.** Jede Buchung in ERPNext trägt ihre Firma. Zuordnung, Zeitraum, Steuernummer, Zertifikat und jede Meldung gehören zu genau einer Firma; mehrere Firmen in einer Site stören sich nicht, auch mit unterschiedlichen Voranmeldungszeiträumen.
 - **Kennzahlen je Jahrgang.** Der Katalog wird nach dem Jahr des Zeitraums gewählt. Vorjahre und Berichtigungen behalten ihre Kennzahlen, ein neuer Jahrgang kommt als eigener Katalog dazu, sobald das BMF-Schreiben vorliegt. ELSTER nimmt das laufende Jahr und drei Vorjahre an.
+- **Ab 2026.** Steuerbote unterstützt die Jahre ab 2026: Der Katalog der Kennzahlen beginnt mit 2026, frühere Jahre sind nicht geplant. Im Vorperiodenvergleich der Voranmeldungen für 2026 bleibt deshalb der Vergleich mit dem Vorjahr leer, im Januar und im ersten Quartal 2026 auch der mit der Vorperiode; der Vergleich mit dem Vorjahr beginnt mit den Voranmeldungen für 2027.
 - **Nur die aktuelle Hauptversion.** Frappe und ERPNext werden nur in der aktuellen Hauptversion unterstützt, derzeit 16. Keine Rückportierungen, keine Kompatibilitätsschichten.
 - **Test zuerst.** Jede Kennzahl, Rundungsregel, Prüfung und jeder XML-Pfad bekommt einen Test, bevor es den Code gibt: Unit-Tests für den Kern, Integrationstests auf einer Frappe-Testsite. Keine Änderung an einer Zuordnung ohne Testfall. Geplant: ERiC prüft jede erzeugte XML-Datei in der CI.
 - **Quellen im Code.** Jede fachliche Regel nennt ihre Primärquelle: Gesetz, BMF-Schreiben, Anleitung zum Vordruck, ELSTER- oder ERiC-Dokumentation.
