@@ -303,10 +303,17 @@ def post_sales_invoice(
 	customer: str,
 	posting_date: str,
 	rows: Iterable[tuple[str, Amount, Amount]],
+	*,
+	items: Iterable[tuple[str, Amount]] = (),
+	taxes: Iterable[tuple[str, Amount]] = (),
 	**fields,
 ) -> str:
 	"""A submitted Sales Invoice with the customer's tax_id, as ERPNext fetches it, and its GL Entries; ``fields``
-	go to the invoice, such as its addresses or the tax_id the customer had when the invoice was made."""
+	go to the invoice, such as its addresses or the tax_id the customer had when the invoice was made.
+
+	``items`` gives the invoice an item per (income account, net amount) and ``taxes`` a tax row per (account,
+	amount), as the reports Sales Register and Purchase Register read them; without them the invoice has neither.
+	"""
 	insert_record(
 		"Sales Invoice",
 		name=name,
@@ -315,11 +322,87 @@ def post_sales_invoice(
 		customer=customer,
 		customer_name=customer,
 		docstatus=1,
-		is_opening="No",
+		is_opening=fields.pop("is_opening", "No"),
 		**{"tax_id": frappe.db.get_value("Customer", customer, "tax_id"), **fields},
 	)
+	_insert_invoice_rows("Sales Invoice", name, items, taxes)
 	post_ledger(company, "Sales Invoice", name, posting_date, rows)
 	return name
+
+
+def post_purchase_invoice(
+	company: str,
+	name: str,
+	supplier: str,
+	posting_date: str,
+	rows: Iterable[tuple[str, Amount, Amount]],
+	*,
+	items: Iterable[tuple[str, Amount]] = (),
+	taxes: Iterable[tuple[str, Amount]] = (),
+	**fields,
+) -> str:
+	"""A submitted Purchase Invoice with its items per (expense account, net amount), its tax rows per (account,
+	amount) and its GL Entries. A tax row with a negative amount is one the invoice deducts, such as the
+	Umsatzsteuer of a service under § 13b UStG, which ERPNext keeps as a positive amount marked Deduct."""
+	insert_record(
+		"Purchase Invoice",
+		name=name,
+		company=company,
+		posting_date=posting_date,
+		supplier=supplier,
+		supplier_name=supplier,
+		docstatus=1,
+		is_opening=fields.pop("is_opening", "No"),
+		**fields,
+	)
+	_insert_invoice_rows("Purchase Invoice", name, items, taxes)
+	post_ledger(company, "Purchase Invoice", name, posting_date, rows)
+	return name
+
+
+def _insert_invoice_rows(
+	doctype: str, name: str, items: Iterable[tuple[str, Amount]], taxes: Iterable[tuple[str, Amount]]
+) -> None:
+	"""The items and tax rows of a submitted invoice as ERPNext stores them, each with the docstatus of its invoice."""
+	sales = doctype == "Sales Invoice"
+	for index, (account, net) in enumerate(items, start=1):
+		insert_record(
+			f"{doctype} Item",
+			name=f"{name}-item-{index}",
+			parent=name,
+			parenttype=doctype,
+			parentfield="items",
+			idx=index,
+			docstatus=1,
+			item_name="Leistung",
+			qty=1,
+			rate=net,
+			amount=net,
+			base_amount=net,
+			net_amount=net,
+			base_net_amount=net,
+			**{"income_account" if sales else "expense_account": account},
+		)
+	for index, (account, amount) in enumerate(taxes, start=1):
+		deducted = not sales and Decimal(str(amount)) < 0
+		tax = abs(Decimal(str(amount))) if not sales else Decimal(str(amount))
+		insert_record(
+			"Sales Taxes and Charges" if sales else "Purchase Taxes and Charges",
+			name=f"{name}-tax-{index}",
+			parent=name,
+			parenttype=doctype,
+			parentfield="taxes",
+			idx=index,
+			docstatus=1,
+			charge_type="On Net Total",
+			account_head=account,
+			description=account,
+			tax_amount=tax,
+			base_tax_amount=tax,
+			tax_amount_after_discount_amount=tax,
+			base_tax_amount_after_discount_amount=tax,
+			**({} if sales else {"category": "Total", "add_deduct_tax": "Deduct" if deducted else "Add"}),
+		)
 
 
 def post_payment_entry(

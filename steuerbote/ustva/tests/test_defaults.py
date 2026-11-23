@@ -17,6 +17,7 @@ from steuerbote.ustva.defaults import (
 	SKR04_WATCHED,
 	SKR04_WATCHED_FOR_HINTS,
 	default_mapping,
+	deliberately_without_kennzahl,
 	with_ranges,
 )
 from steuerbote.ustva.kennzahlen import LATEST_YEAR, UnknownYearError
@@ -804,3 +805,20 @@ class DefaultsTest(TestCase):
 			KeyError, "no default mapping for chart 'SKR05'; known charts: SKR03, SKR04"
 		):
 			default_mapping("SKR05", 2026)
+
+
+class DeliberatelyWithoutKennzahlTest(TestCase):
+	def test_lists_the_ignored_accounts_of_each_chart_with_the_members_of_their_ranges(self):
+		self.assertEqual(
+			deliberately_without_kennzahl("SKR03"), frozenset(with_ranges(SKR03_IGNORED, SKR03_RANGES))
+		)
+		self.assertEqual(
+			deliberately_without_kennzahl("SKR04"), frozenset(with_ranges(SKR04_IGNORED, SKR04_RANGES))
+		)
+
+	def test_holds_the_oss_accounts_and_the_members_of_a_range(self):
+		self.assertLessEqual({"1767", "1768", "3400", "3405", "3409"}, deliberately_without_kennzahl("SKR03"))
+		self.assertLessEqual({"3798", "3817", "3818", "3831"}, deliberately_without_kennzahl("SKR04"))
+
+	def test_a_chart_without_defaults_leaves_no_account_without_kennzahl(self):
+		self.assertEqual(deliberately_without_kennzahl("Eigener Kontenrahmen"), frozenset())

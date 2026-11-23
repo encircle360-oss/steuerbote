@@ -1,5 +1,5 @@
-"""The setup of Steuerbote: the VAT Return Settings and the mapping of the company of the seed, and the ERiC
-Settings, which simulate.
+"""The setup of Steuerbote: the VAT Return Settings and the mapping of the company of the seed with its check of
+the tax templates, and the ERiC Settings, which simulate.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -35,6 +35,18 @@ def test_vorgaben_laden_replaces_the_rules_with_the_defaults_of_skr03(desk, expe
 	assert rules_of(desk) == before
 	expect(rates).to_have_text(shown)
 	assert desk.page.evaluate("() => cur_frm.is_dirty()")
+
+
+def test_steuervorlagen_pruefen_finds_every_account_of_the_templates_in_the_mapping(desk, expect):
+	"""The company of the seed has no tax templates of its own, so no account of them lacks a place."""
+	desk.open(f"/desk/vat-return-mapping/{data.COMPANY}")
+	expect(desk.grid_rows("rules").first).to_be_visible()
+	response = desk.run_doc_method("check_tax_templates", desk.button("Steuervorlagen prüfen").click)
+	assert response.ok
+	expect(desk.dialog()).to_contain_text(
+		"Jedes Konto der Steuervorlagen hat einen Platz in der Kontenzuordnung."
+	)
+	desk.close_dialog()
 
 
 def rules_of(desk) -> list[list]:

@@ -4,7 +4,8 @@ Nothing here imports Frappe. The module turns the core's result into the rows of
 computes the sums of the form over the amounts as filed and hands the return as filed to the ELSTER XML in
 steuerbote.elster, so that the controller only moves data and every rule is tested without a bench. Amounts
 are computed by the core alone, and so are the Vorperiodenvergleich and the hints of
-steuerbote.ustva.plausibility, whose results become the rows of the tables "comparison" and "hints".
+steuerbote.ustva.plausibility, whose results become the rows of the tables "comparison" and "hints", and the
+reconciliation with the registers of steuerbote.ustva.registers, whose rows carry the explanations the user writes.
 """
 
 from collections.abc import Collection, Iterable, Sequence
@@ -26,6 +27,7 @@ from steuerbote.ustva import (
 	calculate,
 	catalogue_for,
 	plausibility,
+	registers,
 )
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL, SONDERVORAUSZAHLUNG_KENNZAHL
 from steuerbote.ustva.rounding import ZERO, to_cents
@@ -501,3 +503,75 @@ def replaced_hints(
 	return sorted(
 		[*kept, *hint_rows(hints)], key=lambda row: row["severity"] != plausibility.Severity.WARNING.value
 	)
+
+
+def reconciliation_rows(
+	rows: Iterable[registers.Row],
+	catalogue: ReadOnlyMapping[str, Kennzahl],
+	accounts: ReadOnlyMapping[str, str],
+	names: ReadOnlyMapping[str, str],
+	earlier: Iterable[Row] = (),
+) -> list[dict[str, Any]]:
+	"""The rows of the table Abgleich mit Registern, in the order of the reconciliation.
+
+	``accounts`` holds the names of the accounts in ERPNext and ``names`` their Account Names, both by number. A
+	Currency field stores no blank, so a row not compared holds 0 as its ledger amount and difference and says that it
+	is not compared, for the form to leave them blank. A row keeps the explanation of an ``earlier`` row with the same
+	report, subject and amounts, so that Berechnen keeps what someone explained as long as it is what they explained.
+	"""
+	explained = {_compared_as(row): text for row in earlier if (text := _text(row.get("explanation")))}
+	found = []
+	for row in rows:
+		values = {
+			"register": row.register.value,
+			"subject": registers.subject(row, catalogue, names),
+			"kennzahl": row.kennzahl,
+			"account": accounts.get(row.account_number, "") if row.account_number else "",
+			"register_amount": row.register_amount,
+			"ledger_amount": _or_zero(row.ledger_amount),
+			"difference": _or_zero(row.difference),
+			"compared": int(row.compared),
+		}
+		found.append({**values, "explanation": explained.get(_compared_as(values), "")})
+	return found
+
+
+def _compared_as(row: Row) -> tuple[str, str, Decimal, Decimal]:
+	return (
+		str(row.get("register") or ""),
+		str(row.get("subject") or ""),
+		to_amount(row.get("register_amount")),
+		to_amount(row.get("ledger_amount")),
+	)
+
+
+def explanations_kept(
+	stored: Iterable[ReadOnlyMapping[str, Any]], sent: Iterable[Row]
+) -> list[dict[str, Any]]:
+	"""What a save keeps of the table Abgleich mit Registern: every row as Berechnen stored it, with the explanation
+	the save sends for the row of the same name.
+
+	Frappe keeps no read-only field from a save through its API, and the table lets the user write the explanations
+	alone. A row the save leaves out keeps its explanation, and a row it adds is not taken.
+	"""
+	sent_by_name = {row.get("name"): row for row in sent if row.get("name")}
+	kept = []
+	for row in stored:
+		explanation = row.get("explanation")
+		if (saved := sent_by_name.get(row.get("name"))) is not None:
+			explanation = saved.get("explanation")
+		kept.append({**row, "explanation": _text(explanation)})
+	return kept
+
+
+def unexplained(rows: Iterable[Row]) -> list[str]:
+	"""The subjects of the rows of Abgleich mit Registern that have a difference and no explanation, in their order."""
+	return [
+		str(row.get("subject") or "")
+		for row in rows
+		if to_amount(row.get("difference")) and not _text(row.get("explanation"))
+	]
+
+
+def _text(value: object) -> str:
+	return str(value or "").strip()

@@ -402,3 +402,30 @@ class YearTest(TestCase):
 				Mapping("test", (rule("8400", "81"),), year=year)  # type: ignore[arg-type]
 		with self.assertRaisesRegex(TypeError, "year must be an int, not str"):
 			Mapping("test", (rule("8400", "81"),)).for_year("2026")  # type: ignore[arg-type]
+
+
+class PlaceTest(TestCase):
+	"""An account has a place in the mapping when a rule maps it, a Verprobung checks it or it is watched."""
+
+	mapping = Mapping(
+		"test",
+		(rule("8400", "81"), rule("1576", "66", Side.DEBIT)),
+		(TaxCheck("Umsatzsteuer 19 %", ("8400",), ("1776",)),),
+		("1548", WatchedAccount("8603", WatchLevel.HINT)),
+	)
+
+	def test_a_mapped_account_has_a_place(self):
+		self.assertTrue(self.mapping.has_place("8400"))
+		self.assertTrue(self.mapping.has_place("1576"))
+
+	def test_a_checked_tax_account_has_a_place(self):
+		self.assertTrue(self.mapping.has_place("1776"))
+
+	def test_a_watched_account_has_a_place_at_either_level(self):
+		self.assertTrue(self.mapping.has_place("1548"))
+		self.assertTrue(self.mapping.has_place("8603"))
+
+	def test_any_other_account_has_none(self):
+		for account in ("1767", "8401", "84000"):
+			with self.subTest(account=account):
+				self.assertFalse(self.mapping.has_place(account))

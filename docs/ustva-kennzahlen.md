@@ -142,7 +142,7 @@ Die Zuordnung steht in [`mapping.py`](../steuerbote/ustva/mapping.py) und ist re
 
 - **`AccountRule`** ordnet ein Konto über seine Kontonummer einer Kennzahl zu und legt die Seite fest, auf der das Konto seinen Saldo trägt: Haben (`Side.CREDIT`) für Erlöse und andere Steuerbeträge, Soll (`Side.DEBIT`) für Erwerbe, bezogene Leistungen und Vorsteuer. Der Betrag ist der Saldo des Zeitraums auf dieser Seite. Eine Gutschrift auf einem Erlöskonto mindert also die Bemessungsgrundlage und kann sie negativ machen. Hat die Kennzahl eine eigene Steuer-Kennzahl (etwa Kz 46 mit Kz 47), kann die Regel einen Steuersatz tragen (`tax_rate`). Dann leitet Steuerbote die Steuer aus dem Grundlagenkonto ab: Saldo × Satz geht in die Steuer-Kennzahl.
 - **`TaxCheck`** ist eine Verprobung mit einer Bezeichnung (`label`): Die Steuer, die zu den Grundlagenkonten gehört (`base_accounts`), wird mit der Steuer auf den Steuerkonten verglichen (`tax_accounts`, Seite standardmäßig Haben). Der Satz eines Grundlagenkontos ist der Satz seiner Regel oder, wenn sie keinen trägt, der Satz der Kennzahl im Vordruck.
-- **`Mapping`** gehört zu genau einem Kontenrahmen und einem Jahr des Vordrucks (`year`, ohne Angabe das neueste) und enthält Regeln, Verprobungen und beobachtete Konten (`watched`). Beobachtet werden Konten, die zur Voranmeldung gehören oder gehören können, für die es aber noch keine Zuordnung gibt. Jedes beobachtete Konto (`WatchedAccount`) hat eine Stufe (`WatchLevel`): „Sperrt“ (`BLOCKING`) hält die Meldung an, sobald das Konto einen Saldo hat, „Hinweis“ (`HINT`) gibt dann nur einen Hinweis. Eine bloße Kontonummer wird auf der Stufe „Sperrt“ beobachtet, `watched_at(level)` nennt die Konten einer Stufe. `for_year(year)` prüft dieselben Regeln gegen den Vordruck eines anderen Jahres, `default_mapping(chart, year)` liefert die Vorgabe eines Kontenrahmens für das Jahr des Zeitraums.
+- **`Mapping`** gehört zu genau einem Kontenrahmen und einem Jahr des Vordrucks (`year`, ohne Angabe das neueste) und enthält Regeln, Verprobungen und beobachtete Konten (`watched`). Beobachtet werden Konten, die zur Voranmeldung gehören oder gehören können, für die es aber noch keine Zuordnung gibt. Jedes beobachtete Konto (`WatchedAccount`) hat eine Stufe (`WatchLevel`): „Sperrt“ (`BLOCKING`) hält die Meldung an, sobald das Konto einen Saldo hat, „Hinweis“ (`HINT`) gibt dann nur einen Hinweis. Eine bloße Kontonummer wird auf der Stufe „Sperrt“ beobachtet, `watched_at(level)` nennt die Konten einer Stufe. `has_place(number)` sagt, ob ein Konto einen Platz hat: eine Regel, als Steuerkonto eine Verprobung oder einen Eintrag unter den beobachteten Konten. `for_year(year)` prüft dieselben Regeln gegen den Vordruck eines anderen Jahres, `default_mapping(chart, year)` liefert die Vorgabe eines Kontenrahmens für das Jahr des Zeitraums.
 
 Eine Zuordnung prüft sich beim Anlegen selbst. Einen `MappingError` gibt es bei:
 
@@ -170,7 +170,7 @@ Jede Firma soll die Vorgabe ihres Kontenrahmens in ihren Einstellungen anpassen 
 6. Jede Verprobung ergibt ein `CheckResult` mit berechneter und gebuchter Steuer, Zahl der Buchungen, Toleranz, Differenz (gebucht minus berechnet) und der Liste der abweichenden Belege (`deviations`, je Beleg berechnete und gebuchte Steuer). `passed` ist wahr, wenn kein Beleg abweicht.
 7. `unmapped` nennt die beobachteten Konten der Stufe „Sperrt“ mit Saldo, `hinted` die der Stufe „Hinweis“ mit Saldo, jeweils mit Soll und Haben des Zeitraums (`AccountBalance`). Keines davon geht in eine Kennzahl ein. `ready` ist erst wahr, wenn kein Konto der Stufe „Sperrt“ einen Saldo hat und alle Verprobungen aufgehen; ein Saldo auf der Stufe „Hinweis“ ändert daran nichts und ergibt an der Meldung den Hinweis `KONTO-BEOBACHTET` (siehe [Vorperiodenvergleich und Hinweise](architektur.md#vorperiodenvergleich-und-hinweise)).
 
-Konten ohne Regel, die auch nicht beobachtet werden, fehlen in der Meldung, ohne dass ein Fehler entsteht. Geplant ist eine Prüfung, die jedes Konto aus den Steuervorlagen einer Firma ohne Kennzahl meldet (Paket 1 der Roadmap).
+Konten ohne Regel, die auch nicht beobachtet werden, fehlen in der Meldung, ohne dass ein Fehler entsteht. Für die Konten der Steuervorlagen einer Firma gibt es deshalb die [Prüfung der Steuervorlagen](#prüfung-der-steuervorlagen).
 
 ### Vorgaben
 
@@ -537,6 +537,23 @@ Beide Vorgaben verproben die gebuchte Umsatzsteuer auf der Haben-Seite der Steue
 In SKR04 fehlt in der Verprobung „Umsatzsteuer 7 %“ das Gegenstück zu 8630. Die Erwerbe ohne Vorsteuerabzug, auch 3066 und 3067 (SKR04: 5166 und 5167), verprobt 1779 (SKR04: 3809), das Konto für deren Umsatzsteuer.
 
 Die Steuer zu Kz 47, 85 und 96 kommt in den Vorgaben deshalb immer aus den Grundlagenkonten, nicht aus dem gebuchten Betrag auf 1787, 1785 oder 1784 (SKR04: 3837, 3835 oder 3834). Weicht die Buchung um mehr als die Toleranz ab, geht die Verprobung nicht auf, und die Meldung ist nicht bereit.
+
+### Abgleich mit den Registern
+
+Die Verprobung prüft jeden Beleg in sich. Der Abgleich mit den Registern stellt dazu die Summen der Berichte Sales Register und Purchase Register von ERPNext neben die Beträge, die die Meldung aus dem Hauptbuch nimmt ([`registers.py`](../steuerbote/ustva/registers.py)). Welche Kennzahlen ein Bericht abgleicht, folgt den Abschnitten des Vordrucks USt 1 A 2026:
+
+| Bericht | Abschnitte des Vordrucks | Kennzahlen |
+|---|---|---|
+| Sales Register (Ausgangsrechnungen) | A. Steuerpflichtige Lieferungen, sonstige Leistungen und unentgeltliche Wertabgaben (Zeilen 13 bis 18); B. Steuerfreie Lieferungen, sonstige Leistungen und unentgeltliche Wertabgaben (Zeilen 19 bis 23); E. Ergänzende Angaben zu Umsätzen (Zeilen 33 bis 36) | 81, 86, 87, 35/36, 77, 76/80; 41, 44, 49, 43, 48; 42, 60, 21, 45 |
+| Purchase Register (Eingangsrechnungen) | C. Innergemeinschaftliche Erwerbe (Zeilen 24 bis 29); D. Leistungsempfänger als Steuerschuldner (§ 13b UStG, Zeilen 30 bis 32); aus F. die Vorsteuer aus Rechnungen, aus innergemeinschaftlichen Erwerben, die Einfuhrumsatzsteuer und die Vorsteuer aus Leistungen nach § 13b UStG (Zeilen 38 bis 41) | 91, 89, 93, 90, 95/98, 94/96; 46/47, 73/74, 84/85; 66, 61, 62, 67 |
+| keiner | Kz 63, 59 und 64, die das Unternehmen selbst berechnet (Durchschnittssätze nach § 23a UStG, Vorsteuerabzug nach § 15 Abs. 4a UStG, Berichtigung nach § 15a UStG); G. Andere Steuerbeträge (Kz 65 und 69, aus Verkäufen wie aus Einkäufen); Kz 39, 50 und 37 | — |
+
+Je Bericht gelten diese Gruppen:
+
+- **Bemessungsgrundlagen:** je Kennzahl die Summe der Konten ihrer Regeln im Bericht gegen den genauen Betrag der Kennzahl laut Hauptbuch, vor dem Runden auf volle Euro. Die Konten stehen im Bericht mit dem Nettobetrag der Artikel, die Ausgangsrechnung im Haben, die Eingangsrechnung im Soll. Inländische Umsätze zu 19 und 7 % sind Kz 81 und 86, die Leistungen nach § 13b UStG Kz 46, 73 und 84, die innergemeinschaftlichen Lieferungen und sonstigen Leistungen Kz 41, 44, 49 und 21, die innergemeinschaftlichen Erwerbe Kz 89, 93 und die übrigen des Abschnitts C. Eine zusätzliche Kennzahl wie Kz 50 bleibt außen vor, sie wiederholt einen Betrag aus den Zeilen 13 bis 18.
+- **Steuer:** je Steuerkonto, das eine Verprobung prüft oder eine Regel einer Steuer-Kennzahl zuordnet, die Steuer im Bericht gegen den Saldo des Kontos laut Hauptbuch. Das Steuerkonto einer Verprobung gehört zum Bericht ihrer Grundlagen: die Umsatzsteuer 19 % und 7 % (1776 und 1771, SKR04: 3806 und 3801) zum Sales Register, die Umsatzsteuer aus innergemeinschaftlichen Erwerben und nach § 13b UStG (etwa 1774 und 1787, SKR04: 3804 und 3837) zum Purchase Register. Die Vorsteuer (Kz 66, 61, 62 und 67) gehört zum Purchase Register. Die Steuer, die der Vordruck aus Kz 81, 86, 89 und 93 selbst berechnet, vergleicht der Abgleich nicht, denn der Vordruck rundet die Bemessungsgrundlage vorher auf volle Euro; die gebuchte Steuer der Verprobungskonten vergleicht er.
+
+Die Differenz ist der Betrag laut Hauptbuch abzüglich des Betrags laut Bericht, auf Cent gerundet. Steuer, die eine Eingangsrechnung abzieht, etwa die Umsatzsteuer nach § 13b UStG, zeigt der Purchase Register negativ; auf der Haben-Seite des Steuerkontos wird sie positiv. Was nicht verglichen werden kann, steht mit seinem Betrag in einer eigenen Zeile, ohne Differenz: Eröffnungsrechnungen, die Konten von „Bewusst ohne Kennzahl“, Konten ohne Platz in der Kontenzuordnung, beobachtete Konten, Konten von Kennzahlen, die der Bericht nicht abgleicht, und Konten ohne Kontonummer. Bucht ein Bericht im Zeitraum auf kein Konto, gleicht er nichts ab, und eine Zeile sagt das. Eine Differenz braucht vor der Abgabe eine Erklärung in ihrer Zeile oder in den Anmerkungen, siehe [Architektur](architektur.md#abgleich-mit-sales-register-und-purchase-register).
 
 ### Beobachtete Konten
 
@@ -979,6 +996,16 @@ Diesen Kennzahlen ordnen die Vorgaben bewusst kein Konto zu:
 Kz 63 (Vorsteuer nach allgemeinen Durchschnittssätzen, § 23a UStG) geht auf 1587 aus verbreiteten SKR03-Varianten und 1484 aus der Vorlage von ERPNext. Kz 50 bekommen die Forderungsverluste zusätzlich zu ihrer Bemessungsgrundlage, denn die Anleitung zu Zeile 51 sagt: „Erfolgt die Änderung nach § 17 Absatz 2 Nummer 1 Satz 1 UStG, weil das vereinbarte Entgelt für einen steuerpflichtigen Umsatz uneinbringlich geworden ist, tragen Sie die Minderung der Bemessungsgrundlage bitte zusätzlich in Zeile 51 ein.“ Kennzeichen, Datum und Schlüssel (Kz 10, 22, 70, 29, 26 und 500) nehmen kein Konto auf, Kz 83 wird berechnet.
 
 Wer einen dieser Fälle hat, klärt Konto und Kennzahl mit der Steuerberatung und ergänzt die Zuordnung der eigenen Firma (Einstellungen geplant, Paket 1 der Roadmap). In die Vorgaben kommt eine Kennzahl erst, wenn Konto und Kennzahl bestätigt sind und eine Quelle dafür vorliegt, nach dem Ablauf in [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+### Prüfung der Steuervorlagen
+
+ERPNext bucht die Steuer einer Rechnung auf die Konten ihrer Steuervorlagen: die Konten der Zeilen einer Vorlage für Verkaufs- oder Einkaufssteuern und die Konten der Steuersätze einer Artikelsteuervorlage. Die Voranmeldung enthält „die Steuer für den Voranmeldungszeitraum“ (§ 18 Absatz 1 Satz 1 UStG), ein Konto ohne Platz in der Zuordnung aber geht in keine Kennzahl ein. [`tax_templates.py`](../steuerbote/ustva/tax_templates.py) nennt deshalb jedes Konto der Steuervorlagen einer Firma, das weder zugeordnet noch verprobt noch beobachtet ist:
+
+- **Bewusst ohne Kennzahl** bleiben außen vor: die Konten von `SKR03_IGNORED` und `SKR04_IGNORED` samt ihrer Kontenbereiche, wenn die Kontenzuordnung diesen Kontenrahmen nennt (`deliberately_without_kennzahl` in `defaults.py`). Dazu gehört die Umsatzsteuer des OSS-Verfahrens, die die Firma in der Steuererklärung des besonderen Besteuerungsverfahrens erklärt (§ 18j Absatz 4 UStG), nicht in der Voranmeldung.
+- **Ohne Kontonummer** hat ein Konto nie einen Platz, denn die Zuordnung arbeitet mit Kontonummern.
+- **Je Konto** sagt der Hinweis `STEUERVORLAGE-OHNE-KENNZAHL` an der Meldung, aus welchen Vorlagen das Konto kommt und ob es im Zeitraum einen Saldo hat, mit Soll und Haben. Er hält die Meldung nicht an.
+
+In der Kontenzuordnung nennt „Steuervorlagen prüfen“ dieselben Konten und nimmt sie auf Wunsch in einem Schritt als beobachtete Konten der Stufe „Sperrt“ auf. Ein Saldo auf einem von ihnen hält die Meldung dann an, bis das Konto eine Zuordnung hat. Wie die Frappe-Schicht die Vorlagen liest, steht in [Architektur](architektur.md#prüfung-der-steuervorlagen).
 
 ## Ist-Versteuerung
 

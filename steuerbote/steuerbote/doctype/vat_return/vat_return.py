@@ -10,8 +10,11 @@ field from a save through its API, so a save keeps what Berechnen stored and tak
 user change, a new return starts as a draft, and before the return is transmitted, made into a file or filed, its
 amounts are computed again from the stored Kennzahlen. "Berechnen" also fills the
 Vorperiodenvergleich (build_comparison) and the hints (build_hints) of steuerbote.ustva.plausibility, which
-inform and never change an amount or whether the return is ready. A period is filed once; every further
-return for it is a corrected return (Kz 10), and filing one marks the returns before it as replaced. "XML für
+inform and never change an amount or whether the return is ready, and the reconciliation with the reports Sales
+Register and Purchase Register (build_reconciliation, steuerbote.ustva.registers): a difference there needs an
+explanation in its row, or the remarks, before the return is transmitted, made into a file or filed, as a return
+that is not ready needs the remarks. A period is filed once; every further return for it is a corrected return
+(Kz 10), and filing one marks the returns before it as replaced. "XML für
 Mein ELSTER" (make_import_file) writes the return as saved into the file for the import into Mein ELSTER
 through steuerbote.elster.ustva_xml and attaches it to the return.
 
@@ -48,6 +51,7 @@ from steuerbote import invoices, ustva, zm_sources
 from steuerbote.elster import ustva_xml
 from steuerbote.eric import datenart as eric_datenart
 from steuerbote.ledger import account_labels, account_names, accounts_without_number, load_lines
+from steuerbote.registers import register_lines
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
 	FILED_VIA,
@@ -62,7 +66,9 @@ from steuerbote.steuerbote.doctype.vat_id_confirmation.confirming import Confirm
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
-from steuerbote.ustva import plausibility
+from steuerbote.tax_templates import template_accounts
+from steuerbote.ustva import plausibility, registers, tax_templates
+from steuerbote.ustva.defaults import deliberately_without_kennzahl
 from steuerbote.vatid import Details, UrllibFetch
 from steuerbote.zm.lines import VoucherAmount
 
@@ -79,7 +85,9 @@ REPLACED = "Ersetzt"
 PERIOD_FIELDS = ("company", "year", "rhythm", "period_index")
 # What Berechnen finds besides the Kennzahlen: the Verprobung, the watched accounts, the hints and the comparison.
 FINDINGS = ("checks", "deviations", "unmapped", "hints", "comparison")
-CALCULATED_TABLES = ("kennzahlen", *FINDINGS)
+# The reconciliation with the registers, which Berechnen fills and whose explanations a save takes.
+RECONCILIATION = "register_reconciliation"
+CALCULATED_TABLES = ("kennzahlen", *FINDINGS, RECONCILIATION)
 CALCULATED_FIELDS = ("status", "ready", "accounts_without_number")
 
 # TransferTicketSType in headerbasis_datentypen.xsd of the ELSTER Basisschema.
@@ -103,6 +111,9 @@ class VATReturn(Confirming, Transmittable, Document):
 		from steuerbote.steuerbote.doctype.vat_return_deviation.vat_return_deviation import VATReturnDeviation
 		from steuerbote.steuerbote.doctype.vat_return_hint.vat_return_hint import VATReturnHint
 		from steuerbote.steuerbote.doctype.vat_return_kennzahl.vat_return_kennzahl import VATReturnKennzahl
+		from steuerbote.steuerbote.doctype.vat_return_register_reconciliation.vat_return_register_reconciliation import (
+			VATReturnRegisterReconciliation,
+		)
 		from steuerbote.steuerbote.doctype.vat_return_unmapped_account.vat_return_unmapped_account import (
 			VATReturnUnmappedAccount,
 		)
@@ -132,6 +143,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		period_index: DF.Int
 		period_label: DF.Data | None
 		ready: DF.Check
+		register_reconciliation: DF.Table[VATReturnRegisterReconciliation]
 		regelbesteuerung_from: DF.Date | None
 		remarks: DF.SmallText | None
 		rhythm: DF.Literal["monthly", "quarterly"]
@@ -152,7 +164,7 @@ class VATReturn(Confirming, Transmittable, Document):
 	def before_insert(self) -> None:
 		"""A new return starts as a draft that Berechnen has not read, whatever it was made with: its Kennzahlen keep
 		their overrides without a computed amount, and nothing else of a calculation stays."""
-		for table in FINDINGS:
+		for table in (*FINDINGS, RECONCILIATION):
 			self.set(table, [])
 		for row in self.kennzahlen:
 			row.update({"amount": 0, "reported": 0})
@@ -224,7 +236,21 @@ class VATReturn(Confirming, Transmittable, Document):
 		)
 		comparison = build_comparison(self, period, settings, mapping)
 		self.set("comparison", bridge.comparison_rows(comparison))
-		self.set("hints", bridge.hint_rows(build_hints(self, period, mapping, result, comparison)))
+		reconciliation = build_reconciliation(self.company, period, mapping, lines)
+		numbers = [row.account_number for row in reconciliation if row.account_number]
+		self.set(
+			RECONCILIATION,
+			bridge.reconciliation_rows(
+				reconciliation,
+				catalogue,
+				account_names(self.company, numbers),
+				account_labels(self.company, numbers),
+				self.get(RECONCILIATION),
+			),
+		)
+		self.set(
+			"hints", bridge.hint_rows(build_hints(self, period, mapping, result, comparison, reconciliation))
+		)
 		self.ready = int(result.ready)
 		self.status = READY if result.ready else CALCULATED
 		self.accounts_without_number = len(accounts_without_number(self.company))
@@ -354,6 +380,21 @@ class VATReturn(Confirming, Transmittable, Document):
 					"The return is not ready: a Verprobung deviates or a watched account has a balance. Explain in the remarks why it is filed nonetheless."
 				)
 			)
+		self._require_explained_differences()
+
+	def _require_explained_differences(self) -> None:
+		"""Eine Abweichung muss erklärt sein (docs/roadmap.md, Grundsätze): each difference to the registers needs an
+		explanation in its row before the return is transmitted, made into a file or filed, unless the remarks explain
+		why it is filed nonetheless, as they do for a return that is not ready."""
+		if (self.remarks or "").strip():
+			return
+		subjects = bridge.unexplained(self.get(RECONCILIATION))
+		if subjects:
+			frappe.throw(
+				_(
+					"The reconciliation with the registers shows a difference without an explanation: {0}. Explain it in its row, or in the remarks why the return is filed nonetheless."
+				).format(escape_html("; ".join(subjects)))
+			)
 
 	def check_transmittable(self) -> None:
 		if self.docstatus != 0:
@@ -366,6 +407,7 @@ class VATReturn(Confirming, Transmittable, Document):
 			frappe.throw(_("Calculate the return before transmitting it."))
 		self.refuse_while_confirming()
 		self._require_amounts_as_stored(self)
+		self._require_explained_differences()
 
 	def check_can_be_sent(self) -> None:
 		"""Senden files the return, once: it needs the return fit for filing and no earlier filing."""
@@ -522,6 +564,12 @@ class VATReturn(Confirming, Transmittable, Document):
 		for table in FINDINGS:
 			if not (table == "hints" and self.flags.confirming):
 				self.set(table, [row.as_dict() for row in before.get(table)])
+		self.set(
+			RECONCILIATION,
+			bridge.explanations_kept(
+				[row.as_dict() for row in before.get(RECONCILIATION)], self.get(RECONCILIATION)
+			),
+		)
 		self.update({field: before.get(field) for field in CALCULATED_FIELDS})
 
 	def _set_final_amounts(self) -> None:
@@ -566,6 +614,7 @@ class VATReturn(Confirming, Transmittable, Document):
 					"The return is not ready: a Verprobung deviates or a watched account has a balance. Explain in the remarks why it is filed nonetheless."
 				)
 			)
+		self._require_explained_differences()
 		self._require_amounts_as_stored(self)
 
 	def _reported_before(self) -> frozenset[str]:
@@ -715,9 +764,12 @@ def build_hints(
 	mapping: ustva.Mapping,
 	result: ustva.UstvaResult,
 	comparison: plausibility.Comparison,
+	reconciliation: tuple[registers.Row, ...] = (),
 ) -> tuple[plausibility.Hint, ...]:
 	"""Hinweise: the invoices of the period, their reconciliation with the ledger, the balances on the accounts
-	watched for a hint, the Vorperiodenvergleich and the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21.
+	watched for a hint, the Vorperiodenvergleich, the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21, the
+	accounts of the tax templates without a place in the mapping and the differences of the reconciliation with the
+	registers.
 
 	A hint informs and never holds the return; whether it is ready follows the Verprobung and the accounts
 	watched at the blocking level alone.
@@ -732,11 +784,45 @@ def build_hints(
 	ledger = {number: value.amount for number, value in result.values.items()}
 	currency = frappe.get_cached_value("Company", doc.company, "default_currency")
 	names = account_labels(doc.company, (balance.account_number for balance in result.hinted))
-	found = plausibility.hints(
-		comparison, lines, ledger, mapping, SiteFigures(currency), result.hinted, names
-	)
+	figures = SiteFigures(currency)
+	found = plausibility.hints(comparison, lines, ledger, mapping, figures, result.hinted, names)
 	vat_ids = period_vat_ids(doc.company, period, mapping)
-	return plausibility.merged(found, vat_id_hints(doc.company, period, vat_ids.amounts))
+	return plausibility.merged(
+		found,
+		vat_id_hints(doc.company, period, vat_ids.amounts),
+		_tax_template_hints(doc.company, period, mapping, figures),
+		registers.hints(
+			reconciliation,
+			account_labels(doc.company, (row.account_number for row in reconciliation if row.account_number)),
+			figures,
+		),
+	)
+
+
+def build_reconciliation(
+	company: str, period: ustva.Period, mapping: ustva.Mapping, lines: list[ustva.LedgerLine]
+) -> tuple[registers.Row, ...]:
+	"""Abgleich mit Registern: the reports Sales Register and Purchase Register of the period against the ledger lines
+	the return is computed from, see steuerbote.ustva.registers."""
+	return registers.reconcile(
+		register_lines(company, period.start, period.end),
+		lines,
+		mapping,
+		deliberately_without_kennzahl(mapping.chart),
+	)
+
+
+def _tax_template_hints(
+	company: str, period: ustva.Period, mapping: ustva.Mapping, figures: plausibility.Figures
+) -> list[plausibility.Hint]:
+	"""A hint per account of the company's tax templates without a place in the mapping, with its balance in the
+	period from the same query of the ledger as Berechnen, for these accounts only."""
+	unplaced = tax_templates.without_place(
+		template_accounts(company), mapping, deliberately_without_kennzahl(mapping.chart)
+	)
+	numbers = [account.account_number for account in unplaced if account.account_number]
+	lines = load_lines(company, period.start, period.end, numbers) if numbers else []
+	return tax_templates.hints(unplaced, tax_templates.balances(lines, numbers), figures)
 
 
 class SiteFigures:

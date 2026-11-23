@@ -37,6 +37,8 @@
   "deviations",
   "unmapped",
   "accounts_without_number",
+  "register_section",
+  "register_reconciliation",
   "hints_section",
   "hints",
   "comparison_section",
@@ -277,6 +279,21 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:(doc.register_reconciliation || []).length",
+   "fieldname": "register_section",
+   "fieldtype": "Section Break",
+   "label": "Reconciliation with Registers"
+  },
+  {
+   "cannot_add_rows": 1,
+   "cannot_delete_rows": 1,
+   "description": "The sums of the reports Sales Register and Purchase Register against the ledger amounts of the return, filled by Calculate. A difference needs an explanation in its row or in the remarks before the return is filed.",
+   "fieldname": "register_reconciliation",
+   "fieldtype": "Table",
+   "label": "Reconciliation with Registers",
+   "options": "VAT Return Register Reconciliation"
+  },
+  {
    "depends_on": "eval:(doc.hints || []).length",
    "fieldname": "hints_section",
    "fieldtype": "Section Break",
@@ -364,7 +381,7 @@
    "link_fieldname": "vat_return"
   }
  ],
- "modified": "2026-11-23 12:00:00.000000",
+ "modified": "2026-11-23 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return",

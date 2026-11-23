@@ -8,6 +8,7 @@ frappe.ui.form.on("VAT Return", {
 		// Frappe asks to submit a draft, but Buchen alone files nothing: show_ready_note says how to file.
 		frm.show_submit_message = () => {};
 		leave_unknown_comparison_values_blank();
+		leave_what_is_not_compared_blank();
 	},
 
 	refresh(frm) {
@@ -88,8 +89,16 @@ function can_make_import_file(doc) {
 	if (doc.docstatus === 1) {
 		return doc.status === "Abgegeben";
 	}
-	const explained = doc.ready || (doc.remarks || "").trim();
+	const remarks = Boolean((doc.remarks || "").trim());
+	const explained = (doc.ready || remarks) && (remarks || !unexplained_differences(doc).length);
 	return doc.docstatus === 0 && ["Berechnet", "Bereit"].includes(doc.status) && Boolean(explained);
+}
+
+// The rows of the reconciliation with the registers that _require_explained_differences in vat_return.py refuses.
+function unexplained_differences(doc) {
+	return (doc.register_reconciliation || []).filter(
+		(row) => flt(row.difference) && !(row.explanation || "").trim()
+	);
 }
 
 function make_import_file(frm) {
@@ -217,4 +226,15 @@ function show_intro(frm) {
 		notes.unshift(__("The USt-IdNrn. are being confirmed. The form reloads when the confirmation has finished."));
 	}
 	frm.set_intro(notes.join("<br>"), "orange");
+}
+
+// A Currency field stores no blank, so a row of the reconciliation with the registers that is not compared holds 0
+// as its ledger amount and difference. Writing an explanation refreshes the row, and the grid formats a cell whose
+// text is empty once more with the document of the form, which shows 0, so the cell gets an empty element instead.
+function leave_what_is_not_compared_blank() {
+	for (const fieldname of ["ledger_amount", "difference"]) {
+		frappe.meta.set_formatter("VAT Return Register Reconciliation", fieldname, null, (value, df, options, doc) =>
+			!doc || !doc.compared ? "<span></span>" : frappe.form.formatters[df.fieldtype](value, df, options, doc)
+		);
+	}
 }

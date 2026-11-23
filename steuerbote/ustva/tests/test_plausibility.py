@@ -594,6 +594,8 @@ class HintsTest(TestCase):
 				"USTIDNR-UNGEPRUEFT",
 				"USTIDNR-VERALTET",
 				"USTIDNR-UNGUELTIG",
+				"STEUERVORLAGE-OHNE-KENNZAHL",
+				"REGISTER-ABWEICHUNG",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung"])

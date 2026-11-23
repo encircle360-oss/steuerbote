@@ -10,9 +10,9 @@ Ohne eigene Hersteller-ID oder ohne installierte ERiC-Laufzeitumgebung läuft St
 
 | Vorgang | Was passiert | Was es braucht | Folge für die Meldung |
 |---|---|---|---|
-| Prüfen | ERiC prüft die Meldung nach den Prüfregeln von ELSTER und liefert Fehler, Hinweise und ein Vorschau-PDF. Nichts geht an das Finanzamt. | berechnete Meldung im Entwurf | keine |
-| Testsenden | Die Meldung geht als Testfall mit dem Testmerker 700000004 an den ELSTER-Server. Der löscht sie beim Eingang, ohne sie weiterzuleiten. | berechnete Meldung im Entwurf, Zertifikatsdatei (.pfx) und Zertifikats-Passwort | keine, sie bleibt ein Entwurf |
-| Senden | Die Meldung geht an das Finanzamt. ELSTER antwortet mit Transferticket und Übermittlungsprotokoll. | Meldung „Bereit“ oder mit Begründung in den Anmerkungen, Zertifikatsdatei und Zertifikats-Passwort, Berechtigung zum Buchen, ERiC-Laufzeitumgebung, Hersteller-ID und bestätigte Datenschutzhinweise | wird gebucht, Status „Abgegeben“ |
+| Prüfen | ERiC prüft die Meldung nach den Prüfregeln von ELSTER und liefert Fehler, Hinweise und ein Vorschau-PDF. Nichts geht an das Finanzamt. | berechnete Meldung im Entwurf, jede Differenz im Abgleich mit Registern erklärt oder Anmerkungen | keine |
+| Testsenden | Die Meldung geht als Testfall mit dem Testmerker 700000004 an den ELSTER-Server. Der löscht sie beim Eingang, ohne sie weiterzuleiten. | berechnete Meldung im Entwurf, jede Differenz im Abgleich mit Registern erklärt oder Anmerkungen, Zertifikatsdatei (.pfx) und Zertifikats-Passwort | keine, sie bleibt ein Entwurf |
+| Senden | Die Meldung geht an das Finanzamt. ELSTER antwortet mit Transferticket und Übermittlungsprotokoll. | Meldung „Bereit“ oder mit Begründung in den Anmerkungen, jede Differenz im Abgleich mit Registern erklärt oder Anmerkungen, Zertifikatsdatei und Zertifikats-Passwort, Berechtigung zum Buchen, ERiC-Laufzeitumgebung, Hersteller-ID und bestätigte Datenschutzhinweise | wird gebucht, Status „Abgegeben“ |
 | In Mein ELSTER abgegeben | Kein ERiC. Steuerbote vermerkt, dass die Meldung in Mein ELSTER abgegeben wurde, etwa mit der [Datei für Mein ELSTER](abgabe-mein-elster.md). | Meldung wie zum Senden; Transferticket, Tag der Abgabe und Anmerkungen nach Wunsch | wird gebucht, Status „Abgegeben“ |
 | Als außerhalb abgegeben vermerken | Kein ERiC. Steuerbote vermerkt, dass die Meldung auf anderem Weg abgegeben wurde, etwa durch die Steuerberatung. | Meldung wie zum Senden, ein Vermerk, wie und wann sie abgegeben wurde; Transferticket und Tag der Abgabe nach Wunsch | wird gebucht, Status „Abgegeben“ |
 
@@ -178,6 +178,6 @@ Die Vermerke sind für Meldungen, die nicht über Steuerbote zum Finanzamt gehen
 
 Steuerbote prüft ein Transferticket gegen die Form, die ELSTER vorgibt (32 Zeichen, `TransferTicketSType` im ELSTER-Basisschema), und weist einen Tag der Abgabe in der Zukunft ab. Dann bucht Steuerbote die Meldung, ihr Status wird „Abgegeben“, und legt eine ELSTER-Übermittlung mit dem Vorgang „Außerhalb abgegeben“ an, mit Weg, Tag, Transferticket und Anmerkungen.
 
-Es gelten dieselben Regeln wie beim Senden: Die Meldung muss berechnet sein, ist sie nicht bereit, braucht sie vorher eine Begründung in ihren Anmerkungen, und für einen schon abgegebenen Zeitraum geht nur eine berichtigte Anmeldung. Eine Meldung, die ELSTER angenommen hat, wird nicht vermerkt, sondern gebucht.
+Es gelten dieselben Regeln wie beim Senden: Die Meldung muss berechnet sein, ist sie nicht bereit, braucht sie vorher eine Begründung in ihren Anmerkungen, jede Differenz im Abgleich mit Registern braucht eine Erklärung in ihrer Zeile oder die Anmerkungen, und für einen schon abgegebenen Zeitraum geht nur eine berichtigte Anmeldung. Eine Meldung, die ELSTER angenommen hat, wird nicht vermerkt, sondern gebucht.
 
 Wie die Arbeitspakete der Übermittlung zusammenhängen, steht in der [Roadmap](roadmap.md).

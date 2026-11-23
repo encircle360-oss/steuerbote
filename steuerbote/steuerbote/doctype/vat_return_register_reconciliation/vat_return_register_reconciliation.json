@@ -1,0 +1,106 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 10:00:00.000000",
+ "description": "A Kennzahl or tax account of a return against the sum of the report Sales Register or Purchase Register, or what the report shows that is not compared.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "register",
+  "subject",
+  "register_amount",
+  "ledger_amount",
+  "difference",
+  "explanation",
+  "kennzahl",
+  "account",
+  "compared"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "register",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Report",
+   "options": "Sales Register\nPurchase Register",
+   "read_only": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "subject",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Account or Group",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "register_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Register Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "ledger_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Ledger Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "difference",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Difference",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "Required before the return is filed for a row with a difference, unless the remarks explain it.",
+   "fieldname": "explanation",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Explanation"
+  },
+  {
+   "fieldname": "kennzahl",
+   "fieldtype": "Data",
+   "label": "Kennzahl",
+   "read_only": 1
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Account",
+   "options": "Account",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "compared",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Compared",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT Return Register Reconciliation",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

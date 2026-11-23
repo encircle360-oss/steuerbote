@@ -63,6 +63,8 @@ class Code(StrEnum):
 	VAT_ID_UNCONFIRMED = "USTIDNR-UNGEPRUEFT"
 	VAT_ID_STALE = "USTIDNR-VERALTET"
 	VAT_ID_INVALID = "USTIDNR-UNGUELTIG"
+	TAX_TEMPLATE_WITHOUT_PLACE = "STEUERVORLAGE-OHNE-KENNZAHL"
+	REGISTER_DEVIATION = "REGISTER-ABWEICHUNG"
 
 
 # A wrong invoice is a warning; a difference that may well be explained, such as a journal entry on a
@@ -81,6 +83,8 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.VAT_ID_UNCONFIRMED: Severity.HINT,
 		Code.VAT_ID_STALE: Severity.HINT,
 		Code.VAT_ID_INVALID: Severity.WARNING,
+		Code.TAX_TEMPLATE_WITHOUT_PLACE: Severity.HINT,
+		Code.REGISTER_DEVIATION: Severity.HINT,
 	}
 )
 

@@ -1312,6 +1312,14 @@ SKR04 = _mapping("SKR04", SKR04_ACCOUNTS, SKR04_WATCHED, SKR04_WATCHED_FOR_HINTS
 
 DEFAULTS = MappingProxyType({"SKR03": SKR03, "SKR04": SKR04})
 
+# The ignored accounts of each chart with the members of their ranges, which take the place of their first account.
+_DELIBERATELY_WITHOUT_KENNZAHL = MappingProxyType(
+	{
+		"SKR03": frozenset(with_ranges(SKR03_IGNORED, SKR03_RANGES)),
+		"SKR04": frozenset(with_ranges(SKR04_IGNORED, SKR04_RANGES)),
+	}
+)
+
 
 def default_mapping(chart: str, year: int) -> Mapping:
 	"""The default mapping of a chart, validated against the form of the period's year."""
@@ -1322,3 +1330,12 @@ def default_mapping(chart: str, year: int) -> Mapping:
 			f"no default mapping for chart {chart!r}; known charts: {', '.join(DEFAULTS)}"
 		) from None
 	return mapping.for_year(year)
+
+
+def deliberately_without_kennzahl(chart: str) -> frozenset[str]:
+	"""The accounts the defaults of a chart leave without Kennzahl on purpose; none for a chart without defaults.
+
+	A company with its own chart has no such list: an account of its tax templates without Kennzahl gets a place
+	by a rule or as a watched account.
+	"""
+	return _DELIBERATELY_WITHOUT_KENNZAHL.get(chart, frozenset())
