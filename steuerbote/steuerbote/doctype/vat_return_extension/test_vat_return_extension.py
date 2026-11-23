@@ -11,6 +11,7 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, getdate, today
 
 from steuerbote import dauerfrist_sources
+from steuerbote.dauerfrist import form as dauerfrist_form
 from steuerbote.steuerbote.print_format.umsatzsteuer_voranmeldung.test_umsatzsteuer_voranmeldung import cells
 from steuerbote.tests.helpers import (
 	make_account,
@@ -387,12 +388,42 @@ class TestVATReturnExtension(IntegrationTestCase):
 		self.assertEqual(doc.status, "Berechnet")
 
 	def test_a_year_whose_form_steuerbote_does_not_know_is_not_ready(self):
+		year = dauerfrist_form.LATEST_YEAR + 1
+		doc = self.calculated(
+			year=year, base_override=44000, base_override_reason="Januar bis November im Altsystem abgegeben"
+		)
+		self.assertEqual(
+			(doc.status, doc.findings, doc.provisional),
+			("Berechnet", f"Steuerbote does not know form USt 1 H for {year} yet.", 0),
+		)
+
+	def test_the_form_of_2027_is_provisional_and_not_ready(self):
+		"""Form USt 1 H 2027 comes provisionally from the beta ERiC 45.1.5.0 and the form of 2026
+		(steuerbote/ustva/years.py), so a form of 2027 is not ready even with all it needs."""
 		doc = self.calculated(
 			base_override=44000, base_override_reason="Januar bis November im Altsystem abgegeben"
 		)
 		self.assertEqual(
-			(doc.status, doc.findings), ("Berechnet", "Steuerbote does not know form USt 1 H for 2027 yet.")
+			(doc.status, doc.provisional, money(doc.sondervorauszahlung)), ("Berechnet", 1, money(4000))
 		)
+		self.assertEqual(
+			doc.findings,
+			"Steuerbote has form USt 1 H of 2027 provisionally from the documentation of Beta ERiC 45.1.5.0 and the "
+			"form of 2026: until ERiC and the BMF publish that of 2027, the form is not ready.",
+		)
+		self.assertEqual(self.extension(FILING_COMPANY, 2026).provisional, 0)
+
+	def test_every_save_checks_the_rules_of_form_ust_1_h_2027(self):
+		doc = self.calculated()
+		doc.offset_requested = 1
+		with self.assertRaisesRegex(
+			frappe.ValidationError, "Kennzahl 29 is only filed with a corrected Anmeldung"
+		):
+			doc.save()
+		doc.reload()
+		doc.update({"supplementary_code": "1", "kz500_begruendung": ""})
+		with self.assertRaisesRegex(frappe.ValidationError, "Kennzahl 500 needs a Begründung"):
+			doc.save()
 
 	def test_the_base_by_hand_replaces_the_base_from_the_voranmeldungen(self):
 		doc = self.calculated(
@@ -702,6 +733,16 @@ class TestVATReturnExtension(IntegrationTestCase):
 		):
 			with self.subTest(expected=expected):
 				self.assertIn(expected, text)
+
+	def test_prints_the_form_of_2027_as_provisional_and_that_of_2026_as_final(self):
+		text = cells(self.printed(self.calculated()))
+		self.assertIn(
+			"Anmeldung der Sondervorauszahlung 2027 vorläufig (Beta ERiC 45.1.5.0, Vordruck 2026)", text
+		)
+		final = self.calculated(
+			FILING_COMPANY, 2026, base_override=44000, base_override_reason="Voranmeldungen 2025 im Altsystem"
+		)
+		self.assertNotIn("vorläufig", cells(self.printed(final)))
 
 	def test_prints_the_antrag_alone_without_the_sondervorauszahlung(self):
 		doc = self.calculated(QUARTERLY_COMPANY, 2027, antrag=1, first_month=4)

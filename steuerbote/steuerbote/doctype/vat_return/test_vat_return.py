@@ -680,3 +680,110 @@ class TestVATReturn(IntegrationTestCase):
 		doc = self.calculated(12, company=SWITCHING_COMPANY)
 		with self.assertRaisesRegex(frappe.ValidationError, "The street of the Datenlieferant is missing"):
 			doc.make_import_file()
+
+
+# Files monthly from 2027, with the Dauerfristverlängerung and a Sondervorauszahlung of 4.000 € in 2027.
+COMPANY_2027 = "Steuerbote Test Voranmeldung 2027 GmbH"
+PROVISIONAL_2027 = "provisionally from the documentation of Beta ERiC 45.1.5.0 and form USt 1 A 2026"
+
+
+class TestVATReturn2027(IntegrationTestCase):
+	"""A Voranmeldung of 2027, whose forms come provisionally from the beta ERiC 45.1.5.0 and the form of 2026
+	(steuerbote/ustva/years.py): computed as in 2026, not ready while the forms are provisional, and written in the
+	schema of 2027."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		make_company(COMPANY_2027, "STV7")
+		cls.account = {
+			number: make_account(COMPANY_2027, number, name, root_type)
+			for number, (name, root_type) in ACCOUNTS.items()
+		}
+		make_settings(COMPANY_2027, [(2027, "monthly", 1)], [(2027, True, "4000.00")], **DATENLIEFERANT)
+		make_mapping(COMPANY_2027)
+		a = cls.account
+		january = "2027-01-12"
+		post_journal_entry(
+			COMPANY_2027, january, [(a["1400"], 1190, 0), (a["8400"], 0, 1000), (a["1776"], 0, 190)]
+		)
+		post_journal_entry(COMPANY_2027, january, [(a["1576"], 95, 0), (a["1200"], 0, 95)])
+
+	def new_return(self, period: int, **fields):
+		return frappe.get_doc(
+			{
+				"doctype": "VAT Return",
+				"company": COMPANY_2027,
+				"year": 2027,
+				"rhythm": "monthly",
+				"period_index": period,
+				**fields,
+			}
+		).insert()
+
+	def calculated(self, period: int, **fields):
+		doc = self.new_return(period, **fields)
+		doc.calculate()
+		doc.reload()
+		return doc
+
+	def test_january_is_due_on_10_march_with_the_dauerfristverlaengerung(self):
+		doc = self.new_return(1)
+		self.assertEqual(
+			(doc.period_code, doc.period_label, doc.from_date, doc.to_date, doc.deadline, doc.provisional),
+			("01", "Januar 2027", date(2027, 1, 1), date(2027, 1, 31), date(2027, 3, 10), 1),
+		)
+
+	def test_berechnen_computes_january_and_leaves_it_berechnet_while_the_forms_are_provisional(self):
+		doc = self.calculated(1)
+		self.assertEqual(
+			{row.kennzahl: money(row.final) for row in doc.kennzahlen},
+			{"81": money(1000), "66": money(95), "83": money(95)},
+		)
+		self.assertTrue(all(row.passed for row in doc.checks))
+		self.assertEqual((doc.status, doc.ready, doc.provisional), ("Berechnet", 0, 1))
+
+	def test_a_return_of_the_provisional_year_is_filed_with_remarks(self):
+		frappe.db.savepoint("vat_return_2027_test")
+		self.addCleanup(frappe.db.rollback, save_point="vat_return_2027_test")
+		doc = self.calculated(3)
+		with self.assertRaisesRegex(frappe.ValidationError, PROVISIONAL_2027):
+			doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		doc.reload()
+		doc.remarks = "Vordruck 2027 mit der Steuerberatung abgestimmt."
+		doc.save()
+		doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		self.assertEqual((doc.docstatus, doc.status), (1, "Abgegeben"))
+
+	def test_the_import_file_of_january_is_written_in_the_schema_of_2027(self):
+		doc = self.calculated(1)
+		with self.assertRaisesRegex(frappe.ValidationError, PROVISIONAL_2027):
+			doc.make_import_file()
+		doc.remarks = "Vordruck 2027 mit der Steuerberatung abgestimmt."
+		doc.save()
+		url = doc.make_import_file()
+		self.assertEqual(attached_file(url, doc).file_name, "UStVA_2027_01.xml")
+		document = contents(url)
+		root = etree.fromstring(document)
+		self.assertEqual(
+			(root.tag, root.get("version")),
+			("{http://finkonsens.de/elster/elsteranmeldung/ustva/v2027}Anmeldungssteuern", "2027"),
+		)
+		self.assertEqual(elements(document)[:2], [("Jahr", "2027"), ("Zeitraum", "01")])
+		self.assertEqual(kennzahlen(document), {"Kz66": "95.00", "Kz81": "1000", "Kz83": "95.00"})
+
+	def test_the_import_file_follows_the_schema_of_2027_of_the_beta(self):
+		eric_schema.ustva_year(2027)
+		schema = eric_schema.nutzdaten_schema(2027)
+		doc = self.calculated(1, remarks="Vordruck 2027 mit der Steuerberatung abgestimmt.")
+		document = contents(doc.make_import_file())
+		self.assertTrue(schema.validate(etree.ElementTree(etree.fromstring(document))), schema.error_log)
+
+	def test_december_deducts_the_sondervorauszahlung_2027(self):
+		doc = self.calculated(12)
+		self.assertEqual(doc.deadline, date(2028, 2, 10))
+		self.assertEqual(
+			{row.kennzahl: money(row.final) for row in doc.kennzahlen},
+			{"39": money(4000), "83": money(-4000)},
+		)
+		self.assertEqual((money(doc.sondervorauszahlung), money(doc.kz83)), (money(4000), money(-4000)))

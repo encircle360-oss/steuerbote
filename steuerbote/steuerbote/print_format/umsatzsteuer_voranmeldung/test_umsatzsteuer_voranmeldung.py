@@ -179,6 +179,23 @@ class TestUmsatzsteuerVoranmeldung(IntegrationTestCase):
 		self.assertIn("Second line", text)
 		self.assertNotIn("<script>alert(1)</script>", markup)
 
+	def test_a_return_of_2027_says_under_its_title_that_its_forms_are_provisional(self):
+		doc = frappe.get_doc(
+			{
+				"doctype": "VAT Return",
+				"company": COMPANY,
+				"year": 2027,
+				"rhythm": "monthly",
+				"period_index": 1,
+			}
+		).insert()
+		doc.calculate()
+		doc.reload()
+		text = cells(self.printed(doc))
+		self.assertIn("Umsatzsteuer-Voranmeldung 2027 vorläufig (Beta ERiC 45.1.5.0, Vordruck 2026)", text)
+		self.assertIn("Voranmeldungszeitraum | Januar 2027 |", text)
+		self.assertNotIn("vorläufig", cells(self.printed(self.calculated_return(3))))
+
 	def test_the_footer_says_what_the_print_is_for(self):
 		text = cells(self.printed(self.calculated_return(6)))
 		self.assertIn("Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.", text)

@@ -67,6 +67,19 @@ class SondervorauszahlungTest(TestCase):
 		)
 
 
+class ProvisionalFormsTest(TestCase):
+	"""What the documents and prints of a provisional year say of its forms (steuerbote/ustva/years.py)."""
+
+	def test_2027_takes_the_beta_45_1_5_0_and_the_form_of_2026(self):
+		self.assertEqual(
+			bridge.provisional_forms(2027), {"documentation": "Beta ERiC 45.1.5.0", "form_year": 2026}
+		)
+
+	def test_a_final_year_and_a_year_without_data_have_none(self):
+		self.assertIsNone(bridge.provisional_forms(2026))
+		self.assertIsNone(bridge.provisional_forms(2099))
+
+
 class KennzahlRowsTest(TestCase):
 	def setUp(self):
 		self.result = calculate(verified_month(), SKR03)

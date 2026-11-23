@@ -193,6 +193,16 @@ class DocumentTest(TestCase):
 		source = CONTROLLER.read_text(encoding="utf-8")
 		self.assertIn('FILED_THROUGH_ERIC = "eric"', source)
 
+	def test_names_the_provisional_forms_of_its_year_after_the_lock_of_a_transmission(self):
+		field = self.fields["provisional"]
+		self.assertEqual(
+			{key: field.get(key) for key in ("fieldtype", "label", "read_only", "default")},
+			{"fieldtype": "Check", "label": "Provisional Forms", "read_only": 1, "default": "0"},
+		)
+		order = self.definition["field_order"]
+		self.assertEqual(order.index("provisional"), order.index("transmission_in_progress") + 1)
+		self.assertIn("vorläufig", translations()[field["description"]])
+
 	def test_the_base_lists_the_filed_vat_returns(self):
 		base = fields("vat_return_extension_base")
 		self.assertEqual(self.fields["base_rows"]["options"], "VAT Return Extension Base")
@@ -298,6 +308,14 @@ class PrintFormatFilesTest(TestCase):
 				"Wie und wann abgegeben",
 			],
 		)
+
+	def test_marks_the_form_of_a_provisional_year_under_the_title(self):
+		self.assertIn("{%- set provisional = doc.provisional_forms() %}", self.template)
+		self.assertIn(
+			'<p class="sb-subtitle">vorläufig ({{ provisional.documentation }}, Vordruck {{ provisional.form_year }})</p>',
+			self.template,
+		)
+		self.assertLess(self.template.index("<h1>"), self.template.index("vorläufig ("))
 
 	def test_the_lines_carry_the_labels_of_the_form(self):
 		layout = layout_for(2026)
