@@ -25,13 +25,30 @@ it. ``source`` says where its amount comes from:
 A total is the sum of the declared amounts of the steps that name it, each with its sign, as the rules of the
 Jahresdokumentation add them: Anlage GK line 300 (rule 8906062), line 201 (8956047), Anlage ZVE line 32 (8900207),
 line 53 (8900413), line 70 (8900431). Steps beyond the declaration have neither form nor field.
+
+compute() takes the KstInputs of a VZ: the ledger lines of the Wirtschaftsjahr (all accounts of the profit and loss
+account, without the Period Closing Voucher and the opening entries, as steuerbote.ustva.LedgerLine), the Income Tax
+Mapping, the manual lines with their reasons, the dividends of the holdings register and what the settings and the
+notices say. It gives a KstResult with a Line per step: ``exact`` in cents, ``declared`` as the form takes it, the
+postings behind it (``contributions``) and its manual lines. A line of the ledger is declared in whole euros rounded
+half up, since the Jahresdokumentation gives no direction (steuerbote.ustva.rounding); the lines of § 8b and of the
+Termingeschäfte round as their modules say. ``figures`` writes the amounts of the findings in the number format of
+the site (steuerbote.ustva.plausibility.Figures).
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import Enum
 from types import MappingProxyType
 
-from steuerbote.kst.categories import Category
+from steuerbote.kst.categories import Category, Classification, Contribution, Mapping, classify
+from steuerbote.kst.holdings import Amount, HoldingResult, P8b, p8b
+from steuerbote.kst.losses import Derivatives, derivatives
+from steuerbote.kst.years import Year, year_of
+from steuerbote.ustva.calculation import LedgerLine
+from steuerbote.ustva.plausibility import Figures
+from steuerbote.ustva.rounding import CENT, ZERO, half_up_euro, require_decimal
 
 
 class Source(Enum):
@@ -636,3 +653,197 @@ def step(key: str) -> Step:
 		return _BY_KEY[key]
 	except KeyError:
 		raise KeyError(f"no step {key!r}") from None
+
+
+_TAKES_MANUAL_LINES = frozenset({Source.NET_INCOME, Source.LEDGER, Source.MANUAL})
+_P8B_LINES = (
+	("p8b_dividends", "exempt_dividends"),
+	("p8b_dividends_nondeductible", "dividends_nondeductible"),
+	("p8b_gains", "gains"),
+	("p8b_losses", "losses"),
+	("p8b_writeups", "writeups"),
+	("p8b_gains_nondeductible", "gains_nondeductible"),
+	("p8b_writedowns", "writedowns"),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ManualLine:
+	"""An amount entered by hand with its reason, in the direction of its step: a verdeckte Gewinnausschüttung as a
+	positive amount, an Überleitung that lowers the profit as a negative one."""
+
+	step: str
+	amount: Decimal
+	reason: str
+
+	def __post_init__(self) -> None:
+		try:
+			found = step(self.step)
+		except KeyError as error:
+			raise ValueError(error.args[0]) from None
+		if found.source not in _TAKES_MANUAL_LINES:
+			raise ValueError(f"step {self.step} takes no manual line, its amount is {found.source.value}")
+		if not _is_cents(self.amount):
+			raise ValueError(f"step {self.step}: a manual line needs an amount in cents, not {self.amount}")
+		if not isinstance(self.reason, str) or not self.reason.strip():
+			raise ValueError(f"step {self.step}: a manual line needs a reason")
+
+
+@dataclass(frozen=True, slots=True)
+class Line:
+	"""A step as computed: ``exact`` in cents, ``declared`` as the form takes it, and what stands behind it."""
+
+	step: Step
+	exact: Decimal
+	declared: Decimal
+	contributions: tuple[Contribution, ...] = ()
+	manual: tuple[ManualLine, ...] = ()
+
+	@property
+	def ledger(self) -> Decimal:
+		"""The part of the exact amount that comes from the books, without the manual lines."""
+		return self.exact - sum((line.amount for line in self.manual), ZERO)
+
+
+@dataclass(frozen=True, slots=True)
+class KstInputs:
+	"""What compute() needs for a VZ besides the books.
+
+	``net_income`` is the Jahresüberschuss when it comes from elsewhere, such as the E-Bilanz; without it the ledger
+	lines give it. ``holdings`` are the dividends of the holdings register, ``trading_book`` the flag of § 8b Absatz 7
+	KStG in the settings. The carry-forwards are those of the last notices, in whole euros: the Verlustvortrag of
+	§ 10d EStG, the Verlustvortrag of the Termingeschäfte and the Zuwendungsvortrag; ``loss_carry_back`` is the
+	Verlustrücktrag chosen for a loss, 0 for none. ``eligible_donations`` are the Zuwendungen of the receipts, by
+	default those of the category donations, ``turnover_and_wages`` the sum of Anlage Z line 10. The credits and
+	Vorauszahlungen come from the Steuerbescheinigungen and the notices, in cents.
+	"""
+
+	year: int
+	lines: tuple[LedgerLine, ...]
+	mapping: Mapping
+	net_income: Decimal | None = None
+	manual: tuple[ManualLine, ...] = ()
+	holdings: tuple[HoldingResult, ...] = ()
+	trading_book: bool = False
+	loss_carry_forward: Decimal = ZERO
+	loss_carry_back: Decimal | None = None
+	derivatives_carry_forward: Decimal = ZERO
+	donation_carry_forward: Decimal = ZERO
+	eligible_donations: Decimal | None = None
+	turnover_and_wages: Decimal | None = None
+	capital_gains_tax_credit: Decimal = ZERO
+	solz_credit: Decimal = ZERO
+	kst_prepayments: Decimal = ZERO
+	solz_prepayments: Decimal = ZERO
+
+	def __post_init__(self) -> None:
+		for name in ("lines", "manual", "holdings"):
+			object.__setattr__(self, name, tuple(getattr(self, name)))
+
+
+@dataclass(frozen=True, slots=True)
+class KstResult:
+	"""The computed lines of a VZ in the order of STEPS, and the results of the modules behind them."""
+
+	year: Year
+	lines: MappingProxyType[str, Line]
+	classification: Classification
+	p8b: P8b
+	derivatives: Derivatives
+
+	@property
+	def business_income(self) -> Decimal:
+		"""Anlage GK line 300."""
+		return self.lines[BUSINESS_INCOME].declared
+
+
+def compute(inputs: KstInputs, figures: Figures) -> KstResult:
+	"""The Körperschaftsteuer of a VZ; see the module docstring."""
+	year = year_of(inputs.year)
+	classification = classify(inputs.lines, inputs.mapping)
+	manual = _by_step(inputs.manual)
+	lines: dict[str, Line] = {}
+	for item in STEPS:
+		if item.source in (Source.LEDGER, Source.MANUAL):
+			exact = classification.amount(*item.categories) + _sum(manual.get(item.key, ()))
+			lines[item.key] = Line(
+				item,
+				exact,
+				half_up_euro(exact),
+				classification.contributions(*item.categories),
+				manual.get(item.key, ()),
+			)
+	net_income = (
+		sum((line.credit - line.debit for line in inputs.lines), ZERO)
+		if inputs.net_income is None
+		else inputs.net_income
+	) + _sum(manual.get("net_income", ()))
+	lines["net_income"] = Line(
+		step("net_income"), net_income, half_up_euro(net_income), (), manual.get("net_income", ())
+	)
+
+	pool = derivatives(
+		year,
+		classification.amount(Category.DERIVATIVES_GAIN),
+		classification.amount(Category.DERIVATIVES_LOSS),
+		inputs.derivatives_carry_forward,
+	)
+	_put(lines, "derivatives_loss", pool.added_back, classification)
+	_put(lines, "derivatives_offset", pool.offset, classification)
+
+	shares = p8b(
+		year,
+		dividends=classification.amount(Category.DIVIDENDS),
+		holdings=inputs.holdings,
+		gains=classification.amount(Category.SHARE_GAIN),
+		sale_costs=classification.amount(Category.SHARE_SALE_COSTS),
+		losses=classification.amount(Category.SHARE_LOSS),
+		writedowns=classification.amount(Category.SHARE_WRITEDOWN),
+		writeups=classification.amount(Category.SHARE_WRITEUP),
+		trading_book=inputs.trading_book,
+	)
+	for key, name in _P8B_LINES:
+		_put(lines, key, getattr(shares, name), classification)
+	_put(lines, P8B_TOTAL, _total(P8B_TOTAL, lines))
+	_put(lines, "investment_funds", Amount(ZERO, ZERO), classification)
+	_put(lines, BUSINESS_INCOME, _total(BUSINESS_INCOME, lines))
+
+	return KstResult(
+		year,
+		MappingProxyType({item.key: lines[item.key] for item in STEPS if item.key in lines}),
+		classification,
+		shares,
+		pool,
+	)
+
+
+def _put(
+	lines: dict[str, Line], key: str, amount: Amount, classification: Classification | None = None
+) -> None:
+	item = step(key)
+	contributions = classification.contributions(*item.categories) if classification else ()
+	lines[key] = Line(item, amount.exact, amount.declared, contributions)
+
+
+def _total(key: str, lines: dict[str, Line]) -> Amount:
+	"""The sum of the lines that feed the total, each with its sign: exact and declared."""
+	feeding = [lines[item.key] for item in STEPS if item.total == key]
+	return Amount(
+		sum((line.step.sign * line.exact for line in feeding), ZERO),
+		sum((line.step.sign * line.declared for line in feeding), ZERO),
+	)
+
+
+def _by_step(manual: Iterable[ManualLine]) -> dict[str, tuple[ManualLine, ...]]:
+	grouped: dict[str, list[ManualLine]] = {}
+	for line in manual:
+		grouped.setdefault(line.step, []).append(line)
+	return {key: tuple(lines) for key, lines in grouped.items()}
+
+
+def _sum(manual: Iterable[ManualLine]) -> Decimal:
+	return sum((line.amount for line in manual), ZERO)
+
+
+def _is_cents(amount: Decimal) -> bool:
+	return require_decimal(amount).is_finite() and amount == amount.quantize(CENT)
