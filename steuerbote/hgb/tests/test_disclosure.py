@@ -19,6 +19,7 @@ from steuerbote.hgb.disclosure import (
 	deadline_kept,
 	default_mode,
 	disclosure_deadline,
+	ergebnisverwendung,
 	filing_fees,
 	modes,
 	preparation_deadline,
@@ -335,3 +336,24 @@ class FeesTest(TestCase):
 			(FEE_CHANGES.changed, FEE_CHANGES.withdrawn, FEE_CHANGES.reference),
 			(Decimal("1.5"), Decimal("0.5"), "Vorbemerkung 1.4.2 Abs. 2 und 3 KV JVKostG"),
 		)
+
+
+class ErgebnisverwendungTest(TestCase):
+	"""§ 285 Nr. 34 HGB: the Vorschlag or the Beschluss on the Ergebnisverwendung in the Anhang of the larger classes."""
+
+	def test_kleinst_and_klein_disclose_no_ergebnisverwendung(self):
+		kleinst, klein = ergebnisverwendung(SizeClass.KLEINST), ergebnisverwendung(SizeClass.KLEIN)
+		self.assertEqual(
+			(kleinst.disclosed, kleinst.reference), (False, "§ 264 Abs. 1 Satz 5, § 326 Abs. 2 Satz 1 HGB")
+		)
+		self.assertEqual((klein.disclosed, klein.reference), (False, "§ 288 Abs. 1 Nr. 1, § 285 Nr. 34 HGB"))
+		self.assertFalse(kleinst.follows or klein.follows)
+
+	def test_the_larger_classes_disclose_it_in_the_anhang_and_the_beschluss_after_a_vorschlag(self):
+		for size_class in (SizeClass.MITTELGROSS, SizeClass.GROSS):
+			with self.subTest(size_class=size_class):
+				use = ergebnisverwendung(size_class)
+				self.assertEqual(
+					(use.disclosed, use.follows, use.reference),
+					(True, True, "§ 285 Nr. 34, § 325 Abs. 1b Satz 2, § 328 Abs. 3 HGB"),
+				)
