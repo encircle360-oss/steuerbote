@@ -17,6 +17,7 @@ from steuerbote.mapping_sync import (
 	annual_rules_of_rows,
 	annual_split,
 	body_of_items,
+	check_annual_rows,
 	choices_of_rows,
 	default_items,
 	defaults_for_accounts,
@@ -1013,3 +1014,71 @@ class AnnualBodyTest(TestCase):
 		):
 			with self.subTest(refusal=refusal), self.assertRaisesRegex(MappingError, refusal):
 				items_of_body(body)
+
+
+class CheckAnnualRowsTest(TestCase):
+	"""What saving the mapping checks for the annual return: the annual fields and the rows for the annual return only
+	that the company gave, against the latest form, while a line the annual return asks for is left to it."""
+
+	def check(self, rules, annual=(), checks=(), watched=(), chart="SKR03") -> None:
+		check_annual_rows(chart, rules, checks, watched, annual, ANNUAL_YEAR)
+
+	def test_annual_fields_and_rows_that_fit_pass(self):
+		self.check(
+			[rule_row("8910", annual_field="E3003505"), rule_row("8100", "48", paragraph="4 Nummer 14")],
+			[annual_row("3552"), annual_row("3075", "E3102804")],
+			watched=[{"account_number": "3075"}],
+		)
+
+	def test_an_annual_field_that_is_not_a_line_of_its_kennzahl_is_refused(self):
+		for rules, refusal in (
+			(
+				[rule_row("8910", annual_field="E3003703")],
+				"Account 8910 feeds Kennzahl 81 of the Voranmeldung, which",
+			),
+			([rule_row("8910", annual_field="E9999999")], "Form USt 2 A 2026 has no field E9999999"),
+			([rule_row("8400", paragraph="4 Nummer 14")], "names no paragraph, so account 8400 gives none"),
+		):
+			with self.subTest(refusal=refusal), self.assertRaisesRegex(SplitError, refusal):
+				self.check(rules)
+
+	def test_a_row_for_the_annual_return_only_needs_an_account_no_kennzahl_takes_and_a_field_it_can_feed(
+		self,
+	):
+		for annual, refusal in (
+			(annual_row("8400"), "Account 8400 feeds Kennzahl 81 of the Voranmeldung, so its line"),
+			(annual_row("1776"), "Account 1776 is a tax account of the Verprobung"),
+			(annual_row("3552", "E3011101"), "Account 3552 cannot feed field E3011101 in line 124"),
+		):
+			with self.subTest(refusal=refusal), self.assertRaisesRegex(SplitError, refusal):
+				self.check([rule_row("8400")], [annual], checks=[check_row()])
+		with self.assertRaisesRegex(MappingError, "account 3552: no annual field"):
+			self.check([rule_row("8400")], [annual_row("3552", "")])
+
+	def test_an_account_of_kz_64_without_its_line_is_left_to_the_annual_return(self):
+		"""The Voranmeldung needs no line for it; the annual return asks for one (split.NO_DEFAULT)."""
+		self.check([rule_row("1550", "64", "debit")], chart="Eigener Kontenrahmen")
+		self.check([rule_row("8400", "64", "debit"), rule_row("8910", "64", "debit")])
+		with self.assertRaisesRegex(
+			SplitError, "Account 1550 feeds Kennzahl 64 of the Voranmeldung, which field"
+		):
+			self.check(
+				[rule_row("1550", "64", "debit", annual_field="E3003303")], chart="Eigener Kontenrahmen"
+			)
+
+	def test_an_account_of_a_kennzahl_without_a_line_is_left_out_unless_it_names_one(self):
+		"""Kz 39 has no line: the annual return takes the Sondervorauszahlung into its Vorauszahlungssoll."""
+		self.check([rule_row("1781", "39", "debit"), rule_row("8400")])
+		with self.assertRaisesRegex(
+			SplitError, "Account 1781 feeds Kennzahl 39 of the Voranmeldung, which field"
+		):
+			self.check([rule_row("1781", "39", "debit", annual_field="E3003303")])
+		with self.assertRaisesRegex(
+			SplitError, "Account 1781 feeds Kennzahl 39 of the Voranmeldung, so its line"
+		):
+			self.check([rule_row("1781", "39", "debit")], [annual_row("1781")])
+
+	def test_rules_the_form_of_the_annual_return_does_not_take_leave_the_check_to_the_voranmeldung(self):
+		"""Saving checks the rules against the form of the Voranmeldung first, which may know a Kennzahl the latest
+		form of the annual return does not."""
+		self.check([rule_row("8400", "99", annual_field="E3003303")])
