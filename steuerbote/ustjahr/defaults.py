@@ -200,6 +200,8 @@ _CHARTS = MappingProxyType(
 		"SKR04": (MappingProxyType({**SKR04_ACCOUNTS, **SKR04_ANNUAL_ACCOUNTS}), SKR04_RANGES),
 	}
 )
+CHARTS = frozenset(_CHARTS)
+"""The charts with defaults of the annual return."""
 
 
 def role_defaults(chart: str, year: int) -> ReadOnlyMapping[str, str]:

@@ -15,6 +15,17 @@ rows_of_items turn rows into items and back, default_items gives the defaults of
 body_of_items and items_of_body turn items into the plain data of the stored defaults and of the file and back, and
 file_body and items_of_file_body make the body of the file of a mapping, its rows with the defaults it took over.
 
+The annual return reads the same rows and two things more (steuerbote/ustjahr/split.py): the annual field and the
+paragraph a rule names for its line, and the rows of the accounts only the annual return reads, „Zuordnung nur für
+die Umsatzsteuererklärung“. choices_of_rows and annual_rules_of_rows turn them into the Choice and AnnualRule of the
+core, and annual_split gives the line of every account with the defaults of the chart by role
+(steuerbote/ustjahr/defaults.py), which is what the annual return calls. As items, an annual field is one of its own
+kind beside the rule of its account, and so is a row for the annual return only beside a watched entry of the same
+account; both come after the other items. The body holds them in parts of their own, annual_fields and annual_rules,
+and only when there are any, so that a mapping without them keeps the body, the stored defaults and the file it had,
+and the body of a file of an earlier version reads as before. annual_rows_for_accounts and annual_default_items give
+the rows for the annual return of the defaults of a chart for the accounts a company has.
+
 A row holds what Frappe stores: an empty Float field is 0, an empty Data or Select field is "" or None,
 and a rule's account number is the one fetched from its account. The DocType's own validate runs before
 Frappe checks the mandatory fields, so a row can still lack a value here.
@@ -29,6 +40,9 @@ from types import MappingProxyType
 from typing import Any, NamedTuple
 
 from steuerbote.mappings.transfer import canonical_json
+from steuerbote.ustjahr.defaults import CHARTS as ANNUAL_CHARTS
+from steuerbote.ustjahr.defaults import annual_rules, role_defaults
+from steuerbote.ustjahr.split import AnnualRule, Choice, Split, split
 from steuerbote.ustva import (
 	AccountRule,
 	Mapping,
@@ -51,12 +65,21 @@ ACCOUNT = "account"
 CHECK = "check"
 RULE = "rule"
 WATCHED = "watched"
+# The annual field and paragraph a rule names for the annual return, and an account only the annual return reads.
+ANNUAL_FIELD = "annual_field"
+ANNUAL_RULE = "annual_rule"
 RULE_FIELDS = ("kennzahl", "side", "tax_rate", "also_kennzahl", "also_side")
 CHECK_FIELDS = ("base_accounts", "tax_accounts", "side")
+CHOICE_FIELDS = ("annual_field", "paragraph")
+ANNUAL_RULE_FIELDS = ("annual_field", "side", "paragraph")
 BODY_PARTS = {
 	"rules": ("account_number", *RULE_FIELDS),
 	"checks": ("label", *CHECK_FIELDS),
 	"watched": ("account_number", "level"),
+}
+ANNUAL_BODY_PARTS = {
+	"annual_fields": ("account_number", *CHOICE_FIELDS),
+	"annual_rules": ("account_number", *ANNUAL_RULE_FIELDS),
 }
 
 # The DocType asks for account numbers separated by commas; blanks and line breaks separate them as well,
@@ -131,12 +154,17 @@ def defaults_for_accounts(
 
 
 def items_of_rows(
-	rule_rows: Iterable[Row], check_rows: Iterable[Row], watched_rows: Iterable[Row]
+	rule_rows: Iterable[Row],
+	check_rows: Iterable[Row],
+	watched_rows: Iterable[Row],
+	annual_rows: Iterable[Row] = (),
 ) -> dict[Key, Fields]:
-	"""The items of the rows: the accounts of the rules, then the watched accounts, then the Verprobungen, each in
-	the order of its table. Raises MappingError for a row the core cannot read and for an account or a label that
-	two rows name, since an item has one place."""
+	"""The items of the rows: the accounts of the rules, then the watched accounts, then the Verprobungen, then the
+	annual fields of the rules and the rows for the annual return only, each in the order of its table. Raises
+	MappingError for a row the core cannot read and for an account or a label that two rows name, since an item has
+	one place."""
 	items: dict[Key, Fields] = {}
+	rule_rows = tuple(rule_rows)
 	for row in rule_rows:
 		rule = _rule(row)
 		_put(items, (ACCOUNT, rule.account_number), _rule_fields(rule), "account {0} is mapped twice")
@@ -153,6 +181,18 @@ def items_of_rows(
 	for row in check_rows:
 		check = _check(row)
 		_put(items, (CHECK, check.label), _check_fields(check), "two tax checks have the label {0!r}")
+	for choice in choices_of_rows(rule_rows):
+		items[(ANNUAL_FIELD, choice.account_number)] = {
+			"annual_field": choice.field,
+			"paragraph": choice.paragraph,
+		}
+	for annual in annual_rules_of_rows(annual_rows):
+		_put(
+			items,
+			(ANNUAL_RULE, annual.account_number),
+			{"annual_field": annual.field, "side": annual.side.value, "paragraph": annual.paragraph},
+			"account {0} has two rows for the annual return only",
+		)
 	return items
 
 
@@ -183,46 +223,118 @@ def default_items(chart: str, year: int, existing_numbers: Set[str]) -> dict[Key
 	return items_of_rows(defaults.rule_rows, defaults.check_rows, defaults.watched_rows)
 
 
+def choices_of_rows(rule_rows: Iterable[Row]) -> tuple[Choice, ...]:
+	"""What the rule rows say for the annual return: each that names an annual field or a paragraph, as a Choice."""
+	choices = []
+	for row in rule_rows:
+		field, paragraph = _text(row.get("annual_field")) or None, _one_line(row.get("paragraph"))
+		if field is not None or paragraph is not None:
+			choices.append(Choice(_account_number(row, "rule"), field, paragraph))
+	return tuple(choices)
+
+
+def annual_rules_of_rows(annual_rows: Iterable[Row]) -> tuple[AnnualRule, ...]:
+	"""The rows of the accounts only the annual return reads, as AnnualRule; raises MappingError for a row without
+	account or field or with a side that is neither credit nor debit."""
+	rules = []
+	for row in annual_rows:
+		number = _account_number(row, "row for the annual return only")
+		where = f"account {number}"
+		field = _text(row.get("annual_field"))
+		if not field:
+			raise MappingError(f"{where}: no annual field")
+		rules.append(
+			AnnualRule(number, field, _side(row.get("side"), where), _one_line(row.get("paragraph")))
+		)
+	return tuple(rules)
+
+
+def annual_split(
+	chart: str,
+	rule_rows: Iterable[Row],
+	check_rows: Iterable[Row],
+	watched_rows: Iterable[Row],
+	annual_rows: Iterable[Row],
+	year: int,
+) -> Split:
+	"""The line of the annual return of ``year`` for each account of the rows, with the defaults of the chart by role.
+
+	Raises MappingError for rows the core of the Voranmeldung refuses, SplitError for an annual field or a row for the
+	annual return that does not fit, and UnknownYearError for a year without its form.
+	"""
+	rule_rows = tuple(rule_rows)
+	mapping = rows_to_mapping(chart, rule_rows, check_rows, watched_rows, year)
+	roles = role_defaults(chart, year) if chart in ANNUAL_CHARTS else None
+	return split(mapping, choices_of_rows(rule_rows), roles, annual_rules_of_rows(annual_rows))
+
+
+def annual_rows_for_accounts(chart: str, year: int, existing_numbers: Set[str]) -> list[dict[str, Any]]:
+	"""The rows for the annual return only of the defaults of ``chart`` whose account the company has; none for a
+	chart of its own."""
+	if chart not in ANNUAL_CHARTS:
+		return []
+	return [
+		{
+			"account_number": rule.account_number,
+			"annual_field": rule.field,
+			"side": rule.side.value,
+			"paragraph": rule.paragraph,
+		}
+		for rule in annual_rules(chart, year)
+		if rule.account_number in existing_numbers
+	]
+
+
+def annual_default_items(chart: str, year: int, existing_numbers: Set[str]) -> dict[Key, Fields]:
+	"""What Vorgaben laden takes over for the annual return from the defaults of a chart, as items."""
+	return items_of_rows((), (), (), annual_rows_for_accounts(chart, year, existing_numbers))
+
+
 def rows_of_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]]) -> MappingRows:
-	"""The rows of the items by account number, each table in the order of the items."""
-	rules, checks, watched = [], [], []
-	for (kind, key), fields in items.items():
-		if kind == CHECK:
-			checks.append({"label": key, **{name: fields[name] for name in CHECK_FIELDS}})
-		elif fields["place"] == WATCHED:
-			watched.append({"account_number": key, "level": fields["level"]})
-		else:
-			rate = fields["tax_rate"]
-			rules.append(
-				{
-					"account_number": key,
-					**{name: fields[name] for name in RULE_FIELDS},
-					"tax_rate": Decimal(rate) if rate else None,
-				}
-			)
-	return MappingRows(rules, checks, watched)
+	"""The rows of the items by account number, each table in the order of the items; a rule row carries the annual
+	field and paragraph of its account, if the items name one. Raises MappingError for an annual field whose account
+	has no rule, since the rule row holds it."""
+	parts = _parts_of_items(items)
+	rules = {row["account_number"]: row for row in parts["rules"]}
+	for choice in parts["annual_fields"]:
+		number = choice["account_number"]
+		if number not in rules:
+			raise MappingError(f"account {number} has an annual field but no rule")
+		rules[number] = {**rules[number], **{name: choice[name] for name in CHOICE_FIELDS}}
+	return MappingRows(list(rules.values()), parts["checks"], parts["watched"])
+
+
+def annual_rows_of_items(
+	items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]],
+) -> list[dict[str, Any]]:
+	"""The rows for the annual return only, in the order of the items."""
+	return _parts_of_items(items)["annual_rules"]
 
 
 def body_of_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]]) -> dict[str, list[dict]]:
 	"""The items as plain data, the form the stored defaults and the file of a mapping hold them in: rules, checks
-	and watched accounts with their fields as texts, the accounts of a check as a list."""
-	rows = rows_of_items(items)
-	return {
-		"rules": [{**row, "tax_rate": _rate_text(row["tax_rate"])} for row in rows.rule_rows],
+	and watched accounts with their fields as texts, the accounts of a check as a list, and the annual fields and the
+	rows for the annual return only where there are any."""
+	parts = _parts_of_items(items)
+	body = {
+		"rules": [{**row, "tax_rate": _rate_text(row["tax_rate"])} for row in parts["rules"]],
 		"checks": [
 			{**row, **{part: list(_account_numbers(row[part])) for part in ("base_accounts", "tax_accounts")}}
-			for row in rows.check_rows
+			for row in parts["checks"]
 		],
-		"watched": rows.watched_rows,
+		"watched": parts["watched"],
 	}
+	return body | {part: parts[part] for part in ANNUAL_BODY_PARTS if parts[part]}
 
 
 def items_of_body(body: Any) -> dict[Key, Fields]:
 	"""The items of plain data as body_of_items writes it; raises MappingError for data of another shape."""
-	if not isinstance(body, dict) or set(body) != set(BODY_PARTS):
-		raise MappingError(f"a mapping holds {', '.join(BODY_PARTS)}")
-	for part, fields in BODY_PARTS.items():
-		rows = body[part]
+	if not isinstance(body, dict) or not set(BODY_PARTS) <= set(body) <= {*BODY_PARTS, *ANNUAL_BODY_PARTS}:
+		raise MappingError(
+			f"a mapping holds {', '.join(BODY_PARTS)} and may hold {', '.join(ANNUAL_BODY_PARTS)}"
+		)
+	for part, fields in {**BODY_PARTS, **ANNUAL_BODY_PARTS}.items():
+		rows = body.get(part, [])
 		if not isinstance(rows, list):
 			raise MappingError(f"{part} must be a list")
 		for row in rows:
@@ -233,13 +345,19 @@ def items_of_body(body: Any) -> dict[Key, Fields]:
 					value, list_of_numbers=part == "checks" and name in ("base_accounts", "tax_accounts")
 				):
 					raise MappingError(f"{part}: {name} cannot be {value!r}")
+	rules = {row["account_number"]: row for row in body["rules"]}
+	for choice in body.get("annual_fields", []):
+		if choice["account_number"] not in rules:
+			raise MappingError(f"account {choice['account_number']} has an annual field but no rule")
+		rules[choice["account_number"]] = {**rules[choice["account_number"]], **choice}
 	return items_of_rows(
-		body["rules"],
+		[rules.get(row["account_number"], row) for row in body["rules"]],
 		[
 			{**row, **{part: ", ".join(row[part]) for part in ("base_accounts", "tax_accounts")}}
 			for row in body["checks"]
 		],
 		body["watched"],
+		body.get("annual_rules", []),
 	)
 
 
@@ -275,6 +393,40 @@ def load_items(text: str) -> dict[Key, Fields]:
 	except ValueError:
 		raise MappingError("the stored defaults are no JSON") from None
 	return items_of_body(body)
+
+
+def _parts_of_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]]) -> dict[str, list[dict]]:
+	"""The rows of each kind of item, rules without their annual fields, in the order of the items."""
+	parts: dict[str, list[dict]] = {
+		"rules": [],
+		"checks": [],
+		"watched": [],
+		"annual_fields": [],
+		"annual_rules": [],
+	}
+	for (kind, key), fields in items.items():
+		if kind == CHECK:
+			parts["checks"].append({"label": key, **{name: fields[name] for name in CHECK_FIELDS}})
+		elif kind == ANNUAL_FIELD:
+			parts["annual_fields"].append(
+				{"account_number": key, **{name: fields[name] for name in CHOICE_FIELDS}}
+			)
+		elif kind == ANNUAL_RULE:
+			parts["annual_rules"].append(
+				{"account_number": key, **{name: fields[name] for name in ANNUAL_RULE_FIELDS}}
+			)
+		elif fields["place"] == WATCHED:
+			parts["watched"].append({"account_number": key, "level": fields["level"]})
+		else:
+			rate = fields["tax_rate"]
+			parts["rules"].append(
+				{
+					"account_number": key,
+					**{name: fields[name] for name in RULE_FIELDS},
+					"tax_rate": Decimal(rate) if rate else None,
+				}
+			)
+	return parts
 
 
 def _put(items: dict[Key, Fields], key: Key, fields: Fields, refusal: str) -> None:
@@ -389,6 +541,11 @@ def _tax_rate(value: Any, where: str) -> Decimal | None:
 
 def _text(value: Any) -> str:
 	return "" if value is None else str(value).strip()
+
+
+def _one_line(value: Any) -> str | None:
+	"""A text on one line without blanks at either end, as the core takes a paragraph; None for an empty one."""
+	return " ".join(_text(value).split()) or None
 
 
 def _rule_row(rule: AccountRule) -> dict[str, Any]:
