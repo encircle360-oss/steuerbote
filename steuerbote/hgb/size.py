@@ -26,6 +26,10 @@ Satz 1 HGB, for Kleinst by § 267a Abs. 1 Satz 2) decide() applies this to each 
 classes: a boundary the criteria cross on one Abschlussstichtag only keeps the side the class of the previous year
 stood on. A company that grows from klein over two years into mittelgroß and then groß is therefore mittelgroß in
 the second year. Both Abschlussstichtage are measured against the thresholds of the fiscal year decided.
+„Im Falle der Umwandlung oder Neugründung treten die Rechtsfolgen schon ein, wenn die Voraussetzungen des
+Absatzes 1, 2 oder 3 am ersten Abschlußstichtag nach der Umwandlung oder Neugründung vorliegen. Satz 2 findet im
+Falle des Formwechsels keine Anwendung, sofern der formwechselnde Rechtsträger eine Kapitalgesellschaft oder eine
+Personenhandelsgesellschaft im Sinne des § 264a Absatz 1 ist.“ (§ 267 Abs. 4 Satz 2 and 3 HGB)
 
 „Als durchschnittliche Zahl der Arbeitnehmer gilt der vierte Teil der Summe aus den Zahlen der jeweils am
 31. März, 30. Juni, 30. September und 31. Dezember beschäftigten Arbeitnehmer einschließlich der im Ausland
@@ -204,18 +208,27 @@ def indicated_class(criteria: Criteria, thresholds: YearThresholds) -> SizeClass
 	return SizeClass.GROSS
 
 
+class Origin(Enum):
+	"""What the fiscal year is the first after; only a Neugründung and an Umwandlung let its closing date decide."""
+
+	NEUGRUENDUNG = "Neugründung"
+	UMWANDLUNG = "Umwandlung"
+	FORMWECHSEL = "Formwechsel einer Kapitalgesellschaft oder einer Personenhandelsgesellschaft im Sinne des § 264a Absatz 1"
+
+
 class Basis(Enum):
 	"""Why a class applies to a fiscal year."""
 
 	CONFIRMED = "an zwei aufeinanderfolgenden Abschlussstichtagen"
 	CARRIED = "Größenklasse des Vorjahres"
+	FOUNDING = "erster Abschlussstichtag nach Neugründung oder Umwandlung"
 
 
 @dataclass(frozen=True, slots=True)
 class SizeDecision:
 	"""The class of a fiscal year: the class each Abschlussstichtag points to and the one that applies.
 
-	applied is None while the class of the previous year is needed and unknown; the Annual Accounts then ask
+	``applied`` is None while the class of the previous year is needed and unknown; the Annual Accounts then ask
 	for it or for an override with a Begründung.
 	"""
 
@@ -231,12 +244,17 @@ class SizeDecision:
 
 
 def decide(
-	current: Criteria, previous: Criteria | None = None, previous_class: SizeClass | None = None
+	current: Criteria,
+	previous: Criteria | None = None,
+	previous_class: SizeClass | None = None,
+	*,
+	first_after: Origin | None = None,
 ) -> SizeDecision:
-	"""The class of the fiscal year ending on current.closing_date (§ 267 Abs. 4 Satz 1 HGB).
+	"""The class of the fiscal year ending on ``current.closing_date`` (§ 267 Abs. 4 HGB).
 
-	previous holds the criteria of the Abschlussstichtag before, previous_class the class that applied in
-	that fiscal year, as the size history of the Annual Filing Settings records it.
+	``previous`` holds the criteria of the Abschlussstichtag before, ``previous_class`` the class that applied in
+	that fiscal year, as the size history of the Annual Filing Settings records it. ``first_after`` names what the
+	fiscal year is the first after: the founding year of the company is the first after its Neugründung.
 	"""
 	if previous is not None and previous.closing_date >= current.closing_date:
 		raise SizeError(
@@ -246,11 +264,13 @@ def decide(
 	year = current.closing_date.year
 	thresholds = thresholds_for(year)
 	indicated = indicated_class(current, thresholds)
+	previous_indicated = None if previous is None else indicated_class(previous, thresholds)
+	if first_after in (Origin.NEUGRUENDUNG, Origin.UMWANDLUNG):
+		return SizeDecision(year, indicated, previous_indicated, indicated, Basis.FOUNDING)
 	if previous is None:
 		if previous_class is indicated:
 			return SizeDecision(year, indicated, None, indicated, Basis.CARRIED)
 		return SizeDecision(year, indicated, None, None, None)
-	previous_indicated = indicated_class(previous, thresholds)
 	if previous_indicated is indicated:
 		return SizeDecision(year, indicated, previous_indicated, indicated, Basis.CONFIRMED)
 	if previous_class is None:
@@ -275,7 +295,7 @@ def _carried(
 
 
 def headcount_dates(closing_date: date) -> tuple[date, ...]:
-	"""The days of § 267 Abs. 5 HGB for the year that ends on closing_date: the last four quarter ends up to it,
+	"""The days of § 267 Abs. 5 HGB for the year that ends on ``closing_date``: the last four quarter ends up to it,
 	31 March, 30 June, 30 September and 31 December of a calendar year."""
 	candidates = [
 		date(year, month, day)
@@ -308,7 +328,7 @@ class Counting(Enum):
 
 @dataclass(frozen=True, slots=True)
 class HeadcountConvention:
-	"""Who counts as an Arbeitnehmer of § 267 Abs. 5 HGB; reference is empty while no primary source settles it."""
+	"""Who counts as an Arbeitnehmer of § 267 Abs. 5 HGB; ``reference`` is empty while no primary source settles it."""
 
 	who: str
 	counting: Counting
