@@ -499,6 +499,7 @@ GAAP_CONCEPTS: list[Concept] = [
 		requirement=MUSS,
 	),
 	item("nt", "Anhang", type=STRING, period="duration"),
+	item("nt.ass", "Anlagenspiegel", type=STRING, period="instant"),
 	item("nt.reg", "Anlagenverzeichnis", type=STRING, period="duration"),
 	item("nt.otherInfo", "Sonstige Angaben", type=STRING, period="duration"),
 	item(
@@ -679,6 +680,7 @@ MICROBILG_ARCS = _relations("ismi.netIncome > ismi.netIncome.netSales 1")
 NOTES_ARCS = _relations(
 	"""
 	nt > nt.reg
+	nt > nt.ass
 	nt > nt.otherInfo
 	"""
 )
@@ -720,6 +722,10 @@ FIXED_ASSETS_PRIMARY_ITEMS = _relations(
 	piTitle.nt.ass.gross > all_Prev_period
 	"""
 )
+FIXED_ASSETS_PRESENTATION = [*_relations("nt.ass > table.nt.ass.gross"), *FIXED_ASSETS_PRIMARY_ITEMS]
+"""The table under the text position „Anlagenspiegel“ of the Anhang, as in the package 6.9."""
+DECLARED_ELSEWHERE = {"de-gaap-ci_nt.ass": f"{GAAP}.xsd"}
+"""The concepts a linkbase locates in another schema than the rest of its concepts."""
 FIXED_ASSETS_CALCULATION = _relations(
 	"""
 	all > gross 1
@@ -865,7 +871,8 @@ def _relationship_link(
 		for name in (parent, child):
 			if name not in located:
 				located.add(name)
-				_loc(link, f"{schema}#{prefix}_{name}", f"{prefix}_{name}")
+				concept = f"{prefix}_{name}"
+				_loc(link, f"{DECLARED_ELSEWHERE.get(concept, schema)}#{concept}", concept)
 		attributes = {"order": str(index)}
 		if weighted:
 			attributes["weight"] = weight
@@ -1273,7 +1280,7 @@ def _gaap_files(directory: Path) -> dict[Path, bytes]:
 		f"{GAAP}-dimensions-presentation-notesTableStmOfChgInFAssGross.xml": (
 			"presentation",
 			NOTES,
-			FIXED_ASSETS_PRIMARY_ITEMS,
+			FIXED_ASSETS_PRESENTATION,
 			dimensions_name,
 		),
 		f"{GAAP}-dimensions-calculation-notesTableStmOfChgInFAssGross.xml": (

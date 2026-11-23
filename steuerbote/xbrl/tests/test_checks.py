@@ -745,9 +745,11 @@ class OberpositionenTest(TestCase):
 		self.assertEqual(checks.oberpositionen(report_, mini.view()), ())
 
 	def test_the_rows_of_the_anlagenspiegel(self):
-		"""„Bezogen auf die Positionen des Anlagespiegels gilt dies auch im Bereich „Anhang““ (ERiC
-		E-Bilanz-Dokumentation, Kap. 3.9), along the value development and along the positions of the Bilanz (Leitfaden
-		B.14.12.1 b); the abstract titles are no positions to report."""
+		"""„Bezogen auf die Positionen des Anlagespiegels gilt dies auch im Bereich „Anhang“; entscheidend für die
+		Kategorisierung als Anlagespiegel-Position ist dabei die Zuordnung des zugrundeliegenden Konzepts zu einem
+		XBRL-Hypercube.“ (ERiC E-Bilanz-Dokumentation, Kap. 3.9), along the value development and along the positions of
+		the Bilanz (Leitfaden B.14.12.1 b): the text positions „Anlagenspiegel“ and „Anhang“ above the table are in no
+		hypercube, and the abstract titles are no positions to report."""
 		tan = (TAX_BALANCE, (f"{A}dim_changes.nt.ass.gross", f"{A}bs.ass.fixAss.tan"))
 		fixed = (TAX_BALANCE, (f"{A}dim_changes.nt.ass.gross", f"{A}bs.ass.fixAss"))
 		findings = checks.oberpositionen(report(euros("gross", "30", WJ, tan)), mini.view())
@@ -782,11 +784,27 @@ class SummenmussfelderTest(TestCase):
 		tangible = (TAX_BALANCE, (f"{A}dim_changes.nt.ass.gross", f"{A}bs.ass.fixAss.tan"))
 		findings = checks.summenmussfelder(report(euros("all", "60", WJ, fixed)), mini.view())
 		self.assertEqual(
-			[(finding.code, finding.concept, finding.dimensions) for finding in findings],
-			[(Code.SUMMENMUSSFELD, f"{A}all", tuple(sorted(fixed)))],
+			[(finding.code, finding.concept, finding.dimensions, finding.severity) for finding in findings],
+			[(Code.SUMMENMUSSFELD, f"{A}all", tuple(sorted(fixed)), Severity.HINT)],
 		)
+		self.assertIn("In der Zeile „Anlagevermögen“, einem Summenmussfeld,", findings[0].text)
 		rows = report(euros("all", "60", WJ, fixed), euros("all", "60", WJ, tangible))
 		self.assertEqual(checks.summenmussfelder(rows, mini.view()), ())
+
+	def test_in_the_anlagenspiegel_a_hint(self):
+		"""The examples of the ERiC documentation 44.3.6.0 it calls valid report Summenmussfelder of the Anlagenspiegel
+		without a value below them, such as „Abschreibungen der Periode“ [accDepr.DeprPeriod] in
+		Anlagenspiegel_brutto_ohneUeberleitung.xml, so ERiC does not reject them: in a table the finding is a hint,
+		along the value development as well."""
+		tangible = (TAX_BALANCE, (f"{A}dim_changes.nt.ass.gross", f"{A}bs.ass.fixAss.tan"))
+		(finding,) = checks.summenmussfelder(report(euros("gross", "30", WJ, tangible)), mini.view())
+		self.assertEqual((finding.concept, finding.severity), (f"{A}gross", Severity.HINT))
+		self.assertFalse(finding.blocking)
+		self.assertIn(
+			"Das Summenmussfeld „Anschaffungs- und Herstellungskosten zum Ende der Periode“", finding.text
+		)
+		with_items = report(euros("gross", "30", WJ, tangible), euros("gross.addition", "30", WJ, tangible))
+		self.assertEqual(checks.summenmussfelder(with_items, mini.view()), ())
 
 	def test_not_the_eigenkapital(self):
 		"""„Die Prüfung ist bei den folgenden Positionen des Berichtsteils „Bilanz“ nicht durchzuführen: ... „Eigenkapital“
