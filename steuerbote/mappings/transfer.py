@@ -25,12 +25,14 @@ version, chart, defaults version and day inform the reader and the user; which c
 importer's decision.
 
 read() checks the text in this order: JSON, header and body, the format and its version, the other fields of the
-header, the checksum. A file that fails raises TransferError with an English template and its values, which the
-Frappe layer translates. This module is pure Python and never imports Frappe.
+header, the checksum. A file that fails raises TransferError with an English template and its values; message() makes
+the text of the refusal with the translation and the escaping the Frappe layer passes it. This module is pure Python
+and never imports Frappe.
 """
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -150,6 +152,12 @@ def read(text: str, kind: str) -> TransferFile:
 		raise TransferError(CHECKSUM_DIFFERS)
 	values = {field: header[field] for field in HEADER_FIELDS}
 	return TransferFile(Header(**{**values, "exported_on": exported_on}), data["body"])
+
+
+def message(error: TransferError, translate: Callable[[str], str], escape: Callable[[str], str]) -> str:
+	"""The text of a refusal in the language of ``translate``, each value through ``escape``: a value is what the
+	file says, and the dialog that shows the text reads it as HTML."""
+	return translate(error.template).format(*(escape(str(value)) for value in error.values))
 
 
 def _whole(value: object) -> bool:
