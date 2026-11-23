@@ -1,0 +1,13 @@
+"""Invented ledger lines and mappings for the tests of the core."""
+
+from decimal import Decimal
+
+from steuerbote.ustva.calculation import LedgerLine
+
+
+def debit(account: str, amount: str, voucher: str | None = "JV-1") -> LedgerLine:
+	return LedgerLine(account, debit=Decimal(amount), voucher=voucher)
+
+
+def credit(account: str, amount: str, voucher: str | None = "JV-1") -> LedgerLine:
+	return LedgerLine(account, credit=Decimal(amount), voucher=voucher)
