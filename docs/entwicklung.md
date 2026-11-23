@@ -7,7 +7,7 @@ Diese Seite beschreibt Aufbau, Einrichtung, Tests, Stil und CI. Wie ein Beitrag 
 ```text
 steuerbote/                    Repository
 ├── steuerbote/                Python-Paket der Frappe-App
-│   ├── hooks.py               App-Metadaten, setzt ERPNext voraus, Eintrag in der App-Übersicht, nennt die Fixtures der App und nimmt die Meldungen vom Löschen der Transaktionen aus
+│   ├── hooks.py               App-Metadaten, setzt ERPNext voraus, Eintrag in der App-Übersicht, nennt die Fixtures der App, nimmt die Meldungen, die Belege der Jahresmeldungen und ihre Einstellungen vom Löschen der Transaktionen aus und hängt die Schritte von Kontenzuordnung Ertragsteuern und Bilanzzuordnung in „Steuerbote einrichten“ ein
 │   ├── permissions.py         wem die App-Übersicht Steuerbote zeigt
 │   ├── ustva/                 Rechenkern der Umsatzsteuer-Voranmeldung, reines Python ohne Frappe-Import
 │   │   ├── years.py           Jahrestabelle: welche Jahre Steuerbote abgibt und was jedes Jahr braucht
@@ -28,6 +28,10 @@ steuerbote/                    Repository
 │   │   ├── ustva_xml.py       Voranmeldung als XML: Datei für Mein ELSTER, Nutzdaten für ERiC
 │   │   ├── ust1h_xml.py       Vordruck USt 1 H als XML: Nutzdaten für ERiC in beiden Kontexten
 │   │   ├── zm_xml.py          Zusammenfassende Meldung als XML: Nutzdaten der Datenart ZMDO für ERiC
+│   │   ├── ust2a_xml.py       Umsatzsteuererklärung als XML: Nutzdaten E50 mit USt2A und Vorsatz für ERiC
+│   │   ├── kst_xml.py         Körperschaftsteuererklärung als XML: Nutzdaten E30 für ERiC
+│   │   ├── gewst_xml.py       Gewerbesteuererklärung als XML: Nutzdaten E20 für ERiC
+│   │   ├── ebilanz_xml.py     E-Bilanz als XML: Nutzdaten EBilanz mit der XBRL-Instanz für ERiC
 │   │   ├── vorsatz.py         Vorsatz der Erklärungen USt, KSt und GewSt mit dem Copyrightvermerk
 │   │   ├── erklaerung.py      Werte der Erklärungen nach ihrem Formatkennzeichen, Felder, Regeln und Vordrucke eines Jahres
 │   │   ├── charset.py         Zeichensatz von ELSTER und Ersatz typografischer Zeichen
@@ -46,14 +50,15 @@ steuerbote/                    Repository
 │   │   └── tests/             Unit-Tests des Kerns
 │   ├── vatid/                 Bestätigung ausländischer USt-IdNrn. beim BZSt, VIES als Ausweichdienst, reines Python ohne Frappe-Import
 │   ├── dauerfrist/            Rechenkern von Dauerfristverlängerung und Sondervorauszahlung (USt 1 H), reines Python ohne Frappe-Import
-│   ├── deadlines/             Fristen von Voranmeldung, ZM und Sondervorauszahlung mit Status, reines Python ohne Frappe-Import; Bericht „Offene Fristen“, tägliche Erinnerung und Fristerinnerung im Frappe-Modul, siehe Fristen
+│   ├── deadlines/             Fristen von Voranmeldung, ZM, Sondervorauszahlung und Jahresmeldungen mit Status, reines Python ohne Frappe-Import; Bericht „Offene Fristen“, tägliche Erinnerung und Fristerinnerung im Frappe-Modul, siehe Fristen
 │   ├── mappings/              Vergleich einer Kontenzuordnung mit ihren Vorgaben oder einer Datei in drei Seiten und die Datei einer Kontenzuordnung mit Prüfsumme, reines Python ohne Frappe-Import
 │   ├── setup/                 Steuerbote einrichten: Schritte und ihre Reihenfolge, Erkennung von SKR03 und SKR04, Vorschlag des Voranmeldungszeitraums, reines Python ohne Frappe-Import; Seite und Schritte im Frappe-Modul, siehe Einrichtung
-│   ├── ustjahr/               Rechenkern der Umsatzsteuererklärung (USt 2 A), reines Python ohne Frappe-Import
-│   ├── kst/, gewst/           Rechenkerne von Körperschaft- und Gewerbesteuer mit ihren Jahrestabellen, reines Python ohne Frappe-Import
-│   ├── hgb/                   Größenklassen, Gliederung und Offenlegung des Jahresabschlusses, reines Python ohne Frappe-Import
-│   ├── xbrl/                  HGB-Taxonomie und XBRL für E-Bilanz und Offenlegung, reines Python ohne Frappe-Import; tests/arelle_validation.py für den XBRL-Job der CI
-│   ├── jahresmeldung/         gemeinsamer Kern der Jahresmeldungen, reines Python ohne Frappe-Import
+│   ├── ustjahr/               Rechenkern der Umsatzsteuererklärung (USt 2 A) mit den Vorgaben ihrer Zeilen für SKR03 und SKR04, reines Python ohne Frappe-Import
+│   ├── kst/, gewst/           Rechenkerne von Körperschaft- und Gewerbesteuer mit ihren Jahrestabellen, Vordrucken und den Vorgaben der Kontenzuordnung Ertragsteuern, reines Python ohne Frappe-Import
+│   ├── ebilanz/               Kern der E-Bilanz: Positionen, Beträge, Kontensalden, Anlagenspiegel, Überleitung, GCD und Instanz, dazu die Vorgaben der Bilanzzuordnung, reines Python ohne Frappe-Import
+│   ├── hgb/                   Jahresabschluss: Größenklassen, Gliederung, Angaben und Offenlegung, die XBRL-Datei für das Unternehmensregister und die Schritte des Hochladens, reines Python ohne Frappe-Import
+│   ├── xbrl/                  HGB-Taxonomie und XBRL für E-Bilanz und Offenlegung und die Zeilen der Bilanzzuordnung (mapping.py), reines Python ohne Frappe-Import; tests/arelle_validation.py für den XBRL-Job der CI
+│   ├── jahresmeldung/         gemeinsamer Kern der Jahresmeldungen mit Status, Korrekturen, Befunden und Berichtigungen, reines Python ohne Frappe-Import
 │   │   ├── documentation.py   liest die Jahresdokumentationen der ERiC-Dokumentation als Daten: Vordrucke mit Kontexten, Feldern, Regeln, Kennzahlen und Texten, Schema und Datenartversionmatrix
 │   │   └── yearcheck.py       Jahresprüfung aller Datenarten: Daten eines Jahres oder einer Taxonomie gegen die ERiC-Dokumentation
 │   ├── eric/                  ERiC: Datenarten, Einrichtung, Versionsinformationen der Pakete, Mindestversionsliste, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
@@ -65,21 +70,28 @@ steuerbote/                    Repository
 │   ├── zm_sources.py          liest für die Zusammenfassende Meldung Hauptbuch, Kunden, Adressen und abgegebene Voranmeldungen
 │   ├── dauerfrist_sources.py  liest für die Dauerfristverlängerung die abgegebenen Voranmeldungen eines Jahres und das Gründungsdatum
 │   ├── holiday_list.py        liest die Feiertage der Fristen aus der Feiertagsliste des Unternehmens
+│   ├── ustjahr_sources.py     liest für die Umsatzsteuererklärung das Hauptbuch des Jahres, die abgegebenen Voranmeldungen, die Sondervorauszahlung und die Zahlungen an das Finanzamt
+│   ├── income_tax_sources.py  liest für Körperschaft- und Gewerbesteuererklärung die Gewinn- und Verlustrechnung, die Buchungen der Steuern, die Kontenzuordnung Ertragsteuern und die Einstellungen Jahresmeldungen
+│   ├── income_tax_mapping_sync.py  Zeilen der Kontenzuordnung Ertragsteuern zur Mapping des Kerns und zu den Einträgen des Vergleichs, reines Python
+│   ├── balance_mapping_sync.py  Zeilen der Bilanzzuordnung zur Mapping des Kerns, ihre Vorgaben, ihre Datei und die Eingaben von Jahresabschluss und E-Bilanz, reines Python
+│   ├── balances.py            liest die Salden eines Geschäftsjahres, seines Vorjahres und der Eröffnungsbilanz aus dem Hauptbuch
 │   ├── steuerbote/            Frappe-Modul „Steuerbote“, siehe Architektur
 │   │   ├── page/              Seite „Steuerbote einrichten“; setup.py daneben führt ihre Schritte aus
-│   │   ├── doctype/           Einstellungen, Kontenzuordnung, Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung, Dauerfristverlängerung, USt-IdNr.-Bestätigung und ELSTER-Übermittlung samt Tabellen; elster_transmission/transmission.py übermittelt Voranmeldung, Dauerfristverlängerung und Zusammenfassende Meldung
-│   │   ├── report/            Bericht „UStVA Kennzahlen“ mit den Belegen hinter jeder Kennzahl
+│   │   ├── annual_filing.py   Grundlage der Belege der Jahresmeldungen (AnnualFiling), siehe Jahresmeldungen
+│   │   ├── deadlines.py       liest Einstellungen, Belege, Feiertage und Hauptbuch für die Fristen und schickt die Erinnerung
+│   │   ├── doctype/           Einstellungen, Kontenzuordnung, Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung, Dauerfristverlängerung, USt-IdNr.-Bestätigung, ELSTER-Übermittlung und Fristerinnerung, dazu Einstellungen Jahresmeldungen, Kontenzuordnung Ertragsteuern, Bilanzzuordnung, Umsatzsteuererklärung, Körperschaft- und Gewerbesteuererklärung, alle samt Tabellen; elster_transmission/transmission.py übermittelt jeden Beleg, der über ERiC geht
+│   │   ├── report/            Berichte „UStVA Kennzahlen“ mit den Belegen hinter jeder Kennzahl, „Offene Fristen“ und „Ertragsteuer-Kontennachweis“
 │   │   ├── workspace/         Arbeitsbereich „Steuern“
 │   │   ├── sidebar/           Seitenleiste des Moduls mit kurzen Bezeichnungen
 │   │   ├── number_card/       Zahlenkarte „Offene Voranmeldungen“
-│   │   └── print_format/      Druckformate „Umsatzsteuer-Voranmeldung“, „Zusammenfassende Meldung“ und „Dauerfristverlängerung“
+│   │   └── print_format/      Druckformate „Umsatzsteuer-Voranmeldung“, „Zusammenfassende Meldung“, „Dauerfristverlängerung“, „Umsatzsteuererklärung“, „Körperschaftsteuererklärung“ und „Gewerbesteuererklärung“
 │   ├── dock/                  Eintrag „Steuern“ in der Leiste von ERPNext
 │   ├── fixtures/              Feld „Nicht in der Umsatzsteuer-Voranmeldung“ an der Journalbuchung und Standard-Druckformate der Belege
-│   ├── public/                Logo (images/), Symbol der Leiste (icons/), die Übermittlung und „USt-IdNrn. prüfen“, die die Formulare einbinden (js/elster_transmission.js, js/vat_id_confirmation.js)
+│   ├── public/                Logo (images/), Symbol der Leiste (icons/) und was die Formulare einbinden: die Übermittlung (js/elster_transmission.js), „USt-IdNrn. prüfen“ (js/vat_id_confirmation.js), die Schaltflächen der Jahresmeldungen (js/annual_filing.js) und der Dialog der Unterschiede einer Zuordnung (js/mapping_differences.js)
 │   ├── translations/          deutsche Übersetzungen der Oberfläche (de.csv)
 │   ├── tests/                 Frappe-Integrationstests und Hilfen für Testdaten und Übermittlungen, unter e2e/ die Browsertests mit ihren Testdaten
 │   ├── patches/               Patches, die bench migrate ausführt (patches.txt)
-│   └── config/, templates/    Standardverzeichnisse einer Frappe-App, noch leer
+│   └── config/, templates/    Standardverzeichnisse einer Frappe-App; templates/includes/annual_filing/ hält die Teile der Druckformate der Jahresmeldungen
 ├── docs/                      Dokumentation
 │   └── bilder/                Bildschirmfotos der Oberfläche mit Beispieldaten
 ├── .github/workflows/         CI: Tests, Linters, Security
@@ -89,7 +101,7 @@ steuerbote/                    Repository
 └── .pre-commit-config.yaml    Hooks für pre-commit
 ```
 
-Die Kerne unter `steuerbote/ustva`, `steuerbote/zm`, `steuerbote/vatid`, `steuerbote/dauerfrist` und die der Jahresmeldungen (`steuerbote/ustjahr`, `kst`, `gewst`, `hgb`, `xbrl` und `jahresmeldung`) importieren nie Frappe. Deshalb lassen sie sich ohne Bench testen. DocTypes und Reports gehören in das Frappe-Modul `steuerbote/steuerbote`. Wie Kern und Frappe-Modul zusammenspielen, beschreibt [Architektur](architektur.md).
+Die Kerne unter `steuerbote/ustva`, `steuerbote/zm`, `steuerbote/vatid`, `steuerbote/dauerfrist` und die der Jahresmeldungen (`steuerbote/ustjahr`, `kst`, `gewst`, `ebilanz`, `hgb`, `xbrl` und `jahresmeldung`) importieren nie Frappe. Deshalb lassen sie sich ohne Bench testen. DocTypes und Reports gehören in das Frappe-Modul `steuerbote/steuerbote`. Wie Kern und Frappe-Modul zusammenspielen, beschreibt [Architektur](architektur.md).
 
 ## Einrichtung
 
@@ -131,7 +143,7 @@ pytest --cov    # mit Abdeckung, wie in der CI
 
 ### Schematests
 
-`steuerbote/elster/tests/test_schema.py` prüft das XML gegen die Schemas der ERiC-Dokumentation: die Datei für Mein ELSTER und die Nutzdaten des Vordrucks USt 1 H gegen `UStVA-2026.xsd`, Nutzdaten und Umschlag gegen `elster11_UStVA_2026_extern.xsd` mit dem ElsterBasisSchema, dazu Reihenfolge, Typen und Längen, die `ustva_xml.py` aus dem Schema übernimmt, und den Vordruck gegen die Beispiele `UStVA_Df_2026.xml` und `UStVA_SoVZ_2026.xml` in Canonical XML 2.0. `test_zm_schema.py` prüft die Nutzdaten der Zusammenfassenden Meldung gegen `zm_000005.xsd` und im Umschlag gegen `elster11_Zm_000005_extern.xsd`, vergleicht sie Byte für Byte mit dem Beispiel `ZMDO_5_send-Auth.xml` und die Werte, die `zm_xml.py` übernimmt, mit Schema und Jahresdokumentation. `steuerbote/eric/tests/test_datenart.py` vergleicht die Beschreibung jeder Datenart in `steuerbote/eric/datenart.py` mit Beispielen, Schemas, Datenartversionmatrix und Jahresdokumentation ZMDO, und `test_header.py` prüft den DatenTeil jeder Datenart im ganzen Umschlag gegen dessen Schema. `test_vorsatz.py` und `test_erklaerung.py` vergleichen Vorsatz und Formatkennzeichen der Erklärungen mit den Jahresdokumentationen E50, E30 und E20, ihren Schemas und Beispielen. Die Schemas tragen keine Lizenz, die eine Weitergabe erlaubt, deshalb liegen sie nicht im Repository. Die Tests lesen sie aus der entpackten ERiC-Dokumentation, deren Verzeichnis die Umgebungsvariable `STEUERBOTE_ERIC_DOC_DIR` nennt:
+`steuerbote/elster/tests/test_schema.py` prüft das XML gegen die Schemas der ERiC-Dokumentation: die Datei für Mein ELSTER und die Nutzdaten des Vordrucks USt 1 H gegen `UStVA-2026.xsd`, Nutzdaten und Umschlag gegen `elster11_UStVA_2026_extern.xsd` mit dem ElsterBasisSchema, dazu Reihenfolge, Typen und Längen, die `ustva_xml.py` aus dem Schema übernimmt, und den Vordruck gegen die Beispiele `UStVA_Df_2026.xml` und `UStVA_SoVZ_2026.xml` in Canonical XML 2.0. `test_zm_schema.py` prüft die Nutzdaten der Zusammenfassenden Meldung gegen `zm_000005.xsd` und im Umschlag gegen `elster11_Zm_000005_extern.xsd`, vergleicht sie Byte für Byte mit dem Beispiel `ZMDO_5_send-Auth.xml` und die Werte, die `zm_xml.py` übernimmt, mit Schema und Jahresdokumentation. `steuerbote/eric/tests/test_datenart.py` vergleicht die Beschreibung jeder Datenart in `steuerbote/eric/datenart.py` mit Beispielen, Schemas, Datenartversionmatrix und Jahresdokumentation ZMDO, und `test_header.py` prüft den DatenTeil jeder Datenart im ganzen Umschlag gegen dessen Schema. `test_vorsatz.py` und `test_erklaerung.py` vergleichen Vorsatz und Formatkennzeichen der Erklärungen mit den Jahresdokumentationen E50, E30 und E20, ihren Schemas und Beispielen. `test_ust2a_xml.py`, `test_kst_xml.py` und `test_gewst_xml.py` prüfen die Nutzdaten der Erklärungen gegen `E50-2026.xsd`, `E30-2025.xsd` und `E20-2025.xsd`, die von Körperschaft- und Gewerbesteuer 2026, nachdem der Test Namensraum und Version auf die des Schemas 2025 umgeschrieben hat, und `test_ebilanz_xml.py` die Lieferung der E-Bilanz gegen `ebilanz_000002.xsd`. Die Schemas tragen keine Lizenz, die eine Weitergabe erlaubt, deshalb liegen sie nicht im Repository. Die Tests lesen sie aus der entpackten ERiC-Dokumentation, deren Verzeichnis die Umgebungsvariable `STEUERBOTE_ERIC_DOC_DIR` nennt:
 
 ```bash
 curl -fLo /tmp/eric-doc.zip https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip
@@ -144,7 +156,7 @@ Die Variable nennt das Verzeichnis, in das die Zip-Datei entpackt wurde, oder da
 
 ### Tests gegen die HGB-Taxonomie
 
-Auch die HGB-Taxonomie trägt keine Lizenz, die eine Weitergabe erlaubt. Die Tests unter `steuerbote/xbrl` laufen deshalb gegen eine erfundene Mini-Taxonomie und, wenn die Umgebungsvariable `STEUERBOTE_TAXONOMY_6_9` das Paket von esteuer.de nennt, auch gegen das echte Paket; in einer CI schlagen sie ohne die Variable fehl. Der Server von esteuer.de schickt sein Zwischenzertifikat nicht mit, deshalb kommt es mit geprüfter Summe von GlobalSign:
+Auch die HGB-Taxonomie trägt keine Lizenz, die eine Weitergabe erlaubt. Die Tests unter `steuerbote/xbrl`, `steuerbote/ebilanz` und `steuerbote/hgb` laufen deshalb gegen eine erfundene Mini-Taxonomie oder einen Auszug und, wenn die Umgebungsvariable `STEUERBOTE_TAXONOMY_6_9` das Paket von esteuer.de nennt, auch gegen das echte Paket; in einer CI schlagen sie ohne die Variable fehl. Der Server von esteuer.de schickt sein Zwischenzertifikat nicht mit, deshalb kommt es mit geprüfter Summe von GlobalSign:
 
 ```bash
 curl -fLo /tmp/intermediate.crt http://secure.globalsign.com/cacert/gsgccr46dvtlsca2025.crt
@@ -157,7 +169,7 @@ STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc STEUERBOTE_TAXONOMY_6_9=/tmp/taxonomy-6.9.
 
 ### XBRL mit Arelle
 
-`steuerbote/xbrl/tests/arelle_validation.py` lässt Arelle (`arelle-release` aus `requirements-dev.txt`) die Instanzen beider Profile offline gegen das Paket 6.9 prüfen: die gültigen Beispiele der ERiC-Dokumentation, wie der Writer sie schreibt, und die Offenlegung einer erfundenen GmbH als Kleinstkapitalgesellschaft und als kleine Gesellschaft. Jede Meldung ab Warnung lässt den Lauf scheitern. Lokal, mit Dokumentation und Paket wie oben, dauert das gut anderthalb Minuten:
+`steuerbote/xbrl/tests/arelle_validation.py` lässt Arelle (`arelle-release` aus `requirements-dev.txt`) 18 Instanzen beider Profile offline gegen das Paket 6.9 prüfen: fünf der gültigen Beispiele der ERiC-Dokumentation auf der Kerntaxonomie, wie der Writer sie schreibt; die E-Bilanz einer erfundenen GmbH als Einheitsbilanz, als Handelsbilanz mit Überleitung, als Eröffnungsbilanz und als UG, wie `steuerbote/ebilanz/instance.py` sie baut; die Offenlegung einer erfundenen GmbH als Kleinstkapitalgesellschaft und als kleine Gesellschaft; und die sieben Instanzen der Offenlegung aus `steuerbote/hgb/tests/companies.py`, wie `steuerbote/hgb/instance.py` sie baut, prüft und schreibt. Jede Meldung ab Warnung lässt den Lauf scheitern. Mit Dokumentation und Paket wie oben läuft das Skript auch lokal; in der CI dauert es etwa vier Minuten:
 
 ```bash
 STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc python -m steuerbote.xbrl.tests.arelle_validation /tmp/taxonomy-6.9.zip --keep /tmp/xbrl
@@ -180,9 +192,9 @@ Der Frappe-Runner durchsucht die ganze App nach Dateien `test_*.py`. Die Tests d
 
 ### Browsertests
 
-Die Browsertests unter `steuerbote/tests/e2e` bedienen eine laufende Site mit Playwright und Chromium wie ein Mensch am Bildschirm: die Anmeldung, den Eintrag „Steuern“ in der Leiste von ERPNext und den Arbeitsbereich mit seinen Verknüpfungen, jede Liste der Seitenleiste, neue Belege, die Umsatzsteuer-Voranmeldung (Berechnen, „USt-IdNrn. prüfen“ bis zur Rückfrage, das Menü ELSTER bis zum Dialog für Zertifikat und Passwort, „XML für Mein ELSTER“, Druckvorschau), die Zusammenfassende Meldung (Berechnen, „USt-IdNrn. prüfen“ bis zur Rückfrage, „CSV für Mein ELSTER“), die Dauerfristverlängerung, die Entwürfe der drei Belege nach dem eigenen Senden (kein „Berechnen“, kein „USt-IdNrn. prüfen“, kein „Verwerfen“), „Steuerbote einrichten“ zweimal für dasselbe Unternehmen, Einstellungen, Kontenzuordnung mit „Vorgaben laden“ samt der Spalte Steuersatz, „Vorgaben aktualisieren“, „Zuordnung exportieren“ und „Zuordnung importieren“ und ERiC-Einstellungen, die Berichte „UStVA Kennzahlen“ und „Offene Fristen“ und die Sicht eines Benutzers, der nur die Rolle Accounts User hat. Ein Test schlägt fehl, sobald eine seiner Seiten einen JavaScript-Fehler, einen Fehler auf der Konsole oder eine Antwort des Servers mit Status 500 oder mehr sieht; Antworten mit 4xx sind Ablehnungen des Servers, die die Tests an dem messen, was die Oberfläche daraus macht. Ein fehlgeschlagener Test legt Bildschirmfotos seiner Seiten unter `test-results/` ab.
+Die Browsertests unter `steuerbote/tests/e2e` bedienen eine laufende Site mit Playwright und Chromium wie ein Mensch am Bildschirm: die Anmeldung, den Eintrag „Steuern“ in der Leiste von ERPNext und den Arbeitsbereich mit seinen Verknüpfungen, jede Liste der Seitenleiste, neue Belege, die Umsatzsteuer-Voranmeldung (Berechnen, „USt-IdNrn. prüfen“ bis zur Rückfrage, das Menü ELSTER bis zum Dialog für Zertifikat und Passwort, „XML für Mein ELSTER“, Druckvorschau), die Zusammenfassende Meldung (Berechnen, „USt-IdNrn. prüfen“ bis zur Rückfrage, „CSV für Mein ELSTER“), die Dauerfristverlängerung, die Entwürfe der drei Belege nach dem eigenen Senden (kein „Berechnen“, kein „USt-IdNrn. prüfen“, kein „Verwerfen“), „Steuerbote einrichten“ zweimal für dasselbe Unternehmen, Einstellungen, Kontenzuordnung mit „Vorgaben laden“ samt der Spalte Steuersatz, „Vorgaben aktualisieren“, „Zuordnung exportieren“ und „Zuordnung importieren“, „Vorgaben laden“ der Kontenzuordnung Ertragsteuern mit den DATEV-Konten, die dem Unternehmen fehlen, und ERiC-Einstellungen, die Umsatzsteuererklärung (Berechnen mit den Zeilen der Rechnungen und den Monaten ohne abgegebene Voranmeldung, der Hinweis, dass Mein ELSTER sie nicht importiert, Testsenden in der Simulation bis zur Rückfrage, Druckvorschau), die Körperschaft- und die Gewerbesteuererklärung (Berechnen mit den Befunden der vorläufigen Vordrucke, Druckvorschau), neue Erklärungen als Entwurf, die Berichte „UStVA Kennzahlen“ und „Offene Fristen“ und die Sicht eines Benutzers, der nur die Rolle Accounts User hat. Ein Test schlägt fehl, sobald eine seiner Seiten einen JavaScript-Fehler, einen Fehler auf der Konsole oder eine Antwort des Servers mit Status 500 oder mehr sieht; Antworten mit 4xx sind Ablehnungen des Servers, die die Tests an dem messen, was die Oberfläche daraus macht. Ein fehlgeschlagener Test legt Bildschirmfotos seiner Seiten unter `test-results/` ab.
 
-Die Testdaten legt `steuerbote/tests/e2e/seed.py` mit den Hilfen der Frappe-Tests an, alle erfunden: ein Unternehmen mit SKR03-Konten, Einstellungen und der Kontenzuordnung aus „Vorgaben laden“, drei Rechnungen im Oktober 2026 (Inland 19 %, sonstige Leistung an einen Kunden in Österreich mit USt-IdNr., eine Leistung nach § 13b UStG), eine USt-IdNr.-Bestätigung, eine in Mein ELSTER abgegebene Voranmeldung für September, berechnete Voranmeldung und Zusammenfassende Meldung für Oktober, eine Dauerfristverlängerung, ein zweites Unternehmen ohne Konten mit Voranmeldung und Zusammenfassender Meldung für Oktober und einer Dauerfristverlängerung, alle drei als Entwurf mit der ELSTER-Übermittlung eines echten Sendens (Voranmeldung und Dauerfristverlängerung von ELSTER angenommen, ohne dass sie sich buchen ließen, die Zusammenfassende Meldung mit unbekanntem Ergebnis), ein drittes Unternehmen nur mit SKR03-Konten für „Steuerbote einrichten“, dessen Browsertest vorher löscht, was ein früherer Lauf eingerichtet hat, ein viertes mit SKR03-Konten und der Kontenzuordnung aus „Vorgaben laden“ für „Vorgaben aktualisieren“ und die Datei einer Kontenzuordnung, ERiC-Einstellungen im Simulationsmodus und den Benutzer `steuerbote-e2e-buchhaltung@example.com` mit der Rolle Accounts User. Ein zweiter Lauf legt nichts doppelt an. Außerdem schließt der Seed den Einrichtungsassistenten ab und stellt die Sprache des Administrators und des Benutzers auf Deutsch. Nimm dafür eine eigene Testsite, nie eine Site mit echten Daten.
+Die Testdaten legt `steuerbote/tests/e2e/seed.py` mit den Hilfen der Frappe-Tests an, alle erfunden: ein Unternehmen mit SKR03-Konten, Einstellungen und der Kontenzuordnung aus „Vorgaben laden“, drei Rechnungen im Oktober 2026 (Inland 19 %, sonstige Leistung an einen Kunden in Österreich mit USt-IdNr., eine Leistung nach § 13b UStG), eine USt-IdNr.-Bestätigung, eine in Mein ELSTER abgegebene Voranmeldung für September, berechnete Voranmeldung und Zusammenfassende Meldung für Oktober, eine Dauerfristverlängerung, ein zweites Unternehmen ohne Konten mit Voranmeldung und Zusammenfassender Meldung für Oktober und einer Dauerfristverlängerung, alle drei als Entwurf mit der ELSTER-Übermittlung eines echten Sendens (Voranmeldung und Dauerfristverlängerung von ELSTER angenommen, ohne dass sie sich buchen ließen, die Zusammenfassende Meldung mit unbekanntem Ergebnis), ein drittes Unternehmen nur mit SKR03-Konten für „Steuerbote einrichten“, dessen Browsertest vorher löscht, was ein früherer Lauf eingerichtet hat, ein viertes mit SKR03-Konten und der Kontenzuordnung aus „Vorgaben laden“ für „Vorgaben aktualisieren“ und die Datei einer Kontenzuordnung, für das erste Unternehmen die berechnete Umsatzsteuererklärung 2026, die ohne die Voranmeldungen der übrigen Monate auf „Berechnet“ bleibt, ein fünftes Unternehmen mit SKR03-Konten, Einstellungen Jahresmeldungen (eine GmbH mit einem Anteilseigner, einer Betriebsstätte, einem Hebesatz von 400 % mit Quelle und den Vorauszahlungen ihrer Bescheide), der Kontenzuordnung Ertragsteuern aus „Vorgaben laden“ und den Buchungen des Jahres 2026 mit seiner berechneten Körperschaft- und Gewerbesteuererklärung, beide wegen der vorläufigen Vordrucke auf „Berechnet“ und ohne Übermittlung, ERiC-Einstellungen im Simulationsmodus und den Benutzer `steuerbote-e2e-buchhaltung@example.com` mit der Rolle Accounts User. Ein zweiter Lauf legt nichts doppelt an. Außerdem schließt der Seed den Einrichtungsassistenten ab und stellt die Sprache des Administrators und des Benutzers auf Deutsch. Nimm dafür eine eigene Testsite, nie eine Site mit echten Daten.
 
 Lokal, gegen eine Bench mit einer Testsite:
 
@@ -198,7 +210,7 @@ playwright install chromium
 pytest steuerbote/tests/e2e --base-url http://localhost:8000 --admin-password <Passwort des Administrators>
 ```
 
-`bench start` startet neben dem Webserver auch socket.io, mit dem die Seiten sich verbinden; `bench use` macht die Testsite zur Site von `localhost`. Ohne `--admin-password` melden sich die Tests mit `admin` an, dem Passwort der Testsite in der CI. Das Passwort des Benutzers mit der Rolle Accounts User setzt jeder Lauf neu über den Administrator, der Seed vergibt keines. `--headed` zeigt den Browser, `--output` nennt ein anderes Verzeichnis für die Bildschirmfotos. Der ganze Lauf dauert etwa eine Minute.
+`bench start` startet neben dem Webserver auch socket.io, mit dem die Seiten sich verbinden; `bench use` macht die Testsite zur Site von `localhost`. Ohne `--admin-password` melden sich die Tests mit `admin` an, dem Passwort der Testsite in der CI. Das Passwort des Benutzers mit der Rolle Accounts User setzt jeder Lauf neu über den Administrator, der Seed vergibt keines. `--headed` zeigt den Browser, `--output` nennt ein anderes Verzeichnis für die Bildschirmfotos. In der CI dauert der ganze Lauf etwa anderthalb Minuten.
 
 Die Testmodule importieren weder pytest noch Playwright: `bench run-tests` importiert jede Datei `test_*.py` der App, in der Umgebung der Bench, die beides nicht hat. Was die Tests brauchen, auch `expect` von Playwright, geben ihnen die Fixtures in `conftest.py`; `desk.py` hält die Schritte auf den Seiten des Desks.
 
@@ -229,19 +241,20 @@ Dabei gilt:
 
 ## CI
 
-Alle drei Workflows laufen bei Pull Requests, bei Pushes auf `main` und von Hand, Security zusätzlich jeden Montag um 04:17 UTC. Sie lesen den Inhalt des Repositories nur (`contents: read`), lediglich CodeQL darf zusätzlich Sicherheitsbefunde schreiben. Ausgecheckt wird ohne gespeicherte Zugangsdaten (`persist-credentials: false`). Ein Pull Request wird erst gemergt, wenn alle Jobs grün sind.
+Alle drei Workflows laufen bei Pull Requests, bei Pushes auf `main` und von Hand, Security zusätzlich jeden Montag um 04:17 UTC. Sie lesen den Inhalt des Repositories nur (`contents: read`), lediglich CodeQL darf zusätzlich Sicherheitsbefunde schreiben. Ausgecheckt wird ohne gespeicherte Zugangsdaten (`persist-credentials: false`). Am Pull Request stehen damit zehn Prüfungen: die neun Jobs der Workflows und das Ergebnis von CodeQL im Code Scanning von GitHub. Ein Pull Request wird erst gemergt, wenn alle zehn grün sind.
 
 | Workflow | Job | Was er tut |
 |---|---|---|
 | Tests | Core (without bench) | lädt die ERiC-Dokumentation 44.3.6.0 und die HGB-Taxonomie 6.9 und prüft ihre SHA-256-Summen, dann pytest mit Abdeckung, Schematests, den Tests gegen die Taxonomie und der Jahresprüfung aller Datenarten auf Python 3.14, unter 100 % rot; legt `coverage.xml` als Artefakt ab. |
 | Tests | Frappe site (ERPNext v16) | baut mit `frappe-bench` 5.31.1 eine Bench mit Frappe und ERPNext `version-16`, MariaDB 11.8 und Redis als Dienste, installiert ERPNext und Steuerbote auf einer Testsite, lädt die ERiC-Dokumentation und die HGB-Taxonomie für die Schematests und die Tests gegen die Taxonomie und führt `bench run-tests --app steuerbote` aus. Danach baut er die Assets von Frappe, füllt die Testsite mit dem Seed der Browsertests, startet Webserver und socket.io und lässt die Browsertests mit Chromium laufen; schlägt einer fehl, liegen Bildschirmfotos und die Protokolle des Servers im Artefakt `browser-tests`. |
-| Tests | XBRL (Arelle) | lädt die Beispiele der E-Bilanz aus der ERiC-Dokumentation und die HGB-Taxonomie 6.9 und lässt Arelle die Instanzen beider Profile prüfen (`arelle_validation.py`, siehe [XBRL mit Arelle](#xbrl-mit-arelle)), mit eigener Zeitgrenze von 20 Minuten; schlägt er fehl, liegen Instanzen und Protokolle eine Woche im Artefakt `xbrl-instances`, nie eine Datei der Taxonomie. |
+| Tests | XBRL (Arelle) | lädt die Beispiele der E-Bilanz aus der ERiC-Dokumentation und die HGB-Taxonomie 6.9 und lässt Arelle die 18 Instanzen beider Profile prüfen (`arelle_validation.py`, siehe [XBRL mit Arelle](#xbrl-mit-arelle)), mit eigener Zeitgrenze von 20 Minuten; schlägt er fehl, liegen Instanzen und Protokolle eine Woche im Artefakt `xbrl-instances`, nie eine Datei der Taxonomie. |
 | Linters | pre-commit | alle Hooks auf allen Dateien, ohne `no-commit-to-branch`. |
 | Linters | Frappe semgrep rules | semgrep 1.185.0 mit den Regeln aus `frappe/semgrep-rules` und den Regeln `python/lang/correctness` aus `semgrep/semgrep-rules`, die die Registry als `r/python.lang.correctness` anbietet, beide auf einen Commit gepinnt; jeder Fund macht den Job rot. |
 | Security | Secret scan (gitleaks) | durchsucht die ganze Git-Historie nach Geheimnissen; gitleaks wird mit Prüfsumme geladen. |
 | Security | Workflow audit (zizmor) | prüft die GitHub-Actions-Workflows auf Sicherheitsprobleme. |
 | Security | Dependency audit (pip-audit) | prüft mit pip-audit 2.10.1 die Pakete aus `requirements-dev.txt` auf bekannte Schwachstellen. |
-| Security | CodeQL | statische Analyse des Python-Codes. Läuft erst, wenn das Repository öffentlich ist, weil CodeQL nur für öffentliche Repositories kostenlos ist. |
+| Security | CodeQL | statische Analyse des Python-Codes. Läuft nur, solange das Repository öffentlich ist (`if: ${{ !github.event.repository.private }}`), weil CodeQL nur für öffentliche Repositories kostenlos ist. |
+| Code Scanning von GitHub | CodeQL | das Ergebnis der Analyse des Jobs CodeQL am Pull Request: ob der geänderte Code neue Befunde hat. |
 
 Adresse und SHA-256-Summe von ERiC-Dokumentation, HGB-Taxonomie und Zwischenzertifikat stehen einmal für alle Jobs im `env` von `tests.yml`. Das Paket der Taxonomie kommt aus einem Cache, dessen Schlüssel seine SHA-256-Summe trägt (`hgb-taxonomie-6.9-<Summe>`); nur ohne Eintrag lädt ein Job es von esteuer.de und legt es danach in den Cache. Geprüft wird die Summe in jedem Fall vor den Tests. Bei Tests bricht ein neuer Lauf für denselben Pull Request oder Branch den laufenden ab. Dependabot schlägt jede Woche Updates für die GitHub Actions und die pip-Abhängigkeiten vor (`.github/dependabot.yml`).
 

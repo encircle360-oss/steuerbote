@@ -258,7 +258,7 @@ jobs:
   xbrl:
     name: XBRL (Arelle)
     runs-on: ubuntu-latest
-    # Arelle validates seven instances against the 279 files of the taxonomy in about two minutes.
+    # Arelle validates eighteen instances against the 279 files of the taxonomy in about four minutes.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

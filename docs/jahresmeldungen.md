@@ -2,7 +2,7 @@
 
 Umsatzsteuererklärung, E-Bilanz, Körperschaftsteuererklärung, Gewerbesteuererklärung und Jahresabschluss sind die Jahresmeldungen von Steuerbote. Sie leben auf derselben Grundlage: einem Kern ohne Frappe unter `steuerbote/jahresmeldung` mit Status, Korrekturen, Befunden und Berichtigungen und einer Frappe-Schicht, `AnnualFiling` in `steuerbote/steuerbote/annual_filing.py`, die der Controller jedes Belegs vor `Transmittable` und `Document` einbindet. Sie verallgemeinert, was für Umsatzsteuer-Voranmeldung und Zusammenfassende Meldung gilt (siehe [Lebenslauf einer Meldung](architektur.md#lebenslauf-einer-meldung)).
 
-Diese Seite beschreibt, was für alle Jahresmeldungen gilt: Status, Felder, Berechnen, Korrekturen und Zeilen von Hand, Befunde, Abgabe, Berichtigung je Datenart, Übermittlung an ELSTER, Druck und Formular, und die Schnittstelle, auf die die Module bauen. Die Belege selbst bringen die Module der Jahresmeldungen mit; bis dahin gibt es in ERPNext noch keinen Beleg einer Jahresmeldung, und die Grundlage arbeitet nur in den Tests, an zwei eigenen Test-DocTypes.
+Diese Seite beschreibt, was für alle Jahresmeldungen gilt: Status, Felder, Berechnen, Korrekturen und Zeilen von Hand, Befunde, Abgabe, Berichtigung je Datenart, Übermittlung an ELSTER, Druck und Formular, und die Schnittstelle, auf die die Module bauen. Die Belege selbst bringen die Module der Jahresmeldungen mit. Vorhanden sind die Umsatzsteuererklärung (`Annual VAT Return`, siehe [Umsatzsteuererklärung](umsatzsteuererklaerung.md)), die Körperschaftsteuererklärung (`Corporate Income Tax Return`) und die Gewerbesteuererklärung (`Trade Tax Return`, siehe [Körperschaftsteuer- und Gewerbesteuererklärung](ertragsteuern.md)); die E-Bilanz (`Electronic Balance Sheet`) und der Jahresabschluss (`Annual Accounts`) sind als Belege in Arbeit, siehe [Roadmap](roadmap.md#stufe-3-jahresmeldungen). Die Frappe-Tests der Grundlage selbst laufen an zwei eigenen Test-DocTypes, siehe [Der Kern](#der-kern).
 
 ## Status
 
@@ -124,7 +124,7 @@ Eine geänderte Bilanz „ist als eigener, neuer Datensatz einzureichen“, und 
 
 ## Übermittlung an ELSTER
 
-Umsatzsteuererklärung, E-Bilanz, Körperschaftsteuererklärung und Gewerbesteuererklärung gehen wie die Voranmeldung über ERiC an das Finanzamt: Ihre Controller erben `Transmittable`, und Prüfen, Testsenden und Senden laufen mit derselben Sperre, denselben Ergebnissen, derselben Simulation und derselben ELSTER-Übermittlung, siehe [Übermittlung an ELSTER](uebermittlung.md). Die ELSTER-Übermittlung kennt ihre DocTypes schon unter den Namen, die die Module ihnen geben: `Annual VAT Return`, `Electronic Balance Sheet`, `Corporate Income Tax Return` und `Trade Tax Return` (`DOCUMENT_TYPES`). Der Jahresabschluss geht nicht an das Finanzamt.
+Umsatzsteuererklärung, E-Bilanz, Körperschaftsteuererklärung und Gewerbesteuererklärung gehen wie die Voranmeldung über ERiC an das Finanzamt: Ihre Controller erben `Transmittable`, und Prüfen, Testsenden und Senden laufen mit derselben Sperre, denselben Ergebnissen, derselben Simulation und derselben ELSTER-Übermittlung, siehe [Übermittlung an ELSTER](uebermittlung.md). Die ELSTER-Übermittlung nennt ihre DocTypes in `DOCUMENT_TYPES`: `Annual VAT Return`, `Corporate Income Tax Return` und `Trade Tax Return` und, schon vor dem Beleg der E-Bilanz, `Electronic Balance Sheet`. Der Jahresabschluss geht nicht an das Finanzamt.
 
 - **Datenart.** `datenart()` des Moduls nennt die Datenart, `datenart.ust(Jahr)`, `kst(Jahr)`, `gewst(Jahr)` oder `bilanz(Taxonomie)`, siehe [ERiC](eric.md#erklärungen-und-e-bilanz). `nutzdaten(hersteller_id)` behält seine Signatur; die Erklärungen und die E-Bilanz schreiben die Hersteller-ID nicht in die Nutzdaten und übergehen das Argument.
 - **Steuernummer und Finanzamt.** `elster_tax_number()` gibt die 13-stellige Steuernummer, unter der der Beleg geht: für Körperschaftsteuer, Gewerbesteuer und E-Bilanz die Steuernummer der Einstellungen Jahresmeldungen (`elster_income_tax_number`), wenn das Finanzamt dafür eine eigene vergeben hat, sonst die der Einstellungen Umsatzsteuer-Voranmeldung. Das Finanzamt im Kopf der Lieferung sind ihre ersten vier Stellen. `tax_numbers()` gibt dazu die Steuernummer, wie das Finanzamt sie vergeben hat, für den Druck.
@@ -211,7 +211,7 @@ Der Jahresabschluss geht nicht an ELSTER: `class AnnualAccounts(AnnualFiling, Do
 |---|---|---|
 | `compute()` | ja | „Berechnen“: liest die Quellen, rechnet mit dem Kern und gibt eine `Calculation` mit `lines`, `tables`, `values`, `findings` und `passed` |
 | `check_reported(lines)` | nein | die Befunde zu den Zeilen, wie sie gemeldet werden, nach Korrekturen und Zeilen von Hand |
-| `compute_deadline()` | nein | das Fälligkeitsdatum aus den Fristen der Jahresmeldungen (`steuerbote/deadlines/annual.py`, folgt); ohne es bleibt das Feld leer |
+| `compute_deadline()` | nein | das Fälligkeitsdatum aus den Fristen der Jahresmeldungen: `annual_deadline(company, kind, year)` in `steuerbote/steuerbote/deadlines.py` gibt mit dem Kern `steuerbote/deadlines/annual.py` denselben Tag wie „Offene Fristen“, siehe [Fristen](fristen.md#belege-der-jahresmeldungen); ohne es bleibt das Feld leer |
 | `set_amounts()` | nein | setzt bei jedem Speichern die Felder, die das Modul aus den gemeldeten Zeilen bildet, etwa seine Summen |
 | `amounts_kept(stored)` | nein | ob der gespeicherte Beleg diese Felder so hält, wie die Zeilen sie ergeben |
 | `check_filing()` | nein | lehnt eine Abgabe ab, die das Modul über „Bereit oder Anmerkungen“ hinaus nicht zulässt |
@@ -255,7 +255,7 @@ Der Kern ist reines Python ohne Frappe, mit 100 % Testabdeckung (`steuerbote/jah
 
 ## Grenzen
 
-- Noch kein Beleg: Die DocTypes der Jahresmeldungen und ihre Druckformate bringen die Module.
+- Belege mit Druckformat gibt es für die Umsatzsteuer-, die Körperschaftsteuer- und die Gewerbesteuererklärung. E-Bilanz und Jahresabschluss sind als Belege in Arbeit; bis dahin gibt es von ihnen nur die Kerne unter `steuerbote/ebilanz` und `steuerbote/hgb`, ohne Beleg und ohne Frist in „Offene Fristen“.
 - Ob ELSTER bei einer berichtigten Körperschaft- oder Gewerbesteuererklärung den Freitext nach § 150 Abs. 7 AO erwartet, ist nicht bestätigt.
 - Welchen Status des Berichts eine Korrektur der E-Bilanz trägt, entscheidet die Steuerberatung; Steuerbote prüft nur, dass eine Berichtigung einen nennt und nicht „Korrektur durch Finanzverwaltung“.
 - Je Unternehmen eine Steuernummer für Körperschaftsteuer, Gewerbesteuer und E-Bilanz.

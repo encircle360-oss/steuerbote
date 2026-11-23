@@ -39,7 +39,7 @@ Ein Beleg je Unternehmen und Jahr, benannt nach dem Jahr, für das er gilt (`USt
 | `reconciliation` | Je Kennzahl | Tabelle „Abgleich je Kennzahl“ (`Annual VAT Return Reconciliation`) |
 | `checks`, `deviations`, `unmapped` | Verprobung, Abweichende Belege, Beobachtete Konten mit Saldo | die Tabellen der Voranmeldung, für das ganze Jahr |
 
-Rechte wie bei der Voranmeldung: System Manager und Accounts Manager legen an, berechnen, ändern und geben ab; ein Accounts User legt an, berechnet und ändert, gibt aber nicht ab. Die Liste kommt mit dem Abschnitt „Jahresmeldungen“ in Seitenleiste und Arbeitsbereich (Welle 3); bis dahin findet die Suche des Desks sie als „Umsatzsteuererklärung“.
+Rechte wie bei der Voranmeldung: System Manager und Accounts Manager legen an, berechnen, ändern und geben ab; ein Accounts User legt an, berechnet und ändert, gibt aber nicht ab. Die Liste kommt mit dem Abschnitt „Jahresmeldungen“ in Seitenleiste und Arbeitsbereich, siehe [Roadmap](roadmap.md#stufe-3-jahresmeldungen); bis dahin findet die Suche des Desks sie als „Umsatzsteuererklärung“.
 
 ## Berechnen
 
