@@ -92,6 +92,7 @@ AWAITING_THE_SECTION_JAHRESMELDUNGEN = frozenset(
 		"Corporate Income Tax Return",
 		"Trade Tax Return",
 		"Annual Accounts",
+		"Electronic Balance Sheet",
 	}
 )
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
@@ -553,6 +554,7 @@ class DefaultPrintFormatFilesTest(TestCase):
 				"Corporate Income Tax Return",
 				"Trade Tax Return",
 				"Annual Accounts",
+				"Electronic Balance Sheet",
 			},
 		)
 
@@ -588,6 +590,7 @@ class NamingFilesTest(TestCase):
 			("corporate_income_tax_return", "KSt"),
 			("trade_tax_return", "GewSt"),
 			("annual_accounts", "JA"),
+			("electronic_balance_sheet", "EB"),
 		):
 			definition = read_json(MODULE / "doctype" / name / f"{name}.json")
 			fields = {field["fieldname"]: field for field in definition["fields"]}

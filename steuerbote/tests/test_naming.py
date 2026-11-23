@@ -83,3 +83,12 @@ class NamingTest(IntegrationTestCase):
 			).insert()
 		self.assertRegex(accounts.name, r"^JA-2026-\d{5}$")
 		self.assertEqual(getdate(accounts.creation).year, 2027)
+
+	def test_the_e_bilanz_for_2026_made_in_2027_carries_2026(self):
+		ensure_fiscal_year(COMPANY, "2026-06-30")
+		with self.freeze_time("2027-03-01 10:00:00"):
+			ebilanz = frappe.get_doc(
+				{"doctype": "Electronic Balance Sheet", "company": COMPANY, "year": 2026}
+			).insert()
+		self.assertRegex(ebilanz.name, r"^EB-2026-\d{5}$")
+		self.assertEqual(getdate(ebilanz.creation).year, 2027)

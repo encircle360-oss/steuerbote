@@ -1,0 +1,527 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "The E-Bilanz of a company for one Wirtschaftsjahr and Bilanzart (§ 5b EStG): Bilanz, GuV, Betriebsvermögensvergleich, Anlagenspiegel and Kontensalden on the HGB-Taxonomie, computed from the general ledger, the assets and the Balance Sheet Mapping.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "year",
+  "statement_type",
+  "is_correction",
+  "corrects",
+  "revision_status",
+  "column_break_head",
+  "status",
+  "ready",
+  "deadline",
+  "fiscal_year",
+  "from_date",
+  "to_date",
+  "stichtag",
+  "transmission_in_progress",
+  "amended_from",
+  "basis_section",
+  "accounting_standard",
+  "taxonomy_version",
+  "first_fiscal_year",
+  "column_break_basis",
+  "commercial_finance_book",
+  "tax_finance_book",
+  "positions_section",
+  "positions",
+  "totals_section",
+  "total_assets",
+  "total_equity_and_liabilities",
+  "net_income",
+  "column_break_totals",
+  "tax_net_income",
+  "tax_equity",
+  "bvv_section",
+  "bvv_previous_equity",
+  "bvv_previous_equity_override",
+  "bvv_previous_equity_reason",
+  "column_break_bvv",
+  "bvv_founding_contribution",
+  "bvv_contributions",
+  "bvv_withdrawals",
+  "bvv_capital_adjustments",
+  "fixed_assets_section",
+  "fixed_assets",
+  "transfers_section",
+  "transfers",
+  "accounts_section",
+  "accounts",
+  "findings_section",
+  "findings",
+  "filing_section",
+  "filed_via",
+  "filed_on",
+  "transferticket",
+  "column_break_filing",
+  "filed_by",
+  "filing_note",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "default": "EB-.{year}.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "EB-.{year}.-.#####",
+   "print_hide": 1,
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "remember_last_selected_value": 1,
+   "reqd": 1
+  },
+  {
+   "description": "The year the Wirtschaftsjahr ends in.",
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "default": "Jahresabschluss",
+   "description": "The Eröffnungsbilanz of the founding year (§ 5b Abs. 1 Satz 4 EStG) shows the Bilanz on the first day of the Wirtschaftsjahr, without GuV and Betriebsvermögensvergleich.",
+   "fieldname": "statement_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Kind of Balance Sheet",
+   "options": "Jahresabschluss\nEröffnungsbilanz",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "A Berichtigung of the E-Bilanz filed for the year and the Bilanzart, made with Make Berichtigung; it names its Status des Berichts.",
+   "fieldname": "is_correction",
+   "fieldtype": "Check",
+   "label": "Correction",
+   "read_only": 1
+  },
+  {
+   "fieldname": "corrects",
+   "fieldtype": "Link",
+   "label": "Corrects",
+   "options": "Electronic Balance Sheet",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.is_correction",
+   "description": "E erstmalig, which Steuerbote sets for the first E-Bilanz; a Berichtigung names B berichtigt, G geändert, BG berichtigt und geändert, sK sonstige Korrektur or I identischer Abschluss mit differenzierteren Informationen (FAQ zur E-Bilanz, Version 2026-01, Tz. 4 d).",
+   "fieldname": "revision_status",
+   "fieldtype": "Select",
+   "label": "Status of the Report",
+   "options": "\nE\nB\nG\nBG\nsK\nI"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Entwurf",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Entwurf\nBerechnet\nBereit\nAbgegeben\nErsetzt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ready",
+   "fieldtype": "Check",
+   "label": "Ready to File",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline",
+   "fieldtype": "Date",
+   "label": "Due Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fiscal_year",
+   "fieldtype": "Link",
+   "label": "Fiscal Year",
+   "options": "Fiscal Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "read_only": 1
+  },
+  {
+   "description": "The end of the Wirtschaftsjahr, of an Eröffnungsbilanz its first day.",
+   "fieldname": "stichtag",
+   "fieldtype": "Date",
+   "label": "Balance Sheet Date",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Set while Prüfen, Testsenden or Senden runs; the E-Bilanz cannot change until it ends.",
+   "fieldname": "transmission_in_progress",
+   "fieldtype": "Check",
+   "label": "Transmission Running",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Electronic Balance Sheet",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "basis_section",
+   "fieldtype": "Section Break",
+   "label": "Basis of the E-Bilanz"
+  },
+  {
+   "default": "HAOE",
+   "description": "HAOE: Einheitsbilanz, a Handelsbilanz that is the Steuerbilanz; HGBM: Handelsbilanz with the Überleitungsrechnung; AO: Steuerbilanz (Technischer Leitfaden zur HGB-Taxonomie 6.9, B.13). The form of a new E-Bilanz takes that of the Annual Filing Settings.",
+   "fieldname": "accounting_standard",
+   "fieldtype": "Select",
+   "label": "Accounting Standard",
+   "options": "HAOE\nHGBM\nAO",
+   "reqd": 1
+  },
+  {
+   "default": "6.9",
+   "description": "The version of the HGB-Taxonomie whose positions the E-Bilanz reports; the Balance Sheet Mapping names the same.",
+   "fieldname": "taxonomy_version",
+   "fieldtype": "Select",
+   "label": "HGB Taxonomy",
+   "options": "6.9",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "The Wirtschaftsjahr in which the company was founded: nothing was acquired before it, and its Betriebsvermögen at the end of the previous year is zero.",
+   "fieldname": "first_fiscal_year",
+   "fieldtype": "Check",
+   "label": "Founding Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_basis",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.accounting_standard!=='AO'",
+   "description": "The finance book of the Handelsbilanz and of the Einheitsbilanz; empty, the entries without a finance book. A new E-Bilanz takes that of the Annual Filing Settings.",
+   "fieldname": "commercial_finance_book",
+   "fieldtype": "Link",
+   "label": "Finance Book of the Handelsbilanz",
+   "options": "Finance Book"
+  },
+  {
+   "depends_on": "eval:doc.accounting_standard!=='HAOE'",
+   "description": "The finance book „Steuerbilanz“: for AO the books of the E-Bilanz, for HGBM the Überleitungsrechnung follows from its differences to the Handelsbilanz. Without one, a Handelsbilanz takes its Überleitungsrechnung by hand.",
+   "fieldname": "tax_finance_book",
+   "fieldtype": "Link",
+   "label": "Finance Book of the Steuerbilanz",
+   "options": "Finance Book"
+  },
+  {
+   "fieldname": "positions_section",
+   "fieldtype": "Section Break",
+   "label": "Positions"
+  },
+  {
+   "description": "The positions of Bilanz, GuV and Betriebsvermögensvergleich the E-Bilanz reports, filled by Calculate, a Mussfeld the books do not fill as NIL. A correction reports another amount of a position without positions under it and needs a reason; a line by hand names a position and gives its amount as the correction, with a reason.",
+   "fieldname": "positions",
+   "fieldtype": "Table",
+   "label": "Positions",
+   "options": "Electronic Balance Sheet Position"
+  },
+  {
+   "fieldname": "totals_section",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "total_assets",
+   "fieldtype": "Currency",
+   "label": "Sum of the Aktiva",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_equity_and_liabilities",
+   "fieldtype": "Currency",
+   "label": "Sum of the Passiva",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "net_income",
+   "fieldtype": "Currency",
+   "label": "Net Income",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "After the Überleitungsrechnung; the Körperschaftsteuererklärung starts from it.",
+   "fieldname": "tax_net_income",
+   "fieldtype": "Currency",
+   "label": "Jahresüberschuss of the Steuerbilanz",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "The Eigenkapital less the „nicht durch Eigenkapital gedeckter Fehlbetrag“ at the Bilanzstichtag.",
+   "fieldname": "tax_equity",
+   "fieldtype": "Currency",
+   "label": "Betriebsvermögen of the Steuerbilanz",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.statement_type==='Jahresabschluss'",
+   "fieldname": "bvv_section",
+   "fieldtype": "Section Break",
+   "label": "Betriebsvermögensvergleich"
+  },
+  {
+   "description": "Calculated: that of the filed E-Bilanz of the previous year, else that of the books at the beginning of the Wirtschaftsjahr; zero in the founding year.",
+   "fieldname": "bvv_previous_equity",
+   "fieldtype": "Currency",
+   "label": "Betriebsvermögen at the End of the Previous Year",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "bvv_previous_equity_override",
+   "fieldtype": "Currency",
+   "label": "Betriebsvermögen of the Previous Year by the Company",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "Required for the Betriebsvermögen of the previous year by the company, such as that of a Bescheid; without a reason Calculate takes the calculated one.",
+   "fieldname": "bvv_previous_equity_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Betriebsvermögen of the Previous Year"
+  },
+  {
+   "fieldname": "column_break_bvv",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "In the founding year, the Eigenkapital of the Eröffnungsbilanz.",
+   "fieldname": "bvv_founding_contribution",
+   "fieldtype": "Currency",
+   "label": "Einlagen at the Founding",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "Einlagen and Kapitalzuführungen of the Wirtschaftsjahr beyond those at the founding.",
+   "fieldname": "bvv_contributions",
+   "fieldtype": "Currency",
+   "label": "Further Einlagen",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "bvv_withdrawals",
+   "fieldtype": "Currency",
+   "label": "Entnahmen and Ausschüttungen",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "bvv_capital_adjustments",
+   "fieldtype": "Currency",
+   "label": "Kapitalanpassung",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "fixed_assets_section",
+   "fieldtype": "Section Break",
+   "label": "Anlagenspiegel"
+  },
+  {
+   "description": "A row per asset category and value type, filled by Calculate from the report Asset Depreciations and Balances. Umbuchungen, Zuschreibungen and the Abschreibungen the Asset module does not book by category are entered by hand, with a reason; they take up the adjustments of ERPNext. A row by hand names its position and gives every column, with a reason.",
+   "fieldname": "fixed_assets",
+   "fieldtype": "Table",
+   "label": "Anlagenspiegel",
+   "options": "Electronic Balance Sheet Fixed Asset"
+  },
+  {
+   "depends_on": "eval:doc.accounting_standard==='HGBM'",
+   "fieldname": "transfers_section",
+   "fieldtype": "Section Break",
+   "label": "Überleitungsrechnung"
+  },
+  {
+   "description": "The differences of the Steuerbilanz to the Handelsbilanz, each in the direction of its position: filled by Calculate from the finance book of the Steuerbilanz, or entered by hand with a reason. The steuerlicher Ausgleichsposten follows from them.",
+   "fieldname": "transfers",
+   "fieldtype": "Table",
+   "label": "Überleitungsrechnung",
+   "options": "Electronic Balance Sheet Transfer"
+  },
+  {
+   "fieldname": "accounts_section",
+   "fieldtype": "Section Break",
+   "label": "Account Balances"
+  },
+  {
+   "description": "The Kontennachweis: every account of the books with a balance, on the position it goes to, in the direction of the position.",
+   "fieldname": "accounts",
+   "fieldtype": "Table",
+   "label": "Account Balances",
+   "options": "Electronic Balance Sheet Account",
+   "read_only": 1
+  },
+  {
+   "fieldname": "findings_section",
+   "fieldtype": "Section Break",
+   "label": "Findings"
+  },
+  {
+   "fieldname": "findings",
+   "fieldtype": "Table",
+   "label": "Findings",
+   "options": "Annual Filing Finding",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_section",
+   "fieldtype": "Section Break",
+   "label": "Filing"
+  },
+  {
+   "fieldname": "filed_via",
+   "fieldtype": "Select",
+   "label": "Filed Via",
+   "options": "\neric\nmein_elster\nother_way\nupload",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filed_on",
+   "fieldtype": "Date",
+   "label": "Filed On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transferticket",
+   "fieldtype": "Data",
+   "label": "Transferticket",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_filing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filed_by",
+   "fieldtype": "Link",
+   "label": "Noted By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_note",
+   "fieldtype": "Small Text",
+   "label": "How and When Filed",
+   "read_only": 1
+  },
+  {
+   "description": "Required to file an E-Bilanz that is not ready: why it is correct nonetheless.",
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Electronic Balance Sheet",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 0,
+ "row_format": "Dynamic",
+ "search_fields": "company,year,statement_type",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

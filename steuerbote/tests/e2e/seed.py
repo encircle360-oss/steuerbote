@@ -22,6 +22,10 @@ A sixth company has Annual Filing Settings and its Jahresabschluss for the year,
 invented Kleinstkapitalgesellschaft of steuerbote/hgb/tests/companies.py, which the seed hands Berechnen in place of
 the books, since the site has no HGB-Taxonomie to place them with. The Print Settings write PDF files with PlutoPrint,
 which needs no browser on the server.
+
+A seventh company has SKR04 accounts, Annual Filing Settings, a Balance Sheet Mapping and a ledger of 2026, with its
+E-Bilanz for the year, calculated with the mini taxonomy of the tests of steuerbote/ebilanz in place of the
+HGB-Taxonomie, which the site of the browser tests does not have.
 """
 
 from datetime import date
@@ -32,8 +36,10 @@ from frappe.model.document import Document
 from frappe.utils import today
 
 from steuerbote import annual_accounts_sources
+from steuerbote.ebilanz.tests import taxonomy as mini_taxonomy
 from steuerbote.hgb.tests import companies
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import SEND, SUCCEEDED, UNKNOWN
+from steuerbote.steuerbote.doctype.eric_settings import eric_settings
 from steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation import store
 from steuerbote.tests import income_tax
 from steuerbote.tests.e2e import data
@@ -98,6 +104,7 @@ def run() -> None:
 	calculate_annual_vat_return()
 	make_income_tax_returns()
 	make_annual_accounts()
+	make_ebilanz()
 	make_sent_drafts()
 	make_setup_company()
 	make_mapping_company()
@@ -491,3 +498,79 @@ def make_annual_accounts() -> None:
 	with patch.object(annual_accounts_sources, "statement_sources", return_value=sources):
 		draft("Annual Accounts", {"company": company, "year": data.YEAR}).calculate()
 	frappe.db.set_single_value("Print Settings", "pdf_generator", "PlutoPrint")
+
+
+# SKR04 numbers of the company of the E-Bilanz: a bank, the Stammkapital, a loan, an accrual, revenue, material and the
+# Körperschaftsteuer, each with the position of the mini taxonomy of the tests of steuerbote/ebilanz it goes to.
+EBILANZ_ACCOUNTS = {
+	"1800": ("Bank", "Asset", "bs.ass.currAss.cashEquiv.bank"),
+	"2900": ("Gezeichnetes Kapital", "Equity", "bs.eqLiab.equity.subscribed.corp"),
+	"3070": ("Sonstige Rückstellungen", "Liability", "bs.eqLiab.accruals.other"),
+	"3150": ("Verbindlichkeiten gegenüber Kreditinstituten", "Liability", "bs.eqLiab.liab.bank"),
+	"4400": ("Erlöse 19 % USt", "Income", "is.netIncome.netSales"),
+	"5400": ("Wareneingang 19 % Vorsteuer", "Expense", "is.netIncome.materialServices"),
+	"7600": ("Körperschaftsteuer", "Expense", "is.netIncome.tax"),
+}
+# The Stammkapital of 25,000 euros paid in the year before, a loan of 40,000, revenue of 120,000, material of 70,000
+# and an accrual of 3,000 for it, and Körperschaftsteuer of 9,000: a Jahresüberschuss of 38,000 euros.
+EBILANZ_LEDGER = (
+	("JV-STE2B-GRUENDUNG", f"{data.YEAR - 1}-12-31", (("1800", 25000, 0), ("2900", 0, 25000))),
+	("JV-STE2B-DARLEHEN", f"{data.YEAR}-02-01", (("1800", 40000, 0), ("3150", 0, 40000))),
+	("JV-STE2B-ERLOES", f"{data.YEAR}-06-30", (("1800", 120000, 0), ("4400", 0, 120000))),
+	("JV-STE2B-WARE", f"{data.YEAR}-09-30", (("5400", 70000, 0), ("1800", 0, 70000))),
+	("JV-STE2B-RUECKSTELLUNG", f"{data.YEAR}-12-31", (("5400", 3000, 0), ("3070", 0, 3000))),
+	("JV-STE2B-KST", f"{data.YEAR}-12-10", (("7600", 9000, 0), ("1800", 0, 9000))),
+)
+EBILANZ_SETTINGS = {
+	"legal_form": "GmbH",
+	"business_purpose": "Softwareentwicklung",
+	"street": "Musterstraße",
+	"house_number": "1",
+	"postal_code": "12345",
+	"city": "Musterstadt",
+	"country": "Germany",
+}
+
+
+def make_ebilanz() -> None:
+	"""The company of EBILANZ_COMPANY with its E-Bilanz of the year, calculated with the mini taxonomy in place of the
+	installed one: the finding SB-TAXONOMIE says that the site lacks the taxonomy, so the E-Bilanz stays Berechnet, and
+	nothing of it goes to ELSTER."""
+	company = data.EBILANZ_COMPANY
+	make_company(company, data.EBILANZ_ABBR)
+	accounts = income_tax.make_accounts(
+		company, {number: (name, root_type) for number, (name, root_type, _) in EBILANZ_ACCOUNTS.items()}
+	)
+	for year in (data.YEAR - 1, data.YEAR):
+		ensure_fiscal_year(company, f"{year}-06-30")
+	if not frappe.db.exists("VAT Return Settings", company):
+		make_settings(company, [(data.YEAR, "monthly", 1)], **DATENLIEFERANT)
+	if not frappe.db.exists("Annual Filing Settings", company):
+		frappe.get_doc({"doctype": "Annual Filing Settings", "company": company, **EBILANZ_SETTINGS}).insert(
+			ignore_permissions=True
+		)
+	if not frappe.db.exists("Balance Sheet Mapping", company):
+		mapping = frappe.get_doc(
+			{
+				"doctype": "Balance Sheet Mapping",
+				"company": company,
+				"chart": "SKR04",
+				"taxonomy_version": "6.9",
+				"rules": [
+					{
+						"account": accounts[number],
+						"account_number": number,
+						"concept": concept,
+						"purpose": "both",
+					}
+					for number, (_, _, concept) in EBILANZ_ACCOUNTS.items()
+				],
+			}
+		)
+		mapping.flags.taxonomy_noted = True
+		mapping.insert(ignore_permissions=True)
+	for voucher_no, posting_date, rows in EBILANZ_LEDGER:
+		income_tax.post_once(company, accounts, "Journal Entry", voucher_no, posting_date, rows)
+	doc = draft("Electronic Balance Sheet", {"company": company, "year": data.YEAR})
+	with patch.object(eric_settings, "taxonomy_view", return_value=mini_taxonomy.view()):
+		doc.calculate()

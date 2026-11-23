@@ -89,3 +89,13 @@ DOCUMENTATION_YEAR = YEAR - 1
 ACCOUNTS_COMPANY = "Steuerbote E2E Jahresabschluss GmbH"
 ACCOUNTS_ABBR = "STE2J"
 ACCOUNTS_DIRECTOR = "Erika Beispiel"
+
+# A seventh company with the E-Bilanz of YEAR: SKR04 accounts, Annual Filing Settings, a Balance Sheet Mapping and a
+# ledger of the year, with a bank of 106,000 euros and a Jahresüberschuss of 38,000. The site of the browser tests has
+# no HGB-Taxonomie, so the seed calculates the E-Bilanz with the mini taxonomy of the tests of steuerbote/ebilanz in its
+# place; it stays Berechnet with the finding that the taxonomy is missing, and nothing of it goes to ELSTER.
+EBILANZ_COMPANY = "Steuerbote E2E E-Bilanz GmbH"
+EBILANZ_ABBR = "STE2B"
+# What the print shows of the bank and of the Jahresüberschuss.
+EBILANZ_BANK = "106.000,00"
+EBILANZ_NET_INCOME = "38.000,00"

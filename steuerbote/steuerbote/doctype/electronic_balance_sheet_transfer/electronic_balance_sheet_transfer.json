@@ -1,0 +1,92 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "An entry of the Überleitungsrechnung of a Handelsbilanz: a position and its change in the Steuerbilanz, in the current and in earlier Wirtschaftsjahre.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "kind",
+  "position",
+  "position_label",
+  "current",
+  "previous",
+  "reason",
+  "derived"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "default": "Wertänderung",
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Kind of Transfer",
+   "options": "Wertänderung\nUmgliederung\nUmgliederung und Wertänderung",
+   "read_only_depends_on": "eval:doc.derived"
+  },
+  {
+   "columns": 2,
+   "fieldname": "position",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Position",
+   "read_only_depends_on": "eval:doc.derived",
+   "reqd": 1
+  },
+  {
+   "fieldname": "position_label",
+   "fieldtype": "Small Text",
+   "label": "Label of the Position",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "current",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Change of the Current Year",
+   "options": "Company:company:default_currency",
+   "read_only_depends_on": "eval:doc.derived"
+  },
+  {
+   "columns": 1,
+   "description": "Only for a position of the Bilanz.",
+   "fieldname": "previous",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Change of Earlier Years",
+   "options": "Company:company:default_currency",
+   "read_only_depends_on": "eval:doc.derived"
+  },
+  {
+   "columns": 2,
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Reason",
+   "read_only_depends_on": "eval:doc.derived"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "description": "Given by the finance book of the Steuerbilanz.",
+   "fieldname": "derived",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "From the Finance Book",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Electronic Balance Sheet Transfer",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
