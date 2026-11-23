@@ -3,8 +3,9 @@
 from decimal import Decimal
 from unittest import TestCase
 
+from steuerbote.hgb.schemes import VermerkKind
 from steuerbote.hgb.size import SizeClass
-from steuerbote.hgb.statement import Balance, Code, Severity, build
+from steuerbote.hgb.statement import Balance, Code, RemainingTerm, Severity, build
 
 GKV = "is.netIncome.regular.operatingTC"
 SALES = f"{GKV}.grossTradingProfit.totalOutput.netSales"
@@ -40,18 +41,27 @@ PARENTS = {
 	GKV: "is.netIncome.eat",
 }
 
+SHORT = RemainingTerm.UP_TO_ONE_YEAR
 # An invented GmbH: Stammkapital 25,000 €, a profit carried forward, one year of trade.
 BOOKS = (
 	Balance(BANK, Decimal("37929.50"), source="1200 Bank"),
-	Balance(TRADE_RECEIVABLES, Decimal("5950.50"), source="1400 Forderungen aus Lieferungen und Leistungen"),
-	Balance(VAT_RECEIVABLE, Decimal("400.00"), source="1576 Abziehbare Vorsteuer 19 %"),
+	Balance(
+		TRADE_RECEIVABLES,
+		Decimal("5950.50"),
+		remaining_term=SHORT,
+		source="1400 Forderungen aus Lieferungen und Leistungen",
+	),
+	Balance(VAT_RECEIVABLE, Decimal("400.00"), remaining_term=SHORT, source="1576 Abziehbare Vorsteuer 19 %"),
 	Balance(SUBSCRIBED, Decimal("-25000.00"), source="0800 Gezeichnetes Kapital"),
 	Balance(CARRIED_FORWARD, Decimal("-3000.00"), source="0860 Gewinnvortrag vor Verwendung"),
 	Balance(TAX_PROVISIONS, Decimal("-1500.00"), source="0963 Körperschaftsteuerrückstellung"),
 	Balance(
-		TRADE_PAYABLES, Decimal("-2380.00"), source="1600 Verbindlichkeiten aus Lieferungen und Leistungen"
+		TRADE_PAYABLES,
+		Decimal("-2380.00"),
+		remaining_term=SHORT,
+		source="1600 Verbindlichkeiten aus Lieferungen und Leistungen",
 	),
-	Balance(VAT_PAYABLE, Decimal("-1900.00"), source="1776 Umsatzsteuer 19 %"),
+	Balance(VAT_PAYABLE, Decimal("-1900.00"), remaining_term=SHORT, source="1776 Umsatzsteuer 19 %"),
 	Balance(SALES_19, Decimal("-60000.00"), source="8400 Erlöse 19 % USt"),
 	Balance(RENT, Decimal("12000.00"), source="4210 Miete"),
 	Balance(MANAGER, Decimal("36000.00"), source="4124 Geschäftsführergehälter der GmbH-Gesellschafter"),
@@ -247,7 +257,12 @@ LOSSES = (
 	Balance(BANK, Decimal("30000.00"), source="1200 Bank"),
 	Balance(SUBSCRIBED, Decimal("-25000.00"), source="0800 Gezeichnetes Kapital"),
 	Balance(CARRIED_FORWARD, Decimal("30000.00"), source="0868 Verlustvortrag vor Verwendung"),
-	Balance(SHAREHOLDER_LOAN, Decimal("-40000.00"), source="0755 Darlehen des Gesellschafters"),
+	Balance(
+		SHAREHOLDER_LOAN,
+		Decimal("-40000.00"),
+		remaining_term=RemainingTerm.OVER_FIVE_YEARS,
+		source="0755 Darlehen des Gesellschafters",
+	),
 	Balance(RENT, Decimal("5000.00"), source="4210 Miete"),
 )
 
@@ -297,3 +312,183 @@ class DeficitTest(TestCase):
 		sheet = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS).balance_sheet
 		self.assertEqual(sheet.deficit, Decimal("0"))
 		self.assertEqual(sheet.line("bs.eqLiab.equity.deficitNotCoveredByCapital").amount, Decimal("0"))
+
+
+LOAN_RECEIVABLE = "bs.ass.currAss.receiv.other.loans"
+SOCIAL_SECURITY = "bs.eqLiab.liab.other.thereoffSocSec"
+PENSIONS = f"{GKV}.staff.social.pensions"
+UNCALLED = "bs.eqLiab.equity.subscribed.unpaidCap"
+VERMERK_PARENTS = {
+	**PARENTS,
+	LOAN_RECEIVABLE: "bs.ass.currAss.receiv.other",
+	SOCIAL_SECURITY: "bs.eqLiab.liab.other",
+	"bs.eqLiab.liab.other.other": "bs.eqLiab.liab.other",
+	PENSIONS: f"{GKV}.staff.social",
+	UNCALLED: "bs.eqLiab.equity.subscribed",
+}
+LONG = RemainingTerm.ONE_TO_FIVE_YEARS
+# The invented GmbH of BOOKS with a loan to an employee, social security and a loan of its shareholder.
+WITH_VERMERKE = (
+	*BOOKS[:1],
+	Balance(BANK, Decimal("-2830.00"), source="1210 Kontokorrent"),
+	*BOOKS[1:],
+	Balance(LOAN_RECEIVABLE, Decimal("3000.00"), remaining_term=LONG, source="1340 Darlehen an Mitarbeiter"),
+	Balance(
+		SOCIAL_SECURITY,
+		Decimal("-870.00"),
+		remaining_term=SHORT,
+		source="1742 Verbindlichkeiten soziale Sicherheit",
+	),
+	Balance(
+		SHAREHOLDER_LOAN,
+		Decimal("-300.00"),
+		remaining_term=RemainingTerm.OVER_FIVE_YEARS,
+		source="0755 Darlehen des Gesellschafters",
+	),
+	Balance(
+		"bs.eqLiab.liab.other.other",
+		Decimal("-100.00"),
+		shareholder=True,
+		remaining_term=SHORT,
+		source="1755 Verrechnungskonto Gesellschafter",
+	),
+	Balance(PENSIONS, Decimal("1100.00"), source="4168 Aufwendungen für Altersversorgung"),
+)
+
+
+def vermerke(line) -> dict[VermerkKind, Decimal]:
+	return {vermerk.vermerk.kind: vermerk.amount for vermerk in line.vermerke}
+
+
+class VermerkAmountsTest(TestCase):
+	"""The „davon“ amounts of § 268 Abs. 4 and 5 HGB, § 42 Abs. 3 GmbHG and § 266 Abs. 3 HGB."""
+
+	def test_klein_notes_the_remaining_terms_and_the_shareholders_at_its_roman_numerals_and_letters(self):
+		sheet = build(2026, SizeClass.KLEIN, WITH_VERMERKE, parents=VERMERK_PARENTS).balance_sheet
+		self.assertEqual(
+			vermerke(sheet.line("bs.ass.currAss.receiv")),
+			{
+				VermerkKind.RECEIVABLES_OVER_ONE_YEAR: Decimal("3000.00"),
+				VermerkKind.SHAREHOLDERS: Decimal("0"),
+			},
+		)
+		self.assertEqual(
+			vermerke(sheet.line("bs.eqLiab.liab")),
+			{
+				VermerkKind.LIABILITIES_UP_TO_ONE_YEAR: Decimal("5250.00"),
+				VermerkKind.LIABILITIES_OVER_ONE_YEAR: Decimal("300.00"),
+				VermerkKind.SHAREHOLDERS: Decimal("400.00"),
+			},
+		)
+		self.assertEqual(sheet.line("bs.eqLiab.liab").amount, Decimal("5550.00"))
+
+	def test_kleinst_notes_the_receivables_at_the_umlaufvermoegen_and_counts_only_the_receivables(self):
+		statement = build(2026, SizeClass.KLEINST, WITH_VERMERKE, parents=VERMERK_PARENTS)
+		self.assertEqual(statement.findings, ())
+		line = statement.balance_sheet.line("bs.ass.currAss")
+		self.assertEqual(vermerke(line)[VermerkKind.RECEIVABLES_OVER_ONE_YEAR], Decimal("3000.00"))
+		self.assertEqual(
+			[vermerk.vermerk.label for vermerk in line.vermerke],
+			[
+				"davon Forderungen mit einer Restlaufzeit von mehr als einem Jahr",
+				"davon Forderungen gegen Gesellschafter",
+			],
+		)
+
+	def test_the_larger_classes_note_each_item(self):
+		sheet = build(2026, SizeClass.GROSS, WITH_VERMERKE, parents=VERMERK_PARENTS).balance_sheet
+		self.assertEqual(
+			vermerke(sheet.line("bs.eqLiab.liab.other")),
+			{
+				VermerkKind.TAXES: Decimal("1900.00"),
+				VermerkKind.SOCIAL_SECURITY: Decimal("870.00"),
+				VermerkKind.LIABILITIES_UP_TO_ONE_YEAR: Decimal("2870.00"),
+				VermerkKind.LIABILITIES_OVER_ONE_YEAR: Decimal("0"),
+			},
+		)
+		self.assertEqual(
+			vermerke(sheet.line(SHAREHOLDER_LOAN)),
+			{
+				VermerkKind.LIABILITIES_UP_TO_ONE_YEAR: Decimal("0"),
+				VermerkKind.LIABILITIES_OVER_ONE_YEAR: Decimal("300.00"),
+			},
+		)
+		self.assertEqual(
+			vermerke(sheet.line("bs.ass.currAss.receiv.other"))[VermerkKind.RECEIVABLES_OVER_ONE_YEAR],
+			Decimal("3000.00"),
+		)
+
+	def test_the_income_statement_notes_its_davon_amounts(self):
+		income = build(2026, SizeClass.KLEIN, WITH_VERMERKE, parents=VERMERK_PARENTS).income_statement
+		self.assertEqual(
+			vermerke(income.line(f"{GKV}.staff.social")), {VermerkKind.PENSIONS: Decimal("1100.00")}
+		)
+		self.assertEqual(income.line(f"{GKV}.staff").amount, Decimal("37100.00"))
+
+	def test_uncalled_capital_is_offset_and_leaves_the_eingefordertes_kapital(self):
+		books = (
+			*BOOKS,
+			Balance(UNCALLED, Decimal("12500.00"), source="0820 Ausstehende Einlagen, nicht eingefordert"),
+		)
+		line = build(2026, SizeClass.KLEIN, books, parents=VERMERK_PARENTS).balance_sheet.line(
+			"bs.eqLiab.equity.subscribed"
+		)
+		self.assertEqual(
+			(line.label, line.amount, vermerke(line)),
+			(
+				"Eingefordertes Kapital",
+				Decimal("12500.00"),
+				{VermerkKind.UNCALLED_CAPITAL: Decimal("-12500.00")},
+			),
+		)
+		plain = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS).balance_sheet.line(
+			"bs.eqLiab.equity.subscribed"
+		)
+		self.assertEqual(plain.label, "Gezeichnetes Kapital")
+
+
+class RemainingTermFindingsTest(TestCase):
+	def test_a_balance_without_a_remaining_term_where_the_class_notes_one_is_an_error(self):
+		books = (
+			*BOOKS,
+			Balance(SHAREHOLDER_LOAN, Decimal("-500.00"), source="0755 Darlehen des Gesellschafters"),
+		)
+		statement = build(2026, SizeClass.KLEIN, books, parents=PARENTS)
+		findings = [finding for finding in statement.findings if finding.code is Code.REMAINING_TERM_UNKNOWN]
+		self.assertEqual(
+			[(finding.severity, finding.concept, finding.amount, finding.reference) for finding in findings],
+			[(Severity.ERROR, SHAREHOLDER_LOAN, Decimal("-500.00"), "§ 268 Abs. 5 Satz 1 HGB")],
+		)
+		self.assertIn("0755 Darlehen des Gesellschafters", findings[0].text)
+
+	def test_names_a_receivable_without_a_remaining_term_once(self):
+		books = (Balance(TRADE_RECEIVABLES, Decimal("10.00")), Balance(TRADE_RECEIVABLES, Decimal("0")))
+		for size_class in SizeClass:
+			with self.subTest(size_class=size_class):
+				statement = build(2026, size_class, books)
+				findings = [
+					finding for finding in statement.findings if finding.code is Code.REMAINING_TERM_UNKNOWN
+				]
+				self.assertEqual([finding.reference for finding in findings], ["§ 268 Abs. 4 Satz 1 HGB"])
+
+
+class UnitemizedTest(TestCase):
+	def test_a_balance_a_class_shows_only_in_a_total_is_an_error(self):
+		books = (*BOOKS, Balance("bs.eqLiab.equity", Decimal("-10.00"), source="0890 Eigenkapital"))
+		klein = build(2026, SizeClass.KLEIN, books, parents=PARENTS)
+		(finding,) = [finding for finding in klein.findings if finding.code is Code.UNITEMIZED]
+		self.assertEqual(
+			(finding.severity, finding.concept, finding.reference),
+			(Severity.ERROR, "bs.eqLiab.equity", "§ 266 Abs. 1 Satz 3 HGB"),
+		)
+
+	def test_a_class_that_shows_no_position_under_it_takes_it(self):
+		books = (*BOOKS, Balance("bs.eqLiab.equity", Decimal("-10.00")))
+		kleinst = build(2026, SizeClass.KLEINST, books, parents=PARENTS)
+		self.assertNotIn(Code.UNITEMIZED, [finding.code for finding in kleinst.findings])
+
+	def test_so_does_an_item_of_the_income_statement_without_its_parts(self):
+		books = (*BOOKS, Balance(f"{GKV}.staff", Decimal("10.00")))
+		statement = build(2026, SizeClass.KLEIN, books, parents=PARENTS)
+		(finding,) = [finding for finding in statement.findings if finding.code is Code.UNITEMIZED]
+		self.assertEqual((finding.concept, finding.reference), (f"{GKV}.staff", "§ 275 Abs. 2 HGB"))
