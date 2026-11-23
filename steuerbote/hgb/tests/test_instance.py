@@ -1149,3 +1149,51 @@ class FindingsTest(TestCase):
 			text(instance, "nt.genInfo.measurement"),
 			'Waren zum "gleitenden" Durchschnitt.\nForderungen - zum Nennwert.',
 		)
+
+
+class EntriesTest(TestCase):
+	"""An Angabe with entries behind it states the entries; the amount of its answer, where it has one, is their total
+	(steuerbote/hgb/notes.py), and an Angabe without entries states the amount of its answer."""
+
+	def test_the_amount_of_the_vorschuesse_is_the_total_of_their_entries(self):
+		notes = answered(KLEINST_NOTES, "ORGANKREDITE", Answer.YES, amount=Decimal("7000.00"))
+		(finding,) = kleinst(notes=notes).findings
+		self.assertEqual(
+			(finding.code, finding.concept, finding.amount), (Code.AMOUNT, "ORGANKREDITE", Decimal("7000.00"))
+		)
+
+	def test_vorschuesse_without_entries_state_the_answer(self):
+		notes = answered(
+			replace(KLEINST_NOTES, advances=()),
+			"ORGANKREDITE",
+			Answer.YES,
+			"Kredit an den Geschäftsführer",
+			Decimal("5000"),
+		)
+		instance = kleinst(notes=notes)
+		self.assertEqual(instance.findings, ())
+		self.assertEqual(
+			text(instance, "nt.relationships.creditsToMembers"), "Kredit an den Geschäftsführer (5.000 €)"
+		)
+
+	def test_haftungsverhaeltnisse_as_text_only(self):
+		notes = answered(
+			replace(KLEINST_NOTES, contingent=()),
+			"HAFTUNGSVERHAELTNISSE",
+			Answer.YES,
+			"Patronatserklärung für eine Tochter",
+		)
+		instance = kleinst(notes=notes)
+		self.assertEqual(instance.findings, ())
+		self.assertNotIn(("bs.contingLiab", ST), angaben(instance))
+		self.assertIn("Patronatserklärung für eine Tochter", text(instance, "ntmi.other").split("\n\n"))
+		self.assertEqual(chosen(instance, "report.id.reportElement.allocation.contingencies"), ("toBalance",))
+
+	def test_an_advance_without_its_rate_names_none(self):
+		advance = replace(KLEINST_NOTES.advances[0], interest_rate=None)
+		instance = kleinst(notes=replace(KLEINST_NOTES, advances=(advance,)))
+		self.assertTrue(
+			text(instance, "nt.relationships.creditsToMembers").startswith(
+				"Mitglieder des Geschäftsführungsorgans: Vorschüsse und Kredite 8.000 €; wesentliche Bedingungen:"
+			)
+		)
