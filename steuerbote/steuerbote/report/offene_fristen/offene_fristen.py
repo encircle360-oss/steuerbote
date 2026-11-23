@@ -1,6 +1,7 @@
 """Offene Fristen: the deadlines of the Umsatzsteuer-Voranmeldung, the Zusammenfassende Meldung and the
-Sondervorauszahlung of one company or of every company with VAT Return Settings, due within the horizon or overdue
-and not filed, by due date.
+Sondervorauszahlung, and the annual deadlines from the Umsatzsteuererklärung to the Offenlegung des
+Jahresabschlusses, of one company or of every company with VAT Return Settings or Annual Filing Settings, due within
+the horizon or overdue and not filed, by due date.
 
 steuerbote.steuerbote.deadlines reads the settings and the documents of each company, and steuerbote.deadlines
 computes its deadlines, as for the daily reminder; this module only makes the rows.
@@ -14,7 +15,14 @@ from frappe import _
 from frappe.utils import cint, getdate
 
 from steuerbote.deadlines import Deadline
-from steuerbote.steuerbote.deadlines import SETTINGS, column_labels, company_deadlines, document_link
+from steuerbote.steuerbote.deadlines import (
+	column_labels,
+	companies,
+	company_deadlines,
+	document_link,
+	has_settings,
+	note_text,
+)
 
 COMPANY = "company"
 HORIZON = "horizon"
@@ -29,6 +37,8 @@ COLUMNS = (
 	{"fieldname": "days", "fieldtype": "Int", "width": 80},
 	{"fieldname": "status", "fieldtype": "Data", "width": 110},
 	{"fieldname": "document", "fieldtype": "Data", "width": 180},
+	{"fieldname": "document_status", "fieldtype": "Data", "width": 130},
+	{"fieldname": "note", "fieldtype": "Data", "width": 320},
 )
 
 
@@ -54,15 +64,12 @@ def get_columns() -> list[dict[str, Any]]:
 
 
 def _companies(company: str | None) -> list[str]:
-	"""The company of the filter, or every company with settings that the user may read."""
+	"""The company of the filter, or every company with VAT Return Settings or Annual Filing Settings that the user
+	may read."""
 	if company:
 		frappe.has_permission("Company", "read", doc=company, throw=True)
-		return [company] if frappe.db.exists(SETTINGS, company) else []
-	return [
-		name
-		for name in frappe.get_all(SETTINGS, pluck="name", order_by="name")
-		if frappe.has_permission("Company", "read", doc=name)
-	]
+		return [company] if has_settings(company) else []
+	return [name for name in companies() if frappe.has_permission("Company", "read", doc=name)]
 
 
 def _row(deadline: Deadline, today: date) -> dict[str, Any]:
@@ -74,4 +81,6 @@ def _row(deadline: Deadline, today: date) -> dict[str, Any]:
 		"days": deadline.days_left(today),
 		"status": deadline.status.value,
 		"document": document_link(deadline),
+		"document_status": deadline.document_status or "",
+		"note": note_text(deadline),
 	}

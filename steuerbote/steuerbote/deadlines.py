@@ -1,21 +1,29 @@
 """The deadlines of the companies of a site, and the daily reminder of those not filed.
 
 steuerbote.deadlines computes the deadlines from plain data. This module reads that data from the site: the rules
-of the VAT Return Settings and the day they were made, the VAT Returns, Recapitulative Statements and VAT Return
-Extensions of a company with the day each was filed, the holidays of its Holiday List (steuerbote.holiday_list)
-and, for a Meldezeitraum without a Recapitulative Statement, whether its ledger holds anything to report
+of the VAT Return Settings and the day they were made; the years, the size history and the day of the Annual Filing
+Settings, with the last days of the Fiscal Years and the day the company was founded (Company.date_of_establishment);
+the VAT Returns, Recapitulative Statements and VAT Return Extensions of a company and its annual documents, each with
+the day it was filed and the status it holds; the holidays of its Holiday List (steuerbote.holiday_list) and, for a
+Meldezeitraum without a Recapitulative Statement, whether its ledger holds anything to report
 (steuerbote.zm_sources). A document is filed once it is submitted, or sent through Steuerbote with an outcome that
 ELSTER accepted or that is unknown, even if it was cancelled or discarded since (transmission.filings). The report
-Offene Fristen shows the deadlines.
+Offene Fristen shows the deadlines, and annual_deadline() gives an annual document its Fälligkeitsdatum.
 
-send_reminders() runs once a day (scheduler_events in hooks.py). For each company whose settings name recipients,
-it sends one e-mail in German with the deadlines that are not filed and fall due within the days of notice of the
-settings, or are overdue, and records each of them in a Deadline Reminder; a deadline reminded on a day is not
-reminded again that day.
+The annual documents are read through the registry steuerbote.deadlines.annual.DOCTYPES, by the fields every annual
+document carries (steuerbote.jahresmeldung.lifecycle.standard_fields). Their DocTypes come with the modules of the
+annual filings, so a site may lack one of steuerbote.deadlines.annual.AWAITING_DOCTYPES: this module reads each only
+where the site has it, and the deadlines of a DocType the site lacks stay out of the overview (installed).
+
+send_reminders() runs once a day (scheduler_events in hooks.py). For each company with VAT Return Settings or Annual
+Filing Settings whose VAT Return Settings name recipients, it sends one e-mail in German with the deadlines that are
+not filed and fall due within the days of notice of those settings, or are overdue, and records each of them in a
+Deadline Reminder; a deadline reminded on a day is not reminded again that day.
 """
 
 from collections.abc import Callable
 from datetime import date
+from typing import Any
 from urllib.parse import urlencode
 
 import frappe
@@ -33,7 +41,8 @@ from frappe.utils import (
 )
 
 from steuerbote import deadlines, holiday_list, zm_sources
-from steuerbote.deadlines import Deadline, Filing, Kind, Status
+from steuerbote.deadlines import Deadline, Filing, Kind, Note, Status, annual
+from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import DOCTYPE as REMINDER
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import reminder_name
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import filings
@@ -50,8 +59,10 @@ from steuerbote.ustva.period import Period, Rhythm
 from steuerbote.zm.rhythm import Coverage
 
 SETTINGS = "VAT Return Settings"
+ANNUAL_SETTINGS = "Annual Filing Settings"
 MAPPING = "VAT Return Mapping"
 TRANSMISSION = "ELSTER Transmission"
+FISCAL_YEAR = "Fiscal Year"
 REPORT = "Offene Fristen"
 SUBMITTED = 1
 CANCELLED = 2
@@ -59,25 +70,41 @@ CANCELLED = 2
 EMAIL_LANGUAGE = "de"
 EMAIL_DATE_FORMAT = "dd.mm.yyyy"
 # Each e-mail is about one company, so its table leaves out the column of the company.
-EMAIL_COLUMNS = ("kind", "period_label", "due", "days", "status", "document")
+EMAIL_COLUMNS = ("kind", "period_label", "due", "days", "status", "document", "document_status", "note")
 SAVEPOINT = "steuerbote_deadline_reminder"
+NOTE_SEPARATOR = "; "
+# The fields every annual document carries that tell whether and when it filed its deadlines.
+ANNUAL_FIELDS = ("name", "year", "status", "docstatus", "filed_via", "filed_on", "modified")
+
+
+def companies() -> list[str]:
+	"""Every company with VAT Return Settings or Annual Filing Settings, by name."""
+	return sorted({*frappe.get_all(SETTINGS, pluck="name"), *frappe.get_all(ANNUAL_SETTINGS, pluck="name")})
+
+
+def has_settings(company: str) -> bool:
+	"""Whether the company has VAT Return Settings or Annual Filing Settings, and so deadlines."""
+	return bool(frappe.db.exists(SETTINGS, company) or frappe.db.exists(ANNUAL_SETTINGS, company))
 
 
 def company_deadlines(company: str, today: date, horizon_days: int) -> list[Deadline]:
 	"""The deadlines of the company due within ``horizon_days`` days from ``today``, or overdue and not filed."""
-	return deadlines_of(frappe.get_doc(SETTINGS, company), today, horizon_days)
+	settings = frappe.get_doc(SETTINGS, company) if frappe.db.exists(SETTINGS, company) else None
+	return deadlines_of(company, settings, today, horizon_days)
 
 
-def deadlines_of(settings: Document, today: date, horizon_days: int) -> list[Deadline]:
-	"""The deadlines of the company of the settings, as company_deadlines() gives them."""
-	company = settings.company
-	rules = deadlines.CompanyRules(
-		company,
-		period_rules=settings.get_period_rules(),
-		prepayments=settings.get_prepayments(),
-		zm_rules=settings.get_zm_rules(),
-		since=getdate(settings.creation),
-	)
+def deadlines_of(company: str, settings: Document | None, today: date, horizon_days: int) -> list[Deadline]:
+	"""The deadlines of the company from its VAT Return Settings, where it has them, and from its Annual Filing
+	Settings, as company_deadlines() gives them."""
+	vat_rules: dict[str, Any] = {}
+	if settings is not None:
+		vat_rules = {
+			"period_rules": settings.get_period_rules(),
+			"prepayments": settings.get_prepayments(),
+			"zm_rules": settings.get_zm_rules(),
+			"since": getdate(settings.creation),
+		}
+	rules = deadlines.CompanyRules(company, annual=annual_rules(company), **vat_rules)
 	return deadlines.upcoming(
 		rules,
 		documents(company),
@@ -85,13 +112,69 @@ def deadlines_of(settings: Document, today: date, horizon_days: int) -> list[Dea
 		horizon_days,
 		holiday_list.holidays(company),
 		reportable=reportable(company),
+		document_types=document_types(),
 	)
 
 
+def annual_rules(company: str) -> deadlines.AnnualRules | None:
+	"""What the Annual Filing Settings of the company, its Fiscal Years and the day it was founded say about its
+	annual deadlines; None without the settings, which hold the Steuerberatung, the early orders and the size class of
+	each year."""
+	settings = settings_of(company)
+	if settings is None:
+		return None
+	return deadlines.AnnualRules(
+		years=settings.get_years(),
+		fiscal_year_ends=fiscal_year_ends(company),
+		size_history=settings.get_size_history(),
+		founded_on=_date(frappe.db.get_value("Company", company, "date_of_establishment")),
+		since=getdate(settings.creation),
+	)
+
+
+def annual_deadline(company: str, kind: Kind, year: int, *, opening_balance: bool = False) -> date | None:
+	"""The day the annual filing of ``kind`` for ``year`` is due, as Offene Fristen lists it: the Fälligkeitsdatum an
+	annual document gives as its compute_deadline, with ``opening_balance`` for the Eröffnungsbilanz of the E-Bilanz.
+	None where the company owes none, such as without Annual Filing Settings or in a year before the first."""
+	rules = annual_rules(company)
+	if rules is None:
+		return None
+	return deadlines.annual_due(
+		rules, kind, year, holiday_list.holidays(company), opening_balance=opening_balance
+	)
+
+
+def fiscal_year_ends(company: str) -> list[date]:
+	"""The last days of the Fiscal Years of the company that are not disabled: those that name it, and those that
+	name no company and so serve every company, as ERPNext reads them (Fiscal Year Company)."""
+	ends = []
+	for row in frappe.get_all(FISCAL_YEAR, filters={"disabled": 0}, fields=["name", "year_end_date"]):
+		named = [entry.company for entry in frappe.get_cached_doc(FISCAL_YEAR, row.name).companies]
+		if not named or company in named:
+			ends.append(getdate(row.year_end_date))
+	return ends
+
+
+def installed(doctype: str) -> bool:
+	"""Whether the site has the DocType of an annual document: one of AWAITING_DOCTYPES comes with its module, so a
+	site may lack it yet."""
+	return doctype not in annual.AWAITING_DOCTYPES or bool(frappe.db.exists("DocType", doctype))
+
+
+def document_types() -> dict[Kind, str]:
+	"""The DocType of each kind of deadline on the site: those of the Voranmeldung, the Zusammenfassende Meldung and
+	the Sondervorauszahlung, and each annual DocType of the registry that the site has."""
+	found = {kind: doctype for kind, doctype in deadlines.DOCUMENT_TYPES.items() if kind not in annual.KINDS}
+	for doctype, entry in annual.DOCTYPES.items():
+		if installed(doctype):
+			found.update(dict.fromkeys(entry.kinds, doctype))
+	return found
+
+
 def documents(company: str) -> list[Filing]:
-	"""The VAT Returns, Recapitulative Statements and VAT Return Extensions of the company, the latest first, with
-	the day each was filed."""
-	return [*_vat_returns(company), *_statements(company), *_extensions(company)]
+	"""The VAT Returns, Recapitulative Statements and VAT Return Extensions of the company and its annual documents,
+	the latest first, with the day each was filed and the status it holds."""
+	return [*_vat_returns(company), *_statements(company), *_extensions(company), *_annual_documents(company)]
 
 
 def _vat_returns(company: str) -> list[Filing]:
@@ -100,7 +183,7 @@ def _vat_returns(company: str) -> list[Filing]:
 	rows = frappe.get_all(
 		VAT_RETURN,
 		filters={"company": company},
-		fields=["name", "year", "rhythm", "period_index", "docstatus", "modified"],
+		fields=["name", "year", "rhythm", "period_index", "docstatus", "status", "modified"],
 		order_by="creation desc",
 	)
 	sent = _days_filed(VAT_RETURN, [row.name for row in rows])
@@ -110,7 +193,7 @@ def _vat_returns(company: str) -> list[Filing]:
 		if row.docstatus == CANCELLED and filed_on is None:
 			continue
 		period = Period(cint(row.year), Rhythm(row.rhythm), cint(row.period_index))
-		found.append(Filing(Kind.VORANMELDUNG, period, row.name, filed_on))
+		found.append(Filing(Kind.VORANMELDUNG, period, row.name, filed_on, row.status))
 	return found
 
 
@@ -140,7 +223,7 @@ def _statements(company: str) -> list[Filing]:
 	rows = frappe.get_all(
 		RECAPITULATIVE_STATEMENT,
 		filters={"company": company},
-		fields=["name", "year", "period_kind", "period_index", "docstatus", "filed_on", "modified"],
+		fields=["name", "year", "period_kind", "period_index", "docstatus", "status", "filed_on", "modified"],
 		order_by="creation desc",
 	)
 	sent = _days_filed(RECAPITULATIVE_STATEMENT, [row.name for row in rows])
@@ -150,7 +233,7 @@ def _statements(company: str) -> list[Filing]:
 		if row.docstatus == CANCELLED and filed_on is None:
 			continue
 		period = reporting_period(row.period_kind, cint(row.year), cint(row.period_index))
-		found.append(Filing(Kind.ZUSAMMENFASSENDE_MELDUNG, period, row.name, filed_on))
+		found.append(Filing(Kind.ZUSAMMENFASSENDE_MELDUNG, period, row.name, filed_on, row.status))
 	return found
 
 
@@ -160,7 +243,7 @@ def _extensions(company: str) -> list[Filing]:
 	rows = frappe.get_all(
 		VAT_RETURN_EXTENSION,
 		filters={"company": company},
-		fields=["name", "year", "docstatus", "filed_on", "modified"],
+		fields=["name", "year", "docstatus", "status", "filed_on", "modified"],
 		order_by="creation desc",
 	)
 	sent = _days_filed(VAT_RETURN_EXTENSION, [row.name for row in rows])
@@ -169,7 +252,46 @@ def _extensions(company: str) -> list[Filing]:
 		filed_on = sent.get(row.name) or _noted_filing(row)
 		if row.docstatus == CANCELLED and filed_on is None:
 			continue
-		found.append(Filing(Kind.SONDERVORAUSZAHLUNG, cint(row.year), row.name, filed_on))
+		found.append(Filing(Kind.SONDERVORAUSZAHLUNG, cint(row.year), row.name, filed_on, row.status))
+	return found
+
+
+def _annual_documents(company: str) -> list[Filing]:
+	"""The annual documents of the company in each DocType of the registry the site has, the latest first, read by
+	the fields every annual document carries; the day a Senden or the note of a filing outside Steuerbote files one
+	comes from its ELSTER Transmissions (transmission.filings), and the Bilanzart of an E-Bilanz tells its
+	Eröffnungsbilanz apart."""
+	found: list[Filing] = []
+	for doctype, entry in annual.DOCTYPES.items():
+		if not installed(doctype):
+			continue
+		opening = entry.opening_balance_field
+		if opening and not frappe.get_meta(doctype).has_field(opening):
+			opening = None
+		rows = frappe.get_all(
+			doctype,
+			filters={"company": company},
+			fields=[*ANNUAL_FIELDS, *([opening] if opening else [])],
+			order_by="creation desc",
+		)
+		sent = _days_filed(doctype, [row.name for row in rows])
+		found += deadlines.annual_filings(
+			entry.kinds,
+			[
+				deadlines.AnnualDocument(
+					row.name,
+					cint(row.year),
+					row.status,
+					getdate(row.modified),
+					docstatus=cint(row.docstatus),
+					filed_via=row.filed_via or None,
+					filed_on=_date(row.filed_on),
+					sent_on=sent.get(row.name),
+					opening_balance=bool(opening) and row.get(opening) == annual.OPENING_BALANCE,
+				)
+				for row in rows
+			],
+		)
 	return found
 
 
@@ -178,6 +300,11 @@ def _noted_filing(row: frappe._dict) -> date | None:
 	if row.docstatus == SUBMITTED:
 		return getdate(row.filed_on or row.modified)
 	return getdate(row.filed_on) if row.docstatus == CANCELLED and row.filed_on else None
+
+
+def _date(value: object) -> date | None:
+	"""A date field as a date; getdate of nothing would give today."""
+	return getdate(value) if value else None
 
 
 def reportable(company: str) -> Callable[[Coverage], bool]:
@@ -220,7 +347,32 @@ def column_labels(language: str | None = None) -> dict[str, str]:
 		"days": _("Days Left", lang=language),
 		"status": _("Status", lang=language),
 		"document": _("Filing Document", lang=language),
+		"document_status": _("State of the Document", lang=language),
+		"note": _("Deadline Note", lang=language),
 	}
+
+
+def note_texts(language: str | None = None) -> dict[Note, str]:
+	"""What each note of a deadline says (steuerbote.deadlines.annual.Note)."""
+	return {
+		Note.ADVISOR: _("Prepared by a Steuerberatung (§ 149 Abs. 3 AO)", lang=language),
+		Note.EARLY_REQUEST: _("Ordered early by the Finanzamt (§ 149 Abs. 4 AO)", lang=language),
+		Note.WITH_KST: _("No deadline of its own: with the Körperschaftsteuererklärung", lang=language),
+		Note.OPENING_BALANCE: _(
+			"Eröffnungsbilanz of the founding year (§ 5b Abs. 1 Satz 4 EStG); its deadline is assumed",
+			lang=language,
+		),
+		Note.ASSUMED_CLASS: _(
+			"No size class for the fiscal year: eight months (§ 42a Abs. 2 GmbHG)", lang=language
+		),
+		Note.ON_WEEKEND: _("On a weekend; whether § 193 BGB moves the day is unverified", lang=language),
+	}
+
+
+def note_text(deadline: Deadline, language: str | None = None) -> str:
+	"""The notes of the deadline in one line."""
+	texts = note_texts(language)
+	return NOTE_SEPARATOR.join(texts[note] for note in deadline.notes)
 
 
 def document_link(deadline: Deadline, absolute: bool = False, language: str | None = None) -> str:
@@ -237,10 +389,10 @@ def document_link(deadline: Deadline, absolute: bool = False, language: str | No
 
 
 def send_reminders() -> None:
-	"""The daily job: the reminder of every company, each in a savepoint of its own, so that a company whose reminder
-	fails leaves those of the others."""
+	"""The daily job: the reminder of every company with VAT Return Settings or Annual Filing Settings, each in a
+	savepoint of its own, so that a company whose reminder fails leaves those of the others."""
 	today = getdate()
-	for company in frappe.get_all(SETTINGS, pluck="name", order_by="name"):
+	for company in companies():
 		frappe.db.savepoint(SAVEPOINT)
 		try:
 			remind(company, today)
@@ -257,14 +409,17 @@ def send_reminders() -> None:
 
 def remind(company: str, today: date) -> bool:
 	"""Send the recipients of the company one e-mail with its deadlines that are not filed and due within the days
-	of notice or overdue, those reminded today already left out, and record each. True when it sends one."""
+	of notice or overdue, those reminded today already left out, and record each. True when it sends one. Recipients
+	and days of notice are those of the VAT Return Settings; a company without them has nobody to remind."""
+	if not frappe.db.exists(SETTINGS, company):
+		return False
 	settings = frappe.get_doc(SETTINGS, company)
 	recipients = recipients_of(company, settings.deadline_recipients)
 	if not recipients:
 		return False
 	due = [
 		deadline
-		for deadline in deadlines_of(settings, today, cint(settings.reminder_days))
+		for deadline in deadlines_of(company, settings, today, cint(settings.reminder_days))
 		if deadline.status is not Status.FILED
 		and not frappe.db.exists(REMINDER, _record_name(deadline, today))
 	]
@@ -341,6 +496,8 @@ def _message_row(item: Deadline, today: date, language: str) -> str:
 		str(item.days_left(today)),
 		escape_html(item.status.value),
 		document_link(item, absolute=True, language=language),
+		escape_html(item.document_status or ""),
+		escape_html(note_text(item, language)),
 	)
 	return "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
 
