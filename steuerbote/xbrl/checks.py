@@ -368,21 +368,21 @@ def required(taxonomy: Taxonomy, facets: Facets, periods: Periods) -> tuple[str,
 def components(report: Report, taxonomy: Taxonomy, facets: Facets) -> tuple[Finding, ...]:
 	"""A value for each announced component and no fact of another (Leitfaden B.9.2)."""
 	source = _source(taxonomy, "B.9.2")
-	findings = [
-		Finding(
-			Code.COMPONENT,
-			f"Der Berichtsbestandteil „{component.label}“ ist angekündigt, hat aber keine werthaltige Angabe für das "
-			"Wirtschaftsjahr.",
-			source,
-			component.value,
-		)
-		for component in COMPONENTS
-		if component.code in facets.components
-		and not any(
+	findings = []
+	for component in COMPONENTS:
+		if component.code in facets.components and not any(
 			item.value is not None and not item.period.prior and component.holds(taxonomy, item.concept)
 			for item, _ in report.items()
-		)
-	]
+		):
+			findings.append(
+				Finding(
+					Code.COMPONENT,
+					f"Der Berichtsbestandteil „{component.label}“ ist angekündigt, hat aber keine werthaltige Angabe "
+					"für das Wirtschaftsjahr.",
+					source,
+					component.value,
+				)
+			)
 
 	def unannounced(facts: Iterable[Fact]) -> Iterator[Finding]:
 		for fact in facts:
@@ -485,17 +485,17 @@ def admissibility(
 			for purpose in purposes
 			if not concept.permitted_for(purpose)
 		)
-	findings.extend(
-		Finding(
-			Code.SPECIAL_BALANCE,
-			f"„{taxonomy.label(item.concept)}“ hat nur in einer Sonder- oder Ergänzungsbilanz einen Wert und wird sonst "
-			"leer (NIL) übermittelt.",
-			f"{_source(taxonomy, 'A.9.3')}; ERiC E-Bilanz-Dokumentation, Kap. 3.6",
-			*_where(item),
-		)
-		for item, ancestors in report.items()
-		if item.value is not None and _special_balance_only(taxonomy, (*ancestors, item))
-	)
+	for item, ancestors in report.items():
+		if item.value is not None and _special_balance_only(taxonomy, (*ancestors, item)):
+			findings.append(
+				Finding(
+					Code.SPECIAL_BALANCE,
+					f"„{taxonomy.label(item.concept)}“ hat nur in einer Sonder- oder Ergänzungsbilanz einen Wert und "
+					"wird sonst leer (NIL) übermittelt.",
+					f"{_source(taxonomy, 'A.9.3')}; ERiC E-Bilanz-Dokumentation, Kap. 3.6",
+					*_where(item),
+				)
+			)
 	return tuple(findings)
 
 

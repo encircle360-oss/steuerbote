@@ -271,7 +271,8 @@ class _Writer:
 			refused = tuple(dict.fromkeys(character for character in value if character not in CHARACTERS))
 			if refused:
 				raise WriterError(
-					f"{item.concept} holds characters ELSTER does not take: {', '.join(map(describe, refused))}"
+					f"{item.concept} holds characters ELSTER does not take: "
+					f"{', '.join(describe(character) for character in refused)}"
 				)
 
 	def _check_tuple(self, fact: Tuple) -> None:
