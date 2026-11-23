@@ -916,6 +916,25 @@ class BilanzTest(SyntheticTestCase):
 		self.assertLines(arguments=("Bilanz", "2027"))
 		self.assertLines(arguments=("Bilanz",))
 
+	def test_names_what_6_10_changes_against_the_rules_of_6_9(self):
+		"""The fiscal years of the version and the Kontensalden without the reason of 6.9 (rule 170405002)."""
+		self.documentation.jahresdokumentationen[bilanz("6.10")] = agreeing.bilanz_jahresdokumentation("6.9")
+		self.documentation.matrix.append(
+			("ElsterBilanz", "Bilanz", "HGB-Taxonomie 6.10", "Bilanz_6.10", "checkBilanz_6_10")
+		)
+		code, found, errors = self.run_main("6.10")
+		self.assertEqual((code, errors), (1, ""))
+		self.assertEqual(
+			[line.partition(" of Kontext")[0] for line in found],
+			[
+				"Bilanz 6.10, rule 170205007",
+				"Bilanz 6.10, rule 170205018",
+				"Bilanz 6.10, rule 170205017",
+				"Bilanz 6.10, rule 170405002",
+				"Bilanz 6.10, rule 170405002",
+			],
+		)
+
 	def test_leaves_a_version_newer_than_the_documentation_to_a_request(self):
 		"""The documentation of ERiC 44.3.6.0 ends with the taxonomy 6.9 (Entwicklerhandbuch, Tabelle 9-19): without a
 		version the command leaves 6.10 out, and named it ends with 2 for its missing Jahresdokumentation."""
