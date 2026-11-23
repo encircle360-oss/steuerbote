@@ -1,0 +1,370 @@
+"""The base of the annual documents, steuerbote/steuerbote/annual_filing.py, on the test document of
+steuerbote/tests/annual_document.py: the start as a draft of its Fiscal Year, Berechnen with the corrections and lines
+by hand, what a save keeps, one draft and one filing per key, the Berichtigung, the note of a filing and the amounts
+computed again before it."""
+
+from datetime import date
+
+import frappe
+from frappe.tests import IntegrationTestCase
+from frappe.utils import add_days, flt, getdate, today
+
+from steuerbote.tests import annual_document
+from steuerbote.tests.annual_document import COMPANY, DOCTYPE, LINE_DOCTYPE, LINES, NEGATIVE, source
+from steuerbote.tests.transmitting import TICKET, TRANSMISSION, Transmitting
+
+# The form of TransferTicketSType in headerbasis_datentypen.xsd, invented.
+MEIN_ELSTER_TICKET = "ab123cdefghijkmnopqrstuvwxyz0123"
+SOURCE_ERROR = {
+	"finding": "SB-QUELLE",
+	"severity": "Fehler",
+	"text": "Ein Konto ohne Zuordnung hat einen Saldo.",
+	"reference": "Konto 1590",
+}
+SOURCE_HINT = {"finding": "SB-HINWEIS", "severity": "Hinweis", "text": "Die Umsatzerlöse weichen ab."}
+REASON = "Gutschrift vom 30. Dezember 2026, gebucht im Januar"
+
+
+class AnnualFilingTestCase(Transmitting, IntegrationTestCase):
+	"""The test document of the company of annual_document, its sources LINES unless a test names others."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		annual_document.install()
+		annual_document.make_company_with_settings()
+
+	def setUp(self):
+		super().setUp()
+		self.enterContext(annual_document.use_controller())
+		self.addCleanup(annual_document.discard_all)
+
+	def document(self, *entries, **fields):
+		doc = frappe.get_doc(
+			{
+				"doctype": DOCTYPE,
+				"company": COMPANY,
+				"year": 2026,
+				"source": source(*(entries or LINES)),
+				**fields,
+			}
+		).insert()
+		doc.reload()
+		return doc
+
+	def calculated(self, *entries, **fields):
+		doc = self.document(*entries, **fields)
+		doc.calculate()
+		doc.reload()
+		return doc
+
+	def filed(self, doc, filed_via: str = "mein_elster", **values):
+		doc.mark_filed_outside(filed_via, **values)
+		doc.reload()
+		return doc
+
+	def lines(self, doc) -> list[tuple]:
+		return [(row.key, flt(row.computed), flt(row.reported), row.manual) for row in doc.lines]
+
+
+class TestDraft(AnnualFilingTestCase):
+	def test_a_new_document_starts_as_a_draft_of_its_fiscal_year(self):
+		doc = self.document(
+			status="Abgegeben",
+			ready=1,
+			lines_read=7,
+			filed_via="eric",
+			transferticket=TICKET,
+			findings=[{"severity": "Fehler", "code": "SB-X", "text": "Alt."}],
+		)
+		self.assertEqual((doc.status, doc.ready, doc.lines_read, doc.findings), ("Entwurf", 0, 0, []))
+		self.assertFalse(doc.filed_via or doc.transferticket)
+		fiscal_year = frappe.db.get_value(
+			"Fiscal Year", {"year_start_date": "2026-01-01", "year_end_date": "2026-12-31"}
+		)
+		self.assertEqual(
+			(doc.fiscal_year, getdate(doc.from_date), getdate(doc.to_date), getdate(doc.deadline)),
+			(fiscal_year, date(2026, 1, 1), date(2026, 12, 31), date(2027, 7, 31)),
+		)
+
+	def test_a_copy_keeps_its_corrections_and_lines_by_hand_and_nothing_computed(self):
+		doc = self.document(
+			lines=[
+				{"key": "A", "label": "Umsätze", "computed": 100, "reported": 100},
+				{"key": "B", "computed": 30, "correction": 25, "correction_reason": REASON},
+				{"key": "C", "manual": 1, "correction": 5, "correction_reason": "Von Hand"},
+			]
+		)
+		self.assertEqual(self.lines(doc), [("B", 0, 25, 0), ("C", 0, 5, 1)])
+		self.assertEqual(flt(doc.total), 30)
+
+	def test_the_form_learns_the_statuses_and_the_ways_of_a_filing(self):
+		state = self.document().annual_state()
+		self.assertEqual(
+			state,
+			{
+				"calculated": ["Berechnet", "Bereit"],
+				"filings": ["Abgegeben"],
+				"filed_outside": ["mein_elster", "other_way"],
+				"submitted_by_hand": False,
+				"can_correct": False,
+			},
+		)
+
+
+class TestBerechnen(AnnualFilingTestCase):
+	def test_writes_the_lines_and_makes_a_document_without_errors_ready(self):
+		doc = self.calculated()
+		self.assertEqual((doc.status, doc.ready, flt(doc.total), doc.lines_read), ("Bereit", 1, 130, 2))
+		self.assertEqual(self.lines(doc), [("A", 100, 100, 0), ("B", 30, 30, 0)])
+		self.assertEqual([row.label for row in doc.lines], ["Umsätze", "Vorsteuer"])
+		self.assertEqual(doc.findings, [])
+
+	def test_an_error_of_the_sources_leaves_it_berechnet_and_lists_the_errors_first(self):
+		doc = self.calculated(*LINES, SOURCE_HINT, SOURCE_ERROR)
+		self.assertEqual((doc.status, doc.ready), ("Berechnet", 0))
+		self.assertEqual(
+			[(row.severity, row.blocking, row.code, row.text, row.reference or "") for row in doc.findings],
+			[
+				("Fehler", 1, "SB-QUELLE", "Ein Konto ohne Zuordnung hat einen Saldo.", "Konto 1590"),
+				("Hinweis", 0, "SB-HINWEIS", "Die Umsatzerlöse weichen ab.", ""),
+			],
+		)
+
+	def test_a_hint_leaves_it_ready(self):
+		doc = self.calculated(*LINES, SOURCE_HINT)
+		self.assertEqual(
+			(doc.status, doc.ready, [row.code for row in doc.findings]), ("Bereit", 1, ["SB-HINWEIS"])
+		)
+
+	def test_checks_the_lines_as_filed(self):
+		doc = self.calculated({"key": "A", "computed": "-5.00"})
+		self.assertEqual((doc.status, [row.code for row in doc.findings]), ("Berechnet", [NEGATIVE]))
+
+	def test_keeps_the_corrections_and_the_lines_by_hand(self):
+		doc = self.calculated()
+		doc.lines[0].correction = 90
+		doc.lines[0].correction_reason = REASON
+		doc.append("lines", {"key": "C", "correction": 5, "correction_reason": "Von Hand"})
+		doc.save()
+		doc.source = source({"key": "A", "label": "Umsätze", "computed": "110.00"})
+		doc.save()
+		doc.calculate()
+		doc.reload()
+		self.assertEqual(self.lines(doc), [("A", 110, 90, 0), ("C", 0, 5, 1)])
+		self.assertEqual(
+			[(row.correction_reason, row.label or "") for row in doc.lines],
+			[(REASON, "Umsätze"), ("Von Hand", "")],
+		)
+		self.assertEqual((doc.status, doc.ready, flt(doc.total), doc.findings), ("Bereit", 1, 95, []))
+
+	def test_keeps_a_correction_of_a_line_it_no_longer_computes(self):
+		doc = self.calculated()
+		doc.lines[1].correction = 20
+		doc.lines[1].correction_reason = REASON
+		doc.save()
+		doc.source = source(LINES[0])
+		doc.save()
+		doc.calculate()
+		doc.reload()
+		self.assertEqual(self.lines(doc), [("A", 100, 100, 0), ("B", 0, 20, 0)])
+
+	def test_only_a_draft_is_calculated(self):
+		doc = self.filed(self.calculated())
+		with self.assertRaisesRegex(frappe.ValidationError, "is no draft"):
+			doc.calculate()
+
+
+class TestSave(AnnualFilingTestCase):
+	def test_a_save_takes_only_what_the_company_enters(self):
+		doc = self.calculated()
+		doc.lines[0].update({"key": "Z", "label": "Anders", "computed": 999, "reported": 999, "manual": 1})
+		doc.update({"status": "Abgegeben", "ready": 0, "lines_read": 7, "total": 1})
+		doc.append("findings", {"severity": "Fehler", "code": "SB-X", "text": "Untergeschoben."})
+		doc.save()
+		doc.reload()
+		self.assertEqual(self.lines(doc), [("A", 100, 100, 0), ("B", 30, 30, 0)])
+		self.assertEqual(doc.lines[0].label, "Umsätze")
+		self.assertEqual(
+			(doc.status, doc.ready, doc.lines_read, flt(doc.total), doc.findings), ("Bereit", 1, 2, 130, [])
+		)
+
+	def test_a_changed_correction_leaves_the_document_berechnet_until_berechnen_checks_it(self):
+		doc = self.calculated()
+		doc.lines[0].correction = -10
+		doc.lines[0].correction_reason = REASON
+		doc.save()
+		doc.reload()
+		self.assertEqual(
+			(doc.status, doc.ready, [row.code for row in doc.findings]),
+			("Berechnet", 0, ["SB-NEU-BERECHNEN"]),
+		)
+		self.assertEqual(flt(doc.total), 20)
+		doc.calculate()
+		doc.reload()
+		self.assertEqual((doc.status, [row.code for row in doc.findings]), ("Berechnet", [NEGATIVE]))
+
+	def test_a_new_reason_for_the_same_amount_changes_nothing_berechnen_checked(self):
+		doc = self.calculated()
+		doc.lines[0].correction_reason = REASON
+		doc.lines[0].correction = 100
+		doc.save()
+		doc.reload()
+		self.assertEqual((doc.status, doc.ready), ("Bereit", 1))
+
+	def test_a_correction_needs_a_reason(self):
+		doc = self.calculated()
+		doc.lines[0].correction = 90
+		with self.assertRaisesRegex(frappe.ValidationError, "needs a reason"):
+			doc.save()
+
+	def test_a_line_berechnen_computed_stays(self):
+		doc = self.calculated()
+		doc.set("lines", doc.lines[1:])
+		with self.assertRaisesRegex(frappe.ValidationError, "comes from Berechnen"):
+			doc.save()
+
+	def test_another_year_discards_the_calculation(self):
+		doc = self.calculated()
+		doc.year = 2027
+		doc.save()
+		doc.reload()
+		self.assertEqual(
+			(doc.status, doc.ready, doc.lines_read, doc.lines, doc.findings), ("Entwurf", 0, 0, [], [])
+		)
+		self.assertEqual(getdate(doc.to_date), date(2027, 12, 31))
+
+	def test_the_fields_of_a_berichtigung_are_set_when_it_is_made(self):
+		first = self.filed(self.calculated())
+		correction = frappe.get_doc(DOCTYPE, first.make_correction())
+		correction.update({"is_correction": 0, "corrects": None})
+		correction.save()
+		correction.reload()
+		self.assertEqual((correction.is_correction, correction.corrects), (1, first.name))
+
+
+class TestFiling(AnnualFilingTestCase):
+	def test_buchen_alone_files_nothing(self):
+		doc = self.calculated()
+		with self.assertRaisesRegex(frappe.ValidationError, "not by Buchen alone"):
+			doc.submit()
+
+	def test_the_note_of_a_filing_files_the_document_with_how_when_and_by_whom(self):
+		yesterday = add_days(today(), -1)
+		doc = self.filed(self.calculated(), transferticket=MEIN_ELSTER_TICKET, filed_on=yesterday)
+		self.assertEqual(
+			(
+				doc.docstatus,
+				doc.status,
+				doc.filed_via,
+				getdate(doc.filed_on),
+				doc.transferticket,
+				doc.filed_by,
+			),
+			(1, "Abgegeben", "mein_elster", getdate(yesterday), MEIN_ELSTER_TICKET, frappe.session.user),
+		)
+		record = frappe.get_doc(TRANSMISSION, {"document_type": DOCTYPE, "document": doc.name})
+		self.assertEqual(
+			(record.operation, record.status, record.filed_via, record.transferticket, record.simulated),
+			("extern", "Erfolgreich", "mein_elster", MEIN_ELSTER_TICKET, 0),
+		)
+		self.assertTrue(doc.annual_state()["can_correct"])
+
+	def test_another_way_needs_a_note_of_how_and_when(self):
+		doc = self.calculated()
+		with self.assertRaisesRegex(frappe.ValidationError, "Note how and when"):
+			doc.mark_filed_outside("other_way")
+		doc = self.filed(doc, "other_way", note="Von der Steuerberatung abgegeben")
+		self.assertEqual((doc.filed_via, doc.filing_note), ("other_way", "Von der Steuerberatung abgegeben"))
+
+	def test_refuses_a_way_it_does_not_know_a_ticket_of_another_shape_and_a_day_to_come(self):
+		doc = self.calculated()
+		for values, message in (
+			({"filed_via": "fax"}, "knows no way of filing"),
+			({"filed_via": "mein_elster", "transferticket": "123"}, "is no Transferticket"),
+			({"filed_via": "mein_elster", "filed_on": add_days(today(), 1)}, "in the future"),
+		):
+			with self.subTest(values=values), self.assertRaisesRegex(frappe.ValidationError, message):
+				doc.mark_filed_outside(**values)
+
+	def test_a_draft_is_calculated_before_it_is_filed(self):
+		doc = self.document()
+		with self.assertRaisesRegex(frappe.ValidationError, "before filing it"):
+			doc.mark_filed_outside("mein_elster")
+
+	def test_a_document_that_is_not_ready_is_filed_with_its_remarks(self):
+		doc = self.calculated(*LINES, SOURCE_ERROR)
+		with self.assertRaisesRegex(frappe.ValidationError, "is not ready"):
+			doc.mark_filed_outside("mein_elster")
+		doc.reload()
+		doc.remarks = "Das Konto 1590 ist mit der Steuerberatung abgestimmt."
+		doc.save()
+		self.assertEqual(self.filed(doc).status, "Abgegeben")
+
+	def test_a_filed_document_is_not_cancelled(self):
+		doc = self.filed(self.calculated())
+		with self.assertRaisesRegex(frappe.ValidationError, "cannot be cancelled"):
+			doc.cancel()
+
+	def test_amounts_changed_past_the_save_are_found_before_a_filing(self):
+		doc = self.calculated()
+		frappe.db.set_value(LINE_DOCTYPE, doc.lines[0].name, {"correction": 50, "correction_reason": REASON})
+		with self.assertRaisesRegex(frappe.ValidationError, "do not agree with its lines as stored"):
+			doc.mark_filed_outside("mein_elster")
+
+
+class TestOneFilingPerKey(AnnualFilingTestCase):
+	def test_a_key_holds_one_draft(self):
+		first = self.document()
+		with self.assertRaisesRegex(
+			frappe.ValidationError, f"{first.name} is a draft for the same company and year already"
+		):
+			self.document()
+
+	def test_a_filed_key_takes_a_berichtigung_only(self):
+		first = self.filed(self.calculated())
+		with self.assertRaisesRegex(
+			frappe.ValidationError, f"{first.name} is filed already for the same company and year"
+		):
+			self.document()
+
+	def test_berichtigung_anlegen_makes_a_calculated_berichtigung_with_the_corrections(self):
+		first = self.calculated()
+		first.lines[0].correction = 90
+		first.lines[0].correction_reason = REASON
+		first.save()
+		first.calculate()
+		first = self.filed(frappe.get_doc(DOCTYPE, first.name))
+		correction = frappe.get_doc(DOCTYPE, first.make_correction())
+		self.assertEqual(
+			(correction.is_correction, correction.corrects, correction.status, correction.docstatus),
+			(1, first.name, "Bereit", 0),
+		)
+		self.assertEqual(self.lines(correction), [("A", 100, 90, 0), ("B", 30, 30, 0)])
+		self.filed(correction)
+		first.reload()
+		self.assertEqual((first.status, correction.status), ("Ersetzt", "Abgegeben"))
+
+	def test_a_berichtigung_is_made_from_a_filed_document(self):
+		doc = self.calculated()
+		with self.assertRaisesRegex(frappe.ValidationError, "A Berichtigung is made from a filed document"):
+			doc.make_correction()
+
+	def test_a_berichtigung_waits_for_a_draft_of_the_key(self):
+		first = self.filed(self.calculated())
+		draft = frappe.get_doc(DOCTYPE, first.make_correction())
+		with self.assertRaisesRegex(
+			frappe.ValidationError, f"{draft.name} is a draft for the same company and year already"
+		):
+			first.make_correction()
+
+	def test_a_berichtigung_corrects_a_filed_document_of_its_key(self):
+		draft = self.document()
+		for corrects in (draft.name, None):
+			with (
+				self.subTest(corrects=corrects),
+				self.assertRaisesRegex(
+					frappe.ValidationError, "A Berichtigung corrects a filed document for the same company and year"
+				),
+			):
+				self.document(is_correction=1, corrects=corrects)

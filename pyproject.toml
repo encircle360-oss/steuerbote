@@ -87,6 +87,7 @@ testpaths = [
     "steuerbote/steuerbote/doctype/vat_return_settings/test_translations.py",
     "steuerbote/steuerbote/report/ustva_kennzahlen/test_attribution.py",
     "steuerbote/steuerbote/report/ustva_kennzahlen/test_comparison.py",
+    "steuerbote/tests/test_annual_filing_files.py",
     "steuerbote/tests/test_mapping_sync.py",
     "steuerbote/tests/test_setup_files.py",
     "steuerbote/tests/test_standard_records.py",
