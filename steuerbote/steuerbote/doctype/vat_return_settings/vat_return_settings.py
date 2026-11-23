@@ -41,6 +41,7 @@ class VATReturnSettings(Document):
 		elster_tax_number: DF.Data | None
 		email: DF.Data | None
 		filer_name: DF.Data | None
+		max_confirmation_age: DF.Int
 		period_rules: DF.Table[VATReturnPeriodRule]
 		phone: DF.Data | None
 		postal_code: DF.Data | None

@@ -152,6 +152,19 @@ class TestZmSources(IntegrationTestCase):
 		goods_only = zm_sources.shares(COMPANY, Coverage(october, (10,), ()), self.mapping)
 		self.assertEqual({item.kennzahl for item in goods_only}, {"41", "42"})
 
+	def test_the_shares_of_kz_41_42_and_21_of_a_span_such_as_a_voranmeldungszeitraum(self):
+		"""The Voranmeldung reads the vouchers of its period for the confirmation of their USt-IdNrn."""
+		shares = zm_sources.span_shares(COMPANY, (date(2026, 10, 1), date(2026, 10, 31)), self.mapping)
+		october = zm_sources.shares(
+			COMPANY, Coverage(ReportingPeriod.month(2026, 10), (10,), (10,)), self.mapping
+		)
+		self.assertEqual(shares, october)
+		november = zm_sources.span_shares(COMPANY, (date(2026, 11, 1), date(2026, 11, 30)), self.mapping)
+		self.assertEqual(
+			[(item.kennzahl, item.voucher, item.amount) for item in november],
+			[("41", "Sales Invoice:SINV-STZS-4", d("60000.00"))],
+		)
+
 	def test_the_customer_of_each_kind_of_voucher(self):
 		vouchers = [
 			f"Sales Invoice:{self.delivery}",

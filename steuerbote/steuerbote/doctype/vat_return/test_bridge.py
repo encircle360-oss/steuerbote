@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from unittest import TestCase
@@ -9,6 +9,7 @@ from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.report.ustva_kennzahlen import comparison
 from steuerbote.ustva import KENNZAHLEN, LedgerLine, Period, calculate, plausibility
 from steuerbote.ustva.defaults import SKR03
+from steuerbote.vatid.result import Outcome
 
 
 def d(value: str) -> Decimal:
@@ -796,3 +797,94 @@ class ThresholdsTest(TestCase):
 			(amount["fieldtype"], Decimal(amount["default"])), ("Currency", comparison.DEFAULT_AMOUNT)
 		)
 		self.assertTrue(percent.get("non_negative") and amount.get("non_negative"))
+
+
+class LatestConfirmationsTest(TestCase):
+	def test_the_latest_confirmation_of_each_number_as_the_hints_read_it(self):
+		"""Frappe gives a Datetime field as a datetime in the time of the site and a Date field as a date; the form
+		sends both as text."""
+		records = {
+			"ATU12345678": {
+				"name": "USTID-2026-00002",
+				"requested_at": datetime(2026, 11, 20, 15, 0, 1),
+				"result": "valid",
+				"valid_from": None,
+				"valid_until": None,
+			},
+			"FR12345678901": {
+				"requested_at": date(2026, 11, 20),
+				"result": "invalid",
+				"valid_from": date(2019, 1, 1),
+				"valid_until": "2026-11-15",
+			},
+			"BE0123456789": {"requested_at": "2026-10-02 09:30:00", "result": "unknown"},
+		}
+		self.assertEqual(
+			bridge.latest_confirmations(records),
+			{
+				"ATU12345678": plausibility.LatestConfirmation(date(2026, 11, 20), Outcome.VALID),
+				"FR12345678901": plausibility.LatestConfirmation(
+					date(2026, 11, 20), Outcome.INVALID, date(2019, 1, 1), date(2026, 11, 15)
+				),
+				"BE0123456789": plausibility.LatestConfirmation(date(2026, 10, 2), Outcome.UNKNOWN),
+			},
+		)
+		self.assertEqual(bridge.latest_confirmations({}), {})
+
+
+class MaxConfirmationAgeTest(TestCase):
+	def test_the_age_the_settings_allow_or_else_the_default(self):
+		self.assertEqual(
+			[bridge.max_confirmation_age(value) for value in (30, "45", 0, None, "")],
+			[30, 45, 0, plausibility.DEFAULT_CONFIRMATION_AGE, plausibility.DEFAULT_CONFIRMATION_AGE],
+		)
+
+	def test_the_settings_offer_the_age_with_the_default_of_the_core(self):
+		field = fields_of("vat_return_settings")["max_confirmation_age"]
+		self.assertEqual(
+			(field["fieldtype"], int(field["default"]), field["non_negative"]),
+			("Int", plausibility.DEFAULT_CONFIRMATION_AGE, 1),
+		)
+
+
+class ReplacedHintsTest(TestCase):
+	"""USt-IdNrn. prüfen gives the hints on the USt-IdNrn. anew and leaves the others as Berechnen found them."""
+
+	def row(self, severity: str, code: str, text: str, party: str = "") -> dict:
+		return {
+			"severity": severity,
+			"code": code,
+			"text": text,
+			"voucher_type": "",
+			"voucher_no": "",
+			"party": party,
+		}
+
+	def test_new_hints_take_the_place_of_those_of_their_codes_and_warnings_stay_first(self):
+		stored = [
+			{
+				**self.row("Warnung", "EU-OHNE-USTID", "a", "X"),
+				"voucher_type": "Sales Invoice",
+				"voucher_no": "S-1",
+			},
+			{**self.row("Hinweis", "USTIDNR-UNGEPRUEFT", "nie bestätigt", "Y"), "name": "row-2", "idx": 2},
+			self.row("Hinweis", "KEIN-KATALOG", "b"),
+		]
+		new = [
+			plausibility.Hint(plausibility.Code.VAT_ID_INVALID, "c", party="Y"),
+			plausibility.Hint(plausibility.Code.VAT_ID_STALE, "d", party="Z"),
+		]
+		self.assertEqual(
+			bridge.replaced_hints(stored, new, plausibility.VAT_ID_CODES),
+			[
+				{
+					**self.row("Warnung", "EU-OHNE-USTID", "a", "X"),
+					"voucher_type": "Sales Invoice",
+					"voucher_no": "S-1",
+				},
+				self.row("Warnung", "USTIDNR-UNGUELTIG", "c", "Y"),
+				self.row("Hinweis", "KEIN-KATALOG", "b"),
+				self.row("Hinweis", "USTIDNR-VERALTET", "d", "Z"),
+			],
+		)
+		self.assertEqual(bridge.replaced_hints(stored[1:2], [], plausibility.VAT_ID_CODES), [])

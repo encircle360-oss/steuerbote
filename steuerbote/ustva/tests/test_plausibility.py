@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from unittest import TestCase
@@ -6,22 +7,31 @@ from steuerbote.ustva import KENNZAHLEN, Period
 from steuerbote.ustva.calculation import AccountBalance
 from steuerbote.ustva.defaults import SKR03
 from steuerbote.ustva.plausibility import (
+	DEFAULT_CONFIRMATION_AGE,
 	EU_MEMBER_STATES,
 	SEVERITIES,
+	VAT_ID_CODES,
+	VAT_ID_KENNZAHLEN,
 	Code,
 	EarlierPeriod,
+	Hint,
 	InvoiceLine,
+	LatestConfirmation,
 	Severity,
 	compare,
 	comparison_hints,
+	confirmable,
 	hints,
 	invoice_hints,
 	member_state,
+	merged,
 	purchase_accounts,
 	reconciliation_hints,
 	sales_accounts,
+	vat_id_hints,
 	watched_account_hints,
 )
+from steuerbote.vatid.result import Outcome
 
 
 def d(value: str) -> Decimal:
@@ -565,7 +575,7 @@ class HintsTest(TestCase):
 		self.assertEqual(set(SEVERITIES), set(Code))
 		self.assertEqual(
 			{code for code, severity in SEVERITIES.items() if severity is Severity.WARNING},
-			{Code.EU_WITHOUT_VAT_ID, Code.EU_ADDRESS, Code.ZERO_TAX, Code.TAX_DEVIATION},
+			{Code.EU_WITHOUT_VAT_ID, Code.EU_ADDRESS, Code.ZERO_TAX, Code.TAX_DEVIATION, Code.VAT_ID_INVALID},
 		)
 
 	def test_the_codes_and_severities_are_those_the_return_stores(self):
@@ -581,6 +591,9 @@ class HintsTest(TestCase):
 				"ABWEICHUNG-VORPERIODE",
 				"KEIN-KATALOG",
 				"ZUORDNUNG-JAHRGANG",
+				"USTIDNR-UNGEPRUEFT",
+				"USTIDNR-VERALTET",
+				"USTIDNR-UNGUELTIG",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung"])
@@ -648,3 +661,199 @@ class HintsTest(TestCase):
 			invoice("8400", "1600", "0", voucher="ACC-SINV-2026-00002"),
 		]
 		self.assertEqual(codes(invoice_hints(lines, SKR03, FIGURES)), [Code.EU_WITHOUT_VAT_ID, Code.ZERO_TAX])
+
+
+OCTOBER = Period.month(2026, 10)
+AUSTRIAN = "ATU12345678"
+FRENCH = "FR12345678901"
+ALPEN = "Alpen Handel GmbH"
+
+
+@dataclass(frozen=True, slots=True)
+class Use:
+	"""A voucher behind Kz 41, 42 or 21 as the ledger names its customer, like a VoucherAmount of the ZM."""
+
+	vat_id: str | None
+	party: str | None = ALPEN
+	kennzahl: str = "41"
+
+
+def asked(day: str, outcome: Outcome = Outcome.VALID, **validity: date) -> LatestConfirmation:
+	return LatestConfirmation(date.fromisoformat(day), outcome, **validity)
+
+
+def found_for(*uses: Use, latest: dict | None = None, period: Period = OCTOBER, age: int = 90) -> list[Hint]:
+	return vat_id_hints(uses, latest or {}, period, age)
+
+
+class VatIdHintsTest(TestCase):
+	"""Kz 41 needs a gültige USt-IdNr. at the time of the supply (§ 6a Absatz 1 Satz 1 Nummer 4 UStG), and the ZM
+	names the numbers behind Kz 41, 42 and 21 (§ 18a Absatz 7 Satz 1 UStG). The latest confirmation of each number
+	(§ 18e UStG) tells whether the BZSt confirmed it, when, and whether it found it valid."""
+
+	def test_a_number_never_confirmed_is_to_be_checked(self):
+		(hint,) = found_for(Use(AUSTRIAN))
+		self.assertEqual(
+			(hint.code, hint.severity, hint.voucher_type, hint.voucher_no, hint.party),
+			(Code.VAT_ID_UNCONFIRMED, Severity.HINT, "", "", ALPEN),
+		)
+		self.assertEqual(
+			hint.text,
+			"Die USt-IdNr. ATU12345678 des Kunden Alpen Handel GmbH (Kz 41) ist nicht bestätigt. "
+			"„USt-IdNrn. prüfen“ lässt sie beim BZSt bestätigen.",
+		)
+
+	def test_a_query_without_an_answer_leaves_the_number_unconfirmed(self):
+		(hint,) = found_for(Use(AUSTRIAN), latest={AUSTRIAN: asked("2026-10-20", Outcome.UNKNOWN)})
+		self.assertEqual((hint.code, hint.severity), (Code.VAT_ID_UNCONFIRMED, Severity.HINT))
+		self.assertEqual(
+			hint.text,
+			"Die USt-IdNr. ATU12345678 des Kunden Alpen Handel GmbH (Kz 41) ist nicht bestätigt: Die "
+			"Bestätigungsabfrage vom 20. Oktober 2026 ergab kein Ergebnis. „USt-IdNrn. prüfen“ fragt erneut.",
+		)
+
+	def test_a_confirmation_up_to_the_age_of_the_settings_needs_no_hint(self):
+		self.assertEqual((date(2026, 10, 31) - date(2026, 8, 2)).days, 90)
+		self.assertEqual(found_for(Use(AUSTRIAN), latest={AUSTRIAN: asked("2026-08-02")}), [])
+		self.assertEqual(found_for(Use(AUSTRIAN), latest={AUSTRIAN: asked("2026-10-31")}, age=0), [])
+
+	def test_an_older_confirmation_is_out_of_date(self):
+		(hint,) = found_for(Use(AUSTRIAN), latest={AUSTRIAN: asked("2026-08-01")})
+		self.assertEqual((hint.code, hint.severity, hint.party), (Code.VAT_ID_STALE, Severity.HINT, ALPEN))
+		self.assertEqual(
+			hint.text,
+			"Die USt-IdNr. ATU12345678 des Kunden Alpen Handel GmbH (Kz 41) ist zuletzt am 1. August 2026 "
+			"bestätigt worden, 91 Tage vor dem Ende des Voranmeldungszeitraums Oktober 2026; die Einstellungen "
+			"lassen höchstens 90 Tage zu. „USt-IdNrn. prüfen“ fragt erneut.",
+		)
+
+	def test_the_age_counts_to_the_end_of_the_period_whatever_its_length(self):
+		quarter = Period.quarter(2026, 3)
+		(hint,) = found_for(Use(AUSTRIAN), latest={AUSTRIAN: asked("2026-06-15")}, period=quarter, age=60)
+		self.assertIn(
+			"107 Tage vor dem Ende des Voranmeldungszeitraums III. Kalendervierteljahr 2026; die Einstellungen "
+			"lassen höchstens 60 Tage zu.",
+			hint.text,
+		)
+		self.assertEqual(found_for(Use(AUSTRIAN), latest={AUSTRIAN: asked("2026-07-02")}, period=quarter), [])
+
+	def test_a_confirmation_after_the_end_of_the_period_is_current(self):
+		self.assertEqual(found_for(Use(AUSTRIAN), latest={AUSTRIAN: asked("2026-11-20")}, age=0), [])
+
+	def test_an_invalid_number_is_a_warning_that_names_the_day_of_its_query(self):
+		(hint,) = found_for(
+			Use(FRENCH, "Paris Services SA", "21"), latest={FRENCH: asked("2026-11-20", Outcome.INVALID)}
+		)
+		self.assertEqual(
+			(hint.code, hint.severity, hint.party),
+			(Code.VAT_ID_INVALID, Severity.WARNING, "Paris Services SA"),
+		)
+		self.assertEqual(
+			hint.text,
+			"Die USt-IdNr. FR12345678901 des Kunden Paris Services SA (Kz 21) ist laut Bestätigungsabfrage vom "
+			"20. November 2026 ungültig.",
+		)
+
+	def test_a_number_valid_all_through_the_period_counts_as_confirmed_for_it(self):
+		"""evatr-2006 names the time a number was valid, evatr-2002 the day from which it is."""
+		lost_after = asked(
+			"2026-11-20", Outcome.INVALID, valid_from=date(2019, 1, 1), valid_until=date(2026, 11, 15)
+		)
+		self.assertEqual(found_for(Use(AUSTRIAN), latest={AUSTRIAN: lost_after}), [])
+		valid_from_september = asked("2026-08-15", Outcome.INVALID, valid_from=date(2026, 9, 1))
+		self.assertEqual(found_for(Use(AUSTRIAN), latest={AUSTRIAN: valid_from_september}), [])
+		(stale,) = found_for(Use(AUSTRIAN), latest={AUSTRIAN: valid_from_september}, age=30)
+		self.assertEqual(stale.code, Code.VAT_ID_STALE)
+		lost_within = asked("2026-11-20", Outcome.INVALID, valid_until=date(2026, 10, 15))
+		(invalid,) = found_for(Use(AUSTRIAN), latest={AUSTRIAN: lost_within})
+		self.assertEqual(invalid.code, Code.VAT_ID_INVALID)
+
+	def test_a_number_the_bzst_cannot_confirm_is_a_warning_with_the_reason(self):
+		cases = {
+			"DE123456789": "Das BZSt bestätigt Unternehmern USt-IdNrn., die ein anderer Mitgliedstaat erteilt hat, "
+			"keine deutschen (§ 18e Nr. 1 UStG).",
+			"GB123456789": "USt-IdNrn. mit GB lassen sich seit dem 1. Januar 2021 nicht mehr bestätigen; "
+			"Unternehmen in Nordirland haben eine USt-IdNr. mit XI.",
+			"ATU 12": "Eine USt-IdNr. hat 7 bis 14 Zeichen, ATU12 hat 5.",
+		}
+		for vat_id, reason in cases.items():
+			with self.subTest(vat_id=vat_id):
+				(hint,) = found_for(Use(vat_id), latest={AUSTRIAN: asked("2026-10-20")})
+				self.assertEqual((hint.code, hint.severity), (Code.VAT_ID_INVALID, Severity.WARNING))
+				self.assertEqual(
+					hint.text,
+					f"Die USt-IdNr. „{vat_id}“ des Kunden Alpen Handel GmbH (Kz 41) lässt sich nicht "
+					f"bestätigen: {reason}",
+				)
+
+	def test_one_hint_per_number_that_names_its_kennzahlen_in_the_order_of_the_form(self):
+		uses = (
+			Use(AUSTRIAN, kennzahl="21"),
+			Use("atu 123 456 78", "Alpen Handel GmbH Wien", "41"),
+			Use(AUSTRIAN, kennzahl="42"),
+			Use(AUSTRIAN, kennzahl="41"),
+		)
+		(hint,) = found_for(*uses)
+		self.assertEqual(hint.party, ALPEN)
+		self.assertTrue(
+			hint.text.startswith("Die USt-IdNr. ATU12345678 des Kunden Alpen Handel GmbH (Kz 41, 42 und 21) ")
+		)
+		(both,) = found_for(Use(AUSTRIAN, kennzahl="42"), Use(AUSTRIAN, kennzahl="21"))
+		self.assertIn("(Kz 42 und 21)", both.text)
+
+	def test_the_numbers_follow_each_other_in_order(self):
+		found = found_for(
+			Use(FRENCH, "Paris Services SA", "21"),
+			Use(AUSTRIAN),
+			latest={FRENCH: asked("2026-10-20", Outcome.INVALID)},
+		)
+		self.assertEqual(
+			[(hint.code, hint.party) for hint in found],
+			[(Code.VAT_ID_UNCONFIRMED, ALPEN), (Code.VAT_ID_INVALID, "Paris Services SA")],
+		)
+
+	def test_the_first_name_a_voucher_gives_names_the_customer(self):
+		(hint,) = found_for(
+			Use(AUSTRIAN, party=" "), Use(AUSTRIAN, party=None), Use(AUSTRIAN, party="Alpen AG")
+		)
+		self.assertEqual(hint.party, "Alpen AG")
+		(nameless,) = found_for(Use(AUSTRIAN, party=None))
+		self.assertEqual(nameless.party, "")
+		self.assertTrue(nameless.text.startswith("Die USt-IdNr. ATU12345678 (Kz 41) ist nicht bestätigt."))
+
+	def test_vouchers_without_a_vat_id_and_other_kennzahlen_get_no_hint_here(self):
+		"""EU-OHNE-USTID names an invoice of Kz 41 or 21 whose customer has no USt-IdNr."""
+		self.assertEqual(found_for(Use(None), Use(" "), Use(AUSTRIAN, kennzahl="81")), [])
+
+	def test_an_age_is_never_below_zero_days(self):
+		with self.assertRaisesRegex(ValueError, "not -1 days"):
+			found_for(Use(AUSTRIAN), age=-1)
+
+	def test_the_kennzahlen_are_those_of_the_zm_in_the_order_of_the_form(self):
+		self.assertEqual(VAT_ID_KENNZAHLEN, ("41", "42", "21"))
+		self.assertEqual([number for number in KENNZAHLEN if number in VAT_ID_KENNZAHLEN], ["41", "42", "21"])
+		self.assertEqual(VAT_ID_CODES, {Code.VAT_ID_UNCONFIRMED, Code.VAT_ID_STALE, Code.VAT_ID_INVALID})
+		self.assertEqual(DEFAULT_CONFIRMATION_AGE, 90)
+
+
+class ConfirmableTest(TestCase):
+	def test_the_numbers_the_bzst_can_confirm_each_once_as_a_confirmation_keeps_them(self):
+		uses = (
+			Use(FRENCH, kennzahl="21"),
+			Use("atu 123 456 78"),
+			Use(AUSTRIAN, kennzahl="42"),
+			Use("DE123456789"),
+			Use("ATU 12"),
+			Use(None),
+			Use("BE0123456789", kennzahl="81"),
+		)
+		self.assertEqual(confirmable(uses), [AUSTRIAN, FRENCH])
+		self.assertEqual(confirmable(()), [])
+
+
+class MergedTest(TestCase):
+	def test_warnings_come_first_and_each_source_keeps_its_order(self):
+		first = (Hint(Code.EU_WITHOUT_VAT_ID, "a"), Hint(Code.INVOICES_AND_LEDGER, "b"))
+		second = (Hint(Code.VAT_ID_UNCONFIRMED, "c"), Hint(Code.VAT_ID_INVALID, "d"))
+		self.assertEqual([hint.text for hint in merged(first, second)], ["a", "d", "b", "c"])
+		self.assertIsInstance(merged(first), tuple)

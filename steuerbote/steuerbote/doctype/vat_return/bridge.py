@@ -7,10 +7,10 @@ are computed by the core alone, and so are the Vorperiodenvergleich and the hint
 steuerbote.ustva.plausibility, whose results become the rows of the tables "comparison" and "hints".
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from types import MappingProxyType
@@ -29,6 +29,7 @@ from steuerbote.ustva import (
 )
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL, SONDERVORAUSZAHLUNG_KENNZAHL
 from steuerbote.ustva.rounding import ZERO, to_cents
+from steuerbote.vatid.result import Outcome
 
 
 class Row(Protocol):
@@ -455,3 +456,48 @@ def _number(row: Row) -> str:
 def _checked(value: object) -> bool:
 	"""The value of a check field; Frappe hands out 0 and 1, or nothing."""
 	return bool(int(value or 0))
+
+
+HINT_FIELDS = ("severity", "code", "text", "voucher_type", "voucher_no", "party")
+
+
+def latest_confirmations(records: ReadOnlyMapping[str, Row]) -> dict[str, plausibility.LatestConfirmation]:
+	"""The latest VAT ID Confirmation of each USt-IdNr., by the number, as the hints on the USt-IdNrn. read it: the day
+	of its query, the result of the confirmation up to it and the validity the BZSt named."""
+	return {
+		number: plausibility.LatestConfirmation(
+			_day_of(record.get("requested_at")),
+			Outcome(record.get("result")),
+			to_date(record.get("valid_from")),
+			to_date(record.get("valid_until")),
+		)
+		for number, record in records.items()
+	}
+
+
+def _day_of(moment: object) -> date:
+	"""The day of a Datetime field: a datetime from the database, a date, or the text the form sends."""
+	if isinstance(moment, datetime):
+		return moment.date()
+	if isinstance(moment, date):
+		return moment
+	return datetime.fromisoformat(str(moment)).date()
+
+
+def max_confirmation_age(value: object) -> int:
+	"""How many days before the end of the period the latest confirmation of a USt-IdNr. may lie, as the VAT Return
+	Settings hold it; a value that is not set takes the default of the core."""
+	if value is None or value == "":
+		return plausibility.DEFAULT_CONFIRMATION_AGE
+	return int(value)
+
+
+def replaced_hints(
+	rows: Iterable[Row], hints: Iterable[plausibility.Hint], codes: Collection[str]
+) -> list[dict[str, Any]]:
+	"""The stored hints without those of ``codes``, with ``hints`` in their place: the warnings first, then the hints,
+	each kind with the stored rows before the new ones, as plausibility.merged orders them."""
+	kept = [{name: row.get(name) for name in HINT_FIELDS} for row in rows if row.get("code") not in codes]
+	return sorted(
+		[*kept, *hint_rows(hints)], key=lambda row: row["severity"] != plausibility.Severity.WARNING.value
+	)
