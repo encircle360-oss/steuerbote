@@ -3,6 +3,7 @@
 from datetime import date
 from unittest import TestCase
 
+from steuerbote.elster import ust2a_xml
 from steuerbote.ustjahr import defaults, form, rules
 from steuerbote.ustjahr.years import (
 	LATEST_YEAR,
@@ -61,6 +62,7 @@ class PartsTest(TestCase):
 			("ROLE_FIELDS of steuerbote/ustjahr/defaults.py", defaults.ROLE_FIELDS),
 			("ANNUAL_ACCOUNTS of steuerbote/ustjahr/defaults.py", defaults.ANNUAL_ACCOUNTS),
 			("REVISIONS of steuerbote/ustjahr/defaults.py", defaults.REVISIONS),
+			("SCHEMAS of steuerbote/elster/ust2a_xml.py", ust2a_xml.SCHEMAS),
 		):
 			with self.subTest(table=name):
 				self.assertEqual(sorted(table), list(YEARS))
@@ -79,6 +81,7 @@ class PartsTest(TestCase):
 			defaults.ROLE_FIELDS,
 			defaults.ANNUAL_ACCOUNTS,
 			defaults.REVISIONS,
+			ust2a_xml.SCHEMAS,
 		):
 			self.assertEqual(max(table), LATEST_YEAR)
 
