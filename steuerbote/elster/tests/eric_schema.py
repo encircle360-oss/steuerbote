@@ -168,3 +168,13 @@ def lines(path: Path, name: str) -> list[str]:
 	return [
 		cells[0] for row in table.iter(f"{{{ODS_TABLE}}}table-row") if (cells := _cells(row)) and cells[0]
 	]
+
+
+def bilanz_directory() -> Path:
+	"""The directory of the Datenart Bilanz of the Verfahren ElsterBilanz."""
+	return documentation() / "Datenarten" / "ElsterBilanz" / "Bilanz"
+
+
+def bilanz_example(taxonomy: str, name: str = "HandelsbilanzLandwirt_GmbH.xml") -> bytes:
+	"""An example of an E-Bilanz of the taxonomy in its envelope, Beispiele/Taxonomie_<major>_<minor>/<name>."""
+	return (bilanz_directory() / "Beispiele" / f"Taxonomie_{taxonomy.replace('.', '_')}" / name).read_bytes()

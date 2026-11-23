@@ -14,6 +14,7 @@ from steuerbote.eric.datenart import (
 	UEBERTRAGUNGSPROTOKOLL,
 	ZMDO,
 	Datenart,
+	bilanz,
 	gewst,
 	kst,
 	of_version,
@@ -314,6 +315,118 @@ class ErklaerungDocumentationTest(TestCase):
 					for row in eric_schema.sheet(path, "Vorsatz - Felder")
 				}
 				self.assertEqual(fields["Unterfallart"], f"^(?=.{{2,2}}$){kind.unterfallart}")
+
+
+class BilanzTest(TestCase):
+	"""The E-Bilanz: the Datenart Bilanz of the Verfahren ElsterBilanz for the Finanzamt, send-Auth only, keyed by its
+	HGB-Taxonomie (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 9-20; Datenartversionmatrix.ods). ERiC prints no copy of
+	its data, only an Übertragungsprotokoll, and Prüfen is the Hinweisprüfung with Validiere (Kap. 9.7.1)."""
+
+	def test_the_bilanz_is_an_elster_bilanz_of_its_taxonomy_for_the_finanzamt(self):
+		self.assertEqual(
+			bilanz("6.9"),
+			Datenart(
+				name="Bilanz",
+				version="Bilanz_6.9",
+				verfahren="ElsterBilanz",
+				vorgang="send-Auth",
+				recipient_id="F",
+				recipient=None,
+				plugin="checkBilanz_6_9",
+				schema="Datenarten/ElsterBilanz/Bilanz/Schema/ebilanz_000002.xsd",
+				namespace="http://rzf.fin-nrw.de/RMS/EBilanz/2016/XMLSchema",
+				root="EBilanz",
+				root_version="2",
+				year=None,
+				printout="Übertragungsprotokoll",
+				preview_on_check=False,
+				nutzdaten_datenlieferant=True,
+				unterfallart=None,
+				taxonomy="6.9",
+			),
+		)
+
+	def test_names_the_plugin_library_of_its_taxonomy(self):
+		self.assertEqual(
+			(bilanz("6.9").plugin_library, bilanz("6.10").plugin_library),
+			("libcheckBilanz_6_9.so", "libcheckBilanz_6_10.so"),
+		)
+
+	def test_finds_the_bilanz_of_a_datenart_version(self):
+		self.assertEqual(of_version("Bilanz_6.9"), bilanz("6.9"))
+		self.assertEqual(of_version("Bilanz_6.10"), bilanz("6.10"))
+
+	def test_refuses_other_versions_and_taxonomies(self):
+		for version in ("Bilanz_6", "Bilanz_6_9", "Bilanz 6.9", "Bilanz_6.9.1", "bilanz_6.9", "Bilanz_"):
+			with self.subTest(version=version), self.assertRaises(ValueError):
+				of_version(version)
+		for taxonomy in ("6", "6_9", "6.9 ", "v6.9", ""):
+			with self.subTest(taxonomy=taxonomy), self.assertRaises(ValueError):
+				bilanz(taxonomy)
+
+
+class BilanzDocumentationTest(TestCase):
+	"""The Datenart Bilanz against the ERiC documentation 44.3.6.0."""
+
+	KIND = bilanz("6.9")
+
+	def test_the_example_goes_as_the_datenart_describes_it(self):
+		"""The example writes the version of EBilanz as 000002, the integer 2 of ebilanz_000002.xsd."""
+		root = etree.fromstring(eric_schema.bilanz_example("6.9"))
+		header = root.find(f"{ELSTER}TransferHeader")
+		self.assertEqual(
+			[header.findtext(ELSTER + name) for name in ("Verfahren", "DatenArt", "Vorgang")],
+			[self.KIND.verfahren, self.KIND.name, self.KIND.vorgang],
+		)
+		(nutzdaten_header,) = root.iter(f"{ELSTER}NutzdatenHeader")
+		self.assertEqual(
+			[etree.QName(child).localname for child in nutzdaten_header],
+			["NutzdatenTicket", "Empfaenger", "Hersteller", "DatenLieferant"],
+		)
+		self.assertEqual(nutzdaten_header.find(f"{ELSTER}Empfaenger").get("id"), self.KIND.recipient_id)
+		((first,),) = root.iter(f"{ELSTER}Nutzdaten")
+		self.assertEqual(first.tag, f"{{{self.KIND.namespace}}}{self.KIND.root}")
+		self.assertEqual(int(first.get("version")), int(self.KIND.root_version))
+		self.assertEqual(
+			[child.tag for child in first],
+			[f"{{{self.KIND.namespace}}}stichtag", "{http://www.xbrl.org/2003/instance}xbrl"],
+		)
+
+	def test_the_datenartversionmatrix_names_the_datenart_version_and_plugin_of_the_taxonomy(self):
+		(row,) = (
+			row
+			for row in eric_schema.datenart_versions()
+			if (row["Verfahren"], row["Datenart(en)"], row["Jahr / Version"])
+			== (self.KIND.verfahren, self.KIND.name, f"HGB-Taxonomie {self.KIND.taxonomy}")
+		)
+		self.assertEqual(
+			(row["datenartVersion-Parameter"], row["Plugin-Bibliothek"]),
+			(self.KIND.version, self.KIND.plugin),
+		)
+
+	def test_the_schema_holds_the_root_namespace_and_version_of_the_nutzdaten(self):
+		xsd = etree.parse(str(eric_schema.documentation() / self.KIND.schema)).getroot()
+		self.assertEqual(xsd.get("targetNamespace"), self.KIND.namespace)
+		(element,) = (element for element in xsd if element.get("name") == self.KIND.root)
+		self.assertEqual(element.tag, f"{XS}element")
+		(version,) = (
+			attribute for attribute in xsd.iter(f"{XS}attribute") if attribute.get("name") == "version"
+		)
+		bounds = [
+			int(version.find(f".//{XS}{facet}").get("value")) for facet in ("minInclusive", "maxInclusive")
+		]
+		self.assertEqual(bounds, [1, int(self.KIND.root_version)])
+
+	def test_the_jahresdokumentation_takes_the_finanzamt_as_the_only_recipient(self):
+		path = (
+			eric_schema.bilanz_directory()
+			/ "Jahresdokumentation"
+			/ f"Jahresdokumentation_Bilanz_Taxonomie_{self.KIND.taxonomy.replace('.', '_')}.ods"
+		)
+		(rule,) = (
+			row for row in eric_schema.sheet(path, "Header - Regeln") if row["Fehlercode"] == "170205015"
+		)
+		self.assertEqual(rule["Prüfbedingung"], f'[ndh:Empfaenger_id]!="{self.KIND.recipient_id}"')
 
 
 class DocumentationTest(TestCase):
