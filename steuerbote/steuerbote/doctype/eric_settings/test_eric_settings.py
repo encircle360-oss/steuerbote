@@ -6,8 +6,10 @@ import shutil
 import tempfile
 import urllib.error
 import zipfile
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from unittest.mock import patch
 
 import frappe
@@ -29,10 +31,15 @@ from steuerbote.steuerbote.doctype.eric_settings.eric_settings import (
 	check_versions,
 	eric_log_root,
 	run_installation,
+	run_taxonomy_installation,
 	vorsatz_copyright,
 )
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 from steuerbote.tests.helpers import make_company
+from steuerbote.xbrl import taxonomy
+from steuerbote.xbrl.taxonomy import View
+from steuerbote.xbrl.tests import mini
+from steuerbote.xbrl.versions import TAXONOMIES
 
 # The users of the tests are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = ["User"]
@@ -815,8 +822,8 @@ class TestERiCVersions(IntegrationTestCase):
 		):
 			checks = {check["name"]: check for check in settings.check_runtime()}
 		self.assertEqual(
-			list(checks)[-4:],
-			["ust", "kst", "gewst", "bilanz"],
+			list(checks)[-5:],
+			["ust", "kst", "gewst", "bilanz", "taxonomy_6_9"],
 		)
 		self.assertEqual(
 			checks["ust"]["detail"],
@@ -1097,7 +1104,17 @@ class TestERiCVersions(IntegrationTestCase):
 			checks = {check["name"]: check for check in settings.check_runtime()}
 		self.assertEqual(
 			list(checks),
-			["platform", "runtime", "libraries", "plugin", "zmdo", "hersteller_id", "minimum", "plugin_next"],
+			[
+				"platform",
+				"runtime",
+				"libraries",
+				"plugin",
+				"zmdo",
+				"hersteller_id",
+				"minimum",
+				"plugin_next",
+				"taxonomy_6_9",
+			],
 		)
 		self.assertFalse(checks["minimum"]["ok"])
 		self.assertIn("libericapi.so 43.1.2.0 statt mindestens 43.2.6.0", checks["minimum"]["detail"])
@@ -1178,3 +1195,235 @@ class TestAnnualFilings(IntegrationTestCase):
 		self.assertTrue(eric_settings.has_annual_filings())
 		with patch.object(frappe.db, "table_exists", return_value=False):
 			self.assertFalse(eric_settings.has_annual_filings())
+
+
+class TestTaxonomy(IntegrationTestCase):
+	"""Taxonomie einrichten: the HGB-Taxonomie whose package the operator names in common_site_config.json, installed
+	outside every site. The package of the mini taxonomy (steuerbote/xbrl/tests/mini.py) stands in for the one of
+	esteuer.de, so its checksum takes the place of the published one."""
+
+	def setUp(self):
+		super().setUp()
+		directory = Path(tempfile.mkdtemp(prefix="steuerbote-taxonomy-settings-"))
+		self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+		self.archive, self.checksum = mini.archive(directory)
+		self.root = directory / "taxonomy"
+		published = patch.object(
+			eric_settings,
+			"TAXONOMIES",
+			MappingProxyType({"6.9": replace(TAXONOMIES["6.9"], archive_sha256=self.checksum)}),
+		)
+		published.start()
+		self.addCleanup(published.stop)
+
+	def bench(self, **values):
+		"""common_site_config.json with the package of the mini taxonomy and the directory of the taxonomies."""
+		config = {
+			"steuerbote_taxonomy_6_9": str(self.archive),
+			"steuerbote_taxonomy_6_9_sha256": self.checksum,
+			"steuerbote_taxonomy_root": str(self.root),
+			**values,
+		}
+		return patch.object(transmission_adapter, "common_site_config", return_value=frappe._dict(config))
+
+	def install(self):
+		with self.bench(), patch("frappe.publish_realtime") as publish:
+			run_taxonomy_installation()
+		return publish
+
+	def test_the_form_shows_the_packages_of_the_bench_and_the_installed_versions(self):
+		settings = frappe.get_single(SETTINGS)
+		with self.bench():
+			settings.run_method("onload")
+		self.assertEqual(settings.taxonomy_archives, f"6.9: {self.archive} (SHA-256 {self.checksum})")
+		self.assertFalse(settings.installed_taxonomies)
+		self.install()
+		with self.bench():
+			settings.run_method("onload")
+		for part in ("6.9", self.archive.name, "Administrator"):
+			with self.subTest(part=part):
+				self.assertIn(part, settings.installed_taxonomies)
+		with self.bench(steuerbote_taxonomy_6_9="", steuerbote_taxonomy_6_9_sha256=""):
+			settings.run_method("onload")
+		self.assertIn("common_site_config.json", settings.taxonomy_archives)
+
+	def test_what_the_form_shows_comes_from_the_bench_and_the_server(self):
+		definition = frappe.get_meta(SETTINGS)
+		for fieldname in ("taxonomy_archives", "installed_taxonomies"):
+			with self.subTest(fieldname=fieldname):
+				self.assertEqual(definition.get_field(fieldname).read_only, 1)
+		settings = frappe.get_single(SETTINGS)
+		settings.update(
+			{
+				"hersteller_id": "",
+				"produkt_name": "steuerbote",
+				"proxy_url": "",
+				"taxonomy_archives": "6.9: /home/frappe/hochgeladen.zip",
+				"installed_taxonomies": "6.9",
+			}
+		)
+		with self.bench():
+			settings.save()
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual(
+			(settings.taxonomy_archives, settings.installed_taxonomies or ""),
+			(f"6.9: {self.archive} (SHA-256 {self.checksum})", ""),
+		)
+
+	def test_installing_needs_the_package_of_the_bench_and_its_checksum(self):
+		settings = frappe.get_single(SETTINGS)
+		for values in (
+			{"steuerbote_taxonomy_6_9": ""},
+			{"steuerbote_taxonomy_6_9_sha256": ""},
+			{"steuerbote_taxonomy_6_9": "", "steuerbote_taxonomy_6_9_sha256": ""},
+		):
+			with (
+				self.subTest(values=values),
+				self.bench(**values),
+				patch("frappe.enqueue") as enqueue,
+				self.assertRaisesRegex(frappe.ValidationError, "bench set-config -g"),
+			):
+				settings.install_taxonomy()
+			enqueue.assert_not_called()
+
+	def test_the_package_is_the_one_esteuer_publishes(self):
+		"""The checksum the operator names is checked against the archive, and it is the one of steuerbote/xbrl/versions.py
+		for the package esteuer.de publishes: a changed package changes the Mussfelder and the calculations of every
+		check."""
+		settings = frappe.get_single(SETTINGS)
+		for values, message in (
+			({"steuerbote_taxonomy_6_9_sha256": "ab" * 32}, "esteuer.de"),
+			({"steuerbote_taxonomy_6_9_sha256": "xyz"}, "64 hexadecimal digits"),
+			(
+				{"steuerbote_taxonomy_6_9": "german-gaap-taxonomy-v6.9-2025-04-01-xbrl.zip"},
+				"absolute path on the server",
+			),
+		):
+			with (
+				self.subTest(values=values),
+				self.bench(**values),
+				patch("frappe.enqueue") as enqueue,
+				self.assertRaisesRegex(frappe.ValidationError, message),
+			):
+				settings.install_taxonomy()
+			enqueue.assert_not_called()
+		with self.bench(steuerbote_taxonomy_6_9_sha256=f" {self.checksum.upper()} "):
+			self.assertEqual(eric_settings.configured_taxonomies(), {"6.9": (self.archive, self.checksum)})
+
+	def test_installing_runs_in_a_background_job(self):
+		settings = frappe.get_single(SETTINGS)
+		with self.bench(), patch("frappe.enqueue") as enqueue:
+			settings.install_taxonomy()
+		(call,) = enqueue.call_args_list
+		self.assertEqual(
+			call.args,
+			("steuerbote.steuerbote.doctype.eric_settings.eric_settings.run_taxonomy_installation",),
+		)
+		self.assertEqual(
+			call.kwargs,
+			{
+				"queue": "long",
+				"timeout": 900,
+				"job_id": "steuerbote:taxonomy:installation",
+				"deduplicate": True,
+				"enqueue_after_commit": True,
+			},
+		)
+
+	def test_only_a_system_manager_installs_the_taxonomy(self):
+		settings = frappe.get_single(SETTINGS)
+		with (
+			self.bench(),
+			self.set_user(make_user(ACCOUNTS_MANAGER, "Accounts Manager")),
+			patch("frappe.enqueue") as enqueue,
+			self.assertRaises(frappe.PermissionError),
+		):
+			settings.install_taxonomy()
+		enqueue.assert_not_called()
+
+	def test_the_job_installs_each_named_version_outside_every_site(self):
+		publish = self.install()
+		self.assertEqual(
+			publish.call_args.args,
+			("steuerbote_taxonomy_installation", {"ok": True, "versions": ["6.9"], "error": None}),
+		)
+		self.assertEqual(publish.call_args.kwargs["user"], frappe.session.user)
+		installation = taxonomy.installed(self.root, TAXONOMIES["6.9"])
+		self.assertEqual(
+			(installation.archive_sha256, installation.installed_by), (self.checksum, "Administrator")
+		)
+		with self.bench():
+			view = eric_settings.taxonomy_view("6.9", View.FISCAL)
+			self.assertIs(eric_settings.taxonomy_view("6.9", View.FISCAL), view)
+		self.assertEqual((view.version, view.view), ("6.9", View.FISCAL))
+		self.assertTrue(view.has("de-gaap-ci:bs.ass"))
+
+	def test_a_failed_installation_says_why(self):
+		with (
+			self.bench(steuerbote_taxonomy_6_9=str(self.archive.with_name("fehlt.zip"))),
+			patch("frappe.publish_realtime") as publish,
+		):
+			run_taxonomy_installation()
+		event, message = publish.call_args.args
+		self.assertEqual(
+			(event, message["ok"], message["versions"]), ("steuerbote_taxonomy_installation", False, [])
+		)
+		self.assertIn("lässt sich nicht lesen", message["error"])
+		self.assertIsNone(taxonomy.installed(self.root, TAXONOMIES["6.9"]))
+
+	def test_an_installation_without_a_package_of_the_bench_says_how_to_name_it(self):
+		with (
+			self.bench(steuerbote_taxonomy_6_9="", steuerbote_taxonomy_6_9_sha256=""),
+			patch("frappe.publish_realtime") as publish,
+		):
+			run_taxonomy_installation()
+		self.assertIn("common_site_config.json", publish.call_args.args[1]["error"])
+
+	def test_an_unexpected_failure_of_the_installation_is_logged(self):
+		logged = frappe.db.count("Error Log")
+		with (
+			self.bench(),
+			patch.object(taxonomy, "install_from_archive", side_effect=OSError("Datenträger voll")),
+			patch("frappe.publish_realtime") as publish,
+		):
+			run_taxonomy_installation()
+		self.assertEqual(frappe.db.count("Error Log"), logged + 1)
+		self.assertIn("Datenträger voll", publish.call_args.args[1]["error"])
+
+	def test_laufzeitumgebung_pruefen_reports_each_version(self):
+		settings = frappe.get_single(SETTINGS)
+		with self.bench():
+			checks = {check["name"]: check for check in settings.check_runtime()}
+		self.assertFalse(checks["taxonomy_6_9"]["ok"])
+		self.assertIn("Taxonomie einrichten", checks["taxonomy_6_9"]["detail"])
+		self.install()
+		with self.bench():
+			checks = {check["name"]: check for check in settings.check_runtime()}
+		self.assertEqual(
+			checks["taxonomy_6_9"],
+			{
+				"name": "taxonomy_6_9",
+				"ok": True,
+				"detail": "Die HGB-Taxonomie 6.9 ist eingerichtet und unverändert.",
+			},
+		)
+
+	def test_the_taxonomies_live_where_the_bench_says(self):
+		with patch.object(transmission_adapter, "common_site_config", return_value=frappe._dict()):
+			self.assertEqual(eric_settings.taxonomy_root(), Path(get_bench_path(), "sites", "taxonomy"))
+		with self.bench():
+			self.assertEqual(eric_settings.taxonomy_root(), self.root)
+
+	def test_a_view_is_read_only_from_an_installed_version(self):
+		for version in ("6.9", "7.0"):
+			with (
+				self.subTest(version=version),
+				self.bench(),
+				self.assertRaisesRegex(frappe.ValidationError, version.replace(".", r"\.")),
+			):
+				eric_settings.taxonomy_view(version, View.FISCAL)
+
+	def test_the_form_installs_the_taxonomy(self):
+		script = get_form_meta(SETTINGS, cached=False).get("__js")
+		self.assertIn('frm.call("install_taxonomy")', script)
+		self.assertIn("steuerbote_taxonomy_installation", script)

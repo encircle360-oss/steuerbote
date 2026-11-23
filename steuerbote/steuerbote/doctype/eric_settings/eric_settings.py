@@ -28,10 +28,20 @@ keeps them. The version of the app follows each migration and shows whenever the
 The settings keep the copyright notice of the manufacturer of the software, which the Vorsatz of every Erklärung
 carries (steuerbote/elster/vorsatz.py), at most 50 characters and without a default. A run of ERiC with an Erklärung
 needs it (vorsatz_copyright).
+
+The HGB-Taxonomie of the E-Bilanz and the Offenlegung comes the way ERiC does: Steuerbote ships none, since its files
+carry no licence that allows passing them on (steuerbote/xbrl/versions.py). The operator puts the package of each
+version from esteuer.de on the server and names it in common_site_config.json, steuerbote_taxonomy_6_9 with its
+SHA-256 as steuerbote_taxonomy_6_9_sha256, which must be the checksum versions.py records for the package esteuer.de
+publishes. "Taxonomie einrichten" installs each named version in a background job through steuerbote.xbrl.taxonomy,
+outside every site, in sites/taxonomy of the bench or where steuerbote_taxonomy_root names; "Laufzeitumgebung prüfen"
+reports whether each version is installed and unchanged. taxonomy_view() gives the E-Bilanz and the Offenlegung the
+parsed view of an installed version.
 """
 
 import os
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 
 import frappe
@@ -44,6 +54,8 @@ from frappe.utils import (
 	cint,
 	convert_utc_to_system_timezone,
 	escape_html,
+	format_datetime,
+	get_bench_path,
 	get_url_to_form,
 	getdate,
 	now_datetime,
@@ -59,6 +71,9 @@ from steuerbote.eric.releases import MinimumList, MinimumListError
 from steuerbote.eric.runtime import Check, RuntimeInstallError
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
+from steuerbote.xbrl import taxonomy
+from steuerbote.xbrl.taxonomy import Taxonomy, TaxonomyError, View
+from steuerbote.xbrl.versions import TAXONOMIES
 
 SETTINGS = "ERiC Settings"
 ANNUAL_FILING_SETTINGS = "Annual Filing Settings"
@@ -75,6 +90,14 @@ INSTALLATION_JOB_ID = "steuerbote:eric:installation"
 INSTALLATION_EVENT = "steuerbote_eric_installation"
 # Unpacking and checking an archive of about 500 MB takes minutes.
 INSTALLATION_TIMEOUT = 1800
+
+TAXONOMY_ROOT = "steuerbote_taxonomy_root"
+TAXONOMY_JOB = "steuerbote.steuerbote.doctype.eric_settings.eric_settings.run_taxonomy_installation"
+TAXONOMY_JOB_ID = "steuerbote:taxonomy:installation"
+TAXONOMY_EVENT = "steuerbote_taxonomy_installation"
+# Unpacking the 279 files of a package and parsing its three views takes about a minute on a small server.
+TAXONOMY_TIMEOUT = 900
+SHA256 = transmission_adapter.SHA256
 
 VERSIONS_SAVEPOINT = "steuerbote_eric_versions"
 VERSION_CHECK_FIELDS = (
@@ -113,6 +136,7 @@ class ERiCSettings(Document):
 		copyright: DF.Data | None
 		datenlieferant: DF.SmallText | None
 		hersteller_id: DF.Data | None
+		installed_taxonomies: DF.SmallText | None
 		installed_version: DF.Data | None
 		last_check: DF.Datetime | None
 		lib_dir: DF.Data | None
@@ -130,6 +154,7 @@ class ERiCSettings(Document):
 		proxy_url: DF.Data | None
 		proxy_user: DF.Data | None
 		simulation: DF.Check
+		taxonomy_archives: DF.SmallText | None
 		version_notice_status: DF.Literal[
 			"", "E-Mail and Notification", "Notification Only", "No Recipients", "Not Delivered"
 		]
@@ -141,6 +166,7 @@ class ERiCSettings(Document):
 
 	def onload(self) -> None:
 		self.show_configured_archive()
+		self.show_taxonomies()
 		self.show_app_version()
 
 	def show_app_version(self) -> None:
@@ -160,6 +186,7 @@ class ERiCSettings(Document):
 			line.strip() for line in (self.datenlieferant or "").splitlines() if line.strip()
 		)
 		self.show_configured_archive()
+		self.show_taxonomies()
 		if self.hersteller_id:
 			# The rule of Kz 09 in the Nutzdaten, which carries the same Hersteller-ID as header and runtime.
 			with xml_errors(_("ERiC Settings")):
@@ -231,6 +258,33 @@ class ERiCSettings(Document):
 		self.archive_path = archive_path or None
 		self.archive_sha256 = sha256 or None
 
+	def show_taxonomies(self) -> None:
+		"""The package of each version as common_site_config.json names it and the versions installed on the server,
+		whatever the form sent."""
+		lines = []
+		for version, (archive, sha256) in named_taxonomies().items():
+			if archive or sha256:
+				lines.append(f"{version}: {archive} (SHA-256 {sha256})")
+			else:
+				lines.append(_("{0}: not named in common_site_config.json").format(version))
+		self.taxonomy_archives = "\n".join(lines) or None
+		self.installed_taxonomies = (
+			"\n".join(
+				_("{0} from {1}, installed on {2} by {3}").format(
+					installation.version,
+					installation.archive,
+					format_datetime(
+						convert_utc_to_system_timezone(
+							datetime.fromisoformat(installation.installed_at)
+						).replace(tzinfo=None)
+					),
+					installation.installed_by,
+				)
+				for installation in taxonomy.installations(taxonomy_root())
+			)
+			or None
+		)
+
 	@frappe.whitelist(methods=["POST"])
 	def install_runtime(self) -> None:
 		"""Laufzeitumgebung installieren: unpack the ERiC archive that common_site_config.json names in a background
@@ -249,6 +303,23 @@ class ERiCSettings(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	def install_taxonomy(self) -> None:
+		"""Taxonomie einrichten: install each version of the HGB-Taxonomie whose package common_site_config.json names,
+		in a background job, which reads the packages there itself."""
+		frappe.only_for("System Manager", message=True)
+		configured_taxonomies()
+		if is_job_enqueued(TAXONOMY_JOB_ID):
+			frappe.throw(_("An installation of the taxonomy is running already."))
+		frappe.enqueue(
+			TAXONOMY_JOB,
+			queue="long",
+			timeout=TAXONOMY_TIMEOUT,
+			job_id=TAXONOMY_JOB_ID,
+			deduplicate=True,
+			enqueue_after_commit=True,
+		)
+
+	@frappe.whitelist(methods=["POST"])
 	def check_runtime(self) -> list[dict]:
 		"""Laufzeitumgebung prüfen: the checks of the status page for the runtimes installed, among them whether one
 		holds the plugin of the current year and the plugin checkZMDO of the Zusammenfassende Meldung, then whether
@@ -259,6 +330,7 @@ class ERiCSettings(Document):
 		checks = (
 			*transmission_adapter.runtime_status(self.hersteller_id or ""),
 			*releases.checks(installed, stored_minimum_list(self.minimum_versions), getdate()),
+			*taxonomy_status(),
 		)
 		return [{"name": check.name, "ok": check.ok, "detail": check.detail} for check in checks]
 
@@ -306,6 +378,136 @@ def refresh_produkt_version() -> None:
 	the update without a save. The header of a delivery takes the version of the app itself."""
 	if frappe.db.get_single_value(SETTINGS, "produkt_version", cache=False) != steuerbote.__version__:
 		frappe.db.set_single_value(SETTINGS, "produkt_version", steuerbote.__version__, update_modified=False)
+
+
+def run_taxonomy_installation() -> None:
+	"""Background job of ERiCSettings.install_taxonomy: install each version whose package common_site_config.json
+	names. The user who started the installation gets a realtime notice either way."""
+	versions: list[str] = []
+	error = None
+	try:
+		for version, (archive, sha256) in configured_taxonomies().items():
+			installation = taxonomy.install_from_archive(
+				archive, sha256, taxonomy_root(), TAXONOMIES[version], installed_by=frappe.session.user
+			)
+			versions.append(installation.version)
+	except TaxonomyError as refused:
+		error = str(refused)
+	except frappe.ValidationError as refused:
+		error = strip_html(str(refused))
+	except Exception as failure:
+		frappe.log_error(title=_("Installation of the taxonomy failed"))
+		error = str(failure)
+	frappe.publish_realtime(
+		TAXONOMY_EVENT,
+		{"ok": error is None, "versions": versions, "error": error},
+		user=frappe.session.user,
+		after_commit=True,
+	)
+
+
+def named_taxonomies() -> dict[str, tuple[str, str]]:
+	"""The package and the SHA-256 common_site_config.json names for each version, empty where it names none."""
+	config = transmission_adapter.common_site_config()
+	return {
+		version.version: (
+			str(config.get(version.config_key) or "").strip(),
+			str(config.get(version.config_sha256_key) or "").strip().lower(),
+		)
+		for version in TAXONOMIES.values()
+	}
+
+
+def configured_taxonomies() -> dict[str, tuple[Path, str]]:
+	"""The package and the SHA-256 of each version common_site_config.json names, checked: an absolute path on the
+	server and the checksum of the package esteuer.de publishes. Naming none is an error."""
+	configured = {}
+	for version, (archive, sha256) in named_taxonomies().items():
+		if not (archive or sha256):
+			continue
+		entry = TAXONOMIES[version]
+		if not (archive and sha256):
+			frappe.throw(no_taxonomy_message(version))
+		if not os.path.isabs(archive):
+			frappe.throw(
+				_("{0} in common_site_config.json is no absolute path on the server.").format(
+					entry.config_key
+				)
+			)
+		if not SHA256.fullmatch(sha256):
+			frappe.throw(
+				_("{0} in common_site_config.json has 64 hexadecimal digits.").format(entry.config_sha256_key)
+			)
+		if sha256 != entry.archive_sha256:
+			frappe.throw(
+				_(
+					"{0} in common_site_config.json is not the SHA-256 of the package of the HGB-Taxonomie {1} that esteuer.de publishes: {2}."
+				).format(entry.config_sha256_key, version, entry.archive_sha256)
+			)
+		configured[version] = (Path(archive), sha256)
+	if not configured:
+		frappe.throw(no_taxonomy_message(max(TAXONOMIES, key=_version_key)))
+	return configured
+
+
+def no_taxonomy_message(version: str) -> str:
+	entry = TAXONOMIES[version]
+	return _(
+		"Name the package of the HGB-Taxonomie {0} from esteuer.de and its SHA-256 as {1} and {2} in common_site_config.json of the bench, with bench set-config -g on the server."
+	).format(version, entry.config_key, entry.config_sha256_key)
+
+
+def taxonomy_root() -> Path:
+	"""Where the taxonomies live: outside every site, so they are neither served nor backed up.
+
+	``steuerbote_taxonomy_root`` in common_site_config.json overrides the directory ``sites/taxonomy`` of the bench.
+	"""
+	configured = transmission_adapter.common_site_config().get(TAXONOMY_ROOT)
+	return Path(configured) if configured else Path(get_bench_path(), "sites", "taxonomy")
+
+
+def taxonomy_status() -> tuple[Check, ...]:
+	"""What „Laufzeitumgebung prüfen“ reports of each version: named, installed and unchanged."""
+	return taxonomy.status(
+		taxonomy_root(),
+		{
+			version: (Path(archive), sha256) if archive and sha256 else None
+			for version, (archive, sha256) in named_taxonomies().items()
+		},
+	)
+
+
+def taxonomy_view(version: str, view: View) -> Taxonomy:
+	"""The parsed view of an installed version for the E-Bilanz and the Offenlegung, refused while the version is not
+	installed or the file of the view differs from the manifest."""
+	if version not in TAXONOMIES:
+		frappe.throw(_("Steuerbote knows no HGB-Taxonomie {0}.").format(version))
+	root = taxonomy_root()
+	installation = taxonomy.installed(root, TAXONOMIES[version])
+	if installation is None:
+		frappe.throw(
+			_("The HGB-Taxonomie {0} is not installed: Install Taxonomy in the ERiC Settings.").format(
+				version
+			)
+		)
+	try:
+		return _parsed_view(str(root), version, installation.views.get(view.value, ""), view)
+	except TaxonomyError as error:
+		frappe.throw(str(error), title=_("HGB Taxonomy"))
+
+
+@lru_cache(maxsize=6)
+def _parsed_view(root: str, version: str, checksum: str, view: View) -> Taxonomy:
+	"""A view read once per process and checksum of its file, which the key of the cache holds: each view of 6.9 is
+	some 5 MB of JSON."""
+	installation = taxonomy.installed(Path(root), TAXONOMIES[version])
+	if installation is None:
+		raise TaxonomyError(f"Die HGB-Taxonomie {version} ist nicht eingerichtet.")
+	return installation.view(view)
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+	return tuple(int(part) for part in version.split("."))
 
 
 def vorsatz_copyright() -> str:

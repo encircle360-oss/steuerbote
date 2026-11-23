@@ -17,6 +17,26 @@ frappe.ui.form.on("ERiC Settings", {
 				frm.reload_doc();
 			}
 		});
+		frappe.realtime.on("steuerbote_taxonomy_installation", (data) => {
+			if (data.ok) {
+				frappe.show_alert(
+					{
+						message: __("The HGB-Taxonomie {0} is installed.", [data.versions.join(", ")]),
+						indicator: "green",
+					},
+					10
+				);
+			} else {
+				frappe.msgprint({
+					title: __("Installation of the taxonomy failed"),
+					message: frappe.utils.escape_html(data.error || ""),
+					indicator: "red",
+				});
+			}
+			if (frm.doc && frm.doc.doctype === "ERiC Settings") {
+				frm.reload_doc();
+			}
+		});
 	},
 
 	refresh(frm) {
@@ -37,6 +57,18 @@ frappe.ui.form.on("ERiC Settings", {
 			frm.call("install_runtime").then(() =>
 				frappe.show_alert({
 					message: __("The installation of ERiC runs in the background."),
+					indicator: "blue",
+				})
+			);
+		});
+		frm.add_custom_button(__("Install Taxonomy"), () => {
+			if (frm.is_dirty()) {
+				frappe.msgprint(__("Save the settings before installing."));
+				return;
+			}
+			frm.call("install_taxonomy").then(() =>
+				frappe.show_alert({
+					message: __("The installation of the taxonomy runs in the background."),
 					indicator: "blue",
 				})
 			);
@@ -104,8 +136,8 @@ function notice_line(doc) {
 }
 
 // The checks of steuerbote.eric.runtime.status, the plugin of the year and that of the Zusammenfassende Meldung
-// among them, then those of steuerbote.eric.releases; their texts are German, as the runtime writes them for the
-// operator.
+// among them, then those of steuerbote.eric.releases and of each version of the HGB-Taxonomie; their texts are
+// German, as the runtime and the taxonomy write them for the operator.
 function show_status(checks) {
 	const lines = checks.map(
 		(check) =>
