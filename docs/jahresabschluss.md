@@ -205,7 +205,7 @@ Die E-Bilanz des Jahres nennt den Jahresabschluss im Feld „Jahresabschluss“,
 
 ## Für die Umsatzsteuererklärung
 
-Die Umsatzerlöse des festgestellten Jahresabschlusses (`umsatzerloese`) stellt „Berechnen“ an der Umsatzsteuererklärung des Jahres neben die Bemessungsgrundlagen ihrer Lieferungen und sonstigen Leistungen; eine Differenz über die Rundung und die Toleranz hinaus ist der Hinweis `SB-UMSATZERLOESE`, siehe [Abgleich mit den Umsatzerlösen](umsatzsteuererklaerung.md#abgleich-mit-den-umsatzerlösen). Ein Entwurf zählt dafür nicht; ohne festgestellten Jahresabschluss nimmt die Umsatzsteuererklärung die Umsatzerlöse der abgegebenen E-Bilanz.
+Die Umsatzerlöse des festgestellten Jahresabschlusses (`umsatzerloese`) stellt „Berechnen“ an der Umsatzsteuererklärung des Jahres neben die Bemessungsgrundlagen ihrer Lieferungen und sonstigen Leistungen; eine Differenz über die Rundung und die Toleranz hinaus ist der Hinweis `SB-UMSATZERLOESE`, siehe [Abgleich mit den Umsatzerlösen](umsatzsteuererklaerung.md#abgleich-mit-den-umsatzerlösen). Ein Entwurf zählt dafür nicht; ohne festgestellten Jahresabschluss nimmt die Umsatzsteuererklärung die Umsatzerlöse der abgegebenen E-Bilanz. Warum der Jahresabschluss nach den Rückstellungen und vor der E-Bilanz festgestellt wird, sagt [Zusammenspiel der Jahresmeldungen](jahresmeldungen.md#zusammenspiel-der-jahresmeldungen).
 
 ## Grenzen
 
