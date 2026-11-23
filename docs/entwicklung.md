@@ -49,6 +49,13 @@ steuerbote/                    Repository
 │   ├── deadlines/             Fristen von Voranmeldung, ZM und Sondervorauszahlung mit Status, reines Python ohne Frappe-Import; Bericht „Offene Fristen“, tägliche Erinnerung und Fristerinnerung im Frappe-Modul, siehe Fristen
 │   ├── mappings/              Vergleich einer Kontenzuordnung mit ihren Vorgaben oder einer Datei in drei Seiten und die Datei einer Kontenzuordnung mit Prüfsumme, reines Python ohne Frappe-Import
 │   ├── setup/                 Steuerbote einrichten: Schritte und ihre Reihenfolge, Erkennung von SKR03 und SKR04, Vorschlag des Voranmeldungszeitraums, reines Python ohne Frappe-Import; Seite und Schritte im Frappe-Modul, siehe Einrichtung
+│   ├── ustjahr/               Rechenkern der Umsatzsteuererklärung (USt 2 A), reines Python ohne Frappe-Import
+│   ├── kst/, gewst/           Rechenkerne von Körperschaft- und Gewerbesteuer mit ihren Jahrestabellen, reines Python ohne Frappe-Import
+│   ├── hgb/                   Größenklassen, Gliederung und Offenlegung des Jahresabschlusses, reines Python ohne Frappe-Import
+│   ├── xbrl/                  HGB-Taxonomie und XBRL für E-Bilanz und Offenlegung, reines Python ohne Frappe-Import; tests/arelle_validation.py für den XBRL-Job der CI
+│   ├── jahresmeldung/         gemeinsamer Kern der Jahresmeldungen, reines Python ohne Frappe-Import
+│   │   ├── documentation.py   liest die Jahresdokumentationen der ERiC-Dokumentation als Daten: Vordrucke mit Kontexten, Feldern, Regeln, Kennzahlen und Texten, Schema und Datenartversionmatrix
+│   │   └── yearcheck.py       Jahresprüfung aller Datenarten: Daten eines Jahres oder einer Taxonomie gegen die ERiC-Dokumentation
 │   ├── eric/                  ERiC: Datenarten, Einrichtung, Versionsinformationen der Pakete, Mindestversionsliste, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
 │   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
 │   ├── invoices.py            liest die Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise
@@ -82,7 +89,7 @@ steuerbote/                    Repository
 └── .pre-commit-config.yaml    Hooks für pre-commit
 ```
 
-Die Kerne unter `steuerbote/ustva`, `steuerbote/zm`, `steuerbote/vatid` und `steuerbote/dauerfrist` importieren nie Frappe. Deshalb lassen sie sich ohne Bench testen. DocTypes und Reports gehören in das Frappe-Modul `steuerbote/steuerbote`. Wie Kern und Frappe-Modul zusammenspielen, beschreibt [Architektur](architektur.md).
+Die Kerne unter `steuerbote/ustva`, `steuerbote/zm`, `steuerbote/vatid`, `steuerbote/dauerfrist` und die der Jahresmeldungen (`steuerbote/ustjahr`, `kst`, `gewst`, `hgb`, `xbrl` und `jahresmeldung`) importieren nie Frappe. Deshalb lassen sie sich ohne Bench testen. DocTypes und Reports gehören in das Frappe-Modul `steuerbote/steuerbote`. Wie Kern und Frappe-Modul zusammenspielen, beschreibt [Architektur](architektur.md).
 
 ## Einrichtung
 
@@ -133,7 +140,30 @@ unzip -q /tmp/eric-doc.zip -d /tmp/eric-doc
 STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc pytest --cov
 ```
 
-Die Variable nennt das Verzeichnis, in das die Zip-Datei entpackt wurde, oder darin das Verzeichnis `Dokumentation`. Sie gilt ebenso für `bench run-tests`, das die Tests unter `steuerbote/elster` mitnimmt. Ohne die Variable überspringt pytest die Schematests und sagt, warum; in einer CI (Umgebungsvariable `CI`) schlagen sie stattdessen fehl. Die CI lädt die Dokumentation in beiden Testjobs, prüft die SHA-256-Summe und entpackt nur die Schemas und Beispiele der UStVA, das Verzeichnis der ZMDO mit Schema, Beispiel und Jahresdokumentation, die Verzeichnisse von USt, KSt und GewSt des Verfahrens ElsterErklaerung und das Verzeichnis ElsterBilanz, die Datenartversionmatrix und das ElsterBasisSchema. Gepinnt ist 44.3.6.0, die produktive Version. ERiC 45.1.5.0 ist eine Beta, ihr Schema für 2026 gleicht dem von 44.3.6.0 bis auf den Kopfkommentar.
+Die Variable nennt das Verzeichnis, in das die Zip-Datei entpackt wurde, oder darin das Verzeichnis `Dokumentation`. Sie gilt ebenso für `bench run-tests`, das die Tests unter `steuerbote/elster` mitnimmt. Ohne die Variable überspringt pytest die Schematests und sagt, warum; in einer CI (Umgebungsvariable `CI`) schlagen sie stattdessen fehl. Die CI lädt die Dokumentation in beiden Testjobs, prüft die SHA-256-Summe und entpackt nur die Verzeichnisse der UStVA und der ZMDO, jede Datenart des Verfahrens ElsterErklaerung mit `Formale_Plausipruefungen.ods`, das Verzeichnis ElsterBilanz, die Datenartversionmatrix und das ElsterBasisSchema. Gepinnt ist 44.3.6.0, die produktive Version. ERiC 45.1.5.0 ist eine Beta, ihr Schema für 2026 gleicht dem von 44.3.6.0 bis auf den Kopfkommentar.
+
+### Tests gegen die HGB-Taxonomie
+
+Auch die HGB-Taxonomie trägt keine Lizenz, die eine Weitergabe erlaubt. Die Tests unter `steuerbote/xbrl` laufen deshalb gegen eine erfundene Mini-Taxonomie und, wenn die Umgebungsvariable `STEUERBOTE_TAXONOMY_6_9` das Paket von esteuer.de nennt, auch gegen das echte Paket; in einer CI schlagen sie ohne die Variable fehl. Der Server von esteuer.de schickt sein Zwischenzertifikat nicht mit, deshalb kommt es mit geprüfter Summe von GlobalSign:
+
+```bash
+curl -fLo /tmp/intermediate.crt http://secure.globalsign.com/cacert/gsgccr46dvtlsca2025.crt
+echo "b59410f367b986e98e53a9789a6580553a74be515211d9f6ecb6e8a11e83aeaa  /tmp/intermediate.crt" | sha256sum --check
+{ cat /etc/ssl/certs/ca-certificates.crt; openssl x509 -inform DER -in /tmp/intermediate.crt; } > /tmp/esteuer.pem
+curl -fL --cacert /tmp/esteuer.pem -o /tmp/taxonomy-6.9.zip https://www.esteuer.de/download/taxonomie_20250618/german-gaap-taxonomy-v6.9-2025-04-01-xbrl.zip
+echo "accd62202d73c036910fee118b30730f0392934afc9730617788e30a0480df87  /tmp/taxonomy-6.9.zip" | sha256sum --check
+STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc STEUERBOTE_TAXONOMY_6_9=/tmp/taxonomy-6.9.zip pytest --cov
+```
+
+### XBRL mit Arelle
+
+`steuerbote/xbrl/tests/arelle_validation.py` lässt Arelle (`arelle-release` aus `requirements-dev.txt`) die Instanzen beider Profile offline gegen das Paket 6.9 prüfen: die gültigen Beispiele der ERiC-Dokumentation, wie der Writer sie schreibt, und die Offenlegung einer erfundenen GmbH als Kleinstkapitalgesellschaft und als kleine Gesellschaft. Jede Meldung ab Warnung lässt den Lauf scheitern. Lokal, mit Dokumentation und Paket wie oben, dauert das gut anderthalb Minuten:
+
+```bash
+STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc python -m steuerbote.xbrl.tests.arelle_validation /tmp/taxonomy-6.9.zip --keep /tmp/xbrl
+```
+
+`--keep` behält Paket, Instanzen und die Protokolle von Arelle im Verzeichnis. In der CI macht das ein Job für sich, siehe [CI](#ci).
 
 ### Frappe-Tests
 
@@ -203,8 +233,9 @@ Alle drei Workflows laufen bei Pull Requests, bei Pushes auf `main` und von Hand
 
 | Workflow | Job | Was er tut |
 |---|---|---|
-| Tests | Core (without bench) | lädt die ERiC-Dokumentation 44.3.6.0 und prüft ihre SHA-256-Summe, dann pytest mit Abdeckung und Schematests auf Python 3.14, unter 100 % rot; legt `coverage.xml` als Artefakt ab. |
-| Tests | Frappe site (ERPNext v16) | baut mit `frappe-bench` 5.31.1 eine Bench mit Frappe und ERPNext `version-16`, MariaDB 11.8 und Redis als Dienste, installiert ERPNext und Steuerbote auf einer Testsite, lädt die ERiC-Dokumentation für die Schematests und führt `bench run-tests --app steuerbote` aus. Danach baut er die Assets von Frappe, füllt die Testsite mit dem Seed der Browsertests, startet Webserver und socket.io und lässt die Browsertests mit Chromium laufen; schlägt einer fehl, liegen Bildschirmfotos und die Protokolle des Servers im Artefakt `browser-tests`. |
+| Tests | Core (without bench) | lädt die ERiC-Dokumentation 44.3.6.0 und die HGB-Taxonomie 6.9 und prüft ihre SHA-256-Summen, dann pytest mit Abdeckung, Schematests, den Tests gegen die Taxonomie und der Jahresprüfung aller Datenarten auf Python 3.14, unter 100 % rot; legt `coverage.xml` als Artefakt ab. |
+| Tests | Frappe site (ERPNext v16) | baut mit `frappe-bench` 5.31.1 eine Bench mit Frappe und ERPNext `version-16`, MariaDB 11.8 und Redis als Dienste, installiert ERPNext und Steuerbote auf einer Testsite, lädt die ERiC-Dokumentation und die HGB-Taxonomie für die Schematests und die Tests gegen die Taxonomie und führt `bench run-tests --app steuerbote` aus. Danach baut er die Assets von Frappe, füllt die Testsite mit dem Seed der Browsertests, startet Webserver und socket.io und lässt die Browsertests mit Chromium laufen; schlägt einer fehl, liegen Bildschirmfotos und die Protokolle des Servers im Artefakt `browser-tests`. |
+| Tests | XBRL (Arelle) | lädt die Beispiele der E-Bilanz aus der ERiC-Dokumentation und die HGB-Taxonomie 6.9 und lässt Arelle die Instanzen beider Profile prüfen (`arelle_validation.py`, siehe [XBRL mit Arelle](#xbrl-mit-arelle)), mit eigener Zeitgrenze von 20 Minuten; schlägt er fehl, liegen Instanzen und Protokolle eine Woche im Artefakt `xbrl-instances`, nie eine Datei der Taxonomie. |
 | Linters | pre-commit | alle Hooks auf allen Dateien, ohne `no-commit-to-branch`. |
 | Linters | Frappe semgrep rules | semgrep 1.185.0 mit den Regeln aus `frappe/semgrep-rules` und den Regeln `python/lang/correctness` aus `semgrep/semgrep-rules`, die die Registry als `r/python.lang.correctness` anbietet, beide auf einen Commit gepinnt; jeder Fund macht den Job rot. |
 | Security | Secret scan (gitleaks) | durchsucht die ganze Git-Historie nach Geheimnissen; gitleaks wird mit Prüfsumme geladen. |
@@ -212,7 +243,7 @@ Alle drei Workflows laufen bei Pull Requests, bei Pushes auf `main` und von Hand
 | Security | Dependency audit (pip-audit) | prüft mit pip-audit 2.10.1 die Pakete aus `requirements-dev.txt` auf bekannte Schwachstellen. |
 | Security | CodeQL | statische Analyse des Python-Codes. Läuft erst, wenn das Repository öffentlich ist, weil CodeQL nur für öffentliche Repositories kostenlos ist. |
 
-Bei Tests bricht ein neuer Lauf für denselben Pull Request oder Branch den laufenden ab. Dependabot schlägt jede Woche Updates für die GitHub Actions und die pip-Abhängigkeiten vor (`.github/dependabot.yml`).
+Adresse und SHA-256-Summe von ERiC-Dokumentation, HGB-Taxonomie und Zwischenzertifikat stehen einmal für alle Jobs im `env` von `tests.yml`. Das Paket der Taxonomie kommt aus einem Cache, dessen Schlüssel seine SHA-256-Summe trägt (`hgb-taxonomie-6.9-<Summe>`); nur ohne Eintrag lädt ein Job es von esteuer.de und legt es danach in den Cache. Geprüft wird die Summe in jedem Fall vor den Tests. Bei Tests bricht ein neuer Lauf für denselben Pull Request oder Branch den laufenden ab. Dependabot schlägt jede Woche Updates für die GitHub Actions und die pip-Abhängigkeiten vor (`.github/dependabot.yml`).
 
 ## Versionen
 
@@ -220,24 +251,50 @@ Bei Tests bricht ein neuer Lauf für denselben Pull Request oder Branch den lauf
 - **Python:** 3.14, in `requires-python`, als `target-version` von ruff und in der CI.
 - **Entwicklungswerkzeuge** sind in `requirements-dev.txt` exakt gepinnt, die pre-commit-Hooks über `rev`, semgrep, pip-audit, frappe-bench, gitleaks und zizmor in den Workflows. Die Regeln für semgrep kommen wie die Actions auf einen Commit gepinnt aus ihren Repositories (`linters.yml`); Dependabot hebt diese Commits nicht, ein Update ist Handarbeit. `steuerbote/tests/test_workflows.py` prüft, dass jedes `pip install` eine exakte Version nennt und jede Action und jedes andere Repository einen Commit. Einige Versionen stehen an mehreren Stellen: ruff in `requirements-dev.txt` und `.pre-commit-config.yaml`, zizmor zusätzlich in `security.yml`. Ein Update zieht alle Stellen gleich. Playwright lädt mit `playwright install` die Version von Chromium, zu der es gehört.
 - **lxml** baut das XML für ELSTER. Frappe 16 bringt es selbst mit, ohne eine Version festzulegen. `pyproject.toml` verlangt deshalb nur `lxml>=6.0,<7`, damit die App neben Frappe kein anderes lxml erzwingt, und `requirements-dev.txt` pinnt die Version, mit der die Tests laufen.
-- **ERiC-Dokumentation** für die Schematests und die Jahresprüfung: Adresse und SHA-256-Summe der Zip-Datei stehen in `tests.yml`, die Version zusätzlich in `steuerbote/elster/tests/eric_schema.py`. Zum Jahreswechsel kommt eine Version, die das neue Jahr kennt, siehe [Jahreswechsel](#jahreswechsel).
+- **ERiC-Dokumentation** für die Schematests und die Jahresprüfung: Adresse und SHA-256-Summe der Zip-Datei stehen in `tests.yml`, die Version zusätzlich in `steuerbote/elster/tests/eric_schema.py`; `test_workflows.py` prüft, dass beide dieselbe Adresse nennen. Zum Jahreswechsel kommt eine Version, die das neue Jahr kennt, siehe [Jahreswechsel](#jahreswechsel).
+- **HGB-Taxonomie** für die Tests gegen die Taxonomie und den XBRL-Job: Adresse und SHA-256-Summe des Pakets stehen in `tests.yml` und in `steuerbote/xbrl/versions.py`, `test_workflows.py` prüft, dass beide übereinstimmen. Eine neue Version kommt als Eintrag in `TAXONOMIES` dazu, siehe [Jahreswechsel](#jahreswechsel).
+- **Arelle** (`arelle-release` 2.47.5, Apache-2.0) nur für den XBRL-Job der CI, exakt in `requirements-dev.txt`; die App selbst braucht es nicht.
 - **Neue Abhängigkeiten** nur mit Grund, exakt gepinnt und im Pull Request begründet.
 - **Dependabot** meldet jede Woche neue Versionen für pip und GitHub Actions.
 
 ## Jahreswechsel
 
-Ein neues Jahr ist eine Änderung an Daten, kein Umbau. ELSTER nimmt eine Voranmeldung und den Vordruck USt 1 H nur in der Datenart ihres Jahres an, deshalb hat jedes Jahr seine Daten, je Teil in einer eigenen Tabelle. Welche Jahre es gibt, sagt `YEARS` in [`steuerbote/ustva/years.py`](../steuerbote/ustva/years.py), mit dem BMF-Schreiben der Vordrucke jedes Jahres. Jede andere Tabelle hält genau diese Jahre: [`test_years.py`](../steuerbote/ustva/tests/test_years.py) schlägt fehl, solange einer Tabelle ein Jahr fehlt oder eine ein Jahr zu viel hat.
+Ein neues Jahr ist eine Änderung an Daten, kein Umbau. ELSTER nimmt jede Meldung nur in der Datenart ihres Jahres an, die E-Bilanz nur in der ihrer HGB-Taxonomie. Deshalb führt jedes Modul eine Jahrestabelle mit den Jahren oder Versionen, die es kennt, jedes mit seiner Quelle, und hält jeden Teil eines Jahres in einer eigenen Tabelle nach dem Jahr. Ein `test_years.py` je Modul, bei der E-Bilanz `test_versions.py`, schlägt fehl, solange einer Tabelle ein Jahr fehlt oder eine ein Jahr zu viel hat.
 
-| Teil | Tabelle | Quelle | Test |
+| Modul | Jahrestabelle | Tabellen je Jahr | Die Jahresprüfung liest |
 |---|---|---|---|
-| Jahr und BMF-Schreiben der Vordrucke | `YEARS` in `steuerbote/ustva/years.py` | BMF-Schreiben „Muster der Vordrucke im Umsatzsteuer-Voranmeldungs- und -Vorauszahlungsverfahren“ | `test_years.py` |
-| Kennzahlen des Vordrucks USt 1 A | `CATALOGUES` in `steuerbote/ustva/kennzahlen.py` | Vordruck USt 1 A und Anleitung USt 1 E | `test_kennzahlen.py`, Jahresprüfung |
-| Schema `Anmeldungssteuern`: Namensraum, Reihenfolge der Elemente, Kennzahlen ohne Vorzeichen | `SCHEMAS` in `steuerbote/elster/ustva_xml.py` | `UStVA-<Jahr>.xsd` der ERiC-Dokumentation | Jahresprüfung, `test_schema.py` |
-| Felder und Regeln des Vordrucks USt 1 H | `LAYOUTS` in `steuerbote/dauerfrist/form.py` | `Jahresdokumentation_UStVA_<Jahr>.ods`, Vordruck USt 1 H | Jahresprüfung, `test_form.py` |
-| datenartVersion und Plugin von ERiC | keine: `years.py` bildet `UStVA_<Jahr>` und `checkUStVA_<Jahr>` aus dem Jahr, `datenart.ustva` in `steuerbote/eric/datenart.py` nimmt sie in die Datenart des Jahres | `Datenartversionmatrix.ods` | Jahresprüfung, `test_years.py`, `test_datenart.py`, `test_runtime.py` |
-| Zusammenfassende Meldung | keine: Die Datenart ZMDO hat für jedes Jahr die datenartVersion `ZMDO`, das Plugin `checkZMDO` (`ZMDO` in `steuerbote/eric/datenart.py`) und das Schema 000005 (`zm_xml.py`); das Jahr des Meldezeitraums steht in ihren Daten (Feld `jahr`) | `Datenartversionmatrix.ods`, `zm_000005.xsd` | Jahresprüfung, `test_datenart.py`, `test_zm_schema.py` |
+| Umsatzsteuer-Voranmeldung | `YEARS` in `steuerbote/ustva/years.py` | `CATALOGUES` in `ustva/kennzahlen.py`, `SCHEMAS` in `elster/ustva_xml.py`, `LAYOUTS` in `dauerfrist/form.py` | `Jahresdokumentation_UStVA_<Jahr>.ods`, `UStVA-<Jahr>.xsd`, `Datenartversionmatrix.ods` |
+| Umsatzsteuererklärung | `YEARS` in `steuerbote/ustjahr/years.py` | `CATALOGUES` in `ustjahr/form.py`, `LOCAL_RULES` und `LEFT_TO_ERIC` in `ustjahr/rules.py`, `ROLE_FIELDS`, `ANNUAL_ACCOUNTS` und `REVISIONS` in `ustjahr/defaults.py`, `SCHEMAS` in `elster/ust2a_xml.py` | `Jahresdokumentation_E50_<Jahr>.ods` mit den Blättern von USt2A und Vorsatz, `E50-<Jahr>.xsd`, `Datenartversionmatrix.ods` |
+| Körperschaftsteuer | `YEARS` in `steuerbote/kst/years.py`, 2026 vorläufig mit den Vordrucken der Jahresdokumentation E30 2025 | `CATALOGUES` und `RECHTSFORMEN` in `kst/form.py`, `SCHEMAS` in `elster/kst_xml.py`; Sätze und Grenzen im Eintrag des Jahres; die Regeln, die der Kern rechnet, nennt `expected_rules` in `kst/chain.py`, `kst/losses.py` und `kst/einlagekonto.py` | `Jahresdokumentation_E30_<Jahr>.ods` mit den Blättern der Vordrucke, „Benutzerdefinierte Typen“ und „Vorsatz - Felder“, `E30-<Jahr>.xsd`, `Datenartversionmatrix.ods` |
+| Gewerbesteuer | `YEARS` in `steuerbote/gewst/years.py`, 2026 vorläufig mit E20 2025 | `CATALOGUES` und `RECHTSFORMEN` in `gewst/form.py`, `SCHEMAS` in `elster/gewst_xml.py`; Zahlen im Eintrag des Jahres; `expected_rules` in `gewst/chain.py` | `Jahresdokumentation_E20_<Jahr>.ods` wie bei E30, `E20-<Jahr>.xsd`, `Datenartversionmatrix.ods` |
+| E-Bilanz und Offenlegung | `TAXONOMIES` in `steuerbote/xbrl/versions.py` je Version der HGB-Taxonomie, `BILANZ_TAXONOMIES` in `eric/releases.py` je Wirtschaftsjahr | die Tabellen nach der Version, die `xbrl/tests/test_versions.py` nennt | `Jahresdokumentation_Bilanz_Taxonomie_<Version>.ods` mit den Regeln der Vordrucke Kontext und Header, `Datenartversionmatrix.ods` |
+| Größenklassen des Jahresabschlusses | die Schwellen in `steuerbote/hgb/size.py` nach dem Geschäftsjahr | keine | nichts: die Schwellen stehen im HGB, nicht in der ERiC-Dokumentation |
 
 ### Jahresprüfung
+
+`python -m steuerbote.jahresmeldung.yearcheck` vergleicht die Daten jeder Datenart mit der entpackten ERiC-Dokumentation, im selben Verzeichnis wie bei `STEUERBOTE_ERIC_DOC_DIR` (siehe [Schematests](#schematests)):
+
+```bash
+python -m steuerbote.jahresmeldung.yearcheck /tmp/eric-doc               # jede Datenart, jedes Jahr ihrer Tabellen
+python -m steuerbote.jahresmeldung.yearcheck /tmp/eric-doc USt KSt 2027  # nur diese Datenarten und nur 2027
+python -m steuerbote.jahresmeldung.yearcheck /tmp/eric-doc 6.10          # nur die E-Bilanz mit der Taxonomie 6.10
+```
+
+Nach dem Verzeichnis folgen Datenarten (`UStVA`, `USt`, `KSt`, `GewSt` und `Bilanz`, in beliebiger Schreibweise), Jahre und Versionen der HGB-Taxonomie, die nur die E-Bilanz nimmt. Ohne Datenart prüft der Befehl jede, ohne Jahr jedes Jahr ihrer Tabellen, und nennt dann auch die Jahre und Versionen, die die Dokumentation über die Tabellen hinaus hat, etwa `UStVA 2027: not in YEARS of steuerbote/ustva/years.py; Jahresdokumentation_UStVA_2027.ods: documented`. Ein Jahr der E-Bilanz ist ein Wirtschaftsjahr: Geprüft wird die Taxonomie, die `BILANZ_TAXONOMIES` ihm gibt, sonst jede, die die BMF-Schreiben für das Jahr zulassen; gibt es keine, sagt das eine Zeile.
+
+Je Abweichung schreibt er eine Zeile, vorn Datenart und Jahr oder Version, dann wie bei der Voranmeldung links Steuerbote, rechts die Datei und was sie sagt, etwa `KSt 2026, rule 8900331 of ZVE: Abrunden([E8007504]*0.15); Jahresdokumentation_E30_2025.ods: not in its Prüfbedingung`. Er endet mit 0, wenn er nichts ausgibt, mit 1 bei einer Abweichung und mit 2, wenn der Dokumentation eine Datei fehlt, die er liest; die übrigen Datenarten prüft er trotzdem. Hat eine Tabelle das Jahr noch nicht, nennt die erste Zeile diese Tabellen, und die Daten des neuesten Jahres treten an seine Stelle: Die Zeilen danach sind genau das, was das neue Jahr ändert. Ein vorläufiges Jahr, derzeit Körperschaft- und Gewerbesteuer 2026 mit den Vordrucken der Jahresdokumentation 2025, vergleicht er mit der neuesten Jahresdokumentation bis zu seinem Jahr; ist das nicht die, die das Jahr nimmt, sagt es eine Zeile.
+
+Er vergleicht:
+
+- **Umsatzsteuer-Voranmeldung:** alles, was `python -m steuerbote.ustva.yearcheck` vergleicht, siehe unten.
+- **Umsatzsteuererklärung:** den Katalog des XML (`SCHEMAS` in `elster/ust2a_xml.py`) mit Jahresdokumentation und Schema: Quelle und Versionslabel, Namensraum und Version, die Vordrucke aus „Allg. Information“ und aus dem Schema mit Reihenfolge und maxOccurs, je Feld von USt2A seine Stelle in der Reihenfolge der Jahresdokumentation und des Schemas, Kontext, Formatkennzeichen, Vordruckzeile, Kennzahl, Pflichtfeld, max. Zeilen, Beschreibung (für `$VZ$` das Jahr), Max. Länge eines Texts, regulären Ausdruck und die Werte einer Liste; die Regeln des Vordrucks (`CATALOGUES` in `ustjahr/form.py`) mit Name, Kontext und Regelart; die Prüfbedingung jeder Regel, die Steuerbote selbst prüft (`LOCAL_RULES` in `ustjahr/rules.py`), und dass jede Regel von USt2A selbst geprüft oder ERiC überlassen ist (`LEFT_TO_ERIC`). Die Mitwirkung einer Steuerberatung steht in der Jahresdokumentation in den Zeilen 23 und 123, im Vordruck in den Zeilen 127 bis 129; verglichen wird mit den Zeilen der Jahresdokumentation.
+- **Körperschaft- und Gewerbesteuer:** jede Regel, die der Kern rechnet, nach ihrem Fehlercode und den Teilen ihrer Prüfbedingung (`RuleExpectation` in `kst/years.py`), mit den Faktoren des Jahres; den Katalog der Vordrucke (`CATALOGUES` in `kst/form.py` und `gewst/form.py`) wie bei der Umsatzsteuererklärung, die Kennzahl mit ihrem Sachbereich und ohne das Indexfeld WJ, das die Wirtschaftsjahre von Anlage GK und KSt 1 F zählt; was der Writer aus dem Schema nimmt (`SCHEMAS` in `elster/kst_xml.py` und `gewst_xml.py`): die Kontexte, die sich wiederholen, mit ihrem maxOccurs und die Vordrucke mit Indexfeld; die Kategorien der Rechtsformen, die Steuerbote abgibt (`RECHTSFORMEN`), mit `RECHTSFORM_KOERPERSCHAFTEN_V3` und `RECHTSFORM_GEWERBESTEUER_V2` aus „Benutzerdefinierte Typen“.
+- **E-Bilanz:** je Version von `TAXONOMIES` ihre Jahresdokumentation und, für die Module der E-Bilanz, die Regeln der Taxonomie rechnen und sich mit ihrem `expected_rules` in `BILANZ_EXPECTING` eintragen, deren Prüfbedingungen.
+- **Bei jeder Erklärung** Länge und Pflicht der Texte des Vorsatzes (`TEXTS` in `elster/vorsatz.py`), **bei jeder Datenart** datenartVersion, Plugin und Jahr oder Taxonomie ihrer Zeile in `Datenartversionmatrix.ods`.
+
+Die Dateien liest [`steuerbote/jahresmeldung/documentation.py`](../steuerbote/jahresmeldung/documentation.py) mit der Standardbibliothek: eine Jahresdokumentation mit ihren Vordrucken und deren Blättern Kontexte, Felder, Regeln, Kennzahlen und Texte, mit „Allg. Information“ (Versionslabel, Namensraum, Vordrucke) und, bei der E-Bilanz, der Regelliste der Vordrucke Kontext und Header und den „Strukturellen Fehlern“; das Schema einer Erklärung mit den Feldern jedes Vordrucks und den Werten seiner Listen; die Zeilen der Datenartversionmatrix. Die Tests der Kataloge vergleichen über denselben Leser. Für 2026 und die Taxonomie 6.9 gibt der Befehl mit der ERiC-Dokumentation 44.3.6.0 nichts aus; in der CI prüft das `DocumentationTest` in [`test_yearcheck.py`](../steuerbote/jahresmeldung/tests/test_yearcheck.py). Mit der Beta-Dokumentation 45.1.5.0 nennt er, was kommt: das Jahr 2027 der Voranmeldung, für die Umsatzsteuererklärung 2026 die Jahresdokumentation mit dem Versionslabel 11.0 statt 9.0, die an Feldern und Regeln nichts ändert, und die Taxonomie 6.10.
+
+#### Jahresprüfung der Voranmeldung
 
 `python -m steuerbote.ustva.yearcheck` vergleicht die Daten eines Jahres mit der entpackten ERiC-Dokumentation, im selben Verzeichnis wie bei `STEUERBOTE_ERIC_DOC_DIR` (siehe [Schematests](#schematests)):
 
@@ -254,7 +311,18 @@ Ohne Jahr prüft der Befehl jedes Jahr von `YEARS`. Er liest `Jahresdokumentatio
 
 Je Abweichung schreibt er eine Zeile, links die Daten von Steuerbote, rechts die Datei und was sie sagt, etwa `catalogue 2026, Kz 66: line 38; Jahresdokumentation_UStVA_2026.ods: Vordruckzeile 37`. Für 2026 gibt er mit der ERiC-Dokumentation 44.3.6.0 nichts aus. Er endet mit 0, wenn er nichts ausgibt, mit 1 bei einer Abweichung und mit 2, wenn die Dokumentation eines Jahres fehlt. Hat eine Tabelle das Jahr noch nicht, nennt die erste Zeile diese Tabellen, und der Befehl vergleicht an ihrer Stelle die Daten des neuesten Jahres: Seine Zeilen sind dann genau das, was das neue Jahr ändert. In der CI prüft `DocumentationTest` in [`test_yearcheck.py`](../steuerbote/ustva/tests/test_yearcheck.py) jedes Jahr von `YEARS` auf diese Weise.
 
-### Schritt für Schritt
+### Umsatzsteuer-Voranmeldung Schritt für Schritt
+
+ELSTER nimmt eine Voranmeldung und den Vordruck USt 1 H nur in der Datenart ihres Jahres an, deshalb hat jedes Jahr seine Daten, je Teil in einer eigenen Tabelle. Welche Jahre es gibt, sagt `YEARS` in [`steuerbote/ustva/years.py`](../steuerbote/ustva/years.py), mit dem BMF-Schreiben der Vordrucke jedes Jahres. Jede andere Tabelle hält genau diese Jahre: [`test_years.py`](../steuerbote/ustva/tests/test_years.py) schlägt fehl, solange einer Tabelle ein Jahr fehlt oder eine ein Jahr zu viel hat.
+
+| Teil | Tabelle | Quelle | Test |
+|---|---|---|---|
+| Jahr und BMF-Schreiben der Vordrucke | `YEARS` in `steuerbote/ustva/years.py` | BMF-Schreiben „Muster der Vordrucke im Umsatzsteuer-Voranmeldungs- und -Vorauszahlungsverfahren“ | `test_years.py` |
+| Kennzahlen des Vordrucks USt 1 A | `CATALOGUES` in `steuerbote/ustva/kennzahlen.py` | Vordruck USt 1 A und Anleitung USt 1 E | `test_kennzahlen.py`, Jahresprüfung |
+| Schema `Anmeldungssteuern`: Namensraum, Reihenfolge der Elemente, Kennzahlen ohne Vorzeichen | `SCHEMAS` in `steuerbote/elster/ustva_xml.py` | `UStVA-<Jahr>.xsd` der ERiC-Dokumentation | Jahresprüfung, `test_schema.py` |
+| Felder und Regeln des Vordrucks USt 1 H | `LAYOUTS` in `steuerbote/dauerfrist/form.py` | `Jahresdokumentation_UStVA_<Jahr>.ods`, Vordruck USt 1 H | Jahresprüfung, `test_form.py` |
+| datenartVersion und Plugin von ERiC | keine: `years.py` bildet `UStVA_<Jahr>` und `checkUStVA_<Jahr>` aus dem Jahr, `datenart.ustva` in `steuerbote/eric/datenart.py` nimmt sie in die Datenart des Jahres | `Datenartversionmatrix.ods` | Jahresprüfung, `test_years.py`, `test_datenart.py`, `test_runtime.py` |
+| Zusammenfassende Meldung | keine: Die Datenart ZMDO hat für jedes Jahr die datenartVersion `ZMDO`, das Plugin `checkZMDO` (`ZMDO` in `steuerbote/eric/datenart.py`) und das Schema 000005 (`zm_xml.py`); das Jahr des Meldezeitraums steht in ihren Daten (Feld `jahr`) | `Datenartversionmatrix.ods`, `zm_000005.xsd` | Jahresprüfung, `test_datenart.py`, `test_zm_schema.py` |
 
 Mitte November erscheint die Beta des neuen Hauptrelease von ERiC; ihre Dokumentation enthält Jahresdokumentation und Schema des neuen Jahres ([ERiC](eric.md#versionen-und-jahreswechsel)). Das BMF-Schreiben mit den Vordruckmustern folgt im Dezember, für 2026 am 29. Dezember 2025. Die ersten Meldungen des neuen Jahres sind am 10. Februar fällig: die Sondervorauszahlung und, ohne Dauerfristverlängerung, die Voranmeldung für Januar. Jeder Schritt beginnt mit dem Test.
 
@@ -267,6 +335,35 @@ Mitte November erscheint die Beta des neuen Hauptrelease von ERiC; ihre Dokument
 7. **Tests.** `pytest --cov` mit der neuen Dokumentation, 100 % Abdeckung bleiben, und `bench run-tests`. Mit einer Kopie von 2026 als 2027 schlagen unter `pytest` nur `test_files_2026` und `test_a_year_without_its_form_is_refused_by_the_core` in `steuerbote/steuerbote/doctype/vat_return_extension/test_bridge.py` fehl. Dieser Test und die Frappe-Tests in `test_vat_return_extension.py` nehmen 2027 als Jahr, dessen Vordruck USt 1 H Steuerbote nicht kennt, und gehen auf das nächste Jahr. Tests, die den neuesten Katalog nehmen (`KENNZAHLEN`, eine `Mapping` ohne Jahr, die Vorgaben), laufen danach gegen das neue Jahr und zeigen, was es an Berechnung und Vorgaben ändert.
 8. **Zeiträume: Kz 39 und Dauerfristverlängerung.** Mit der neuen Anleitung prüfen, ob die Sondervorauszahlung weiter in Kz 39 der letzten Voranmeldung des Jahres steht (`SONDERVORAUSZAHLUNG_KENNZAHL`, `bridge.sondervorauszahlung_values`, `crediting_period` in `steuerbote/dauerfrist/period.py`) und ob die Fristen bleiben: der 10. Tag nach dem Zeitraum in `steuerbote/ustva/period.py`, der 10. Februar für die Sondervorauszahlung in `steuerbote/dauerfrist/period.py`. Im Betrieb braucht jedes Jahr mit Dauerfristverlängerung eine Zeile in „Dauerfristverlängerung je Jahr“ der Einstellungen: Bei monatlicher Abgabe schreibt sie der Beleg „Dauerfristverlängerung“ des neuen Jahres mit dem Vermerk seiner Abgabe, bei vierteljährlicher Abgabe mit fortgeltender Verlängerung, für die es keinen Beleg gibt, legt sie jemand von Hand an. Ein Wechsel des Voranmeldungszeitraums kommt als neue Regel ab Januar dazu. Test: `steuerbote/dauerfrist/tests/test_period.py`, `steuerbote/ustva/tests/test_period.py`, `vat_return/test_bridge.py`.
 9. **Release.** Die Dokumentation nachziehen ([Kennzahlen](ustva-kennzahlen.md), [Dauerfristverlängerung](dauerfristverlaengerung.md), [ERiC](eric.md), [Roadmap](roadmap.md)), dann die Version in `steuerbote/__init__.py` heben und veröffentlichen, bevor die ersten Meldungen des Jahres fällig sind. Betreiber spielen die neue Version ein und richten die freigegebene ERiC-Version mit dem Plugin des Jahres ein.
+
+### Umsatzsteuererklärung Schritt für Schritt
+
+Die Jahresdokumentation E50 eines Jahres kommt mit der ERiC-Dokumentation, die das Jahr kennt; ab dann nennt die Jahresprüfung ohne Jahr `USt <Jahr>: not in YEARS of steuerbote/ustjahr/years.py`. Jeder Schritt beginnt mit dem Test.
+
+1. **BMF-Schreiben.** Das Schreiben „Muster der Umsatzsteuererklärung <Jahr>“ lesen und das Jahr mit Datum, Geschäftszeichen und Adresse in `YEARS` von `steuerbote/ustjahr/years.py` eintragen. Ab dann schlägt `PartsTest` in `steuerbote/ustjahr/tests/test_years.py` fehl, bis jede Tabelle das Jahr hat.
+2. **Jahresprüfung.** `python -m steuerbote.jahresmeldung.yearcheck <Verzeichnis> USt <Jahr>` laufen lassen. Die erste Zeile nennt die Tabellen, denen das Jahr fehlt, jede weitere eine Änderung gegenüber dem Vorjahr.
+3. **Katalog.** Den Vordruck des Jahres in `CATALOGUES` von `ustjahr/form.py`: die Felder in der Reihenfolge des Schemas mit Kontext, Zeile, Formatkennzeichen, Bezeichnung und Kennzahl, die Aufteilung der Kennzahlen der Voranmeldung und die Regeln. Test: `steuerbote/ustjahr/tests/test_form.py` und `test_documentation.py` gegen die Jahresdokumentation.
+4. **Regeln.** Jede neue oder geänderte Regel in `LOCAL_RULES` von `ustjahr/rules.py` mit ihrer Prüfbedingung oder in `LEFT_TO_ERIC` mit dem Grund. Test: `test_rules.py`.
+5. **Vorgaben.** `ROLE_FIELDS`, `ANNUAL_ACCOUNTS` und `REVISIONS` in `ustjahr/defaults.py` für das Jahr, gegen die Kontenrahmen des Jahres. Test: `test_defaults.py`.
+6. **XML.** Den Eintrag des Jahres in `SCHEMAS` von `elster/ust2a_xml.py` mit den regulären Ausdrücken und Listen der Jahresdokumentation. Test: `steuerbote/elster/tests/test_ust2a_xml.py` gegen `E50-<Jahr>.xsd`.
+7. **Bis die Jahresprüfung nichts mehr ausgibt**, dann Tests, Dokumentation und Release wie bei der Voranmeldung.
+
+### Körperschaft- und Gewerbesteuer Schritt für Schritt
+
+ERiC 44.3.6.0 kennt Körperschaft- und Gewerbesteuer bis 2025, deshalb nimmt 2026 vorläufig die Vordrucke der Jahresdokumentationen E30 und E20 2025 (`documentation_year` und `provisional` in `kst/years.py` und `gewst/years.py`).
+
+1. **Neue Jahresdokumentation.** Sobald eine ERiC-Dokumentation `Jahresdokumentation_E30_2026.ods` oder `Jahresdokumentation_E20_2026.ods` enthält, meldet die Jahresprüfung `KSt 2026, Jahresdokumentation: Jahresdokumentation_E30_2025.ods, provisionally; Datenarten/ElsterErklaerung/KSt/Jahresdokumentation: Jahresdokumentation_E30_2026.ods, the newest up to 2026` und vergleicht die Regeln schon mit der neuen.
+2. **Jahr.** Im Eintrag des Jahres in `YEARS` `documentation_year` auf das Jahr setzen, `provisional=False` und die Quellen nachziehen; ein neues Jahr bekommt einen Eintrag. Was das Gesetz nach dem Jahr staffelt, geben `statutory_rate` und `statutory_loss_share` in `kst/years.py` und `statutory_minimum_hebesatz` und `statutory_ev_rent_percent` in `gewst/years.py`; jede andere Zahl gegen ihre Quelle prüfen. Test: `steuerbote/kst/tests/test_years.py`, `steuerbote/gewst/tests/test_years.py`.
+3. **Vordrucke.** Die Tabellen von `CATALOGUES` in `kst/form.py` und `gewst/form.py` aus den Blättern „<Vordruck> - Felder“ der neuen Jahresdokumentation, mit ihrer Quelle und ihrem Versionslabel; `RECHTSFORMEN` aus „Benutzerdefinierte Typen“ und `SCHEMAS` in `elster/kst_xml.py` und `gewst_xml.py` aus dem Schema des Jahres. Test: `steuerbote/kst/tests/test_form_documentation.py`, `steuerbote/gewst/tests/test_form_documentation.py`, `steuerbote/elster/tests/test_kst_xml.py` und `test_gewst_xml.py`.
+4. **Regeln.** Jede Zeile zu einer Regel nennt einen Teil, den ihre Prüfbedingung nicht mehr enthält: die Rechnung im Kern (`kst/chain.py`, `kst/losses.py`, `kst/einlagekonto.py`, `gewst/chain.py`) und ihr `expected_rules` anpassen. Test: `steuerbote/kst/tests/test_yearcheck.py` und die Jahresprüfung.
+5. **Plugin.** „Laufzeitumgebung prüfen“ nennt `checkKSt_<Jahr>` und `checkGewSt_<Jahr>` des Jahres, siehe [ERiC](eric.md#versionen-und-jahreswechsel).
+
+### E-Bilanz und Offenlegung Schritt für Schritt
+
+1. **Neue Taxonomie.** Das BMF veröffentlicht die HGB-Taxonomie jedes Jahr als amtlich vorgeschriebenen Datensatz; ERiC nimmt eine neue Version mit `Jahresdokumentation_Bilanz_Taxonomie_<Version>.ods` und dem Plugin `checkBilanz_<Version>` auf. Die Jahresprüfung ohne Jahr meldet sie, mit der Beta 45.1.5.0 etwa `Bilanz 6.10: not in TAXONOMIES of steuerbote/xbrl/versions.py; Jahresdokumentation_Bilanz_Taxonomie_6_10.ods: documented`.
+2. **Version.** Ein Eintrag in `TAXONOMIES` von `xbrl/versions.py` mit BMF-Schreiben, Wirtschaftsjahren, Tag der Echtfälle und dem Paket von esteuer.de mit SHA-256, dazu jede Tabelle nach der Version, die `test_versions.py` verlangt, und das Wirtschaftsjahr in `BILANZ_TAXONOMIES` von `eric/releases.py`. Test: `steuerbote/xbrl/tests/test_versions.py`.
+3. **CI.** Adresse und SHA-256 des neuen Pakets kommen in das `env` von `tests.yml`, mit einem Cache nach seiner Summe, und die Tests gegen das Paket bekommen ihre Variable. Test: `steuerbote/tests/test_workflows.py`, der XBRL-Job.
+4. **Jahresprüfung.** `python -m steuerbote.jahresmeldung.yearcheck <Verzeichnis> Bilanz <Version>` laufen lassen, bis sie nichts mehr ausgibt; ein Jahr nimmt sie als Wirtschaftsjahr: `… Bilanz <Jahr>` prüft die Taxonomie des Jahres.
 
 ## Commits
 

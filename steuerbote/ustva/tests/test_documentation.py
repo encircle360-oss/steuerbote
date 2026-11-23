@@ -3,7 +3,7 @@
 import shutil
 import tempfile
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest import TestCase, mock
 
 from steuerbote.ustva.documentation import (
@@ -15,8 +15,10 @@ from steuerbote.ustva.documentation import (
 	jahresdokumentation_path,
 	read,
 	read_xsd,
+	records,
 	schema_path,
 	sheets,
+	tables,
 )
 from steuerbote.ustva.tests import eric_documentation
 from steuerbote.ustva.yearcheck import data_for
@@ -116,6 +118,15 @@ class FindTest(DirectoryTestCase):
 		):
 			find(self.directory)
 
+	def test_takes_the_directory_that_holds_another_marker(self):
+		documentation = self.directory / "ERiC-44.3.6.0" / "Dokumentation"
+		(documentation / "Datenarten" / "ElsterBilanz").mkdir(parents=True)
+		self.assertEqual(find(self.directory, PurePosixPath("Datenarten")), documentation)
+		with self.assertRaisesRegex(
+			DocumentationError, "holds no ERiC documentation with Datenarten/ElsterAnmeldung"
+		):
+			find(self.directory)
+
 	def test_names_the_files_of_a_year(self):
 		ustva = self.directory / USTVA
 		self.assertEqual(
@@ -176,6 +187,53 @@ class SheetsTest(DirectoryTestCase):
 		):
 			with self.subTest(path=path.name), self.assertRaisesRegex(DocumentationError, "cannot be read"):
 				sheets(path, FIELDS)
+
+
+class TablesTest(DirectoryTestCase):
+	"""The rows of a sheet as they are, for the sheets without a head row such as "Allg. Information"."""
+
+	def test_gives_each_row_as_the_texts_of_its_cells_without_the_empty_ones_at_its_end(self):
+		rows = tables(self.ods(CONTENT), FIELDS)[FIELDS]
+		self.assertEqual(rows[0], ("Kontext", "Name", "Format", "Änderungsinformation"))
+		self.assertEqual(rows[2], ("Steuerfall", "Kz86", "eins\nzwei\tdrei\nvier", "", "", "zu viel"))
+		self.assertEqual(rows[3], ())
+		self.assertEqual(rows[4], ("kurz",))
+
+	def test_keeps_the_rows_of_every_version(self):
+		rows = tables(self.ods(CONTENT), FIELDS)[FIELDS]
+		self.assertEqual([row[-1] for row in rows[5:]], ["GELOESCHT", "GEAENDERT_ALTE_VERSION"])
+
+	def test_gives_the_named_sheets_or_every_sheet_in_its_order(self):
+		path = self.ods(CONTENT)
+		self.assertEqual(list(tables(path, RULES, "Leer")), ["Leer", RULES])
+		self.assertEqual(list(tables(path)), [FIELDS, "Leer", RULES])
+		self.assertEqual(tables(path)["Leer"], ())
+
+	def test_names_the_sheets_it_misses(self):
+		with self.assertRaisesRegex(DocumentationError, "has no sheet Zeichensatz$"):
+			tables(self.ods(CONTENT), FIELDS, "Zeichensatz")
+
+	def test_refuses_a_file_that_is_no_spreadsheet(self):
+		with self.assertRaisesRegex(DocumentationError, "kaputt.ods cannot be read as a spreadsheet"):
+			tables(self.directory / "kaputt.ods")
+
+
+class RecordsTest(TestCase):
+	def test_takes_the_rows_of_a_sheet_by_the_heads_of_its_first_row(self):
+		self.assertEqual(
+			[dict(row) for row in records((("Name", "Kontext"), ("Kz81", "Steuerfall"), ("Kz86",)))],
+			[{"Name": "Kz81", "Kontext": "Steuerfall"}, {"Name": "Kz86", "Kontext": ""}],
+		)
+
+	def test_leaves_out_empty_rows_and_the_versions_a_year_dropped_or_replaced(self):
+		rows = (
+			("Name", "Änderungsinformation"),
+			(),
+			("Kz23", "GELOESCHT"),
+			("Kz22", "GEAENDERT_ALTE_VERSION"),
+		)
+		self.assertEqual(records(rows), ())
+		self.assertEqual(records(()), ())
 
 
 class XsdTest(DirectoryTestCase):

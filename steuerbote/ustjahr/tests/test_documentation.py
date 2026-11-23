@@ -7,6 +7,7 @@ is data in steuerbote/ustjahr/form.py; these tests compare each fact with the fi
 import re
 from unittest import TestCase
 
+from steuerbote.jahresmeldung.yearcheck import conjuncts
 from steuerbote.ustjahr.form import CATALOGUES, Format
 from steuerbote.ustjahr.rules import DIGITS_BEFORE_THE_COMMA, LOCAL_RULES, MORE_DIGITS_BEFORE_THE_COMMA
 from steuerbote.ustjahr.tests import jahresdokumentation as jd
@@ -25,30 +26,11 @@ _SUM = re.compile(r"\[(E\d{7})\]!=Summe\(([E\d,]+)\)")
 _DIFFERENCE = re.compile(r"\[(E\d{7})\](?:!=|UngleichMitToleranz10)((?:\[E\d{7}\]-?)+)$")
 _TOGETHER = re.compile(r"FelderNichtGemeinsamAngegeben\((E\d{7}),(E\d{7})\)$")
 _RATE = re.compile(r"\[(E\d{7})\]UngleichMitToleranz1\{0\.(\d\d)\*\[(E\d{7})\]\}$")
-_FIELD_LIST = re.compile(r"\(((?:e\d{7},)+e\d{7})\)")
 _DIGITS = re.compile(r"\\d\{1,(\d+)\}")
 
 
 def condition(row: Row) -> str:
 	return re.sub(r"\s+", "", row["Prüfbedingung"])
-
-
-def conjuncts(text: str) -> set[str]:
-	"""The parts of a condition that „Und“ joins outside brackets, without blanks, in lower case and with each list of
-	fields sorted: the JD writes „Und“ and „und“, spaces at will and the fields of a list in any order."""
-	text = re.sub(r"\s+", "", text).lower()
-	text = _FIELD_LIST.sub(lambda match: "(" + ",".join(sorted(match[1].split(","))) + ")", text)
-	parts, depth, start = [], 0, 0
-	for match in re.finditer(r"[()]|und", text):
-		if match[0] == "(":
-			depth += 1
-		elif match[0] == ")":
-			depth -= 1
-		elif depth == 0:
-			parts.append(text[start : match.start()])
-			start = match.end()
-	parts.append(text[start:])
-	return set(parts)
 
 
 class FieldsTest(TestCase):

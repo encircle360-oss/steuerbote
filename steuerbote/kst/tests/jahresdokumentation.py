@@ -3,8 +3,9 @@ catalogues, the writers and the simulation of Körperschaftsteuer and Gewerbeste
 
 Like the other files of the ERiC documentation, they carry no licence that allows passing them on, so the tests read
 them from the unzipped documentation that STEUERBOTE_ERIC_DOC_DIR names (steuerbote/elster/tests/eric_schema.py),
-below Datenarten/ElsterErklaerung/KSt and Datenarten/ElsterErklaerung/GewSt of its directory Dokumentation. Without
-such a directory the tests are skipped with a message, as the tests of form USt 2 A are.
+below Datenarten/ElsterErklaerung/KSt and Datenarten/ElsterErklaerung/GewSt of its directory Dokumentation, with the
+reader of the annual filings (steuerbote/jahresmeldung/documentation.py). Without such a directory the tests are
+skipped with a message, as the tests of form USt 2 A are.
 
 The documentation of ERiC 44.3.6.0 ends with the VZ 2025. Nutzdaten of a provisional VZ, written in the namespace and
 version of their own year, are checked against the schema of the documentation year after in_documentation_year()
@@ -15,18 +16,17 @@ from functools import cache
 from pathlib import Path
 from types import MappingProxyType
 from unittest import SkipTest
-from xml.etree import ElementTree
 
 from lxml import etree
 
 from steuerbote.elster.tests import eric_schema
 from steuerbote.eric.datenart import Datenart
-from steuerbote.ustva import documentation
-from steuerbote.ustva.documentation import Row
+from steuerbote.jahresmeldung import documentation
+from steuerbote.jahresmeldung.documentation import Jahresdokumentation, Schema
+from steuerbote.ustva.documentation import Row, tables
 
 KST = ("KSt", "E30")
 GEWST = ("GewSt", "E20")
-_XS = "{http://www.w3.org/2001/XMLSchema}"
 
 
 def directory(datenart: str) -> Path:
@@ -79,90 +79,40 @@ FORMS = MappingProxyType(
 
 def sheet(datenart: tuple[str, str], year: int, name: str) -> tuple[Row, ...]:
 	"""The current rows of a sheet of the Jahresdokumentation of the year."""
-	return _sheets(datenart, year)[name]
+	return _read(datenart, year).sheet(name)
 
 
 @cache
-def _sheets(datenart: tuple[str, str], year: int) -> dict[str, tuple[Row, ...]]:
-	"""The sheets the tests read, from one reading of the spreadsheet."""
-	names = [f"{form} - {kind}" for form in FORMS[datenart] for kind in ("Felder", "Kennzahlen", "Regeln")]
-	if datenart == GEWST:
-		names.remove("BEG - Kennzahlen")
-	return documentation.sheets(jahresdokumentation(datenart, year), *names, "Benutzerdefinierte Typen")
+def _read(datenart: tuple[str, str], year: int) -> Jahresdokumentation:
+	"""The Jahresdokumentation of the year, from one reading of the spreadsheet."""
+	return documentation.read(jahresdokumentation(datenart, year))
 
 
 def lines(datenart: tuple[str, str], year: int, name: str) -> list[str]:
 	"""The first cell of each row of a sheet without a head row, such as „Allg. Information“."""
-	return eric_schema.lines(jahresdokumentation(datenart, year), name)
+	if name == documentation.INFORMATION:
+		return list(_read(datenart, year).information)
+	return [row[0] for row in tables(jahresdokumentation(datenart, year), name)[name] if row and row[0]]
 
 
 @cache
 def leaves(datenart: tuple[str, str], year: int, form: str) -> tuple[tuple[str, str], ...]:
 	"""The context and name of each leaf of a Vordruck in the schema, in the order of its sequences."""
-	types, forms = _schema(datenart, year)
-	found: list[tuple[str, str]] = []
-	_walk(types, forms[form][0], (), found)
-	return tuple(found)
+	return tuple((leaf.context, leaf.name) for leaf in _schema(datenart, year).vordrucke[form])
 
 
 @cache
 def occurrences(datenart: tuple[str, str], year: int) -> dict[str, str]:
 	"""The maxOccurs of each Vordruck and context of the schema that repeats, by its path below the root."""
-	types, forms = _schema(datenart, year)
-	found: dict[str, str] = {}
-	for form, (type_name, most) in forms.items():
-		if most != "1":
-			found[form] = most
-		_repeats(types, type_name, form, found)
-	return found
+	return dict(_schema(datenart, year).repeats)
 
 
 @cache
 def form_order(datenart: tuple[str, str], year: int) -> tuple[str, ...]:
 	"""The Vordrucke in the order of the sequence of the root."""
-	return tuple(_schema(datenart, year)[1])
+	return tuple(_schema(datenart, year).vordrucke)
 
 
 @cache
-def _schema(
-	datenart: tuple[str, str], year: int
-) -> tuple[dict[str, ElementTree.Element], dict[str, tuple[str, str]]]:
-	root = ElementTree.parse(schema(datenart, year)).getroot()
-	types = {name: node for node in root.iter(f"{_XS}complexType") if (name := node.get("name"))}
-	(top,) = (element for element in root.iterfind(f"{_XS}element") if element.get("name") == datenart[1])
-	sequence = types[top.get("type", "")].find(f"{_XS}sequence")
-	assert sequence is not None
-	forms = {
-		element.get("name", ""): (element.get("type", ""), element.get("maxOccurs", "1"))
-		for element in sequence.iterfind(f"{_XS}element")
-	}
-	return types, forms
-
-
-def _sequence(types: dict[str, ElementTree.Element], type_name: str) -> ElementTree.Element | None:
-	complex_type = types.get(type_name)
-	return None if complex_type is None else complex_type.find(f"{_XS}sequence")
-
-
-def _walk(
-	types: dict[str, ElementTree.Element], type_name: str, path: tuple[str, ...], found: list[tuple[str, str]]
-) -> None:
-	sequence = _sequence(types, type_name)
-	for element in () if sequence is None else sequence.iterfind(f"{_XS}element"):
-		name, child = element.get("name", ""), element.get("type", "")
-		if _sequence(types, child) is not None:
-			_walk(types, child, (*path, name), found)
-		else:
-			found.append(("/".join(path), name))
-
-
-def _repeats(types: dict[str, ElementTree.Element], type_name: str, path: str, found: dict[str, str]) -> None:
-	sequence = _sequence(types, type_name)
-	for element in () if sequence is None else sequence.iterfind(f"{_XS}element"):
-		child = element.get("type", "")
-		if _sequence(types, child) is None:
-			continue
-		here = f"{path}/{element.get('name', '')}"
-		if element.get("maxOccurs", "1") != "1":
-			found[here] = element.get("maxOccurs", "1")
-		_repeats(types, child, here, found)
+def _schema(datenart: tuple[str, str], year: int) -> Schema:
+	return documentation.read_schema(schema(datenart, year), datenart[1])

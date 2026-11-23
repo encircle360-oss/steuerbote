@@ -10,11 +10,14 @@ Datenartversionmatrix.ods with the datenartVersion and the plugin of each Datena
 The Jahresdokumentation and the Datenartversionmatrix are OpenDocument spreadsheets: zips whose content.xml holds
 one table:table per sheet. The sheets of the Jahresdokumentation keep the versions of a field or rule that the year
 dropped or replaced, marked in the column Änderungsinformation (legend in the sheet "Allg. Information"); only the
-current rows count. The standard library reads both the spreadsheets and the schema.
+current rows count. The standard library reads both the spreadsheets and the schema. tables() gives the rows of a sheet
+as they are, for the sheets without a head row such as "Allg. Information", and records() makes rows by their heads
+of them, as sheets() does; steuerbote/jahresmeldung/documentation.py reads the Jahresdokumentationen of the annual
+filings with both.
 """
 
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -95,12 +98,13 @@ class YearDocumentation:
 	datenart_versions: tuple[Row, ...]
 
 
-def find(directory: Path) -> Path:
-	"""The directory Dokumentation: the directory itself, or the one ERiC-<version>/Dokumentation below it."""
+def find(directory: Path, marker: PurePosixPath = USTVA) -> Path:
+	"""The directory Dokumentation: the directory itself, or the one ERiC-<version>/Dokumentation below it, whichever
+	holds the directory ``marker``, by default that of the UStVA."""
 	candidates = (directory, *sorted(directory.glob("ERiC-*/Dokumentation")))
-	found = [candidate for candidate in candidates if (candidate / USTVA).is_dir()]
+	found = [candidate for candidate in candidates if (candidate / marker).is_dir()]
 	if not found:
-		raise DocumentationError(f"{directory} holds no ERiC documentation with {USTVA}")
+		raise DocumentationError(f"{directory} holds no ERiC documentation with {marker}")
 	if len(found) > 1:
 		names = ", ".join(str(candidate) for candidate in found)
 		raise DocumentationError(
@@ -139,6 +143,15 @@ def read(documentation: Path, year: int) -> YearDocumentation:
 
 def sheets(path: Path, *names: str) -> dict[str, tuple[Row, ...]]:
 	"""The current rows of the named sheets of a spreadsheet, each row by the heads in the first row of its sheet."""
+	return {name: records(rows) for name, rows in tables(path, *names).items()}
+
+
+def tables(path: Path, *names: str) -> dict[str, tuple[tuple[str, ...], ...]]:
+	"""The rows of the named sheets of a spreadsheet as they are, every sheet in the order of the file without names.
+
+	A row is the texts of its cells without the empty ones at its end, so an empty row is empty; the rows of every
+	version stay, and the first row is a row like the others.
+	"""
 	try:
 		with zipfile.ZipFile(path) as archive:
 			content = archive.read("content.xml")
@@ -146,14 +159,24 @@ def sheets(path: Path, *names: str) -> dict[str, tuple[Row, ...]]:
 	except (OSError, KeyError, zipfile.BadZipFile, ElementTree.ParseError) as error:
 		raise DocumentationError(f"{path} cannot be read as a spreadsheet: {error}") from None
 	found = {
-		name: _rows(table)
+		name: tuple(tuple(_cells(row)) for row in table.iter(f"{_TABLE}table-row"))
 		for table in root.iter(f"{_TABLE}table")
-		if (name := table.get(f"{_TABLE}name", "")) in names
+		if (name := table.get(f"{_TABLE}name", "")) in names or not names
 	}
 	missing = [name for name in names if name not in found]
 	if missing:
 		raise DocumentationError(f"{path.name} has no sheet {', '.join(missing)}")
 	return found
+
+
+def records(rows: Sequence[Sequence[str]]) -> tuple[Row, ...]:
+	"""The current rows of a sheet that tables() read, each by the heads in its first row; an empty row and the
+	versions of a field or rule that the year dropped or replaced are left out."""
+	if not rows:
+		return ()
+	head, *body = rows
+	padded = (dict(zip(head, (*row, *[""] * (len(head) - len(row))), strict=False)) for row in body if row)
+	return tuple(MappingProxyType(record) for record in padded if record.get(CHANGE) not in OUTDATED)
 
 
 def _with_columns(path: Path, found: dict[str, tuple[Row, ...]]) -> dict[str, tuple[Row, ...]]:
@@ -196,15 +219,6 @@ def _sequence(types: Mapping[str, ElementTree.Element], type_name: str) -> Eleme
 		(element.get("name", ""), element.get("type", ""))
 		for element in complex_type.iterfind(f"{_XS}sequence/{_XS}element")
 	)
-
-
-def _rows(table: ElementTree.Element) -> tuple[Row, ...]:
-	rows = [_cells(row) for row in table.iter(f"{_TABLE}table-row")]
-	if not rows:
-		return ()
-	head, *body = rows
-	records = (dict(zip(head, row + [""] * (len(head) - len(row)), strict=False)) for row in body if row)
-	return tuple(MappingProxyType(record) for record in records if record.get(CHANGE) not in OUTDATED)
 
 
 def _cells(row: ElementTree.Element) -> list[str]:

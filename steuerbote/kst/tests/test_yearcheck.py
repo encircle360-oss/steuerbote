@@ -7,16 +7,18 @@ from pathlib import Path
 from unittest import SkipTest, TestCase, mock
 
 from steuerbote.elster.tests import eric_schema
+from steuerbote.eric.datenart import Datenart, gewst, kst
 from steuerbote.gewst import chain as gewst_chain
 from steuerbote.gewst import years as gewst_years
+from steuerbote.jahresmeldung import documentation
 from steuerbote.kst import chain, einlagekonto, losses
 from steuerbote.kst import years as kst_years
-from steuerbote.ustva.documentation import sheets
 
 MODULES = (
 	("KSt", kst_years, (chain, losses, einlagekonto)),
 	("GewSt", gewst_years, (gewst_chain,)),
 )
+DATENARTEN = {"KSt": kst, "GewSt": gewst}
 CODES = {
 	"KSt": {
 		"8906062",
@@ -99,18 +101,17 @@ class ExpectedRulesTest(TestCase):
 class DocumentationTest(TestCase):
 	"""The rules of the Jahresdokumentation of every year of the year tables, the newest one for a provisional year."""
 
-	def jahresdokumentation(self, datenart: str, file: str) -> Path:
-		folder = eric_schema.documentation() / "Datenarten" / "ElsterErklaerung" / datenart
+	def jahresdokumentation(self, kind: Datenart) -> Path:
+		folder = documentation.directory(eric_schema.documentation(), kind)
 		if not folder.is_dir():
-			raise SkipTest(f"{folder} is not unzipped: the documentation holds no Datenart {datenart}")
-		return folder / "Jahresdokumentation" / file
+			raise SkipTest(f"{folder} is not unzipped: the documentation holds no Datenart {kind.name}")
+		return documentation.jahresdokumentation_path(eric_schema.documentation(), kind)
 
 	def test_every_rule_the_core_computes_says_what_the_core_expects(self):
 		for datenart, years, modules in MODULES:
 			for year in years.YEARS.values():
-				path = self.jahresdokumentation(datenart, year.jahresdokumentation)
-				names = {e.sheet for module in modules for e in module.expected_rules(year.year)}
-				rows = sheets(path, *names)
+				path = self.jahresdokumentation(DATENARTEN[datenart](year.documentation_year))
+				rows = documentation.read(path).sheets
 				for module in modules:
 					for expectation in module.expected_rules(year.year):
 						with self.subTest(datenart=datenart, year=year.year, rule=expectation.code):
