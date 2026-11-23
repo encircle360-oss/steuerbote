@@ -100,8 +100,10 @@ class ModulesTest(TestCase):
 		)
 
 	def test_the_operator_names_the_package_and_its_checksum_in_common_site_config(self):
-		self.assertEqual(self.entry.config_key, "steuerbote_taxonomy_6_9")
-		self.assertEqual(self.entry.config_sha256_key, "steuerbote_taxonomy_6_9_sha256")
+		self.assertEqual(
+			("steuerbote_taxonomy_6_9", "steuerbote_taxonomy_6_9_sha256"),
+			(self.entry.config_key, self.entry.config_sha256_key),
+		)
 
 
 class FiscalYearTest(TestCase):
