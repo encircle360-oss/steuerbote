@@ -19,7 +19,6 @@ from steuerbote.kst.years import (
 	statutory_rate,
 	year_of,
 )
-
 from steuerbote.ustva.years import UnknownYearError
 
 UNKNOWN_YEAR = LATEST_YEAR + 1
@@ -199,6 +198,18 @@ class RuleExpectationTest(TestCase):
 			expectation.missing_terms("[E8007502] != Abrunden([E8007504] * 0.14)"),
 			("Abrunden([E8007504]*0.15)",),
 		)
+
+	def test_a_term_with_a_leading_plus_also_opens_a_sum(self):
+		expectation = RuleExpectation("8906062", "GK", ("+[E8002001]", "+[E8002004]", "-[E8002602]"))
+		self.assertEqual(
+			expectation.missing_terms("[E8109901] != {[E8002001] + [E8002004] - [E8002602]}"), ()
+		)
+		self.assertEqual(expectation.missing_terms("[E8109901] != [E8002001] + [E8002004] - [E8002602]"), ())
+		self.assertEqual(
+			expectation.missing_terms("[E8109901] != {[E8002004] - [E8002001] - [E8002602]}"),
+			("+[E8002001]",),
+		)
+		self.assertEqual(expectation.missing_terms("[E8109901] != {- [E8002004]}"), expectation.terms)
 
 	def test_names_its_sheet(self):
 		self.assertEqual(RuleExpectation("8900331", "ZVE", ()).sheet, "ZVE - Regeln")
