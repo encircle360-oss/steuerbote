@@ -5,7 +5,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import getdate
 
-from steuerbote.tests.helpers import make_company, make_settings
+from steuerbote.tests.helpers import ensure_fiscal_year, make_company, make_settings
 
 # Files the Voranmeldung and the Zusammenfassende Meldung monthly from January 2026.
 COMPANY = "Steuerbote Test Nummernkreis GmbH"
@@ -53,3 +53,12 @@ class NamingTest(IntegrationTestCase):
 			).insert()
 		self.assertRegex(vat_return.name, r"^UStVA-2026-\d{5}$")
 		self.assertEqual(getdate(vat_return.creation).year, 2027)
+
+	def test_the_umsatzsteuererklaerung_for_2026_made_in_2027_carries_2026(self):
+		ensure_fiscal_year(COMPANY, "2026-06-30")
+		with self.freeze_time("2027-03-01 10:00:00"):
+			annual = frappe.get_doc(
+				{"doctype": "Annual VAT Return", "company": COMPANY, "year": 2026}
+			).insert()
+		self.assertRegex(annual.name, r"^UStE-2026-\d{5}$")
+		self.assertEqual(getdate(annual.creation).year, 2027)

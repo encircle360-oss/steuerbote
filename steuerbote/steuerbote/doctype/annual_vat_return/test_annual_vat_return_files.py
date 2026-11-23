@@ -1,8 +1,10 @@
 """The files of the Annual VAT Return, read without a bench: its DocTypes with the standard fields of an annual
-document, the tables the bridge writes and the German of their texts."""
+document, the fields the controller and the bridge write, the form script and the German of every text."""
 
+import ast
 import csv
 import json
+import re
 from decimal import Decimal
 from pathlib import Path
 from unittest import TestCase
@@ -23,6 +25,9 @@ APP = Path(__file__).resolve().parents[3]
 MODULE = APP / "steuerbote"
 DOCTYPES = MODULE / "doctype"
 DIRECTORY = DOCTYPES / "annual_vat_return"
+CONTROLLER = DIRECTORY / "annual_vat_return.py"
+SCRIPT = DIRECTORY / "annual_vat_return.js"
+SOURCES = APP / "ustjahr_sources.py"
 TRANSLATIONS = APP / "translations" / "de.csv"
 CHILDREN = (
 	"annual_vat_return_line",
@@ -30,6 +35,8 @@ CHILDREN = (
 	"annual_vat_return_reconciliation",
 	"annual_vat_return_property",
 )
+TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
+PLACEHOLDER = re.compile(r"\{\d*\}")
 # Labels Frappe and ERPNext translate themselves (frappe/locale/de.po and erpnext/locale/de.po of version 16), and
 # terms that read the same in German; the app keeps out of their translations.
 FRAMEWORK_LABELS = frozenset(
@@ -54,6 +61,20 @@ def fields_of(name: str = "annual_vat_return") -> dict[str, dict]:
 def translations() -> dict[str, str]:
 	with TRANSLATIONS.open(encoding="utf-8", newline="") as file:
 		return dict(csv.reader(file))
+
+
+def class_attribute(name: str) -> object:
+	"""The value of an attribute of the controller, read from its source."""
+	module = ast.parse(CONTROLLER.read_text(encoding="utf-8"))
+	(cls,) = (
+		node for node in module.body if isinstance(node, ast.ClassDef) and node.name == "AnnualVATReturn"
+	)
+	(value,) = (
+		node.value
+		for node in cls.body
+		if isinstance(node, ast.Assign) and [target.id for target in node.targets] == [name]
+	)
+	return ast.literal_eval(value)
 
 
 def example_rows() -> dict[str, list[dict]]:
@@ -100,6 +121,34 @@ class DocTypeFilesTest(TestCase):
 				record = definition(name)
 				self.assertEqual(record["field_order"], [field["fieldname"] for field in record["fields"]])
 				self.assertEqual(record["module"], "Steuerbote")
+
+	def test_has_every_field_the_controller_and_the_bridge_name(self):
+		names = {
+			*class_attribute("CALCULATED_TABLES"),
+			*class_attribute("CALCULATED_FIELDS"),
+			*bridge.SUM_FIELDS,
+			*bridge.STATEMENT_FIELDS,
+			"lines",
+			"periods",
+			"properties",
+			"soll_override",
+			"soll_override_reason",
+			"bescheid",
+		}
+		self.assertEqual(sorted(names - set(self.fields)), [])
+
+	def test_what_berechnen_and_a_save_compute_is_read_only(self):
+		computed = {
+			*class_attribute("CALCULATED_TABLES"),
+			*class_attribute("CALCULATED_FIELDS"),
+			*bridge.SUM_FIELDS,
+		}
+		for fieldname in sorted(computed):
+			with self.subTest(field=fieldname):
+				self.assertEqual(self.fields[fieldname].get("read_only"), 1)
+		for fieldname in ("soll_override", "soll_override_reason", "bescheid", *bridge.STATEMENT_FIELDS):
+			with self.subTest(field=fieldname):
+				self.assertFalse(self.fields[fieldname].get("read_only"))
 
 	def test_the_tables_take_their_child_doctypes(self):
 		self.assertEqual(
@@ -200,6 +249,40 @@ class DocTypeFilesTest(TestCase):
 		self.assertIn('return dashboard("Annual VAT Return")', source)
 
 
+class FormScriptFilesTest(TestCase):
+	def setUp(self):
+		self.script = SCRIPT.read_text(encoding="utf-8")
+
+	def test_includes_the_transmission_before_the_pieces_of_the_annual_documents(self):
+		includes = re.findall(r'\{% include "([^"]+)" %\}', self.script)
+		self.assertEqual(
+			includes, ["steuerbote/public/js/elster_transmission.js", "steuerbote/public/js/annual_filing.js"]
+		)
+		self.assertIn("annual_filing_setup(frm);", self.script)
+		self.assertIn("annual_filing_refresh(frm, annual_vat_return_texts());", self.script)
+
+	def test_names_the_return_in_every_text_the_pieces_read(self):
+		texts = set(re.findall(r"^\t\t(\w+):", self.script, re.MULTILINE))
+		self.assertEqual(
+			texts,
+			{
+				"unsaved",
+				"send",
+				"test_send",
+				"sent",
+				"running",
+				"simulation",
+				"berichtigung",
+				"ready",
+				"filed_outside_example",
+			},
+		)
+
+	def test_says_that_mein_elster_imports_no_umsatzsteuererklaerung(self):
+		self.assertIn("Mein ELSTER imports no Umsatzsteuererklärung", self.script)
+		self.assertIn("as Mein ELSTER takes no file of it", self.script)
+
+
 def texts_of_the_doctypes() -> set[str]:
 	texts = set()
 	for name in ("annual_vat_return", *CHILDREN):
@@ -217,6 +300,13 @@ def texts_of_the_doctypes() -> set[str]:
 	return texts
 
 
+def texts_of_the_sources() -> set[str]:
+	texts = set()
+	for path in (CONTROLLER, SCRIPT, SOURCES):
+		texts.update(TRANSLATED_LITERAL.findall(path.read_text(encoding="utf-8")))
+	return texts
+
+
 def messages_of_the_core() -> set[str]:
 	"""What the core of the annual return and the bridge report, which the Frappe layer translates."""
 	return {
@@ -229,15 +319,36 @@ def messages_of_the_core() -> set[str]:
 
 
 class TranslationsFilesTest(TestCase):
+	def test_the_sources_are_read(self):
+		for text, found in (
+			("Annual VAT Return", texts_of_the_doctypes()),
+			("Late Postings", texts_of_the_doctypes()),
+			("Steuerbote has no form USt 2 A for {0} yet.", texts_of_the_sources()),
+			("Save the return before transmitting it.", texts_of_the_sources()),
+			("ERiC rule {0} applies: {1}.", messages_of_the_core()),
+			("No filed Voranmeldung covers {0}: file it, or waive it with a reason.", messages_of_the_core()),
+		):
+			with self.subTest(text=text):
+				self.assertIn(text, found)
+
 	def test_every_text_of_the_doctypes_is_translated(self):
 		missing = texts_of_the_doctypes() - set(translations()) - FRAMEWORK_LABELS - UNTRANSLATED
 		self.assertEqual(sorted(missing), [])
+
+	def test_every_text_of_the_controller_the_sources_and_the_form_is_translated(self):
+		self.assertEqual(sorted(texts_of_the_sources() - set(translations())), [])
 
 	def test_every_message_of_the_core_is_translated(self):
 		self.assertEqual(sorted(messages_of_the_core() - set(translations())), [])
 
 	def test_the_framework_labels_are_left_to_the_framework(self):
 		self.assertEqual(sorted(FRAMEWORK_LABELS & set(translations())), [])
+
+	def test_the_translations_keep_the_placeholders(self):
+		german = translations()
+		for text in texts_of_the_sources() | messages_of_the_core():
+			with self.subTest(text=text):
+				self.assertCountEqual(PLACEHOLDER.findall(german[text]), PLACEHOLDER.findall(text))
 
 	def test_the_return_reads_as_the_law_names_it(self):
 		german = translations()
