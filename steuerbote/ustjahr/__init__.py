@@ -21,6 +21,8 @@ annual return calls it in this order, each module documenting its part:
    Journal Entries on tax accounts.
 7. rules.check() runs the checks of Steuerbote and the rules of ERiC it checks itself on the amounts of
    entries() and the details of the company.
+8. steuerbote/elster/ust2a_xml.to_nutzdaten() writes the values check() took as the Nutzdaten E50 for ERiC, with the
+   Grundstücke of line 95 and the Vorsatz.
 
 Every module keeps its messages as English templates with their values apart and lists them in MESSAGES for the
 translations; what the checks report is a form.Finding with a code, a severity and the fields it names.
