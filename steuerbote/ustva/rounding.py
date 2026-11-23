@@ -98,3 +98,10 @@ def half_up_euro(amount: Decimal) -> Decimal:
 
 def _without_negative_zero(amount: Decimal) -> Decimal:
 	return amount + ZERO
+
+
+def ceil_cents(amount: Decimal) -> Decimal:
+	"""Round up to the cent, towards positive infinity, so that a minimum never falls short: the gesetzliche
+	Rücklage of an UG takes „ein Viertel des um einen Verlustvortrag aus dem Vorjahr geminderten
+	Jahresüberschusses“ (§ 5a Abs. 3 Satz 1 GmbHG), and a quarter of an amount in cents can have four decimals."""
+	return _without_negative_zero(require_decimal(amount).quantize(CENT, rounding=ROUND_CEILING))
