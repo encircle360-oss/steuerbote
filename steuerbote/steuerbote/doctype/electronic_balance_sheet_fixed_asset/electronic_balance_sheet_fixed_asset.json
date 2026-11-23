@@ -1,0 +1,260 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "A row of the Anlagenspiegel (brutto) of the E-Bilanz: a position of the Anlagevermögen and value type with the columns of its value development.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "position",
+  "position_label",
+  "value_type",
+  "asset_category",
+  "manual",
+  "cost_section",
+  "cost_begin",
+  "additions",
+  "disposals",
+  "erp_adjustment",
+  "column_break_cost",
+  "transfers",
+  "writeups",
+  "depreciation_section",
+  "depreciation_begin",
+  "depreciation_regular",
+  "depreciation_extraordinary",
+  "depreciation_special",
+  "depreciation_7g",
+  "depreciation_6b",
+  "depreciation_other",
+  "column_break_depreciation",
+  "depreciation_additions",
+  "depreciation_disposals",
+  "depreciation_transfers",
+  "end_section",
+  "cost_end",
+  "depreciation_end",
+  "book_value_end",
+  "column_break_end",
+  "reason"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "description": "The position of the Anlagevermögen without the prefix de-gaap-ci:, from the fixed asset account of the category.",
+   "fieldname": "position",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Position",
+   "read_only_depends_on": "eval:!doc.manual"
+  },
+  {
+   "fieldname": "position_label",
+   "fieldtype": "Small Text",
+   "label": "Label of the Position",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "default": "StB",
+   "description": "StB Steuerbilanzwert, HB Handelsbilanzwert, Überleitung Überleitungswert (Technischer Leitfaden zur HGB-Taxonomie 6.9, A.14.2.2).",
+   "fieldname": "value_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Kind of Value",
+   "options": "StB\nHB\nÜberleitung",
+   "read_only_depends_on": "eval:!doc.manual"
+  },
+  {
+   "columns": 2,
+   "fieldname": "asset_category",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Asset Category",
+   "options": "Asset Category",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "manual",
+   "fieldtype": "Check",
+   "label": "Row by Hand",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cost_section",
+   "fieldtype": "Section Break",
+   "label": "Acquisition and Production Cost"
+  },
+  {
+   "fieldname": "cost_begin",
+   "fieldtype": "Currency",
+   "label": "Cost at the Beginning",
+   "options": "Company:company:default_currency",
+   "read_only_depends_on": "eval:!doc.manual"
+  },
+  {
+   "fieldname": "additions",
+   "fieldtype": "Currency",
+   "label": "Additions of Cost",
+   "options": "Company:company:default_currency",
+   "read_only_depends_on": "eval:!doc.manual"
+  },
+  {
+   "fieldname": "disposals",
+   "fieldtype": "Currency",
+   "label": "Disposals of Cost",
+   "options": "Company:company:default_currency",
+   "read_only_depends_on": "eval:!doc.manual"
+  },
+  {
+   "description": "What ERPNext booked on the fixed asset account in the period beyond purchases and disposals, such as an Asset Value Adjustment; the columns by hand take it up.",
+   "fieldname": "erp_adjustment",
+   "fieldtype": "Currency",
+   "label": "Adjustments by ERPNext",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_cost",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "transfers",
+   "fieldtype": "Currency",
+   "label": "Reclassifications of Cost",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "writeups",
+   "fieldtype": "Currency",
+   "label": "Write-ups",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "depreciation_section",
+   "fieldtype": "Section Break",
+   "label": "Depreciation"
+  },
+  {
+   "fieldname": "depreciation_begin",
+   "fieldtype": "Currency",
+   "label": "Accumulated Depreciation at the Beginning",
+   "options": "Company:company:default_currency",
+   "read_only_depends_on": "eval:!doc.manual"
+  },
+  {
+   "fieldname": "depreciation_regular",
+   "fieldtype": "Currency",
+   "label": "Scheduled Depreciation",
+   "options": "Company:company:default_currency",
+   "read_only_depends_on": "eval:!doc.manual"
+  },
+  {
+   "fieldname": "depreciation_extraordinary",
+   "fieldtype": "Currency",
+   "label": "Unscheduled Depreciation",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "depreciation_special",
+   "fieldtype": "Currency",
+   "label": "Special Depreciation",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "depreciation_7g",
+   "fieldtype": "Currency",
+   "label": "Reduction under § 7g Abs. 2 EStG",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "depreciation_6b",
+   "fieldtype": "Currency",
+   "label": "Deduction under § 6b EStG",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "depreciation_other",
+   "fieldtype": "Currency",
+   "label": "Depreciation Not Assignable",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "column_break_depreciation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "depreciation_additions",
+   "fieldtype": "Currency",
+   "label": "Accumulated Depreciation Added",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "depreciation_disposals",
+   "fieldtype": "Currency",
+   "label": "Accumulated Depreciation on Disposals",
+   "options": "Company:company:default_currency",
+   "read_only_depends_on": "eval:!doc.manual"
+  },
+  {
+   "fieldname": "depreciation_transfers",
+   "fieldtype": "Currency",
+   "label": "Reclassifications of Depreciation",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "end_section",
+   "fieldtype": "Section Break",
+   "label": "End of the Period"
+  },
+  {
+   "columns": 1,
+   "fieldname": "cost_end",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Cost at the End",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "depreciation_end",
+   "fieldtype": "Currency",
+   "label": "Accumulated Depreciation at the End",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "book_value_end",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Book Value at the End",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_end",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "description": "Required for a row by hand and for the columns by hand of a row.",
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Reason"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Electronic Balance Sheet Fixed Asset",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
