@@ -1,0 +1,74 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 12:00:00.000000",
+ "description": "A Betriebsstätte of the company in a Gemeinde for the days it existed.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "municipality",
+  "postal_code",
+  "ags",
+  "hebenummer",
+  "from_date",
+  "to_date"
+ ],
+ "fields": [
+  {
+   "fieldname": "municipality",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Gemeinde",
+   "reqd": 1
+  },
+  {
+   "fieldname": "postal_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Postal Code",
+   "length": 5,
+   "reqd": 1
+  },
+  {
+   "description": "Eight digits: the Länderschlüssel 01 to 16 and six more.",
+   "fieldname": "ags",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Amtlicher Gemeindeschlüssel",
+   "length": 8,
+   "reqd": 1
+  },
+  {
+   "description": "The Steuernummer of the company at the Gemeinde, at most 28 characters (GewSt 1 A line 33).",
+   "fieldname": "hebenummer",
+   "fieldtype": "Data",
+   "label": "Hebenummer",
+   "length": 28
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "From Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "To Date"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual Filing Establishment",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

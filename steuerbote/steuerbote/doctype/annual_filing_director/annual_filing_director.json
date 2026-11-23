@@ -1,0 +1,73 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 12:00:00.000000",
+ "description": "A Geschäftsführer of the company for the days of the office.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "director_name",
+  "role",
+  "from_date",
+  "to_date",
+  "is_shareholder",
+  "signs"
+ ],
+ "fields": [
+  {
+   "fieldname": "director_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Name",
+   "reqd": 1
+  },
+  {
+   "default": "Geschäftsführer",
+   "description": "As the Jahresabschluss names it under the signature.",
+   "fieldname": "role",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Function"
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "From Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "To Date"
+  },
+  {
+   "default": "0",
+   "description": "Also a shareholder: the E-Bilanz shows the pay in positions of their own.",
+   "fieldname": "is_shareholder",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Gesellschafter-Geschäftsführer"
+  },
+  {
+   "default": "1",
+   "description": "Every Geschäftsführer signs with the date (§ 245 HGB).",
+   "fieldname": "signs",
+   "fieldtype": "Check",
+   "label": "Signs the Jahresabschluss"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual Filing Director",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

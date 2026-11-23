@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 12:00:00.000000",
+ "description": "The criteria of § 267 and § 267a HGB on one Abschlussstichtag and the size class applied.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "fiscal_year_end",
+  "balance_sheet_total",
+  "revenue",
+  "employees",
+  "size_class",
+  "source",
+  "reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "fiscal_year_end",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Abschlussstichtag",
+   "reqd": 1
+  },
+  {
+   "description": "The items A to E of the Aktivseite, without a Fehlbetrag not covered by Eigenkapital (§ 267 Abs. 4a HGB).",
+   "fieldname": "balance_sheet_total",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Bilanzsumme",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "In the twelve months before the Abschlussstichtag (§ 267 Abs. 1 Nr. 2 HGB).",
+   "fieldname": "revenue",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Umsatzerlöse",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "A quarter of the sum of the Arbeitnehmer on 31 March, 30 June, 30 September and 31 December, without those employed for their vocational training (§ 267 Abs. 5 HGB).",
+   "fieldname": "employees",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Arbeitnehmer"
+  },
+  {
+   "fieldname": "size_class",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Size Class Applied",
+   "options": "Kleinst\nKlein\nMittelgroß\nGroß",
+   "reqd": 1
+  },
+  {
+   "description": "Where the figures come from, such as the Jahresabschluss of the year.",
+   "fieldname": "source",
+   "fieldtype": "Data",
+   "label": "Source",
+   "reqd": 1
+  },
+  {
+   "description": "Why the class applied differs from the criteria of the year, such as § 267 Abs. 4 HGB.",
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual Filing Size Class",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
