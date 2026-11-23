@@ -12,6 +12,7 @@ The annual filings round by the rules of their own laws and of the Jahresdokumen
 function below with its source.
 """
 
+from collections.abc import Sequence
 from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 
 EURO = Decimal("1")
@@ -105,3 +106,29 @@ def ceil_cents(amount: Decimal) -> Decimal:
 	Rücklage of an UG takes „ein Viertel des um einen Verlustvortrag aus dem Vorjahr geminderten
 	Jahresüberschusses“ (§ 5a Abs. 3 Satz 1 GmbHG), and a quarter of an amount in cents can have four decimals."""
 	return _without_negative_zero(require_decimal(amount).quantize(CENT, rounding=ROUND_CEILING))
+
+
+def apportion_full_euros(amounts: Sequence[Decimal], total: Decimal | None = None) -> tuple[Decimal, ...]:
+	"""Full euros for parts that add up to ``total`` in full euros, by default their own sum rounded half up.
+
+	Each part is rounded half up; the euros the rounded parts miss or exceed go one by one to the parts with cents
+	nearest the next euro, so a part stays within a euro of itself and a whole part or zero stays as it is. The
+	Jahresabschluss in full euros is the default of the Offenlegung research; that the register requires it is
+	unverified, and § 244 HGB asks only for euros. Rounding position by position, however, would let a total part
+	from its positions and the Aktiva from the Passiva, so the positions of steuerbote.hgb.statement are apportioned
+	this way from the totals down.
+	"""
+	parts = tuple(require_decimal(amount) for amount in amounts)
+	target = half_up_euro(sum(parts, ZERO)) if total is None else require_decimal(total)
+	if target != target.quantize(EURO):
+		raise ValueError(f"the total must be in full euros, not {target}")
+	rounded = [half_up_euro(part) for part in parts]
+	missing = int(target - sum(rounded, ZERO))
+	with_cents = [index for index, part in enumerate(parts) if part != part.quantize(EURO)]
+	if abs(missing) > len(with_cents):
+		raise ValueError(f"the parts cannot reach {target} without moving a part in full euros")
+	step = EURO if missing > 0 else -EURO
+	nearest = sorted(with_cents, key=lambda index: (rounded[index] - parts[index]) * step)
+	for index in nearest[: abs(missing)]:
+		rounded[index] += step
+	return tuple(_without_negative_zero(part) for part in rounded)
