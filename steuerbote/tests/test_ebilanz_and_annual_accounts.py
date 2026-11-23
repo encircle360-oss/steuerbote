@@ -68,7 +68,7 @@ class TestEBilanzAndAnnualAccounts(IntegrationTestCase):
 		ebilanz.reload()
 		self.assertEqual(ebilanz.annual_accounts, accounts.name)
 		self.assertEqual(
-			(money(ebilanz.total_assets), money(ebilanz.net_income)), (d("104450.00"), d("59450.00"))
+			(money(ebilanz.total_assets), money(ebilanz.net_income)), (d("104490.00"), d("59490.00"))
 		)
 		self.assertEqual(compared(ebilanz), [])
 
@@ -94,8 +94,8 @@ class TestEBilanzAndAnnualAccounts(IntegrationTestCase):
 		(total, _net_income) = (row.text for row in ebilanz.findings if row.code == DIFFERS)
 		self.assertTrue(
 			total.startswith(
-				f"Summe Aktiva [bs.ass] beträgt in der E-Bilanz 103.450,00 €, im festgestellten Jahresabschluss "
-				f"{accounts.name} 104.450,00 €: ein Unterschied von -1.000,00 €."
+				f"Summe Aktiva [bs.ass] beträgt in der E-Bilanz 103.490,00 €, im festgestellten Jahresabschluss "
+				f"{accounts.name} 104.490,00 €: ein Unterschied von -1.000,00 €."
 			)
 		)
 
@@ -123,7 +123,7 @@ class TestEBilanzAndAnnualAccounts(IntegrationTestCase):
 		self.festgestellt()
 		ebilanz = calculated(EBILANZ, accounting_standard="HGBM", tax_finance_book=data.TAX_BOOK)
 		self.assertEqual(
-			(money(ebilanz.net_income), money(ebilanz.tax_net_income)), (d("57450.00"), d("59450.00"))
+			(money(ebilanz.net_income), money(ebilanz.tax_net_income)), (d("57490.00"), d("59490.00"))
 		)
 		self.assertEqual(compared(ebilanz), [])
 

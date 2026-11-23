@@ -3,13 +3,15 @@ together: the Jahresabschluss, the E-Bilanz, the Körperschaft- and the Gewerbes
 Umsatzsteuererklärung and Offene Fristen of one year.
 
 A GmbH with SKR04 accounts, founded on 2 January 2025 with a Stammkapital of 25,000 euros, earns 20,000 euros in 2025.
-In 2026 it sells for 200,000 euros, buys goods for 60,000, pays salaries of 50,000 and rent of 12,000 for its office,
+In 2026 it sells for 200,000 euros, buys goods for 60,000, pays salaries of 50,000 and rent of 11,960 for its office,
 and the Vorauszahlungen of its notices, 2,500 euros Körperschaftsteuer with 137.50 Solidaritätszuschlag and 2,000 euros
-Gewerbesteuer a quarter: a Jahresüberschuss of 59,450 euros before the provisions and a Bilanzsumme of 104,450. Its
-zu versteuerndes Einkommen is 78,000 euros, its Körperschaftsteuer 11,700 with 643.50 Solidaritätszuschlag, and at a
-Hebesatz of 400 % on a Gewerbeertrag of 78,000 its Gewerbesteuer 10,920; „Rückstellungen vorschlagen“ proposes 1,700,
-93.50 and 2,920 euros, after which the Jahresüberschuss is 54,736.50. With Umsatzerlöse of 200,000 euros, a
-Bilanzsumme of 104,450 and no employees it is a Kleinstkapitalgesellschaft at both closing dates (§ 267a Abs. 1 HGB).
+Gewerbesteuer a quarter: a Jahresüberschuss of 59,490 euros before the provisions and a Bilanzsumme of 104,490. Its
+zu versteuerndes Einkommen is 78,040 euros, its Körperschaftsteuer 11,706 with 643.83 Solidaritätszuschlag, and at a
+Hebesatz of 400 % on a Gewerbeertrag of 78,040, 78,000 once rounded, its Gewerbesteuer 10,920; „Rückstellungen
+vorschlagen“ proposes 1,706, 93.83 and 2,920 euros, after which the Jahresüberschuss is 54,770.17. The rent keeps the
+Solidaritätszuschlag off half a euro, which lines 11 and 82 of Anlage GK would both round up once the provisions are
+posted. With Umsatzerlöse of 200,000 euros, a Bilanzsumme of 104,490 and no employees it is a
+Kleinstkapitalgesellschaft at both closing dates (§ 267a Abs. 1 HGB).
 
 The Annual Filing Settings name the shareholder, the Geschäftsführerin who signs, the register, the one Betriebsstätte
 with its Hebesatz and the Vorauszahlungen; the Income Tax Mapping, the Balance Sheet Mapping and the VAT Return Mapping
@@ -87,7 +89,7 @@ LEDGER: tuple[tuple[str, str, Rows], ...] = (
 	("ERLOES", "2026-06-30", (("1800", "200000", 0), ("4400", 0, "200000"))),
 	("WARE", "2026-06-30", (("5400", "60000", 0), ("1800", 0, "60000"))),
 	("GEHALT", "2026-12-31", (("6020", "50000", 0), ("1800", 0, "50000"))),
-	("MIETE", "2026-12-31", (("6310", "12000", 0), ("1800", 0, "12000"))),
+	("MIETE", "2026-12-31", (("6310", "11960", 0), ("1800", 0, "11960"))),
 	*(
 		(
 			f"VZ-KST-{month}",

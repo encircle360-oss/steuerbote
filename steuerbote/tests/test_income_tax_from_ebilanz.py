@@ -51,7 +51,7 @@ class TestIncomeTaxFromEBilanz(IntegrationTestCase):
 
 	def test_berechnen_takes_line_11_from_the_e_bilanz_of_the_year_and_names_it(self):
 		ebilanz = calculated(EBILANZ)
-		self.assertEqual(money(ebilanz.net_income), d("59450.00"))
+		self.assertEqual(money(ebilanz.net_income), d("59490.00"))
 		doc = data.new_document(CORPORATE)
 		self.assertEqual(doc.electronic_balance_sheet, ebilanz.name)
 		doc.calculate()
@@ -60,14 +60,14 @@ class TestIncomeTaxFromEBilanz(IntegrationTestCase):
 		self.assertEqual(
 			values(doc, "net_income", "zve", "kst", "solz"),
 			{
-				"net_income": d("59450.00"),
-				"zve": d("78000.00"),
-				"kst": d("11700.00"),
-				"solz": d("643.50"),
+				"net_income": d("59490.00"),
+				"zve": d("78040.00"),
+				"kst": d("11706.00"),
+				"solz": d("643.83"),
 			},
 		)
 		row = line(doc, "E8002001")
-		self.assertEqual((money(row.ledger_amount), money(row.form_amount)), (d("59450.00"), d("59450.00")))
+		self.assertEqual((money(row.ledger_amount), money(row.form_amount)), (d("59490.00"), d("59490.00")))
 		self.assertNotIn(DIFFERS, finding_codes(doc))
 
 	def test_without_a_calculated_e_bilanz_line_11_is_the_jahresueberschuss_of_the_books(self):
@@ -75,7 +75,7 @@ class TestIncomeTaxFromEBilanz(IntegrationTestCase):
 		doc = calculated(CORPORATE)
 		self.assertFalse(doc.electronic_balance_sheet)
 		self.assertEqual(
-			values(doc, "net_income", "zve"), {"net_income": d("59450.00"), "zve": d("78000.00")}
+			values(doc, "net_income", "zve"), {"net_income": d("59490.00"), "zve": d("78040.00")}
 		)
 
 	def test_postings_since_the_e_bilanz_hold_the_return_back_until_it_is_calculated_again(self):
@@ -92,13 +92,13 @@ class TestIncomeTaxFromEBilanz(IntegrationTestCase):
 		ebilanz.reload()
 		ebilanz.calculate()
 		ebilanz.reload()
-		self.assertEqual(money(ebilanz.net_income), d("54736.50"))
+		self.assertEqual(money(ebilanz.net_income), d("54770.17"))
 		doc.reload()
 		doc.calculate()
 		doc.reload()
 		self.assertNotIn(DIFFERS, finding_codes(doc))
 		self.assertEqual(values(doc, *before), before)
-		self.assertEqual(money(doc.net_income), d("54737.00"))
+		self.assertEqual(money(doc.net_income), d("54770.00"))
 
 	def test_a_handelsbilanz_gives_line_11_its_ueberleitung_to_the_steuerbilanz(self):
 		"""§ 5b Abs. 1 Satz 2 EStG; § 5 Abs. 4a EStG keeps the Rückstellung für drohende Verluste out of the
@@ -107,13 +107,13 @@ class TestIncomeTaxFromEBilanz(IntegrationTestCase):
 		ebilanz = calculated(EBILANZ, accounting_standard="HGBM", tax_finance_book=data.TAX_BOOK)
 		self.assertEqual(
 			values(ebilanz, "net_income", "tax_net_income"),
-			{"net_income": d("57450.00"), "tax_net_income": d("59450.00")},
+			{"net_income": d("57490.00"), "tax_net_income": d("59490.00")},
 		)
 		doc = calculated(CORPORATE)
 		row = line(doc, "E8002001")
-		self.assertEqual((money(row.ledger_amount), money(row.form_amount)), (d("57450.00"), d("59450.00")))
+		self.assertEqual((money(row.ledger_amount), money(row.form_amount)), (d("57490.00"), d("59490.00")))
 		self.assertEqual(
-			values(doc, "net_income", "zve"), {"net_income": d("59450.00"), "zve": d("78000.00")}
+			values(doc, "net_income", "zve"), {"net_income": d("59490.00"), "zve": d("78040.00")}
 		)
 		self.assertFalse(
 			{DIFFERS, "KST-UEBERLEITUNG-FEHLT", "KST-UEBERLEITUNG-DOPPELT"} & set(finding_codes(doc))
@@ -127,7 +127,7 @@ class TestIncomeTaxFromEBilanz(IntegrationTestCase):
 		self.assertEqual(
 			values(trade, "profit", "gewerbeertrag", "messbetrag", "gewst", "balance"),
 			{
-				"profit": d("78000.00"),
+				"profit": d("78040.00"),
 				"gewerbeertrag": d("78000.00"),
 				"messbetrag": d("2730.00"),
 				"gewst": d("10920.00"),
