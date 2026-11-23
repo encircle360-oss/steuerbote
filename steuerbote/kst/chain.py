@@ -44,11 +44,18 @@ from types import MappingProxyType
 
 from steuerbote.kst.categories import Category, Classification, Contribution, Mapping, classify
 from steuerbote.kst.holdings import Amount, HoldingResult, P8b, p8b
-from steuerbote.kst.losses import Derivatives, derivatives
-from steuerbote.kst.years import Year, year_of
+from steuerbote.kst.losses import (
+	Derivatives,
+	Donations,
+	LossDeduction,
+	derivatives,
+	donations,
+	loss_deduction,
+)
+from steuerbote.kst.years import HUNDRED, Year, year_of
 from steuerbote.ustva.calculation import LedgerLine
 from steuerbote.ustva.plausibility import Figures
-from steuerbote.ustva.rounding import CENT, ZERO, half_up_euro, require_decimal
+from steuerbote.ustva.rounding import CENT, ZERO, floor_euro, half_up_euro, require_decimal
 
 
 class Source(Enum):
@@ -750,11 +757,33 @@ class KstResult:
 	classification: Classification
 	p8b: P8b
 	derivatives: Derivatives
+	donations: Donations
+	losses: LossDeduction
 
 	@property
 	def business_income(self) -> Decimal:
 		"""Anlage GK line 300."""
 		return self.lines[BUSINESS_INCOME].declared
+
+	@property
+	def sum_of_income(self) -> Decimal:
+		"""Anlage ZVE line 32, the base of the Gewerbesteuer."""
+		return self.lines["sum_of_income"].declared
+
+	@property
+	def total_income(self) -> Decimal:
+		"""Anlage ZVE line 53."""
+		return self.lines["total_income"].declared
+
+	@property
+	def zve(self) -> Decimal:
+		"""Anlage ZVE line 70."""
+		return self.lines["zve"].declared
+
+	@property
+	def kst(self) -> Decimal:
+		"""Anlage ZVE line 71, the festzusetzende Körperschaftsteuer."""
+		return self.lines["corporate_income_tax"].declared
 
 
 def compute(inputs: KstInputs, figures: Figures) -> KstResult:
@@ -808,12 +837,37 @@ def compute(inputs: KstInputs, figures: Figures) -> KstResult:
 	_put(lines, "investment_funds", Amount(ZERO, ZERO), classification)
 	_put(lines, BUSINESS_INCOME, _total(BUSINESS_INCOME, lines))
 
+	business_income = lines[BUSINESS_INCOME]
+	_put(lines, "business_income_zve", Amount(business_income.exact, business_income.declared))
+	_put(lines, "foreign_tax_deduction", Amount(ZERO, ZERO))
+	_put(lines, "sum_of_income", _total("sum_of_income", lines))
+	gifts = donations(
+		year,
+		lines["sum_of_income"].declared,
+		max(classification.amount(Category.DONATIONS), ZERO)
+		if inputs.eligible_donations is None
+		else inputs.eligible_donations,
+		inputs.donation_carry_forward,
+		inputs.turnover_and_wages,
+	)
+	_put(lines, "donation_deduction", Amount(gifts.deductible, gifts.deductible), classification)
+	_put(lines, "total_income", _total("total_income", lines))
+	losses = loss_deduction(
+		year, lines["total_income"].declared, inputs.loss_carry_forward, inputs.loss_carry_back
+	)
+	_put(lines, "loss_deduction", Amount(losses.deduction, losses.deduction))
+	_put(lines, "zve", _total("zve", lines))
+	taxed = max(lines["zve"].declared, ZERO) * year.rate / HUNDRED
+	_put(lines, "corporate_income_tax", Amount(taxed, floor_euro(taxed)))
+
 	return KstResult(
 		year,
 		MappingProxyType({item.key: lines[item.key] for item in STEPS if item.key in lines}),
 		classification,
 		shares,
 		pool,
+		gifts,
+		losses,
 	)
 
 
