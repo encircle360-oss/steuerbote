@@ -1,9 +1,10 @@
 // The differences between a mapping and its defaults or a file, each with a box to take it over: Vorgaben
-// aktualisieren and Zuordnung importieren of the VAT Return Mapping include this file. The server gives every
-// difference in the words of the user (presented in vat_return_mapping.py); the dialog only escapes them, and apply
-// gets the ids of the differences checked.
+// aktualisieren and Zuordnung importieren of the VAT Return Mapping, the Income Tax Mapping and the Balance Sheet
+// Mapping include this file. The server gives every difference in the words of the user (presented in the controller
+// of each mapping); the dialog only escapes them, and apply gets the ids of the differences checked. subject_label
+// heads the column of what a difference concerns, for a mapping without tax checks.
 
-function show_mapping_differences({ title, intro, differences, unchanged, proposed_label, show_origin, apply_label, apply }) {
+function show_mapping_differences({ title, intro, differences, unchanged, subject_label, proposed_label, show_origin, apply_label, apply }) {
 	const escape = frappe.utils.escape_html;
 	const dialog = new frappe.ui.Dialog({
 		title,
@@ -37,7 +38,7 @@ function show_mapping_differences({ title, intro, differences, unchanged, propos
 		<table class="table table-bordered steuerbote-differences">
 			<thead><tr>
 				<th><input type="checkbox" class="steuerbote-all-differences" title="${escape(__("Choose All"))}"></th>
-				<th>${escape(__("Account or Tax Check"))}</th>
+				<th>${escape(subject_label || __("Account or Tax Check"))}</th>
 				<th>${escape(__("What Changes"))}</th>
 				<th>${escape(__("In the Mapping"))}</th>
 				<th>${escape(proposed_label)}</th>

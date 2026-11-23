@@ -1,0 +1,397 @@
+"""The Balance Sheet Mapping, read from its files without a bench: its DocTypes with the fields and options the core
+reads (steuerbote/xbrl/mapping.py, steuerbote/balance_mapping_sync.py), and every text in German."""
+
+import ast
+import csv
+import json
+import re
+from pathlib import Path
+from unittest import TestCase
+
+from steuerbote import balance_mapping_sync, hooks
+from steuerbote.mappings import transfer
+from steuerbote.setup.steps import Step
+from steuerbote.ustva import WatchLevel
+from steuerbote.xbrl import mapping
+from steuerbote.xbrl.mapping import REMAINING_TERMS, Purpose
+from steuerbote.xbrl.versions import LATEST, TAXONOMIES
+
+APP = Path(__file__).resolve().parents[3]
+DOCTYPES = APP / "steuerbote" / "doctype"
+TRANSLATIONS = APP / "translations" / "de.csv"
+MAPPING_DOCTYPES = (
+	"balance_sheet_mapping",
+	"balance_sheet_mapping_rule",
+	"balance_sheet_mapping_watched_account",
+	"balance_sheet_mapping_excluded_account",
+)
+# The charts and the versions of the taxonomy read the same in every language, and Frappe translates its own labels,
+# which the app keeps out of: ERPNext translates „Purpose“ as „Zweck“, so the Abschlusszweck keeps its German name.
+UNTRANSLATED = frozenset(
+	{
+		"SKR03",
+		"SKR04",
+		"Eigener Kontenrahmen",
+		*TAXONOMIES,
+		"Company",
+		"Account",
+		"Position",
+		"Reason",
+		"Root Type",
+	}
+)
+
+
+def translations() -> dict[str, str]:
+	with TRANSLATIONS.open(encoding="utf-8", newline="") as file:
+		return dict(csv.reader(file))
+
+
+def definition(name: str) -> dict:
+	return json.loads((DOCTYPES / name / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def fields_of(name: str) -> dict[str, dict]:
+	return {field["fieldname"]: field for field in definition(name)["fields"]}
+
+
+def options(field: dict) -> list[str]:
+	return field["options"].split("\n")
+
+
+class MappingDefinitionTest(TestCase):
+	def setUp(self):
+		self.definition = definition("balance_sheet_mapping")
+		self.fields = fields_of("balance_sheet_mapping")
+
+	def test_the_mapping_is_one_document_per_company(self):
+		self.assertEqual(
+			{key: self.definition[key] for key in ("name", "module", "autoname", "naming_rule")},
+			{
+				"name": "Balance Sheet Mapping",
+				"module": "Steuerbote",
+				"autoname": "field:company",
+				"naming_rule": "By fieldname",
+			},
+		)
+		company = self.fields["company"]
+		self.assertEqual(
+			{key: company.get(key) for key in ("fieldtype", "options", "reqd", "unique", "set_only_once")},
+			{"fieldtype": "Link", "options": "Company", "reqd": 1, "unique": 1, "set_only_once": 1},
+		)
+
+	def test_the_charts_are_those_of_the_vat_return_mapping(self):
+		vat = fields_of("vat_return_mapping")["chart"]
+		self.assertEqual(
+			{key: self.fields["chart"][key] for key in ("options", "default", "reqd")},
+			{key: vat[key] for key in ("options", "default", "reqd")},
+		)
+
+	def test_the_positions_belong_to_a_version_of_the_taxonomy_steuerbote_knows(self):
+		taxonomy = self.fields["taxonomy_version"]
+		self.assertEqual(options(taxonomy), list(TAXONOMIES))
+		self.assertEqual(
+			(taxonomy["default"], taxonomy["read_only"], taxonomy["reqd"]), (LATEST.version, 1, 1)
+		)
+
+	def test_keeps_the_defaults_it_took_over_as_vat_return_mapping_does(self):
+		vat = fields_of("vat_return_mapping")
+		for name in ("defaults_version", "defaults_rows"):
+			with self.subTest(field=name):
+				self.assertEqual(
+					{
+						key: self.fields[name].get(key)
+						for key in ("fieldtype", "read_only", "hidden", "label")
+					},
+					{key: vat[name].get(key) for key in ("fieldtype", "read_only", "hidden", "label")},
+				)
+
+	def test_holds_the_rules_the_watched_accounts_and_those_outside_the_bilanz_and_the_guv(self):
+		self.assertEqual(
+			self.definition["field_order"],
+			[
+				"company",
+				"chart",
+				"taxonomy_version",
+				"defaults_version",
+				"defaults_rows",
+				"rules",
+				"watched",
+				"excluded",
+			],
+		)
+		self.assertEqual(
+			{
+				name: (self.fields[name]["fieldtype"], self.fields[name]["options"])
+				for name in ("rules", "watched", "excluded")
+			},
+			{
+				"rules": ("Table", "Balance Sheet Mapping Rule"),
+				"watched": ("Table", "Balance Sheet Mapping Watched Account"),
+				"excluded": ("Table", "Balance Sheet Mapping Excluded Account"),
+			},
+		)
+
+	def test_the_permissions_are_those_of_the_vat_return_mapping(self):
+		self.assertEqual(self.definition["permissions"], definition("vat_return_mapping")["permissions"])
+
+
+class RowDefinitionTest(TestCase):
+	def test_each_row_names_its_account_by_its_number(self):
+		for name in MAPPING_DOCTYPES[1:]:
+			fields = fields_of(name)
+			with self.subTest(doctype=name):
+				self.assertEqual((definition(name)["istable"], definition(name)["module"]), (1, "Steuerbote"))
+				self.assertEqual(definition(name)["field_order"][:2], ["account", "account_number"])
+				self.assertEqual(
+					(fields["account"]["fieldtype"], fields["account"]["options"], fields["account"]["reqd"]),
+					("Link", "Account", 1),
+				)
+				self.assertEqual(
+					(fields["account_number"]["fetch_from"], fields["account_number"]["read_only"]),
+					("account.account_number", 1),
+				)
+
+	def test_a_rule_holds_the_fields_the_core_reads(self):
+		rule = fields_of("balance_sheet_mapping_rule")
+		self.assertEqual(
+			definition("balance_sheet_mapping_rule")["field_order"],
+			["account", "account_number", "concept", "concept_label", *balance_mapping_sync.RULE_FIELDS[1:]],
+		)
+		self.assertEqual((rule["concept"]["fieldtype"], rule["concept"]["reqd"]), ("Data", 1))
+		self.assertEqual(
+			(rule["concept_label"]["fieldtype"], rule["concept_label"]["read_only"]), ("Data", 1)
+		)
+		self.assertEqual(
+			(rule["opposite_concept"]["fieldtype"], rule["opposite_concept"].get("reqd")), ("Data", None)
+		)
+		self.assertEqual(options(rule["purpose"]), [purpose.value for purpose in Purpose])
+		self.assertEqual((rule["purpose"]["default"], rule["purpose"]["reqd"]), (Purpose.BOTH.value, 1))
+		self.assertEqual((rule["shareholder"]["fieldtype"], rule["shareholder"]["default"]), ("Check", "0"))
+		self.assertEqual(options(rule["remaining_term"]), ["", *REMAINING_TERMS])
+
+	def test_the_grid_of_the_rules_shows_account_position_and_what_the_rule_says(self):
+		shown = [
+			field["fieldname"]
+			for field in definition("balance_sheet_mapping_rule")["fields"]
+			if field.get("in_list_view")
+		]
+		self.assertEqual(
+			shown, ["account", "concept", "opposite_concept", "purpose", "shareholder", "remaining_term"]
+		)
+		self.assertLessEqual(
+			sum(
+				field.get("columns", 0)
+				for field in definition("balance_sheet_mapping_rule")["fields"]
+				if field.get("in_list_view")
+			),
+			10,
+		)
+
+	def test_a_watched_account_has_the_levels_of_the_core_and_blocks_unless_set(self):
+		level = fields_of("balance_sheet_mapping_watched_account")["level"]
+		self.assertEqual(options(level), [watch.value for watch in WatchLevel])
+		self.assertEqual((level["default"], level["reqd"]), (WatchLevel.BLOCKING.value, 1))
+
+	def test_an_account_outside_the_bilanz_and_the_guv_names_its_reason(self):
+		reason = fields_of("balance_sheet_mapping_excluded_account")["reason"]
+		self.assertEqual((reason["fieldtype"], reason["reqd"]), ("Data", 1))
+
+
+class TranslationsTest(TestCase):
+	def test_the_app_keeps_out_of_the_translations_of_frappe_and_erpnext(self):
+		self.assertEqual(sorted({"Position", "Reason", "Purpose"} & translations().keys()), [])
+
+	def test_every_text_of_the_doctypes_reads_in_german(self):
+		texts = set()
+		for name in MAPPING_DOCTYPES:
+			texts.add(definition(name)["name"])
+			for field in definition(name)["fields"]:
+				texts.update(field[key] for key in ("label", "description") if field.get(key))
+				if field["fieldtype"] == "Select":
+					texts.update(option for option in options(field) if option)
+		self.assertIn("Balance Sheet Mapping Excluded Account", texts)
+		self.assertEqual(sorted(texts - translations().keys() - UNTRANSLATED), [])
+
+	def test_the_names_read_in_german(self):
+		german = translations()
+		self.assertEqual(
+			[
+				german[name]
+				for name in (
+					"Balance Sheet Mapping",
+					"Abschlusszweck",
+					"Remaining Term",
+					"Accounts outside the Bilanz and the GuV",
+				)
+			],
+			["Bilanzzuordnung", "Abschlusszweck", "Restlaufzeit", "Konten außerhalb von Bilanz und GuV"],
+		)
+		self.assertEqual(
+			[german[purpose.value] for purpose in Purpose],
+			["Handels- und Steuerbilanz", "nur Handelsbilanz", "nur Steuerbilanz"],
+		)
+		self.assertEqual(
+			[german[term] for term in REMAINING_TERMS], [term.value for term in REMAINING_TERMS.values()]
+		)
+
+	def test_every_message_of_the_core_reads_in_german(self):
+		"""Saving and importing show what steuerbote/xbrl/mapping.py and steuerbote/balance_mapping_sync.py refuse."""
+		messages = {
+			*mapping.MESSAGES,
+			*(refusal.template for refusal in mapping.REFUSALS),
+			*balance_mapping_sync.MESSAGES,
+		}
+		self.assertEqual(sorted(messages - translations().keys()), [])
+
+
+FOLDER = DOCTYPES / "balance_sheet_mapping"
+DIFFERENCES_SCRIPT = APP / "public" / "js" / "mapping_differences.js"
+TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
+
+
+def constants(source: str) -> dict[str, object]:
+	"""The module-level constants of a source whose value is a literal."""
+	found = {}
+	for node in ast.parse(source).body:
+		if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+			try:
+				found[node.targets[0].id] = ast.literal_eval(node.value)
+			except ValueError:
+				continue
+	return found
+
+
+def function(script: str, name: str) -> str:
+	found = re.search(rf"\nfunction {name}\([^)]*\) \{{\n(?P<body>.*?)\n\}}\n", script, re.DOTALL)
+	if found is None:
+		raise AssertionError(f"no function {name}")
+	return found["body"]
+
+
+class FormFilesTest(TestCase):
+	"""The form of the Balance Sheet Mapping, as the one of the VAT Return Mapping: the methods it calls are
+	whitelisted for POST, its dialogs escape what the site holds, the file stays private, and every text reads in
+	German."""
+
+	def setUp(self):
+		self.script = (FOLDER / "balance_sheet_mapping.js").read_text(encoding="utf-8")
+		self.source = (FOLDER / "balance_sheet_mapping.py").read_text(encoding="utf-8")
+
+	def test_the_methods_the_form_calls_are_whitelisted_for_post(self):
+		methods = sorted(set(re.findall(r'frm\.call\("(\w+)"', self.script)))
+		self.assertEqual(
+			methods,
+			[
+				"accounts_without_place",
+				"compare_with_defaults",
+				"compare_with_file",
+				"export_mapping",
+				"import_file",
+				"load_defaults",
+				"update_from_defaults",
+				"watch_accounts_without_place",
+			],
+		)
+		for method in methods:
+			with self.subTest(method=method):
+				self.assertRegex(self.source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+
+	def test_the_form_offers_the_ledger_accounts_of_the_company_in_each_table(self):
+		self.assertIn('for (const table of ["rules", "watched", "excluded"])', self.script)
+		self.assertIn("filters: { company: doc.company, is_group: 0 },", self.script)
+		self.assertIn('["rules", "watched", "excluded"].some(', self.script)
+
+	def test_the_form_shows_the_differences_in_the_dialog_of_the_mappings_headed_by_account(self):
+		self.assertTrue(
+			self.script.startswith('{% include "steuerbote/public/js/mapping_differences.js" %}\n')
+		)
+		self.assertEqual(self.script.count('subject_label: __("Account"),'), 2)
+		dialog = DIFFERENCES_SCRIPT.read_text(encoding="utf-8")
+		self.assertIn("subject_label, proposed_label", dialog)
+		self.assertIn('${escape(subject_label || __("Account or Tax Check"))}', dialog)
+
+	def test_the_export_is_saved_by_the_browser_under_its_name(self):
+		body = function(self.script, "export_mapping")
+		for part in ("new Blob([file.content]", "link.download = file.file_name;", "frm.reload_doc();"):
+			with self.subTest(part=part):
+				self.assertIn(part, body)
+		self.assertIn('return f"Bilanzzuordnung-{re.sub(', self.source)
+
+	def test_an_upload_stays_private_and_the_file_browser_stays_closed(self):
+		body = function(self.script, "upload_mapping_file")
+		for part in (
+			"docname: frm.doc.name,",
+			"allow_toggle_private: false,",
+			"allow_web_link: false,",
+			"disable_file_browser: true,",
+			'allowed_file_types: [".json"]',
+		):
+			with self.subTest(part=part):
+				self.assertIn(part, body)
+
+	def test_the_dialog_of_the_accounts_escapes_what_the_site_holds(self):
+		body = function(self.script, "show_accounts_without_place")
+		self.assertIn("const escape = frappe.utils.escape_html;", body)
+		for value in ("account.account_number", "account.account_name", "account.root_type"):
+			with self.subTest(value=value):
+				shown = re.findall(rf"\$\{{[^}}]*{re.escape(value)}[^}}]*\}}", body)
+				self.assertTrue(shown)
+				self.assertTrue(all("escape" in expression for expression in shown), shown)
+
+	def test_every_field_of_a_difference_has_a_german_label(self):
+		labels = constants(self.source)["FIELD_LABELS"]
+		self.assertEqual(set(labels), {"place", *balance_mapping_sync.RULE_FIELDS, "level", "reason"})
+		self.assertEqual(sorted(set(labels.values()) - translations().keys() - UNTRANSLATED), [])
+
+	def test_every_text_of_the_form_and_its_controller_reads_in_german(self):
+		found = constants(self.source)
+		texts = {
+			*TRANSLATED_LITERAL.findall(self.script),
+			*TRANSLATED_LITERAL.findall(self.source),
+			*(found[name] for name in ("INVALID", "NOT_CHECKED", "OTHER_TAXONOMY", "NOTHING_TO_WATCH")),
+			*transfer.MESSAGES,
+		}
+		self.assertIn("Check Accounts", texts)
+		self.assertEqual(sorted(texts - translations().keys() - UNTRANSLATED), [])
+		german = translations()
+		self.assertEqual(german["Check Accounts"], "Konten prüfen")
+		self.assertEqual(german["Invalid Balance Sheet Mapping"], "Ungültige Bilanzzuordnung")
+
+
+class SetupStepTest(TestCase):
+	"""Steuerbote einrichten makes the Balance Sheet Mapping through the hook steuerbote_setup_steps."""
+
+	def test_the_hook_runs_the_step_of_the_mapping_after_those_of_the_voranmeldung_and_the_ertragsteuern(
+		self,
+	):
+		(entry,) = (
+			entry for entry in hooks.steuerbote_setup_steps if entry["key"] == "balance_sheet_mapping"
+		)
+		step = Step.from_hook(entry)
+		self.assertEqual(
+			(step.key, step.label, step.order, step.run, step.needs),
+			(
+				"balance_sheet_mapping",
+				"Balance Sheet Mapping",
+				50,
+				"steuerbote.steuerbote.doctype.balance_sheet_mapping.setup.run",
+				(),
+			),
+		)
+		self.assertEqual([entry["order"] for entry in hooks.steuerbote_setup_steps], [40, 50])
+		self.assertRegex(
+			(FOLDER / "setup.py").read_text(encoding="utf-8"), r"\ndef run\(context: SetupContext\)"
+		)
+
+	def test_every_note_of_the_step_reads_in_german(self):
+		source = (FOLDER / "setup.py").read_text(encoding="utf-8")
+		found = constants(source)
+		(listed,) = (
+			node.value
+			for node in ast.parse(source).body
+			if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "MESSAGES"
+		)
+		messages = {found[name.id] for name in listed.elts}
+		self.assertEqual(len(messages), 7)
+		self.assertEqual(sorted(messages - translations().keys()), [])
