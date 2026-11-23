@@ -452,3 +452,31 @@ class StatusTest(ArchiveCase):
 	def test_reports_every_version_of_the_table(self):
 		self.assertEqual([check.name for check in status(self.root, {})], ["taxonomy_6_9", "taxonomy_6_10"])
 		self.assertEqual(tuple(TAXONOMIES), ("6.9", "6.10"))
+
+
+class VersionsTest(Directory):
+	"""„Taxonomie einrichten“ installs every version the bench names, each in a directory of its own, and „Laufzeit-
+	umgebung prüfen“ reports each."""
+
+	def test_installs_6_9_and_6_10_side_by_side(self):
+		configured = {}
+		for version in (mini.VERSION, mini.VERSION_6_10):
+			path, checksum = mini.archive(self.directory / version.version, version=version)
+			install_from_archive(path, checksum, self.root, version)
+			configured[version.version] = (path, checksum)
+		self.assertEqual([found.version for found in installations(self.root)], ["6.10", "6.9"])
+		later = installed(self.root, mini.VERSION_6_10)
+		self.assertEqual(later.archive, "germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip")
+		self.assertEqual(verify(later), ())
+		self.assertTrue(
+			later.view(View.FISCAL).has("de-gaap-ci:detailedInformation.accountbalances.notPossible")
+		)
+		self.assertEqual(
+			[(check.name, check.ok) for check in status(self.root, configured)],
+			[("taxonomy_6_9", True), ("taxonomy_6_10", True)],
+		)
+
+	def test_the_package_of_6_9_is_no_package_of_6_10(self):
+		path, checksum = mini.archive(self.directory, version=mini.VERSION)
+		with self.assertRaisesRegex(TaxonomyError, "HGB-Taxonomie 6.10 nicht: es fehlen de-gcd-2026-04-01"):
+			install_from_archive(path, checksum, self.root, mini.VERSION_6_10)
