@@ -1,0 +1,134 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "Anlage BEG of a holding: its dividends, what § 8 Nr. 5 GewStG adds back and what § 9 Nr. 2a and 7 GewStG cut.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "holding_name",
+  "paragraph",
+  "dividends",
+  "financing_costs",
+  "other_costs",
+  "column_break_lines",
+  "exempt",
+  "not_exempt",
+  "addback",
+  "cut_base",
+  "cut_financing_costs",
+  "cut_other_costs",
+  "cut"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "holding_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Holding",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "paragraph",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kürzung (BEG Line 7)",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "dividends",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Dividends (BEG Line 6)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "financing_costs",
+   "fieldtype": "Currency",
+   "label": "Related Costs under § 8 Nr. 1 GewStG (BEG Line 8)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "other_costs",
+   "fieldtype": "Currency",
+   "label": "Other Related Costs (BEG Line 9)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_lines",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "fieldname": "exempt",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Exempt Dividends (BEG Line 12)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "not_exempt",
+   "fieldtype": "Currency",
+   "label": "Other Dividends (BEG Line 14)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "addback",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Hinzurechnung under § 8 Nr. 5 GewStG (BEG Line 15)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cut_base",
+   "fieldtype": "Currency",
+   "label": "Base of the Kürzung (BEG Line 16)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cut_financing_costs",
+   "fieldtype": "Currency",
+   "label": "Related Costs under § 8 Nr. 1 GewStG (BEG Line 17)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cut_other_costs",
+   "fieldtype": "Currency",
+   "label": "Other Related Costs (BEG Line 18)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "cut",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Kürzung (BEG Line 19)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Trade Tax Return Holding",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

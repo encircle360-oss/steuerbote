@@ -1,0 +1,80 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "An Einlage of a shareholder in the Wirtschaftsjahr, for Anlage GK and KSt 1 F.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "shareholder",
+  "contribution_date",
+  "treatment",
+  "kind",
+  "description",
+  "amount"
+ ],
+ "fields": [
+  {
+   "columns": 3,
+   "fieldname": "shareholder",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Shareholder",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "contribution_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Date of the Contribution",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "description": "Booked to profit and paid: Anlage GK line 93 and KSt 1 F line 91; booked, not paid: line 94; not booked to profit: line 78 and KSt 1 F line 92; other, such as a payment into the Kapitalrücklage: KSt 1 F line 95.",
+   "fieldname": "treatment",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Treatment",
+   "options": "Booked to Profit and Paid\nBooked to Profit, Not Paid\nNot Booked to Profit\nOther Contribution",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "default": "Cash Contribution",
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Kind of Contribution",
+   "options": "Cash Contribution\nContribution in Kind"
+  },
+  {
+   "depends_on": "eval:doc.kind == 'Contribution in Kind'",
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "label": "Description of the Contribution in Kind",
+   "mandatory_depends_on": "eval:doc.kind == 'Contribution in Kind'"
+  },
+  {
+   "columns": 1,
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount",
+   "options": "Company:company:default_currency",
+   "reqd": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Corporate Income Tax Return Contribution",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

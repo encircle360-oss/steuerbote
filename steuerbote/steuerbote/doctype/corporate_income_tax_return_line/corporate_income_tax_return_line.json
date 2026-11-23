@@ -1,0 +1,120 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "An amount of a form of the Körperschaftsteuererklärung: computed by Calculate, corrected with a reason, or a line by hand.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "form",
+  "line",
+  "feldkennung",
+  "label",
+  "column_break_amounts",
+  "ledger_amount",
+  "form_amount",
+  "correction",
+  "correction_reason",
+  "reported",
+  "manual"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "form",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Tax Form",
+   "options": "KSt1\nGK\nZVE\nWA\nVerluste\nZ\nKSt1F",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "line",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Form Line",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "description": "The Feldkennung of the field, such as E8002701; a line by hand names one of a line of the books or of one the computation leaves to hand.",
+   "fieldname": "feldkennung",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Field Code",
+   "read_only_depends_on": "eval:!doc.manual",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "label",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ledger_amount",
+   "fieldtype": "Currency",
+   "label": "Ledger Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "form_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Form Amount",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "correction",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Override Amount",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "correction_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Override"
+  },
+  {
+   "columns": 1,
+   "fieldname": "reported",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount Filed",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "manual",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Line by Hand",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Corporate Income Tax Return Line",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

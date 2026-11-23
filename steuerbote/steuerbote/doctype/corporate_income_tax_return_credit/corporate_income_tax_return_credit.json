@@ -1,0 +1,58 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "A Steuerbescheinigung of the Kapitalertragsteuer withheld, which the Körperschaftsteuer credits.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "issuer",
+  "certificate_date",
+  "capital_gains_tax",
+  "solz"
+ ],
+ "fields": [
+  {
+   "columns": 4,
+   "fieldname": "issuer",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Issuer of the Steuerbescheinigung",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "certificate_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Date of the Steuerbescheinigung"
+  },
+  {
+   "columns": 2,
+   "fieldname": "capital_gains_tax",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Kapitalertragsteuer",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "columns": 2,
+   "fieldname": "solz",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Solidaritätszuschlag",
+   "options": "Company:company:default_currency"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Corporate Income Tax Return Credit",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,443 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "The Gewerbesteuererklärung of a company for one Erhebungszeitraum, on the Körperschaftsteuererklärung of the year.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "year",
+  "corporate_income_tax_return",
+  "is_correction",
+  "corrects",
+  "column_break_head",
+  "status",
+  "ready",
+  "provisional",
+  "deadline",
+  "fiscal_year",
+  "from_date",
+  "to_date",
+  "vorgang",
+  "transmission_in_progress",
+  "amended_from",
+  "computation_section",
+  "profit",
+  "financing_addback",
+  "gewerbeertrag",
+  "messbetrag",
+  "column_break_computation",
+  "hebesatz",
+  "gewst",
+  "prepayments",
+  "balance",
+  "lines_section",
+  "lines",
+  "municipality_section",
+  "municipalities",
+  "holdings_section",
+  "holdings",
+  "donations",
+  "statements_section",
+  "supplement_key",
+  "supplement_text",
+  "findings_section",
+  "findings",
+  "filing_section",
+  "filed_via",
+  "filed_on",
+  "transferticket",
+  "column_break_filing",
+  "filed_by",
+  "filing_note",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "default": "GewSt-.{year}.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "GewSt-.{year}.-.#####",
+   "print_hide": 1,
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "remember_last_selected_value": 1,
+   "reqd": 1
+  },
+  {
+   "description": "The Erhebungszeitraum, the calendar year the Wirtschaftsjahr ends in; it chooses the forms of the Gewerbesteuer.",
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "description": "The Körperschaftsteuererklärung of the company and year that the return builds on; a save names the draft or the latest filed one where it names none.",
+   "fieldname": "corporate_income_tax_return",
+   "fieldtype": "Link",
+   "label": "Corporate Income Tax Return",
+   "options": "Corporate Income Tax Return"
+  },
+  {
+   "default": "0",
+   "description": "A Berichtigung of the return filed for the year, made with Make Berichtigung: a new and complete declaration.",
+   "fieldname": "is_correction",
+   "fieldtype": "Check",
+   "label": "Correction",
+   "read_only": 1
+  },
+  {
+   "fieldname": "corrects",
+   "fieldtype": "Link",
+   "label": "Corrects",
+   "options": "Trade Tax Return",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Entwurf",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Entwurf\nBerechnet\nBereit\nAbgegeben\nErsetzt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ready",
+   "fieldtype": "Check",
+   "label": "Ready to File",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "The forms of the year are those of the Jahresdokumentation of the year before, until ELSTER publishes those of the year; while they are, the return is not ready.",
+   "fieldname": "provisional",
+   "fieldtype": "Check",
+   "label": "Provisional Forms",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline",
+   "fieldtype": "Date",
+   "label": "Due Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fiscal_year",
+   "fieldtype": "Link",
+   "label": "Fiscal Year",
+   "options": "Fiscal Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "read_only": 1
+  },
+  {
+   "default": "01",
+   "description": "01 Veranlagung, as the Vorsatz of the return writes it.",
+   "fieldname": "vorgang",
+   "fieldtype": "Data",
+   "label": "Vorgang",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Set while Prüfen, Testsenden or Senden runs; the return cannot change until it ends.",
+   "fieldname": "transmission_in_progress",
+   "fieldtype": "Check",
+   "label": "Transmission Running",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Trade Tax Return",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "computation_section",
+   "fieldtype": "Section Break",
+   "label": "Computation"
+  },
+  {
+   "fieldname": "profit",
+   "fieldtype": "Currency",
+   "label": "Gewinn aus Gewerbebetrieb (Line 39)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "Computed for the provision; the return declares the parts in full, and the Finanzamt computes it.",
+   "fieldname": "financing_addback",
+   "fieldtype": "Currency",
+   "label": "Hinzurechnung under § 8 Nr. 1 GewStG",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gewerbeertrag",
+   "fieldtype": "Currency",
+   "label": "Gewerbeertrag, Rounded Down to Full 100 Euros",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "messbetrag",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Steuermessbetrag",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_computation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "hebesatz",
+   "fieldtype": "Percent",
+   "label": "Hebesatz",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gewst",
+   "fieldtype": "Currency",
+   "label": "Gewerbesteuer",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "prepayments",
+   "fieldtype": "Currency",
+   "label": "Vorauszahlungen of Gewerbesteuer",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "balance",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Abschlusszahlung or Refund of Gewerbesteuer",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lines_section",
+   "fieldtype": "Section Break",
+   "label": "Lines of the Return"
+  },
+  {
+   "cannot_add_rows": 1,
+   "cannot_delete_rows": 1,
+   "description": "The amounts of GewSt 1 A, filled by Calculate: line 39 from the Körperschaftsteuererklärung, the other lines from the Income Tax Mapping, where a correction belongs.",
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Lines of the Return",
+   "options": "Trade Tax Return Line"
+  },
+  {
+   "fieldname": "municipality_section",
+   "fieldtype": "Section Break",
+   "label": "Gemeinde"
+  },
+  {
+   "fieldname": "municipalities",
+   "fieldtype": "Table",
+   "label": "Gemeinde",
+   "options": "Trade Tax Return Municipality",
+   "read_only": 1
+  },
+  {
+   "fieldname": "holdings_section",
+   "fieldtype": "Section Break",
+   "label": "Anlagen BEG"
+  },
+  {
+   "fieldname": "holdings",
+   "fieldtype": "Table",
+   "label": "Anlagen BEG",
+   "options": "Trade Tax Return Holding",
+   "read_only": 1
+  },
+  {
+   "description": "The Zuwendungsbestätigungen of the Körperschaftsteuererklärung, GewSt 1 A lines 92a to 92c.",
+   "fieldname": "donations",
+   "fieldtype": "Table",
+   "label": "Donations",
+   "options": "Corporate Income Tax Return Donation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "statements_section",
+   "fieldtype": "Section Break",
+   "label": "Statements of the Return"
+  },
+  {
+   "fieldname": "supplement_key",
+   "fieldtype": "Select",
+   "label": "Supplementary Information in the Return (GewSt 1 A Line 21)",
+   "mandatory_depends_on": "eval:doc.supplement_text",
+   "options": "\n1\n2\n3\n4"
+  },
+  {
+   "description": "Line 21: the Ergänzende Angaben zur Steuererklärung under § 150 Abs. 7 AO, with their key.",
+   "fieldname": "supplement_text",
+   "fieldtype": "Small Text",
+   "label": "Supplementary Information",
+   "mandatory_depends_on": "eval:doc.supplement_key"
+  },
+  {
+   "fieldname": "findings_section",
+   "fieldtype": "Section Break",
+   "label": "Findings"
+  },
+  {
+   "fieldname": "findings",
+   "fieldtype": "Table",
+   "label": "Findings",
+   "options": "Annual Filing Finding",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_section",
+   "fieldtype": "Section Break",
+   "label": "Filing"
+  },
+  {
+   "fieldname": "filed_via",
+   "fieldtype": "Select",
+   "label": "Filed Via",
+   "options": "\neric\nmein_elster\nother_way\nupload",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filed_on",
+   "fieldtype": "Date",
+   "label": "Filed On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transferticket",
+   "fieldtype": "Data",
+   "label": "Transferticket",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_filing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filed_by",
+   "fieldtype": "Link",
+   "label": "Noted By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_note",
+   "fieldtype": "Small Text",
+   "label": "How and When Filed",
+   "read_only": 1
+  },
+  {
+   "description": "Required to file a return that is not ready: why it is filed nonetheless.",
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Trade Tax Return",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 0,
+ "row_format": "Dynamic",
+ "search_fields": "company,year",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
