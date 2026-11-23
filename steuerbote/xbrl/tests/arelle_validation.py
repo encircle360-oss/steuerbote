@@ -14,6 +14,8 @@ the script writes again. Arelle (arelle-release in requirements-dev.txt) validat
   (steuerbote/ebilanz/tests/test_real_taxonomy.py);
 - the Offenlegung of an invented GmbH as a Kleinstkapitalgesellschaft and as a small company, with both closing dates
   and the data of § 264 Abs. 1a HGB, in the views of the profile DISCLOSURE, after the checks of that profile.
+- the Offenlegung of the invented companies of steuerbote/hgb/tests/companies.py, each instance of instances() as
+  steuerbote/hgb/instance.py builds, checks and writes it.
 
 Each passes XBRL 2.1, XBRL Dimensions 1.0 and the calculations of XBRL 2.1. The documents of the taxonomy refer to each
 other by absolute URLs under http://www.xbrl.de/taxonomies/, which the server of XBRL Deutschland does not serve
@@ -37,6 +39,8 @@ from arelle import CntlrCmdLine
 from steuerbote.ebilanz.tests.test_real_taxonomy import invented
 from steuerbote.elster.tests.eric_schema import VARIABLE as DOCUMENTATION_VARIABLE
 from steuerbote.elster.tests.eric_schema import documentation
+from steuerbote.hgb import instance as offenlegung
+from steuerbote.hgb.tests import companies
 from steuerbote.xbrl import writer
 from steuerbote.xbrl.facts import Entity, Fact, Item, Period, Periods
 from steuerbote.xbrl.profiles import DISCLOSURE, FISCAL
@@ -145,6 +149,8 @@ def documents(installation: Installation) -> Iterator[tuple[str, bytes]]:
 		if blocking:
 			raise SystemExit("\n".join(blocking))
 		yield f"disclosure-{'kleinst' if kleinst else 'klein'}.xbrl", writer.write(report, taxonomy)
+	for name, built in companies.instances().items():
+		yield f"offenlegung-{name}.xbrl", offenlegung.write(built, installation.view(built.view))
 
 
 def disclosure(positions: dict[str, tuple[str, str]]) -> tuple[Fact, ...]:
