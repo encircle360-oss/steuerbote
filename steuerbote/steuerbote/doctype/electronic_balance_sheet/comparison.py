@@ -137,12 +137,13 @@ def findings(
 		what = f"im Jahresabschluss {accounts.name}, der nicht festgestellt ist,"
 		then = "Berechnen Sie den Jahresabschluss neu, bevor er festgestellt wird."
 	return tuple(
-		Finding(
-			DIFFERENCE,
-			severity,
-			f"{difference.label} [{difference.concept}] beträgt in der E-Bilanz {euro(difference.ebilanz)}, {what} "
-			f"{euro(difference.accounts)}: ein Unterschied von {euro(difference.amount)}. {then} (Quelle: {SOURCES})",
-			difference.concept,
-		)
+		Finding(DIFFERENCE, severity, _difference_text(difference, what, then), difference.concept)
 		for difference in differences(accounts.statement, standard, amount_of)
+	)
+
+
+def _difference_text(difference: Difference, what: str, then: str) -> str:
+	return (
+		f"{difference.label} [{difference.concept}] beträgt in der E-Bilanz {euro(difference.ebilanz)}, {what} "
+		f"{euro(difference.accounts)}: ein Unterschied von {euro(difference.amount)}. {then} (Quelle: {SOURCES})"
 	)
