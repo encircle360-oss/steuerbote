@@ -1,9 +1,24 @@
 """What a GmbH or UG publishes of its Jahresabschluss, by when, after which Feststellung, and what being late costs."""
 
+from datetime import date
 from unittest import TestCase
 
-from steuerbote.hgb.disclosure import DisclosureError, Mode, Part, default_mode, modes, publication
+from steuerbote.hgb.disclosure import (
+	DeadlineKind,
+	DisclosureError,
+	Mode,
+	Part,
+	adoption_deadline,
+	deadline_kept,
+	default_mode,
+	disclosure_deadline,
+	modes,
+	preparation_deadline,
+	publication,
+)
 from steuerbote.hgb.size import SizeClass
+
+END_2026 = date(2026, 12, 31)
 
 
 class ModesTest(TestCase):
@@ -85,3 +100,80 @@ class PublicationTest(TestCase):
 				"Bestätigungsvermerk oder Vermerk über dessen Versagung",
 			],
 		)
+
+
+class PreparationDeadlineTest(TestCase):
+	"""§ 264 Abs. 1 Satz 3 und 4 HGB: in the first three months of the next fiscal year, six for a small company."""
+
+	def test_a_small_company_draws_up_within_six_months(self):
+		for size_class in (SizeClass.KLEINST, SizeClass.KLEIN):
+			with self.subTest(size_class=size_class):
+				deadline = preparation_deadline(END_2026, size_class)
+				self.assertEqual(
+					(deadline.kind, deadline.due, deadline.reference, deadline.assumed_class),
+					(DeadlineKind.AUFSTELLUNG, date(2027, 6, 30), "§ 264 Abs. 1 Satz 3 und 4 HGB", False),
+				)
+
+	def test_a_larger_company_within_three_months(self):
+		self.assertEqual(preparation_deadline(END_2026, SizeClass.MITTELGROSS).due, date(2027, 3, 31))
+
+	def test_without_a_class_the_shorter_period_applies(self):
+		deadline = preparation_deadline(END_2026, None)
+		self.assertEqual((deadline.due, deadline.assumed_class), (date(2027, 3, 31), True))
+
+	def test_counts_the_months_from_the_day_after_any_closing_date(self):
+		self.assertEqual(preparation_deadline(date(2026, 11, 15), SizeClass.GROSS).due, date(2027, 2, 15))
+		self.assertEqual(preparation_deadline(date(2026, 8, 31), SizeClass.KLEIN).due, date(2027, 2, 28))
+
+
+class AdoptionDeadlineTest(TestCase):
+	"""§ 42a Abs. 2 Satz 1 GmbHG: Feststellung within eight months, eleven for a small company."""
+
+	def test_a_small_company_adopts_within_eleven_months(self):
+		for size_class in (SizeClass.KLEINST, SizeClass.KLEIN):
+			with self.subTest(size_class=size_class):
+				deadline = adoption_deadline(END_2026, size_class)
+				self.assertEqual(
+					(deadline.kind, deadline.due, deadline.reference),
+					(DeadlineKind.FESTSTELLUNG, date(2027, 11, 30), "§ 42a Abs. 2 Satz 1 GmbHG"),
+				)
+
+	def test_a_larger_company_within_eight_months(self):
+		self.assertEqual(adoption_deadline(END_2026, SizeClass.GROSS).due, date(2027, 8, 31))
+
+	def test_without_a_class_the_eight_months_apply(self):
+		deadline = adoption_deadline(END_2026, None)
+		self.assertEqual((deadline.due, deadline.assumed_class), (date(2027, 8, 31), True))
+
+
+class DisclosureDeadlineTest(TestCase):
+	"""§ 325 Abs. 1a Satz 1 HGB: „spätestens ein Jahr nach dem Abschlussstichtag“."""
+
+	def test_is_due_one_year_after_the_closing_date(self):
+		deadline = disclosure_deadline(END_2026)
+		self.assertEqual(
+			(deadline.kind, deadline.due, deadline.reference, deadline.on_weekend),
+			(DeadlineKind.OFFENLEGUNG, date(2027, 12, 31), "§ 325 Abs. 1a Satz 1 HGB", False),
+		)
+		self.assertEqual(disclosure_deadline(date(2026, 6, 30)).due, date(2027, 6, 30))
+
+	def test_a_closing_date_on_29_february_ends_a_year_later_on_28_february(self):
+		self.assertEqual(disclosure_deadline(date(2028, 2, 29)).due, date(2029, 2, 28))
+
+	def test_keeps_a_day_on_a_weekend_and_says_so(self):
+		deadline = disclosure_deadline(date(2027, 12, 31))
+		self.assertEqual((deadline.due, deadline.on_weekend), (date(2028, 12, 31), True))
+		saturday = disclosure_deadline(date(2026, 7, 31))
+		self.assertEqual((saturday.due, saturday.on_weekend), (date(2027, 7, 31), True))
+
+
+class DeadlineKeptTest(TestCase):
+	"""§ 325 Abs. 4 Satz 2 HGB: the day of transmission counts, and only for the festgestellter Jahresabschluss."""
+
+	def test_a_transmission_up_to_the_last_day_keeps_the_deadline(self):
+		self.assertTrue(deadline_kept(END_2026, date(2027, 12, 31), date(2027, 11, 30)))
+		self.assertFalse(deadline_kept(END_2026, date(2028, 1, 1), date(2027, 11, 30)))
+
+	def test_a_transmission_before_the_feststellung_keeps_nothing(self):
+		self.assertFalse(deadline_kept(END_2026, date(2027, 6, 1), date(2027, 7, 1)))
+		self.assertFalse(deadline_kept(END_2026, date(2027, 6, 1), None))
