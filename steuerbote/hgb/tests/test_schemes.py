@@ -1,4 +1,4 @@
-"""The balance sheet of § 266 HGB and the income statement of § 275 HGB with the concepts of the HGB taxonomy 6.9."""
+"""The balance sheet of § 266 HGB and the income statement of § 275 HGB with the concepts of taxonomy 6.9."""
 
 from unittest import TestCase
 

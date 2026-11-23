@@ -217,7 +217,10 @@ class Origin(Enum):
 
 	NEUGRUENDUNG = "Neugründung"
 	UMWANDLUNG = "Umwandlung"
-	FORMWECHSEL = "Formwechsel einer Kapitalgesellschaft oder einer Personenhandelsgesellschaft im Sinne des § 264a Absatz 1"
+	FORMWECHSEL = (
+		"Formwechsel einer Kapitalgesellschaft oder einer Personenhandelsgesellschaft "
+		"im Sinne des § 264a Absatz 1"
+	)
 
 
 class Basis(Enum):
@@ -349,7 +352,8 @@ class Counting(Enum):
 
 @dataclass(frozen=True, slots=True)
 class HeadcountConvention:
-	"""Who counts as an Arbeitnehmer of § 267 Abs. 5 HGB; ``reference`` is empty while no primary source settles it."""
+	"""Who counts as an Arbeitnehmer of § 267 Abs. 5 HGB; ``reference`` is empty while no primary source settles
+	it."""
 
 	who: str
 	counting: Counting
