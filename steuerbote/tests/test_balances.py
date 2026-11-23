@@ -20,9 +20,6 @@ from steuerbote.tests.helpers import (
 )
 from steuerbote.xbrl.mapping import AccountBalance, Books, Part
 
-# The tests build their own companies and accounts and need none of ERPNext's test records.
-IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Account"]
-
 COMPANY = "Steuerbote Test Salden GmbH"
 OPEN = "Steuerbote Test Salden Offen GmbH"
 NEIGHBOUR = "Steuerbote Test Salden Nachbar GmbH"
