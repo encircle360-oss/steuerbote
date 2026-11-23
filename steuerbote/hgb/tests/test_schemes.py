@@ -5,13 +5,17 @@ from unittest import TestCase
 from steuerbote.hgb import size
 from steuerbote.hgb.schemes import (
 	BALANCE_SHEETS,
+	INCOME_STATEMENTS,
 	LEVELS,
 	BalanceSheetScheme,
 	Direction,
+	IncomeStatementScheme,
 	Level,
+	Method,
 	SchemeError,
 	VermerkKind,
 	balance_sheet_scheme,
+	income_statement_scheme,
 )
 from steuerbote.hgb.size import SizeClass, UnknownYearError
 
@@ -482,3 +486,270 @@ class VermerkeTest(TestCase):
 
 	def test_a_position_the_class_does_not_show_notes_nothing(self):
 		self.assertEqual(self.scheme.vermerke("bs.ass.currAss.receiv", SizeClass.KLEINST), ())
+
+
+GKV = "is.netIncome.regular.operatingTC"
+FIN = "is.netIncome.regular.fin"
+UKV = "is.netIncome.regular.operatingCOGS"
+# § 275 Abs. 2 HGB, as read on gesetze-im-internet.de on 23 November 2026.
+GESAMTKOSTENVERFAHREN = (
+	("1.", "Umsatzerlöse", f"{GKV}.grossTradingProfit.totalOutput.netSales"),
+	(
+		"2.",
+		"Erhöhung oder Verminderung des Bestands an fertigen und unfertigen Erzeugnissen",
+		f"{GKV}.grossTradingProfit.totalOutput.inventoryChange",
+	),
+	("3.", "andere aktivierte Eigenleistungen", f"{GKV}.grossTradingProfit.totalOutput.ownWork"),
+	("4.", "sonstige betriebliche Erträge", f"{GKV}.otherOpRevenue"),
+	("5.", "Materialaufwand", f"{GKV}.grossTradingProfit.materialServices"),
+	(
+		"a)",
+		"Aufwendungen für Roh-, Hilfs- und Betriebsstoffe und für bezogene Waren",
+		f"{GKV}.grossTradingProfit.materialServices.material",
+	),
+	("b)", "Aufwendungen für bezogene Leistungen", f"{GKV}.grossTradingProfit.materialServices.services"),
+	("6.", "Personalaufwand", f"{GKV}.staff"),
+	("a)", "Löhne und Gehälter", f"{GKV}.staff.salaries"),
+	(
+		"b)",
+		"soziale Abgaben und Aufwendungen für Altersversorgung und für Unterstützung",
+		f"{GKV}.staff.social",
+	),
+	("7.", "Abschreibungen", f"{GKV}.deprAmort"),
+	(
+		"a)",
+		"auf immaterielle Vermögensgegenstände des Anlagevermögens und Sachanlagen",
+		f"{GKV}.deprAmort.fixAss",
+	),
+	(
+		"b)",
+		"auf Vermögensgegenstände des Umlaufvermögens, soweit diese die in der Kapitalgesellschaft üblichen "
+		"Abschreibungen überschreiten",
+		f"{GKV}.deprAmort.currAss",
+	),
+	("8.", "sonstige betriebliche Aufwendungen", f"{GKV}.otherCost"),
+	("9.", "Erträge aus Beteiligungen", f"{FIN}.netParticipation.earnings"),
+	(
+		"10.",
+		"Erträge aus anderen Wertpapieren und Ausleihungen des Finanzanlagevermögens",
+		f"{FIN}.netParticipation.earningSecurities",
+	),
+	("11.", "sonstige Zinsen und ähnliche Erträge", f"{FIN}.netInterest.income"),
+	(
+		"12.",
+		"Abschreibungen auf Finanzanlagen und auf Wertpapiere des Umlaufvermögens",
+		f"{FIN}.netParticipation.amortFinanc",
+	),
+	("13.", "Zinsen und ähnliche Aufwendungen", f"{FIN}.netInterest.expenses"),
+	("14.", "Steuern vom Einkommen und vom Ertrag", "is.netIncome.tax"),
+	("15.", "Ergebnis nach Steuern", "is.netIncome.eat"),
+	("16.", "sonstige Steuern", "is.netIncome.otherTaxes"),
+	("17.", "Jahresüberschuss/Jahresfehlbetrag", "is.netIncome"),
+)
+# § 275 Abs. 3 HGB.
+UMSATZKOSTENVERFAHREN = (
+	("1.", "Umsatzerlöse", f"{UKV}.grossOpProfit.netSales"),
+	(
+		"2.",
+		"Herstellungskosten der zur Erzielung der Umsatzerlöse erbrachten Leistungen",
+		f"{UKV}.grossOpProfit.cogs",
+	),
+	("3.", "Bruttoergebnis vom Umsatz", f"{UKV}.grossOpProfit"),
+	("4.", "Vertriebskosten", f"{UKV}.salesCost"),
+	("5.", "allgemeine Verwaltungskosten", f"{UKV}.adminCost"),
+	("6.", "sonstige betriebliche Erträge", f"{UKV}.grossOpProfit.otherRevenue"),
+	("7.", "sonstige betriebliche Aufwendungen", f"{UKV}.otherCost"),
+	("8.", "Erträge aus Beteiligungen", f"{FIN}.netParticipation.earnings"),
+	(
+		"9.",
+		"Erträge aus anderen Wertpapieren und Ausleihungen des Finanzanlagevermögens",
+		f"{FIN}.netParticipation.earningSecurities",
+	),
+	("10.", "sonstige Zinsen und ähnliche Erträge", f"{FIN}.netInterest.income"),
+	(
+		"11.",
+		"Abschreibungen auf Finanzanlagen und auf Wertpapiere des Umlaufvermögens",
+		f"{FIN}.netParticipation.amortFinanc",
+	),
+	("12.", "Zinsen und ähnliche Aufwendungen", f"{FIN}.netInterest.expenses"),
+	("13.", "Steuern vom Einkommen und vom Ertrag", "is.netIncome.tax"),
+	("14.", "Ergebnis nach Steuern", "is.netIncome.eat"),
+	("15.", "sonstige Steuern", "is.netIncome.otherTaxes"),
+	("16.", "Jahresüberschuss/Jahresfehlbetrag", "is.netIncome"),
+)
+
+
+def income_rows(scheme):
+	return [(position.marker, position.label, position.concept) for position in scheme.positions()]
+
+
+class IncomeStatementSchemeTest(TestCase):
+	def setUp(self):
+		self.gkv = income_statement_scheme(2026, Method.GKV)
+		self.ukv = income_statement_scheme(2026, Method.UKV)
+
+	def test_holds_the_items_of_the_gesamtkostenverfahren_in_their_order(self):
+		self.assertEqual(income_rows(self.gkv), list(GESAMTKOSTENVERFAHREN))
+		self.assertEqual(self.gkv.method.value, "Gesamtkostenverfahren")
+
+	def test_holds_the_items_of_the_umsatzkostenverfahren_in_their_order(self):
+		self.assertEqual(income_rows(self.ukv), list(UMSATZKOSTENVERFAHREN))
+		self.assertEqual(self.ukv.method.value, "Umsatzkostenverfahren")
+
+	def test_cites_the_number_of_each_item(self):
+		self.assertEqual(
+			self.gkv.position(f"{GKV}.staff.social").reference, "§ 275 Abs. 2 Nr. 6 Buchst. b HGB"
+		)
+		self.assertEqual(self.gkv.position("is.netIncome").reference, "§ 275 Abs. 2 Nr. 17 HGB")
+		self.assertEqual(self.ukv.position(f"{UKV}.salesCost").reference, "§ 275 Abs. 3 Nr. 4 HGB")
+		for scheme in (self.gkv, self.ukv):
+			for position in scheme.positions():
+				with self.subTest(method=scheme.method, concept=position.concept):
+					self.assertRegex(position.reference, r"^§ 275 Abs\. [23] Nr\. \d+( Buchst\. [ab])? HGB$")
+
+	def test_numbers_the_items_and_letters_the_parts_of_items_5_to_7(self):
+		self.assertEqual(
+			[(position.marker, position.level) for position in self.gkv.position(f"{GKV}.deprAmort").walk()],
+			[("7.", Level.ARABIC), ("a)", Level.LOWER), ("b)", Level.LOWER)],
+		)
+		self.assertEqual(self.gkv.parent(f"{GKV}.deprAmort.fixAss").concept, f"{GKV}.deprAmort")
+		self.assertIsNone(self.gkv.parent(f"{GKV}.deprAmort"))
+
+	def test_income_is_on_the_credit_side_and_expenses_on_the_debit_side(self):
+		debit = {
+			position.concept for position in self.gkv.positions() if position.direction is Direction.DEBIT
+		}
+		self.assertEqual(
+			debit,
+			{
+				f"{GKV}.grossTradingProfit.materialServices",
+				f"{GKV}.grossTradingProfit.materialServices.material",
+				f"{GKV}.grossTradingProfit.materialServices.services",
+				f"{GKV}.staff",
+				f"{GKV}.staff.salaries",
+				f"{GKV}.staff.social",
+				f"{GKV}.deprAmort",
+				f"{GKV}.deprAmort.fixAss",
+				f"{GKV}.deprAmort.currAss",
+				f"{GKV}.otherCost",
+				f"{FIN}.netParticipation.amortFinanc",
+				f"{FIN}.netInterest.expenses",
+				"is.netIncome.tax",
+				"is.netIncome.otherTaxes",
+			},
+		)
+		self.assertIs(self.ukv.position(f"{UKV}.grossOpProfit.cogs").direction, Direction.DEBIT)
+		self.assertIs(self.ukv.position(f"{UKV}.grossOpProfit").direction, Direction.CREDIT)
+
+	def test_computes_the_results_from_the_items_above_them(self):
+		self.assertEqual(
+			{position.concept: position.terms for position in self.gkv.positions() if position.computed},
+			{
+				"is.netIncome.eat": tuple(position.concept for position in self.gkv.items[:14]),
+				"is.netIncome": ("is.netIncome.eat", "is.netIncome.otherTaxes"),
+			},
+		)
+		self.assertEqual(
+			{position.concept: position.terms for position in self.ukv.positions() if position.computed},
+			{
+				f"{UKV}.grossOpProfit": (f"{UKV}.grossOpProfit.netSales", f"{UKV}.grossOpProfit.cogs"),
+				"is.netIncome.eat": tuple(position.concept for position in self.ukv.items[2:13]),
+				"is.netIncome": ("is.netIncome.eat", "is.netIncome.otherTaxes"),
+			},
+		)
+		self.assertEqual(
+			(self.gkv.items[13].marker, self.ukv.items[2].marker, self.ukv.items[12].marker),
+			("14.", "3.", "13."),
+		)
+
+	def test_names_the_net_income_and_the_sales(self):
+		for scheme in (self.gkv, self.ukv):
+			with self.subTest(method=scheme.method):
+				self.assertEqual(scheme.net_income.concept, "is.netIncome")
+				self.assertEqual(scheme.sales.label, "Umsatzerlöse")
+
+	def test_notes_the_davon_amounts_of_the_law(self):
+		self.assertEqual(
+			[
+				(position.marker, vermerk.kind, vermerk.label, vermerk.concept, vermerk.reference)
+				for position in self.gkv.positions()
+				for vermerk in position.vermerke
+			],
+			[
+				(
+					"b)",
+					VermerkKind.PENSIONS,
+					"davon für Altersversorgung",
+					f"{GKV}.staff.social.pensions",
+					"§ 275 Abs. 2 Nr. 6 Buchst. b HGB",
+				),
+				(
+					"9.",
+					VermerkKind.AFFILIATED,
+					"davon aus verbundenen Unternehmen",
+					f"{FIN}.netParticipation.earnings.groupComp",
+					"§ 275 Abs. 2 Nr. 9 HGB",
+				),
+				(
+					"10.",
+					VermerkKind.AFFILIATED,
+					"davon aus verbundenen Unternehmen",
+					f"{FIN}.netParticipation.earningSecurities.assoc",
+					"§ 275 Abs. 2 Nr. 10 HGB",
+				),
+				(
+					"11.",
+					VermerkKind.AFFILIATED,
+					"davon aus verbundenen Unternehmen",
+					f"{FIN}.netInterest.income.assoc",
+					"§ 275 Abs. 2 Nr. 11 HGB",
+				),
+				(
+					"13.",
+					VermerkKind.AFFILIATED,
+					"davon an verbundene Unternehmen",
+					f"{FIN}.netInterest.expenses.assoc",
+					"§ 275 Abs. 2 Nr. 13 HGB",
+				),
+			],
+		)
+		self.assertEqual(
+			[
+				(position.marker, vermerk.kind)
+				for position in self.ukv.positions()
+				for vermerk in position.vermerke
+			],
+			[
+				("8.", VermerkKind.AFFILIATED),
+				("9.", VermerkKind.AFFILIATED),
+				("10.", VermerkKind.AFFILIATED),
+				("12.", VermerkKind.AFFILIATED),
+			],
+		)
+		for position in self.gkv.positions():
+			for vermerk in position.vermerke:
+				self.assertEqual(vermerk.members, (vermerk.concept,))
+
+	def test_finds_a_position_by_its_concept(self):
+		self.assertTrue(self.gkv.has("is.netIncome.tax"))
+		self.assertFalse(self.gkv.has(f"{UKV}.salesCost"))
+		with self.assertRaises(SchemeError):
+			self.gkv.position(f"{UKV}.salesCost")
+
+
+class IncomeStatementYearsTest(TestCase):
+	def test_holds_both_methods_for_the_years_of_the_size_thresholds(self):
+		self.assertEqual(tuple(INCOME_STATEMENTS), tuple(size.YEARS))
+		for year, methods in INCOME_STATEMENTS.items():
+			for method in Method:
+				with self.subTest(year=year, method=method):
+					scheme = methods[method]
+					self.assertIsInstance(scheme, IncomeStatementScheme)
+					self.assertEqual((scheme.year, scheme.method, scheme.taxonomy), (year, method, "6.9"))
+
+	def test_takes_the_gesamtkostenverfahren_unless_told_otherwise(self):
+		self.assertIs(income_statement_scheme(2026).method, Method.GKV)
+
+	def test_refuses_a_year_it_does_not_know(self):
+		with self.assertRaises(UnknownYearError):
+			income_statement_scheme(2027)
