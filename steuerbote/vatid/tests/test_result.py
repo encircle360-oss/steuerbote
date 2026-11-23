@@ -2,7 +2,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta, timezone
 from unittest import TestCase
 
-from steuerbote.vatid.result import Confirmation, Details, Match, Outcome, Service
+from steuerbote.vatid.result import Confirmation, Details, Match, Outcome, Service, valid_through
 
 BERLIN_WINTER = timezone(timedelta(hours=1))
 ASKED = datetime(2026, 11, 20, 14, 0, 0, tzinfo=UTC)
@@ -121,3 +121,27 @@ class ConfirmationTest(TestCase):
 		with self.assertRaises(AttributeError):
 			record.outcome = Outcome.INVALID
 		self.assertEqual(replace(record, consultation_id=None).consultation_id, None)
+
+
+class ValidThroughTest(TestCase):
+	"""An answer of the BZSt holds for the moment of its query; for a number it finds not valid then, gueltigAb and
+	gueltigBis say when it was valid (evatr-2006) or from when it is (evatr-2002)."""
+
+	FIRST, LAST = date(2026, 6, 1), date(2026, 6, 30)
+
+	def test_a_number_valid_before_and_after_the_days_was_valid_through_them(self):
+		self.assertTrue(valid_through(date(2019, 1, 1), date(2026, 7, 15), self.FIRST, self.LAST))
+		self.assertTrue(valid_through(date(2026, 6, 1), date(2026, 6, 30), self.FIRST, self.LAST))
+
+	def test_a_number_valid_from_a_day_before_them_is_valid_through_them(self):
+		self.assertTrue(valid_through(date(2026, 5, 1), None, self.FIRST, self.LAST))
+
+	def test_a_number_valid_until_a_day_after_them_was_valid_through_them(self):
+		self.assertTrue(valid_through(None, date(2026, 7, 1), self.FIRST, self.LAST))
+
+	def test_a_validity_that_begins_or_ends_within_the_days_does_not_cover_them(self):
+		self.assertFalse(valid_through(date(2026, 6, 2), None, self.FIRST, self.LAST))
+		self.assertFalse(valid_through(date(2019, 1, 1), date(2026, 6, 29), self.FIRST, self.LAST))
+
+	def test_an_answer_without_a_validity_covers_nothing(self):
+		self.assertFalse(valid_through(None, None, self.FIRST, self.LAST))

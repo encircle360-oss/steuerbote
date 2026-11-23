@@ -28,6 +28,7 @@ from steuerbote.elster import zm_xml
 from steuerbote.steuerbote.doctype.vat_return.bridge import Row, split_voucher, to_amount
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import ZERO
+from steuerbote.vatid.result import valid_through
 from steuerbote.zm.comparison import ComparisonRow
 from steuerbote.zm.correction import correct
 from steuerbote.zm.errors import ZmError
@@ -285,10 +286,7 @@ def validity_for(
 	"""The validity of each USt-IdNr. after the result of its latest confirmation; without one, unconfirmed.
 
 	The BZSt answers for the moment of the query. A number it finds not valid then counts as valid for the months
-	of ``span`` when the answer says it was valid all through them, as evatr-2006 does with gueltigAb and
-	gueltigBis („Sie war gültig im Zeitraum, der durch die Werte in den Feldern gueltigAb und gueltigBis
-	beschrieben ist.“) and evatr-2002 with gueltigAb („Sie ist erst gültig ab dem Datum im Feld gueltigAb.“),
-	statuses of the eVatR API.
+	of ``span`` when the answer says it was valid all through them (steuerbote.vatid.result.valid_through).
 	"""
 	return {vat_id: _validity(records.get(vat_id), span) for vat_id in vat_ids if vat_id}
 
@@ -301,10 +299,7 @@ def _validity(record: Row | None, span: tuple[date, date] | None) -> Validity:
 
 
 def _valid_through(record: Row, span: tuple[date, date]) -> bool:
-	valid_from, valid_until = _day(record.get("valid_from")), _day(record.get("valid_until"))
-	if valid_from is None and valid_until is None:
-		return False
-	return (valid_from is None or valid_from <= span[0]) and (valid_until is None or span[1] <= valid_until)
+	return valid_through(_day(record.get("valid_from")), _day(record.get("valid_until")), *span)
 
 
 def asked_on(records: ReadOnlyMapping[str, Row]) -> dict[str, date]:

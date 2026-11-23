@@ -37,7 +37,7 @@ from enum import Enum, StrEnum
 from types import MappingProxyType
 
 from steuerbote.ustva.calculation import require_cents
-from steuerbote.ustva.period import MONTH_NAMES
+from steuerbote.ustva.period import day_label
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import EURO, ZERO, require_decimal, to_full_euros
 from steuerbote.zm.errors import ZmError
@@ -268,11 +268,11 @@ def _line(
 	if vat_id and problem is not None:
 		findings.append(Finding(Code.MALFORMED_VAT_ID, _MALFORMED[problem].format(vat_id), party=party))
 	elif vat_id and validity.get(vat_id) is Validity.INVALID:
-		query = f"Bestätigungsabfrage vom {_day_text(day)}" if day else "Bestätigungsabfrage"
+		query = f"Bestätigungsabfrage vom {day_label(day)}" if day else "Bestätigungsabfrage"
 		text = f"Die USt-IdNr. {vat_id} ist laut {query} ungültig."
 		findings.append(Finding(Code.INVALID_VAT_ID, text, party=party))
 	elif vat_id and validity.get(vat_id) is Validity.UNCONFIRMED:
-		unanswered = f"; die Bestätigungsabfrage vom {_day_text(day)} ergab kein Ergebnis" if day else ""
+		unanswered = f"; die Bestätigungsabfrage vom {day_label(day)} ergab kein Ergebnis" if day else ""
 		text = f"Die USt-IdNr. {vat_id} ist nicht bestätigt{unanswered}."
 		findings.append(Finding(Code.UNCONFIRMED_VAT_ID, text, party=party))
 	for item in vouchers:
@@ -320,10 +320,6 @@ def _voucher_findings(item: VoucherAmount, vat_id: str, valid: bool, figures: Fi
 			"letzten Abnehmers ist nicht in diesem Land erteilt."
 		)
 	return [Finding(Code.DESTINATION, text, item.voucher, party)]
-
-
-def _day_text(day: date) -> str:
-	return f"{day.day}. {MONTH_NAMES[day.month - 1]} {day.year}"
 
 
 def _reportable(vat_id: str, art: Art) -> bool:

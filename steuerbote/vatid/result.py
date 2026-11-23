@@ -156,3 +156,16 @@ class Confirmation:
 		"""The queries of this confirmation, from the first to this one."""
 		earlier = () if self.previous is None else self.previous.queries()
 		return (*earlier, self)
+
+
+def valid_through(valid_from: date | None, valid_until: date | None, first: date, last: date) -> bool:
+	"""Whether an answer that finds a number not valid at the moment of its query shows it valid on every day from
+	``first`` to ``last``.
+
+	The BZSt answers for that moment and names the validity with the statuses of its catalogue: evatr-2006 „Sie war
+	gültig im Zeitraum, der durch die Werte in den Feldern gueltigAb und gueltigBis beschrieben ist.“, evatr-2002 „Sie
+	ist erst gültig ab dem Datum im Feld gueltigAb.“ An answer without either field shows nothing.
+	"""
+	if valid_from is None and valid_until is None:
+		return False
+	return (valid_from is None or valid_from <= first) and (valid_until is None or last <= valid_until)
