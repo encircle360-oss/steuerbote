@@ -256,3 +256,96 @@ class InputTest(TestCase):
 			gewerbesteuer(credit("8400", "1.00"), turnover_and_wages=Decimal("1.5"))
 		with self.assertRaisesRegex(ValueError, "the Zuwendungen must be an amount in cents of at least 0"):
 			gewerbesteuer(credit("8400", "1.00"), eligible_donations=Decimal("-1.00"))
+
+
+class FehlbetragTest(TestCase):
+	"""§ 10a GewStG: 1 Million Euro of the Gewerbeertrag in full, 60 % of the rest."""
+
+	def test_deducts_the_fehlbetrag_of_the_previous_years(self):
+		result = gewerbesteuer(credit("8400", "100000.00"), loss_carry_forward=Decimal("30000"))
+		self.assertEqual(result.lines["loss_deduction"].declared, Decimal("30000"))
+		self.assertEqual(result.lines["gewerbeertrag"].declared, Decimal("70000"))
+		self.assertEqual(result.loss_carry_forward, ZERO)
+
+	def test_beyond_one_million_deducts_60_percent_of_the_rest(self):
+		result = gewerbesteuer(credit("8400", "2000000.00"), loss_carry_forward=Decimal("5000000"))
+		self.assertEqual(result.lines["loss_deduction"].declared, Decimal("1600000"))
+		self.assertEqual(result.loss_carry_forward, Decimal("3400000"))
+
+	def test_a_negative_gewerbeertrag_adds_to_the_fehlbetrag(self):
+		result = gewerbesteuer(debit("4120", "20000.00"), loss_carry_forward=Decimal("1000"))
+		self.assertEqual(result.lines["loss_deduction"].declared, ZERO)
+		self.assertEqual(result.loss_carry_forward, Decimal("21000"))
+		self.assertEqual(
+			(result.gewerbeertrag, result.messbetrag, result.gewst), (ZERO, ZERO, Decimal("0.00"))
+		)
+
+
+class MessbetragTest(TestCase):
+	"""§ 11 GewStG and R 14.1 Satz 3 GewStR 2009."""
+
+	def test_rounds_the_gewerbeertrag_down_to_full_100_euro(self):
+		result = gewerbesteuer(credit("8400", "107699.99"))
+		self.assertEqual(result.lines["gewerbeertrag"].exact, Decimal("107700"))
+		self.assertEqual(result.gewerbeertrag, Decimal("107700"))
+		result = gewerbesteuer(credit("8400", "107649.00"))
+		self.assertEqual(result.gewerbeertrag, Decimal("107600"))
+
+	def test_takes_3_5_percent_rounded_down_to_full_euros(self):
+		self.assertEqual(gewerbesteuer(credit("8400", "107600.00")).messbetrag, Decimal("3766"))
+		self.assertEqual(gewerbesteuer(credit("8400", "107700.00")).messbetrag, Decimal("3769"))
+		self.assertEqual(
+			gewerbesteuer(credit("8400", "107700.00")).lines["messbetrag"].exact, Decimal("3769.500")
+		)
+
+
+class GewerbesteuerTest(TestCase):
+	"""§ 16 and § 19 GewStG: the Hebesatz of the Gemeinde and the Vorauszahlungen."""
+
+	def test_multiplies_the_messbetrag_by_the_hebesatz(self):
+		result = gewerbesteuer(credit("8400", "107600.00"))
+		self.assertEqual(result.gewst, Decimal("15064.00"))
+		result = gewerbesteuer(credit("8400", "107600.00"), hebesatz=Decimal("412.5"))
+		self.assertEqual(result.gewst, Decimal("15534.75"))
+
+	def test_credits_the_vorauszahlungen(self):
+		result = gewerbesteuer(credit("8400", "107600.00"), prepayments=Decimal("15000.00"))
+		self.assertEqual(result.balance, Decimal("64.00"))
+		result = gewerbesteuer(credit("8400", "99.00"), prepayments=Decimal("100.00"))
+		self.assertEqual(result.balance, Decimal("-100.00"))
+
+	def test_a_missing_hebesatz_holds_the_filing_back(self):
+		result = gewerbesteuer(credit("8400", "107600.00"), hebesatz=None)
+		(finding,) = result.findings
+		self.assertEqual((finding.code, finding.blocking), ("GEWST-HEBESATZ-FEHLT", True))
+		self.assertEqual(result.gewst, Decimal("0.00"))
+		self.assertFalse(result.ready)
+
+	def test_a_hebesatz_below_the_minimum_holds_the_filing_back(self):
+		result = gewerbesteuer(credit("8400", "107600.00"), hebesatz=Decimal("199"))
+		(finding,) = result.findings
+		self.assertEqual((finding.code, finding.blocking), ("GEWST-HEBESATZ-UNTER-MINDESTSATZ", True))
+		self.assertIn("200 %", finding.text)
+		self.assertEqual(gewerbesteuer(credit("8400", "1.00"), hebesatz=Decimal("200")).findings, ())
+		self.assertTrue(gewerbesteuer(credit("8400", "1.00")).ready)
+
+	def test_hints_at_the_costs_of_cut_dividends_that_reduce_the_hinzurechnung(self):
+		gamma = HoldingResult(
+			holding("Gamma S.A.", "20", foreign=True), Decimal("10000.00"), Decimal("1000.00")
+		)
+		result = gewerbesteuer(
+			credit("2625", "10000.00"), kst_inputs={"holdings": (gamma,), "trading_book": True}
+		)
+		(finding,) = result.findings
+		self.assertEqual((finding.code, finding.blocking), ("GEWST-BEG-FINANZIERUNGSANTEILE", False))
+		self.assertIn("Gamma S.A.", finding.text)
+		self.assertIn("1.000,00 €", finding.text)
+
+	def test_the_hebesatz_is_a_percentage_above_zero_and_the_vorauszahlungen_are_cents(self):
+		for hebesatz in ("0", "-100", "NaN"):
+			with self.subTest(hebesatz=hebesatz), self.assertRaisesRegex(ValueError, "the Hebesatz must be"):
+				gewerbesteuer(credit("8400", "1.00"), hebesatz=Decimal(hebesatz))
+		with self.assertRaisesRegex(
+			ValueError, "the Vorauszahlungen must be an amount in cents of at least 0"
+		):
+			gewerbesteuer(credit("8400", "1.00"), prepayments=Decimal("1.001"))
