@@ -114,6 +114,13 @@ testpaths = [
     "steuerbote/steuerbote/doctype/annual_vat_return/test_docs.py",
     "steuerbote/steuerbote/doctype/annual_vat_return/test_layout.py",
     "steuerbote/ebilanz",
+    "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_bridge.py",
+    "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_docs.py",
+    "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_income_tax_files.py",
+    "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_income_tax_site_files.py",
+    "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_layout.py",
+    "steuerbote/steuerbote/doctype/trade_tax_return/test_bridge.py",
+    "steuerbote/steuerbote/report/ertragsteuer_kontennachweis/test_attribution.py",
 ]
 # The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
 addopts = "--strict-markers --ignore=steuerbote/eric/tests/test_secrets.py"
@@ -152,6 +159,10 @@ source = [
     "steuerbote.steuerbote.doctype.annual_vat_return.bridge",
     "steuerbote.steuerbote.doctype.annual_vat_return.layout",
     "steuerbote/ebilanz",
+    "steuerbote.steuerbote.doctype.corporate_income_tax_return.bridge",
+    "steuerbote.steuerbote.doctype.corporate_income_tax_return.layout",
+    "steuerbote.steuerbote.doctype.trade_tax_return.bridge",
+    "steuerbote.steuerbote.report.ertragsteuer_kontennachweis.attribution",
 ]
 omit = ["*/tests/*", "*/steuerbote/eric/secrets.py"]
 branch = true

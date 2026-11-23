@@ -14,6 +14,9 @@ German, so that the desk opens as a German accountant sees it. Take a site of it
 data.
 
 Of the annual filings, the seed makes the Umsatzsteuererklärung of the first company for 2026 and calculates it.
+A fifth company has SKR03 accounts, Annual Filing Settings, the Kontenzuordnung Ertragsteuern of "Vorgaben laden"
+and a ledger of 2026, with its Körperschaft- and Gewerbesteuererklärung for the year, calculated; nothing of it
+goes to ELSTER.
 """
 
 import frappe
@@ -22,6 +25,7 @@ from frappe.utils import today
 
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import SEND, SUCCEEDED, UNKNOWN
 from steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation import store
+from steuerbote.tests import income_tax
 from steuerbote.tests.e2e import data
 from steuerbote.tests.helpers import (
 	ensure_fiscal_year,
@@ -82,6 +86,7 @@ def run() -> None:
 	calculate_recapitulative_statement()
 	make_extension()
 	calculate_annual_vat_return()
+	make_income_tax_returns()
 	make_sent_drafts()
 	make_setup_company()
 	make_mapping_company()
@@ -326,3 +331,106 @@ def calculate_annual_vat_return() -> None:
 	Berechnen finds every other month without its Voranmeldung and leaves the return Berechnet, not Bereit."""
 	doc = draft("Annual VAT Return", {"company": data.COMPANY, "year": data.YEAR})
 	doc.calculate()
+
+
+# SKR03 numbers of the company of the Körperschaft- and the Gewerbesteuererklärung: revenue, salaries and rent, the
+# taxes on income with their provisions, and a bank.
+INCOME_TAX_ACCOUNTS = {
+	"8400": ("Erlöse 19 % USt", "Income"),
+	"4120": ("Gehälter", "Expense"),
+	"4210": ("Miete (unbewegliche Wirtschaftsgüter)", "Expense"),
+	"2200": ("Körperschaftsteuer", "Expense"),
+	"2208": ("Solidaritätszuschlag", "Expense"),
+	"4320": ("Gewerbesteuer", "Expense"),
+	"0963": ("Körperschaftsteuerrückstellung", "Liability"),
+	"0956": ("Gewerbesteuerrückstellung nach § 4 Abs. 5b EStG", "Liability"),
+	"1200": ("Bank", "Asset"),
+}
+# Its year: revenue of 150,000 euros, salaries of 60,000 and rent of 18,000, and the Vorauszahlungen of its notices,
+# 2,500 euros Körperschaftsteuer with 137.50 Solidaritätszuschlag and 2,000 euros Gewerbesteuer a quarter.
+INCOME_TAX_LEDGER = (
+	("JV-STE2K-ERLOES", f"{data.YEAR}-06-30", (("8400", 0, 150000), ("1200", 150000, 0))),
+	("JV-STE2K-GEHALT", f"{data.YEAR}-12-31", (("4120", 60000, 0), ("1200", 0, 60000))),
+	("JV-STE2K-MIETE", f"{data.YEAR}-12-31", (("4210", 18000, 0), ("1200", 0, 18000))),
+	*(
+		(
+			f"JV-STE2K-VZ-KST-{month}",
+			f"{data.YEAR}-{month:02d}-10",
+			(("2200", 2500, 0), ("2208", "137.50", 0), ("1200", 0, "2637.50")),
+		)
+		for month in (3, 6, 9, 12)
+	),
+	*(
+		(f"JV-STE2K-VZ-GEWST-{month}", f"{data.YEAR}-{month:02d}-15", (("4320", 2000, 0), ("1200", 0, 2000)))
+		for month in (2, 5, 8, 11)
+	),
+)
+INCOME_TAX_AGS = "09999999"
+INCOME_TAX_SETTINGS = {
+	"legal_form": "GmbH",
+	"business_purpose": "IT-Beratung",
+	"management_seat": "Musterstadt",
+	"registered_seat": "Musterstadt",
+	"street": "Musterstraße",
+	"house_number": "1",
+	"postal_code": "12345",
+	"city": "Musterstadt",
+	"country": "Germany",
+	"income_tax_review_on": f"{data.YEAR}-11-02",
+	"shareholders": [
+		{
+			"shareholder_name": "Max Mustermann",
+			"kind": "Natural Person",
+			"percent": 100,
+			"nominal_amount": 25000,
+			"from_date": "2020-01-01",
+			"street": "Musterstraße 2",
+			"postal_code_and_town": "12345 Musterstadt",
+		}
+	],
+	"establishments": [
+		{
+			"municipality": "Musterstadt",
+			"postal_code": "12345",
+			"ags": INCOME_TAX_AGS,
+			"from_date": "2020-01-01",
+		}
+	],
+	"trade_tax_rates": [
+		{
+			"ags": INCOME_TAX_AGS,
+			"year": data.YEAR,
+			"hebesatz": 400,
+			"source": f"Haushaltssatzung {data.YEAR} der Gemeinde Musterstadt",
+		}
+	],
+	"prepayments": [
+		*(
+			{"tax": tax, "year": data.YEAR, "due_date": f"{data.YEAR}-{month:02d}-10", "amount": amount}
+			for tax, amount in (("KSt", 2500), ("SolZ", 137.5))
+			for month in (3, 6, 9, 12)
+		),
+		*(
+			{"tax": "GewSt", "year": data.YEAR, "due_date": f"{data.YEAR}-{month:02d}-15", "amount": 2000}
+			for month in (2, 5, 8, 11)
+		),
+	],
+}
+
+
+def make_income_tax_returns() -> None:
+	"""The company of INCOME_TAX_COMPANY with its Körperschaft- and Gewerbesteuererklärung of the year, calculated: the
+	forms of the year are provisional, so Berechnen leaves both Berechnet with the finding that says so."""
+	company = data.INCOME_TAX_COMPANY
+	make_company(company, data.INCOME_TAX_ABBR)
+	accounts = income_tax.make_accounts(company, INCOME_TAX_ACCOUNTS)
+	ensure_fiscal_year(company, INVOICE_DATE)
+	if not frappe.db.exists("Annual Filing Settings", company):
+		frappe.get_doc(
+			{"doctype": "Annual Filing Settings", "company": company, **INCOME_TAX_SETTINGS}
+		).insert(ignore_permissions=True)
+	income_tax.make_income_tax_mapping(company)
+	for voucher_no, posting_date, rows in INCOME_TAX_LEDGER:
+		income_tax.post_once(company, accounts, "Journal Entry", voucher_no, posting_date, rows)
+	draft("Corporate Income Tax Return", {"company": company, "year": data.YEAR}).calculate()
+	draft("Trade Tax Return", {"company": company, "year": data.YEAR}).calculate()

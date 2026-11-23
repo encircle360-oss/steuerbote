@@ -1,0 +1,114 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "The Gemeinde of the Betriebsstätte with its Hebesatz, the Messbetrag and the Gewerbesteuer that fall to it.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "municipality",
+  "postal_code",
+  "ags",
+  "hebenummer",
+  "hebesatz",
+  "hebesatz_source",
+  "column_break_amounts",
+  "messbetrag",
+  "gewst",
+  "prepayments",
+  "balance"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "municipality",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Gemeinde",
+   "read_only": 1
+  },
+  {
+   "fieldname": "postal_code",
+   "fieldtype": "Data",
+   "label": "Postal Code",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "ags",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Amtlicher Gemeindeschlüssel",
+   "read_only": 1
+  },
+  {
+   "fieldname": "hebenummer",
+   "fieldtype": "Data",
+   "label": "Hebenummer",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "hebesatz",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Hebesatz",
+   "read_only": 1
+  },
+  {
+   "fieldname": "hebesatz_source",
+   "fieldtype": "Small Text",
+   "label": "Source of the Hebesatz",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 2,
+   "fieldname": "messbetrag",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Steuermessbetrag",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "gewst",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Gewerbesteuer",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "prepayments",
+   "fieldtype": "Currency",
+   "label": "Vorauszahlungen",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "balance",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Abschlusszahlung or Refund",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Trade Tax Return Municipality",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

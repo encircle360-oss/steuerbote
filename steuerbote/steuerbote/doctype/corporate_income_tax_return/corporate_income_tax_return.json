@@ -1,0 +1,584 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "The Körperschaftsteuererklärung of a company for one Veranlagungszeitraum, with the Erklärung zur gesonderten Feststellung des steuerlichen Einlagekontos, computed from the general ledger.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "year",
+  "is_correction",
+  "corrects",
+  "column_break_head",
+  "status",
+  "ready",
+  "provisional",
+  "deadline",
+  "fiscal_year",
+  "from_date",
+  "to_date",
+  "vorgang",
+  "transmission_in_progress",
+  "amended_from",
+  "computation_section",
+  "net_income",
+  "business_income",
+  "sum_of_income",
+  "total_income",
+  "zve",
+  "einlagekonto",
+  "column_break_computation",
+  "kst",
+  "solz",
+  "capital_gains_tax_credit",
+  "solz_credit",
+  "kst_prepayments",
+  "solz_prepayments",
+  "kst_balance",
+  "solz_balance",
+  "provisions_section",
+  "provisions_entry",
+  "lines_section",
+  "lines",
+  "statements_section",
+  "supplement_key",
+  "supplement_text",
+  "shareholder_contracts",
+  "column_break_statements",
+  "carry_back_chosen",
+  "loss_carry_back",
+  "turnover_and_wages_given",
+  "turnover_and_wages",
+  "holdings_section",
+  "holding_results",
+  "credits_section",
+  "credits",
+  "donations_section",
+  "donations",
+  "einlagekonto_section",
+  "distributions",
+  "contributions",
+  "previous_equity",
+  "previous_nominal_capital",
+  "findings_section",
+  "findings",
+  "filing_section",
+  "filed_via",
+  "filed_on",
+  "transferticket",
+  "column_break_filing",
+  "filed_by",
+  "filing_note",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "default": "KSt-.{year}.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "KSt-.{year}.-.#####",
+   "print_hide": 1,
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "remember_last_selected_value": 1,
+   "reqd": 1
+  },
+  {
+   "description": "The Veranlagungszeitraum, the calendar year the Wirtschaftsjahr ends in; it chooses the forms of the Körperschaftsteuer.",
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "A Berichtigung of the return filed for the year, made with Make Berichtigung: a new and complete declaration.",
+   "fieldname": "is_correction",
+   "fieldtype": "Check",
+   "label": "Correction",
+   "read_only": 1
+  },
+  {
+   "fieldname": "corrects",
+   "fieldtype": "Link",
+   "label": "Corrects",
+   "options": "Corporate Income Tax Return",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Entwurf",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Entwurf\nBerechnet\nBereit\nAbgegeben\nErsetzt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ready",
+   "fieldtype": "Check",
+   "label": "Ready to File",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "The forms of the year are those of the Jahresdokumentation of the year before, until ELSTER publishes those of the year; while they are, the return is not ready.",
+   "fieldname": "provisional",
+   "fieldtype": "Check",
+   "label": "Provisional Forms",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline",
+   "fieldtype": "Date",
+   "label": "Due Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fiscal_year",
+   "fieldtype": "Link",
+   "label": "Fiscal Year",
+   "options": "Fiscal Year",
+   "read_only": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "read_only": 1
+  },
+  {
+   "default": "01",
+   "description": "01 Veranlagung, as the Vorsatz of the return writes it.",
+   "fieldname": "vorgang",
+   "fieldtype": "Data",
+   "label": "Vorgang",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Set while Prüfen, Testsenden or Senden runs; the return cannot change until it ends.",
+   "fieldname": "transmission_in_progress",
+   "fieldtype": "Check",
+   "label": "Transmission Running",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Corporate Income Tax Return",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "computation_section",
+   "fieldtype": "Section Break",
+   "label": "Computation"
+  },
+  {
+   "fieldname": "net_income",
+   "fieldtype": "Currency",
+   "label": "Jahresüberschuss (GK Line 11)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "business_income",
+   "fieldtype": "Currency",
+   "label": "Einkünfte aus Gewerbebetrieb (GK Line 300)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sum_of_income",
+   "fieldtype": "Currency",
+   "label": "Summe der Einkünfte (ZVE Line 32)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_income",
+   "fieldtype": "Currency",
+   "label": "Gesamtbetrag der Einkünfte (ZVE Line 53)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "zve",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Zu versteuerndes Einkommen (ZVE Line 70)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "einlagekonto",
+   "fieldtype": "Currency",
+   "label": "Steuerliches Einlagekonto at the End of the Year (KSt 1 F Line 152)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_computation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "kst",
+   "fieldtype": "Currency",
+   "label": "Körperschaftsteuer (ZVE Line 71)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "solz",
+   "fieldtype": "Currency",
+   "label": "Solidaritätszuschlag",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "capital_gains_tax_credit",
+   "fieldtype": "Currency",
+   "label": "Kapitalertragsteuer Credited (WA Line 2)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "solz_credit",
+   "fieldtype": "Currency",
+   "label": "Solidaritätszuschlag Credited (WA Line 3)",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "kst_prepayments",
+   "fieldtype": "Currency",
+   "label": "Vorauszahlungen of Körperschaftsteuer",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "solz_prepayments",
+   "fieldtype": "Currency",
+   "label": "Vorauszahlungen of Solidaritätszuschlag",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "kst_balance",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Abschlusszahlung or Refund of Körperschaftsteuer",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "bold": 1,
+   "fieldname": "solz_balance",
+   "fieldtype": "Currency",
+   "label": "Abschlusszahlung or Refund of Solidaritätszuschlag",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "provisions_section",
+   "fieldtype": "Section Break",
+   "label": "Provisions"
+  },
+  {
+   "description": "Made by Propose Provisions with the provisions for Körperschaftsteuer, Solidaritätszuschlag and Gewerbesteuer. Steuerbote posts nothing: check the entry and submit it, then calculate the return again.",
+   "fieldname": "provisions_entry",
+   "fieldtype": "Link",
+   "label": "Draft Journal Entry of the Provisions",
+   "no_copy": 1,
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lines_section",
+   "fieldtype": "Section Break",
+   "label": "Lines of the Return"
+  },
+  {
+   "description": "The amounts of the forms, filled by Calculate. A correction of a line of the books files another amount and needs a reason; a line by hand names its Feldkennung and gives its amount as the correction, with a reason, such as the Überleitung to the Steuerbilanz on E8002001 or a verdeckte Gewinnausschüttung on E8002701, and Calculate takes it into the line of its field.",
+   "fieldname": "lines",
+   "fieldtype": "Table",
+   "label": "Lines of the Return",
+   "options": "Corporate Income Tax Return Line"
+  },
+  {
+   "fieldname": "statements_section",
+   "fieldtype": "Section Break",
+   "label": "Statements of the Return"
+  },
+  {
+   "fieldname": "supplement_key",
+   "fieldtype": "Select",
+   "label": "Supplementary Information in the Return (KSt 1 Line 13)",
+   "mandatory_depends_on": "eval:doc.supplement_text",
+   "options": "\n1\n2\n3\n4"
+  },
+  {
+   "description": "Line 13: the Ergänzende Angaben zur Steuererklärung under § 150 Abs. 7 AO, with their key.",
+   "fieldname": "supplement_text",
+   "fieldtype": "Small Text",
+   "label": "Supplementary Information",
+   "mandatory_depends_on": "eval:doc.supplement_key"
+  },
+  {
+   "default": "0",
+   "fieldname": "shareholder_contracts",
+   "fieldtype": "Check",
+   "label": "Contracts with Shareholders Concluded or Changed (WA Line 15)"
+  },
+  {
+   "fieldname": "column_break_statements",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "With a loss of the year: the Verlustrücktrag chosen below, 0 to waive it (§ 10d Abs. 1 EStG).",
+   "fieldname": "carry_back_chosen",
+   "fieldtype": "Check",
+   "label": "Verlustrücktrag Chosen (Verluste Line 20)"
+  },
+  {
+   "depends_on": "eval:doc.carry_back_chosen",
+   "fieldname": "loss_carry_back",
+   "fieldtype": "Currency",
+   "label": "Verlustrücktrag",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "default": "0",
+   "description": "Where the Zuwendungen exceed 20 % of the Summe der Einkünfte, Anlage Z line 10 states the turnover and the wages and salaries of the calendar year, if need be 0 (§ 9 Abs. 1 Nr. 2 KStG).",
+   "fieldname": "turnover_and_wages_given",
+   "fieldtype": "Check",
+   "label": "Turnover, Wages and Salaries Stated (Anlage Z Line 10)"
+  },
+  {
+   "depends_on": "eval:doc.turnover_and_wages_given",
+   "fieldname": "turnover_and_wages",
+   "fieldtype": "Currency",
+   "label": "Turnover, Wages and Salaries (Anlage Z Line 10)",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "holdings_section",
+   "fieldtype": "Section Break",
+   "label": "§ 8b Results"
+  },
+  {
+   "description": "The dividends of each holding of the Annual Filing Settings, gross of Kapitalertragsteuer, and each sale, write-up and write-down of shares with the company it concerns: Anlage GK lines 151 to 188.",
+   "fieldname": "holding_results",
+   "fieldtype": "Table",
+   "label": "§ 8b Results",
+   "options": "Corporate Income Tax Return Holding Result"
+  },
+  {
+   "fieldname": "credits_section",
+   "fieldtype": "Section Break",
+   "label": "Tax Certificates"
+  },
+  {
+   "description": "The Steuerbescheinigungen of the Kapitalertragsteuer withheld, Anlage WA lines 2 and 3.",
+   "fieldname": "credits",
+   "fieldtype": "Table",
+   "label": "Tax Certificates",
+   "options": "Corporate Income Tax Return Credit"
+  },
+  {
+   "fieldname": "donations_section",
+   "fieldtype": "Section Break",
+   "label": "Donations"
+  },
+  {
+   "description": "Each Zuwendungsbestätigung of the year, Anlage Z line 5 and GewSt 1 A lines 92a to 92c.",
+   "fieldname": "donations",
+   "fieldtype": "Table",
+   "label": "Donations",
+   "options": "Corporate Income Tax Return Donation"
+  },
+  {
+   "fieldname": "einlagekonto_section",
+   "fieldtype": "Section Break",
+   "label": "Steuerliches Einlagekonto (KSt 1 F)"
+  },
+  {
+   "description": "The Leistungen of the Wirtschaftsjahr, KSt 1 F lines 3 to 13.",
+   "fieldname": "distributions",
+   "fieldtype": "Table",
+   "label": "Distributions",
+   "options": "Corporate Income Tax Return Distribution"
+  },
+  {
+   "description": "The Einlagen of the shareholders, Anlage GK lines 78, 93 and 94 and KSt 1 F lines 91 to 95 and 200 to 206.",
+   "fieldname": "contributions",
+   "fieldtype": "Table",
+   "label": "Contributions",
+   "options": "Corporate Income Tax Return Contribution"
+  },
+  {
+   "fieldname": "previous_equity",
+   "fieldtype": "Currency",
+   "label": "Equity at the End of the Previous Wirtschaftsjahr (KSt 1 F Line 17)",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "With the equity, needed for Leistungen while the Einlagekonto has a Bestand (§ 27 Abs. 1 Satz 5 KStG).",
+   "fieldname": "previous_nominal_capital",
+   "fieldtype": "Currency",
+   "label": "Nennkapital at the End of the Previous Wirtschaftsjahr (KSt 1 F Line 18)",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "findings_section",
+   "fieldtype": "Section Break",
+   "label": "Findings"
+  },
+  {
+   "fieldname": "findings",
+   "fieldtype": "Table",
+   "label": "Findings",
+   "options": "Annual Filing Finding",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_section",
+   "fieldtype": "Section Break",
+   "label": "Filing"
+  },
+  {
+   "fieldname": "filed_via",
+   "fieldtype": "Select",
+   "label": "Filed Via",
+   "options": "\neric\nmein_elster\nother_way\nupload",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filed_on",
+   "fieldtype": "Date",
+   "label": "Filed On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transferticket",
+   "fieldtype": "Data",
+   "label": "Transferticket",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_filing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filed_by",
+   "fieldtype": "Link",
+   "label": "Noted By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filing_note",
+   "fieldtype": "Small Text",
+   "label": "How and When Filed",
+   "read_only": 1
+  },
+  {
+   "description": "Required to file a return that is not ready: why it is filed nonetheless.",
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Corporate Income Tax Return",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 0,
+ "row_format": "Dynamic",
+ "search_fields": "company,year",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

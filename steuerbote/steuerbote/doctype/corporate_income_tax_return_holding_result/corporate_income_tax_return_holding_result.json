@@ -1,0 +1,137 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 22:00:00.000000",
+ "description": "A result of shares under § 8b KStG: the dividends of a holding, or a sale, write-up or write-down.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "kind",
+  "holding_name",
+  "result_date",
+  "amount",
+  "column_break_costs",
+  "sale_price",
+  "sale_costs",
+  "book_value",
+  "financing_costs",
+  "other_costs",
+  "percent_on_1_january",
+  "percent_at_start_of_ez",
+  "exemption"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Kind of Result",
+   "options": "Dividends\nSale\nWrite-up\nWrite-down",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "description": "For dividends the holding as the Annual Filing Settings name it for the year.",
+   "fieldname": "holding_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Holding",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "depends_on": "eval:doc.kind == 'Sale'",
+   "fieldname": "result_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Date of the Sale",
+   "mandatory_depends_on": "eval:doc.kind == 'Sale'"
+  },
+  {
+   "columns": 2,
+   "description": "For a sale, the price less the costs and the book value, which a save computes: a gain above zero, a loss below.",
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount",
+   "mandatory_depends_on": "eval:doc.kind != 'Sale'",
+   "options": "Company:company:default_currency",
+   "read_only_depends_on": "eval:doc.kind == 'Sale'"
+  },
+  {
+   "fieldname": "column_break_costs",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.kind == 'Sale'",
+   "description": "The price of the shares, or the value in its place.",
+   "fieldname": "sale_price",
+   "fieldtype": "Currency",
+   "label": "Sale Price",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "depends_on": "eval:doc.kind == 'Sale'",
+   "fieldname": "sale_costs",
+   "fieldtype": "Currency",
+   "label": "Sale Costs",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "depends_on": "eval:doc.kind == 'Sale'",
+   "description": "The book value of the shares sold.",
+   "fieldname": "book_value",
+   "fieldtype": "Currency",
+   "label": "Book Value",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "depends_on": "eval:doc.kind == 'Dividends'",
+   "fieldname": "financing_costs",
+   "fieldtype": "Currency",
+   "label": "Related Costs under § 8 Nr. 1 GewStG (BEG Line 8)",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "depends_on": "eval:doc.kind == 'Dividends'",
+   "fieldname": "other_costs",
+   "fieldtype": "Currency",
+   "label": "Other Related Costs (BEG Line 9)",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "columns": 1,
+   "fieldname": "percent_on_1_january",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Share on 1 January",
+   "read_only": 1
+  },
+  {
+   "fieldname": "percent_at_start_of_ez",
+   "fieldtype": "Percent",
+   "label": "Share at the Start of the Erhebungszeitraum",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "exemption",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Exemption",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 22:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Corporate Income Tax Return Holding Result",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

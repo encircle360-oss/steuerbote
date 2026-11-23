@@ -62,3 +62,15 @@ class NamingTest(IntegrationTestCase):
 			).insert()
 		self.assertRegex(annual.name, r"^UStE-2026-\d{5}$")
 		self.assertEqual(getdate(annual.creation).year, 2027)
+
+	def test_the_koerperschaft_and_gewerbesteuererklaerung_for_2026_made_in_2027_carry_2026(self):
+		ensure_fiscal_year(COMPANY, "2026-06-30")
+		with self.freeze_time("2027-03-01 10:00:00"):
+			corporate = frappe.get_doc(
+				{"doctype": "Corporate Income Tax Return", "company": COMPANY, "year": 2026}
+			).insert()
+			trade = frappe.get_doc({"doctype": "Trade Tax Return", "company": COMPANY, "year": 2026}).insert()
+		self.assertRegex(corporate.name, r"^KSt-2026-\d{5}$")
+		self.assertRegex(trade.name, r"^GewSt-2026-\d{5}$")
+		self.assertEqual(trade.corporate_income_tax_return, corporate.name)
+		self.assertEqual([getdate(doc.creation).year for doc in (corporate, trade)], [2027, 2027])
