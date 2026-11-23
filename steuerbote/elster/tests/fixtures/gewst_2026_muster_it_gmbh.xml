@@ -1,0 +1,74 @@
+<E20 xmlns="http://finkonsens.de/elster/elstererklaerung/gewst/e20/v2026" version="2026">
+	<GewSt1A>
+		<Allgemein>
+			<E4000101>Muster IT GmbH</E4000101>
+			<E4000201>Softwareentwicklung</E4000201>
+		</Allgemein>
+		<Rechtsform>
+			<E4000501>350</E4000501>
+		</Rechtsform>
+		<Ang_Gew_Betr>
+			<Betr_St>
+				<E4001506>2</E4001506>
+				<E4001102>2</E4001102>
+				<E4001110>12345</E4001110>
+				<E4001111>Musterstadt</E4001111>
+			</Betr_St>
+		</Ang_Gew_Betr>
+		<Gewinn>
+			<E4001703>97200</E4001703>
+		</Gewinn>
+		<Hinz>
+			<P_8_Nr_1_Wj1>
+				<E4003202>5000</E4003202>
+				<E4003502>6000</E4003502>
+				<E4003602>24000</E4003602>
+				<E4003703>10000</E4003703>
+			</P_8_Nr_1_Wj1>
+		</Hinz>
+		<Gew_Ant_Koe>
+			<E4006601>11400</E4006601>
+		</Gew_Ant_Koe>
+		<Kuerz>
+			<Zuw>
+				<Stb_Zweck>
+					<Einz>
+						<E4009220>Musterverein e. V.</E4009220>
+						<E4009221>1000,00</E4009221>
+						<E4009222>1</E4009222>
+					</Einz>
+					<Sum>
+						<E4003403>1000</E4003403>
+					</Sum>
+				</Stb_Zweck>
+			</Zuw>
+		</Kuerz>
+	</GewSt1A>
+	<BEG>
+		<Allg>
+			<E4050201>Beta GmbH</E4050201>
+		</Allg>
+		<Ausschuett>
+			<E4050601>12000</E4050601>
+		</Ausschuett>
+		<Ang_Bet_Koe>
+			<E4051201>12000</E4051201>
+			<E4051501>11400</E4051501>
+		</Ang_Bet_Koe>
+	</BEG>
+	<Vorsatz>
+		<Unterfallart>20</Unterfallart>
+		<Vorgang>01</Vorgang>
+		<StNr>9198011310010</StNr>
+		<Zeitraum>2026</Zeitraum>
+		<AbsName>Muster IT GmbH</AbsName>
+		<AbsStr>Musterweg 1</AbsStr>
+		<AbsPlz>12345</AbsPlz>
+		<AbsOrt>Musterstadt</AbsOrt>
+		<Copyright>(c) 2026 Beispiel Software GmbH, München</Copyright>
+		<OrdNrArt>S</OrdNrArt>
+		<Rueckuebermittlung>
+			<Bescheid>2</Bescheid>
+		</Rueckuebermittlung>
+	</Vorsatz>
+</E20>
