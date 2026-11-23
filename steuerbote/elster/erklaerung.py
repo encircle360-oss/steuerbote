@@ -268,8 +268,8 @@ class Field:
 	"""The Beschreibung of the field."""
 	format: str
 	"""The Formatkennzeichen."""
-	line: int | None = None
-	"""The Vordruckzeile of the printed form."""
+	line: int | str | None = None
+	"""The Vordruckzeile of the printed form, such as 40, or 75c where the JD letters a line."""
 	kennzahl: str | None = None
 	"""The Kennzahl of the sheet „<Vordruck> - Kennzahlen“."""
 	length: int | None = None

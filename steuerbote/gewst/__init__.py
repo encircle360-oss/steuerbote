@@ -6,4 +6,6 @@ This package is pure Python. It never imports Frappe, so it can be tested withou
   Hebesatz, the provisional forms and the files of the year check.
 - chain.py: compute(KstResult, GewstInputs, figures) -> GewstResult, the lines of GewSt 1 A (STEPS) and the Anlagen
   BEG (BegLine) from the result of steuerbote.kst.chain.
+- form.py: the Vordrucke GewSt 1 A and BEG of an EZ with their fields and the rules Steuerbote checks (CATALOGUES),
+  and vordrucke(), which turns a GewstResult into them.
 """

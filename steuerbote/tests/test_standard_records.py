@@ -83,7 +83,7 @@ LONGEST_LABEL = 20
 DAUERFRIST_DOCTYPE = "VAT Return Extension"
 # The lists of the year-end filings, which the section „Jahresmeldungen“ of the sidebar and the workspace will lead
 # to once their documents exist; until then the sidebar leaves them out.
-AWAITING_THE_SECTION_JAHRESMELDUNGEN = frozenset({"Annual Filing Settings"})
+AWAITING_THE_SECTION_JAHRESMELDUNGEN = frozenset({"Annual Filing Settings", "Income Tax Mapping"})
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
 CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')

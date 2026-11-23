@@ -16,4 +16,8 @@ This package is pure Python. It never imports Frappe, so it can be tested withou
 - einlagekonto.py: roll_forward(), the steuerliches Einlagekonto of § 27 KStG in KSt 1 F.
 - provisions.py: propose(), the provisions for Körperschaftsteuer, Solidaritätszuschlag and Gewerbesteuer as rows of
   a draft Journal Entry (ProvisionRow), on the accounts of SKR03 and SKR04 (ACCOUNTS) or of a chart of its own.
+- form.py: the Vordrucke KSt 1, GK, ZVE, Z, Verluste, WA and KSt 1 F of a VZ with their fields and the rules
+  Steuerbote checks (CATALOGUES), and vordrucke() and kst1f(), which turn a KstResult and an Einlagekonto into them.
+- defaults.py: the defaults of the Income Tax Mapping for SKR03 and SKR04 from the marks K and G of the DATEV charts
+  (default_mapping, default_accounts), with the accounts they watch and why (REASONS).
 """
