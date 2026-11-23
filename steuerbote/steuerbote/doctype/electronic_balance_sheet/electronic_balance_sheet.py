@@ -16,6 +16,10 @@ year the Wirtschaftsjahr ends in and the Bilanzart, Jahresabschluss or the Eröf
   check of the E-Bilanz finds an error, every adjustment of ERPNext on a fixed asset account is in a column of the
   Anlagenspiegel, the depreciation is posted up to the Bilanzstichtag and the GCD is complete. A missing Period
   Closing Voucher is a hint only, since the balances neither need it nor count the result twice.
+- Berechnen compares the Handelsbilanz with that of the Jahresabschluss of the company and year (comparison.py), which
+  the E-Bilanz names (annual_accounts): a festgestellter Jahresabschluss that differs holds it back from „Bereit“, one
+  that is not festgestellt yet gives a hint. A new E-Bilanz names it, and it is filed only while it names none that
+  was cancelled since Berechnen, as before an amendment of the Jahresabschluss.
 - A save takes the corrections and lines by hand of the positions, the columns by hand of the Anlagenspiegel, the
   entries by hand of the Überleitung and what the Betriebsvermögensvergleich takes beyond the books; a change of what
   Berechnen reads leaves a calculated E-Bilanz Berechnet until Berechnen checks it again, and it is filed only after.
@@ -60,7 +64,7 @@ from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, Ann
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.steuerbote.doctype.balance_sheet_mapping.balance_sheet_mapping import position_taxonomy
-from steuerbote.steuerbote.doctype.electronic_balance_sheet import bridge, layout
+from steuerbote.steuerbote.doctype.electronic_balance_sheet import bridge, comparison, layout
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import OTHER_WAY
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import Transmittable
 from steuerbote.steuerbote.doctype.eric_settings import eric_settings
@@ -104,6 +108,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		accounting_standard: DF.Literal["HAOE", "HGBM", "AO"]
 		accounts: DF.Table[ElectronicBalanceSheetAccount]
 		amended_from: DF.Link | None
+		annual_accounts: DF.Link | None
 		bvv_capital_adjustments: DF.Currency
 		bvv_contributions: DF.Currency
 		bvv_founding_contribution: DF.Currency
@@ -153,6 +158,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 	CALCULATED_TABLES = (ACCOUNTS,)
 	CALCULATED_FIELDS = (
 		"first_fiscal_year",
+		"annual_accounts",
 		"total_assets",
 		"total_equity_and_liabilities",
 		"net_income",
@@ -196,6 +202,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 				first_year=first_year,
 			)
 		ebilanz = instance.build(structure, self._master(settings, first_year), sources)
+		accounts = self._annual_accounts()
 		found = (
 			*bridge.taxonomy_finding(self.taxonomy_version, unchanged, detail),
 			*bridge.placement_findings(placement),
@@ -218,6 +225,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 				),
 			),
 			*bridge.closing_finding(self.statement_type, closed_by),
+			*self._comparison_findings(ebilanz, accounts),
 		)
 		return Calculation(
 			lines=bridge.position_rows(
@@ -228,7 +236,12 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 				FIXED_ASSETS: bridge.fixed_asset_rows(structure, assets),
 				TRANSFERS: bridge.labelled_transfers(structure, transfers),
 			},
-			values={**bridge.totals(ebilanz), **values, "first_fiscal_year": int(first_year)},
+			values={
+				**bridge.totals(ebilanz),
+				**values,
+				"first_fiscal_year": int(first_year),
+				"annual_accounts": accounts,
+			},
 			findings=found,
 			passed=ebilanz.report is not None,
 		)
@@ -240,12 +253,20 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 
 	def check_filing(self) -> None:
 		"""An E-Bilanz whose corrections or inputs changed since Berechnen is calculated again before it is filed: its
-		sums, the Steuerbilanz and the Betriebsvermögensvergleich follow from them through the taxonomy."""
+		sums, the Steuerbilanz and the Betriebsvermögensvergleich follow from them through the taxonomy. So is one whose
+		Jahresabschluss was cancelled since Berechnen compared it, before Senden, since a filed E-Bilanz names no
+		cancelled document."""
 		if any(row.code == RECALCULATE for row in self.get(FINDINGS_TABLE) or ()):
 			frappe.throw(
 				_(
 					"Something Berechnen reads changed since Berechnen. Calculate {0} again before filing it: its sums follow from the corrections through the HGB-Taxonomie."
 				).format(self.name)
+			)
+		if self.annual_accounts and ebilanz_sources.cancelled_annual_accounts(self.annual_accounts):
+			frappe.throw(
+				_(
+					"The Jahresabschluss {0} was cancelled since Berechnen compared {1} with it. Calculate {1} again, so that Berechnen compares it with the Jahresabschluss that amends it."
+				).format(self.annual_accounts, self.name)
 			)
 
 	def correction_values(self) -> dict[str, Any]:
@@ -302,6 +323,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		self._take_the_finance_books()
 		self._keep_the_inputs(before)
 		super().validate()
+		self._name_the_annual_accounts()
 		self._take_the_lines_by_hand()
 		self._require_berechnen_after_a_change(before)
 
@@ -512,6 +534,27 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 			return opening + bridge.last_ausgleichsposten(transferred), zero
 		return opening, zero
 
+	def _annual_accounts(self) -> str | None:
+		"""The Jahresabschluss Berechnen compares the E-Bilanz with: the one it names while that is valid, else the valid
+		one of its company and year; an Eröffnungsbilanz has none."""
+		if self._opening:
+			return None
+		return ebilanz_sources.annual_accounts_for_ebilanz(
+			self.company, cint(self.year), self.annual_accounts
+		)
+
+	def _comparison_findings(self, ebilanz: EBilanz, accounts: str | None) -> tuple[Finding, ...]:
+		"""The Handelsbilanz of the E-Bilanz against that of its Jahresabschluss (comparison.py), by the amounts of the
+		positions before the Überleitung; an Eröffnungsbilanz is compared with none."""
+		if self._opening:
+			return ()
+		calculation = ebilanz.calculation
+		return comparison.findings(
+			ebilanz_sources.annual_accounts_comparison(accounts),
+			bridge.accounting_standard_of(self.accounting_standard),
+			lambda concept: calculation.amount(positions.qualified(concept)),
+		)
+
 	def _equity_changes(self, previous: Decimal, founding: Decimal) -> EquityChanges:
 		with core_errors():
 			return bridge.equity_changes(
@@ -577,6 +620,14 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		for fieldname in ("commercial_finance_book", "tax_finance_book"):
 			if not self.get(fieldname):
 				self.set(fieldname, settings.get(fieldname))
+
+	def _name_the_annual_accounts(self) -> None:
+		"""A new E-Bilanz of a Jahresabschluss names the Jahresabschluss of its company and year that Berechnen compares
+		it with, so that the Jahresabschluss lists it among its connections from the start."""
+		if self.is_new() and not self._opening:
+			self.annual_accounts = ebilanz_sources.annual_accounts_for_ebilanz(
+				self.company, cint(self.year), None
+			)
 
 	def _keep_the_inputs(self, before: Document | None) -> None:
 		"""A save keeps what Berechnen wrote in the Anlagenspiegel and the Überleitung and takes the entries of the

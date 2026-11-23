@@ -180,6 +180,7 @@ source = [
     "steuerbote.steuerbote.doctype.annual_accounts.bridge",
     "steuerbote.steuerbote.doctype.annual_accounts.layout",
     "steuerbote.steuerbote.doctype.electronic_balance_sheet.bridge",
+    "steuerbote.steuerbote.doctype.electronic_balance_sheet.comparison",
     "steuerbote.steuerbote.doctype.electronic_balance_sheet.layout",
     "steuerbote.steuerbote.report.e_bilanz_positionen.rows",
 ]

@@ -18,6 +18,9 @@
 - For the Körperschaftsteuererklärung: the E-Bilanz of the year whose Jahresüberschuss Anlage GK line 11 takes
   (ebilanz_for_income_tax), and the filed E-Bilanz of a year (filed_ebilanz) with the gezeichnetes Kapital of its
   Steuerbilanz (subscribed_capital) for KSt 1 F lines 17 and 18.
+- The Jahresabschluss of the year whose Handelsbilanz Berechnen compares with that of the E-Bilanz
+  (annual_accounts_for_ebilanz), with the statement it files as the comparison takes it (annual_accounts_comparison),
+  and whether it was cancelled since (cancelled_annual_accounts).
 """
 
 from datetime import date, timedelta
@@ -27,13 +30,16 @@ import frappe
 from erpnext.accounts.report.asset_depreciations_and_balances import asset_depreciations_and_balances
 from erpnext.accounts.utils import get_fiscal_year
 from frappe.query_builder.functions import IfNull
-from frappe.utils import cstr, getdate
+from frappe.utils import cint, cstr, getdate
 
 from steuerbote import balances
 from steuerbote.ebilanz.gcd import MasterData
+from steuerbote.hgb.size import SizeClass
 from steuerbote.jahresmeldung.corrections import RevisionStatus
 from steuerbote.jahresmeldung.lifecycle import Status
 from steuerbote.jahresmeldung.overrides import to_amount
+from steuerbote.steuerbote.doctype.annual_accounts import bridge as accounts_bridge
+from steuerbote.steuerbote.doctype.electronic_balance_sheet import comparison
 from steuerbote.steuerbote.doctype.electronic_balance_sheet.bridge import (
 	EROEFFNUNGSBILANZ,
 	JAHRESABSCHLUSS,
@@ -45,6 +51,7 @@ from steuerbote.xbrl.mapping import Books
 from steuerbote.xbrl.versions import TAXONOMIES
 
 DOCTYPE = "Electronic Balance Sheet"
+ANNUAL_ACCOUNTS = "Annual Accounts"
 POSITION = "Electronic Balance Sheet Position"
 SUBSCRIBED = "bs.eqLiab.equity.subscribed"
 INCOME_TAX_STATUSES = (Status.CALCULATED, Status.READY, Status.FILED)
@@ -263,6 +270,50 @@ def ebilanz_for_income_tax(company: str, year: int, named: str | None) -> str | 
 		return named
 	found = frappe.get_all(DOCTYPE, filters=filters, order_by="creation desc", limit=1, pluck="name")
 	return found[0] if found else None
+
+
+def annual_accounts_for_ebilanz(company: str, year: int, named: str | None) -> str | None:
+	"""The Jahresabschluss whose Handelsbilanz Berechnen compares with the E-Bilanz of the company and year: the one
+	named, while it is of the company and year and neither cancelled nor replaced, else the festgestellte one of the
+	key, else its draft; None without one."""
+	filters = {
+		"company": company,
+		"year": year,
+		"docstatus": ["!=", 2],
+		"status": ["!=", Status.REPLACED.value],
+	}
+	if named and frappe.db.exists(ANNUAL_ACCOUNTS, {"name": named, **filters}):
+		return named
+	found = frappe.get_all(
+		ANNUAL_ACCOUNTS, filters=filters, order_by="docstatus desc, creation desc", limit=1, pluck="name"
+	)
+	return found[0] if found else None
+
+
+def annual_accounts_comparison(name: str | None) -> comparison.Accounts | None:
+	"""The Jahresabschluss as the comparison takes it: the statement it files, built again from what it keeps of it
+	(statement_from_data of steuerbote/steuerbote/doctype/annual_accounts/bridge.py) in the form of its size class, or
+	of klein while it has none, as its Berechnen builds it; None without one."""
+	if not name:
+		return None
+	found = frappe.db.get_value(
+		ANNUAL_ACCOUNTS,
+		name,
+		["name", "year", "docstatus", "status", "size_class", "statement_data"],
+		as_dict=True,
+	)
+	if found is None:
+		return None
+	statement = None
+	if found.statement_data:
+		size_class = accounts_bridge.size_class_of(found.size_class) or SizeClass.KLEIN
+		statement = accounts_bridge.statement_from_data(found.statement_data, cint(found.year), size_class)
+	festgestellt = cint(found.docstatus) == 1 and found.status != Status.REPLACED.value
+	return comparison.Accounts(found.name, statement, festgestellt)
+
+
+def cancelled_annual_accounts(name: str) -> bool:
+	return cint(frappe.db.get_value(ANNUAL_ACCOUNTS, name, "docstatus")) == 2
 
 
 def taxonomy_check(version: str) -> tuple[bool, str]:
