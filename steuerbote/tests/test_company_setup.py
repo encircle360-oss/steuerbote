@@ -142,6 +142,10 @@ class CompanySetupTest(IntegrationTestCase):
 		company_with(HOOK_COMPANY, "STESS", SKR03_ACCOUNTS)
 
 	def setUp(self):
+		# These tests check the steps of the Voranmeldung; a step a module adds through the hook has tests of its own.
+		without_hooked_steps = hooked([])
+		without_hooked_steps.__enter__()
+		self.addCleanup(without_hooked_steps.__exit__, None, None, None)
 		for company in (
 			SKR03_COMPANY,
 			SKR04_COMPANY,

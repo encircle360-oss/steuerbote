@@ -1,6 +1,6 @@
 """The Income Tax Mapping, read from its files without a bench: its tables offer the categories, classes and levels of
-the core, the methods its form calls are whitelisted for POST, every text reads in German, and its dialogs escape
-what the site holds."""
+the core, the methods its form calls are whitelisted for POST, every text reads in German, its step of Steuerbote
+einrichten is the one of the hook, and its dialogs escape what the site holds."""
 
 import ast
 import csv
@@ -9,10 +9,12 @@ import re
 from pathlib import Path
 from unittest import TestCase
 
+from steuerbote import hooks
 from steuerbote.income_tax_mapping_sync import RULE_FIELDS
 from steuerbote.kst.categories import CATEGORIES, Category, TradingClass
 from steuerbote.mappings import transfer
 from steuerbote.mappings.diff import Change, Origin
+from steuerbote.setup.steps import Step
 from steuerbote.ustva.mapping import WatchLevel
 
 APP = Path(__file__).resolve().parents[3]
@@ -241,3 +243,30 @@ class TranslationsTest(TestCase):
 			with self.subTest(name=name):
 				self.assertEqual(set(labels), {member.name for member in members})
 				self.assertEqual(sorted(set(labels.values()) - german.keys()), [])
+
+
+class SetupStepTest(TestCase):
+	def test_the_hook_runs_the_step_of_the_mapping_after_the_steps_of_the_voranmeldung(self):
+		(entry,) = hooks.steuerbote_setup_steps
+		step = Step.from_hook(entry)
+		self.assertEqual(
+			(step.key, step.label, step.order, step.run, step.needs),
+			(
+				"income_tax_mapping",
+				"Income Tax Mapping",
+				40,
+				"steuerbote.steuerbote.doctype.income_tax_mapping.setup.run",
+				(),
+			),
+		)
+		self.assertTrue((FOLDER / "setup.py").is_file())
+		self.assertRegex(
+			(FOLDER / "setup.py").read_text(encoding="utf-8"), r"\ndef run\(context: SetupContext\)"
+		)
+
+	def test_every_note_of_the_step_reads_in_german(self):
+		german = translations()
+		values = assignments(FOLDER / "setup.py")
+		messages = {ast.literal_eval(values[name.id]) for name in values["MESSAGES"].elts}
+		self.assertEqual(len(messages), 7)
+		self.assertEqual(sorted(messages - german.keys()), [])
