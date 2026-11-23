@@ -17,20 +17,28 @@ plugin of the coming year.
 Every week check_versions loads the Mindestversionsliste, keeps it in the settings and tells the System Managers
 once of each failing check of steuerbote.eric.releases.notices, as the ERiC licence asks the Softwarehersteller to
 check regularly for new versions (§ 5 Abs. 4) and to use at least the Mindestversion (§ 5 Abs. 6); a site that keeps
-Annual Filing Settings hears also of the plugins of the annual filings of the year before. Only that job writes its
-fields; a save of the form keeps them.
+Annual Filing Settings hears also of the plugins of the annual filings of the year before. Before it compares, it
+reads the Versionsinformationen of each installed runtime whose manifest lacks them, as the installation does for
+its runtime: from the copy common_site_config.json names as steuerbote_eric_versions, else from download.elster.de.
+The settings keep whether the check failed apart from how its notice went out: by e-mail and as a notification, as a
+notification only where no outgoing e-mail account is set up, to nobody without a System Manager besides
+Administrator, or not at all, to be sent with the next check. Only that job writes its fields; a save of the form
+keeps them. The version of the app follows each migration and shows whenever the form loads.
 
 The settings keep the copyright notice of the manufacturer of the software, which the Vorsatz of every Erklärung
 carries (steuerbote/elster/vorsatz.py), at most 50 characters and without a default. A run of ERiC with an Erklärung
 needs it (vorsatz_copyright).
 """
 
+import os
 from datetime import datetime
 from pathlib import Path
 
 import frappe
 from frappe import _
+from frappe.database.utils import commit_after_response
 from frappe.desk.doctype.notification_log.notification_log import enqueue_create_notification
+from frappe.email.doctype.email_account.email_account import EmailAccount
 from frappe.model.document import Document
 from frappe.utils import (
 	cint,
@@ -77,7 +85,16 @@ VERSION_CHECK_FIELDS = (
 	"versions_checked_on",
 	"versions_check_failed",
 	"version_notices",
+	"version_notice_status",
+	"version_notified_on",
 )
+# The copy of the Versionsinformationen of a package in common_site_config.json, for a server without access to
+# download.elster.de.
+VERSIONS_COPY = "steuerbote_eric_versions"
+NOTICE_SENT = "E-Mail and Notification"
+NOTICE_NOTIFICATION_ONLY = "Notification Only"
+NOTICE_NO_RECIPIENTS = "No Recipients"
+NOTICE_NOT_DELIVERED = "Not Delivered"
 # The details of the checks are German, written for the operator (steuerbote.eric), so the notice around them is.
 NOTICE_LANGUAGE = "de"
 
@@ -113,13 +130,27 @@ class ERiCSettings(Document):
 		proxy_url: DF.Data | None
 		proxy_user: DF.Data | None
 		simulation: DF.Check
+		version_notice_status: DF.Literal[
+			"", "E-Mail and Notification", "Notification Only", "No Recipients", "Not Delivered"
+		]
 		version_notices: DF.SmallText | None
+		version_notified_on: DF.Datetime | None
 		versions_check_failed: DF.Check
 		versions_checked_on: DF.Datetime | None
 	# end: auto-generated types
 
 	def onload(self) -> None:
 		self.show_configured_archive()
+		self.show_app_version()
+
+	def show_app_version(self) -> None:
+		"""The version of the app the site runs, also where the settings were saved under an older one; the stored
+		field follows once the form has its answer."""
+		if self.produkt_version == steuerbote.__version__:
+			return
+		self.produkt_version = steuerbote.__version__
+		if not frappe.flags.read_only:
+			commit_after_response(refresh_produkt_version)
 
 	def validate(self) -> None:
 		self.produkt_version = steuerbote.__version__
@@ -249,6 +280,8 @@ def run_installation() -> None:
 	except Exception as failure:
 		frappe.log_error(title=_("Installation of ERiC failed"))
 		error = str(failure)
+	if runtime is not None:
+		complete_versions(runtime.version)
 	settings = frappe.get_single(SETTINGS)
 	if runtime is not None:
 		settings.update(
@@ -266,6 +299,13 @@ def run_installation() -> None:
 		user=frappe.session.user,
 		after_commit=True,
 	)
+
+
+def refresh_produkt_version() -> None:
+	"""after_migrate (hooks.py): the version of the app in the settings, which a save writes, so that it is the one of
+	the update without a save. The header of a delivery takes the version of the app itself."""
+	if frappe.db.get_single_value(SETTINGS, "produkt_version", cache=False) != steuerbote.__version__:
+		frappe.db.set_single_value(SETTINGS, "produkt_version", steuerbote.__version__, update_modified=False)
 
 
 def vorsatz_copyright() -> str:
@@ -291,15 +331,19 @@ def eric_log_root() -> Path:
 
 
 def check_versions() -> None:
-	"""The weekly job (scheduler_events in hooks.py): load the Mindestversionsliste of ELSTER, keep it in the ERiC
-	Settings and tell the System Managers once of each failing check of steuerbote.eric.releases.notices.
+	"""The weekly job (scheduler_events in hooks.py): read the Versionsinformationen of the runtimes without them,
+	load the Mindestversionsliste of ELSTER, keep it in the ERiC Settings and tell the System Managers once of each
+	failing check of steuerbote.eric.releases.notices.
 
 	It never raises. A list that cannot be loaded or read lands in the Error Log, the settings note the check as
-	failed and keep the list loaded before, which the comparison then takes. A notice that cannot be sent lands in the
-	Error Log as well and goes out with the next check.
+	failed and keep the list loaded before, which the comparison then takes. Versionsinformationen that cannot be read
+	land in the Error Log, and their libraries stay without a version, a hint of the comparison. How the notice went
+	out the settings note apart from the check: one that cannot be sent lands in the Error Log as well and goes out
+	with the next check.
 	"""
 	settings = frappe.get_single(SETTINGS)
 	values: dict[str, object] = {"versions_checked_on": now_datetime(), "versions_check_failed": 0}
+	complete_versions()
 	minimum_list = stored_minimum_list(settings.minimum_versions)
 	try:
 		fetched = releases.fetch_list()
@@ -315,10 +359,10 @@ def check_versions() -> None:
 		values.update(list_values(minimum_list, fetched.last_modified))
 	frappe.db.savepoint(VERSIONS_SAVEPOINT)
 	try:
-		values["version_notices"] = notify(minimum_list, settings.version_notices)
+		values.update(notify(minimum_list, settings))
 	except Exception:
 		frappe.db.rollback(save_point=VERSIONS_SAVEPOINT)
-		values["versions_check_failed"] = 1
+		values.update(version_notice_status=NOTICE_NOT_DELIVERED, version_notified_on=now_datetime())
 		frappe.log_error(
 			title=_("The notice of the ERiC versions failed"),
 			reference_doctype=SETTINGS,
@@ -327,6 +371,47 @@ def check_versions() -> None:
 	else:
 		frappe.db.release_savepoint(VERSIONS_SAVEPOINT)
 	frappe.db.set_single_value(SETTINGS, values, update_modified=False)
+
+
+def complete_versions(version: str | None = None) -> None:
+	"""Read the Versionsinformationen of each installed runtime whose manifest lacks them, only of the version if one
+	is given (steuerbote.eric.releases.complete_versions). What keeps them from being read lands in the Error Log as one
+	entry; nothing raises."""
+	try:
+		copy, problems = versions_copy()
+		installed = tuple(
+			installation
+			for installation in runtime.installations(transmission_adapter.runtime_root())
+			if version is None or installation.version == version
+		)
+		problems += releases.complete_versions(installed, copy)
+	except Exception:
+		frappe.log_error(
+			title=_("The Versionsinformationen of ERiC could not be read"),
+			reference_doctype=SETTINGS,
+			reference_name=SETTINGS,
+		)
+		return
+	if problems:
+		frappe.log_error(
+			title=_("The Versionsinformationen of ERiC could not be read"),
+			message="\n".join(problems),
+			reference_doctype=SETTINGS,
+			reference_name=SETTINGS,
+		)
+
+
+def versions_copy() -> tuple[Path | None, tuple[str, ...]]:
+	"""The copy of the Versionsinformationen of a package that steuerbote_eric_versions in common_site_config.json
+	names, as only the operator of the server names the archive, and why it is not taken."""
+	configured = str(transmission_adapter.common_site_config().get(VERSIONS_COPY) or "").strip()
+	if not configured:
+		return None, ()
+	if not os.path.isabs(configured):
+		return None, (
+			_("{0} in common_site_config.json is no absolute path on the server.").format(VERSIONS_COPY),
+		)
+	return Path(configured), ()
 
 
 def stored_minimum_list(text: str | None) -> MinimumList | None:
@@ -352,33 +437,40 @@ def list_values(minimum_list: MinimumList, last_modified: datetime | None) -> di
 	}
 
 
-def notify(minimum_list: MinimumList | None, notified: str | None) -> str:
-	"""Tell the System Managers of the failing checks of the installed runtimes not told before, and return the
-	notices of all failing checks, one per line, as told."""
+def notify(minimum_list: MinimumList | None, settings: Document) -> dict[str, object]:
+	"""Tell the System Managers of the failing checks of the installed runtimes not told before. Returns the fields
+	that record it: the notices of all failing checks, one per line, as told, and how the notice of new ones went out,
+	which stays while they fail and goes once nothing is left to tell."""
 	installed = runtime.installations(transmission_adapter.runtime_root())
 	failing = releases.notices(installed, minimum_list, getdate(), annual=has_annual_filings())
-	new = releases.due(failing, (notified or "").splitlines())
+	values: dict[str, object] = {"version_notices": "\n".join(check.notice for check in failing)}
+	new = releases.due(failing, (settings.version_notices or "").splitlines())
 	if new:
-		send_notice(new)
-	return "\n".join(check.notice for check in failing)
+		values.update(version_notice_status=send_notice(new), version_notified_on=now_datetime())
+	elif not failing or settings.version_notice_status == NOTICE_NOT_DELIVERED:
+		values.update(version_notice_status="", version_notified_on=None)
+	return values
 
 
-def send_notice(checks: tuple[Check, ...]) -> None:
+def send_notice(checks: tuple[Check, ...]) -> str:
 	"""One e-mail and one notification in the desk for each System Manager, Administrator and Guest left out as
-	Frappe does for its own notices. The e-mail goes first: its queue is part of the transaction, while the
-	notification in the desk is queued for after the commit."""
+	Frappe does for its own notices, and how the notice went out. The e-mail goes first: its queue is part of the
+	transaction, while the notification in the desk is queued for after the commit. Without an outgoing e-mail account
+	the notification goes alone, and the Error Log says so once, without a traceback."""
 	recipients = system_manager_addresses()
 	if not recipients:
-		return
+		return NOTICE_NO_RECIPIENTS
 	subject = _("Steuerbote: check the ERiC runtime", lang=NOTICE_LANGUAGE)
 	message = notice_message(checks)
-	frappe.sendmail(
-		recipients=recipients,
-		subject=subject,
-		message=message,
-		reference_doctype=SETTINGS,
-		reference_name=SETTINGS,
-	)
+	by_email = has_outgoing_email_account()
+	if by_email:
+		frappe.sendmail(
+			recipients=recipients,
+			subject=subject,
+			message=message,
+			reference_doctype=SETTINGS,
+			reference_name=SETTINGS,
+		)
 	enqueue_create_notification(
 		recipients,
 		{
@@ -389,6 +481,22 @@ def send_notice(checks: tuple[Check, ...]) -> None:
 			"email_content": message,
 		},
 	)
+	if by_email:
+		return NOTICE_SENT
+	frappe.log_error(
+		title=_("The notice of the ERiC versions went out as a notification only"),
+		message=_(
+			"No outgoing e-mail account is set up, so the System Managers got the notice of the ERiC versions as a notification only, without an e-mail."
+		),
+		reference_doctype=SETTINGS,
+		reference_name=SETTINGS,
+	)
+	return NOTICE_NOTIFICATION_ONLY
+
+
+def has_outgoing_email_account() -> bool:
+	"""Whether Frappe has an outgoing e-mail account for the notice, looked up as frappe.sendmail looks it up."""
+	return bool(EmailAccount.find_outgoing(match_by_doctype=SETTINGS))
 
 
 def system_manager_addresses() -> list[str]:

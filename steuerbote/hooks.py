@@ -59,3 +59,6 @@ scheduler_events = {
 	"daily": ["steuerbote.steuerbote.deadlines.send_reminders"],
 	"weekly": ["steuerbote.steuerbote.doctype.eric_settings.eric_settings.check_versions"],
 }
+
+# bench migrate runs after every update of the app; the ERiC Settings then show the version it brings.
+after_migrate = ["steuerbote.steuerbote.doctype.eric_settings.eric_settings.refresh_produkt_version"]
