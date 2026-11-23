@@ -13,6 +13,12 @@ a change of the defaults from a change the user made, and takes over the differe
 attaches it privately. „Zuordnung importieren“ reads such a file, uploaded privately to the mapping or pasted, checks
 its checksum, its chart, its accounts and its rows, shows what differs (compare_with_file) and takes over what the
 user chose (import_file), with the version and the rows of the defaults the file names.
+
+The annual return reads the mapping too: the annual field and paragraph of a rule, and the rows of the accounts only
+the annual return reads (annual_rules). Vorgaben laden fills those rows from the defaults of the chart
+(steuerbote/ustjahr/defaults.py) and keeps the annual field and paragraph of a rule whose account keeps its Kennzahl;
+Vorgaben aktualisieren and the file carry both like every other row. Saving checks them against the latest form USt 2
+A (mapping_sync.check_annual_rows), and to_split gives the annual return the line of every account.
 """
 
 import re
@@ -30,9 +36,16 @@ from frappe.utils import escape_html, formatdate, getdate
 import steuerbote
 from steuerbote.mapping_sync import (
 	ACCOUNT,
+	ANNUAL_FIELD,
+	ANNUAL_RULE,
 	CHECK,
 	FILE_FORMAT,
 	WATCHED,
+	annual_default_items,
+	annual_rows_for_accounts,
+	annual_rows_of_items,
+	annual_split,
+	check_annual_rows,
 	default_items,
 	defaults_for_accounts,
 	dump_items,
@@ -45,6 +58,8 @@ from steuerbote.mapping_sync import (
 )
 from steuerbote.mappings import diff, transfer
 from steuerbote.tax_templates import template_accounts
+from steuerbote.ustjahr.split import Split, SplitError
+from steuerbote.ustjahr.years import LATEST_YEAR as ANNUAL_YEAR
 from steuerbote.ustva import DEFAULTS, LATEST_YEAR, Mapping, MappingError, UnknownYearError, WatchLevel
 from steuerbote.ustva.defaults import defaults_version, deliberately_without_kennzahl
 from steuerbote.ustva.tax_templates import TemplateAccount, without_place
@@ -88,6 +103,8 @@ FIELD_LABELS = {
 	"level": "Watch Level",
 	"base_accounts": "Base Accounts",
 	"tax_accounts": "Tax Accounts",
+	"annual_field": "Annual Return Field",
+	"paragraph": "Paragraph of the Exemption",
 }
 
 
@@ -100,6 +117,9 @@ class VATReturnMapping(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		from steuerbote.steuerbote.doctype.vat_return_annual_rule.vat_return_annual_rule import (
+			VATReturnAnnualRule,
+		)
 		from steuerbote.steuerbote.doctype.vat_return_mapping_check.vat_return_mapping_check import (
 			VATReturnMappingCheck,
 		)
@@ -110,6 +130,7 @@ class VATReturnMapping(Document):
 			VATReturnWatchedAccount,
 		)
 
+		annual_rules: DF.Table[VATReturnAnnualRule]
 		chart: DF.Literal["SKR03", "SKR04", "Eigener Kontenrahmen"]
 		checks: DF.Table[VATReturnMappingCheck]
 		company: DF.Link
@@ -123,11 +144,14 @@ class VATReturnMapping(Document):
 		self.validate_accounts()
 		self.current_items()
 		self.to_mapping(LATEST_YEAR)
+		self.validate_annual_rows()
 		self.defaults_taken_over()
 
 	def validate_accounts(self):
 		"""The form offers only ledger accounts of the company; rows that arrive another way are checked here."""
-		names = sorted({row.account for row in (*self.rules, *self.watched) if row.account})
+		names = sorted(
+			{row.account for row in (*self.rules, *self.watched, *self.annual_rules) if row.account}
+		)
 		if not names:
 			return
 		for account in frappe.get_all(
@@ -157,14 +181,30 @@ class VATReturnMapping(Document):
 		except (MappingError, UnknownYearError) as error:
 			frappe.throw(str(error), title=_("Invalid VAT Return Mapping"))
 
+	def validate_annual_rows(self):
+		"""The annual fields, paragraphs and rows for the annual return only, against the latest form USt 2 A."""
+		with mapping_errors():
+			check_annual_rows(self.chart, *self._rows(), ANNUAL_YEAR)
+
+	def to_split(self, year: int) -> Split:
+		"""The line of the annual return of ``year`` for each account of the mapping: its annual field, the default
+		of its role in the chart, or the default line of its Kennzahl, and the rows for the annual return only."""
+		with mapping_errors():
+			return annual_split(self.chart, *self._rows(), year)
+
 	def current_items(self) -> dict[diff.Key, dict]:
 		"""The rows as items of steuerbote.mappings.diff; an account or a label in two rows is refused."""
 		with mapping_errors():
-			return items_of_rows(
-				[row.as_dict() for row in self.rules],
-				[row.as_dict() for row in self.checks],
-				[row.as_dict() for row in self.watched],
-			)
+			return items_of_rows(*self._rows())
+
+	def _rows(self) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+		"""The rows of the rules, checks, watched accounts and rows for the annual return only, as plain dicts."""
+		return (
+			[row.as_dict() for row in self.rules],
+			[row.as_dict() for row in self.checks],
+			[row.as_dict() for row in self.watched],
+			[row.as_dict() for row in self.annual_rules],
+		)
 
 	def defaults_taken_over(self) -> dict[diff.Key, dict] | None:
 		"""The rows the defaults gave when Vorgaben laden or Vorgaben aktualisieren took them over last, as items;
@@ -179,19 +219,37 @@ class VATReturnMapping(Document):
 		"""Replace the rows by the defaults of the chart, reduced to the ledger accounts of the company, and note
 		the version of the defaults and the rows they gave.
 
-		A watched account keeps the level its row had; the rows kept as taken over hold the level of the
-		defaults, so that Vorgaben aktualisieren sees the level kept as the user's own. Returns the accounts of the
-		defaults that the company does not have, for the message of the form.
+		A watched account keeps the level its row had, and a rule the annual field and paragraph its row had, as
+		long as its account keeps its Kennzahl; the rows kept as taken over hold neither, so that Vorgaben
+		aktualisieren sees what was kept as the user's own. Returns the accounts of the defaults that the company does
+		not have, for the message of the form.
 		"""
 		self._require_defaults()
 		names = self._account_names()
 		levels = {row.account_number: row.level for row in self.watched if row.account_number}
+		choices = {
+			(row.account_number, row.kennzahl): {"annual_field": row.annual_field, "paragraph": row.paragraph}
+			for row in self.rules
+			if row.account_number and (row.annual_field or row.paragraph)
+		}
 		defaults = defaults_for_accounts(self.chart, LATEST_YEAR, names.keys(), levels)
-		self.set("rules", [{"account": names[row["account_number"]], **row} for row in defaults.rule_rows])
+		self.set(
+			"rules",
+			[
+				{
+					"account": names[row["account_number"]],
+					**row,
+					**choices.get((row["account_number"], row["kennzahl"]), {}),
+				}
+				for row in defaults.rule_rows
+			],
+		)
 		self.set("checks", defaults.check_rows)
 		self.set(
 			"watched", [{"account": names[row["account_number"]], **row} for row in defaults.watched_rows]
 		)
+		annual = annual_rows_for_accounts(self.chart, ANNUAL_YEAR, names.keys())
+		self.set("annual_rules", [{"account": names[row["account_number"]], **row} for row in annual])
 		self._note_defaults(names.keys())
 		return defaults.missing
 
@@ -297,9 +355,16 @@ class VATReturnMapping(Document):
 		if missing := sorted(numbers_of(items) - self._account_names().keys()):
 			frappe.throw(_(MISSING_ACCOUNTS).format(escape_html(", ".join(missing))), title=title)
 		try:
-			rows_to_mapping(self.chart, *rows_of_items(items), LATEST_YEAR)
+			rows = rows_of_items(items)
+			rows_to_mapping(self.chart, *rows, LATEST_YEAR)
+			check_annual_rows(self.chart, *rows, annual_rows_of_items(items), ANNUAL_YEAR)
 		except (MappingError, UnknownYearError) as error:
 			frappe.throw(_(INVALID_FILE_MAPPING).format(escape_html(str(error))), title=title)
+		except SplitError as error:
+			frappe.throw(
+				_(INVALID_FILE_MAPPING).format(escape_html(_(error.template).format(*error.values))),
+				title=title,
+			)
 		return found.header, items, defaults
 
 	def _file_text(self, file_url: str | None, content: str | None) -> str:
@@ -371,20 +436,33 @@ class VATReturnMapping(Document):
 		}
 
 	def _defaults_now(self) -> dict[diff.Key, dict]:
-		return default_items(self.chart, LATEST_YEAR, self._account_names().keys())
+		return self._defaults_for(self._account_names().keys())
 
 	def _note_defaults(self, numbers: Collection[str]) -> None:
 		self.defaults_version = defaults_version(self.chart)
-		self.defaults_rows = dump_items(default_items(self.chart, LATEST_YEAR, numbers))
+		self.defaults_rows = dump_items(self._defaults_for(numbers))
+
+	def _defaults_for(self, numbers: Collection[str]) -> dict[diff.Key, dict]:
+		"""The items the defaults of the chart give for these accounts: those of the Voranmeldung and the rows for
+		the annual return only."""
+		return {
+			**default_items(self.chart, LATEST_YEAR, numbers),
+			**annual_default_items(self.chart, ANNUAL_YEAR, numbers),
+		}
 
 	def _set_items(self, items: dict[diff.Key, dict]) -> None:
 		"""Write the items into the rows, each account by the name of the account of the company with its number."""
 		names = self._account_names()
-		rows = rows_of_items(items)
+		with mapping_errors():
+			rows = rows_of_items(items)
 		self.set("rules", [{"account": names.get(row["account_number"]), **row} for row in rows.rule_rows])
 		self.set("checks", rows.check_rows)
 		self.set(
 			"watched", [{"account": names.get(row["account_number"]), **row} for row in rows.watched_rows]
+		)
+		self.set(
+			"annual_rules",
+			[{"account": names.get(row["account_number"]), **row} for row in annual_rows_of_items(items)],
 		)
 
 	@frappe.whitelist(methods=["POST"])
@@ -441,8 +519,9 @@ def export_file_name(company: str, day: date) -> str:
 
 
 def numbers_of(items: ReadOnlyMapping[diff.Key, ReadOnlyMapping[str, str | None]]) -> set[str]:
-	"""Every account number the items name: those of the accounts and those of the checks."""
-	numbers = {key for kind, key in items if kind == ACCOUNT}
+	"""Every account number the items name: those of the accounts, of the rows for the annual return and of the
+	checks."""
+	numbers = {key for kind, key in items if kind != CHECK}
 	for (kind, _key), fields in items.items():
 		if kind == CHECK:
 			for part in ("base_accounts", "tax_accounts"):
@@ -466,7 +545,7 @@ def presented(difference: diff.Difference) -> dict:
 	kind, key = difference.key
 	return {
 		"id": difference_id(difference),
-		"subject": (_("Account {0}") if kind == ACCOUNT else _("Tax Check {0}")).format(key),
+		"subject": subject(kind, key),
 		"change": _(CHANGES[difference.change]),
 		"fields": ", ".join(_(FIELD_LABELS[name]) for name in difference.fields)
 		if difference.change is diff.Change.CHANGED
@@ -478,10 +557,24 @@ def presented(difference: diff.Difference) -> dict:
 	}
 
 
+def subject(kind: str, key: str) -> str:
+	"""What a difference concerns: an account, a check, the annual field of an account or a row for the annual
+	return only."""
+	if kind == ACCOUNT:
+		return _("Account {0}").format(key)
+	if kind == CHECK:
+		return _("Tax Check {0}").format(key)
+	if kind == ANNUAL_FIELD:
+		return _("Annual Return Field of Account {0}").format(key)
+	return _("Account {0} for the Annual Return Only").format(key)
+
+
 def described(kind: str, fields: dict | None) -> str:
 	"""The place of an account or the accounts of a check in a few words; empty where there is none."""
 	if fields is None:
 		return ""
+	if kind in (ANNUAL_FIELD, ANNUAL_RULE):
+		return described_for_the_annual_return(fields)
 	if kind == CHECK:
 		return _("Bases {0}; tax accounts {1}; {2}").format(
 			fields["base_accounts"], fields["tax_accounts"], _(fields["side"])
@@ -496,10 +589,24 @@ def described(kind: str, fields: dict | None) -> str:
 	return text
 
 
+def described_for_the_annual_return(fields: dict) -> str:
+	"""The field of the annual return, the side of a row for the annual return only and the paragraph."""
+	parts = []
+	if fields["annual_field"]:
+		parts.append(_("Field {0}").format(fields["annual_field"]))
+	if fields.get("side"):
+		parts.append(_(fields["side"]))
+	if fields["paragraph"]:
+		parts.append(_("paragraph {0}").format(fields["paragraph"]))
+	return ", ".join(parts)
+
+
 @contextmanager
 def mapping_errors() -> Iterator[None]:
-	"""Show a row the core refuses as the message of the mapping."""
+	"""Show a row the core refuses as the message of the mapping, a line the annual return refuses in German."""
 	try:
 		yield
-	except MappingError as error:
+	except (MappingError, UnknownYearError) as error:
 		frappe.throw(str(error), title=_("Invalid VAT Return Mapping"))
+	except SplitError as error:
+		frappe.throw(_(error.template).format(*error.values), title=_("Invalid VAT Return Mapping"))
