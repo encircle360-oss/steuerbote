@@ -19,8 +19,9 @@ are those of the manifest. The plugin commonData is
 always required (Kap. 3.1.6.1), and EricInitialisiere searches the library directory for plugins
 recursively (Kap. 4.1.1). Each Datenart has its plugin (steuerbote.eric.datenart,
 from Datenartversionmatrix.ods): the UStVA of a year checkUStVA_<Jahr>, as the year table
-steuerbote/ustva/years.py names it, the Zusammenfassende Meldung checkZMDO for every year. ERiC runs on Linux
-x86_64 with glibc 2.28 or newer (Kap. 2.4.4.5).
+steuerbote/ustva/years.py names it, the Zusammenfassende Meldung checkZMDO for every year, the Erklärungen of a year
+checkUSt_<Jahr>, checkKSt_<Jahr> and checkGewSt_<Jahr>, the E-Bilanz checkBilanz_<major>_<minor> of its taxonomy.
+ERiC runs on Linux x86_64 with glibc 2.28 or newer (Kap. 2.4.4.5).
 
 A main release in November starts with a beta, from which no real case can be sent; its major number is
 odd and the beta is its first delivery, <major>.1 (Kap. 2.3 with the graphic of the release cycle, and
@@ -49,7 +50,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
-from steuerbote.eric.datenart import ZMDO, Datenart, ustva
+from steuerbote.eric.datenart import ZMDO, Datenart, bilanz, gewst, kst, ust, ustva
 from steuerbote.eric.header import ILLUSTRATION_HERSTELLER_ID
 from steuerbote.ustva.years import plugin_year
 
@@ -519,6 +520,35 @@ def _library_versions(reported: object) -> dict[str, str]:
 def year_check(installed: tuple[Installation, ...], year: int) -> Check:
 	"""Whether a released runtime has the plugin of the UStVA of the year, noticed once a year while it fails."""
 	return plugin_check(installed, ustva(year), "plugin", f"das Jahr {year}", notice=f"year {year}")
+
+
+def annual_plugin_checks(
+	installed: tuple[Installation, ...], year: int, taxonomy: str | None
+) -> tuple[Check, ...]:
+	"""Whether a released runtime serves the annual filings of the year, each noticed once while it fails: the
+	Umsatzsteuererklärung, the Körperschaftsteuererklärung and the Gewerbesteuererklärung of the year and the E-Bilanz
+	of the fiscal year in its taxonomy, None for a fiscal year whose taxonomy steuerbote does not know."""
+	found = [
+		plugin_check(installed, kind, name, f"{subject} {year}", notice=f"annual {kind.version}")
+		for kind, name, subject in (
+			(ust(year), "ust", "die Umsatzsteuererklärung"),
+			(kst(year), "kst", "die Körperschaftsteuererklärung"),
+			(gewst(year), "gewst", "die Gewerbesteuererklärung"),
+		)
+	]
+	if taxonomy is None:
+		found.append(
+			Check(
+				"bilanz",
+				False,
+				f"Für das Wirtschaftsjahr {year} kennt Steuerbote noch keine Taxonomie der E-Bilanz.",
+			)
+		)
+	else:
+		kind = bilanz(taxonomy)
+		subject = f"die E-Bilanz des Wirtschaftsjahres {year} (Taxonomie {taxonomy})"
+		found.append(plugin_check(installed, kind, "bilanz", subject, notice=f"annual {kind.version}"))
+	return tuple(found)
 
 
 def plugin_check(

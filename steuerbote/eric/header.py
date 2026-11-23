@@ -13,6 +13,14 @@ in ndh000011.xsd and the 256 characters of DatenLieferantExternSType. The datena
 of the delivery (steuerbote.eric.datenart), and the Datenart where the NutzdatenHeader sends it: the UStVA to
 the Finanzamt in <Empfaenger id="F"> (Entwicklerhandbuch, Tabelle 8-8), ZMDO to <Empfaenger id="L">BF</Empfaenger>
 (Tabelle 8-28).
+
+ndh000011.xsd lets the NutzdatenHeader name a DatenLieferant after the Hersteller, of at most 256 characters
+(DatenLieferantInternSType). The E-Bilanz needs it: „Damit beim PDF-Druck des Übertragungsprotokolls der Name des
+Erstellers, seine Adresse und weitere Angaben korrekt gedruckt werden, muss im <NutzdatenHeader>-Block der Inhalt
+des Elements <DatenLieferant> das folgende Format erfüllen und darf die max. Länge von 256 Zeichen nicht
+überschreiten. [...] Name des Erstellers; Strasse; Hausnummer; Hausnummerzusatz; Adresszusatz; PLZ; Ort; Land;
+Telefon; E-Mail-Adresse“ (Entwicklerhandbuch, Kap. 9.7.1). nutzdaten_datenlieferant writes the ten parts as the
+example there does, separated by a semicolon and a blank; the blanks are printed as they are.
 """
 
 import re
@@ -26,6 +34,12 @@ ILLUSTRATION_HERSTELLER_ID = "74931"
 """The former test Hersteller-ID: ERiC rejects it with 610301202 (Entwicklerhandbuch, Kap. 6.5.3, 10.1.1)."""
 
 HEADER_CODE = "SB-HEADER"
+NUTZDATEN_DATENLIEFERANT_FIELD = "NutzdatenHeader/DatenLieferant"
+DATENLIEFERANT_LENGTH = 256
+DATENLIEFERANT_PARTS = 10
+"""Name des Erstellers, Strasse, Hausnummer, Hausnummerzusatz, Adresszusatz, PLZ, Ort, Land, Telefon and
+E-Mail-Adresse (Entwicklerhandbuch, Kap. 9.7.1)."""
+DATENLIEFERANT_SEPARATOR = "; "
 
 _DECLARATION = re.compile(r"<\?xml[^>]*\?>")
 
@@ -45,6 +59,9 @@ class EnvelopeHeader:
 	"""Such as UStVA_2026 or ZMDO (Datenartversionmatrix.ods), which names the Datenart of the delivery."""
 	testmerker: str | None
 	nutzdaten_ticket: str
+	nutzdaten_datenlieferant: str | None = None
+	"""The DatenLieferant of the NutzdatenHeader, which the E-Bilanz needs in the ten parts of
+	nutzdaten_datenlieferant; None writes none."""
 
 
 def datenteil(nutzdaten_xml: str, header: EnvelopeHeader) -> str:
@@ -55,6 +72,11 @@ def datenteil(nutzdaten_xml: str, header: EnvelopeHeader) -> str:
 	"""
 	nutzdaten = without_declaration(nutzdaten_xml)
 	kind = of_version(header.datenart_version)
+	datenlieferant = (
+		""
+		if header.nutzdaten_datenlieferant is None
+		else f"<DatenLieferant>{escape(header.nutzdaten_datenlieferant)}</DatenLieferant>"
+	)
 	return (
 		"<DatenTeil><Nutzdatenblock>"
 		'<NutzdatenHeader version="11">'
@@ -62,10 +84,41 @@ def datenteil(nutzdaten_xml: str, header: EnvelopeHeader) -> str:
 		f'<Empfaenger id="{kind.recipient_id}">{escape(header.empfaenger)}</Empfaenger>'
 		f"<Hersteller><ProduktName>{escape(header.produkt_name)}</ProduktName>"
 		f"<ProduktVersion>{escape(header.produkt_version)}</ProduktVersion></Hersteller>"
+		f"{datenlieferant}"
 		"</NutzdatenHeader>"
 		f"<Nutzdaten>{nutzdaten}</Nutzdaten>"
 		"</Nutzdatenblock></DatenTeil>"
 	)
+
+
+def nutzdaten_datenlieferant(
+	*,
+	name: str,
+	street: str = "",
+	house_number: str = "",
+	house_number_suffix: str = "",
+	address_supplement: str = "",
+	postal_code: str = "",
+	city: str = "",
+	country: str = "",
+	phone: str = "",
+	email: str = "",
+) -> str:
+	"""The DatenLieferant of the NutzdatenHeader of an E-Bilanz: its ten parts in their order, each without blanks at
+	either end; a part that is missing keeps its place. problems refuses parts that do not come out as ten."""
+	parts = (
+		name,
+		street,
+		house_number,
+		house_number_suffix,
+		address_supplement,
+		postal_code,
+		city,
+		country,
+		phone,
+		email,
+	)
+	return DATENLIEFERANT_SEPARATOR.join(part.strip() for part in parts)
 
 
 def without_declaration(xml: str) -> str:
@@ -112,6 +165,9 @@ def problems(
 		recipient = _recipient_problem(kind, header.empfaenger)
 		if recipient:
 			refuse("Empfaenger", recipient)
+		datenlieferant = _datenlieferant_problem(kind, header.nutzdaten_datenlieferant)
+		if datenlieferant:
+			refuse(NUTZDATEN_DATENLIEFERANT_FIELD, datenlieferant)
 	if not 1 <= len(header.nutzdaten_ticket) <= 32:
 		refuse("NutzdatenTicket", "Das NutzdatenTicket hat 1 bis 32 Zeichen.")
 	if not 1 <= len(header.produkt_name) <= 50 or "elster" in header.produkt_name.casefold():
@@ -130,6 +186,22 @@ def _datenart(datenart_version: str) -> Datenart | None:
 		return of_version(datenart_version)
 	except ValueError:
 		return None
+
+
+def _datenlieferant_problem(kind: Datenart, datenlieferant: str | None) -> str | None:
+	if datenlieferant is not None and len(datenlieferant) > DATENLIEFERANT_LENGTH:
+		return "Der Datenlieferant im NutzdatenHeader hat höchstens 256 Zeichen."
+	if not kind.nutzdaten_datenlieferant:
+		return None
+	parts = (datenlieferant or "").split(";")
+	if len(parts) != DATENLIEFERANT_PARTS or not parts[0].strip():
+		return (
+			f"Die Datenart {kind.name} braucht im NutzdatenHeader den Datenlieferanten aus zehn Teilen, durch "
+			"Semikolon getrennt: Name des Erstellers; Straße; Hausnummer; Hausnummerzusatz; Adresszusatz; PLZ; Ort; "
+			"Land; Telefon; E-Mail-Adresse, mindestens mit dem Namen und ohne Semikolon in einer Angabe "
+			"(ERiC-Entwicklerhandbuch, Kap. 9.7.1)."
+		)
+	return None
 
 
 def _recipient_problem(kind: Datenart, empfaenger: str) -> str | None:

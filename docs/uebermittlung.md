@@ -85,6 +85,7 @@ Die ERiC-Einstellungen gelten für die ganze Installation, nicht je Firma, denn 
 | Produktname | Vorgabe „steuerbote“, höchstens 50 Zeichen. Der Name darf das Wort ELSTER nicht enthalten (§ 12 der ERiC-Nutzungsbedingungen). |
 | Produktversion | Version von Steuerbote, wird gesetzt |
 | Datenlieferant | wer die Daten liefert, für den Kopf der Lieferung, höchstens 256 Zeichen: Firma; Ansprechpartner; Telefon; E-Mail; Ort; PLZ; Straße; Land. Zeilenumbrüche werden zu Semikolons. |
+| Copyrightvermerk | Name und Sitz des Herstellers der Software, etwa „(c) 2026 Beispiel GmbH, München“, höchstens 50 Zeichen, ohne Vorgabe. Jede Erklärung, USt, KSt und GewSt, trägt ihn in ihrem Vorsatz; ohne ihn läuft keine über ERiC, siehe [ERiC](eric.md#erklärungen-und-e-bilanz). |
 | ERiC-Archiv | nur zur Anzeige: der absolute Pfad des Archivs für Linux x86_64 auf dem Server, den der Betreiber als `steuerbote_eric_archive` in die `common_site_config.json` der Bench einträgt |
 | SHA-256 des Archivs | nur zur Anzeige: die Prüfsumme des Archivs, 64 hexadezimale Stellen, aus `steuerbote_eric_archive_sha256` derselben Datei |
 | Installierte Version, Verzeichnis der Bibliotheken, Letzte Prüfung | setzt die Installation |
@@ -105,7 +106,7 @@ Die Laufzeitumgebungen liegen außerhalb jeder Site im Verzeichnis `sites/eric` 
 
 ### Laufzeitumgebung prüfen
 
-„Laufzeitumgebung prüfen“ zeigt dem System Manager die Statusprüfungen von ERiC: Plattform, eingerichtete Laufzeitumgebung, ob ihre Bibliotheken unverändert sind, ob eine freigegebene Laufzeitumgebung das Plugin des laufenden Jahres für die Voranmeldung und das Plugin `checkZMDO` für die Zusammenfassende Meldung hat, die Hersteller-ID, ob jede eingerichtete Laufzeitumgebung die Mindestversionsliste von ELSTER erreicht und ab Mitte November, ob eine das Plugin des kommenden Jahres hat, siehe [ERiC](eric.md#statusprüfung) und [Betrieb und Updates](eric.md#betrieb-und-updates). Die Prüfung ändert nichts.
+„Laufzeitumgebung prüfen“ zeigt dem System Manager die Statusprüfungen von ERiC: Plattform, eingerichtete Laufzeitumgebung, ob ihre Bibliotheken unverändert sind, ob eine freigegebene Laufzeitumgebung das Plugin des laufenden Jahres für die Voranmeldung und das Plugin `checkZMDO` für die Zusammenfassende Meldung hat, die Hersteller-ID, ob jede eingerichtete Laufzeitumgebung die Mindestversionsliste von ELSTER erreicht ab Mitte November, ob eine das Plugin des kommenden Jahres hat, und vom 1. Januar 2027 an, ob eine die Plugins der Jahresmeldungen des Vorjahres hat, siehe [ERiC](eric.md#statusprüfung) und [Betrieb und Updates](eric.md#betrieb-und-updates). Die Prüfung ändert nichts.
 
 ## Ablauf eines Vorgangs
 

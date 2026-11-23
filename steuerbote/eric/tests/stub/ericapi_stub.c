@@ -26,6 +26,7 @@ enum {
 	GLOBAL_FEHLERMELDUNG_NICHT_VORHANDEN = 610001007,
 	GLOBAL_VERSCHLUESSELUNGS_PARAMETER_NICHT_ERLAUBT = 610001027,
 	GLOBAL_DATENARTVERSION_UNBEKANNT = 610001042,
+	GLOBAL_UNGUELTIGE_FLAG_KOMBINATION = 610001218,
 	GLOBAL_NICHT_INITIALISIERT = 610001081,
 	GLOBAL_MEHRFACHE_INITIALISIERUNG = 610001082,
 	GLOBAL_VERSCHLUESSELUNGS_PARAMETER_NICHT_ANGEGEBEN = 610001206,
@@ -654,17 +655,60 @@ static int check_combination(uint32_t flags, const struct print_parameters *prin
 	return GLOBAL_UNGUELTIGER_PARAMETER;
 }
 
-/* The plugin of a datenartVersion, as the Datenartversionmatrix names it: checkUStVA_<Jahr> for UStVA_<Jahr> and
- * checkZMDO for ZMDO. Returns 0 for any other datenartVersion. */
+/* The year of a datenartVersion <prefix><Jahr>, or NULL for any other one. */
+static const char *year_of(const char *datenartVersion, const char *prefix)
+{
+	size_t length = strlen(prefix);
+	if (strncmp(datenartVersion, prefix, length) != 0)
+		return NULL;
+	const char *year = datenartVersion + length;
+	return strlen(year) == 4 && is_digits(year) ? year : NULL;
+}
+
+/* True for Bilanz_<major>.<minor>, the datenartVersion of an HGB-Taxonomie, with major and minor copied out. */
+static int taxonomy_of(const char *datenartVersion, char *major, char *minor, size_t size)
+{
+	if (strncmp(datenartVersion, "Bilanz_", 7) != 0)
+		return 0;
+	const char *taxonomy = datenartVersion + 7;
+	const char *dot = strchr(taxonomy, '.');
+	if (!dot || (size_t)(dot - taxonomy) >= size || strlen(dot + 1) >= size)
+		return 0;
+	memcpy(major, taxonomy, (size_t)(dot - taxonomy));
+	major[dot - taxonomy] = '\0';
+	snprintf(minor, size, "%s", dot + 1);
+	return is_digits(major) && is_digits(minor);
+}
+
+/* The plugin of a datenartVersion, as the Datenartversionmatrix names it: checkUStVA_<Jahr> for UStVA_<Jahr>,
+ * checkZMDO for ZMDO, checkUSt_<Jahr>, checkKSt_<Jahr> and checkGewSt_<Jahr> for USt_<Jahr>, KSt_30_<Jahr> and
+ * GewSt_<Jahr>, checkBilanz_<major>_<minor> for Bilanz_<major>.<minor>. Returns 0 for any other datenartVersion. */
 static int plugin_of(const char *datenartVersion, char *library, size_t size)
 {
+	static const struct {
+		const char *prefix;
+		const char *plugin;
+	} yearly[] = {
+		{"UStVA_", "checkUStVA_"},
+		{"USt_", "checkUSt_"},
+		{"KSt_30_", "checkKSt_"},
+		{"GewSt_", "checkGewSt_"},
+	};
+	char major[8], minor[8];
 	if (strcmp(datenartVersion, "ZMDO") == 0) {
 		snprintf(library, size, "libcheckZMDO.so");
 		return 1;
 	}
-	if (strncmp(datenartVersion, "UStVA_", 6) != 0 || strlen(datenartVersion) != 10 || !is_digits(datenartVersion + 6))
+	for (size_t i = 0; i < sizeof yearly / sizeof *yearly; i++) {
+		const char *year = year_of(datenartVersion, yearly[i].prefix);
+		if (year) {
+			snprintf(library, size, "lib%s%s.so", yearly[i].plugin, year);
+			return 1;
+		}
+	}
+	if (!taxonomy_of(datenartVersion, major, minor, sizeof major))
 		return 0;
-	snprintf(library, size, "libcheckUStVA_%s.so", datenartVersion + 6);
+	snprintf(library, size, "libcheckBilanz_%s_%s.so", major, minor);
 	return 1;
 }
 
@@ -742,6 +786,10 @@ EXPORT int EricBearbeiteVorgang(const char *datenpuffer, const char *datenartVer
 	int combination = check_combination(bearbeitungsFlags, druckParameter, cryptoParameter);
 	if (combination != OK)
 		return combination;
+	/* The Datenart Bilanz takes no Hinweisprüfung without Validiere (Entwicklerhandbuch, Kap. 9.7.1). */
+	if (strncmp(datenartVersion, "Bilanz_", 7) == 0 && (bearbeitungsFlags & PRUEFE_HINWEISE) &&
+	    !(bearbeitungsFlags & VALIDIERE))
+		return GLOBAL_UNGUELTIGE_FLAG_KOMBINATION;
 	if (cryptoParameter) {
 		if (!is_open_handle(cryptoParameter->zertifikatHandle))
 			return CRYPT_E_INVALID_HANDLE;

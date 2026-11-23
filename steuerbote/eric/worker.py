@@ -34,10 +34,16 @@ thread of the job that waits for it; a parent that ended before the signal was s
 the worker, which then ends at once.
 
 Prüfen is EBV-9 of the handbook (Tabelle 6-2): Hinweisprüfung, validation and a preview PDF, without
-encryption parameters. Testsenden and Senden are EBV-6 with send-Auth, the only way to send a UStVA
-(Tabelle 8-8) and a ZMDO (Tabelle 8-28): validation, sending and the Übertragungsprotokoll, signed with the
-certificate („Daten werden signiert versendet.“, Tabelle 5-2). The Verfahren, the Datenart and the Vorgang of
-the TransferHeader and the datenartVersion are those of the Datenart the header names (steuerbote.eric.datenart).
+encryption parameters. A Datenart whose data ERiC prints no copy of, the Bilanz, is checked with EBV-8 instead,
+Hinweisprüfung and validation without a preview: „Der Anwendungsfall EBV-7 („Hinweisprüfung“) wird von der
+Datenart Bilanz nicht unterstützt, stattdessen ist der Anwendungsfall [...] („Hinweisprüfung und Validiere“) zu
+verwenden“, and „Für Bilanz-Einreichungen wird keine Druckfassung des Datensatzes, sondern lediglich ein
+Übertragungsprotokoll erstellt“ (Kap. 9.7.1). Testsenden and Senden are EBV-6 with send-Auth, the only way to send a
+UStVA (Tabelle 8-8), a ZMDO (Tabelle 8-28), an Erklärung from VZ 2017 (Tabellen 7-9, 7-13, 7-15) and a Bilanz
+(Tabelle 9-20): validation, sending and the PDF ERiC prints after the transfer, the Übertragungsprotokoll or, for an
+Erklärung, the Freizeichnungsdokument (Kap. 5.1.4.3 and 5.1.4.4), signed with the certificate („Daten werden
+signiert versendet.“, Tabelle 5-2). The Verfahren, the Datenart and the Vorgang of the TransferHeader and the
+datenartVersion are those of the Datenart the header names (steuerbote.eric.datenart).
 ERiC 44 talks to one server and gives the Transferticket in its answer only (ERiC-Releasenotes 44.3.6.0,
 Kap. 5.2.7), read with EricGetErrormessagesFromXMLAnswer (Kap. 6.2.4).
 
@@ -82,7 +88,7 @@ from steuerbote.eric.api import (
 	EricLibrary,
 	ProcessResult,
 )
-from steuerbote.eric.datenart import of_version
+from steuerbote.eric.datenart import Datenart, of_version
 from steuerbote.eric.header import EnvelopeHeader, datenteil, problems
 from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.result import (
@@ -113,6 +119,7 @@ SETTINGS = (
 """Timeouts in seconds, by default 30 and unlimited, and the messages per call, by default 20 (Tabelle 4-1)."""
 
 VALIDATE_FLAGS = PRUEFE_HINWEISE | VALIDIERE | DRUCKE
+VALIDATE_NO_PREVIEW_FLAGS = PRUEFE_HINWEISE | VALIDIERE
 SEND_FLAGS = VALIDIERE | SENDE | DRUCKE
 BEFORE_TRANSFER = frozenset(
 	{
@@ -192,6 +199,8 @@ BEFORE_TRANSFER = frozenset(
 
 ERIC_CODE = "SB-ERIC"
 TICKET_CODE = "SB-TICKET"
+OPTIONAL_HEADER_FIELDS = frozenset({"testmerker", "nutzdaten_datenlieferant"})
+"""The fields of EnvelopeHeader that are text or null; every other one is text."""
 
 
 class RequestError(ValueError):
@@ -351,7 +360,7 @@ def process(request: Request) -> TransmissionResult:
 			answer = library.process(
 				xml,
 				header.datenart_version,
-				SEND_FLAGS if operation.sends else VALIDATE_FLAGS,
+				flags(operation, kind),
 				preview=not operation.sends,
 				pdf_path=request.work_dir / "protocol.pdf",
 				certificate=certificate,
@@ -366,6 +375,13 @@ def process(request: Request) -> TransmissionResult:
 				library.close_certificate(certificate)
 		with suppress(EricError):
 			library.finish()
+
+
+def flags(operation: Operation, kind: Datenart) -> int:
+	"""The bearbeitungsFlags of EricBearbeiteVorgang: EBV-6 to send, EBV-9 or, without a preview, EBV-8 to check."""
+	if operation.sends:
+		return SEND_FLAGS
+	return VALIDATE_FLAGS if kind.preview_on_check else VALIDATE_NO_PREVIEW_FLAGS
 
 
 def versions(runtime: RuntimeInfo) -> dict[str, object]:
@@ -505,7 +521,7 @@ def _header(data: object) -> EnvelopeHeader:
 	values = {}
 	for field in fields(EnvelopeHeader):
 		value = data.get(field.name)
-		if not isinstance(value, str) and not (field.name == "testmerker" and value is None):
+		if not isinstance(value, str) and not (field.name in OPTIONAL_HEADER_FIELDS and value is None):
 			raise RequestError(f"header.{field.name}")
 		values[field.name] = value
 	return EnvelopeHeader(**values)

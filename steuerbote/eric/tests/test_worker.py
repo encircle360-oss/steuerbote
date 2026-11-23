@@ -16,6 +16,8 @@ from unittest import TestCase, mock
 
 from steuerbote.elster.tests import zm_examples
 from steuerbote.eric import worker
+from steuerbote.eric.api import PRUEFE_HINWEISE, EricLibrary
+from steuerbote.eric.datenart import Datenart, bilanz, gewst, kst, ust
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Operation, Outcome, TransmissionResult
@@ -141,6 +143,15 @@ class ValidateTest(WorkerTestCase):
 		self.assertIn(f"<Nutzdaten>{nutzdaten()}</Nutzdaten>", self.stub.recorded("datenpuffer"))
 		self.assertIn('<Empfaenger id="F">9198</Empfaenger>', self.stub.recorded("datenpuffer"))
 		self.assertEqual(self.stub.recorded("datenart_version"), "UStVA_2026")
+
+	def test_passes_the_datenlieferant_of_the_nutzdaten_header_to_eric(self):
+		datenlieferant = "Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; Deutschland; ; "
+		header = replace(HEADER, nutzdaten_datenlieferant=datenlieferant)
+		self.run_operation(Operation.VALIDATE, header=asdict(header))
+		self.assertIn(
+			f"</Hersteller><DatenLieferant>{datenlieferant}</DatenLieferant></NutzdatenHeader>",
+			self.stub.recorded("datenpuffer"),
+		)
 
 	def test_initialises_with_the_runtime_and_its_log_directory(self):
 		self.run_operation(Operation.VALIDATE)
@@ -369,6 +380,136 @@ class ZmdoTest(WorkerTestCase):
 		self.assertEqual(result.messages[0].code, "610001042")
 
 
+# Invented Nutzdaten of the shape ERiC takes: an Erklärung with its Vorsatz, an E-Bilanz with stichtag and instance.
+ERKLAERUNG = (
+	'<{root} xmlns="{namespace}" version="{version}"><Vorsatz><Unterfallart>{unterfallart}</Unterfallart>'
+	"<Vorgang>01</Vorgang><StNr>9198011310010</StNr><Zeitraum>{version}</Zeitraum></Vorsatz>{marker}</{root}>"
+)
+EBILANZ = (
+	'<ebilanz:EBilanz xmlns:ebilanz="http://rzf.fin-nrw.de/RMS/EBilanz/2016/XMLSchema" version="2">'
+	"<ebilanz:stichtag>20261231</ebilanz:stichtag>"
+	'<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance">{marker}</xbrli:xbrl></ebilanz:EBilanz>'
+)
+ERSTELLER = "Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; Deutschland; 089 1234567; info@example.org"
+
+
+class AnnualTestCase(WorkerTestCase):
+	"""The worker with the plugins of the annual Datenarten in its runtime."""
+
+	KINDS = (ust(2026), kst(2025), gewst(2025), bilanz("6.9"))
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		for kind in cls.KINDS:
+			(cls.lib_dir / "plugins2" / kind.plugin_library).write_bytes(b"")
+
+	def run_kind(self, kind: Datenart, operation: Operation, marker: str = "") -> TransmissionResult:
+		comment = f"<!-- {marker} -->" if marker else ""
+		if kind.name == "Bilanz":
+			data = EBILANZ.format(marker=comment)
+			header = replace(HEADER, datenart_version=kind.version, nutzdaten_datenlieferant=ERSTELLER)
+		else:
+			data = ERKLAERUNG.format(
+				root=kind.root,
+				namespace=kind.namespace,
+				version=kind.root_version,
+				unterfallart=kind.unterfallart,
+				marker=comment,
+			)
+			header = replace(HEADER, datenart_version=kind.version)
+		if operation is Operation.TEST_SEND:
+			header = replace(header, testmerker=TESTMERKER)
+		return self.run_operation(operation, header=asdict(header), nutzdaten=data)
+
+
+class ErklaerungTest(AnnualTestCase):
+	"""Umsatzsteuererklärung, Körperschaftsteuererklärung and Gewerbesteuererklärung go as the UStVA does, with the
+	parameters of their Datenart of ElsterErklaerung (ERiC-Entwicklerhandbuch 44.3.6.0, Tabellen 7-9, 7-13 and 7-15):
+	Prüfen with a preview (EBV-9), Senden with the Freizeichnungsdokument that ERiC prints after an authenticated send
+	(Kap. 5.1.4.3)."""
+
+	def test_lets_eric_write_the_transfer_header_of_each_erklaerung_and_checks_with_a_preview(self):
+		for kind in self.KINDS[:3]:
+			with self.subTest(datenart=kind.version):
+				self.stub.reset()
+				result = self.run_kind(kind, Operation.VALIDATE)
+				self.assertIs(result.outcome, Outcome.VALID)
+				self.assertEqual(
+					[self.stub.recorded(f"th_{name}") for name in ("verfahren", "datenart", "vorgang")],
+					["ElsterErklaerung", kind.name, "send-Auth"],
+				)
+				self.assertEqual(self.stub.recorded("datenart_version"), kind.version)
+				self.assertEqual((self.stub.recorded("flags"), self.stub.recorded("vorschau")), ("162", "1"))
+				self.assertEqual(len(result.protocol_pdf), self.stub.pdf_size)
+				self.assertIn('<Empfaenger id="F">9198</Empfaenger>', self.stub.recorded("datenpuffer"))
+
+	def test_a_send_of_an_erklaerung_keeps_the_freizeichnungsdokument_eric_prints(self):
+		for kind in self.KINDS[:3]:
+			with self.subTest(datenart=kind.version):
+				self.stub.reset()
+				result = self.run_kind(kind, Operation.SEND)
+				self.assertIs(result.outcome, Outcome.ACCEPTED)
+				self.assertEqual((self.stub.recorded("flags"), self.stub.recorded("vorschau")), ("38", "0"))
+				self.assertEqual(len(result.protocol_pdf), self.stub.pdf_size)
+
+	def test_without_the_plugin_of_the_year_eric_knows_no_erklaerung(self):
+		kind = gewst(2026)
+		result = self.run_kind(kind, Operation.VALIDATE)
+		self.assertIs(result.outcome, Outcome.FAILED)
+		self.assertEqual(result.messages[0].code, "610001042")
+
+
+class BilanzTest(AnnualTestCase):
+	"""The E-Bilanz: ERiC prints no copy of its data, only an Übertragungsprotokoll, and Prüfen is EBV-8, Hinweisprüfung
+	and Validiere without a preview, since EBV-7 alone is refused (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 9.7.1)."""
+
+	def test_checks_with_hints_and_validation_but_without_a_preview(self):
+		result = self.run_kind(bilanz("6.9"), Operation.VALIDATE)
+		self.assertIs(result.outcome, Outcome.VALID)
+		self.assertEqual(self.stub.recorded("flags"), str(worker.VALIDATE_NO_PREVIEW_FLAGS))
+		self.assertEqual(worker.VALIDATE_NO_PREVIEW_FLAGS, 130)
+		self.assertEqual(self.stub.recorded("print_version"), "-1")
+		self.assertIsNone(result.protocol_pdf)
+		self.assertEqual(
+			[self.stub.recorded(f"th_{name}") for name in ("verfahren", "datenart", "vorgang")],
+			["ElsterBilanz", "Bilanz", "send-Auth"],
+		)
+		self.assertEqual(self.stub.recorded("datenart_version"), "Bilanz_6.9")
+
+	def test_hints_keep_the_bilanz_valid_without_a_preview(self):
+		result = self.run_kind(bilanz("6.9"), Operation.VALIDATE, "STUB-HINWEIS")
+		self.assertIs(result.outcome, Outcome.VALID)
+		self.assertEqual(self.messages(result), [("610001003", HINT, None), ("11085155", HINT, "Kz26")])
+		self.assertIsNone(result.protocol_pdf)
+
+	def test_a_send_keeps_the_uebertragungsprotokoll(self):
+		result = self.run_kind(bilanz("6.9"), Operation.TEST_SEND)
+		self.assertIs(result.outcome, Outcome.ACCEPTED)
+		self.assertEqual((self.stub.recorded("flags"), self.stub.recorded("vorschau")), ("38", "0"))
+		self.assertEqual(len(result.protocol_pdf), self.stub.pdf_size)
+		self.assertIn(f"<DatenLieferant>{ERSTELLER}</DatenLieferant>", self.stub.recorded("datenpuffer"))
+
+	def test_a_bilanz_without_the_datenlieferant_of_its_nutzdaten_header_never_reaches_eric(self):
+		header = replace(HEADER, datenart_version="Bilanz_6.9")
+		result = self.run_operation(
+			Operation.VALIDATE, header=asdict(header), nutzdaten=EBILANZ.format(marker="")
+		)
+		self.assertIs(result.outcome, Outcome.FAILED)
+		self.assertEqual(self.messages(result), [("SB-HEADER", ERROR, "NutzdatenHeader/DatenLieferant")])
+		self.assertIsNone(self.stub.recorded("datenpuffer"))
+
+	def test_the_stub_refuses_the_hinweispruefung_of_a_bilanz_without_validiere_as_eric_does(self):
+		library = EricLibrary(self.lib_dir / "libericapi.so")
+		library.initialise(self.lib_dir, self.directory / "log" / "run-ebv7")
+		try:
+			xml = '<TransferHeader version="11"><Nutzdaten></Nutzdaten>'
+			self.assertEqual(library.process(xml, "Bilanz_6.9", PRUEFE_HINWEISE).code, 610001218)
+			self.assertEqual(library.process(xml, "UStVA_2026", PRUEFE_HINWEISE).code, 0)
+		finally:
+			library.finish()
+
+
 class FailureTest(WorkerTestCase):
 	def test_a_missing_library_fails_before_anything_is_sent(self):
 		runtime = replace(self.runtime, lib_dir=self.directory / "nowhere")
@@ -456,6 +597,13 @@ class ProtocolTest(WorkerTestCase):
 				self.assertEqual(stdout, b"")
 				self.assertTrue(stderr.startswith("steuerbote.eric.worker: invalid request:"))
 				self.assertNotIn(PIN, stderr)
+
+	def test_refuses_a_datenlieferant_of_the_nutzdaten_header_that_is_no_text(self):
+		request = self.request(Operation.VALIDATE)
+		request["header"] = asdict(HEADER) | {"nutzdaten_datenlieferant": 4711}
+		code, stdout, stderr = self.serve(request)
+		self.assertEqual((code, stdout), (worker.EXIT_INVALID_REQUEST, b""))
+		self.assertEqual(stderr, "steuerbote.eric.worker: invalid request: header.nutzdaten_datenlieferant\n")
 
 	def test_names_only_the_type_of_an_unexpected_error(self):
 		with mock.patch.object(worker, "process", side_effect=ValueError(PIN)):

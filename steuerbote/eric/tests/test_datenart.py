@@ -3,22 +3,35 @@ schemas, its Datenartversionmatrix and the Jahresdokumentation ZMDO, read as ste
 finds them."""
 
 from pathlib import Path
+from types import MappingProxyType
 from unittest import TestCase
 
 from lxml import etree
 
 from steuerbote.elster.tests import eric_schema
-from steuerbote.eric.datenart import ZMDO, Datenart, of_version, ustva
+from steuerbote.eric.datenart import (
+	FREIZEICHNUNGSDOKUMENT,
+	UEBERTRAGUNGSPROTOKOLL,
+	ZMDO,
+	Datenart,
+	bilanz,
+	gewst,
+	kst,
+	of_version,
+	ust,
+	ustva,
+)
 from steuerbote.ustva import years
 
 ELSTER = "{http://www.elster.de/elsterxml/schema/v11}"
 XS = "{http://www.w3.org/2001/XMLSchema}"
 DOC = Path(__file__).resolve().parents[3] / "docs" / "zm.md"
+ERIC_DOC = DOC.with_name("eric.md")
 
 
-def doc_table(heading: str) -> list[list[str]]:
-	"""The cells of each row of the table under the heading of docs/zm.md, without its head."""
-	text = DOC.read_text(encoding="utf-8")
+def doc_table(heading: str, doc: Path = DOC) -> list[list[str]]:
+	"""The cells of each row of the table under the heading of docs/zm.md or another page, without its head."""
+	text = doc.read_text(encoding="utf-8")
 	section = text[text.index(f"\n{heading}\n") + len(heading) + 2 :]
 	section = section[: section.find("\n#")]
 	lines = [line for line in section.splitlines() if line.startswith("|")]
@@ -98,6 +111,323 @@ class DescriptionTest(TestCase):
 		):
 			with self.subTest(version=version), self.assertRaises(ValueError):
 				of_version(version)
+
+
+class ErklaerungTest(TestCase):
+	"""The Umsatzsteuererklärung, the Körperschaftsteuererklärung and the Gewerbesteuererklärung: Datenarten of the
+	Verfahren ElsterErklaerung for the Finanzamt, send-Auth only from VZ 2017 (ERiC-Entwicklerhandbuch 44.3.6.0,
+	Tabellen 7-9, 7-13 and 7-15), each with its Unterfallart (Tabelle 2-12) and a Freizeichnungsdokument after an
+	authenticated send (Kap. 5.1.4.3)."""
+
+	def test_the_ust_is_an_elster_erklaerung_of_its_year_for_the_finanzamt(self):
+		self.assertEqual(
+			ust(2026),
+			Datenart(
+				name="USt",
+				version="USt_2026",
+				verfahren="ElsterErklaerung",
+				vorgang="send-Auth",
+				recipient_id="F",
+				recipient=None,
+				plugin="checkUSt_2026",
+				schema="Datenarten/ElsterErklaerung/USt/Schema/2026/E50-2026.xsd",
+				namespace="http://finkonsens.de/elster/elstererklaerung/ust/e50/v2026",
+				root="E50",
+				root_version="2026",
+				year=2026,
+				printout="Freizeichnungsdokument",
+				preview_on_check=True,
+				nutzdaten_datenlieferant=False,
+				unterfallart="50",
+				taxonomy=None,
+			),
+		)
+
+	def test_the_kst_is_the_datenart_version_of_unterfallart_30(self):
+		"""Datenartversionmatrix.ods: KSt_30_<Jahr> with checkKSt_<Jahr>, „UFA = 30“."""
+		self.assertEqual(
+			kst(2026),
+			Datenart(
+				name="KSt",
+				version="KSt_30_2026",
+				verfahren="ElsterErklaerung",
+				vorgang="send-Auth",
+				recipient_id="F",
+				recipient=None,
+				plugin="checkKSt_2026",
+				schema="Datenarten/ElsterErklaerung/KSt/Schema/2026/E30-2026.xsd",
+				namespace="http://finkonsens.de/elster/elstererklaerung/kst/e30/v2026",
+				root="E30",
+				root_version="2026",
+				year=2026,
+				printout="Freizeichnungsdokument",
+				preview_on_check=True,
+				nutzdaten_datenlieferant=False,
+				unterfallart="30",
+				taxonomy=None,
+			),
+		)
+
+	def test_the_gewst_is_an_elster_erklaerung_of_its_year_for_the_finanzamt(self):
+		self.assertEqual(
+			gewst(2026),
+			Datenart(
+				name="GewSt",
+				version="GewSt_2026",
+				verfahren="ElsterErklaerung",
+				vorgang="send-Auth",
+				recipient_id="F",
+				recipient=None,
+				plugin="checkGewSt_2026",
+				schema="Datenarten/ElsterErklaerung/GewSt/Schema/2026/E20-2026.xsd",
+				namespace="http://finkonsens.de/elster/elstererklaerung/gewst/e20/v2026",
+				root="E20",
+				root_version="2026",
+				year=2026,
+				printout="Freizeichnungsdokument",
+				preview_on_check=True,
+				nutzdaten_datenlieferant=False,
+				unterfallart="20",
+				taxonomy=None,
+			),
+		)
+
+	def test_the_ustva_and_the_zm_keep_their_uebertragungsprotokoll_and_their_preview(self):
+		"""Kap. 5.1.4.4: the other Datenarten get an Übertragungsprotokoll; neither has a Vorsatz or a taxonomy."""
+		for kind in (ustva(2026), ZMDO):
+			with self.subTest(datenart=kind.version):
+				self.assertEqual(
+					(
+						kind.printout,
+						kind.preview_on_check,
+						kind.nutzdaten_datenlieferant,
+						kind.unterfallart,
+						kind.taxonomy,
+					),
+					(UEBERTRAGUNGSPROTOKOLL, True, False, None, None),
+				)
+		self.assertEqual(
+			(UEBERTRAGUNGSPROTOKOLL, FREIZEICHNUNGSDOKUMENT),
+			("Übertragungsprotokoll", "Freizeichnungsdokument"),
+		)
+
+	def test_names_the_plugin_libraries_under_linux(self):
+		self.assertEqual(
+			[kind.plugin_library for kind in (ust(2026), kst(2025), gewst(2025))],
+			["libcheckUSt_2026.so", "libcheckKSt_2025.so", "libcheckGewSt_2025.so"],
+		)
+
+	def test_finds_the_erklaerung_of_a_datenart_version(self):
+		self.assertEqual(of_version("USt_2026"), ust(2026))
+		self.assertEqual(of_version("KSt_30_2025"), kst(2025))
+		self.assertEqual(of_version("GewSt_2027"), gewst(2027))
+
+	def test_refuses_other_datenart_versions_of_the_erklaerungen(self):
+		for version in (
+			"KSt_2026",
+			"KSt_32_2016",
+			"KSt_33_2016",
+			"KStZ_2025",
+			"GewStZ_2025",
+			"USt_26",
+			"UST_2026",
+			"USt-2026",
+			"GewSt_2026 ",
+		):
+			with self.subTest(version=version), self.assertRaises(ValueError):
+				of_version(version)
+
+
+class ErklaerungDocumentationTest(TestCase):
+	"""The Datenarten of the Erklärungen against the ERiC documentation 44.3.6.0, which has KSt and GewSt up to 2025."""
+
+	KINDS = (ust(2026), kst(2025), gewst(2025))
+	EXAMPLES = MappingProxyType({"USt": "USt_2026.xml", "KSt": "kst_2025_ok.xml", "GewSt": "GewSt_2025.xml"})
+
+	def jahresdokumentation(self, kind: Datenart) -> Path:
+		return (
+			eric_schema.erklaerung_directory(kind.name)
+			/ "Jahresdokumentation"
+			/ f"Jahresdokumentation_{kind.root}_{kind.year}.ods"
+		)
+
+	def test_the_examples_go_as_the_datenarten_describe_them(self):
+		for kind in self.KINDS:
+			with self.subTest(datenart=kind.version):
+				path = eric_schema.erklaerung_directory(kind.name) / "Beispiele" / self.EXAMPLES[kind.name]
+				root = etree.parse(str(path)).getroot()
+				header = root.find(f"{ELSTER}TransferHeader")
+				self.assertEqual(
+					[header.findtext(ELSTER + name) for name in ("Verfahren", "DatenArt", "Vorgang")],
+					[kind.verfahren, kind.name, kind.vorgang],
+				)
+				(recipient,) = root.find(f"{ELSTER}DatenTeil").iter(f"{ELSTER}Empfaenger")
+				self.assertEqual(recipient.get("id"), kind.recipient_id)
+				((first,),) = root.iter(f"{ELSTER}Nutzdaten")
+				self.assertEqual(
+					(first.tag, first.get("version")),
+					(f"{{{kind.namespace}}}{kind.root}", kind.root_version),
+				)
+				self.assertEqual(
+					first.findtext(f"{{{kind.namespace}}}Vorsatz/{{{kind.namespace}}}Unterfallart"),
+					kind.unterfallart,
+				)
+
+	def test_the_datenartversionmatrix_names_their_datenart_version_and_plugin(self):
+		rows = eric_schema.datenart_versions()
+		for kind in (*self.KINDS, ust(2027), kst(2026), gewst(2026)):
+			with self.subTest(datenart=kind.version):
+				(row,) = (
+					row
+					for row in rows
+					if (row["Verfahren"], row["Datenart(en)"]) == (kind.verfahren, kind.name)
+					and row["datenartVersion-Parameter"].replace("<Jahr>", str(kind.year)) == kind.version
+				)
+				self.assertEqual(row["Plugin-Bibliothek"].replace("<Jahr>", str(kind.year)), kind.plugin)
+
+	def test_the_schemas_hold_the_root_version_and_namespace_of_their_nutzdaten(self):
+		for kind in self.KINDS:
+			with self.subTest(datenart=kind.version):
+				xsd = etree.parse(str(eric_schema.documentation() / kind.schema)).getroot()
+				self.assertEqual(xsd.get("targetNamespace"), kind.namespace)
+				(element,) = (element for element in xsd if element.get("name") == kind.root)
+				self.assertEqual(element.tag, f"{XS}element")
+				(version,) = (
+					attribute
+					for attribute in xsd.iter(f"{XS}attribute")
+					if attribute.get("name") == "version"
+				)
+				self.assertEqual(version.get("fixed"), kind.root_version)
+
+	def test_the_jahresdokumentation_names_namespace_root_and_unterfallart(self):
+		for kind in self.KINDS:
+			with self.subTest(datenart=kind.version):
+				path = self.jahresdokumentation(kind)
+				information = eric_schema.lines(path, "Allg. Information")
+				self.assertIn(
+					f"Für Nutzdaten muss der Namensraum '{kind.namespace}' angegeben werden.", information
+				)
+				self.assertIn(
+					f"Als Name des Nutzdaten-Wurzelelements wird der Datenartname '{kind.root}' verwendet.",
+					information,
+				)
+				fields = {
+					row["Name"]: row["Format als regulärer Ausdruck"]
+					for row in eric_schema.sheet(path, "Vorsatz - Felder")
+				}
+				self.assertEqual(fields["Unterfallart"], f"^(?=.{{2,2}}$){kind.unterfallart}")
+
+
+class BilanzTest(TestCase):
+	"""The E-Bilanz: the Datenart Bilanz of the Verfahren ElsterBilanz for the Finanzamt, send-Auth only, keyed by its
+	HGB-Taxonomie (ERiC-Entwicklerhandbuch 44.3.6.0, Tabelle 9-20; Datenartversionmatrix.ods). ERiC prints no copy of
+	its data, only an Übertragungsprotokoll, and Prüfen is the Hinweisprüfung with Validiere (Kap. 9.7.1)."""
+
+	def test_the_bilanz_is_an_elster_bilanz_of_its_taxonomy_for_the_finanzamt(self):
+		self.assertEqual(
+			bilanz("6.9"),
+			Datenart(
+				name="Bilanz",
+				version="Bilanz_6.9",
+				verfahren="ElsterBilanz",
+				vorgang="send-Auth",
+				recipient_id="F",
+				recipient=None,
+				plugin="checkBilanz_6_9",
+				schema="Datenarten/ElsterBilanz/Bilanz/Schema/ebilanz_000002.xsd",
+				namespace="http://rzf.fin-nrw.de/RMS/EBilanz/2016/XMLSchema",
+				root="EBilanz",
+				root_version="2",
+				year=None,
+				printout="Übertragungsprotokoll",
+				preview_on_check=False,
+				nutzdaten_datenlieferant=True,
+				unterfallart=None,
+				taxonomy="6.9",
+			),
+		)
+
+	def test_names_the_plugin_library_of_its_taxonomy(self):
+		self.assertEqual(
+			(bilanz("6.9").plugin_library, bilanz("6.10").plugin_library),
+			("libcheckBilanz_6_9.so", "libcheckBilanz_6_10.so"),
+		)
+
+	def test_finds_the_bilanz_of_a_datenart_version(self):
+		self.assertEqual(of_version("Bilanz_6.9"), bilanz("6.9"))
+		self.assertEqual(of_version("Bilanz_6.10"), bilanz("6.10"))
+
+	def test_refuses_other_versions_and_taxonomies(self):
+		for version in ("Bilanz_6", "Bilanz_6_9", "Bilanz 6.9", "Bilanz_6.9.1", "bilanz_6.9", "Bilanz_"):
+			with self.subTest(version=version), self.assertRaises(ValueError):
+				of_version(version)
+		for taxonomy in ("6", "6_9", "6.9 ", "v6.9", ""):
+			with self.subTest(taxonomy=taxonomy), self.assertRaises(ValueError):
+				bilanz(taxonomy)
+
+
+class BilanzDocumentationTest(TestCase):
+	"""The Datenart Bilanz against the ERiC documentation 44.3.6.0."""
+
+	KIND = bilanz("6.9")
+
+	def test_the_example_goes_as_the_datenart_describes_it(self):
+		"""The example writes the version of EBilanz as 000002, the integer 2 of ebilanz_000002.xsd."""
+		root = etree.fromstring(eric_schema.bilanz_example("6.9"))
+		header = root.find(f"{ELSTER}TransferHeader")
+		self.assertEqual(
+			[header.findtext(ELSTER + name) for name in ("Verfahren", "DatenArt", "Vorgang")],
+			[self.KIND.verfahren, self.KIND.name, self.KIND.vorgang],
+		)
+		(nutzdaten_header,) = root.iter(f"{ELSTER}NutzdatenHeader")
+		self.assertEqual(
+			[etree.QName(child).localname for child in nutzdaten_header],
+			["NutzdatenTicket", "Empfaenger", "Hersteller", "DatenLieferant"],
+		)
+		self.assertEqual(nutzdaten_header.find(f"{ELSTER}Empfaenger").get("id"), self.KIND.recipient_id)
+		((first,),) = root.iter(f"{ELSTER}Nutzdaten")
+		self.assertEqual(first.tag, f"{{{self.KIND.namespace}}}{self.KIND.root}")
+		self.assertEqual(int(first.get("version")), int(self.KIND.root_version))
+		self.assertEqual(
+			[child.tag for child in first],
+			[f"{{{self.KIND.namespace}}}stichtag", "{http://www.xbrl.org/2003/instance}xbrl"],
+		)
+
+	def test_the_datenartversionmatrix_names_the_datenart_version_and_plugin_of_the_taxonomy(self):
+		(row,) = (
+			row
+			for row in eric_schema.datenart_versions()
+			if (row["Verfahren"], row["Datenart(en)"], row["Jahr / Version"])
+			== (self.KIND.verfahren, self.KIND.name, f"HGB-Taxonomie {self.KIND.taxonomy}")
+		)
+		self.assertEqual(
+			(row["datenartVersion-Parameter"], row["Plugin-Bibliothek"]),
+			(self.KIND.version, self.KIND.plugin),
+		)
+
+	def test_the_schema_holds_the_root_namespace_and_version_of_the_nutzdaten(self):
+		xsd = etree.parse(str(eric_schema.documentation() / self.KIND.schema)).getroot()
+		self.assertEqual(xsd.get("targetNamespace"), self.KIND.namespace)
+		(element,) = (element for element in xsd if element.get("name") == self.KIND.root)
+		self.assertEqual(element.tag, f"{XS}element")
+		(version,) = (
+			attribute for attribute in xsd.iter(f"{XS}attribute") if attribute.get("name") == "version"
+		)
+		bounds = [
+			int(version.find(f".//{XS}{facet}").get("value")) for facet in ("minInclusive", "maxInclusive")
+		]
+		self.assertEqual(bounds, [1, int(self.KIND.root_version)])
+
+	def test_the_jahresdokumentation_takes_the_finanzamt_as_the_only_recipient(self):
+		path = (
+			eric_schema.bilanz_directory()
+			/ "Jahresdokumentation"
+			/ f"Jahresdokumentation_Bilanz_Taxonomie_{self.KIND.taxonomy.replace('.', '_')}.ods"
+		)
+		(rule,) = (
+			row for row in eric_schema.sheet(path, "Header - Regeln") if row["Fehlercode"] == "170205015"
+		)
+		self.assertEqual(rule["Prüfbedingung"], f'[ndh:Empfaenger_id]!="{self.KIND.recipient_id}"')
 
 
 class DocumentationTest(TestCase):
@@ -193,3 +523,52 @@ class DocsTest(TestCase):
 			f'`<Empfaenger id="{ZMDO.recipient_id}">{ZMDO.recipient}</Empfaenger>`',
 			cells["Empfänger im NutzdatenHeader"],
 		)
+
+
+class AnnualDocsTest(TestCase):
+	"""docs/eric.md, „Erklärungen und E-Bilanz“: a column each for USt, KSt, GewSt and the E-Bilanz."""
+
+	KINDS = (ust(2026), kst(2026), gewst(2026), bilanz("6.9"))
+
+	def rows(self) -> dict[str, list[str]]:
+		return {row[0]: row[1:5] for row in doc_table("### Erklärungen und E-Bilanz", ERIC_DOC)}
+
+	def code(self, cell: str) -> str:
+		return cell.split("`")[1]
+
+	def test_names_verfahren_datenart_version_and_plugin_of_each(self):
+		rows = self.rows()
+		for kind, *cells in zip(
+			self.KINDS,
+			rows["Verfahren, DatenArt"],
+			rows["datenartVersion"],
+			rows["Plugin"],
+			strict=True,
+		):
+			with self.subTest(datenart=kind.name):
+				placeholder = "<Taxonomie>" if kind.taxonomy else "<Jahr>"
+				value = kind.taxonomy or str(kind.year)
+				self.assertEqual(
+					[cell.split("`")[1::2] for cell in cells],
+					[
+						[kind.verfahren, kind.name],
+						[kind.version.replace(value, placeholder)],
+						[kind.plugin.replace(value.replace(".", "_"), placeholder)],
+					],
+				)
+
+	def test_names_unterfallart_pruefen_and_printout_of_each(self):
+		rows = self.rows()
+		for kind, unterfallart, check, printout, datenlieferant in zip(
+			self.KINDS,
+			rows["Unterfallart im Vorsatz"],
+			rows["Prüfen"],
+			rows["Nach dem Senden"],
+			rows["DatenLieferant im NutzdatenHeader"],
+			strict=True,
+		):
+			with self.subTest(datenart=kind.name):
+				self.assertEqual(unterfallart, f"`{kind.unterfallart}`" if kind.unterfallart else "keiner")
+				self.assertTrue(check.startswith("EBV-9" if kind.preview_on_check else "EBV-8"))
+				self.assertTrue(printout.startswith(kind.printout))
+				self.assertEqual(datenlieferant.startswith("zehn Teile"), kind.nutzdaten_datenlieferant)

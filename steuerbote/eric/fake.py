@@ -23,16 +23,23 @@ the "max. Zeilen" of the fields of a Meldezeile on the sheet "ZMDO - Felder". Th
 000005 of zm_000005.xsd, a schema without a namespace that the simulation includes into the namespace of
 ElsterXML 11, as elster11_Zm_000005_extern.xsd does.
 
+The Erklärungen, USt, KSt and GewSt, and the E-Bilanz, Datenart Bilanz, have their checks in
+steuerbote.eric.simulation: the structure of their Nutzdaten, the Pflichtvordrucke and the Vorsatz of an Erklärung,
+the frame of the E-Bilanz, and the rules their modules add. ERiC checks no schema of the Nutzdaten of the Bilanz
+(ERiC-Entwicklerhandbuch, Tabelle 9-20), and neither does the simulation.
+
 A test send or send that passes answers with a Transferticket "SIM-" and the first 28 hexadecimal digits
 of the SHA-256 of the Nutzdaten, a form no Transferticket of ERiC has, and with a one-page PDF saying that
-nothing was transmitted. Every result is marked as simulated and carries the hint SIM-000.
+nothing was transmitted and naming the document ERiC prints in its place, the Übertragungsprotokoll or the
+Freizeichnungsdokument of an Erklärung (steuerbote.eric.datenart). Every result is marked as simulated and carries
+the hint SIM-000.
 
 This module is pure Python and never imports Frappe; lxml is imported only for the schema check.
 """
 
 import hashlib
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import NamedTuple
@@ -41,6 +48,7 @@ from xml.etree import ElementTree
 from steuerbote.eric.datenart import Datenart, of_version
 from steuerbote.eric.header import EnvelopeHeader, problems, without_declaration
 from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Message, Operation, Outcome, TransmissionResult
+from steuerbote.eric.simulation import Checks, Structure, bilanz, gewst, kst, ust
 
 DOCUMENTATION_VARIABLE = "STEUERBOTE_ERIC_DOC_DIR"
 SIMULATED_VERSION = "simulation"
@@ -54,6 +62,10 @@ STRUCTURE_ONLY = (
 	"Die Simulation prüft nur Aufbau, Kontext und Pflichtfelder, nicht das XSD des Jahres {year}: {reason}"
 )
 ZM_STRUCTURE_ONLY = "Die Simulation prüft nur Aufbau und Pflichtfelder, nicht gegen {schema}: {reason}"
+NO_SCHEMA_CHECK = (
+	"ERiC prüft die Nutzdaten der Datenart {name} nicht gegen ein Schema (ERiC-Entwicklerhandbuch, Tabelle 9-20); "
+	"sie prüft erst das Plugin von ERiC."
+)
 
 
 class Required(NamedTuple):
@@ -177,20 +189,6 @@ ZM_MAX_LINES = 5000
 MELDEARTEN: MappingProxyType[str, str] = MappingProxyType({"10": "Erstmeldung", "11": "Berichtigung"})
 """The attribute meldeart of zm-zeilen: 10 „Erstmeldung“, 11 „berichtigte Anmeldung“ (meldeart_Type of the XSD)."""
 
-type Structure = tuple[ElementTree.Element | None, Message | None]
-
-
-class Checks(NamedTuple):
-	"""How the simulation checks the Nutzdaten of a Datenart and what its protocol says of them.
-
-	``structure`` takes the parsed Nutzdaten and returns what the protocol reads, or the error of their structure;
-	``filing`` gives the lines of the protocol from it; ``structure_only`` says why the schema was not checked.
-	"""
-
-	structure: Callable[[ElementTree.Element, Datenart], Structure]
-	filing: Callable[[ElementTree.Element, Datenart], list[str]]
-	structure_only: Callable[[Datenart, str], str]
-
 
 class Simulation:
 	def __init__(self, documentation: Path | None = None):
@@ -208,7 +206,14 @@ class Simulation:
 			found, structure = _structure(nutzdaten_xml, kind, checks)
 			errors.extend(structure)
 			if not structure:
-				schema_errors, unchecked = self._schema_errors(without_declaration(nutzdaten_xml), kind)
+				errors.extend(
+					found_error for rule in checks.rules if (found_error := rule(found, kind, header))
+				)
+				schema_errors, unchecked = (
+					self._schema_errors(without_declaration(nutzdaten_xml), kind)
+					if checks.schema
+					else ([], NO_SCHEMA_CHECK.format(name=kind.name))
+				)
 				errors.extend(schema_errors)
 				if unchecked:
 					messages.append(Message("SIM-001", checks.structure_only(kind, unchecked), HINT))
@@ -228,7 +233,7 @@ class Simulation:
 		digest = hashlib.sha256(nutzdaten_xml.encode()).hexdigest()
 		ticket = TICKET_PREFIX + digest[:28]
 		filing = checks.filing(found, kind)
-		pdf = placeholder_pdf(PDF_TITLE, _protocol_lines(operation, header, filing, ticket, digest))
+		pdf = placeholder_pdf(PDF_TITLE, _protocol_lines(operation, header, kind, filing, ticket, digest))
 		return TransmissionResult(
 			operation, True, True, SIMULATED_VERSION, ticket, testmerker, tuple(messages), protocol_pdf=pdf
 		)
@@ -423,6 +428,10 @@ CHECKS: MappingProxyType[str, Checks] = MappingProxyType(
 	{
 		"UStVA": Checks(_anmeldungssteuern, _ustva_filing, _ustva_structure_only),
 		"ZMDO": Checks(_zm, _zm_filing, _zm_structure_only),
+		"USt": ust.CHECKS,
+		"KSt": kst.CHECKS,
+		"GewSt": gewst.CHECKS,
+		"Bilanz": bilanz.CHECKS,
 	}
 )
 """The checks of each Datenart of steuerbote.eric.datenart, by its name."""
@@ -451,10 +460,16 @@ def _local_name(element: ElementTree.Element) -> str:
 
 
 def _protocol_lines(
-	operation: Operation, header: EnvelopeHeader, filing: list[str], ticket: str, digest: str
+	operation: Operation,
+	header: EnvelopeHeader,
+	kind: Datenart,
+	filing: list[str],
+	ticket: str,
+	digest: str,
 ) -> list[str]:
 	return [
 		"Diese Übermittlung wurde nur simuliert. Es wurde nichts an ELSTER übermittelt.",
+		f"Nach einem echten Senden erstellt ERiC an seiner Stelle das {kind.printout}.",
 		"",
 		f"Vorgang: {'Testsenden' if operation is Operation.TEST_SEND else 'Senden'}",
 		f"Datenart: {header.datenart_version}",

@@ -26,6 +26,13 @@ The list does not name the newest release. A new year comes with the main releas
 release ERiC 43, ERiC download page as of 23 November 2026), so from mid November the plugin of the coming year is
 checked as well.
 
+The annual filings of a year are filed in the year after it: an Erklärung covers the VZ or EZ that has ended, and
+the E-Bilanz the fiscal year, which steuerbote takes as the calendar year. So from 1 January the checks name the
+plugins of the Erklärungen of the year before and that of the E-Bilanz of its fiscal year, from the first year
+steuerbote files, 2026 (docs/roadmap.md, „Ab 2026“). HB Tabelle 2-12 gives ERiC 44 the USt up to 2026 and KSt and
+GewSt up to 2025, so the plugins of KSt and GewSt 2026 come with a later release. Only a site that keeps annual
+filings hears of a missing one.
+
 This module is pure Python and never imports Frappe. Its messages are German, for the operator.
 """
 
@@ -37,9 +44,17 @@ import urllib.request
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
+from types import MappingProxyType
 
 from steuerbote.eric.datenart import of_version, ustva
-from steuerbote.eric.runtime import LIBRARY, Check, Installation, plugin_check, year_check
+from steuerbote.eric.runtime import (
+	LIBRARY,
+	Check,
+	Installation,
+	annual_plugin_checks,
+	plugin_check,
+	year_check,
+)
 
 MINIMUM_LIST_URL = "https://www.elster.de/elsterweb/attachments/eric/eric_mindestversionsliste.yaml"
 SYSTEM = "Linux Intel"
@@ -53,6 +68,11 @@ MAIN_RELEASE_DUE = (11, 15)
 """Month and day from which the main release with the coming year is due: „Mitte November“ (HB Kap. 2.3)."""
 SHOWN = 5
 """How many shortfalls of one runtime a check names before it counts the rest."""
+FIRST_ANNUAL_YEAR = 2026
+"""The first year whose annual filings steuerbote computes (docs/roadmap.md, „Ab 2026“)."""
+BILANZ_TAXONOMIES: MappingProxyType[int, str] = MappingProxyType({2026: "6.9"})
+"""The HGB-Taxonomie of the E-Bilanz of a fiscal year: 6.9 for a fiscal year beginning after 31 December 2025 (BMF
+letter of 10 June 2025, IV C 6 - S 2133-b/00064/002/006, BStBl I S. 1450)."""
 
 type Version = tuple[int, int, int, int]
 
@@ -283,22 +303,45 @@ def next_year_check(installed: tuple[Installation, ...], today: date) -> Check:
 	)
 
 
+def annual_checks(installed: tuple[Installation, ...], today: date) -> tuple[Check, ...]:
+	"""The plugins of the annual filings of the year before (steuerbote.eric.runtime.annual_plugin_checks), none
+	before the first year steuerbote files."""
+	year = today.year - 1
+	if year < FIRST_ANNUAL_YEAR:
+		return ()
+	return annual_plugin_checks(installed, year, BILANZ_TAXONOMIES.get(year))
+
+
 def checks(
 	installed: tuple[Installation, ...], minimum_list: MinimumList | None, today: date
 ) -> tuple[Check, ...]:
-	"""What „Laufzeitumgebung prüfen“ adds to steuerbote.eric.runtime.status: the Mindestversionsliste and the
-	plugin of the coming year."""
-	return minimum_check(installed, minimum_list), next_year_check(installed, today)
+	"""What „Laufzeitumgebung prüfen“ adds to steuerbote.eric.runtime.status: the Mindestversionsliste, the plugin
+	of the coming year and the plugins of the annual filings of the year before."""
+	return (
+		minimum_check(installed, minimum_list),
+		next_year_check(installed, today),
+		*annual_checks(installed, today),
+	)
 
 
 def notices(
-	installed: tuple[Installation, ...], minimum_list: MinimumList | None, today: date
+	installed: tuple[Installation, ...],
+	minimum_list: MinimumList | None,
+	today: date,
+	*,
+	annual: bool = False,
 ) -> tuple[Check, ...]:
-	"""The failing checks the System Managers hear of: the plugin of the current year, the Mindestversionsliste and,
-	from mid November, the plugin of the coming year. A site without a runtime uses no ERiC and hears of nothing."""
+	"""The failing checks the System Managers hear of: the plugin of the current year, the Mindestversionsliste,
+	from mid November the plugin of the coming year and, on a site with annual filings, the plugins of the annual
+	filings of the year before. A site without a runtime uses no ERiC and hears of nothing."""
 	if not installed:
 		return ()
-	found = (year_check(installed, today.year), *checks(installed, minimum_list, today))
+	found = (
+		year_check(installed, today.year),
+		minimum_check(installed, minimum_list),
+		next_year_check(installed, today),
+		*(annual_checks(installed, today) if annual else ()),
+	)
 	return tuple(check for check in found if not check.ok and check.notice)
 
 

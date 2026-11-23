@@ -18,17 +18,23 @@ from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.releases import FetchedList, MinimumList
 from steuerbote.eric.result import Operation
 from steuerbote.eric.runtime import RuntimeInfo, RuntimeInstallError
+from steuerbote.steuerbote.doctype.eric_settings import eric_settings
 from steuerbote.steuerbote.doctype.eric_settings.eric_settings import (
 	check_versions,
 	eric_log_root,
 	run_installation,
+	vorsatz_copyright,
 )
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
+from steuerbote.tests.helpers import make_company
 
 # The users of the tests are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = ["User"]
 
 SETTINGS = "ERiC Settings"
+ANNUAL_FILING_SETTINGS = "Annual Filing Settings"
+# The company whose Annual Filing Settings make a site keep annual filings.
+ANNUAL_FILINGS_COMPANY = "Steuerbote Test ERiC Jahresmeldungen GmbH"
 INSTALLATION_JOB = "steuerbote.steuerbote.doctype.eric_settings.eric_settings.run_installation"
 ARCHIVE = "/srv/eric/ERiC-44.3.6.0-Linux-x86_64.jar"
 CHECKSUM = "ab" * 32
@@ -64,6 +70,8 @@ VERSION_CHECK_FIELDS = (
 )
 # The password of the proxy, invented.
 PROXY_GEHEIM = "Proxy-Geheim-2026"
+# A copyright notice of the manufacturer of the software, invented.
+COPYRIGHT = "(c) 2026 Beispiel Software GmbH, München"
 
 
 def make_user(email: str, role: str) -> str:
@@ -227,6 +235,32 @@ class TestERiCSettings(IntegrationTestCase):
 		self.assertEqual(len(self.settings(datenlieferant="a" * 256).datenlieferant), 256)
 		with self.assertRaisesRegex(frappe.ValidationError, "256"):
 			self.settings(datenlieferant="a" * 257)
+
+	def test_the_copyright_notice_has_at_most_50_characters_elster_takes(self):
+		"""The Vorsatz of every Erklärung carries it: „Copyrightvermerk des Herstellers der Steuersoftware“, at most 50
+		characters (Jahresdokumentation E50 2026, sheet „Vorsatz - Felder“)."""
+		self.assertEqual(self.settings(copyright=f"  {COPYRIGHT} ").copyright, COPYRIGHT)
+		self.assertEqual(len(self.settings(copyright="x" * 50).copyright), 50)
+		self.assertFalse(self.settings(copyright=" ").copyright)
+		for value, message in (("x" * 51, "50"), ("© 2026 Beispiel Software GmbH", "U\\+00A9")):
+			with self.subTest(value=value), self.assertRaisesRegex(frappe.ValidationError, message):
+				self.settings(copyright=value)
+
+	def test_the_copyright_notice_has_no_default(self):
+		self.assertIsNone(frappe.get_meta(SETTINGS).get_field("copyright").default)
+
+	def test_an_erklaerung_runs_through_eric_only_with_the_copyright_notice(self):
+		"""Rules 10435 and 6 of the Vorsatz; the simulation takes the product name in its place."""
+		runtime = {"hersteller_id": "12345", "installed_version": "44.3.6.0", "lib_dir": LIB_DIR}
+		self.settings(**runtime, copyright=COPYRIGHT)
+		self.assertEqual(vorsatz_copyright(), COPYRIGHT)
+		self.settings(**runtime, copyright="")
+		with self.assertRaisesRegex(frappe.ValidationError, "Copyright"):
+			vorsatz_copyright()
+		self.settings(copyright="", produkt_name="Steuerbote Firma")
+		self.assertEqual(vorsatz_copyright(), "Steuerbote Firma")
+		self.settings(copyright=COPYRIGHT)
+		self.assertEqual(vorsatz_copyright(), COPYRIGHT)
 
 	def test_the_archive_comes_from_the_bench_and_never_from_the_settings(self):
 		"""The probe of an installation loads the library of the archive as the user of the bench, and the runtime
@@ -470,6 +504,10 @@ class TestERiCVersions(IntegrationTestCase):
 		frappe.db.savepoint("eric_versions_test")
 		self.addCleanup(frappe.db.rollback, save_point="eric_versions_test")
 		self.manager = make_user(SYSTEM_MANAGER, "System Manager")
+		# Whether a site keeps annual filings depends on the Annual Filing Settings of other tests; these tests say it.
+		annual = patch.object(eric_settings, "has_annual_filings", return_value=False)
+		annual.start()
+		self.addCleanup(annual.stop)
 
 	def runtime_root(self, versions: dict[str, str] | None) -> Path:
 		"""A runtime of ERiC 44.3.6.0 with the plugin of 2026 whose probe read the product versions, or an empty root
@@ -575,6 +613,42 @@ class TestERiCVersions(IntegrationTestCase):
 			self.notifications()[-1].email_content,
 		)
 		self.assertEqual(frappe.get_single(SETTINGS).version_notices, "year 2027")
+
+	def test_a_site_with_annual_filings_hears_from_1_january_of_the_plugins_of_the_year_before(self):
+		root = self.runtime_root(CURRENT)
+		with patch.object(eric_settings, "has_annual_filings", return_value=True):
+			self.check_versions(root, day="2027-01-04 04:00:00").assert_called_once()
+		self.assertEqual(
+			frappe.get_single(SETTINGS).version_notices.splitlines(),
+			[
+				"year 2027",
+				"annual USt_2026",
+				"annual KSt_30_2026",
+				"annual GewSt_2026",
+				"annual Bilanz_6.9",
+			],
+		)
+		self.assertIn(
+			"Für die Körperschaftsteuererklärung 2026 fehlt ERiC mit dem Plugin libcheckKSt_2026.so.",
+			self.notifications()[-1].email_content,
+		)
+
+	def test_laufzeitumgebung_pruefen_lists_from_1_january_the_plugins_of_the_annual_filings(self):
+		settings = frappe.get_single(SETTINGS)
+		root = self.runtime_root(CURRENT)
+		with (
+			self.freeze_time("2027-01-04 10:00:00"),
+			patch.object(transmission_adapter, "runtime_root", return_value=root),
+		):
+			checks = {check["name"]: check for check in settings.check_runtime()}
+		self.assertEqual(
+			list(checks)[-4:],
+			["ust", "kst", "gewst", "bilanz"],
+		)
+		self.assertEqual(
+			checks["ust"]["detail"],
+			"Für die Umsatzsteuererklärung 2026 fehlt ERiC mit dem Plugin libcheckUSt_2026.so.",
+		)
 
 	def test_a_runtime_that_serves_the_year_and_reaches_the_list_brings_no_notice(self):
 		self.check_versions(self.runtime_root(CURRENT), day="2026-06-01 04:00:00").assert_not_called()
@@ -701,3 +775,30 @@ class TestERiCVersions(IntegrationTestCase):
 	def test_the_form_says_when_the_check_failed(self):
 		script = get_form_meta(SETTINGS, cached=False).get("__js")
 		self.assertIn("versions_check_failed", script)
+
+
+class TestAnnualFilings(IntegrationTestCase):
+	"""Whether the site keeps annual filings, which decides whether the weekly check of the versions tells of the
+	plugins of the annual filings. TestERiCVersions says it in each of its tests; this class asks the site."""
+
+	@classmethod
+	def setUpClass(cls) -> None:
+		super().setUpClass()
+		make_company(ANNUAL_FILINGS_COMPANY, "STEJ")
+
+	def setUp(self) -> None:
+		super().setUp()
+		frappe.db.savepoint("annual_filings_test")
+		self.addCleanup(frappe.db.rollback, save_point="annual_filings_test")
+
+	def test_only_a_site_with_annual_filing_settings_keeps_annual_filings(self):
+		"""The Annual Filing Settings come with the annual filings: a site keeps them once a company has its settings,
+		and none while their table is missing, as before the migration that brings it."""
+		frappe.db.delete(ANNUAL_FILING_SETTINGS)
+		self.assertFalse(eric_settings.has_annual_filings())
+		frappe.get_doc(
+			{"doctype": ANNUAL_FILING_SETTINGS, "company": ANNUAL_FILINGS_COMPANY, "legal_form": "GmbH"}
+		).insert()
+		self.assertTrue(eric_settings.has_annual_filings())
+		with patch.object(frappe.db, "table_exists", return_value=False):
+			self.assertFalse(eric_settings.has_annual_filings())

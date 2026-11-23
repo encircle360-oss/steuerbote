@@ -151,3 +151,66 @@ def _cells(row: etree._Element) -> list[str]:
 		repeat = 1 if not text else int(cell.get(f"{{{ODS_TABLE}}}number-columns-repeated", "1"))
 		cells.extend([text] * repeat)
 	return cells
+
+
+def erklaerung_directory(name: str) -> Path:
+	"""The directory of a Datenart of the Verfahren ElsterErklaerung, such as USt, KSt or GewSt."""
+	return documentation() / "Datenarten" / "ElsterErklaerung" / name
+
+
+def lines(path: Path, name: str) -> list[str]:
+	"""The text of the first cell of each row of a sheet, such as „Allg. Information“, which has no head row."""
+	with zipfile.ZipFile(path) as archive:
+		content = etree.fromstring(archive.read("content.xml"))
+	(table,) = (
+		table for table in content.iter(f"{{{ODS_TABLE}}}table") if table.get(f"{{{ODS_TABLE}}}name") == name
+	)
+	return [
+		cells[0] for row in table.iter(f"{{{ODS_TABLE}}}table-row") if (cells := _cells(row)) and cells[0]
+	]
+
+
+def bilanz_directory() -> Path:
+	"""The directory of the Datenart Bilanz of the Verfahren ElsterBilanz."""
+	return documentation() / "Datenarten" / "ElsterBilanz" / "Bilanz"
+
+
+def bilanz_example(taxonomy: str, name: str = "HandelsbilanzLandwirt_GmbH.xml") -> bytes:
+	"""An example of an E-Bilanz of the taxonomy in its envelope, Beispiele/Taxonomie_<major>_<minor>/<name>."""
+	return (bilanz_directory() / "Beispiele" / f"Taxonomie_{taxonomy.replace('.', '_')}" / name).read_bytes()
+
+
+@cache
+def erklaerung_envelope_schema(name: str, root: str, year: int) -> etree.XMLSchema:
+	"""elster11_<root>_<year>_extern.xsd of an Erklärung, with the ElsterBasisSchema it includes by relative paths."""
+	schema = erklaerung_directory(name) / "Schema" / str(year) / f"elster11_{root}_{year}_extern.xsd"
+	return etree.XMLSchema(etree.parse(str(schema)))
+
+
+XBRL_INSTANCE_SCHEMA = "http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"
+# Takes any element xbrli:xbrl: the XBRL instance is the plugin's to check, the wrapper is the schema's.
+XBRL_STAND_IN = (
+	f'<xs:schema xmlns:xs="{XSD}" targetNamespace="http://www.xbrl.org/2003/instance" elementFormDefault="qualified">'
+	'<xs:element name="xbrl"><xs:complexType><xs:sequence>'
+	'<xs:any processContents="skip" namespace="##any" minOccurs="0" maxOccurs="unbounded"/>'
+	'</xs:sequence><xs:anyAttribute processContents="skip"/></xs:complexType></xs:element></xs:schema>'
+)
+
+
+class _XbrlStandIn(etree.Resolver):
+	def resolve(self, system_url, public_id, context):
+		if system_url == XBRL_INSTANCE_SCHEMA:
+			return self.resolve_string(XBRL_STAND_IN, context)
+		return None
+
+
+@cache
+def bilanz_envelope_schema() -> etree.XMLSchema:
+	"""ebilanz_000002.xsd with the ElsterBasisSchema that ebilanz_elster_000001.xsd includes.
+
+	The schema imports the XBRL instance schema by its address on xbrl.org, which the documentation does not hold
+	and the tests do not fetch; a stand-in that takes any element xbrli:xbrl replaces it.
+	"""
+	parser = etree.XMLParser(no_network=True)
+	parser.resolvers.add(_XbrlStandIn())
+	return etree.XMLSchema(etree.parse(str(bilanz_directory() / "Schema" / "ebilanz_000002.xsd"), parser))

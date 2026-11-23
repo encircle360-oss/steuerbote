@@ -24,12 +24,16 @@ from unittest import TestCase, mock
 from steuerbote import hooks
 from steuerbote.eric import releases
 from steuerbote.eric.releases import (
+	BILANZ_TAXONOMIES,
+	FIRST_ANNUAL_YEAR,
 	MAX_LIST_BYTES,
 	MINIMUM_LIST_URL,
 	FetchedList,
 	Minimum,
 	MinimumList,
 	MinimumListError,
+	annual_checks,
+	checks,
 	due,
 	fetch_list,
 	format_version,
@@ -736,6 +740,116 @@ class NoticesTest(InstalledTestCase):
 		self.assertEqual(due(failing, []), failing)
 		self.assertEqual(due(failing, ["next-year 2027", "year 2026"]), failing[:1])
 		self.assertEqual(due(failing, ("minimum 2.26.4.1 44.3.6.0", "next-year 2027")), ())
+
+
+# The plugins of the annual filings of 2026 in ERiC 44.3.6.0: the Umsatzsteuererklärung and the taxonomy 6.9 of the
+# E-Bilanz, not yet the Körperschaftsteuererklärung and the Gewerbesteuererklärung (ERiC-Entwicklerhandbuch,
+# Tabelle 2-12; version list of the package).
+ANNUAL_2026 = ("libcheckUSt_2026.so", "libcheckBilanz_6_9.so")
+
+
+class AnnualChecksTest(InstalledTestCase):
+	"""The plugins of the annual filings of the year before, which are filed from 1 January: the Erklärungen of the VZ
+	and the E-Bilanz of the fiscal year in its taxonomy, from the first year steuerbote files."""
+
+	def test_the_annual_filings_begin_with_the_year_2026(self):
+		"""docs/roadmap.md, „Ab 2026“; 6.9 for a fiscal year beginning after 31 December 2025 (BMF letter of 10 June
+		2025, IV C 6 - S 2133-b/00064/002/006)."""
+		self.assertEqual((FIRST_ANNUAL_YEAR, dict(BILANZ_TAXONOMIES)), (2026, {2026: "6.9"}))
+
+	def test_before_the_first_filing_year_there_is_nothing_to_check(self):
+		self.install()
+		for today in (date(2026, 1, 1), date(2026, 11, 23), date(2026, 12, 31)):
+			with self.subTest(today=today):
+				self.assertEqual(annual_checks(self.installed(), today), ())
+
+	def test_from_1_january_each_plugin_of_the_year_before(self):
+		self.install(libraries=(*OPTIONAL, *ANNUAL_2026))
+		self.assertEqual(
+			annual_checks(self.installed(), date(2027, 1, 1)),
+			(
+				Check("ust", True, "ERiC 44.3.6.0 prüft und sendet die Umsatzsteuererklärung 2026."),
+				Check(
+					"kst",
+					False,
+					"Für die Körperschaftsteuererklärung 2026 fehlt ERiC mit dem Plugin libcheckKSt_2026.so.",
+					notice="annual KSt_30_2026",
+				),
+				Check(
+					"gewst",
+					False,
+					"Für die Gewerbesteuererklärung 2026 fehlt ERiC mit dem Plugin libcheckGewSt_2026.so.",
+					notice="annual GewSt_2026",
+				),
+				Check(
+					"bilanz",
+					True,
+					"ERiC 44.3.6.0 prüft und sendet die E-Bilanz des Wirtschaftsjahres 2026 (Taxonomie 6.9).",
+				),
+			),
+		)
+
+	def test_a_beta_with_the_plugins_serves_checks_and_test_sends_only(self):
+		self.install(libraries=(*OPTIONAL, *ANNUAL_2026))
+		self.install("45.1.5.0", libraries=(*OPTIONAL, "libcheckKSt_2026.so", "libcheckGewSt_2026.so"))
+		found = {check.name: check for check in annual_checks(self.installed(), date(2027, 2, 1))}
+		self.assertEqual(
+			found["kst"],
+			Check(
+				"kst",
+				False,
+				"Die Körperschaftsteuererklärung 2026 kennt nur die Beta ERiC 45.1.5.0: Prüfen und Testsenden, kein "
+				"Senden.",
+				notice="annual KSt_30_2026",
+			),
+		)
+		self.assertEqual(
+			found["ust"].detail, "ERiC 44.3.6.0 prüft und sendet die Umsatzsteuererklärung 2026."
+		)
+
+	def test_a_fiscal_year_whose_taxonomy_steuerbote_does_not_know_yet(self):
+		self.install(libraries=(*OPTIONAL, *ANNUAL_2026))
+		found = {check.name: check for check in annual_checks(self.installed(), date(2028, 1, 3))}
+		self.assertEqual(
+			found["bilanz"],
+			Check(
+				"bilanz",
+				False,
+				"Für das Wirtschaftsjahr 2027 kennt Steuerbote noch keine Taxonomie der E-Bilanz.",
+			),
+		)
+		self.assertEqual(found["ust"].notice, "annual USt_2027")
+
+	def test_laufzeitumgebung_pruefen_lists_them_after_the_list_and_the_coming_year(self):
+		self.install(libraries=(*OPTIONAL, *ANNUAL_2026))
+		self.assertEqual(
+			[check.name for check in checks(self.installed(), parse_list(PUBLISHED), date(2027, 1, 4))],
+			["minimum", "plugin_next", "ust", "kst", "gewst", "bilanz"],
+		)
+		self.assertEqual(
+			[check.name for check in checks(self.installed(), parse_list(PUBLISHED), date(2026, 11, 23))],
+			["minimum", "plugin_next"],
+		)
+
+
+class AnnualNoticesTest(InstalledTestCase):
+	def test_only_a_site_with_annual_filings_hears_of_a_missing_plugin_once_from_1_january(self):
+		self.install(libraries=(*OPTIONAL, *ANNUAL_2026))
+		installed, minimums = self.installed(), parse_list(PUBLISHED)
+		self.assertEqual(
+			[check.notice for check in notices(installed, minimums, date(2027, 1, 4))], ["year 2027"]
+		)
+		self.assertEqual(
+			[check.notice for check in notices(installed, minimums, date(2027, 1, 4), annual=True)],
+			["year 2027", "annual KSt_30_2026", "annual GewSt_2026"],
+		)
+		self.assertEqual(
+			[check.notice for check in notices(installed, minimums, date(2026, 12, 7), annual=True)],
+			["next-year 2027"],
+		)
+
+	def test_without_a_runtime_nobody_hears_of_the_annual_plugins_either(self):
+		self.assertEqual(notices((), parse_list(PUBLISHED), date(2027, 1, 4), annual=True), ())
 
 
 class ScheduleTest(TestCase):

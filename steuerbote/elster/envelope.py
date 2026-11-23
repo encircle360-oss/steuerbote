@@ -6,6 +6,11 @@ written in UTF-8 (HB 5.3.2) and declares the namespace of ElsterXML 11 on the ro
 declare their own (DS 2.3). Its Nutzdaten are a Voranmeldung (``to_envelope``) or form USt 1 H, which the
 Datenart UStVA holds as well (HB table 2-13; ``envelope_of`` with the tree of ust1h_xml.py).
 
+``envelope_for`` writes the same envelope around the Nutzdaten of any Datenart of steuerbote.eric.datenart: an
+Erklärung, as elster11_<root>_<Jahr>_extern.xsd of its Datenart takes it (HB tables 7-9, 7-13 and 7-15), or an
+E-Bilanz, as ebilanz_000002.xsd takes it, whose NutzdatenHeader names the DatenLieferant after the Hersteller (HB
+9.7.1, ndh000011.xsd).
+
 The TransferHeader names the Verfahren ElsterAnmeldung, the Datenart UStVA and the Vorgang send-Auth, the
 only one the UStVA allows (HB table 8-8), as steuerbote.eric.datenart describes the Datenart UStVA of the year of
 the Nutzdaten for the transmission as well. A test case carries the Testmerker 700000004, which the ELSTER
@@ -34,7 +39,7 @@ from steuerbote.elster.ustva_xml import (
 	require_hersteller_id,
 	required_text,
 )
-from steuerbote.eric.datenart import ELSTER_XML, ustva
+from steuerbote.eric.datenart import ELSTER_XML, Datenart, ustva
 
 NAMESPACE = ELSTER_XML
 DECLARATION = b'<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -94,8 +99,36 @@ def envelope_of(
 ) -> bytes:
 	"""The whole ElsterXML document around the element Anmeldungssteuern of one filing, in UTF-8; the version of the
 	element is the year of its Datenart."""
+	return envelope_for(
+		nutzdaten,
+		ustva(int(nutzdaten.get("version"))),
+		empfaenger=filer.steuernummer[:4],
+		hersteller_id=hersteller_id,
+		testmerker=testmerker,
+		datenlieferant=transfer_datenlieferant(filer, contact),
+		produkt_version=produkt_version,
+		nutzdaten_ticket=nutzdaten_ticket,
+	)
+
+
+def envelope_for(
+	nutzdaten: etree._Element,
+	kind: Datenart,
+	*,
+	empfaenger: str,
+	hersteller_id: str,
+	testmerker: bool,
+	datenlieferant: str,
+	nutzdaten_datenlieferant: str | None = None,
+	produkt_version: str = __version__,
+	nutzdaten_ticket: str = "1",
+) -> bytes:
+	"""The whole ElsterXML document around the Nutzdaten of the Datenart, in UTF-8.
+
+	``empfaenger`` is the recipient of the NutzdatenHeader in the attribute id of the Datenart, ``datenlieferant`` the
+	DatenLieferant of the TransferHeader and ``nutzdaten_datenlieferant`` the one of the NutzdatenHeader, if any.
+	"""
 	hersteller_id = require_hersteller_id(hersteller_id)
-	kind = ustva(int(nutzdaten.get("version")))
 	root = etree.Element(_tag("Elster"), nsmap={None: NAMESPACE})
 	header = _append(root, "TransferHeader", version=HEADER_VERSION)
 	_append(header, "Verfahren", kind.verfahren)
@@ -104,7 +137,11 @@ def envelope_of(
 	if testmerker:
 		_append(header, "Testmerker", TESTMERKER)
 	_append(header, "HerstellerID", hersteller_id)
-	_append(header, "DatenLieferant", transfer_datenlieferant(filer, contact))
+	_append(
+		header,
+		"DatenLieferant",
+		required_text(datenlieferant, TRANSFER_DATENLIEFERANT_LABEL, TRANSFER_DATENLIEFERANT_LENGTH),
+	)
 	datei = _append(header, "Datei")
 	_append(datei, "Verschluesselung", VERSCHLUESSELUNG)
 	_append(datei, "Kompression", KOMPRESSION)
@@ -112,11 +149,13 @@ def envelope_of(
 	nutzdaten_header = _append(block, "NutzdatenHeader", version=HEADER_VERSION)
 	ticket = required_text(nutzdaten_ticket, NUTZDATEN_TICKET_LABEL, NUTZDATEN_TICKET_LENGTH)
 	_append(nutzdaten_header, "NutzdatenTicket", ticket)
-	_append(nutzdaten_header, "Empfaenger", filer.steuernummer[:4], id=kind.recipient_id)
+	_append(nutzdaten_header, "Empfaenger", empfaenger, id=kind.recipient_id)
 	hersteller = _append(nutzdaten_header, "Hersteller")
 	_append(hersteller, "ProduktName", PRODUCT_NAME)
 	version = required_text(produkt_version, PRODUCT_VERSION_LABEL, PRODUCT_TEXT_LENGTH)
 	_append(hersteller, "ProduktVersion", version)
+	if nutzdaten_datenlieferant is not None:
+		_append(nutzdaten_header, "DatenLieferant", nutzdaten_datenlieferant)
 	_append(block, "Nutzdaten").append(nutzdaten)
 	etree.indent(root, space="\t")
 	return DECLARATION + etree.tostring(root, encoding="unicode").encode("utf-8") + b"\n"
