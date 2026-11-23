@@ -1,10 +1,12 @@
 """The defaults of the annual return for SKR03 and SKR04: the annual field of an account by its role, and the accounts
-only the annual return reads."""
+only the annual return reads, with the version of the defaults."""
 
+import hashlib
+import json
 from unittest import TestCase
 
 from steuerbote.ustjahr import defaults
-from steuerbote.ustjahr.defaults import ROLE_FIELDS, annual_rules, role_defaults
+from steuerbote.ustjahr.defaults import REVISIONS, ROLE_FIELDS, annual_rules, defaults_version, role_defaults
 from steuerbote.ustjahr.form import Format, catalogue_for
 from steuerbote.ustjahr.split import AnnualRule, How, split
 from steuerbote.ustva.defaults import (
@@ -279,3 +281,55 @@ class AnnualRulesTest(TestCase):
 	def test_a_year_without_its_form_has_no_annual_rules(self):
 		with self.assertRaisesRegex(UnknownYearError, "Umsatzsteuererklärung 2027"):
 			annual_rules("SKR04", YEAR + 1)
+
+
+# The SHA-256 of the defaults of each version: the field of each account by its role and the accounts only the annual
+# return reads, in canonical JSON. A change of the defaults fails here until REVISIONS rises and the digest of the new
+# version is pinned, so that the same version always means the same defaults.
+DIGESTS = {
+	"SKR03 USt 2026.1": "bf04d4a6089509a40570b6a5d0215ded03afa1d422db1e6cb109ac356ca1bf1a",
+	"SKR04 USt 2026.1": "979ea50de8f15eb5c74af3615119666337382acb0fa3d77b14684cf6a2f6fcb8",
+}
+
+
+def content(chart: str, year: int) -> str:
+	return json.dumps(
+		{
+			"roles": dict(role_defaults(chart, year)),
+			"annual_rules": [
+				[rule.account_number, rule.field, rule.side.value] for rule in annual_rules(chart, year)
+			],
+		},
+		sort_keys=True,
+		separators=(",", ":"),
+		ensure_ascii=False,
+	)
+
+
+class DefaultsVersionTest(TestCase):
+	def test_the_version_names_the_chart_the_year_of_the_form_and_the_revision(self):
+		self.assertEqual(dict(REVISIONS), {2026: 1})
+		self.assertEqual(
+			[defaults_version(chart, YEAR) for chart in CHARTS], ["SKR03 USt 2026.1", "SKR04 USt 2026.1"]
+		)
+
+	def test_a_version_always_means_the_same_defaults(self):
+		for chart in CHARTS:
+			with self.subTest(chart=chart):
+				digest = hashlib.sha256(content(chart, YEAR).encode("utf-8")).hexdigest()
+				self.assertEqual(
+					digest,
+					DIGESTS.get(defaults_version(chart, YEAR)),
+					f"The defaults of {chart} for {YEAR} changed: raise REVISIONS[{YEAR}] in defaults.py and pin "
+					"the digest of the new version in DIGESTS.",
+				)
+
+	def test_a_chart_without_defaults_has_no_version(self):
+		with self.assertRaisesRegex(
+			KeyError, "no defaults of the annual return for chart 'Eigener Kontenrahmen'"
+		):
+			defaults_version("Eigener Kontenrahmen", YEAR)
+
+	def test_a_year_without_its_form_has_no_version(self):
+		with self.assertRaisesRegex(UnknownYearError, "Umsatzsteuererklärung 2027"):
+			defaults_version("SKR03", YEAR + 1)

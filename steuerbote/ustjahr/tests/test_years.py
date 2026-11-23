@@ -3,7 +3,7 @@
 from datetime import date
 from unittest import TestCase
 
-from steuerbote.ustjahr import form, rules
+from steuerbote.ustjahr import defaults, form, rules
 from steuerbote.ustjahr.years import (
 	LATEST_YEAR,
 	YEARS,
@@ -58,17 +58,28 @@ class PartsTest(TestCase):
 			("CATALOGUES of steuerbote/ustjahr/form.py", form.CATALOGUES),
 			("LOCAL_RULES of steuerbote/ustjahr/rules.py", rules.LOCAL_RULES),
 			("LEFT_TO_ERIC of steuerbote/ustjahr/rules.py", rules.LEFT_TO_ERIC),
+			("ROLE_FIELDS of steuerbote/ustjahr/defaults.py", defaults.ROLE_FIELDS),
+			("ANNUAL_ACCOUNTS of steuerbote/ustjahr/defaults.py", defaults.ANNUAL_ACCOUNTS),
+			("REVISIONS of steuerbote/ustjahr/defaults.py", defaults.REVISIONS),
 		):
 			with self.subTest(table=name):
 				self.assertEqual(sorted(table), list(YEARS))
 
 	def test_the_data_of_each_year_cite_its_bmf_letter(self):
 		for year in YEARS.values():
-			with self.subTest(year=year.year):
-				self.assertIn(year.letter, " ".join((form.__doc__ or "").split()))
+			for module in (form, defaults):
+				with self.subTest(year=year.year, module=module.__name__):
+					self.assertIn(year.letter, " ".join((module.__doc__ or "").split()))
 
 	def test_the_latest_year_is_the_latest_of_every_table(self):
-		for table in (form.CATALOGUES, rules.LOCAL_RULES, rules.LEFT_TO_ERIC):
+		for table in (
+			form.CATALOGUES,
+			rules.LOCAL_RULES,
+			rules.LEFT_TO_ERIC,
+			defaults.ROLE_FIELDS,
+			defaults.ANNUAL_ACCOUNTS,
+			defaults.REVISIONS,
+		):
 			self.assertEqual(max(table), LATEST_YEAR)
 
 
