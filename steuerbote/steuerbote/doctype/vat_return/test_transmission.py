@@ -640,12 +640,26 @@ class TestTransmission(TransmissionTestCase):
 		doc = self.new_return(3)
 		doc.run_method("onload")
 		self.assertEqual(
-			doc.get_onload("elster"), {"simulation": True, "stale": False, "sent": False, "locked": None}
+			doc.get_onload("elster"),
+			{
+				"simulation": True,
+				"stale": False,
+				"sent": False,
+				"locked": None,
+				"printout": "Übertragungsprotokoll",
+			},
 		)
 		self.use_runtime()
 		doc.run_method("onload")
 		self.assertEqual(
-			doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False, "locked": None}
+			doc.get_onload("elster"),
+			{
+				"simulation": False,
+				"stale": False,
+				"sent": False,
+				"locked": None,
+				"printout": "Übertragungsprotokoll",
+			},
 		)
 		self.use_runtime(privacy_notice_confirmed=0)
 		doc.run_method("onload")

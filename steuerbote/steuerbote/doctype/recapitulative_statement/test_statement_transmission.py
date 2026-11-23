@@ -573,7 +573,14 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		doc = self.calculated(10)
 		doc.run_method("onload")
 		self.assertEqual(
-			doc.get_onload("elster"), {"simulation": True, "stale": False, "sent": False, "locked": None}
+			doc.get_onload("elster"),
+			{
+				"simulation": True,
+				"stale": False,
+				"sent": False,
+				"locked": None,
+				"printout": "Übertragungsprotokoll",
+			},
 		)
 		self.assertIsNone(doc.get_onload("elster_run"))
 		hint = Message("17004518", "Die USt-IdNr. ist unschlüssig.", HINT)
@@ -581,7 +588,14 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		self.use_runtime()
 		doc.run_method("onload")
 		self.assertEqual(
-			doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False, "locked": None}
+			doc.get_onload("elster"),
+			{
+				"simulation": False,
+				"stale": False,
+				"sent": False,
+				"locked": None,
+				"printout": "Übertragungsprotokoll",
+			},
 		)
 		self.assertEqual(
 			{key: doc.get_onload("elster_run")[key] for key in ("name", "status", "errors", "hints")},
