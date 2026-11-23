@@ -3,9 +3,9 @@
 from decimal import Decimal
 from unittest import TestCase
 
-from steuerbote.hgb.schemes import VermerkKind
+from steuerbote.hgb.schemes import VermerkKind, balance_sheet_scheme
 from steuerbote.hgb.size import SizeClass
-from steuerbote.hgb.statement import Balance, Code, RemainingTerm, Severity, build
+from steuerbote.hgb.statement import Balance, Code, RemainingTerm, Severity, build, entered
 
 GKV = "is.netIncome.regular.operatingTC"
 SALES = f"{GKV}.grossTradingProfit.totalOutput.netSales"
@@ -492,3 +492,160 @@ class UnitemizedTest(TestCase):
 		statement = build(2026, SizeClass.KLEIN, books, parents=PARENTS)
 		(finding,) = [finding for finding in statement.findings if finding.code is Code.UNITEMIZED]
 		self.assertEqual((finding.concept, finding.reference), (f"{GKV}.staff", "§ 275 Abs. 2 HGB"))
+
+
+# The invented GmbH of BOOKS a year earlier, its founding year.
+PRIOR_BOOKS = (
+	Balance(BANK, Decimal("27000.00")),
+	Balance(TRADE_RECEIVABLES, Decimal("3000.00"), remaining_term=SHORT),
+	Balance(SUBSCRIBED, Decimal("-25000.00")),
+	Balance(TAX_PROVISIONS, Decimal("-800.00")),
+	Balance(TRADE_PAYABLES, Decimal("-1200.00"), remaining_term=SHORT),
+	Balance(SALES_19, Decimal("-40000.00")),
+	Balance(RENT, Decimal("12000.00")),
+	Balance(MANAGER, Decimal("24200.00")),
+	Balance(KST, Decimal("800.00")),
+)
+
+
+class PriorYearTest(TestCase):
+	"""§ 265 Abs. 2 HGB: „zu jedem Posten der entsprechende Betrag des vorhergehenden Geschäftsjahrs“."""
+
+	def setUp(self):
+		self.statement = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS, prior=PRIOR_BOOKS)
+		self.sheet = self.statement.balance_sheet
+
+	def test_each_line_carries_the_amount_of_the_previous_year(self):
+		self.assertEqual(
+			[(line.position.concept, line.amount, line.prior) for line in self.sheet.aktiva[4:9]],
+			[
+				("bs.ass.currAss", Decimal("44280.00"), Decimal("30000.00")),
+				("bs.ass.currAss.inventory", Decimal("0"), Decimal("0")),
+				("bs.ass.currAss.receiv", Decimal("6350.50"), Decimal("3000.00")),
+				("bs.ass.currAss.securities", Decimal("0"), Decimal("0")),
+				("bs.ass.currAss.cashEquiv", Decimal("37929.50"), Decimal("27000.00")),
+			],
+		)
+		self.assertEqual(self.sheet.line("bs.eqLiab.equity.netIncome").prior, Decimal("3000.00"))
+		self.assertEqual(self.statement.income_statement.line(SALES).prior, Decimal("40000.00"))
+
+	def test_gives_the_totals_the_result_the_sales_and_the_bilanzsumme_of_the_previous_year(self):
+		self.assertEqual(
+			(self.sheet.prior_aktiva_total, self.sheet.prior_passiva_total, self.sheet.prior_bilanzsumme),
+			(Decimal("30000.00"), Decimal("30000.00"), Decimal("30000.00")),
+		)
+		income = self.statement.income_statement
+		self.assertEqual(
+			(income.prior_net_income, income.prior_sales), (Decimal("3000.00"), Decimal("40000.00"))
+		)
+
+	def test_the_vermerke_carry_the_previous_year_too(self):
+		vermerk = self.sheet.line("bs.eqLiab.liab").vermerke[0]
+		self.assertEqual(
+			(vermerk.vermerk.kind, vermerk.amount, vermerk.prior),
+			(VermerkKind.LIABILITIES_UP_TO_ONE_YEAR, Decimal("4280.00"), Decimal("1200.00")),
+		)
+
+	def test_without_a_previous_year_no_line_has_one(self):
+		statement = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS)
+		self.assertEqual({line.prior for line in statement.balance_sheet.aktiva}, {None})
+		self.assertIsNone(statement.balance_sheet.prior_aktiva_total)
+		self.assertIsNone(statement.income_statement.prior_net_income)
+		self.assertEqual(
+			{vermerk.prior for vermerk in statement.balance_sheet.line("bs.eqLiab.liab").vermerke}, {None}
+		)
+
+	def test_the_findings_of_the_previous_year_say_so(self):
+		statement = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS, prior=PRIOR_BOOKS[1:])
+		(finding,) = statement.findings
+		self.assertEqual((finding.code, finding.prior_year), (Code.NOT_BALANCED, True))
+		self.assertTrue(finding.text.startswith("Vorjahr: "))
+		self.assertFalse(any(finding.prior_year for finding in self.statement.findings))
+
+
+class EnteredPriorYearTest(TestCase):
+	"""The first Vorjahr is entered by hand from the last festgestellter Jahresabschluss."""
+
+	def setUp(self):
+		scheme = balance_sheet_scheme(2026)
+		self.prior = (
+			entered(scheme.position("bs.ass.currAss"), Decimal("30000.00")),
+			entered(scheme.position("bs.eqLiab.equity"), Decimal("28000.00")),
+			entered(scheme.position("bs.eqLiab.accruals"), Decimal("800.00")),
+			entered(scheme.position("bs.eqLiab.liab"), Decimal("1200.00"), remaining_term=SHORT),
+		)
+
+	def test_turns_an_amount_of_a_position_into_a_balance_of_its_side(self):
+		self.assertEqual(
+			[(balance.concept, balance.amount, balance.source) for balance in self.prior],
+			[
+				("bs.ass.currAss", Decimal("30000.00"), "Vorjahr"),
+				("bs.eqLiab.equity", Decimal("-28000.00"), "Vorjahr"),
+				("bs.eqLiab.accruals", Decimal("-800.00"), "Vorjahr"),
+				("bs.eqLiab.liab", Decimal("-1200.00"), "Vorjahr"),
+			],
+		)
+		self.assertIs(self.prior[-1].remaining_term, SHORT)
+
+	def test_a_kleinst_takes_its_previous_year_at_the_letters(self):
+		statement = build(2026, SizeClass.KLEINST, BOOKS, parents=PARENTS, prior=self.prior)
+		sheet = statement.balance_sheet
+		self.assertEqual(sheet.line("bs.eqLiab.equity").prior, Decimal("28000.00"))
+		self.assertEqual((sheet.prior_aktiva_total, sheet.prior_passiva_total), (Decimal("30000.00"),) * 2)
+		self.assertEqual(statement.findings, ())
+
+	def test_the_result_of_a_previous_year_entered_by_hand_comes_with_it(self):
+		prior = (
+			entered(balance_sheet_scheme(2026).position("bs.ass.currAss.cashEquiv"), Decimal("28000.00")),
+			entered(balance_sheet_scheme(2026).position("bs.eqLiab.equity.subscribed"), Decimal("25000.00")),
+		)
+		statement = build(
+			2026, SizeClass.KLEIN, BOOKS, parents=PARENTS, prior=prior, prior_net_income=Decimal("3000.00")
+		)
+		self.assertEqual(statement.balance_sheet.line("bs.eqLiab.equity.netIncome").prior, Decimal("3000.00"))
+		self.assertEqual(statement.income_statement.prior_net_income, Decimal("3000.00"))
+		self.assertEqual(statement.findings, ())
+
+
+class ShownTest(TestCase):
+	"""§ 265 Abs. 8 HGB: a position without an amount in either year need not be shown."""
+
+	def test_a_line_without_an_amount_in_either_year_is_not_shown(self):
+		sheet = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS, prior=PRIOR_BOOKS).balance_sheet
+		self.assertFalse(sheet.line("bs.ass.currAss.inventory").shown)
+		self.assertTrue(sheet.line("bs.ass.currAss.receiv").shown)
+
+	def test_a_line_with_an_amount_in_the_previous_year_only_is_shown(self):
+		prior = (
+			*PRIOR_BOOKS,
+			Balance("bs.ass.prepaidExp", Decimal("100.00")),
+			Balance(BANK, Decimal("-100.00")),
+		)
+		sheet = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS, prior=prior).balance_sheet
+		line = sheet.line("bs.ass.prepaidExp")
+		self.assertEqual((line.amount, line.prior, line.shown), (Decimal("0"), Decimal("100.00"), True))
+
+	def test_the_eigenkapital_and_the_gezeichnetes_kapital_are_always_shown(self):
+		sheet = build(2026, SizeClass.KLEIN, ()).balance_sheet
+		self.assertEqual(
+			[line.position.concept for line in sheet.aktiva + sheet.passiva if line.shown],
+			["bs.eqLiab.equity", "bs.eqLiab.equity.subscribed"],
+		)
+
+	def test_the_results_of_the_income_statement_are_always_shown(self):
+		income = build(2026, SizeClass.KLEIN, ()).income_statement
+		self.assertEqual(
+			[line.position.concept for line in income.lines if line.shown],
+			["is.netIncome.eat", "is.netIncome"],
+		)
+
+	def test_a_vermerk_without_an_amount_in_either_year_is_not_shown(self):
+		sheet = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS).balance_sheet
+		self.assertEqual(
+			[(vermerk.vermerk.kind, vermerk.shown) for vermerk in sheet.line("bs.eqLiab.liab").vermerke],
+			[
+				(VermerkKind.LIABILITIES_UP_TO_ONE_YEAR, True),
+				(VermerkKind.LIABILITIES_OVER_ONE_YEAR, False),
+				(VermerkKind.SHAREHOLDERS, False),
+			],
+		)
