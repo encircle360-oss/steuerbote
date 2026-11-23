@@ -26,32 +26,38 @@ What each check compares, JD standing for the Jahresdokumentation of the year:
   Vorsatz (TEXTS of steuerbote/elster/vorsatz.py) with the sheet „Vorsatz - Felder“; the datenartVersion and the
   plugin of the year with Datenartversionmatrix.ods.
 - KSt and GewSt: each rule of the JD E30 or E20 that the core computes (expected_rules of the modules in
-  ``expecting``) by its Fehlercode and the terms of its Prüfbedingung (steuerbote.kst.years.RuleExpectation), the
-  catalogue of the XML once the module has one (``catalogues``), the Vorsatz and the plugin.
+  ``expecting``) by its Fehlercode and the terms of its Prüfbedingung (steuerbote.kst.years.RuleExpectation); the
+  catalogue of the Vordrucke (CATALOGUES of steuerbote/kst/form.py and steuerbote/gewst/form.py) as for USt; what the
+  writer takes from the schema besides it (SCHEMAS of steuerbote/elster/kst_xml.py and gewst_xml.py): the contexts
+  that repeat with their maxOccurs and the Vordrucke that begin with the Indexfeld; the categories of the Rechtsformen
+  Steuerbote files (RECHTSFORMEN) with their enumeration in the sheet „Benutzerdefinierte Typen“; the Vorsatz and the
+  plugin.
 - Bilanz: each version of TAXONOMIES (steuerbote/xbrl/versions.py) with its Jahresdokumentation_Bilanz_Taxonomie, the
   rules a module of the E-Bilanz computes of it (BILANZ_EXPECTING, functions of the version) and its row in the
   matrix; a year by the versions of its fiscal year, that of BILANZ_TAXONOMIES of steuerbote/eric/releases.py or else
   those the BMF letters allow for it (versions.allowed_for).
 
-A module plugs in where its data are: a new table of a year joins the tables of its check, a form catalogue of KSt or
-GewSt the ``catalogues`` of its IncomeTax, and a module that computes rules of the E-Bilanz BILANZ_EXPECTING.
+A module plugs in where its data are: a new table of a year joins the tables of its check, a new module of the core
+that computes rules of the JD the ``expecting`` of its IncomeTax, and a module that computes rules of the E-Bilanz
+BILANZ_EXPECTING.
 """
 
 import argparse
 import re
 import sys
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from types import MappingProxyType, ModuleType
 from typing import TextIO
 
-from steuerbote.elster import ust2a_xml, vorsatz
+from steuerbote.elster import gewst_xml, kst_xml, ust2a_xml, vorsatz
 from steuerbote.elster.erklaerung import Field, FormCatalogue
 from steuerbote.eric import releases
 from steuerbote.eric.datenart import Datenart, bilanz, gewst, kst, ust, ustva
 from steuerbote.gewst import chain as gewst_chain
+from steuerbote.gewst import form as gewst_form
 from steuerbote.gewst import years as gewst_years
 from steuerbote.jahresmeldung import documentation
 from steuerbote.jahresmeldung.documentation import (
@@ -71,6 +77,7 @@ from steuerbote.jahresmeldung.documentation import (
 )
 from steuerbote.kst import chain as kst_chain
 from steuerbote.kst import einlagekonto, losses
+from steuerbote.kst import form as kst_form
 from steuerbote.kst import years as kst_years
 from steuerbote.kst.years import RuleExpectation
 from steuerbote.ustjahr import defaults as ustjahr_defaults
@@ -103,6 +110,9 @@ _FROM_YEAR = re.compile(r"<Jahr>: ab (?P<year>\d{4})")
 _LISTED_YEARS = re.compile(r"<Jahr>: (?P<years>\d{4}(?:, \d{4})*)")
 _FIELD_LIST = re.compile(r"\(((?:e\d{7},)+e\d{7})\)")
 _CONJUNCTION = re.compile(r"[()]|und")
+_RECHTSFORM = re.compile(r"- (?P<code>\d+) \[[^\]]*\] (?P<categories>.*)")
+_CATEGORY = re.compile(r"(\w+): (\w+)")
+TYPES = "Benutzerdefinierte Typen"
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,7 +147,9 @@ class IncomeTax:
 	``years`` is the year table, whose entries name their ``documentation_year``, whether they are ``provisional``, and
 	their ``jahresdokumentation`` (steuerbote/kst/years.py, steuerbote/gewst/years.py); ``expecting`` are the modules
 	of the core with ``expected_rules(year)``; ``tables`` the tables keyed by the year, YEARS first; ``catalogues`` the
-	form catalogues of the XML by year, none until the module has them.
+	catalogues of the Vordrucke by year, ``xml_schemas`` what the writer takes from the schema besides them, and
+	``rechtsformen`` the categories of the Rechtsformen Steuerbote files, with the type of the sheet „Benutzerdefinierte
+	Typen“ that enumerates them (``rechtsform_type``, its name and version).
 	"""
 
 	name: str
@@ -145,7 +157,10 @@ class IncomeTax:
 	datenart: Callable[[int], Datenart]
 	expecting: tuple[ModuleType, ...]
 	tables: tuple[Table, ...]
-	catalogues: Mapping[int, FormCatalogue] = field(default_factory=lambda: MappingProxyType({}))
+	catalogues: Mapping[int, FormCatalogue]
+	xml_schemas: Mapping[int, kst_xml.Schema]
+	rechtsformen: Mapping[int, Mapping[str, Mapping[str, str]]]
+	rechtsform_type: tuple[str, str]
 
 	def check(self, root: Path, year: int | str) -> Iterator[str]:
 		"""The lines of the year: the rules the core computes, the catalogue of the XML, the Vorsatz and the plugin,
@@ -178,12 +193,16 @@ class IncomeTax:
 		for module in self.expecting:
 			for expectation in module.expected_rules(data.year):
 				differences.extend(expectation_differences(subject, expectation, jd, _file_of(module)))
-		if self.catalogues:
-			xsd = read_schema(schema_path(root, self.datenart(documentation_year)), kind.root)
-			catalogue = latest(self.catalogues, year)
-			differences.extend(
-				form_catalogue_differences(subject, catalogue, jd, xsd, documentation_year == year)
-			)
+		xsd = read_schema(schema_path(root, self.datenart(documentation_year)), kind.root)
+		catalogue = latest(self.catalogues, year)
+		differences.extend(
+			form_catalogue_differences(subject, catalogue, jd, xsd, documentation_year == year)
+		)
+		differences.extend(
+			xml_schema_differences(subject, latest(self.xml_schemas, year), catalogue, jd, xsd)
+		)
+		rechtsformen = latest(self.rechtsformen, year)
+		differences.extend(rechtsform_differences(subject, rechtsformen, self.rechtsform_type, jd))
 		differences.extend(vorsatz_differences(subject, jd))
 		differences.extend(plugin_differences(subject, kind, datenart_versions(root)))
 		yield from (str(difference) for difference in differences)
@@ -239,16 +258,19 @@ def form_catalogue_differences(
 ) -> Iterator[Difference]:
 	"""The form catalogue of an Erklärung against the Jahresdokumentation and the schema it comes from.
 
-	It compares the source with the file and its Versionslabel; the Vordrucke with those of „Allg. Information“, a
-	Pflichtvordruck the catalogue lacks included; per Vordruck with fields, the fields with the filed fields of the JD
-	and the leaves of the schema, each in its order; per field its context, Formatkennzeichen, Vordruckzeile
-	(``expected_line`` gives the line of the JD where the form prints another), Kennzahl, Pflichtfeld, max. Zeilen,
-	Beschreibung (with the year for „$VZ$“), the Max. Länge of a text, the pattern and the values of a list; and the
-	rules of the catalogue by Fehlercode. Namespace and version count only where the JD is that of the year of the
-	catalogue (``own_year``), which the one of a provisional year is not.
+	It compares the source, which names the file and its Versionslabel, with them; the Vordrucke with those of „Allg.
+	Information“, a Pflichtvordruck the catalogue lacks included, and with those of the schema, their order and their
+	maxOccurs; per Vordruck with fields, the fields with the filed fields of the JD and the leaves of the schema, each
+	in its order and without the Indexfeld, which numbers a Vordruck and is none of its fields; per field its context,
+	Formatkennzeichen, Vordruckzeile (``expected_line`` gives the line of the JD where the form prints another),
+	Kennzahl with or without its Sachbereich, Pflichtfeld, max. Zeilen, Beschreibung (with or without the year for
+	„$VZ$“), the Max. Länge of a text, the pattern and the values of a list; and the rules of the catalogue by
+	Fehlercode. Namespace and version count only where the JD is that of the year of the catalogue (``own_year``),
+	which the one of a provisional year is not.
 	"""
 	described = f"Versionslabel {jd.versionslabel or 'none'}"
-	if catalogue.source != f"{jd.file} ({described})":
+	label = re.compile(rf"{re.escape(described)}(?![\d.])")
+	if jd.file not in catalogue.source or not label.search(catalogue.source):
 		yield Difference(f"{subject}, source", catalogue.source, jd.file, described)
 	kind = catalogue.datenart
 	if own_year:
@@ -260,6 +282,7 @@ def form_catalogue_differences(
 			if ours != theirs:
 				yield Difference(f"{subject}, {where}", ours, file, theirs or "none")
 	yield from _forms(subject, catalogue, jd)
+	yield from _schema_forms(subject, catalogue, xsd)
 	for form in dict.fromkeys(field_.form for field_ in catalogue.fields):
 		fields = [field_ for field_ in catalogue.fields if field_.form == form]
 		if form not in jd.vordrucke:
@@ -544,6 +567,93 @@ def _forms(subject: str, catalogue: FormCatalogue, jd: Jahresdokumentation) -> I
 			)
 
 
+def _schema_forms(subject: str, catalogue: FormCatalogue, xsd: Schema) -> Iterator[Difference]:
+	"""The Vordrucke of the catalogue against the elements of the root of the schema: each there, in the order of the
+	schema, with the maxOccurs of its „max. lfd. Nr. Vordruck“."""
+	present = [form for form in catalogue.forms if form.name in xsd.vordrucke]
+	for form in catalogue.forms:
+		if form.name not in xsd.vordrucke:
+			where = f"{subject}, Vordruck {form.name}"
+			yield Difference(where, "in the catalogue", xsd.file, f"no element {form.name}")
+	names = {form.name for form in present}
+	documented = [name for name in xsd.vordrucke if name in names]
+	for form, name in zip(present, documented, strict=True):
+		if form.name != name:
+			ours, theirs = f"{form.name} before {name}", f"{name} before {form.name}"
+			yield Difference(f"{subject}, order of the Vordrucke", ours, xsd.file, theirs)
+			break
+	for form in present:
+		most = xsd.repeats.get(form.name, "1")
+		if str(form.count) != most:
+			where = f"{subject}, Vordruck {form.name}"
+			yield Difference(where, f"max. lfd. Nr. {form.count}", xsd.file, f"maxOccurs {most}")
+
+
+def xml_schema_differences(
+	subject: str, schema: kst_xml.Schema, catalogue: FormCatalogue, jd: Jahresdokumentation, xsd: Schema
+) -> Iterator[Difference]:
+	"""What the writer of an Erklärung takes from its schema besides the catalogue (steuerbote/elster/kst_xml.py): the
+	contexts of the Vordrucke of the catalogue that repeat, with their maxOccurs, and the Vordrucke that begin with the
+	Indexfeld."""
+	forms = {form.name for form in catalogue.forms}
+	documented = {
+		path: most for path, most in xsd.repeats.items() if "/" in path and path.split("/")[0] in forms
+	}
+	ours = {path: str(most) for path, most in schema.repeats.items()}
+	for path in dict.fromkeys((*ours, *documented)):
+		if ours.get(path) != documented.get(path):
+			where = f"{subject}, context {path}"
+			yield Difference(where, _repeated(ours.get(path)), xsd.file, _repeated(documented.get(path)))
+	indexed = {form for form in forms if form in jd.vordrucke and jd.vordruck(form).index_fields}
+	if set(schema.indexed) != indexed:
+		ours_indexed, documented_indexed = ", ".join(sorted(schema.indexed)), ", ".join(sorted(indexed))
+		yield Difference(
+			f"{subject}, Indexfeld", ours_indexed or "none", jd.file, documented_indexed or "none"
+		)
+
+
+def rechtsform_differences(
+	subject: str,
+	rechtsformen: Mapping[str, Mapping[str, str]],
+	kind: tuple[str, str],
+	jd: Jahresdokumentation,
+) -> Iterator[Difference]:
+	"""The categories of each Rechtsform Steuerbote files against the enumeration of its type in the sheet
+	„Benutzerdefinierte Typen“, such as „- 350 [Gesellschaft mit beschränkter Haftung] RF_Gruppe: 1 NurG: 1“."""
+	name, version = kind
+	where = f"{subject}, {name}"
+	rows = [row for row in jd.sheets.get(TYPES, ()) if (row.get("Name"), row.get("Version")) == kind]
+	if len(rows) != 1:
+		yield Difference(
+			where, "the categories of the Rechtsformen", jd.file, f"no type {name} of version {version}"
+		)
+		return
+	documented = {
+		match["code"]: dict(_CATEGORY.findall(match["categories"]))
+		for line in rows[0].get("Format", "").split("\n")
+		if (match := _RECHTSFORM.match(line.strip()))
+	}
+	for code, categories in rechtsformen.items():
+		theirs = documented.get(code)
+		if theirs != dict(categories):
+			described = "no such Rechtsform" if theirs is None else _categories(theirs)
+			yield Difference(f"{where}, {code}", _categories(categories), jd.file, described)
+
+
+def _categories(categories: Mapping[str, str]) -> str:
+	return ", ".join(f"{key} {value}" for key, value in sorted(categories.items()))
+
+
+def _repeated(most: str | None) -> str:
+	return "does not repeat" if most is None else f"repeats up to {most}"
+
+
+def _kennzahlen(row: Row) -> tuple[str, str]:
+	"""The Kennzahl of a row of „<Vordruck> - Kennzahlen“ without and with its Sachbereich, such as 110 and 13.110."""
+	kennzahl, sachbereich = row.get("Kennzahl", ""), row.get("Sachbereich", "")
+	return kennzahl, f"{sachbereich}.{kennzahl}" if sachbereich else kennzahl
+
+
 def _described(count: int, mandatory: bool) -> str:
 	return f"max. lfd. Nr. {count}{', Pflichtvordruck' if mandatory else ''}"
 
@@ -558,51 +668,45 @@ def _fields(
 	year: str,
 ) -> Iterator[Difference]:
 	vordruck = jd.vordruck(form)
-	rows = {row.get("Name", ""): row for row in vordruck.filed_fields}
+	index = set(vordruck.index_fields)
+	rows = {name: row for row in vordruck.filed_fields if (name := row.get("Name", "")) not in index}
 	yield from _order(f"{subject}, {form}", [field_.feldkennung for field_ in fields], list(rows), jd.file)
-	leaves = xsd.vordrucke.get(form)
-	if leaves is None:
-		yield Difference(f"{subject}, {form}", "its fields", xsd.file, f"no element {form}")
-	else:
+	leaves = [leaf for leaf in xsd.vordrucke.get(form, ()) if leaf.name not in index]
+	if form in xsd.vordrucke:
 		places = [_place(leaf.context, leaf.name) for leaf in leaves]
 		ours = [_place(field_.context, field_.feldkennung) for field_ in fields]
 		yield from _order(f"{subject}, {form}", ours, places, xsd.file)
-	kennzahlen = {row.get("Feldname", ""): row.get("Kennzahl", "") for row in vordruck.kennzahlen}
-	types = {leaf.name: leaf.type for leaf in leaves or ()}
+	kennzahlen = {row.get("Feldname", ""): _kennzahlen(row) for row in vordruck.kennzahlen}
+	types = {leaf.name: leaf.type for leaf in leaves}
 	for field_ in fields:
+		where = f"{subject}, field {field_.feldkennung}"
 		row = rows.get(field_.feldkennung)
 		if row is not None:
-			yield from _field(
-				f"{subject}, field {field_.feldkennung}", field_, row, jd.file, expected_line, year
-			)
-			kennzahl = kennzahlen.get(_place(field_.context, field_.feldkennung), "")
-			if (field_.kennzahl or "") != kennzahl:
-				where = f"{subject}, field {field_.feldkennung}"
-				yield Difference(
-					where, f"Kennzahl {field_.kennzahl or 'none'}", jd.file, f"Kennzahl {kennzahl or 'none'}"
-				)
+			yield from _field(where, field_, row, jd.file, expected_line, year)
+			ours = field_.kennzahl or ""
+			documented = kennzahlen.get(_place(field_.context, field_.feldkennung), ("", ""))
+			if ours not in documented:
+				theirs = documented["." in ours]
+				yield Difference(where, f"Kennzahl {ours or 'none'}", jd.file, f"Kennzahl {theirs or 'none'}")
 		values = xsd.enumerations.get(types.get(field_.feldkennung, ""), ())
-		if leaves is not None and field_.options and field_.options != values:
-			yield Difference(
-				f"{subject}, field {field_.feldkennung}",
-				f"values {', '.join(field_.options)}",
-				xsd.file,
-				f"values {', '.join(values) or 'none'}",
-			)
+		if form in xsd.vordrucke and field_.options and field_.options != values:
+			ours = f"values {', '.join(field_.options)}"
+			yield Difference(where, ours, xsd.file, f"values {', '.join(values) or 'none'}")
 
 
 def _field(
 	where: str, field_: Field, row: Row, source: str, expected_line: Callable[[Field], str], year: str
 ) -> Iterator[Difference]:
 	"""The columns of one field of „<Vordruck> - Felder“ against the field of the catalogue."""
-	label = " ".join(row.get("Beschreibung", "").replace(YEAR_PLACEHOLDER, year).split())
+	written = " ".join(row.get("Beschreibung", "").split())
+	label = written.replace(YEAR_PLACEHOLDER, year)
 	columns = [
 		("Kontext", field_.context, row.get("Kontext", "")),
 		("Formatkennzeichen", field_.format, row.get("Formatkennzeichen", "")),
 		("Vordruckzeile", expected_line(field_), row.get("Vordruckzeile", "")),
 		("Pflichtfeld", YES if field_.required else NO, row.get("Pflichtfeld", "") or NO),
 		("max. Zeilen", str(field_.rows), row.get("max. Zeilen", "")),
-		("Beschreibung", field_.label, label),
+		("Beschreibung", field_.label, written if field_.label == written else label),
 	]
 	if field_.format == "C":
 		columns.append(("Max. Länge", str(field_.length), row.get("Max. Länge", "")))
@@ -749,14 +853,32 @@ KST_CHECK = IncomeTax(
 	kst_years.YEARS,
 	kst,
 	(kst_chain, losses, einlagekonto),
-	(Table("YEARS", "steuerbote/kst/years.py", kst_years.YEARS),),
+	(
+		Table("YEARS", "steuerbote/kst/years.py", kst_years.YEARS),
+		Table("CATALOGUES", "steuerbote/kst/form.py", kst_form.CATALOGUES),
+		Table("RECHTSFORMEN", "steuerbote/kst/form.py", kst_form.RECHTSFORMEN),
+		Table("SCHEMAS", "steuerbote/elster/kst_xml.py", kst_xml.SCHEMAS),
+	),
+	kst_form.CATALOGUES,
+	kst_xml.SCHEMAS,
+	kst_form.RECHTSFORMEN,
+	("RECHTSFORM_KOERPERSCHAFTEN_V3", "3"),
 )
 GEWST_CHECK = IncomeTax(
 	GEWST,
 	gewst_years.YEARS,
 	gewst,
 	(gewst_chain,),
-	(Table("YEARS", "steuerbote/gewst/years.py", gewst_years.YEARS),),
+	(
+		Table("YEARS", "steuerbote/gewst/years.py", gewst_years.YEARS),
+		Table("CATALOGUES", "steuerbote/gewst/form.py", gewst_form.CATALOGUES),
+		Table("RECHTSFORMEN", "steuerbote/gewst/form.py", gewst_form.RECHTSFORMEN),
+		Table("SCHEMAS", "steuerbote/elster/gewst_xml.py", gewst_xml.SCHEMAS),
+	),
+	gewst_form.CATALOGUES,
+	gewst_xml.SCHEMAS,
+	gewst_form.RECHTSFORMEN,
+	("RECHTSFORM_GEWERBESTEUER_V2", "2"),
 )
 MODULES = (
 	Module(
