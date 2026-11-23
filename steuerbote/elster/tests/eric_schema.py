@@ -151,3 +151,20 @@ def _cells(row: etree._Element) -> list[str]:
 		repeat = 1 if not text else int(cell.get(f"{{{ODS_TABLE}}}number-columns-repeated", "1"))
 		cells.extend([text] * repeat)
 	return cells
+
+
+def erklaerung_directory(name: str) -> Path:
+	"""The directory of a Datenart of the Verfahren ElsterErklaerung, such as USt, KSt or GewSt."""
+	return documentation() / "Datenarten" / "ElsterErklaerung" / name
+
+
+def lines(path: Path, name: str) -> list[str]:
+	"""The text of the first cell of each row of a sheet, such as „Allg. Information“, which has no head row."""
+	with zipfile.ZipFile(path) as archive:
+		content = etree.fromstring(archive.read("content.xml"))
+	(table,) = (
+		table for table in content.iter(f"{{{ODS_TABLE}}}table") if table.get(f"{{{ODS_TABLE}}}name") == name
+	)
+	return [
+		cells[0] for row in table.iter(f"{{{ODS_TABLE}}}table-row") if (cells := _cells(row)) and cells[0]
+	]
