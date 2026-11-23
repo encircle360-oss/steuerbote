@@ -27,6 +27,7 @@ HEADS = {
 		"Min. Länge",
 		"Max. Länge",
 		"Pflichtfeld",
+		"Indexfeld",
 		"Vordruckzeile",
 		"Internes ERiC Feld",
 		"Änderungsinformation",
@@ -97,17 +98,21 @@ def write_schema(
 	vordrucke: Mapping[str, Sequence[tuple[str, str, str]]],
 	enumerations: Mapping[str, Sequence[str]] = {},
 	complex_enumerations: Mapping[str, Sequence[str]] = {},
+	occurs: Mapping[str, str] = {},
 ) -> Path:
 	"""A schema whose root holds the Vordrucke in their order, each with its leaves as (context, name, type): every
 	context a complex type with a sequence, every type of a leaf with values a simple type that enumerates them, or a
-	complex type of simple content as the schemas of the Erklärungen write their lists."""
+	complex type of simple content as the schemas of the Erklärungen write their lists. ``occurs`` gives the maxOccurs
+	of a Vordruck or context by its path below the root, such as GK or KSt1/AE/Einzel."""
 	schema = ElementTree.Element(f"{{{XS}}}schema", {"targetNamespace": namespace})
 	ElementTree.SubElement(schema, f"{{{XS}}}element", {"name": root, "type": f"{root}_CType"})
-	root_type = _complex_type(schema, f"{root}_CType", [(name, f"{name}_CType") for name in vordrucke])
+	root_type = _complex_type(
+		schema, f"{root}_CType", [(name, f"{name}_CType", occurs.get(name)) for name in vordrucke]
+	)
 	if version is not None:
 		ElementTree.SubElement(root_type, f"{{{XS}}}attribute", {"name": "version", "fixed": version})
 	for name, leaves in vordrucke.items():
-		_contexts(schema, f"{name}_CType", leaves, "")
+		_contexts(schema, f"{name}_CType", leaves, "", name, occurs)
 	for type_name, values in enumerations.items():
 		simple = ElementTree.SubElement(schema, f"{{{XS}}}simpleType", {"name": type_name})
 		_enumeration(simple, values)
@@ -130,30 +135,36 @@ def _headed(heads: Sequence[str], rows: Rows) -> list[list[str]]:
 
 
 def _contexts(
-	schema: ElementTree.Element, type_name: str, leaves: Sequence[tuple[str, str, str]], context: str
+	schema: ElementTree.Element,
+	type_name: str,
+	leaves: Sequence[tuple[str, str, str]],
+	context: str,
+	path: str,
+	occurs: Mapping[str, str],
 ) -> None:
 	"""The complex type of a context with its fields and the contexts right below it, in the order of the leaves."""
-	elements: list[tuple[str, str]] = []
+	elements: list[tuple[str, str, str | None]] = []
 	below: dict[str, list[tuple[str, str, str]]] = {}
 	prefix = f"{context}/" if context else ""
 	for leaf_context, name, leaf_type in leaves:
 		if leaf_context == context:
-			elements.append((name, leaf_type))
+			elements.append((name, leaf_type, None))
 			continue
 		child = leaf_context.removeprefix(prefix).split("/")[0]
 		if child not in below:
-			elements.append((child, f"{type_name}_{child}"))
+			elements.append((child, f"{type_name}_{child}", occurs.get(f"{path}/{child}")))
 		below.setdefault(child, []).append((leaf_context, name, leaf_type))
 	_complex_type(schema, type_name, elements)
 	for child, child_leaves in below.items():
-		_contexts(schema, f"{type_name}_{child}", child_leaves, f"{prefix}{child}")
+		_contexts(schema, f"{type_name}_{child}", child_leaves, f"{prefix}{child}", f"{path}/{child}", occurs)
 
 
 def _complex_type(
-	schema: ElementTree.Element, name: str, elements: Sequence[tuple[str, str]]
+	schema: ElementTree.Element, name: str, elements: Sequence[tuple[str, str, str | None]]
 ) -> ElementTree.Element:
 	complex_type = ElementTree.SubElement(schema, f"{{{XS}}}complexType", {"name": name})
 	sequence = ElementTree.SubElement(complex_type, f"{{{XS}}}sequence")
-	for element, type_name in elements:
-		ElementTree.SubElement(sequence, f"{{{XS}}}element", {"name": element, "type": type_name})
+	for element, type_name, most in elements:
+		attributes = {"name": element, "type": type_name, **({} if most is None else {"maxOccurs": most})}
+		ElementTree.SubElement(sequence, f"{{{XS}}}element", attributes)
 	return complex_type

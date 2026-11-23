@@ -58,6 +58,7 @@ def documented() -> Documented:
 		[
 			{"Kontext": "Ber_Erkl", "Name": "E3000601", "Formatkennzeichen": "J", "Vordruckzeile": "3"},
 			{"Kontext": "", "Name": "Informationsteil", "Internes ERiC Feld": "Ja"},
+			{"Kontext": "", "Name": "WJ", "Indexfeld": "Ja"},
 			{"Kontext": "Allg", "Name": "E3000401", "Änderungsinformation": "GELOESCHT"},
 		]
 	)
@@ -186,13 +187,14 @@ class ReadTest(DirectoryTestCase):
 	def test_reads_each_vordruck_with_the_current_rows_of_its_sheets(self):
 		self.assertEqual(list(self.jd.vordrucke), ["USt2A", "UN"])
 		ust2a = self.jd.vordruck("USt2A")
-		self.assertEqual([row["Name"] for row in ust2a.fields], ["E3000601", "Informationsteil"])
-		self.assertEqual([row["Name"] for row in ust2a.filed_fields], ["E3000601"])
+		self.assertEqual([row["Name"] for row in ust2a.fields], ["E3000601", "Informationsteil", "WJ"])
+		self.assertEqual([row["Name"] for row in ust2a.filed_fields], ["E3000601", "WJ"])
+		self.assertEqual(ust2a.index_fields, ("WJ",))
 		self.assertEqual([row["Kontext"] for row in ust2a.contexts], ["/USt2A/Allg"])
 		self.assertEqual(ust2a.kennzahlen[0]["Kennzahl"], "10")
 		self.assertEqual([row["Regelart"] for row in ust2a.rules], ["Fehler", "Hinweis"])
 		un = self.jd.vordruck("UN")
-		self.assertEqual((un.fields, un.texts, len(un.rules)), ((), (), 1))
+		self.assertEqual((un.fields, un.texts, len(un.rules), un.index_fields), ((), (), 1, ()))
 
 	def test_finds_the_rules_of_a_fehlercode(self):
 		ust2a = self.jd.vordruck("USt2A")
@@ -325,6 +327,15 @@ class SchemaTest(DirectoryTestCase):
 			},
 		)
 		self.assertEqual(dict(schema.enumerations), {"Land_SType": ("DE", "AT")})
+		self.assertEqual(dict(schema.repeats), {})
+
+	def test_reads_the_maxoccurs_of_each_vordruck_and_context_that_repeats(self):
+		occurs = {"USt2A": "2", "USt2A/Allg": "99", "USt2A/Allg/Adr": "unbounded", "Vorsatz": "1"}
+		schema = read_schema(self.schema(occurs=occurs), "E50")
+		self.assertEqual(
+			dict(schema.repeats), {"USt2A": "2", "USt2A/Allg": "99", "USt2A/Allg/Adr": "unbounded"}
+		)
+		self.assertEqual(len(schema.vordrucke["USt2A"]), 3)
 
 	def test_takes_the_values_of_a_complex_type_of_simple_content_as_well(self):
 		schema = read_schema(self.schema(complex_enumerations={"Liste_CType": ["1", "2"]}), "E50")
@@ -418,6 +429,14 @@ class RealDocumentationTest(TestCase):
 		self.assertEqual(real("GewSt_2025").versionslabel, "11.0")
 		self.assertLessEqual({"GewSt1A", "BEG", "BEKGW", "EMU", "Vorsatz"}, set(real("GewSt_2025").vordrucke))
 
+	def test_anlage_gk_and_kst_1_f_number_their_instances_with_the_indexfeld_wj(self):
+		jd = real("KSt_30_2025")
+		filed = ("KSt1", "GK", "ZVE", "Z", "Verluste", "WA", "KSt1F")
+		self.assertEqual(
+			{name: jd.vordruck(name).index_fields for name in filed if jd.vordruck(name).index_fields},
+			{"GK": ("WJ",), "KSt1F": ("WJ",)},
+		)
+
 	def test_the_texts_of_the_fields_of_an_erklaerung_are_those_of_its_filed_fields(self):
 		for kind_version in ("USt_2026", "KSt_30_2025", "GewSt_2025"):
 			for vordruck in real(kind_version).vordrucke.values():
@@ -445,6 +464,9 @@ class RealDocumentationTest(TestCase):
 		self.assertEqual((schema.namespace, schema.version), (ust(2026).namespace, "2026"))
 		self.assertEqual(list(schema.vordrucke), ["USt2A", "UN", "FV", "Vorsatz"])
 		self.assertEqual(len(schema.vordrucke["USt2A"]), 176)
+		self.assertEqual(schema.repeats["USt2A/Ber_VoSt_15a/Grdst_erstm_Verw/Ang_Grdst"], "99")
+		e30 = read_schema(schema_path(root, kst(2025)), "E30")
+		self.assertEqual((e30.repeats["GK"], e30.repeats["KSt1/AE/Einzel"]), ("2", "99"))
 		(row,) = matrix_rows(datenart_versions(root), kst(2026))
 		self.assertEqual(
 			(row["Jahr / Version"], row["Plugin-Bibliothek"]), ("<Jahr>: ab 2015", "checkKSt_<Jahr>")
