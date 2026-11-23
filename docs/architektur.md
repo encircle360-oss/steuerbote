@@ -615,7 +615,7 @@ Die Tests laufen gegen einen Auszug der Taxonomie 6.9 mit den Konzepten und Bezi
 
 „Vorgaben laden“, „Vorgaben aktualisieren“ und „Steuerbote einrichten“ nehmen die Vorgaben der Bilanzzuordnung aus `steuerbote/ebilanz/defaults.py`, reines Python ohne Frappe: `defaults_for(chart, version)` gibt die `Defaults` von `steuerbote/xbrl/mapping.py` für SKR03 oder SKR04 und eine Version der Taxonomie, `defaults_version()` ihren Stand, etwa „SKR04 Taxonomie 6.9 2026.1“. Die Vorgaben stehen als Gruppen von Konten mit demselben Platz in `GROUPS`, in der Reihenfolge des SKR04: eine Position mit Position bei Gegensaldo, Abschlusszweck, „Gegenüber Gesellschaftern“ und Restlaufzeit, beobachtet auf der Stufe „Sperrt“ oder außerhalb von Bilanz und GuV mit dem Grund aus `Outside`. Jedes Konto nennt seine DATEV-Bezeichnung und sein Gegenstück im anderen Kontenrahmen, jede Gruppe, deren Platz die Bezeichnungen nicht allein tragen, ihren Grund aus `REASONS` mit Quelle. `DEFAULTS` macht daraus je Kontenrahmen einen Eintrag je Konto oder Kontenbereich; `test_defaults.py` hält jeden Stand mit seiner SHA-256-Summe fest und prüft die Vorgaben gegen die Nummern der Kontenrahmen und Vorlagen (`steuerbote/ebilanz/tests/datev_charts.py`) und gegen das Paket der Taxonomie. Wie die Vorgaben entstanden sind, ihre Faustregeln, die auffälligen Entscheidungen und die Prüfliste für die Steuerberatung beschreibt [Vorgaben der Bilanzzuordnung](ebilanz-zuordnung.md).
 
-## Jahresabschluss
+### Jahresabschluss
 
 Der Beleg „Jahresabschluss“ (`Annual Accounts`) bringt den Kern unter `steuerbote/hgb` auf die Grundlage der Jahresmeldungen mit dem Lebenslauf `ACCOUNTS`; was er liest, rechnet, prüft, druckt und offenlegt, beschreibt [Jahresabschluss](jahresabschluss.md).
 
