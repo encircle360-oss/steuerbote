@@ -28,17 +28,28 @@ at most twelve (E3001208). The Vorsatz of every Erklärung names the Absender wi
 line of at most 30 characters (AbsStr) and the town in at most 29 (AbsOrt, sheet „Vorsatz - Felder“).
 split_street() splits the street of the VAT Return Settings, which holds both, at its last digits after a blank.
 
+Years. A Steuerberatung that prepares the Erklärungen of a year moves their deadline to the last day of February
+of the second year after it (§ 149 Abs. 3 Nr. 2 to 4 AO) and sets USt 2 A line 127 (E3002602) and KSt 1 line 100
+(E8001901). Only for such Erklärungen may the Finanzamt ask early (§ 149 Abs. 4 Satz 1 AO): „vor dem letzten Tag
+des Monats Februar des zweiten auf den Besteuerungszeitraum folgenden Kalenderjahres“, and never earlier than the
+deadline of Absatz 2 („keine kürzere als die in Absatz 2 bestimmte Frist“, Satz 6), seven months after the year.
+A Kleinunternehmer files no Umsatzsteuererklärung: § 19 Abs. 1 Satz 2 UStG leaves out
+„die Erklärungspflichten (§ 18 Absatz 1 bis 4)“. A subsidiary exempt under § 264 Abs. 3 HGB states why.
+
 Messages are English templates with positional placeholders. SettingsError keeps the template and its values
 apart, so that the Frappe layer translates the template before formatting it. This module is pure Python and never
 imports Frappe.
 """
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import date, timedelta
 from enum import StrEnum
 from types import MappingProxyType
 
 from steuerbote.elster.charset import CharsetError, describe, transliterate
+from steuerbote.ustva.period import day_label
 
 
 class SettingsError(ValueError):
@@ -229,6 +240,91 @@ class Address:
 		return f"{self.street} {number}" if number else self.street
 
 
+# Years
+
+NOT_A_YEAR = "{0} is not a four-digit year."
+YEAR_TWICE = "The year {0} is entered twice."
+EARLY_REQUEST_WITHOUT_ADVISOR = (
+	"The Finanzamt can ask for the {0} of {1} early only when a Steuerberatung prepares it (§ 149 Abs. 4 AO)."
+)
+EARLY_REQUEST_OUTSIDE = "The Finanzamt can ask for the {0} of {1} for a day from {2} on and before {3} (§ 149 Abs. 4 AO), not for {4}."
+EARLY_REQUEST_KLEINUNTERNEHMER = (
+	"A Kleinunternehmer files no Umsatzsteuererklärung for {0} (§ 19 Abs. 1 Satz 2 UStG), so the Finanzamt "
+	"cannot ask for it early."
+)
+EXEMPTION_WITHOUT_REASON = "The exemption of {0} under § 264 Abs. 3 HGB needs its reason."
+
+UMSATZSTEUERERKLAERUNG = "Umsatzsteuererklärung"
+KOERPERSCHAFTSTEUERERKLAERUNG = "Körperschaftsteuererklärung"
+GEWERBESTEUERERKLAERUNG = "Gewerbesteuererklärung"
+
+
+def early_request_window(year: int) -> tuple[date, date]:
+	"""The days § 149 Abs. 4 AO lets the Finanzamt set for an Erklärung of ``year``: from the deadline of Absatz 2,
+	seven months after the year, up to the last day of February of the second year after it, which is not one."""
+	_require_year(year)
+	return date(year + 1, 7, 31), date(year + 2, 3, 1) - timedelta(days=1)
+
+
+@dataclass(frozen=True, slots=True)
+class YearSettings:
+	"""What the settings say of one year: the VZ, the EZ or the year the fiscal year ends in.
+
+	The early requests are the days the Finanzamt set under § 149 Abs. 4 AO; ``adopted_on`` is the day the
+	shareholders adopted the Jahresabschluss of the fiscal year (§ 42a Abs. 2 GmbHG).
+	"""
+
+	year: int
+	advisor_prepares: bool = False
+	kleinunternehmer: bool = False
+	early_request_ust: date | None = None
+	early_request_kst: date | None = None
+	early_request_gewst: date | None = None
+	adopted_on: date | None = None
+	exempt_264_3: bool = False
+	exempt_264_3_reason: str | None = None
+
+	def __post_init__(self) -> None:
+		_require_year(self.year)
+		if self.early_request_ust and self.kleinunternehmer:
+			raise SettingsError(EARLY_REQUEST_KLEINUNTERNEHMER, self.year)
+		first, last = early_request_window(self.year)
+		for erklaerung, requested in self.early_requests.items():
+			if requested is None:
+				continue
+			if not self.advisor_prepares:
+				raise SettingsError(EARLY_REQUEST_WITHOUT_ADVISOR, erklaerung, self.year)
+			if not first <= requested < last:
+				raise SettingsError(
+					EARLY_REQUEST_OUTSIDE,
+					erklaerung,
+					self.year,
+					day_label(first),
+					day_label(last),
+					day_label(requested),
+				)
+		if self.exempt_264_3 and not (self.exempt_264_3_reason or "").strip():
+			raise SettingsError(EXEMPTION_WITHOUT_REASON, self.year)
+
+	@property
+	def early_requests(self) -> dict[str, date | None]:
+		return {
+			UMSATZSTEUERERKLAERUNG: self.early_request_ust,
+			KOERPERSCHAFTSTEUERERKLAERUNG: self.early_request_kst,
+			GEWERBESTEUERERKLAERUNG: self.early_request_gewst,
+		}
+
+
+def check_years(years: Iterable[YearSettings]) -> None:
+	duplicate = _first_duplicate(year.year for year in years)
+	if duplicate is not None:
+		raise SettingsError(YEAR_TWICE, duplicate)
+
+
+def year_settings(years: Iterable[YearSettings], year: int) -> YearSettings | None:
+	return next((settings for settings in years if settings.year == year), None)
+
+
 MESSAGES = (
 	NOT_A_LEGAL_FORM,
 	TEXT_TOO_LONG,
@@ -238,4 +334,29 @@ MESSAGES = (
 	SUFFIX_WITHOUT_HOUSE_NUMBER,
 	NOT_A_POSTAL_CODE,
 	STREET_LINE_TOO_LONG,
+	NOT_A_YEAR,
+	YEAR_TWICE,
+	EARLY_REQUEST_WITHOUT_ADVISOR,
+	EARLY_REQUEST_OUTSIDE,
+	EARLY_REQUEST_KLEINUNTERNEHMER,
+	EXEMPTION_WITHOUT_REASON,
 )
+
+
+def _require_year(year: object) -> None:
+	if not _is_int(year) or not 1000 <= year <= 9999:
+		raise SettingsError(NOT_A_YEAR, year)
+
+
+def _is_int(value: object) -> bool:
+	"""True is an int to Python, but no year."""
+	return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _first_duplicate[T](keys: Iterable[T]) -> T | None:
+	seen: set[T] = set()
+	for key in keys:
+		if key in seen:
+			return key
+		seen.add(key)
+	return None
