@@ -12,6 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest import TestCase, mock
 
+from steuerbote.eric.runtime import Check
 from steuerbote.xbrl import taxonomy
 from steuerbote.xbrl.taxonomy import (
 	FORMAT,
@@ -389,17 +390,26 @@ class StatusTest(ArchiveCase):
 	def configured(self, checksum: str | None) -> dict:
 		return {VERSION.version: None if checksum is None else (Path("/srv/taxonomie/paket.zip"), checksum)}
 
+	def status_of(self, checksum: str | None) -> Check:
+		"""The check of the version of the mini taxonomy among those of every version."""
+		(check,) = (
+			found
+			for found in status(self.root, self.configured(checksum))
+			if found.name == f"taxonomy_{VERSION.version.replace('.', '_')}"
+		)
+		return check
+
 	def test_an_installed_and_unchanged_taxonomy_is_reported(self):
 		path, checksum = self.archive()
 		install_from_archive(path, checksum, self.root, VERSION)
-		(check,) = status(self.root, self.configured(checksum))
+		check = self.status_of(checksum)
 		self.assertEqual(
 			(check.name, check.ok, check.detail),
 			("taxonomy_6_9", True, "Die HGB-Taxonomie 6.9 ist eingerichtet und unverändert."),
 		)
 
 	def test_a_taxonomy_the_bench_does_not_name(self):
-		(check,) = status(self.root, self.configured(None))
+		check = self.status_of(None)
 		self.assertFalse(check.ok)
 		self.assertEqual(
 			check.detail,
@@ -408,7 +418,7 @@ class StatusTest(ArchiveCase):
 		)
 
 	def test_a_named_taxonomy_not_yet_installed(self):
-		(check,) = status(self.root, self.configured("ab" * 32))
+		check = self.status_of("ab" * 32)
 		self.assertFalse(check.ok)
 		self.assertEqual(
 			check.detail, "Die HGB-Taxonomie 6.9 ist noch nicht eingerichtet: „Taxonomie einrichten“."
@@ -416,7 +426,7 @@ class StatusTest(ArchiveCase):
 
 	def test_a_taxonomy_installed_from_another_archive(self):
 		self.install()
-		(check,) = status(self.root, self.configured("ab" * 32))
+		check = self.status_of("ab" * 32)
 		self.assertFalse(check.ok)
 		self.assertIn("aus einem anderen Archiv eingerichtet", check.detail)
 
@@ -424,7 +434,7 @@ class StatusTest(ArchiveCase):
 		path, checksum = self.archive()
 		installation = install_from_archive(path, checksum, self.root, VERSION)
 		(installation.path / "fiscal.json").write_text("{}", encoding="utf-8")
-		(check,) = status(self.root, self.configured(checksum))
+		check = self.status_of(checksum)
 		self.assertFalse(check.ok)
 		self.assertEqual(check.detail, "Die HGB-Taxonomie 6.9 weicht vom Manifest ab: verändert: fiscal.json")
 
@@ -435,10 +445,10 @@ class StatusTest(ArchiveCase):
 		manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 		manifest["format"] = FORMAT - 1
 		manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-		(check,) = status(self.root, self.configured(checksum))
+		check = self.status_of(checksum)
 		self.assertFalse(check.ok)
 		self.assertIn("„Taxonomie einrichten“", check.detail)
 
 	def test_reports_every_version_of_the_table(self):
-		self.assertEqual([check.name for check in status(self.root, {})], ["taxonomy_6_9"])
-		self.assertEqual(tuple(TAXONOMIES), ("6.9",))
+		self.assertEqual([check.name for check in status(self.root, {})], ["taxonomy_6_9", "taxonomy_6_10"])
+		self.assertEqual(tuple(TAXONOMIES), ("6.9", "6.10"))

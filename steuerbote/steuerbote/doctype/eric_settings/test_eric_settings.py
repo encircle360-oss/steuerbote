@@ -852,8 +852,8 @@ class TestERiCVersions(IntegrationTestCase):
 		):
 			checks = {check["name"]: check for check in settings.check_runtime()}
 		self.assertEqual(
-			list(checks)[-5:],
-			["ust", "kst", "gewst", "bilanz", "taxonomy_6_9"],
+			list(checks)[-6:],
+			["ust", "kst", "gewst", "bilanz", "taxonomy_6_9", "taxonomy_6_10"],
 		)
 		self.assertEqual(
 			checks["ust"]["detail"],
@@ -1144,8 +1144,10 @@ class TestERiCVersions(IntegrationTestCase):
 				"minimum",
 				"plugin_next",
 				"taxonomy_6_9",
+				"taxonomy_6_10",
 			],
 		)
+
 		self.assertFalse(checks["minimum"]["ok"])
 		self.assertIn("libericapi.so 43.1.2.0 statt mindestens 43.2.6.0", checks["minimum"]["detail"])
 		self.assertEqual(

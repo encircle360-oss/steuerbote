@@ -220,11 +220,14 @@ def list_type(field_: Field) -> str:
 	return f"{field_.feldkennung}_CType" if field_.options else "String_SType"
 
 
-def bilanz_jahresdokumentation() -> Documented:
-	"""Jahresdokumentation_Bilanz_Taxonomie_6_9.ods with the rules of the Vordruck Kontext that the modules of the
-	E-Bilanz compute (yearcheck.BILANZ_EXPECTING), their Prüfbedingungen of their terms, and a rule of the Header."""
-	documented = Documented(information=["Dokumentation erzeugt für Version v6_9 Versionslabel 1.6"])
-	for expectation in (found for expecting in yearcheck.BILANZ_EXPECTING for found in expecting("6.9")):
+def bilanz_jahresdokumentation(version: str = "6.9") -> Documented:
+	"""Jahresdokumentation_Bilanz_Taxonomie_<version>.ods with the rules of the Vordruck Kontext that the modules of
+	the E-Bilanz compute for the version (yearcheck.BILANZ_EXPECTING), their Prüfbedingungen of their terms, and a rule
+	of the Header."""
+	documented = Documented(
+		information=[f"Dokumentation erzeugt für Version v{version.replace('.', '_')} Versionslabel 1.6"]
+	)
+	for expectation in (found for expecting in yearcheck.BILANZ_EXPECTING for found in expecting(version)):
 		documented.rows(expectation.form, "Regeln").append(
 			{
 				"Name": f"Regel_{expectation.code}",

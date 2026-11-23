@@ -871,37 +871,76 @@ class BilanzTest(SyntheticTestCase):
 
 	def test_names_a_fiscal_year_no_version_serves(self):
 		self.assertLines(
-			"Bilanz 2027 is missing in BILANZ_TAXONOMIES of steuerbote/eric/releases.py; the latest data take its place:",
-			"Bilanz 2027: no HGB-Taxonomie of TAXONOMIES of steuerbote/xbrl/versions.py for the fiscal year; "
+			"Bilanz 2028 is missing in BILANZ_TAXONOMIES of steuerbote/eric/releases.py; the latest data take its place:",
+			"Bilanz 2028: no HGB-Taxonomie of TAXONOMIES of steuerbote/xbrl/versions.py for the fiscal year; "
 			"Datenartversionmatrix.ods: the newest is 6.9",
-			arguments=("Bilanz", "2027"),
+			arguments=("Bilanz", "2028"),
 		)
 		self.documentation.matrix = [row for row in self.documentation.matrix if row[1] != "Bilanz"]
-		_, found, _ = self.run_main("Bilanz", "2027")
+		_, found, _ = self.run_main("Bilanz", "2028")
 		self.assertEqual(found[-1].rpartition(": ")[2], "the newest is none")
 
 	def test_compares_a_new_version_with_its_documentation(self):
-		self.documentation.jahresdokumentationen[bilanz("6.10")] = agreeing.bilanz_jahresdokumentation()
+		self.documentation.jahresdokumentationen[bilanz("6.11")] = agreeing.bilanz_jahresdokumentation("6.10")
 		self.assertLines(
-			"Bilanz 6.10 is missing in TAXONOMIES of steuerbote/xbrl/versions.py; the latest data take its place:",
-			"Bilanz 6.10, plugin: Bilanz_6.10, checkBilanz_6_10; Datenartversionmatrix.ods: no row of Bilanz_6.10",
-			arguments=("6.10",),
+			"Bilanz 6.11 is missing in TAXONOMIES of steuerbote/xbrl/versions.py; the latest data take its place:",
+			"Bilanz 6.11, plugin: Bilanz_6.11, checkBilanz_6_11; Datenartversionmatrix.ods: no row of Bilanz_6.11",
+			arguments=("6.11",),
 		)
 
 	def test_names_the_versions_the_documentation_holds_beyond_taxonomies(self):
-		self.documentation.jahresdokumentationen[bilanz("6.10")] = agreeing.bilanz_jahresdokumentation()
-		self.documentation.matrix.append(
-			("ElsterBilanz", "Bilanz", "HGB-Taxonomie 7.0", "Bilanz_7.0", "checkBilanz_7_0")
-		)
-		self.documentation.matrix.append(
-			("ElsterBilanz", "Bilanz", "HGB-Taxonomie 6.10", "Bilanz_6.10", "checkBilanz_6_10")
+		self.documentation.jahresdokumentationen[bilanz("6.10")] = agreeing.bilanz_jahresdokumentation("6.10")
+		self.documentation.jahresdokumentationen[bilanz("6.11")] = agreeing.bilanz_jahresdokumentation("6.10")
+		self.documentation.matrix.extend(
+			(
+				("ElsterBilanz", "Bilanz", "HGB-Taxonomie 6.10", "Bilanz_6.10", "checkBilanz_6_10"),
+				("ElsterBilanz", "Bilanz", "HGB-Taxonomie 7.0", "Bilanz_7.0", "checkBilanz_7_0"),
+				("ElsterBilanz", "Bilanz", "HGB-Taxonomie 6.11", "Bilanz_6.11", "checkBilanz_6_11"),
+			)
 		)
 		self.assertLines(
-			"Bilanz 6.10: not in TAXONOMIES of steuerbote/xbrl/versions.py; Jahresdokumentation_Bilanz_Taxonomie_6_10.ods: "
+			"Bilanz 6.11: not in TAXONOMIES of steuerbote/xbrl/versions.py; Jahresdokumentation_Bilanz_Taxonomie_6_11.ods: "
 			"documented",
 			"Bilanz 7.0: not in TAXONOMIES of steuerbote/xbrl/versions.py; Datenartversionmatrix.ods: documented",
 			arguments=("Bilanz",),
 		)
+
+	def test_compares_6_10_with_its_documentation(self):
+		"""The documentation of ERiC 45.1.5.0 holds Jahresdokumentation_Bilanz_Taxonomie_6_10.ods and the row of
+		Bilanz_6.10 in its matrix."""
+		self.documentation.jahresdokumentationen[bilanz("6.10")] = agreeing.bilanz_jahresdokumentation("6.10")
+		self.documentation.matrix.append(
+			("ElsterBilanz", "Bilanz", "HGB-Taxonomie 6.10", "Bilanz_6.10", "checkBilanz_6_10")
+		)
+		self.assertLines(arguments=("6.10",))
+		self.assertLines(arguments=("Bilanz", "2027"))
+		self.assertLines(arguments=("Bilanz",))
+
+	def test_leaves_a_version_newer_than_the_documentation_to_a_request(self):
+		"""The documentation of ERiC 44.3.6.0 ends with the taxonomy 6.9 (Entwicklerhandbuch, Tabelle 9-19): without a
+		version the command leaves 6.10 out, and named it ends with 2 for its missing Jahresdokumentation."""
+		self.assertLines(arguments=("Bilanz",))
+		code, found, errors = self.run_main("6.10")
+		self.assertEqual((code, found), (2, []))
+		self.assertIn("Jahresdokumentation_Bilanz_Taxonomie_6_10.ods", errors)
+
+	def test_leaves_out_nothing_where_the_documentation_documents_no_version(self):
+		del self.documentation.jahresdokumentationen[BILANZ_6_9]
+		self.documentation.matrix = [row for row in self.documentation.matrix if row[1] != "Bilanz"]
+		code, _, errors = self.run_main("Bilanz")
+		self.assertEqual(code, 2)
+		for name in (
+			"Jahresdokumentation_Bilanz_Taxonomie_6_9.ods",
+			"Jahresdokumentation_Bilanz_Taxonomie_6_10.ods",
+		):
+			self.assertIn(name, errors)
+
+	def test_leaves_out_nothing_where_the_matrix_cannot_be_read(self):
+		root = self.written()
+		(root / "Datenartversionmatrix.ods").unlink()
+		stdout, stderr = io.StringIO(), io.StringIO()
+		self.assertEqual(main([str(root), "Bilanz"], stdout, stderr), 2)
+		self.assertIn("Jahresdokumentation_Bilanz_Taxonomie_6_10.ods", stderr.getvalue())
 
 	def test_compares_the_rules_a_module_of_the_e_bilanz_computes(self):
 		def expected_rules(version: str) -> tuple[RuleExpectation, ...]:

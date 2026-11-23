@@ -1248,8 +1248,9 @@ class AnnualChecksTest(InstalledTestCase):
 
 	def test_the_annual_filings_begin_with_the_year_2026(self):
 		"""docs/roadmap.md, „Ab 2026“; 6.9 for a fiscal year beginning after 31 December 2025 (BMF letter of 10 June
-		2025, IV C 6 - S 2133-b/00064/002/006)."""
-		self.assertEqual((FIRST_ANNUAL_YEAR, dict(BILANZ_TAXONOMIES)), (2026, {2026: "6.9"}))
+		2025, IV C 6 - S 2133-b/00064/002/006), 6.10 for one beginning after 31 December 2026 (BMF letter of 8 June
+		2026, IV C 6 - S 2133-b/00067/002/023)."""
+		self.assertEqual((FIRST_ANNUAL_YEAR, dict(BILANZ_TAXONOMIES)), (2026, {2026: "6.9", 2027: "6.10"}))
 
 	def test_before_the_first_filing_year_there_is_nothing_to_check(self):
 		self.install()
@@ -1303,16 +1304,37 @@ class AnnualChecksTest(InstalledTestCase):
 
 	def test_a_fiscal_year_whose_taxonomy_steuerbote_does_not_know_yet(self):
 		self.install(libraries=(*OPTIONAL, *ANNUAL_2026))
+		found = {check.name: check for check in annual_checks(self.installed(), date(2029, 1, 3))}
+		self.assertEqual(
+			found["bilanz"],
+			Check(
+				"bilanz",
+				False,
+				"Für das Wirtschaftsjahr 2028 kennt Steuerbote noch keine Taxonomie der E-Bilanz.",
+			),
+		)
+		self.assertEqual(found["ust"].notice, "annual USt_2028")
+
+	def test_the_e_bilanz_of_the_fiscal_year_2027_takes_the_plugin_of_6_10(self):
+		self.install(libraries=(*OPTIONAL, *ANNUAL_2026))
 		found = {check.name: check for check in annual_checks(self.installed(), date(2028, 1, 3))}
 		self.assertEqual(
 			found["bilanz"],
 			Check(
 				"bilanz",
 				False,
-				"Für das Wirtschaftsjahr 2027 kennt Steuerbote noch keine Taxonomie der E-Bilanz.",
+				"Für die E-Bilanz des Wirtschaftsjahres 2027 (Taxonomie 6.10) fehlt ERiC mit dem Plugin "
+				"libcheckBilanz_6_10.so.",
+				notice="annual Bilanz_6.10",
 			),
 		)
-		self.assertEqual(found["ust"].notice, "annual USt_2027")
+		self.install("45.1.5.0", libraries=(*OPTIONAL, "libcheckBilanz_6_10.so"))
+		found = {check.name: check for check in annual_checks(self.installed(), date(2028, 1, 3))}
+		self.assertEqual(
+			found["bilanz"].detail,
+			"Die E-Bilanz des Wirtschaftsjahres 2027 (Taxonomie 6.10) kennt nur die Beta ERiC 45.1.5.0: Prüfen und "
+			"Testsenden, kein Senden.",
+		)
 
 	def test_laufzeitumgebung_pruefen_lists_them_after_the_list_and_the_coming_year(self):
 		self.install(libraries=(*OPTIONAL, *ANNUAL_2026))

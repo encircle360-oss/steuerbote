@@ -267,7 +267,7 @@ class GcdRulesTest(TestCase):
 			"170205017",
 			codes(changed(EROEFFNUNGSBILANZ, valued("genInfo.report.period.fiscalYearEnd", "2028-12-31"))),
 		)
-		self.assertNotIn("170205007", codes(early, replace(HEADER, datenart_version="Bilanz_6.10")))
+		self.assertNotIn("170205007", codes(early, replace(HEADER, datenart_version="Bilanz_6.11")))
 
 
 def special_balance(root: etree._Element) -> None:

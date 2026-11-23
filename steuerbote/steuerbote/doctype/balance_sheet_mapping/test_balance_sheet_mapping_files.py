@@ -14,7 +14,7 @@ from steuerbote.setup.steps import Step
 from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl import mapping
 from steuerbote.xbrl.mapping import REMAINING_TERMS, Purpose
-from steuerbote.xbrl.versions import LATEST, TAXONOMIES
+from steuerbote.xbrl.versions import FIRST, TAXONOMIES
 
 APP = Path(__file__).resolve().parents[3]
 DOCTYPES = APP / "steuerbote" / "doctype"
@@ -88,10 +88,13 @@ class MappingDefinitionTest(TestCase):
 		)
 
 	def test_the_positions_belong_to_a_version_of_the_taxonomy_steuerbote_knows(self):
+		"""A new mapping takes the version of the first fiscal year Steuerbote files; „Auf neue Taxonomie heben“ moves
+		it to a later one."""
 		taxonomy = self.fields["taxonomy_version"]
 		self.assertEqual(options(taxonomy), list(TAXONOMIES))
+		self.assertEqual(options(taxonomy), ["6.9", "6.10"])
 		self.assertEqual(
-			(taxonomy["default"], taxonomy["read_only"], taxonomy["reqd"]), (LATEST.version, 1, 1)
+			(taxonomy["default"], taxonomy["read_only"], taxonomy["reqd"]), (FIRST.version, 1, 1)
 		)
 
 	def test_keeps_the_defaults_it_took_over_as_vat_return_mapping_does(self):
