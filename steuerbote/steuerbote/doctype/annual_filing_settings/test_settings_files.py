@@ -22,6 +22,10 @@ ARCHITECTURE = Path(__file__).resolve().parents[4] / "docs" / "architektur.md"
 LAYOUT = frozenset({"Section Break", "Column Break"})
 # The numbers of natural persons, which only the Körperschaftsteuererklärung may carry (§ 139b Abs. 2 AO).
 IDENTIFIERS = ("tax_number_state", "tax_number", "idnr", "wid_nr", "foreign_id")
+# The child DocTypes of the prefix annual_filing_ that belong to the annual documents rather than to their settings:
+# the table Befunde of steuerbote/steuerbote/annual_filing.py, whose files steuerbote/tests/test_annual_filing_files.py
+# checks.
+OF_THE_ANNUAL_DOCUMENTS = frozenset({"annual_filing_finding"})
 
 
 def read(name: str) -> dict:
@@ -131,7 +135,7 @@ class SettingsFilesTest(TestCase):
 		children = {
 			read(path.name)["name"]
 			for path in DOCTYPE_DIR.glob("annual_filing_*")
-			if read(path.name).get("istable")
+			if path.name not in OF_THE_ANNUAL_DOCUMENTS and read(path.name).get("istable")
 		}
 		self.assertEqual(tables, children)
 		self.assertEqual(len(tables), 10)
