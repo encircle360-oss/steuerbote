@@ -138,7 +138,14 @@ def choice(prefix: str, name: str, label: str, values: Iterable[str], **head) ->
 	concepts = [
 		tuple_of(name, label, "choice", Particle(f"{prefix}:{head_name}", 1, 1), **head),
 		item(
-			head_name, f"{label} (Auswahl)", type=STRING, period="duration", abstract=True, requirement=None
+			head_name,
+			f"{label} (Auswahl)",
+			type=STRING,
+			period="duration",
+			abstract=True,
+			requirement=None,
+			legal_forms=(),
+			operating=None,
 		),
 	]
 	for value in values:

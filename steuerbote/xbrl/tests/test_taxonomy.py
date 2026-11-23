@@ -2,16 +2,26 @@
 
 import shutil
 import tempfile
+from dataclasses import replace
+from datetime import date
+from decimal import Decimal
 from functools import cache
 from pathlib import Path
 from unittest import TestCase
 
+from steuerbote.xbrl import taxonomy
 from steuerbote.xbrl.taxonomy import (
+	Arc,
 	Balance,
 	Content,
+	DefinitionArc,
+	IncomeStatementFormat,
 	Kind,
+	LegalForm,
+	Network,
 	Particle,
 	PeriodType,
+	Requirement,
 	Taxonomy,
 	TaxonomyError,
 	View,
@@ -315,3 +325,411 @@ class ViewsTest(TestCase):
 		loaded = view(View.COMMERCIAL)
 		self.assertEqual((loaded.version, loaded.view), ("6.9", View.COMMERCIAL))
 		self.assertEqual(loaded.entry_points, View.COMMERCIAL.entry_points(mini.VERSION))
+
+
+class LinkbasesTest(CopiedPackage):
+	"""What the linkbases of a view say, and what they leave to other views."""
+
+	def test_reads_no_linkbase_of_an_entry_point_it_does_not_take(self):
+		"""The Konzernsicht (-shell-group.xsd) is no entry point of the E-Bilanz or the Offenlegung (Leitfaden B.3)."""
+		for name in View:
+			with self.subTest(view=name):
+				network = load(self.package, mini.VERSION, name).presentation[mini.BALANCE_SHEET]
+				self.assertNotIn(f"{GAAP}:bs.ass.groupOnly", network)
+				self.assertIn(f"{GAAP}:bs.ass", network)
+
+	def test_a_locator_names_a_concept_of_the_taxonomy(self):
+		self.edit(
+			f"{mini.GAAP}-presentation-balanceSheet.xml",
+			f"{mini.GAAP}.xsd#de-gaap-ci_bs.ass.fixAss.tan",
+			f"{mini.GAAP}.xsd#de-gaap-ci_bs.ass.fixAss.missing",
+		)
+		with self.assertRaisesRegex(TaxonomyError, "bs.ass.fixAss.missing"):
+			load(self.package, mini.VERSION, View.FISCAL)
+
+	def test_an_arc_connects_labels_of_its_own_link(self):
+		self.edit(
+			f"{mini.GAAP}-presentation-balanceSheet.xml",
+			'xlink:to="de-gaap-ci_bs.ass.fixAss"',
+			'xlink:to="de-gaap-ci_bs.ass.nowhere"',
+		)
+		with self.assertRaisesRegex(TaxonomyError, "bs.ass.nowhere"):
+			load(self.package, mini.VERSION, View.FISCAL)
+
+	def test_a_prohibited_arc_takes_its_relationship_away(self):
+		"""XBRL 2.1, Kap. 3.5.3.9.7.5: an arc with use="prohibited" and at least the priority of an equivalent one
+		removes the relationship; the fiscal labels prohibit those of the commercial view so."""
+		self.edit(
+			f"{mini.GAAP}-presentation-balanceSheet.xml",
+			"</link:presentationLink>",
+			'<link:presentationArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" '
+			'xlink:from="de-gaap-ci_bs.ass.fixAss" xlink:to="de-gaap-ci_bs.ass.fixAss.tan" order="5" use="prohibited" '
+			'priority="1"/></link:presentationLink>',
+		)
+		network = load(self.package, mini.VERSION, View.FISCAL).presentation[mini.BALANCE_SHEET]
+		self.assertNotIn(
+			f"{GAAP}:bs.ass.fixAss.tan", [arc.child for arc in network.children(f"{GAAP}:bs.ass.fixAss")]
+		)
+
+	def test_a_prohibition_of_lower_priority_leaves_the_relationship(self):
+		self.edit(
+			f"{mini.GAAP}-presentation-balanceSheet.xml",
+			"</link:presentationLink>",
+			'<link:presentationArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" '
+			'xlink:from="de-gaap-ci_bs.ass.fixAss" xlink:to="de-gaap-ci_bs.ass.fixAss.tan" order="5" use="prohibited" '
+			'priority="-1"/></link:presentationLink>',
+		)
+		network = load(self.package, mini.VERSION, View.FISCAL).presentation[mini.BALANCE_SHEET]
+		self.assertIn(
+			f"{GAAP}:bs.ass.fixAss.tan", [arc.child for arc in network.children(f"{GAAP}:bs.ass.fixAss")]
+		)
+
+	def test_a_prohibition_reaches_only_an_equivalent_relationship(self):
+		"""Relationships with another order are not equivalent (XBRL 2.1, Kap. 3.5.3.9.7.4)."""
+		self.edit(
+			f"{mini.GAAP}-presentation-balanceSheet.xml",
+			"</link:presentationLink>",
+			'<link:presentationArc xlink:type="arc" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" '
+			'xlink:from="de-gaap-ci_bs.ass.fixAss" xlink:to="de-gaap-ci_bs.ass.fixAss.tan" order="6" use="prohibited" '
+			'priority="1"/></link:presentationLink>',
+		)
+		network = load(self.package, mini.VERSION, View.FISCAL).presentation[mini.BALANCE_SHEET]
+		self.assertIn(
+			f"{GAAP}:bs.ass.fixAss.tan", [arc.child for arc in network.children(f"{GAAP}:bs.ass.fixAss")]
+		)
+
+
+class LabelsTest(TestCase):
+	"""German labels of the roles Steuerbote shows: label, terse label, the terse label of 60 characters of the fiscal
+	view and the guidance of the tax administration („Erläuterungen der Finanzverwaltung“, Leitfaden B.6)."""
+
+	def test_the_label_of_a_concept(self):
+		self.assertEqual(view(View.COMMERCIAL).label(f"{GAAP}:bs.ass.fixAss.tan"), "Sachanlagen")
+		self.assertEqual(view().label(f"{GCD}:genInfo.company.id.name"), "Name des Unternehmens")
+
+	def test_the_labels_of_the_other_roles(self):
+		loaded = view()
+		self.assertEqual(
+			loaded.label(f"{GAAP}:bs.ass.fixAss.intan.concessionBrands", taxonomy.TERSE_LABEL), "Konzessionen"
+		)
+		self.assertEqual(
+			loaded.label(f"{GAAP}:bs.ass.fixAss.intan.concessionBrands", taxonomy.TERSE60_LABEL),
+			"Konzessionen, Rechte, Lizenzen",
+		)
+		self.assertEqual(
+			loaded.label(f"{GAAP}:bs.ass.fixAss.tan", taxonomy.GUIDANCE),
+			"Grundstücke, Bauten, Maschinen und Ausstattung.",
+		)
+
+	def test_a_role_without_a_label_falls_back_to_the_standard_label(self):
+		self.assertEqual(view().label(f"{GAAP}:bs.ass", taxonomy.TERSE_LABEL), "Bilanzsumme, Summe Aktiva")
+
+	def test_a_concept_without_a_label_shows_its_name(self):
+		self.assertEqual(view().label(f"{GAAP}:dim_keyType"), "dim_keyType")
+
+	def test_reads_german_labels_only(self):
+		labels = view().labels[f"{GCD}:genInfo.company.id.name"]
+		self.assertNotIn("(English)", " ".join(labels.values()))
+
+	def test_leaves_out_the_documentation(self):
+		self.assertNotIn(taxonomy.DOCUMENTATION, view().labels[f"{GAAP}:bs.ass"])
+
+	def test_the_fiscal_view_takes_the_labels_of_the_tax_administration(self):
+		"""de-gaap-ci-2025-04-01-label-fiscal-de.xml prohibits labels of the commercial view and puts its own in their
+		place; shell-fiscal.xsd reads it, shell.xsd does not (Leitfaden A.3: „bei den Bezeichnern (Standard- und
+		Terse-Label) mehr Abweichungen“)."""
+		corp = f"{GAAP}:bs.eqLiab.equity.subscribed.corp"
+		self.assertEqual(
+			(view().label(corp), view().label(corp, taxonomy.TERSE_LABEL)),
+			("Gezeichnetes Kapital", "Gez. Kapital"),
+		)
+		self.assertEqual(
+			(view(View.COMMERCIAL).label(corp), view(View.COMMERCIAL).label(corp, taxonomy.TERSE_LABEL)),
+			("Gezeichnetes Kapital (Kapitalgesellschaft)", "Gez. Kapital (KapG)"),
+		)
+		self.assertEqual(view().label(f"{GAAP}:bs.ass.fixAss.tan"), "Sachanlagen (steuerlich)")
+
+
+class ReferencesTest(TestCase):
+	"""The properties the references give a concept (Leitfaden A.9): legal form, GuV format and the fiscal requirement
+	from the reference-fiscal linkbases, the validity from the reference linkbases."""
+
+	def test_reads_the_fiscal_requirement(self):
+		self.assertEqual(view().concept(f"{GAAP}:bs.ass.fixAss.tan").fiscal.requirement, Requirement.MUSSFELD)
+		self.assertEqual(view().concept(f"{GAAP}:bs.ass").fiscal.requirement, Requirement.SUMMENMUSSFELD)
+		self.assertEqual(
+			view().concept(f"{GAAP}:bs.ass.currAss.cashEquiv.bank").fiscal.requirement,
+			Requirement.RECHNERISCH_NOTWENDIG,
+		)
+		self.assertIsNone(view().concept(f"{GAAP}:bs.eqLiab.liab.bank.upTo1year").fiscal.requirement)
+
+	def test_names_the_requirements_that_must_be_reported(self):
+		"""„Summenmussfelder sind stets zu übermitteln“ (Leitfaden A.9.3); „Mussfeld, Kontennachweis erwünscht“ is a
+		Mussfeld that the taxonomy 6.9 no longer uses (A.10.2)."""
+		self.assertEqual(
+			{requirement for requirement in Requirement if requirement.mandatory},
+			{Requirement.MUSSFELD, Requirement.MUSSFELD_KONTENNACHWEIS, Requirement.SUMMENMUSSFELD},
+		)
+		self.assertEqual(Requirement.MUSSFELD_KONTENNACHWEIS.value, "Mussfeld, Kontennachweis erwünscht")
+
+	def test_reads_the_legal_forms_a_concept_is_for(self):
+		"""„Bei den den Kapitalgesellschaften zuzuordnenden Rechtsform-Arten, dürfen nur Positionen mit der Auszeichnung
+		„legalFormKSt“ = „true“ und Positionen, die keiner Rechtsform zugeordnet sind, übermittelt werden.“ (Leitfaden
+		B.4.2)"""
+		corp = view().concept(f"{GAAP}:bs.eqLiab.equity.subscribed.corp")
+		partners = view().concept(f"{GAAP}:bs.eqLiab.equity.subscribed.limitedLiablePartners")
+		self.assertEqual(corp.fiscal.legal_forms, frozenset({LegalForm.KST}))
+		self.assertEqual((corp.applies_to(LegalForm.KST), corp.applies_to(LegalForm.PG)), (True, False))
+		self.assertEqual(
+			(partners.applies_to(LegalForm.KST), partners.applies_to(LegalForm.PG)), (False, True)
+		)
+
+	def test_a_false_legal_form_is_none(self):
+		tax = view().concept(f"{GAAP}:is.netIncome.tax")
+		self.assertEqual(tax.fiscal.legal_forms, frozenset({LegalForm.KST, LegalForm.PG}))
+		self.assertFalse(tax.applies_to(LegalForm.EU))
+
+	def test_a_concept_of_no_legal_form_is_for_all(self):
+		dimension_key = view().concept(f"{GAAP}:dim_taxBal")
+		self.assertEqual(dimension_key.fiscal.legal_forms, frozenset(LegalForm))
+		self.assertTrue(
+			view().concept(f"{GCD}:genInfo.report.id.reportStatus.head").applies_to(LegalForm.KST)
+		)
+
+	def test_reads_the_guv_format_a_concept_is_for(self):
+		"""„Der Eintrag „neutral“ kennzeichnet für beide Varianten gültige Positionen.“ (Leitfaden A.9.1, B.14.3.1.15)"""
+		material = view().concept(f"{GAAP}:is.netIncome.materialServices")
+		cost_of_sales = view().concept(f"{GAAP}:is.netIncome.costOfSales")
+		sales = view().concept(f"{GAAP}:is.netIncome.netSales")
+		self.assertEqual(material.fiscal.operating_results, frozenset({"GKV"}))
+		self.assertEqual(
+			[
+				(concept.suits(IncomeStatementFormat.GKV), concept.suits(IncomeStatementFormat.UKV))
+				for concept in (material, cost_of_sales, sales)
+			],
+			[(True, False), (False, True), (True, True)],
+		)
+		self.assertTrue(
+			view().concept(f"{GCD}:genInfo.report.id.reportStatus.head").suits(IncomeStatementFormat.UKV)
+		)
+
+	def test_reads_the_purposes_a_concept_is_not_permitted_for(self):
+		"""Leitfaden A.9.3 and B.14.6: „notPermittedFor“ „steuerlich“ and „Einreichung an Finanzverwaltung“."""
+		selfmade = view().concept(f"{GAAP}:bs.ass.fixAss.intan.selfmade")
+		consolidation = view().concept(f"{GAAP}:bs.ass.consolidationDifference")
+		self.assertEqual(selfmade.fiscal.not_permitted_for, frozenset({taxonomy.NOT_PERMITTED_FISCAL}))
+		self.assertEqual(
+			consolidation.fiscal.not_permitted_for, frozenset({taxonomy.NOT_PERMITTED_SUBMISSION})
+		)
+		self.assertEqual(taxonomy.NOT_PERMITTED_SUBMISSION, "Einreichung an Finanzverwaltung")
+		self.assertEqual(taxonomy.NOT_PERMITTED_FISCAL, "steuerlich")
+		self.assertFalse(selfmade.permitted_for(taxonomy.NOT_PERMITTED_FISCAL))
+		self.assertTrue(selfmade.permitted_for(taxonomy.NOT_PERMITTED_SUBMISSION))
+		self.assertFalse(consolidation.permitted_for(taxonomy.NOT_PERMITTED_SUBMISSION))
+
+	def test_a_mussfeld_counts_from_its_fiscal_valid_since(self):
+		"""Leitfaden B.14.4.2: „Die Position ist kein Mussfeld, wenn ... Der „Beginn des Wirtschaftsjahres" ... liegt vor
+		dem Datum in fiscalValidSince.“"""
+		cash = view().concept(f"{GAAP}:bs.ass.currAss.cashEquiv.cash")
+		self.assertEqual(cash.fiscal.required_since, date(2027, 1, 1))
+		self.assertFalse(cash.required_for(date(2026, 1, 1), date(2026, 12, 31)))
+		self.assertTrue(cash.required_for(date(2027, 1, 1), date(2027, 12, 31)))
+		self.assertTrue(
+			view().concept(f"{GAAP}:bs.ass.fixAss.tan").required_for(date(2026, 1, 1), date(2026, 12, 31))
+		)
+		self.assertFalse(
+			view()
+			.concept(f"{GAAP}:bs.ass.currAss.cashEquiv.bank")
+			.required_for(date(2026, 1, 1), date(2026, 12, 31))
+		)
+
+	def test_a_concept_may_be_reported_from_valid_since_to_valid_through(self):
+		"""Leitfaden B.14.4.1: not reported „wenn der „Beginn des Wirtschaftsjahres“ ... vor dem unter „ValidSince“
+		angegebenen Datum liegt“ or „wenn der „Bilanzstichtag“ ... nach dem unter „ValidThrough“ angegebenen Datum
+		liegt“."""
+		old = view().concept(f"{GAAP}:bs.ass.fixAss.tan.oldEquipment")
+		crypto = view().concept(f"{GAAP}:bs.ass.currAss.cashEquiv.cryptoAssets")
+		self.assertEqual((old.valid_since, old.valid_through), (None, date(2020, 12, 31)))
+		self.assertTrue(old.valid_for(date(2020, 1, 1), date(2020, 12, 31)))
+		self.assertFalse(old.valid_for(date(2020, 1, 1), date(2021, 1, 1)))
+		self.assertFalse(crypto.valid_for(date(2026, 1, 1), date(2026, 12, 31)))
+		self.assertTrue(crypto.valid_for(date(2027, 1, 1), date(2027, 12, 31)))
+		self.assertTrue(view().concept(f"{GAAP}:bs.ass").valid_for(date(2026, 1, 1), date(2026, 12, 31)))
+
+	def test_a_mussfeld_that_may_not_be_reported_is_none(self):
+		"""Leitfaden B.14.4.1: „ist in diesem Fall auch eine eventuelle Mussfeldkennzeichnung nicht mehr gültig“."""
+		old = view().concept(f"{GAAP}:bs.ass.fixAss.tan.oldEquipment")
+		self.assertFalse(
+			replace(old, fiscal=replace(old.fiscal, requirement=Requirement.MUSSFELD)).required_for(
+				date(2026, 1, 1), date(2026, 12, 31)
+			)
+		)
+
+	def test_reads_the_positions_only_for_special_balance_sheets(self):
+		"""„onlyPermittedForSoBil_ErgBil“ (Leitfaden A.9.3)."""
+		self.assertFalse(view().concept(f"{GAAP}:bs.ass").fiscal.special_balance_only)
+
+
+class ReferencesFilesTest(CopiedPackage):
+	def test_a_concept_has_one_fiscal_requirement(self):
+		self.edit(
+			f"{mini.GAAP}-reference-fiscal.xml",
+			"<hgbref:fiscalRequirement>Summenmussfeld</hgbref:fiscalRequirement>",
+			"<hgbref:fiscalRequirement>Summenmussfeld</hgbref:fiscalRequirement>"
+			"<hgbref:fiscalRequirement>Mussfeld</hgbref:fiscalRequirement>",
+		)
+		with self.assertRaisesRegex(TaxonomyError, "fiscalRequirement"):
+			load(self.package, mini.VERSION, View.FISCAL)
+
+	def test_refuses_an_unknown_fiscal_requirement(self):
+		self.edit(
+			f"{mini.GAAP}-reference-fiscal.xml",
+			"<hgbref:fiscalRequirement>Summenmussfeld</hgbref:fiscalRequirement>",
+			"<hgbref:fiscalRequirement>Kannfeld</hgbref:fiscalRequirement>",
+		)
+		with self.assertRaisesRegex(TaxonomyError, "Kannfeld"):
+			load(self.package, mini.VERSION, View.FISCAL)
+
+	def test_refuses_a_date_that_is_none(self):
+		self.edit(f"{mini.GAAP}-reference.xml", "2020-12-31", "31.12.2020")
+		with self.assertRaisesRegex(TaxonomyError, "31.12.2020"):
+			load(self.package, mini.VERSION, View.FISCAL)
+
+	def test_takes_the_narrowest_validity_of_several_references(self):
+		self.edit(
+			f"{mini.GAAP}-reference.xml",
+			"<hgbref:ValidThrough>2020-12-31</hgbref:ValidThrough>",
+			"<hgbref:ValidThrough>2020-12-31</hgbref:ValidThrough><hgbref:ValidThrough>2019-12-31</hgbref:ValidThrough>"
+			"<hgbref:ValidSince>2001-01-01</hgbref:ValidSince><hgbref:ValidSince>2002-01-01</hgbref:ValidSince>",
+		)
+		old = load(self.package, mini.VERSION, View.FISCAL).concept(f"{GAAP}:bs.ass.fixAss.tan.oldEquipment")
+		self.assertEqual((old.valid_since, old.valid_through), (date(2002, 1, 1), date(2019, 12, 31)))
+
+
+class NetworksFilesTest(CopiedPackage):
+	def test_the_order_of_an_arc_is_a_number(self):
+		self.edit(f"{mini.GAAP}-presentation-balanceSheet.xml", 'order="5"', 'order="fünf"')
+		with self.assertRaisesRegex(TaxonomyError, "order fünf"):
+			load(self.package, mini.VERSION, View.FISCAL)
+
+
+class NetworksTest(TestCase):
+	"""The presentation and calculation networks of each role (XBRL 2.1, Kap. 5.2.4 and 5.2.5), the order of the arcs
+	and the weights of the calculation."""
+
+	def test_presentation_orders_the_children_of_a_position(self):
+		network = view().presentation[mini.BALANCE_SHEET]
+		self.assertEqual(
+			[arc.child for arc in network.children(f"{GAAP}:bs.ass")],
+			[f"{GAAP}:bs.ass.fixAss", f"{GAAP}:bs.ass.currAss", f"{GAAP}:bs.ass.consolidationDifference"],
+		)
+		self.assertEqual(network.roots(), (f"{GAAP}:bs.ass", f"{GAAP}:bs.eqLiab"))
+
+	def test_a_presentation_names_the_parent_of_a_position(self):
+		network = view().presentation[mini.BALANCE_SHEET]
+		self.assertEqual(
+			network.parent(f"{GAAP}:bs.eqLiab.liab.bank.upTo1year"), f"{GAAP}:bs.eqLiab.liab.bank"
+		)
+		self.assertIsNone(network.parent(f"{GAAP}:bs.ass"))
+		self.assertEqual(
+			network.ancestors(f"{GAAP}:bs.ass.fixAss.intan.selfmade"),
+			(f"{GAAP}:bs.ass.fixAss.intan", f"{GAAP}:bs.ass.fixAss", f"{GAAP}:bs.ass"),
+		)
+
+	def test_walks_a_network_depth_first_in_its_order(self):
+		network = view().presentation[mini.INCOME_STATEMENT]
+		self.assertEqual(
+			list(network.walk()),
+			[
+				(f"{GAAP}:is.netIncome", 0),
+				(f"{GAAP}:is.netIncome.netSales", 1),
+				(f"{GAAP}:is.netIncome.materialServices", 1),
+				(f"{GAAP}:is.netIncome.costOfSales", 1),
+				(f"{GAAP}:is.netIncome.tax", 1),
+			],
+		)
+
+	def test_calculation_weights_each_child(self):
+		network = view().calculation[mini.INCOME_STATEMENT]
+		self.assertEqual(
+			[(arc.child, arc.weight) for arc in network.children(f"{GAAP}:is.netIncome")],
+			[
+				(f"{GAAP}:is.netIncome.netSales", Decimal(1)),
+				(f"{GAAP}:is.netIncome.materialServices", Decimal(-1)),
+				(f"{GAAP}:is.netIncome.costOfSales", Decimal(-1)),
+				(f"{GAAP}:is.netIncome.tax", Decimal(-1)),
+			],
+		)
+
+	def test_a_davon_position_has_no_calculation(self):
+		"""„davon-Positionen“ are presented under their position but not calculated (BMF letter of 28 September 2011,
+		Anlage)."""
+		self.assertIn(f"{GAAP}:bs.eqLiab.liab.bank.upTo1year", view().presentation[mini.BALANCE_SHEET])
+		self.assertNotIn(f"{GAAP}:bs.eqLiab.liab.bank.upTo1year", view().calculation[mini.BALANCE_SHEET])
+
+	def test_the_descendants_of_a_position(self):
+		network = view().calculation[mini.BALANCE_SHEET]
+		self.assertEqual(
+			network.descendants(f"{GAAP}:bs.ass.currAss"),
+			(
+				f"{GAAP}:bs.ass.currAss.cashEquiv",
+				f"{GAAP}:bs.ass.currAss.cashEquiv.bank",
+				f"{GAAP}:bs.ass.currAss.cashEquiv.cash",
+				f"{GAAP}:bs.ass.currAss.cashEquiv.cryptoAssets",
+			),
+		)
+
+	def test_the_views_differ_in_the_networks_of_their_entry_points(self):
+		self.assertIn(mini.INCOME_STATEMENT, view(View.COMMERCIAL).presentation)
+		self.assertNotIn(mini.INCOME_STATEMENT_MICROBILG, view(View.COMMERCIAL).presentation)
+		self.assertIn(mini.INCOME_STATEMENT_MICROBILG, view(View.COMMERCIAL_MICROBILG).presentation)
+		self.assertNotIn(mini.INCOME_STATEMENT, view(View.COMMERCIAL_MICROBILG).presentation)
+
+	def test_the_order_of_an_arc_is_a_decimal(self):
+		arc = view().presentation[mini.BALANCE_SHEET].children(f"{GAAP}:bs.ass")[0]
+		self.assertEqual(arc.order, Decimal(1))
+
+	def test_a_concept_under_two_parents_has_none_to_name(self):
+		network = Network(
+			mini.BALANCE_SHEET,
+			(
+				Arc(f"{GAAP}:bs.ass", f"{GAAP}:bs.ass.fixAss"),
+				Arc(f"{GAAP}:bs.eqLiab", f"{GAAP}:bs.ass.fixAss"),
+			),
+		)
+		self.assertEqual(len(network.parents(f"{GAAP}:bs.ass.fixAss")), 2)
+		with self.assertRaisesRegex(TaxonomyError, "has the parents de-gaap-ci:bs.ass, de-gaap-ci:bs.eqLiab"):
+			network.parent(f"{GAAP}:bs.ass.fixAss")
+		self.assertEqual(
+			list(network.walk()),
+			[(f"{GAAP}:bs.ass", 0), (f"{GAAP}:bs.ass.fixAss", 1), (f"{GAAP}:bs.eqLiab", 0)],
+		)
+
+	def test_a_concept_is_transmittable_in_a_presentation_of_its_view(self):
+		"""„Es dürfen nur solche Positionen übermittelt werden, die in dem Presentation Network erfasst sind, welches im
+		Zuge der „taxonomy discovery“ ... des jeweiligen Einstiegsschemas aufgebaut wird.“ (Leitfaden B.11)"""
+		self.assertTrue(view().presented(f"{GAAP}:bs.ass"))
+		self.assertTrue(view().presented(f"{GCD}:genInfo.company.id.name"))
+		self.assertFalse(view().presented(f"{GAAP}:bs.ass.groupOnly"))
+		self.assertFalse(view(View.COMMERCIAL_MICROBILG).presented(f"{GAAP}:is.netIncome.netSales"))
+
+
+class DefinitionTest(TestCase):
+	def test_keeps_the_arcs_of_the_definition_linkbases_by_role(self):
+		arcs = view().definition[mini.FIXED_ASSETS_TABLE]
+		self.assertIn(
+			DefinitionArc(
+				taxonomy.ALL,
+				f"{GAAP}:table.nt.ass.gross",
+				f"{GAAP}:cube_.nt.ass.gross",
+				Decimal(1),
+				context_element="scenario",
+			),
+			arcs,
+		)
+		self.assertIn(
+			DefinitionArc(
+				taxonomy.DOMAIN_MEMBER, f"{GAAP}:bs.ass.fixAss", f"{GAAP}:bs.ass.fixAss.tan", Decimal(4)
+			),
+			arcs,
+		)
