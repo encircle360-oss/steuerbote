@@ -45,6 +45,12 @@ zu Inhalts- und Formverstößen, read on 23 November 2026) The disclosed version
 such as „gez. Max Mustermann“; a sole shareholder and Geschäftsführer may sign on the day of the Feststellung and
 states that date twice (same source). adoption_problems() and transmission_problems() check this.
 
+Nullbilanz. „Soweit tatsächlich keine zu bilanzierenden Aktiv- oder Passivposten im Geschäftsjahr entstanden sind,
+muss zumindest das Stammkapital in Höhe des am Bilanzstichtag geltenden Handelsregistereintrags vorhanden sein.“
+(Bundesamt für Justiz, FAQ zu Inhalts- und Formverstößen) The Stammkapital stands in the balance sheet as
+Gezeichnetes Kapital (§ 42 Abs. 1 GmbHG) „mit dem Nennbetrag“ (§ 272 Abs. 1 Satz 1 HGB); capital_problems()
+compares the two.
+
 What being late costs. The Bundesamt für Justiz threatens the Geschäftsführer and the company with an Ordnungsgeld
 „innerhalb einer Frist von sechs Wochen vom Zugang der Androhung an ihrer gesetzlichen Verpflichtung nachzukommen“
 (§ 335 Abs. 3 Satz 1 HGB); „Das Ordnungsgeld beträgt mindestens zweitausendfünfhundert und höchstens
@@ -259,6 +265,7 @@ class DisclosureCode(StrEnum):
 	SIGNED_EARLY = "JA-UNTERSCHRIFT-DATUM"
 	BEFORE_ADOPTION = "JA-VOR-FESTSTELLUNG"
 	NO_SIGNATURE = "JA-OHNE-UNTERSCHRIFT"
+	CAPITAL = "JA-STAMMKAPITAL"
 
 
 _ADOPTION_REFERENCE = "§ 325 Abs. 1 Satz 1 Nr. 1, § 328 Abs. 1a Satz 1 HGB"
@@ -473,3 +480,19 @@ def ergebnisverwendung(size_class: SizeClass) -> ResultUse:
 			return ResultUse(False, False, "§ 288 Abs. 1 Nr. 1, § 285 Nr. 34 HGB")
 		case _:
 			return ResultUse(True, True, "§ 285 Nr. 34, § 325 Abs. 1b Satz 2, § 328 Abs. 3 HGB")
+
+
+def capital_problems(subscribed_capital: Decimal, registered_capital: Decimal) -> tuple[Finding, ...]:
+	"""An error when the Gezeichnetes Kapital of the balance sheet is not the Stammkapital of the Handelsregister
+	at the Abschlussstichtag, such as the sum of the shares the Annual Filing Settings hold."""
+	if subscribed_capital == registered_capital:
+		return ()
+	return (
+		Finding(
+			DisclosureCode.CAPITAL,
+			Severity.ERROR,
+			"Das Gezeichnete Kapital der Bilanz ist nicht das Stammkapital des Handelsregisters am Abschlussstichtag.",
+			"§ 42 Abs. 1 GmbHG, § 272 Abs. 1 Satz 1 HGB; Bundesamt für Justiz, FAQ zu Inhalts- und Formverstößen",
+			amount=subscribed_capital - registered_capital,
+		),
+	)

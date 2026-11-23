@@ -105,6 +105,7 @@ PROFIT_CARRIED_FORWARD = "bs.eqLiab.equity.retainedEarnings"
 EQUITY = "bs.eqLiab.equity"
 DEFICIT = "bs.ass.deficitNotCoveredByCapital"
 DEFICIT_IN_EQUITY = "bs.eqLiab.equity.deficitNotCoveredByCapital"
+SUBSCRIBED = "bs.eqLiab.equity.subscribed"
 BILANZGEWINN = "bs.eqLiab.equity.profitLoss"
 _UG_RESERVE_SHARE = Decimal("4")
 CALLED_CAPITAL = "Eingefordertes Kapital"
@@ -256,7 +257,9 @@ class IncomeStatement:
 @dataclass(frozen=True, slots=True)
 class BalanceSheet:
 	"""The balance sheet of a size class: the lines of each side, their totals, the Eigenkapital and the
-	Bilanzsumme of § 267 Abs. 4a HGB, the totals and the Bilanzsumme also of the previous year."""
+	Bilanzsumme of § 267 Abs. 4a HGB, the totals and the Bilanzsumme also of the previous year, and the Gezeichnetes
+	Kapital at its Nennbetrag before uncalled contributions are offset (§ 272 Abs. 1 Satz 1 und 2 HGB), which a
+	Kleinst shows only within „A. Eigenkapital“."""
 
 	scheme: BalanceSheetScheme
 	size_class: SizeClass
@@ -270,6 +273,8 @@ class BalanceSheet:
 	prior_aktiva_total: Decimal | None = None
 	prior_passiva_total: Decimal | None = None
 	prior_bilanzsumme: Decimal | None = None
+	subscribed_capital: Decimal = ZERO
+	prior_subscribed_capital: Decimal | None = None
 
 	@property
 	def difference(self) -> Decimal:
@@ -412,6 +417,8 @@ class _Books:
 		self.aktiva_total = self.sheet.amount(balance_scheme.aktiva.concept)
 		self.passiva_total = self.sheet.amount(balance_scheme.passiva.concept)
 		self.bilanzsumme = self.aktiva_total - self.sheet.amount(DEFICIT)
+		uncalled = self.sheet.noted[(SUBSCRIBED, VermerkKind.UNCALLED_CAPITAL)]
+		self.subscribed_capital = self.sheet.amount(SUBSCRIBED) - uncalled
 		if self.aktiva_total != self.passiva_total:
 			self.findings.append(_not_balanced(self.aktiva_total - self.passiva_total))
 
@@ -466,6 +473,8 @@ def build(
 		None if previous is None else previous.aktiva_total,
 		None if previous is None else previous.passiva_total,
 		None if previous is None else previous.bilanzsumme,
+		current.subscribed_capital,
+		None if previous is None else previous.subscribed_capital,
 	)
 	findings = list(_year_findings(current, balance_sheet, size_class, method, presentation))
 	if previous is not None:
@@ -477,7 +486,7 @@ def build(
 
 
 _PARAGRAPHS = MappingProxyType({Method.GKV: 2, Method.UKV: 3})
-_ALWAYS_SHOWN = frozenset({EQUITY, "bs.eqLiab.equity.subscribed"})
+_ALWAYS_SHOWN = frozenset({EQUITY, SUBSCRIBED})
 _REPLACED_BY_BILANZGEWINN = frozenset({PROFIT_CARRIED_FORWARD, NET_INCOME})
 
 
@@ -748,6 +757,10 @@ def in_full_euros(statement: AnnualStatement) -> AnnualStatement:
 		prior_aktiva_total,
 		prior_passiva_total,
 		None if prior_aktiva_total is None else prior_aktiva_total - (rounded_deficit.prior or ZERO),
+		*apportion_full_euros((sheet.subscribed_capital,)),
+		None
+		if sheet.prior_subscribed_capital is None
+		else apportion_full_euros((sheet.prior_subscribed_capital,))[0],
 	)
 	income_statement = _income_in_full_euros(
 		statement.income_statement,
