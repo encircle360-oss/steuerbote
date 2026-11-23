@@ -12,7 +12,7 @@ steuerbote/                    Repository
 │   ├── ustva/                 Rechenkern der Umsatzsteuer-Voranmeldung, reines Python ohne Frappe-Import
 │   │   ├── years.py           Jahrestabelle: welche Jahre Steuerbote abgibt und was jedes Jahr braucht
 │   │   ├── kennzahlen.py      Katalog der Kennzahlen des Vordrucks USt 1 A je Jahrgang, bisher 2026
-│   │   ├── rounding.py        Rundung: Bemessungsgrundlagen in vollen Euro, Steuern in Cent
+│   │   ├── rounding.py        Rundung: Bemessungsgrundlagen in vollen Euro, Steuern in Cent, dazu die Rundungen der Jahresmeldungen
 │   │   ├── mapping.py         Kontenzuordnung: AccountRule, TaxCheck, Mapping
 │   │   ├── defaults.py        Vorgaben für SKR03 und SKR04
 │   │   ├── calculation.py     calculate(): Buchungszeilen zu Kennzahlen, Summen, Kz 83 und Verprobung
@@ -28,6 +28,8 @@ steuerbote/                    Repository
 │   │   ├── ustva_xml.py       Voranmeldung als XML: Datei für Mein ELSTER, Nutzdaten für ERiC
 │   │   ├── ust1h_xml.py       Vordruck USt 1 H als XML: Nutzdaten für ERiC in beiden Kontexten
 │   │   ├── zm_xml.py          Zusammenfassende Meldung als XML: Nutzdaten der Datenart ZMDO für ERiC
+│   │   ├── vorsatz.py         Vorsatz der Erklärungen USt, KSt und GewSt mit dem Copyrightvermerk
+│   │   ├── erklaerung.py      Werte der Erklärungen nach ihrem Formatkennzeichen, Felder, Regeln und Vordrucke eines Jahres
 │   │   ├── charset.py         Zeichensatz von ELSTER und Ersatz typografischer Zeichen
 │   │   ├── envelope.py        ganzer Umschlag Elster mit TransferHeader, nur für die Schematests
 │   │   └── tests/             Unit-Tests und Tests gegen die Schemas der ERiC-Dokumentation
@@ -119,7 +121,7 @@ pytest --cov    # mit Abdeckung, wie in der CI
 
 ### Schematests
 
-`steuerbote/elster/tests/test_schema.py` prüft das XML gegen die Schemas der ERiC-Dokumentation: die Datei für Mein ELSTER und die Nutzdaten des Vordrucks USt 1 H gegen `UStVA-2026.xsd`, Nutzdaten und Umschlag gegen `elster11_UStVA_2026_extern.xsd` mit dem ElsterBasisSchema, dazu Reihenfolge, Typen und Längen, die `ustva_xml.py` aus dem Schema übernimmt, und den Vordruck gegen die Beispiele `UStVA_Df_2026.xml` und `UStVA_SoVZ_2026.xml` in Canonical XML 2.0. `test_zm_schema.py` prüft die Nutzdaten der Zusammenfassenden Meldung gegen `zm_000005.xsd` und im Umschlag gegen `elster11_Zm_000005_extern.xsd`, vergleicht sie Byte für Byte mit dem Beispiel `ZMDO_5_send-Auth.xml` und die Werte, die `zm_xml.py` übernimmt, mit Schema und Jahresdokumentation. `steuerbote/eric/tests/test_datenart.py` vergleicht die Beschreibung jeder Datenart in `steuerbote/eric/datenart.py` mit Beispielen, Schemas, Datenartversionmatrix und Jahresdokumentation ZMDO, und `test_header.py` prüft den DatenTeil jeder Datenart im ganzen Umschlag gegen dessen Schema. Die Schemas tragen keine Lizenz, die eine Weitergabe erlaubt, deshalb liegen sie nicht im Repository. Die Tests lesen sie aus der entpackten ERiC-Dokumentation, deren Verzeichnis die Umgebungsvariable `STEUERBOTE_ERIC_DOC_DIR` nennt:
+`steuerbote/elster/tests/test_schema.py` prüft das XML gegen die Schemas der ERiC-Dokumentation: die Datei für Mein ELSTER und die Nutzdaten des Vordrucks USt 1 H gegen `UStVA-2026.xsd`, Nutzdaten und Umschlag gegen `elster11_UStVA_2026_extern.xsd` mit dem ElsterBasisSchema, dazu Reihenfolge, Typen und Längen, die `ustva_xml.py` aus dem Schema übernimmt, und den Vordruck gegen die Beispiele `UStVA_Df_2026.xml` und `UStVA_SoVZ_2026.xml` in Canonical XML 2.0. `test_zm_schema.py` prüft die Nutzdaten der Zusammenfassenden Meldung gegen `zm_000005.xsd` und im Umschlag gegen `elster11_Zm_000005_extern.xsd`, vergleicht sie Byte für Byte mit dem Beispiel `ZMDO_5_send-Auth.xml` und die Werte, die `zm_xml.py` übernimmt, mit Schema und Jahresdokumentation. `steuerbote/eric/tests/test_datenart.py` vergleicht die Beschreibung jeder Datenart in `steuerbote/eric/datenart.py` mit Beispielen, Schemas, Datenartversionmatrix und Jahresdokumentation ZMDO, und `test_header.py` prüft den DatenTeil jeder Datenart im ganzen Umschlag gegen dessen Schema. `test_vorsatz.py` und `test_erklaerung.py` vergleichen Vorsatz und Formatkennzeichen der Erklärungen mit den Jahresdokumentationen E50, E30 und E20, ihren Schemas und Beispielen. Die Schemas tragen keine Lizenz, die eine Weitergabe erlaubt, deshalb liegen sie nicht im Repository. Die Tests lesen sie aus der entpackten ERiC-Dokumentation, deren Verzeichnis die Umgebungsvariable `STEUERBOTE_ERIC_DOC_DIR` nennt:
 
 ```bash
 curl -fLo /tmp/eric-doc.zip https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Dokumentation.zip
@@ -128,7 +130,7 @@ unzip -q /tmp/eric-doc.zip -d /tmp/eric-doc
 STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc pytest --cov
 ```
 
-Die Variable nennt das Verzeichnis, in das die Zip-Datei entpackt wurde, oder darin das Verzeichnis `Dokumentation`. Sie gilt ebenso für `bench run-tests`, das die Tests unter `steuerbote/elster` mitnimmt. Ohne die Variable überspringt pytest die Schematests und sagt, warum; in einer CI (Umgebungsvariable `CI`) schlagen sie stattdessen fehl. Die CI lädt die Dokumentation in beiden Testjobs, prüft die SHA-256-Summe und entpackt nur die Schemas und Beispiele der UStVA, das Verzeichnis der ZMDO mit Schema, Beispiel und Jahresdokumentation, die Datenartversionmatrix und das ElsterBasisSchema. Gepinnt ist 44.3.6.0, die produktive Version. ERiC 45.1.5.0 ist eine Beta, ihr Schema für 2026 gleicht dem von 44.3.6.0 bis auf den Kopfkommentar.
+Die Variable nennt das Verzeichnis, in das die Zip-Datei entpackt wurde, oder darin das Verzeichnis `Dokumentation`. Sie gilt ebenso für `bench run-tests`, das die Tests unter `steuerbote/elster` mitnimmt. Ohne die Variable überspringt pytest die Schematests und sagt, warum; in einer CI (Umgebungsvariable `CI`) schlagen sie stattdessen fehl. Die CI lädt die Dokumentation in beiden Testjobs, prüft die SHA-256-Summe und entpackt nur die Schemas und Beispiele der UStVA, das Verzeichnis der ZMDO mit Schema, Beispiel und Jahresdokumentation, die Verzeichnisse von USt, KSt und GewSt des Verfahrens ElsterErklaerung und das Verzeichnis ElsterBilanz, die Datenartversionmatrix und das ElsterBasisSchema. Gepinnt ist 44.3.6.0, die produktive Version. ERiC 45.1.5.0 ist eine Beta, ihr Schema für 2026 gleicht dem von 44.3.6.0 bis auf den Kopfkommentar.
 
 ### Frappe-Tests
 
