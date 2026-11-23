@@ -3,7 +3,7 @@
 from decimal import Decimal
 from unittest import TestCase
 
-from steuerbote.kst.losses import derivatives, loss_deduction, minimum_taxation
+from steuerbote.kst.losses import derivatives, donations, loss_deduction, minimum_taxation
 from steuerbote.kst.years import YEARS
 
 YEAR = YEARS[2026]
@@ -180,3 +180,66 @@ class DerivativesTest(TestCase):
 			ValueError, "the Verlustvortrag of § 15 Absatz 4 EStG must be whole euros"
 		):
 			derivatives(YEAR, ZERO, ZERO, Decimal("0.50"))
+
+
+class DonationsTest(TestCase):
+	"""§ 9 Absatz 1 Nummer 2 KStG in Anlage Z: rules 8900204, 8901005, 8901006, 8900351, 8901012 and 8900101."""
+
+	def test_deducts_the_donations_within_20_percent_of_the_summe_der_einkuenfte(self):
+		found = donations(YEAR, Decimal("112200"), Decimal("1000.00"), ZERO)
+		self.assertEqual(found.donations.declared, Decimal("1000"))
+		self.assertEqual(
+			(found.available, found.deductible, found.remaining), (Decimal("1000"), Decimal("1000"), ZERO)
+		)
+		self.assertFalse(found.turnover_missing)
+		self.assertTrue(found.required)
+
+	def test_rounds_the_cap_up_and_keeps_the_rest_for_later_years(self):
+		found = donations(YEAR, Decimal("112201"), Decimal("30000.00"), ZERO, Decimal("0"))
+		self.assertEqual(found.deductible, Decimal("22441"))
+		self.assertEqual(found.remaining, Decimal("7559"))
+
+	def test_the_higher_of_the_two_caps_counts(self):
+		found = donations(YEAR, Decimal("112200"), Decimal("30000.00"), ZERO, Decimal("6000000"))
+		self.assertEqual(found.deductible, Decimal("24000"))
+		found = donations(YEAR, Decimal("112200"), Decimal("30000.00"), ZERO, Decimal("1000000"))
+		self.assertEqual(found.deductible, Decimal("22440"))
+
+	def test_adds_the_carry_forward_of_the_previous_years(self):
+		found = donations(YEAR, Decimal("112200"), Decimal("1000.00"), Decimal("500"))
+		self.assertEqual((found.available, found.deductible), (Decimal("1500"), Decimal("1500")))
+
+	def test_rounds_the_donations_of_the_year_up(self):
+		self.assertEqual(
+			donations(YEAR, Decimal("112200"), Decimal("999.01"), ZERO).donations.declared, Decimal("1000")
+		)
+
+	def test_without_income_only_the_turnover_cap_counts(self):
+		found = donations(YEAR, Decimal("-1000"), Decimal("1000.00"), ZERO, Decimal("100000"))
+		self.assertEqual((found.deductible, found.remaining), (Decimal("400"), Decimal("600")))
+		found = donations(YEAR, Decimal("-1000"), Decimal("1000.00"), ZERO, ZERO)
+		self.assertEqual((found.deductible, found.remaining), (ZERO, Decimal("1000")))
+
+	def test_needs_the_turnover_when_the_donations_exceed_20_percent_or_there_is_no_income(self):
+		self.assertTrue(donations(YEAR, Decimal("1000"), Decimal("201.00"), ZERO).turnover_missing)
+		self.assertFalse(donations(YEAR, Decimal("1000"), Decimal("200.00"), ZERO).turnover_missing)
+		self.assertTrue(donations(YEAR, ZERO, Decimal("1.00"), ZERO).turnover_missing)
+		self.assertFalse(donations(YEAR, ZERO, Decimal("1.00"), ZERO, ZERO).turnover_missing)
+		self.assertFalse(donations(YEAR, ZERO, ZERO, ZERO).turnover_missing)
+
+	def test_needs_no_anlage_z_without_donations_or_carry_forward(self):
+		found = donations(YEAR, Decimal("112200"), ZERO, ZERO)
+		self.assertFalse(found.required)
+		self.assertEqual(found.deductible, ZERO)
+
+	def test_takes_amounts_in_whole_euros_but_the_donations_in_cents(self):
+		with self.assertRaisesRegex(ValueError, "the Summe der Einkünfte must be whole euros"):
+			donations(YEAR, Decimal("0.5"), ZERO, ZERO)
+		with self.assertRaisesRegex(ValueError, "the Zuwendungen must be an amount in cents of at least 0"):
+			donations(YEAR, ZERO, Decimal("-1.00"), ZERO)
+		with self.assertRaisesRegex(ValueError, "the Zuwendungsvortrag must be whole euros of at least 0"):
+			donations(YEAR, ZERO, ZERO, Decimal("-1"))
+		with self.assertRaisesRegex(
+			ValueError, "the Umsätze, Löhne und Gehälter must be whole euros of at least 0"
+		):
+			donations(YEAR, ZERO, ZERO, ZERO, Decimal("1.5"))
