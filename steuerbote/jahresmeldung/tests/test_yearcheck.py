@@ -279,9 +279,23 @@ class UStFormCatalogueTest(SyntheticTestCase):
 			arguments=("USt",),
 		)
 
-	def test_finds_a_schema_or_documentation_without_the_vordruck(self):
+	def test_finds_a_schema_without_a_vordruck_of_the_catalogue(self):
 		del self.documentation.schemas[UST_2026]["vordrucke"]["USt2A"]
-		self.assertLines("USt 2026, USt2A: its fields; E50-2026.xsd: no element USt2A", arguments=("USt",))
+		self.assertLines(
+			"USt 2026, Vordruck USt2A: in the catalogue; E50-2026.xsd: no element USt2A", arguments=("USt",)
+		)
+
+	def test_finds_the_vordrucke_of_the_schema_in_another_order_or_number(self):
+		vordrucke = self.documentation.schemas[UST_2026]["vordrucke"]
+		self.documentation.schemas[UST_2026]["vordrucke"] = {
+			name: vordrucke[name] for name in ("UN", "USt2A", "FV", "Vorsatz") if name in vordrucke
+		} | {"UN": [], "FV": []}
+		self.documentation.schemas[UST_2026]["occurs"] = {"UN": "2"}
+		self.assertLines(
+			"USt 2026, order of the Vordrucke: USt2A before UN; E50-2026.xsd: UN before USt2A",
+			"USt 2026, Vordruck UN: max. lfd. Nr. 1; E50-2026.xsd: maxOccurs 2",
+			arguments=("USt",),
+		)
 
 	def test_finds_each_column_of_a_field_that_differs(self):
 		row = self.field("E3001001")
@@ -432,7 +446,7 @@ class FormCatalogueTest(SyntheticTestCase):
 				"E30",
 				kst(2025).namespace,
 				"2025",
-				{"KSt1": [("", "E8000015", "JaX"), ("Allgemein", "E8000101", "String")]},
+				{"KSt1": [("", "E8000015", "JaX"), ("Allgemein", "E8000101", "String")], "Vorsatz": []},
 			),
 			"E30",
 		)
@@ -443,6 +457,47 @@ class FormCatalogueTest(SyntheticTestCase):
 
 	def test_finds_nothing_where_the_documentation_agrees(self):
 		self.assertEqual(self.differences(self.catalogue(), self.documented()), [])
+
+	def test_takes_a_source_that_names_the_file_and_its_versionslabel_in_either_way(self):
+		for source in (f"{E30} (Versionslabel 7.0)", f"{E30}, Versionslabel 7.0, provisionally for 2026"):
+			with self.subTest(source=source):
+				self.assertEqual(self.differences(self.catalogue(source=source), self.documented()), [])
+		self.assertEqual(
+			self.differences(self.catalogue(source=f"{E30}, Versionslabel 7.01"), self.documented()),
+			[f"KSt 2025, source: {E30}, Versionslabel 7.01; {E30}: Versionslabel 7.0"],
+		)
+
+	def test_takes_a_kennzahl_with_or_without_its_sachbereich_and_a_beschreibung_with_or_without_the_year(
+		self,
+	):
+		documented = self.documented()
+		documented.row("KSt1", "Kennzahlen", Kennzahl="11")["Sachbereich"] = "13"
+		documented.row("KSt1", "Felder", Name="E8000015")["Beschreibung"] = "Organgesellschaft $VZ$"
+		first, second = self.catalogue().fields
+		for kennzahl, label in (("11", "Organgesellschaft 2025"), ("13.11", "Organgesellschaft $VZ$")):
+			fields = (replace(first, label=label), replace(second, kennzahl=kennzahl))
+			with self.subTest(kennzahl=kennzahl):
+				self.assertEqual(self.differences(self.catalogue(fields=fields), documented), [])
+		fields = (first, replace(second, kennzahl="12.11"))
+		self.assertEqual(
+			self.differences(self.catalogue(fields=fields), documented),
+			[
+				f"KSt 2025, field E8000015: Beschreibung Organgesellschaft; {E30}: Beschreibung Organgesellschaft 2025",
+				f"KSt 2025, field E8000101: Kennzahl 12.11; {E30}: Kennzahl 13.11",
+			],
+		)
+
+	def test_leaves_out_the_indexfeld_of_the_documentation_and_the_schema(self):
+		documented = self.documented()
+		documented.rows("KSt1", "Felder").insert(0, {"Kontext": "", "Name": "WJ", "Indexfeld": "Ja"})
+		jd = read(files.write(self.directory / E30, documented))
+		leaves = [("", "WJ", "Index"), ("", "E8000015", "JaX"), ("Allgemein", "E8000101", "String")]
+		path = self.directory / "E30-2025.xsd"
+		xsd = read_schema(
+			files.write_schema(path, "E30", kst(2025).namespace, "2025", {"KSt1": leaves, "Vorsatz": []}),
+			"E30",
+		)
+		self.assertEqual(list(form_catalogue_differences("KSt 2025", self.catalogue(), jd, xsd)), [])
 
 	def test_finds_rules_named_otherwise_of_another_regelart_or_missing(self):
 		catalogue = self.catalogue(
@@ -470,6 +525,7 @@ class FormCatalogueTest(SyntheticTestCase):
 			self.differences(catalogue, self.documented()),
 			[
 				f"KSt 2025, Vordruck GK: max. lfd. Nr. 2; {E30}: not listed",
+				"KSt 2025, Vordruck GK: in the catalogue; E30-2025.xsd: no element GK",
 				f"KSt 2025, GK: its fields; {E30}: no Vordruck GK",
 			],
 		)
@@ -660,15 +716,19 @@ class IncomeTaxTest(SyntheticTestCase):
 		)
 
 	def test_compares_a_provisional_year_with_the_newest_jahresdokumentation_up_to_it(self):
-		newer = agreeing.expected_jahresdokumentation(KST_CHECK, 2026, "1.0")
+		newer = agreeing.income_tax_jahresdokumentation(KST_CHECK, 2026, "1.0")
 		self.documentation.jahresdokumentationen[kst(2026)] = newer
+		self.documentation.schemas[kst(2026)] = agreeing.income_tax_schema(KST_CHECK, 2026)
 		self.documentation.jahresdokumentationen[kst(2027)] = Documented(information=["Einstellungen"])
 		row = next(row for row in newer.rows("ZVE", "Regeln") if row["Fehlercode"] == "8900331")
 		row["Prüfbedingung"] = "[E8007502] != Abrunden([E8007504] * 0.14)"
 		self.assertLines(
 			"KSt 2026, Jahresdokumentation: Jahresdokumentation_E30_2025.ods, provisionally; "
 			"Datenarten/ElsterErklaerung/KSt/Jahresdokumentation: Jahresdokumentation_E30_2026.ods, the newest up to 2026",
-			"KSt 2026, rule 8900331 of ZVE: Abrunden([E8007504]*0.15); Jahresdokumentation_E30_2026.ods: not in its Prüfbedingung",
+			"KSt 2026, rule 8900331 of ZVE: Abrunden([E8007504]*0.15); Jahresdokumentation_E30_2026.ods: not in its "
+			"Prüfbedingung",
+			"KSt 2026, source: Jahresdokumentation_E30_2025.ods, Versionslabel 7.0, provisionally for 2026; "
+			"Jahresdokumentation_E30_2026.ods: Versionslabel 1.0",
 			arguments=("KSt", "2026"),
 		)
 
@@ -683,46 +743,71 @@ class IncomeTaxTest(SyntheticTestCase):
 
 	def test_a_year_in_the_making_compares_the_latest_data_with_the_newest_jahresdokumentation(self):
 		self.assertLines(
-			"GewSt 2027 is missing in YEARS of steuerbote/gewst/years.py; the latest data take its place:",
+			"GewSt 2027 is missing in YEARS of steuerbote/gewst/years.py, CATALOGUES of steuerbote/gewst/form.py, "
+			"RECHTSFORMEN of steuerbote/gewst/form.py, SCHEMAS of steuerbote/elster/gewst_xml.py; the latest data take "
+			"its place:",
 			arguments=("GewSt", "2027"),
 		)
 
 	def test_a_final_year_takes_its_own_jahresdokumentation(self):
 		final = replace(kst_years.YEARS[2026], documentation_year=2026, provisional=False)
 		check = replace(KST_CHECK, years=MappingProxyType({2026: final}))
-		self.documentation.jahresdokumentationen[kst(2026)] = agreeing.expected_jahresdokumentation(
-			KST_CHECK, 2026, "1.0"
+		own = agreeing.income_tax_jahresdokumentation(KST_CHECK, 2026, "1.0")
+		self.documentation.jahresdokumentationen[kst(2026)] = own
+		self.documentation.schemas[kst(2026)] = agreeing.income_tax_schema(KST_CHECK, 2026)
+		self.assertEqual(
+			self.lines(check),
+			[
+				"KSt 2026, source: Jahresdokumentation_E30_2025.ods, Versionslabel 7.0, provisionally for 2026; "
+				"Jahresdokumentation_E30_2026.ods: Versionslabel 1.0"
+			],
 		)
-		self.assertEqual(self.lines(check), [])
 		del self.documentation.jahresdokumentationen[kst(2026)]
 		with self.assertRaisesRegex(DocumentationError, "Jahresdokumentation_E30_2026.ods cannot be read"):
 			self.lines(check, self.directory / "ohne")
 
-	def test_compares_the_form_catalogue_of_the_xml_once_the_module_has_one(self):
-		field_ = Field("KSt1", "", "E8000015", "Organgesellschaft", "X", line=1)
-		catalogue = FormCatalogue(
-			kst(2026), f"{E30} (Versionslabel 7.0)", (Form("KSt1", 1, True),), (field_,)
+	def test_compares_the_catalogue_of_kst_with_its_jahresdokumentation(self):
+		field_ = next(field_ for field_ in KST_CHECK.catalogues[2026].fields if field_.kennzahl)
+		kennzahl = field_.kennzahl.rpartition(".")[2]
+		row = next(
+			row
+			for row in self.jd(KST_2025).rows(field_.form, "Kennzahlen")
+			if row["Feldname"].endswith(field_.feldkennung)
 		)
-		check = replace(KST_CHECK, catalogues=MappingProxyType({2026: catalogue}))
-		self.jd(KST_2025).rows("KSt1", "Felder").append(
-			{
-				"Name": "E8000015",
-				"Beschreibung": "Organgesellschaft",
-				"Formatkennzeichen": "J",
-				"Vordruckzeile": "1",
-				"max. Zeilen": "1",
-			}
+		row["Sachbereich"] = "99"
+		self.assertLines(
+			f"KSt 2026, field {field_.feldkennung}: Kennzahl {field_.kennzahl}; {E30}: Kennzahl 99.{kennzahl}",
+			arguments=("KSt",),
 		)
-		self.jd(KST_2025).information.append("KSt1 - max. lfd. Nr. Vordruck: 1 - Pflichtvordruck")
-		self.documentation.schemas[KST_2025] = {
-			"root": "E30",
-			"namespace": KST_2025.namespace,
-			"version": "2025",
-			"vordrucke": {"KSt1": [("", "E8000015", "JaX")]},
-		}
-		self.assertEqual(
-			self.lines(check),
-			[f"KSt 2026, field E8000015: Formatkennzeichen X; {E30}: Formatkennzeichen J"],
+
+	def test_finds_a_vordruck_without_its_indexfeld_and_a_context_that_repeats_otherwise(self):
+		rows = self.jd(KST_2025).rows("GK", "Felder")
+		rows.remove(self.jd(KST_2025).row("GK", "Felder", Name="WJ"))
+		self.documentation.schemas[KST_2025]["vordrucke"]["GK"].pop(0)
+		occurs = self.documentation.schemas[KST_2025]["occurs"]
+		occurs["KSt1/AE/Einzel"] = "98"
+		del occurs["WA/AE/Einzel"]
+		self.assertLines(
+			"KSt 2026, context KSt1/AE/Einzel: repeats up to 99; E30-2025.xsd: repeats up to 98",
+			"KSt 2026, context WA/AE/Einzel: repeats up to 99; E30-2025.xsd: does not repeat",
+			f"KSt 2026, Indexfeld: GK, KSt1F; {E30}: KSt1F",
+			arguments=("KSt",),
+		)
+
+	def test_finds_rechtsformen_of_other_categories_and_a_type_the_documentation_names_otherwise(self):
+		(types,) = self.jd(KST_2025).others["Benutzerdefinierte Typen"]
+		types["Format"] = (
+			types["Format"]
+			.replace("[Rechtsform 370] RF_Gruppe: 1", "[Rechtsform 370] RF_Gruppe: 2")
+			.replace(" - 350 ", " - 351 ")
+		)
+		self.jd(GEWST_2025).others["Benutzerdefinierte Typen"][0]["Version"] = "3"
+		self.assertLines(
+			f"KSt 2026, RECHTSFORM_KOERPERSCHAFTEN_V3, 350: NurG 1, RF_Gruppe 1; {E30}: no such Rechtsform",
+			f"KSt 2026, RECHTSFORM_KOERPERSCHAFTEN_V3, 370: NurG 1, RF_Gruppe 1; {E30}: NurG 1, RF_Gruppe 2",
+			"GewSt 2026, RECHTSFORM_GEWERBESTEUER_V2: the categories of the Rechtsformen; "
+			"Jahresdokumentation_E20_2025.ods: no type RECHTSFORM_GEWERBESTEUER_V2 of version 2",
+			arguments=("KSt", "GewSt"),
 		)
 
 	def test_the_rules_of_gewst_come_from_its_chain(self):

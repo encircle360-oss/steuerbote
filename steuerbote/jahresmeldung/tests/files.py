@@ -33,7 +33,7 @@ HEADS = {
 		"Änderungsinformation",
 	),
 	"Regeln": ("Kontext", "Name", "Fehlercode", "Prüfbedingung", "Regelart", "Änderungsinformation"),
-	"Kennzahlen": ("Feldname", "Kennzahl", "Änderungsinformation"),
+	"Kennzahlen": ("Feldname", "Sachbereich", "Kennzahl", "Änderungsinformation"),
 }
 VERSION_HEADS = (
 	"Verfahren",
