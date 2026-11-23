@@ -49,9 +49,18 @@ carries the same kind (BalanceSheetScheme.vermerke): klein notes the remaining t
 „B. II.“, Kleinst at „B.“, the larger classes at each arabic item. ``scope`` names the position whose balances a
 Vermerk covers, so that the one at „B.“ counts the receivables only.
 
+The income statement holds the items of § 275 HGB in their order, „in Staffelform nach dem Gesamtkostenverfahren
+oder dem Umsatzkostenverfahren“ (Abs. 1), with the parts a) and b) of the items 5 to 7 of the Gesamtkostenverfahren
+and the „davon“ notes of the law. „Ergebnis nach Steuern“ and „Jahresüberschuss/Jahresfehlbetrag“, and by the
+Umsatzkostenverfahren the „Bruttoergebnis vom Umsatz“, are results the statement computes from the items above
+them (``terms``). The ledger of ERPNext knows the nature of an expense, not its function, so the Annual Accounts
+prepare the Gesamtkostenverfahren; the Umsatzkostenverfahren stands here as structure for a mapping that can feed
+it. Neither is published by Kleinst and klein (§ 326 HGB); the short forms of § 275 Abs. 5 and § 276 HGB are not
+offered.
+
 A fiscal year names its schemes by the year it ends in, as steuerbote.hgb.size names its thresholds: both tables
-hold the same years. Text of §§ 266, 268, 272 HGB and § 42 GmbHG as read on gesetze-im-internet.de on 23 November
-2026.
+hold the same years. Text of §§ 266, 268, 272, 275 HGB and § 42 GmbHG as read on gesetze-im-internet.de on
+23 November 2026.
 """
 
 from collections.abc import Iterator, Mapping
@@ -91,6 +100,13 @@ class VermerkKind(Enum):
 	SOCIAL_SECURITY = "im Rahmen der sozialen Sicherheit"
 	UNCALLED_CAPITAL = "nicht eingeforderte ausstehende Einlagen"
 	PROFIT_CARRIED_FORWARD = "Gewinnvortrag/Verlustvortrag"
+	PENSIONS = "für Altersversorgung"
+	AFFILIATED = "verbundene Unternehmen"
+
+
+class Method(Enum):
+	GKV = "Gesamtkostenverfahren"
+	UKV = "Umsatzkostenverfahren"
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +136,8 @@ class Position:
 	children: tuple[Position, ...] = ()
 	vermerke: tuple[Vermerk, ...] = ()
 	computed: bool = False
+	terms: tuple[str, ...] = ()
+	"""The concepts of the items a computed result adds up, each with its sign by its direction."""
 
 	def __post_init__(self) -> None:
 		scoped = tuple(replace(vermerk, scope=vermerk.scope or self.concept) for vermerk in self.vermerke)
@@ -151,29 +169,28 @@ LEVELS: MappingProxyType[SizeClass, Form] = MappingProxyType(
 )
 
 
-@dataclass(frozen=True, slots=True)
-class BalanceSheetScheme:
-	year: int
-	taxonomy: str
-	aktiva: Position
-	passiva: Position
-	_index: Mapping[str, Position] = field(init=False, repr=False, compare=False)
-	_parents: Mapping[str, Position] = field(init=False, repr=False, compare=False)
+class _Scheme:
+	"""Finds the positions of a scheme by their concept; a scheme names in ``_roots()`` the positions every other
+	lies under."""
 
-	def __post_init__(self) -> None:
+	__slots__ = ()
+	year: int
+	_index: Mapping[str, Position]
+	_parents: Mapping[str, Position]
+
+	def _build_index(self) -> None:
 		index: dict[str, Position] = {}
 		parents: dict[str, Position] = {}
-		for root in (self.aktiva, self.passiva):
-			for position in root.walk():
-				index[position.concept] = position
-				parents.update((child.concept, position) for child in position.children)
+		for position in self.positions():
+			index[position.concept] = position
+			parents.update((child.concept, position) for child in position.children)
 		object.__setattr__(self, "_index", MappingProxyType(index))
 		object.__setattr__(self, "_parents", MappingProxyType(parents))
 
 	def positions(self) -> Iterator[Position]:
-		"""Every position of the Aktiva, then of the Passiva, each side from its total down."""
-		yield from self.aktiva.walk()
-		yield from self.passiva.walk()
+		"""Every position in the order of the scheme, each with the positions under it."""
+		for root in self._roots():  # type: ignore[attr-defined]
+			yield from root.walk()
 
 	def has(self, concept: str) -> bool:
 		return concept in self._index
@@ -182,12 +199,32 @@ class BalanceSheetScheme:
 		try:
 			return self._index[concept]
 		except KeyError:
-			raise SchemeError(f"the balance sheet of {self.year} has no position {concept}") from None
+			raise SchemeError(f"the {self} has no position {concept}") from None
 
 	def parent(self, concept: str) -> Position | None:
-		"""The position the one of ``concept`` lies under, None for the total of a side."""
+		"""The position the one of ``concept`` lies under, None for a position at the top."""
 		self.position(concept)
 		return self._parents.get(concept)
+
+
+@dataclass(frozen=True, slots=True)
+class BalanceSheetScheme(_Scheme):
+	year: int
+	taxonomy: str
+	aktiva: Position
+	passiva: Position
+	_index: Mapping[str, Position] = field(init=False, repr=False, compare=False)
+	_parents: Mapping[str, Position] = field(init=False, repr=False, compare=False)
+
+	def __post_init__(self) -> None:
+		self._build_index()
+
+	def __str__(self) -> str:
+		return f"balance sheet of {self.year}"
+
+	def _roots(self) -> tuple[Position, ...]:
+		"""The total of the Aktiva, then of the Passiva."""
+		return (self.aktiva, self.passiva)
 
 	def shows(self, concept: str, size_class: SizeClass) -> bool:
 		"""Whether the balance sheet of ``size_class`` shows the position as a line of its own."""
@@ -686,6 +723,311 @@ BALANCE_SHEETS: MappingProxyType[int, BalanceSheetScheme] = MappingProxyType(
 def balance_sheet_scheme(year: int) -> BalanceSheetScheme:
 	"""The balance sheet of the fiscal year that ends in ``year``."""
 	return _entry(BALANCE_SHEETS, year, "balance sheet")
+
+
+@dataclass(frozen=True, slots=True)
+class IncomeStatementScheme(_Scheme):
+	year: int
+	taxonomy: str
+	method: Method
+	items: tuple[Position, ...]
+	_index: Mapping[str, Position] = field(init=False, repr=False, compare=False)
+	_parents: Mapping[str, Position] = field(init=False, repr=False, compare=False)
+
+	def __post_init__(self) -> None:
+		self._build_index()
+
+	def __str__(self) -> str:
+		return f"income statement of {self.year} by the {self.method.value}"
+
+	def _roots(self) -> tuple[Position, ...]:
+		return self.items
+
+	@property
+	def sales(self) -> Position:
+		"""The Umsatzerlöse of § 277 Abs. 1 HGB, the first item of either method."""
+		return self.items[0]
+
+	@property
+	def net_income(self) -> Position:
+		"""The Jahresüberschuss/Jahresfehlbetrag, the last item of either method."""
+		return self.items[-1]
+
+
+def _line(
+	paragraph: int,
+	number: int,
+	label: str,
+	concept: str,
+	direction: Direction,
+	*parts: Position,
+	vermerke: tuple[Vermerk, ...] = (),
+	terms: tuple[str, ...] = (),
+) -> Position:
+	"""An item of § 275 Abs. 2 or 3 HGB; an item with ``terms`` is a result the statement computes."""
+	return Position(
+		f"{number}.",
+		label,
+		concept,
+		Level.ARABIC,
+		direction,
+		f"§ 275 Abs. {paragraph} Nr. {number} HGB",
+		parts,
+		vermerke,
+		bool(terms),
+		terms,
+	)
+
+
+def _part(
+	number: int,
+	letter: str,
+	label: str,
+	concept: str,
+	direction: Direction,
+	vermerke: tuple[Vermerk, ...] = (),
+) -> Position:
+	"""A part a) or b) of the items 5 to 7 of the Gesamtkostenverfahren."""
+	return Position(
+		f"{letter})",
+		label,
+		concept,
+		Level.LOWER,
+		direction,
+		f"§ 275 Abs. 2 Nr. {number} Buchst. {letter} HGB",
+		(),
+		vermerke,
+	)
+
+
+def _affiliated(
+	paragraph: int, number: int, concept: str, label: str = "davon aus verbundenen Unternehmen"
+) -> Vermerk:
+	return Vermerk(
+		VermerkKind.AFFILIATED, label, concept, f"§ 275 Abs. {paragraph} Nr. {number} HGB", (concept,)
+	)
+
+
+_OPERATING_TC = "is.netIncome.regular.operatingTC"
+_OPERATING_COGS = "is.netIncome.regular.operatingCOGS"
+_FINANCIAL = "is.netIncome.regular.fin"
+_NET_INCOME_AFTER_TAX = "is.netIncome.eat"
+_OTHER_TAXES = "is.netIncome.otherTaxes"
+
+
+def _financial_items(paragraph: int, first: int) -> tuple[Position, ...]:
+	"""From the Erträge aus Beteiligungen to the Steuern vom Einkommen und vom Ertrag: Nr. 9 to 14 of the
+	Gesamtkostenverfahren, Nr. 8 to 13 of the Umsatzkostenverfahren."""
+	return (
+		_line(
+			paragraph,
+			first,
+			"Erträge aus Beteiligungen",
+			f"{_FINANCIAL}.netParticipation.earnings",
+			Direction.CREDIT,
+			vermerke=(_affiliated(paragraph, first, f"{_FINANCIAL}.netParticipation.earnings.groupComp"),),
+		),
+		_line(
+			paragraph,
+			first + 1,
+			"Erträge aus anderen Wertpapieren und Ausleihungen des Finanzanlagevermögens",
+			f"{_FINANCIAL}.netParticipation.earningSecurities",
+			Direction.CREDIT,
+			vermerke=(
+				_affiliated(paragraph, first + 1, f"{_FINANCIAL}.netParticipation.earningSecurities.assoc"),
+			),
+		),
+		_line(
+			paragraph,
+			first + 2,
+			"sonstige Zinsen und ähnliche Erträge",
+			f"{_FINANCIAL}.netInterest.income",
+			Direction.CREDIT,
+			vermerke=(_affiliated(paragraph, first + 2, f"{_FINANCIAL}.netInterest.income.assoc"),),
+		),
+		_line(
+			paragraph,
+			first + 3,
+			"Abschreibungen auf Finanzanlagen und auf Wertpapiere des Umlaufvermögens",
+			f"{_FINANCIAL}.netParticipation.amortFinanc",
+			Direction.DEBIT,
+		),
+		_line(
+			paragraph,
+			first + 4,
+			"Zinsen und ähnliche Aufwendungen",
+			f"{_FINANCIAL}.netInterest.expenses",
+			Direction.DEBIT,
+			vermerke=(
+				_affiliated(
+					paragraph,
+					first + 4,
+					f"{_FINANCIAL}.netInterest.expenses.assoc",
+					"davon an verbundene Unternehmen",
+				),
+			),
+		),
+		_line(
+			paragraph, first + 5, "Steuern vom Einkommen und vom Ertrag", "is.netIncome.tax", Direction.DEBIT
+		),
+	)
+
+
+def _results(paragraph: int, first: int, items: tuple[Position, ...]) -> tuple[Position, ...]:
+	"""Ergebnis nach Steuern, sonstige Steuern and Jahresüberschuss/Jahresfehlbetrag below ``items``."""
+	return (
+		_line(
+			paragraph,
+			first,
+			"Ergebnis nach Steuern",
+			_NET_INCOME_AFTER_TAX,
+			Direction.CREDIT,
+			terms=tuple(item.concept for item in items),
+		),
+		_line(paragraph, first + 1, "sonstige Steuern", _OTHER_TAXES, Direction.DEBIT),
+		_line(
+			paragraph,
+			first + 2,
+			"Jahresüberschuss/Jahresfehlbetrag",
+			"is.netIncome",
+			Direction.CREDIT,
+			terms=(_NET_INCOME_AFTER_TAX, _OTHER_TAXES),
+		),
+	)
+
+
+_GKV_ITEMS = (
+	_line(2, 1, "Umsatzerlöse", f"{_OPERATING_TC}.grossTradingProfit.totalOutput.netSales", Direction.CREDIT),
+	_line(
+		2,
+		2,
+		"Erhöhung oder Verminderung des Bestands an fertigen und unfertigen Erzeugnissen",
+		f"{_OPERATING_TC}.grossTradingProfit.totalOutput.inventoryChange",
+		Direction.CREDIT,
+	),
+	_line(
+		2,
+		3,
+		"andere aktivierte Eigenleistungen",
+		f"{_OPERATING_TC}.grossTradingProfit.totalOutput.ownWork",
+		Direction.CREDIT,
+	),
+	_line(2, 4, "sonstige betriebliche Erträge", f"{_OPERATING_TC}.otherOpRevenue", Direction.CREDIT),
+	_line(
+		2,
+		5,
+		"Materialaufwand",
+		f"{_OPERATING_TC}.grossTradingProfit.materialServices",
+		Direction.DEBIT,
+		_part(
+			5,
+			"a",
+			"Aufwendungen für Roh-, Hilfs- und Betriebsstoffe und für bezogene Waren",
+			f"{_OPERATING_TC}.grossTradingProfit.materialServices.material",
+			Direction.DEBIT,
+		),
+		_part(
+			5,
+			"b",
+			"Aufwendungen für bezogene Leistungen",
+			f"{_OPERATING_TC}.grossTradingProfit.materialServices.services",
+			Direction.DEBIT,
+		),
+	),
+	_line(
+		2,
+		6,
+		"Personalaufwand",
+		f"{_OPERATING_TC}.staff",
+		Direction.DEBIT,
+		_part(6, "a", "Löhne und Gehälter", f"{_OPERATING_TC}.staff.salaries", Direction.DEBIT),
+		_part(
+			6,
+			"b",
+			"soziale Abgaben und Aufwendungen für Altersversorgung und für Unterstützung",
+			f"{_OPERATING_TC}.staff.social",
+			Direction.DEBIT,
+			(
+				Vermerk(
+					VermerkKind.PENSIONS,
+					"davon für Altersversorgung",
+					f"{_OPERATING_TC}.staff.social.pensions",
+					"§ 275 Abs. 2 Nr. 6 Buchst. b HGB",
+					(f"{_OPERATING_TC}.staff.social.pensions",),
+				),
+			),
+		),
+	),
+	_line(
+		2,
+		7,
+		"Abschreibungen",
+		f"{_OPERATING_TC}.deprAmort",
+		Direction.DEBIT,
+		_part(
+			7,
+			"a",
+			"auf immaterielle Vermögensgegenstände des Anlagevermögens und Sachanlagen",
+			f"{_OPERATING_TC}.deprAmort.fixAss",
+			Direction.DEBIT,
+		),
+		_part(
+			7,
+			"b",
+			"auf Vermögensgegenstände des Umlaufvermögens, soweit diese die in der Kapitalgesellschaft üblichen "
+			"Abschreibungen überschreiten",
+			f"{_OPERATING_TC}.deprAmort.currAss",
+			Direction.DEBIT,
+		),
+	),
+	_line(2, 8, "sonstige betriebliche Aufwendungen", f"{_OPERATING_TC}.otherCost", Direction.DEBIT),
+	*_financial_items(2, 9),
+)
+_GKV_2026 = IncomeStatementScheme(2026, "6.9", Method.GKV, (*_GKV_ITEMS, *_results(2, 15, _GKV_ITEMS)))
+
+_UKV_SALES = (
+	_line(3, 1, "Umsatzerlöse", f"{_OPERATING_COGS}.grossOpProfit.netSales", Direction.CREDIT),
+	_line(
+		3,
+		2,
+		"Herstellungskosten der zur Erzielung der Umsatzerlöse erbrachten Leistungen",
+		f"{_OPERATING_COGS}.grossOpProfit.cogs",
+		Direction.DEBIT,
+	),
+)
+_UKV_ITEMS = (
+	_line(
+		3,
+		3,
+		"Bruttoergebnis vom Umsatz",
+		f"{_OPERATING_COGS}.grossOpProfit",
+		Direction.CREDIT,
+		terms=tuple(item.concept for item in _UKV_SALES),
+	),
+	_line(3, 4, "Vertriebskosten", f"{_OPERATING_COGS}.salesCost", Direction.DEBIT),
+	_line(3, 5, "allgemeine Verwaltungskosten", f"{_OPERATING_COGS}.adminCost", Direction.DEBIT),
+	_line(
+		3,
+		6,
+		"sonstige betriebliche Erträge",
+		f"{_OPERATING_COGS}.grossOpProfit.otherRevenue",
+		Direction.CREDIT,
+	),
+	_line(3, 7, "sonstige betriebliche Aufwendungen", f"{_OPERATING_COGS}.otherCost", Direction.DEBIT),
+	*_financial_items(3, 8),
+)
+_UKV_2026 = IncomeStatementScheme(
+	2026, "6.9", Method.UKV, (*_UKV_SALES, *_UKV_ITEMS, *_results(3, 14, _UKV_ITEMS))
+)
+
+INCOME_STATEMENTS: MappingProxyType[int, MappingProxyType[Method, IncomeStatementScheme]] = MappingProxyType(
+	{2026: MappingProxyType({Method.GKV: _GKV_2026, Method.UKV: _UKV_2026})}
+)
+
+
+def income_statement_scheme(year: int, method: Method = Method.GKV) -> IncomeStatementScheme:
+	"""The income statement of the fiscal year that ends in ``year`` by ``method``."""
+	return _entry(INCOME_STATEMENTS, year, "income statement")[method]
 
 
 def _entry[T](table: Mapping[int, T], year: int, what: str) -> T:
