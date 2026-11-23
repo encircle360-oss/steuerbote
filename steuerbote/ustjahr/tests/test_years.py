@@ -8,6 +8,7 @@ from steuerbote.ustjahr.years import (
 	YEARS,
 	Year,
 	datenart_version,
+	filing_deadline,
 	plugin,
 	plugin_library,
 	year_of,
@@ -82,3 +83,32 @@ class NamesTest(TestCase):
 		year = Year(2099, date(2098, 12, 1), "TEST", "https://example.org/")
 		self.assertEqual((year.datenart_version, year.plugin), ("USt_2099", "checkUSt_2099"))
 		self.assertEqual(year.letter, "BMF letter of 1 December 2098 (GZ TEST)")
+
+
+class FilingDeadlineTest(TestCase):
+	"""§ 149 Absatz 2 to 4 AO, moved by § 108 Absatz 3 AO."""
+
+	def test_is_due_seven_months_after_the_year_moved_off_the_saturday(self):
+		self.assertEqual(date(2027, 7, 31).weekday(), 5)
+		self.assertEqual(filing_deadline(2026), date(2027, 8, 2))
+
+	def test_with_a_steuerberatung_is_due_on_the_last_day_of_february_of_the_second_year(self):
+		self.assertEqual(filing_deadline(2026, advisor=True), date(2028, 2, 29))
+		self.assertEqual(filing_deadline(2027, advisor=True), date(2029, 2, 28))
+
+	def test_a_holiday_of_the_company_moves_it_to_the_next_working_day(self):
+		self.assertEqual(filing_deadline(2026, holidays=frozenset({date(2027, 8, 2)})), date(2027, 8, 3))
+		self.assertEqual(filing_deadline(2026, holidays={date(2027, 8, 4)}), date(2027, 8, 2))
+
+	def test_the_day_the_finanzamt_orders_replaces_both(self):
+		ordered = date(2027, 9, 30)
+		self.assertEqual(filing_deadline(2026, requested=ordered), ordered)
+		self.assertEqual(filing_deadline(2026, advisor=True, requested=ordered), ordered)
+
+	def test_the_day_the_finanzamt_orders_moves_off_a_weekend_too(self):
+		self.assertEqual(filing_deadline(2026, advisor=True, requested=date(2027, 10, 2)), date(2027, 10, 4))
+
+	def test_takes_years_only(self):
+		for year in ("2026", 2026.0, True):
+			with self.subTest(year=year), self.assertRaisesRegex(TypeError, "year must be an int"):
+				filing_deadline(year)  # type: ignore[arg-type]
