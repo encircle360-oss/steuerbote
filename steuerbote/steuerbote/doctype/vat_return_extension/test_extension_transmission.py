@@ -416,12 +416,26 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 		doc = self.form(**BASE_BY_HAND)
 		doc.run_method("onload")
 		self.assertEqual(
-			doc.get_onload("elster"), {"simulation": True, "stale": False, "sent": False, "locked": None}
+			doc.get_onload("elster"),
+			{
+				"simulation": True,
+				"stale": False,
+				"sent": False,
+				"locked": None,
+				"printout": "Übertragungsprotokoll",
+			},
 		)
 		self.use_runtime()
 		doc.run_method("onload")
 		self.assertEqual(
-			doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False, "locked": None}
+			doc.get_onload("elster"),
+			{
+				"simulation": False,
+				"stale": False,
+				"sent": False,
+				"locked": None,
+				"printout": "Übertragungsprotokoll",
+			},
 		)
 
 	def test_the_form_names_the_errors_and_hints_of_its_latest_run(self):

@@ -1,0 +1,5 @@
+{#- The remarks of an annual document, which say why one that is not ready is filed nonetheless. -#}
+{%- if doc.remarks %}
+<h2>Anmerkungen</h2>
+<p class="sb-note">{{ doc.get_formatted("remarks") }}</p>
+{%- endif %}

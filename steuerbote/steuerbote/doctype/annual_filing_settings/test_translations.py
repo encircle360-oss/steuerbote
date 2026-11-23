@@ -9,6 +9,7 @@ from unittest import TestCase
 
 from steuerbote.elster import STATES
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import MESSAGES
+from steuerbote.steuerbote.doctype.annual_filing_settings.test_settings_files import OF_THE_ANNUAL_DOCUMENTS
 
 APP = Path(__file__).resolve().parents[3]
 TRANSLATIONS = APP / "translations" / "de.csv"
@@ -89,6 +90,7 @@ def doctypes() -> list[dict]:
 	return [
 		json.loads(path.read_text(encoding="utf-8"))
 		for path in sorted(DOCTYPE_DIR.glob("annual_filing_*/*.json"))
+		if path.parent.name not in OF_THE_ANNUAL_DOCUMENTS
 	]
 
 

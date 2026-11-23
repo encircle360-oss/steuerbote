@@ -1,8 +1,8 @@
 // Prüfen, Testsenden and Senden through ERiC, the same for every form that goes to ELSTER this way: the VAT Return,
-// the Dauerfristverlängerung and the Zusammenfassende Meldung include this file. Each form passes the texts that
-// name its document: unsaved, send, test_send, sent and running, and a document that goes to another recipient than
-// the Finanzamt its send_label, simulation and simulated_test_send. The server side is
-// elster_transmission/transmission.py.
+// the Dauerfristverlängerung and the Zusammenfassende Meldung include this file, and so do the annual documents
+// before annual_filing.js. Each form passes the texts that name its document: unsaved, send, test_send, sent and
+// running, and a document that goes to another recipient than the Finanzamt its send_label, simulation and
+// simulated_test_send. The server side is elster_transmission/transmission.py.
 
 const TRANSMISSION_EVENT = "steuerbote_elster_transmission";
 const STASH_CERTIFICATE = "steuerbote.steuerbote.doctype.elster_transmission.transmission.stash_certificate";
@@ -190,7 +190,7 @@ function ask_for_certificate(frm, operation, title, texts) {
 			{
 				fieldtype: "HTML",
 				fieldname: "notice",
-				options: `<p>${notice}</p><p class="text-muted">${__(
+				options: `<p>${notice}</p>${printout_note(frm)}<p class="text-muted">${__(
 					"Certificate and password serve this transmission only. Steuerbote does not keep them."
 				)}</p>`,
 			},
@@ -229,6 +229,18 @@ function ask_for_certificate(frm, operation, title, texts) {
 	// The password control of Frappe rates every keystroke on the server; a certificate password stays here.
 	dialog.fields_dict.certificate_password.disable_password_checks();
 	dialog.show();
+}
+
+// What ERiC prints after the send, the Übertragungsprotokoll or the Freizeichnungsdokument of an Erklärung, which
+// printout in transmission.py names.
+function printout_note(frm) {
+	const printout = elster_state(frm).printout;
+	if (!printout) {
+		return "";
+	}
+	return `<p>${__("After the transmission, ERiC prints the {0}, which the ELSTER Transmission keeps.", [
+		frappe.utils.escape_html(printout),
+	])}</p>`;
 }
 
 // The server keeps both for this user and this document only. Both go under names with "password": the report of a

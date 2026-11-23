@@ -1,0 +1,15 @@
+{#-
+	The footer of an annual document: a printout serves the Steuerberatung, and of an Erklärung typing it into Mein
+	ELSTER, which imports none of them; the E-Bilanz has no such way. It is no filing, and the Jahresabschluss is
+	disclosed only once it went to the Unternehmensregister.
+-#}
+{%- set annual = annual if annual is defined else doc.annual_print() -%}
+<div class="sb-footer">
+	{%- if annual.accounts %}
+	<p>Zum Abgleich mit der Steuerberatung.</p>
+	<p>Dieser Ausdruck ist keine Offenlegung. Offengelegt ist der Jahresabschluss erst, wenn er an das Unternehmensregister übermittelt ist.</p>
+	{%- else %}
+	<p>{{ "Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER." if annual.mein_elster else "Zum Abgleich mit der Steuerberatung." }}</p>
+	<p>Dieser Ausdruck ist keine Abgabe. Abgegeben ist das Dokument erst, wenn es elektronisch an das Finanzamt übermittelt ist.</p>
+	{%- endif %}
+</div>
