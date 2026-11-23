@@ -705,6 +705,8 @@ class CatalogueValidationTest(TestCase):
 	def test_refuses_a_base_and_tax_that_do_not_name_each_other(self):
 		with self.assertRaisesRegex(ValueError, "E3003303 and E3003304 do not name each other"):
 			self.build(self.replaced("E3003304", base="E3003405"))
+		with self.assertRaisesRegex(ValueError, "E3005201 and E3005801 do not name each other"):
+			self.build(self.replaced("E3005801", base="E3005201"))
 
 	def test_refuses_two_default_lines_of_one_kennzahl(self):
 		with self.assertRaisesRegex(ValueError, "Kennzahl 81 has two default lines: E3003303 and E3003405"):
