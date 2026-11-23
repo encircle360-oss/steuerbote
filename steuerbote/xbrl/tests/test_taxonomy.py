@@ -733,3 +733,145 @@ class DefinitionTest(TestCase):
 			),
 			arcs,
 		)
+
+
+class TablesTest(TestCase):
+	"""The Tabellenbereiche: a hypercube with its dimensions and primary items, as the definition linkbases define it
+	(Leitfaden A.14; XBRL Dimensions 1.0). „Alle Dimensionen der HGB-Taxonomie sind Szenario-Dimensionen“ (A.14.2.1)."""
+
+	def setUp(self):
+		(self.table,) = view().tables
+		self.dimensions = {dimension.name: dimension for dimension in self.table.dimensions}
+
+	def test_the_anlagenspiegel_is_a_table_of_its_role(self):
+		self.assertEqual(self.table.role, mini.FIXED_ASSETS_TABLE)
+		self.assertEqual(self.table.hypercube, f"{GAAP}:cube_.nt.ass.gross")
+		self.assertEqual(self.table.primary, f"{GAAP}:table.nt.ass.gross")
+		self.assertEqual(self.table.context_element, "scenario")
+		self.assertIs(view().table(mini.FIXED_ASSETS_TABLE), self.table)
+
+	def test_names_its_dimensions_in_their_order(self):
+		self.assertEqual(
+			[dimension.name for dimension in self.table.dimensions],
+			[f"{GAAP}:dim_taxTrans", f"{GAAP}:dim_changes.nt.ass.gross"],
+		)
+
+	def test_a_dimension_takes_its_domain_and_the_members_below(self):
+		"""„Positionen des Anlagevermögens“ [dim_changes.nt.ass.gross] takes the positions of the Anlagevermögen, the
+		„steuerliche Überleitung“ [dim_taxTrans] Steuerbilanzwert, Handelsbilanzwert and Überleitungswert (A.14.1,
+		B.14.12.1)."""
+		positions = self.dimensions[f"{GAAP}:dim_changes.nt.ass.gross"]
+		self.assertEqual(positions.domain, f"{GAAP}:bs.ass.fixAss")
+		self.assertEqual(
+			positions.members,
+			(
+				f"{GAAP}:bs.ass.fixAss",
+				f"{GAAP}:bs.ass.fixAss.intan",
+				f"{GAAP}:bs.ass.fixAss.intan.concessionBrands",
+				f"{GAAP}:bs.ass.fixAss.intan.selfmade",
+				f"{GAAP}:bs.ass.fixAss.tan",
+			),
+		)
+		self.assertEqual(
+			self.dimensions[f"{GAAP}:dim_taxTrans"].members,
+			(f"{GAAP}:dim_taxBal", f"{GAAP}:dim_comBal", f"{GAAP}:dim_diffComToTaxBal"),
+		)
+
+	def test_a_member_knows_the_member_it_belongs_to(self):
+		positions = self.dimensions[f"{GAAP}:dim_changes.nt.ass.gross"]
+		self.assertEqual(
+			positions.parent(f"{GAAP}:bs.ass.fixAss.intan.selfmade"), f"{GAAP}:bs.ass.fixAss.intan"
+		)
+		self.assertIsNone(positions.parent(f"{GAAP}:bs.ass.fixAss"))
+
+	def test_names_its_primary_items(self):
+		self.assertEqual(
+			self.table.primary_items,
+			(
+				f"{GAAP}:table.nt.ass.gross",
+				f"{GAAP}:piTitle.nt.ass.gross",
+				f"{GAAP}:all",
+				f"{GAAP}:gross",
+				f"{GAAP}:grossCost.beginning",
+				f"{GAAP}:gross.addition",
+				f"{GAAP}:accDepr",
+				f"{GAAP}:accDepr.DeprPeriod",
+				f"{GAAP}:all_Prev_period",
+			),
+		)
+		self.assertEqual(self.table.primary_parent(f"{GAAP}:grossCost.beginning"), f"{GAAP}:gross")
+
+	def test_finds_the_tables_of_a_primary_item(self):
+		self.assertEqual(view().tables_of(f"{GAAP}:gross"), (self.table,))
+		self.assertEqual(view().tables_of(f"{GAAP}:bs.ass"), ())
+
+	def test_an_unusable_member_is_left_out(self):
+		"""„xbrldt:usable="false"“ excludes a member from the valid values of its dimension (XBRL Dimensions 1.0,
+		Kap. 2.5.3.1.1)."""
+		arcs = tuple(
+			replace(arc, usable=False)
+			if arc.arcrole == taxonomy.DOMAIN_MEMBER and arc.target == f"{GAAP}:bs.ass.fixAss.intan"
+			else arc
+			for arc in view().definition[mini.FIXED_ASSETS_TABLE]
+		)
+		loaded = replace(view(), definition={mini.FIXED_ASSETS_TABLE: arcs})
+		positions = next(
+			d for d in loaded.tables[0].dimensions if d.name == f"{GAAP}:dim_changes.nt.ass.gross"
+		)
+		self.assertNotIn(f"{GAAP}:bs.ass.fixAss.intan", positions.members)
+		self.assertIn(f"{GAAP}:bs.ass.fixAss.intan.selfmade", positions.members)
+
+	def test_an_unknown_table_is_named(self):
+		with self.assertRaisesRegex(TaxonomyError, "notesTableOther"):
+			view().table(f"{mini.ROLE}notesTableOther")
+
+
+class ParentsTest(TestCase):
+	"""What each position adds up to, by name without the prefix of the GAAP module: the hierarchy the balance sheet and
+	the GuV of the Jahresabschluss sum up along (steuerbote/hgb/statement.py)."""
+
+	def test_names_the_parent_of_each_position_in_the_calculation_of_the_roles(self):
+		parents = view(View.COMMERCIAL).parents((mini.BALANCE_SHEET, mini.INCOME_STATEMENT))
+		self.assertEqual(parents["bs.ass.currAss.cashEquiv.bank"], "bs.ass.currAss.cashEquiv")
+		self.assertEqual(parents["bs.ass.fixAss"], "bs.ass")
+		self.assertEqual(parents["is.netIncome.tax"], "is.netIncome")
+		self.assertNotIn("bs.ass", parents)
+
+	def test_a_davon_position_adds_up_to_nothing(self):
+		self.assertNotIn("bs.eqLiab.liab.bank.upTo1year", view().parents((mini.BALANCE_SHEET,)))
+
+	def test_a_role_without_a_calculation_is_named(self):
+		with self.assertRaisesRegex(TaxonomyError, "detailedInformation"):
+			view().parents((mini.DETAILED_INFORMATION,))
+
+	def test_a_position_with_two_parents_has_none(self):
+		calculation = dict(view().calculation)
+		calculation[mini.INCOME_STATEMENT] = Network(
+			mini.INCOME_STATEMENT, (Arc(f"{GAAP}:is.netIncome", f"{GAAP}:bs.ass.fixAss"),)
+		)
+		with self.assertRaisesRegex(TaxonomyError, "bs.ass.fixAss adds up to bs.ass and to is.netIncome"):
+			replace(view(), calculation=calculation).parents((mini.BALANCE_SHEET, mini.INCOME_STATEMENT))
+
+	def test_names_a_position_of_another_module_with_its_prefix(self):
+		calculation = {
+			mini.BALANCE_SHEET: Network(
+				mini.BALANCE_SHEET, (Arc(f"{GCD}:genInfo", f"{GCD}:genInfo.company.id.name"),)
+			)
+		}
+		parents = replace(view(), calculation=calculation).parents((mini.BALANCE_SHEET,))
+		self.assertEqual(parents, {f"{GCD}:genInfo.company.id.name": f"{GCD}:genInfo"})
+
+
+class RolesTest(TestCase):
+	def test_names_the_roles_of_the_components(self):
+		"""The presentation link roles of the components of the Kerntaxonomie (Leitfaden B.14.10)."""
+		self.assertEqual(taxonomy.BALANCE_SHEET, mini.BALANCE_SHEET)
+		self.assertEqual(taxonomy.INCOME_STATEMENT, mini.INCOME_STATEMENT)
+		self.assertEqual(taxonomy.INCOME_STATEMENT_MICROBILG, mini.INCOME_STATEMENT_MICROBILG)
+		self.assertEqual(taxonomy.TRANSFERS_TAX_ASSETS, mini.TRANSFERS_TAX_ASSETS)
+		self.assertEqual(taxonomy.NOTES, mini.NOTES)
+		self.assertEqual(taxonomy.DETAILED_INFORMATION, mini.DETAILED_INFORMATION)
+		self.assertEqual(taxonomy.TRANSFERS_COMMERCIAL_CODE_TO_TAX, mini.TRANSFERS_TO_TAX)
+		self.assertEqual(taxonomy.FIXED_ASSETS_GROSS, mini.FIXED_ASSETS_TABLE)
+		self.assertEqual(taxonomy.APPROPRIATION_PROFITS, f"{mini.ROLE}appropriationProfits")
+		self.assertEqual(taxonomy.GCD, mini.GCD_ROLE)
