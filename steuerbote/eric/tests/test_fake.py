@@ -14,6 +14,8 @@ from steuerbote.eric import fake
 from steuerbote.eric.fake import DOCUMENTATION_VARIABLE, SIMULATED_VERSION, Simulation, placeholder_pdf
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Operation, Outcome
+from steuerbote.ustva import documentation as ustva_documentation
+from steuerbote.ustva.years import YEARS
 
 NAMESPACE = "http://finkonsens.de/elster/elsteranmeldung/ustva/v2026"
 NUTZDATEN = (
@@ -522,6 +524,135 @@ class ZmdoTest(SimulationTestCase):
 		result = Simulation().run(Operation.VALIDATE, ZM, replace(ZM_HEADER, empfaenger="9198"))
 		self.assertIs(result.outcome, Outcome.INVALID)
 		self.assertEqual(self.errors(result), [("SB-HEADER", "Empfaenger")])
+
+
+def of_2027(nutzdaten: str) -> str:
+	"""The Nutzdaten of 2026 as the schema of 2027 takes them: in its namespace, version and year."""
+	return (
+		nutzdaten.replace("/v2026", "/v2027")
+		.replace('"2026"', '"2027"')
+		.replace("<Jahr>2026</Jahr>", "<Jahr>2027</Jahr>")
+	)
+
+
+HEADER_2027 = replace(HEADER, datenart_version="UStVA_2027")
+# A delivery of a new vehicle to a buyer without USt-IdNr. in January 2027.
+VEHICLE_2027 = (
+	of_2027(NUTZDATEN)
+	.replace("<Zeitraum>10</Zeitraum>", "<Zeitraum>01</Zeitraum>")
+	.replace(
+		"\t\t\t<Kz81>1000</Kz81>\n\t\t\t<Kz83>190.00</Kz83>\n",
+		"\t\t\t<Kz44>30000</Kz44>\n\t\t\t<Kz83>0.00</Kz83>\n",
+	)
+)
+
+
+class Year2027Test(SimulationTestCase):
+	"""The Datenart UStVA_2027 with the rules of Jahresdokumentation_UStVA_2027.ods of the beta ERiC 45.1.5.0: those of
+	2026 on the structure, and the Hinweis 11085156 on Kz 44, which 2027 adds."""
+
+	def test_the_voranmeldung_and_both_contexts_are_valid(self):
+		for nutzdaten in (of_2027(NUTZDATEN), of_2027(ANMELDUNG), of_2027(ANTRAG)):
+			with self.subTest(nutzdaten=nutzdaten[120:190]):
+				result = Simulation().run(Operation.VALIDATE, nutzdaten, HEADER_2027)
+				self.assertIs(result.outcome, Outcome.VALID)
+				self.assertEqual(codes(result), ["SIM-000", "SIM-001"])
+				self.assertIn("2027", result.messages[1].text)
+
+	def test_the_root_and_the_jahr_are_those_of_2027(self):
+		result = Simulation().run(Operation.VALIDATE, NUTZDATEN, HEADER_2027)
+		(error,) = (message for message in result.messages if message.severity == ERROR)
+		self.assertEqual((error.code, error.field), ("SIM-003", "Anmeldungssteuern"))
+		for nutzdaten, code in ((ANTRAG, "110085130"), (ANMELDUNG, "110085131"), (NUTZDATEN, "110085047")):
+			with self.subTest(code=code):
+				wrong = of_2027(nutzdaten).replace("<Jahr>2027</Jahr>", "<Jahr>2026</Jahr>")
+				result = Simulation().run(Operation.VALIDATE, wrong, HEADER_2027)
+				(error,) = (message for message in result.messages if message.severity == ERROR)
+				self.assertEqual((error.code, error.field), ("SIM-007", "Jahr"))
+				self.assertIn(code, error.text)
+
+	def test_11085156_kz44_draws_the_hint_on_the_report_of_new_vehicles_to_the_bzst(self):
+		result = Simulation().run(Operation.VALIDATE, VEHICLE_2027, HEADER_2027)
+		self.assertIs(result.outcome, Outcome.VALID)
+		self.assertEqual(codes(result), ["SIM-000", "SIM-001", "11085156"])
+		hint = result.messages[-1]
+		self.assertEqual((hint.severity, hint.field), (HINT, "Kz44"))
+		self.assertIn("§ 18c UStG", hint.text)
+		self.assertIn("Bundeszentralamt für Steuern", hint.text)
+
+	def test_the_hint_comes_with_a_send_too(self):
+		result = Simulation().run(
+			Operation.TEST_SEND, VEHICLE_2027, replace(HEADER_2027, testmerker=TESTMERKER)
+		)
+		self.assertIs(result.outcome, Outcome.ACCEPTED)
+		self.assertIn("11085156", codes(result))
+
+	def test_2026_and_a_voranmeldung_without_kz44_draw_no_hint(self):
+		vehicle_2026 = NUTZDATEN.replace("<Kz81>1000</Kz81>", "<Kz44>30000</Kz44>").replace("190.00", "0.00")
+		self.assertEqual(
+			codes(Simulation().run(Operation.VALIDATE, vehicle_2026, HEADER)), ["SIM-000", "SIM-001"]
+		)
+		self.assertNotIn(
+			"11085156", codes(Simulation().run(Operation.VALIDATE, of_2027(NUTZDATEN), HEADER_2027))
+		)
+
+	def test_form_ust_1_h_names_its_year_in_the_protocol(self):
+		result = Simulation().run(Operation.SEND, of_2027(ANMELDUNG), HEADER_2027)
+		self.assertIn(b"Vordruck: Anmeldung der Sondervorauszahlung 2027", result.protocol_pdf)
+
+
+class RulesDocumentationTest(TestCase):
+	"""The rules of the simulation on the Datenart UStVA against the sheet „Anmeldungssteuern - Regeln“ of the
+	Jahresdokumentation of each year: 2026 from the documentation of the CI, 2027 from that of the beta ERiC 45.1.5.0,
+	skipped without it (eric_schema.ustva_year)."""
+
+	def rules(self, year: int) -> list[dict[str, str]]:
+		root = eric_schema.documentation() if year == 2026 else eric_schema.ustva_year(year)
+		return [dict(row) for row in ustva_documentation.read(root, year).rules]
+
+	def assert_follow_the_jahresdokumentation(self, year: int) -> None:
+		rules = self.rules(year)
+
+		def found(kontext: str, code: str, regelart: str, condition: str) -> bool:
+			return any(
+				row["Kontext"] == kontext
+				and row["Fehlercode"] == code
+				and row["Regelart"] == regelart
+				and condition in " ".join(row["Prüfbedingung"].split())
+				for row in rules
+			)
+
+		self.assertTrue(
+			found(
+				"Steuerfall",
+				"110085099",
+				"Fehler",
+				f"AnzahlAngegebenerKontexte({', '.join(fake.CONTEXTS)}) != 1",
+			)
+		)
+		for name, context in fake.CONTEXTS.items():
+			kontext = f"Steuerfall/{name}"
+			for field in context.required:
+				with self.subTest(year=year, context=name, element=field.element):
+					self.assertTrue(
+						found(kontext, field.code, "Fehler", f"FeldNichtAngegeben({field.element})")
+					)
+			with self.subTest(year=year, context=name, rule=context.year_rule):
+				self.assertTrue(found(kontext, context.year_rule, "Fehler", "[Jahr] != Referenzjahr"))
+		for hint in fake.HINTS:
+			kontext = f"Steuerfall/{hint.context}"
+			with self.subTest(year=year, hint=hint.code):
+				self.assertEqual(
+					found(kontext, hint.code, "Hinweis", f"FeldAngegeben({hint.element})"),
+					year >= hint.first_year,
+				)
+
+	def test_follow_the_jahresdokumentation_of_2026(self):
+		self.assert_follow_the_jahresdokumentation(2026)
+
+	def test_follow_the_jahresdokumentation_of_2027(self):
+		self.assertTrue(YEARS[2027].provisional)
+		self.assert_follow_the_jahresdokumentation(2027)
 
 
 class ZmdoDocumentationTest(TestCase):
