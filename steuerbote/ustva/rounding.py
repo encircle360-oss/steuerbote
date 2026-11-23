@@ -84,5 +84,17 @@ def ceil_euro(amount: Decimal) -> Decimal:
 	return _without_negative_zero(require_decimal(amount).quantize(EURO, rounding=ROUND_CEILING))
 
 
+def half_up_euro(amount: Decimal) -> Decimal:
+	"""Round half up to whole euros: an amount a declaration takes in whole euros where no source names the direction.
+
+	Unverified. The Anleitung zur KSt 2025 of ELSTER names no rounding of the declared amounts, and the Anleitung zur
+	Gewerbesteuererklärung 2025 asks for each field to be rounded in favour of the filer: „Cent-Beträge runden Sie
+	bitte zu Ihren Gunsten auf volle Euro-Beträge auf oder ab“ (section „Allgemeines“). Where a law or a rule of the
+	Jahresdokumentation names a direction, floor_euro or ceil_euro rounds; half up stands in for the others until the
+	ELSTER hotline or a Steuerberatung confirms a rule.
+	"""
+	return _without_negative_zero(require_decimal(amount).quantize(EURO, rounding=ROUND_HALF_UP))
+
+
 def _without_negative_zero(amount: Decimal) -> Decimal:
 	return amount + ZERO
