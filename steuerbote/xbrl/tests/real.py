@@ -48,3 +48,37 @@ def installation() -> Installation:
 @cache
 def view(name: View = View.FISCAL) -> Taxonomy:
 	return installation().view(name)
+
+
+VERSION_6_10 = TAXONOMIES["6.10"]
+VARIABLE_6_10 = "STEUERBOTE_TAXONOMY_6_10"
+
+
+def archive_6_10() -> Path:
+	"""The archive of the package 6.10, which the environment variable STEUERBOTE_TAXONOMY_6_10 names; skips the test
+	without it, except in a CI."""
+	configured = os.environ.get(VARIABLE_6_10)
+	if not configured:
+		message = (
+			f"{VARIABLE_6_10} is not set: nothing is checked against the HGB-Taxonomie 6.10. Download "
+			f"{VERSION_6_10.archive_url} and set {VARIABLE_6_10} to its path."
+		)
+		if os.environ.get("CI"):
+			raise RuntimeError(message)
+		raise SkipTest(message)
+	return Path(configured)
+
+
+@cache
+def installation_6_10() -> Installation:
+	"""The package 6.10 installed as „Taxonomie einrichten“ installs it, into a directory removed at the end of the
+	run."""
+	path = archive_6_10()
+	directory = Path(tempfile.mkdtemp(prefix="steuerbote-xbrl-6-10-"))
+	atexit.register(shutil.rmtree, directory, ignore_errors=True)
+	return install_from_archive(path, VERSION_6_10.archive_sha256, directory, VERSION_6_10)
+
+
+@cache
+def view_6_10(name: View = View.FISCAL) -> Taxonomy:
+	return installation_6_10().view(name)
