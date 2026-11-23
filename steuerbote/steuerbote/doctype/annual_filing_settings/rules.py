@@ -36,20 +36,38 @@ deadline of Absatz 2 („keine kürzere als die in Absatz 2 bestimmte Frist“, 
 A Kleinunternehmer files no Umsatzsteuererklärung: § 19 Abs. 1 Satz 2 UStG leaves out
 „die Erklärungspflichten (§ 18 Absatz 1 bis 4)“. A subsidiary exempt under § 264 Abs. 3 HGB states why.
 
+Shareholders. KSt 1 lines 21 to 23b name each Anteilseigner with name, street and town (rule 8912022) and each
+holding period with the amount in euros, the share in percent and its first day (rule 8912153); the share takes
+at most four decimals and 100 (E8122105). The nominal amount is a sum of Geschäftsanteile, each in full euros
+(§ 5 Abs. 2 Satz 1 GmbHG). „Die Höhe der Beteiligungen aller Anteilseigner darf nicht mehr als 100 % und nicht weniger
+als 99 % betragen“ (rule 8931029, sheet „KSt1 - Regeln“): the settings hold that on every day a shareholder holds
+shares. A shareholder may give a Steuernummer (13 digits for ELSTER, type Steuernummer), an
+Identifikationsnummer of eleven digits (type IDNr), which only natural persons have (§ 139b Abs. 1 AO), and a
+Wirtschafts-Identifikationsnummer of DE and nine digits (type W_IdNr; § 139c Abs. 1 Satz 2 AO). A company may
+process an Identifikationsnummer only for its transmissions to the Finanzbehörden (§ 139b Abs. 2 Satz 2 Nr. 1 AO),
+so these numbers never appear in a message.
+
+Managing directors. Every Geschäftsführer signs the Jahresabschluss with the date (§ 245 HGB); whether one is a
+shareholder decides the Gesellschafter-Geschäftsführer positions of the E-Bilanz.
+
 Messages are English templates with positional placeholders. SettingsError keeps the template and its values
 apart, so that the Frappe layer translates the template before formatting it. This module is pure Python and never
 imports Frappe.
 """
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Hashable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 from enum import StrEnum
 from types import MappingProxyType
+from typing import Protocol
 
 from steuerbote.elster.charset import CharsetError, describe, transliterate
+from steuerbote.elster.steuernummer import SCHEMES, STATE_CODES, SteuernummerError, to_elster
 from steuerbote.ustva.period import day_label
+from steuerbote.ustva.rounding import EURO, HUNDRED, ZERO, require_decimal
 
 
 class SettingsError(ValueError):
@@ -240,6 +258,32 @@ class Address:
 		return f"{self.street} {number}" if number else self.street
 
 
+# Periods
+
+
+@dataclass(frozen=True, slots=True)
+class Period:
+	"""The days from ``first`` through ``last``; without a last day the period lasts."""
+
+	first: date
+	last: date | None = None
+
+	def covers(self, day: date) -> bool:
+		return self.first <= day and (self.last is None or day <= self.last)
+
+	def overlaps(self, other: Period) -> bool:
+		return (other.last is None or self.first <= other.last) and (
+			self.last is None or other.first <= self.last
+		)
+
+
+def _period(first: date, last: date | None, template: str, row: int) -> Period:
+	"""The period of a row, refused with ``template`` when it ends before it starts."""
+	if last is not None and last < first:
+		raise SettingsError(template, row, day_label(last), day_label(first))
+	return Period(first, last)
+
+
 # Years
 
 NOT_A_YEAR = "{0} is not a four-digit year."
@@ -325,6 +369,195 @@ def year_settings(years: Iterable[YearSettings], year: int) -> YearSettings | No
 	return next((settings for settings in years if settings.year == year), None)
 
 
+# Shareholders
+
+NOT_A_SHAREHOLDER_KIND = (
+	"{0} is not a kind of shareholder: Natural Person, Corporation or Business Partnership."
+)
+SHAREHOLDER_ENDS_BEFORE_START = "Row {0} of the shareholders ends on {1}, before its start on {2}."
+NOT_A_SHARE = (
+	"Row {0} of the shareholders: the share in percent lies above 0 and at most at 100, with at most four "
+	"decimals, not {1}."
+)
+NOT_A_NOMINAL_AMOUNT = (
+	"Row {0} of the shareholders: the nominal amount is the sum of Geschäftsanteile, in full euros above 0 (§ 5 "
+	"Abs. 2 GmbHG), not {1}."
+)
+IDNR_OF_A_NATURAL_PERSON = (
+	"Row {0} of the shareholders: only a natural person has an Identifikationsnummer (§ 139b Abs. 1 AO)."
+)
+NOT_AN_IDNR = "Row {0} of the shareholders: an Identifikationsnummer has eleven digits."
+NOT_A_WID_NR = (
+	"Row {0} of the shareholders: a Wirtschafts-Identifikationsnummer is DE and nine digits, without the "
+	"five-digit suffix."
+)
+NOT_A_STATE = "{0} is not a Bundesland."
+NOT_A_STEUERNUMMER = "Row {0} of the shareholders: the Steuernummer does not have the format {1} of {2}."
+NOT_AN_ELSTER_STEUERNUMMER = (
+	"Row {0} of the shareholders: without its Bundesland the Steuernummer is the 13-digit form for ELSTER."
+)
+SHAREHOLDER_TWICE = "Rows {0} and {1} of the shareholders name {2} for the same days."
+SHARES_NOT_COMPLETE = "On {0} the shares of the shareholders add up to {1} %; ELSTER takes 99 to 100 % (rule 8931029 of the KSt 1)."
+
+SHARE_TOTAL_RANGE = (Decimal(99), HUNDRED)
+SHARE_PLACES = Decimal("0.0001")
+IDNR = re.compile("[0-9]{11}")
+WID_NR = re.compile("DE[0-9]{9}")
+ELSTER_STEUERNUMMER = re.compile("[0-9]{4}0[0-9]{8}")
+
+
+class ShareholderKind(StrEnum):
+	NATURAL_PERSON = "Natural Person"
+	CORPORATION = "Corporation"
+	PARTNERSHIP = "Business Partnership"
+
+
+def normalized_idnr(value: str | None, row: int) -> str | None:
+	"""The Identifikationsnummer of a shareholder without blanks, or None."""
+	compact = "".join((value or "").split())
+	if not compact:
+		return None
+	if not IDNR.fullmatch(compact):
+		raise SettingsError(NOT_AN_IDNR, row)
+	return compact
+
+
+def normalized_wid_nr(value: str | None, row: int) -> str | None:
+	"""The Wirtschafts-Identifikationsnummer of a shareholder without blanks and in capitals, or None."""
+	compact = "".join((value or "").split()).upper()
+	if not compact:
+		return None
+	if not WID_NR.fullmatch(compact):
+		raise SettingsError(NOT_A_WID_NR, row)
+	return compact
+
+
+def elster_tax_number(value: str | None, state: str | None, row: int) -> str | None:
+	"""The 13-digit Steuernummer of a shareholder for ELSTER: from the number as the Finanzamt of ``state`` issued
+	it, or, without a state, the 13-digit form itself. None without a number."""
+	number = (value or "").strip()
+	if not number:
+		return None
+	if state:
+		code = STATE_CODES.get(state)
+		if code is None:
+			raise SettingsError(NOT_A_STATE, state)
+		try:
+			return to_elster(code, number)
+		except SteuernummerError:
+			raise SettingsError(NOT_A_STEUERNUMMER, row, SCHEMES[code].standard, state) from None
+	compact = "".join(number.split())
+	if not ELSTER_STEUERNUMMER.fullmatch(compact):
+		raise SettingsError(NOT_AN_ELSTER_STEUERNUMMER, row)
+	return compact
+
+
+@dataclass(frozen=True, slots=True)
+class Shareholder:
+	"""A shareholder for one holding period, as KSt 1 lines 21 to 23b name it.
+
+	``tax_number`` is the 13-digit form for ELSTER. ``tax_number``, ``idnr``, ``wid_nr`` and ``foreign_id`` are
+	for the KSt 1 only (§ 139b Abs. 2 AO) and stay out of messages and logs.
+	"""
+
+	row: int
+	name: str
+	kind: ShareholderKind
+	nominal_amount: Decimal
+	percent: Decimal
+	from_date: date
+	to_date: date | None = None
+	tax_number: str | None = None
+	idnr: str | None = None
+	wid_nr: str | None = None
+	foreign_id: str | None = None
+	street: str | None = None
+	postal_code_and_town: str | None = None
+
+	def __post_init__(self) -> None:
+		object.__setattr__(self, "kind", _member(ShareholderKind, self.kind, NOT_A_SHAREHOLDER_KIND))
+		percent = require_decimal(self.percent)
+		if (
+			not percent.is_finite()
+			or not ZERO < percent <= HUNDRED
+			or percent != percent.quantize(SHARE_PLACES)
+		):
+			raise SettingsError(NOT_A_SHARE, self.row, _number(percent))
+		amount = require_decimal(self.nominal_amount)
+		if not amount.is_finite() or amount <= ZERO or amount != amount.quantize(EURO):
+			raise SettingsError(NOT_A_NOMINAL_AMOUNT, self.row, _number(amount))
+		if self.idnr and self.kind is not ShareholderKind.NATURAL_PERSON:
+			raise SettingsError(IDNR_OF_A_NATURAL_PERSON, self.row)
+		_period(self.from_date, self.to_date, SHAREHOLDER_ENDS_BEFORE_START, self.row)
+
+	@property
+	def period(self) -> Period:
+		return Period(self.from_date, self.to_date)
+
+
+def share_total(shareholders: Iterable[Shareholder], day: date) -> Decimal:
+	"""The shares in percent the shareholders hold on a day."""
+	return sum((shareholder.percent for shareholder in shareholders if shareholder.period.covers(day)), ZERO)
+
+
+def shareholders_on(shareholders: Iterable[Shareholder], day: date) -> list[Shareholder]:
+	return [shareholder for shareholder in shareholders if shareholder.period.covers(day)]
+
+
+def check_shareholders(shareholders: Sequence[Shareholder]) -> None:
+	"""A shareholder holds one share at a time, and on every day someone holds shares they add up to 99 to 100 %.
+
+	The total changes only on the first day of a row and on the day after its last, so those days are checked.
+	"""
+	twice = _first_overlap(shareholders, lambda shareholder: _person(shareholder.name))
+	if twice is not None:
+		first, second = twice
+		raise SettingsError(SHAREHOLDER_TWICE, first.row, second.row, first.name)
+	low, high = SHARE_TOTAL_RANGE
+	for day in _change_days(shareholder.period for shareholder in shareholders):
+		if shareholders_on(shareholders, day):
+			total = share_total(shareholders, day)
+			if not low <= total <= high:
+				raise SettingsError(SHARES_NOT_COMPLETE, day_label(day), _number(total))
+
+
+# Managing directors
+
+DIRECTOR_ENDS_BEFORE_START = "Row {0} of the managing directors ends on {1}, before its start on {2}."
+DIRECTOR_TWICE = "Rows {0} and {1} of the managing directors name {2} for the same days."
+
+
+@dataclass(frozen=True, slots=True)
+class Director:
+	"""A Geschäftsführer for the days of the office."""
+
+	row: int
+	name: str
+	from_date: date
+	to_date: date | None = None
+	role: str | None = None
+	is_shareholder: bool = False
+	signs: bool = True
+
+	def __post_init__(self) -> None:
+		_period(self.from_date, self.to_date, DIRECTOR_ENDS_BEFORE_START, self.row)
+
+	@property
+	def period(self) -> Period:
+		return Period(self.from_date, self.to_date)
+
+
+def directors_on(directors: Iterable[Director], day: date) -> list[Director]:
+	return [director for director in directors if director.period.covers(day)]
+
+
+def check_directors(directors: Sequence[Director]) -> None:
+	twice = _first_overlap(directors, lambda director: _person(director.name))
+	if twice is not None:
+		first, second = twice
+		raise SettingsError(DIRECTOR_TWICE, first.row, second.row, first.name)
+
+
 MESSAGES = (
 	NOT_A_LEGAL_FORM,
 	TEXT_TOO_LONG,
@@ -340,7 +573,33 @@ MESSAGES = (
 	EARLY_REQUEST_OUTSIDE,
 	EARLY_REQUEST_KLEINUNTERNEHMER,
 	EXEMPTION_WITHOUT_REASON,
+	NOT_A_SHAREHOLDER_KIND,
+	SHAREHOLDER_ENDS_BEFORE_START,
+	NOT_A_SHARE,
+	NOT_A_NOMINAL_AMOUNT,
+	IDNR_OF_A_NATURAL_PERSON,
+	NOT_AN_IDNR,
+	NOT_A_WID_NR,
+	NOT_A_STATE,
+	NOT_A_STEUERNUMMER,
+	NOT_AN_ELSTER_STEUERNUMMER,
+	SHAREHOLDER_TWICE,
+	SHARES_NOT_COMPLETE,
+	DIRECTOR_ENDS_BEFORE_START,
+	DIRECTOR_TWICE,
 )
+
+
+def _member[E: StrEnum](enum: type[E], value: object, template: str) -> E:
+	try:
+		return enum(value)
+	except ValueError:
+		raise SettingsError(template, value) from None
+
+
+def _number(value: Decimal) -> str:
+	"""A number as a message shows it, without trailing zeros: 400 for 400.0, 33.3333 for 33.33330."""
+	return f"{value.normalize():f}"
 
 
 def _require_year(year: object) -> None:
@@ -351,6 +610,35 @@ def _require_year(year: object) -> None:
 def _is_int(value: object) -> bool:
 	"""True is an int to Python, but no year."""
 	return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _person(name: str) -> str:
+	"""A name as the same person or place, whatever its case and blanks."""
+	return " ".join(name.split()).casefold()
+
+
+def _change_days(periods: Iterable[Period]) -> list[date]:
+	"""The days on which who holds what can change: the first day of each period and the day after its last."""
+	days = set()
+	for period in periods:
+		days.add(period.first)
+		if period.last is not None:
+			days.add(period.last + timedelta(days=1))
+	return sorted(days)
+
+
+class _Lasting(Protocol):
+	@property
+	def period(self) -> Period: ...
+
+
+def _first_overlap[T: _Lasting](rows: Sequence[T], key: Callable[[T], Hashable]) -> tuple[T, T] | None:
+	"""The first two rows with the same key whose periods share a day."""
+	for index, row in enumerate(rows):
+		for other in rows[index + 1 :]:
+			if key(row) == key(other) and row.period.overlaps(other.period):
+				return row, other
+	return None
 
 
 def _first_duplicate[T](keys: Iterable[T]) -> T | None:
