@@ -96,10 +96,16 @@ for the balance sheet of a purpose: the Handelsbilanz, the Steuerbilanz or, with
 Findings are those of steuerbote/xbrl/checks.py in kind: a Code, Fehler or Hinweis, a German sentence and its source,
 with the account, the position and the balance they are about.
 
+Defaults. The default mapping of a chart for a version of the taxonomy (steuerbote/ebilanz/defaults.py) names
+accounts by number and by range, as the DATEV charts group them (Accounts): its entries, DefaultRule, DefaultWatched
+and DefaultExcluded, give every account of a company within their range the place of the entry, with the account's
+own number (Defaults.for_accounts). Entries do not overlap, so an account takes one place.
+
 Errors are MappingError with an English template and its values, which the Frappe layer translates; MESSAGES and the
 templates of REFUSALS are those templates. This module is pure Python and never imports Frappe.
 """
 
+import re
 from collections.abc import Iterable, Iterator
 from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass, field, replace
@@ -929,3 +935,179 @@ def _named(balance: AccountBalance) -> str:
 
 def _unqualified(name: str) -> str:
 	return name.removeprefix(f"{GAAP_PREFIX}:")
+
+
+_ACCOUNT_DIGITS = re.compile(r"[0-9]+")
+
+
+@dataclass(frozen=True, slots=True)
+class Accounts:
+	"""An account of a chart, or a range of them from first to last, both included and of the same number of
+	digits."""
+
+	first: str
+	last: str
+
+	def __post_init__(self) -> None:
+		first, last = self.first, self.last
+		if not (
+			isinstance(first, str)
+			and isinstance(last, str)
+			and _ACCOUNT_DIGITS.fullmatch(first)
+			and _ACCOUNT_DIGITS.fullmatch(last)
+			and len(first) == len(last)
+			and first <= last
+		):
+			raise ValueError(f"{first}-{last} is no range of account numbers of the same length")
+
+	@classmethod
+	def of(cls, text: str) -> Accounts:
+		"""The accounts of a text such as 1800 or 1800-1849."""
+		first, separator, last = str(text).partition("-")
+		return cls(first, last if separator else first)
+
+	def __contains__(self, number: object) -> bool:
+		return (
+			isinstance(number, str) and len(number) == len(self.first) and self.first <= number <= self.last
+		)
+
+	def __str__(self) -> str:
+		return self.first if self.first == self.last else f"{self.first}-{self.last}"
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultRule:
+	"""A rule of the defaults for an account or a range: the fields of Rule but the account number."""
+
+	accounts: Accounts
+	concept: str
+	opposite: str | None = None
+	purpose: Purpose = Purpose.BOTH
+	shareholder: bool = False
+	remaining_term: RemainingTerm | None = None
+
+	def __post_init__(self) -> None:
+		accounts = _accounts(self.accounts)
+		object.__setattr__(self, "accounts", accounts)
+		rule = self.rule(accounts.first)
+		for name in ("concept", "opposite", "purpose", "remaining_term"):
+			object.__setattr__(self, name, getattr(rule, name))
+
+	def rule(self, number: str) -> Rule:
+		return Rule(number, self.concept, self.opposite, self.purpose, self.shareholder, self.remaining_term)
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultWatched:
+	"""A watched account of the defaults, or a range of them."""
+
+	accounts: Accounts
+	level: WatchLevel = WatchLevel.BLOCKING
+
+	def __post_init__(self) -> None:
+		accounts = _accounts(self.accounts)
+		object.__setattr__(self, "accounts", accounts)
+		object.__setattr__(self, "level", Watched(accounts.first, self.level).level)
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultExcluded:
+	"""An account of the defaults outside the Bilanz and the GuV, or a range of them, with the reason."""
+
+	accounts: Accounts
+	reason: str
+
+	def __post_init__(self) -> None:
+		accounts = _accounts(self.accounts)
+		object.__setattr__(self, "accounts", accounts)
+		object.__setattr__(self, "reason", Excluded(accounts.first, self.reason).reason)
+
+
+type DefaultEntry = DefaultRule | DefaultWatched | DefaultExcluded
+
+
+@dataclass(frozen=True, slots=True)
+class Defaults:
+	"""The default mapping of a chart for a version of the taxonomy, by account and range."""
+
+	chart: str
+	taxonomy_version: str
+	rules: tuple[DefaultRule, ...] = ()
+	watched: tuple[DefaultWatched, ...] = ()
+	excluded: tuple[DefaultExcluded, ...] = ()
+
+	def __post_init__(self) -> None:
+		if self.taxonomy_version not in TAXONOMIES:
+			raise MappingError(UNKNOWN_VERSION, self.taxonomy_version)
+		object.__setattr__(self, "rules", tuple(self.rules))
+		object.__setattr__(self, "watched", tuple(self.watched))
+		object.__setattr__(self, "excluded", tuple(self.excluded))
+		entries = self._entries()
+		for index, entry in enumerate(entries):
+			for other in entries[index + 1 :]:
+				if _overlap(entry.accounts, other.accounts):
+					raise ValueError(
+						f"the defaults of {self.chart} for {self.taxonomy_version} give the accounts {entry.accounts} "
+						f"and {other.accounts} two places"
+					)
+
+	def _entries(self) -> tuple[DefaultEntry, ...]:
+		return (*self.rules, *self.watched, *self.excluded)
+
+	def entry_for(self, number: str) -> DefaultEntry | None:
+		return next((entry for entry in self._entries() if number in entry.accounts), None)
+
+	def covers(self, number: str) -> bool:
+		return self.entry_for(number) is not None
+
+	def uncovered(self, numbers: Iterable[str]) -> tuple[str, ...]:
+		"""The accounts no entry holds, sorted."""
+		return tuple(sorted(number for number in set(numbers) if not self.covers(number)))
+
+	def for_accounts(
+		self, numbers: Iterable[str], levels: ReadOnlyMapping[str, WatchLevel | str] = MappingProxyType({})
+	) -> Mapping:
+		"""The mapping the defaults give a company with these accounts, each account in the place of the entry that
+		holds it and in the order of the numbers; a watched account keeps the level the company gave it in ``levels``."""
+		rules: list[Rule] = []
+		watched: list[Watched] = []
+		excluded: list[Excluded] = []
+		for number in sorted(set(numbers)):
+			match self.entry_for(number):
+				case DefaultRule() as entry:
+					rules.append(entry.rule(number))
+				case DefaultWatched() as entry:
+					watched.append(Watched(number, levels.get(number) or entry.level))
+				case DefaultExcluded() as entry:
+					excluded.append(Excluded(number, entry.reason))
+		return Mapping(self.chart, tuple(rules), tuple(watched), tuple(excluded), self.taxonomy_version)
+
+	def rows(self) -> dict[str, list[dict]]:
+		"""The entries as plain data, by kind and in their order, for the digest that pins a version of them."""
+		return {
+			"rules": [
+				{
+					"accounts": str(rule.accounts),
+					"concept": rule.concept,
+					"opposite": rule.opposite,
+					"purpose": rule.purpose.value,
+					"shareholder": rule.shareholder,
+					"remaining_term": rule.rule(rule.accounts.first).term_value,
+				}
+				for rule in self.rules
+			],
+			"watched": [
+				{"accounts": str(entry.accounts), "level": entry.level.value} for entry in self.watched
+			],
+			"excluded": [
+				{"accounts": str(entry.accounts), "reason": entry.reason} for entry in self.excluded
+			],
+		}
+
+
+def _accounts(value: Accounts | str) -> Accounts:
+	return value if isinstance(value, Accounts) else Accounts.of(value)
+
+
+def _overlap(one: Accounts, other: Accounts) -> bool:
+	return len(one.first) == len(other.first) and one.first <= other.last and other.first <= one.last
