@@ -11,7 +11,9 @@ pass the rows and the hierarchy as plain values; the core needs nothing else.
 Placement. A balance lands on the nearest position of the scheme at or above its concept. A „davon“ concept the
 calculation linkbase leaves out, such as „Anleihen, davon konvertibel“, lands on the position of its Vermerk. A
 balance without a position above it, and one on a position the statement computes, such as the Jahresüberschuss
-or „sonstige Aktiva“ under the total of the Aktiva, is an error: the balance sheet would leave it out.
+or „sonstige Aktiva“ under the total of the Aktiva, is an error: the balance sheet would leave it out. So is a
+balance a class shows only in a total while it shows the positions under it, such as one on „A. Eigenkapital“
+itself in the balance sheet of klein, which shows „I.“ to „V.“: the positions would not add up to the total.
 
 Signs. A line is positive on the side of its position: assets and expenses debit, equity, liabilities and income
 credit (steuerbote.hgb.schemes.Direction). A balance on the other side counts negative, as a Verlustvortrag does
@@ -34,23 +36,33 @@ Eigenkapital brings it to zero, so both sides rise by it; the Bilanzsumme of the
 (§ 267 Abs. 4a Satz 2 HGB). An Eigenkapital of zero is what the Bundesamt für Justiz asks a Kleinst to explain
 (steuerbote.hgb.notes).
 
+Vermerke. A Vermerk takes the balances under the position of its ``scope`` that its kind selects: the remaining
+term of the rule for § 268 Abs. 4 and 5 HGB, the shareholder flag of the rule or a „davon“ concept for § 42
+Abs. 3 GmbHG, a „davon“ concept for the rest (steuerbote.hgb.schemes). A balance without a remaining term where
+the balance sheet of the class notes one is an error, since the Vermerk would be wrong. Where uncalled
+contributions are offset, the position takes the name the law gives it: „der verbleibende Betrag ist als Posten
+„Eingefordertes Kapital“ in der Hauptspalte der Passivseite auszuweisen“ (§ 272 Abs. 1 Satz 2 HGB).
+
 Each line names the sources of the balances that landed on it, as the drill-down of the Annual Accounts shows
 them. The schemes and their sources are steuerbote.hgb.schemes.
 """
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum, StrEnum
 from types import MappingProxyType
 
 from steuerbote.hgb.schemes import (
+	LEVELS,
 	BalanceSheetScheme,
 	Direction,
 	IncomeStatementScheme,
 	Method,
 	Position,
+	Vermerk,
+	VermerkKind,
 	balance_sheet_scheme,
 	income_statement_scheme,
 )
@@ -59,9 +71,11 @@ from steuerbote.hgb.size import SizeClass
 ZERO = Decimal("0")
 NO_PARENTS: Mapping[str, str] = MappingProxyType({})
 NET_INCOME = "bs.eqLiab.equity.netIncome"
+PROFIT_CARRIED_FORWARD = "bs.eqLiab.equity.retainedEarnings"
 EQUITY = "bs.eqLiab.equity"
 DEFICIT = "bs.ass.deficitNotCoveredByCapital"
 DEFICIT_IN_EQUITY = "bs.eqLiab.equity.deficitNotCoveredByCapital"
+CALLED_CAPITAL = "Eingefordertes Kapital"
 _SCHEMES_REFERENCE = "§§ 266, 275 HGB"
 
 
@@ -69,6 +83,16 @@ class RemainingTerm(Enum):
 	UP_TO_ONE_YEAR = "bis zu einem Jahr"
 	ONE_TO_FIVE_YEARS = "mehr als ein Jahr bis zu fünf Jahren"
 	OVER_FIVE_YEARS = "mehr als fünf Jahre"
+
+
+_OVER_ONE_YEAR = frozenset({RemainingTerm.ONE_TO_FIVE_YEARS, RemainingTerm.OVER_FIVE_YEARS})
+_REMAINING_TERM_KINDS = frozenset(
+	{
+		VermerkKind.RECEIVABLES_OVER_ONE_YEAR,
+		VermerkKind.LIABILITIES_UP_TO_ONE_YEAR,
+		VermerkKind.LIABILITIES_OVER_ONE_YEAR,
+	}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +119,8 @@ class Code(StrEnum):
 	UNPLACED = "JA-OHNE-POSTEN"
 	COMPUTED = "JA-RECHENPOSTEN"
 	NOT_BALANCED = "JA-BILANZ-UNGLEICH"
+	UNITEMIZED = "JA-OHNE-UNTERPOSTEN"
+	REMAINING_TERM_UNKNOWN = "JA-RESTLAUFZEIT-FEHLT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,11 +141,20 @@ class Finding:
 
 
 @dataclass(frozen=True, slots=True)
+class VermerkLine:
+	vermerk: Vermerk
+	amount: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class Line:
-	"""A line of the balance sheet or the income statement: its position and its amount in the direction of it."""
+	"""A line of the balance sheet or the income statement: its position, its name, its amount in the direction of
+	the position, its Vermerke and the sources of its balances."""
 
 	position: Position
+	label: str
 	amount: Decimal
+	vermerke: tuple[VermerkLine, ...] = ()
 	sources: tuple[str, ...] = ()
 
 
@@ -178,12 +213,15 @@ class AnnualStatement:
 
 @dataclass(frozen=True, slots=True)
 class _Placed:
+	"""A balance on its position; ``chain`` holds its concept and those above it up to the position."""
+
 	balance: Balance
 	position: Position
+	chain: tuple[str, ...]
 
 
 class _Year:
-	"""The amounts one fiscal year gives the positions of one scheme."""
+	"""The amounts one fiscal year gives the positions and Vermerke of one scheme."""
 
 	def __init__(
 		self, scheme: BalanceSheetScheme | IncomeStatementScheme, fixed: Mapping[str, Decimal] | None = None
@@ -192,13 +230,28 @@ class _Year:
 		self.fixed = dict(fixed or {})
 		self.own: defaultdict[str, Decimal] = defaultdict(Decimal)
 		self.sources: defaultdict[str, list[str]] = defaultdict(list)
+		self.noted: defaultdict[tuple[str, VermerkKind], Decimal] = defaultdict(Decimal)
+		self.without_term: defaultdict[tuple[str, VermerkKind], list[_Placed]] = defaultdict(list)
 		self._amounts: dict[str, Decimal] = {}
 
 	def add(self, placed: _Placed) -> None:
-		position = placed.position
-		self.own[position.concept] += _signed(placed.balance.amount, position.direction)
-		if placed.balance.source:
-			self.sources[position.concept].append(placed.balance.source)
+		position, balance = placed.position, placed.balance
+		self.own[position.concept] += _signed(balance.amount, position.direction)
+		if balance.source:
+			self.sources[position.concept].append(balance.source)
+		for holder in self._up_from(position):
+			for vermerk in holder.vermerke:
+				if not self._within(position, vermerk.scope):
+					continue
+				key = (holder.concept, vermerk.kind)
+				if _selects(vermerk, placed):
+					self.noted[key] += _signed(balance.amount, holder.direction)
+				elif (
+					vermerk.kind in _REMAINING_TERM_KINDS
+					and balance.remaining_term is None
+					and balance.amount
+				):
+					self.without_term[key].append(placed)
 
 	def fix(self, concept: str, amount: Decimal) -> None:
 		"""Set the amount of a computed position, which every amount computed before may have to take in."""
@@ -223,8 +276,23 @@ class _Year:
 		)
 		return self.own[position.concept] + children
 
-	def line(self, position: Position) -> Line:
-		return Line(position, self.amount(position.concept), tuple(self.sources[position.concept]))
+	def line(self, position: Position, vermerke: tuple[Vermerk, ...]) -> Line:
+		return Line(
+			position,
+			position.label,
+			self.amount(position.concept),
+			tuple(VermerkLine(vermerk, self.noted[(position.concept, vermerk.kind)]) for vermerk in vermerke),
+			tuple(self.sources[position.concept]),
+		)
+
+	def _up_from(self, position: Position) -> Iterator[Position]:
+		current: Position | None = position
+		while current is not None:
+			yield current
+			current = self.scheme.parent(current.concept)
+
+	def _within(self, position: Position, scope: str) -> bool:
+		return any(holder.concept == scope for holder in self._up_from(position))
 
 
 def build(
@@ -247,12 +315,12 @@ def build(
 	placed_income: list[_Placed] = []
 	for balance in balances:
 		for scheme, placed in ((balance_scheme, placed_balance), (income_scheme, placed_income)):
-			position = _place(balance.concept, scheme, parents)
-			if position is not None:
-				if position.computed:
-					findings.append(_computed(balance, position))
+			found = _place(balance, scheme, parents)
+			if found is not None:
+				if found.position.computed:
+					findings.append(_computed(balance, found.position))
 				else:
-					placed.append(_Placed(balance, position))
+					placed.append(found)
 				break
 		else:
 			findings.append(_unplaced(balance))
@@ -260,11 +328,9 @@ def build(
 	for placed in placed_income:
 		income.add(placed)
 	net_income = income.amount(income_scheme.net_income.concept)
+	income_lines = tuple(income.line(position, position.vermerke) for position in income_scheme.positions())
 	income_statement = IncomeStatement(
-		income_scheme,
-		tuple(income.line(position) for position in income_scheme.positions()),
-		net_income,
-		income.amount(income_scheme.sales.concept),
+		income_scheme, income_lines, net_income, income.amount(income_scheme.sales.concept)
 	)
 	sheet = _Year(balance_scheme, {NET_INCOME: net_income})
 	for placed in placed_balance:
@@ -285,7 +351,15 @@ def build(
 	)
 	if balance_sheet.difference:
 		findings.append(_not_balanced(balance_sheet.difference))
+	findings.extend(_unitemized(sheet, balance_scheme.visible(size_class), LEVELS[size_class].reference))
+	findings.extend(
+		_unitemized(income, tuple(income_scheme.positions()), f"§ 275 Abs. {_PARAGRAPHS[method]} HGB")
+	)
+	findings.extend(_without_term(sheet, balance_sheet))
 	return AnnualStatement(balance_sheet, income_statement, tuple(findings))
+
+
+_PARAGRAPHS = MappingProxyType({Method.GKV: 2, Method.UKV: 3})
 
 
 def _offset_deficit(sheet: _Year) -> None:
@@ -300,29 +374,60 @@ def _lines(
 	sheet: _Year, scheme: BalanceSheetScheme, side: Position, size_class: SizeClass
 ) -> tuple[Line, ...]:
 	"""The lines of one side of the balance sheet: the positions ``size_class`` shows, in their order."""
-	return tuple(
-		sheet.line(position)
-		for position in side.walk()
-		if position is not side and scheme.shows(position.concept, size_class)
-	)
+	lines: list[Line] = []
+	for position in side.walk():
+		if position is side or not scheme.shows(position.concept, size_class):
+			continue
+		line = sheet.line(position, scheme.vermerke(position.concept, size_class))
+		vermerke = tuple(
+			VermerkLine(noted.vermerk, sheet.amount(PROFIT_CARRIED_FORWARD))
+			if noted.vermerk.kind is VermerkKind.PROFIT_CARRIED_FORWARD
+			else noted
+			for noted in line.vermerke
+		)
+		uncalled = any(
+			noted.vermerk.kind is VermerkKind.UNCALLED_CAPITAL and noted.amount for noted in vermerke
+		)
+		lines.append(
+			Line(position, CALLED_CAPITAL if uncalled else line.label, line.amount, vermerke, line.sources)
+		)
+	return tuple(lines)
 
 
 def _place(
-	concept: str, scheme: BalanceSheetScheme | IncomeStatementScheme, parents: Mapping[str, str]
-) -> Position | None:
-	"""The nearest position at or above ``concept``, or the position of a Vermerk that names it as a member."""
+	balance: Balance, scheme: BalanceSheetScheme | IncomeStatementScheme, parents: Mapping[str, str]
+) -> _Placed | None:
+	"""The balance on the nearest position at or above its concept, or on the position of a Vermerk that names
+	one of those concepts as a member."""
 	chain: list[str] = []
-	current: str | None = concept
+	current: str | None = balance.concept
 	while current is not None and current not in chain:
-		if scheme.has(current):
-			return scheme.position(current)
 		chain.append(current)
+		if scheme.has(current):
+			return _Placed(balance, scheme.position(current), tuple(chain))
 		current = parents.get(current)
 	for position in scheme.positions():
 		for vermerk in position.vermerke:
 			if any(member in chain for member in vermerk.members):
-				return scheme.position(vermerk.scope)
+				return _Placed(balance, scheme.position(vermerk.scope), tuple(chain))
 	return None
+
+
+def _selects(vermerk: Vermerk, placed: _Placed) -> bool:
+	balance = placed.balance
+	match vermerk.kind:
+		case VermerkKind.RECEIVABLES_OVER_ONE_YEAR | VermerkKind.LIABILITIES_OVER_ONE_YEAR:
+			return balance.remaining_term in _OVER_ONE_YEAR
+		case VermerkKind.LIABILITIES_UP_TO_ONE_YEAR:
+			return balance.remaining_term is RemainingTerm.UP_TO_ONE_YEAR
+		case VermerkKind.SHAREHOLDERS:
+			return balance.shareholder or _member(vermerk, placed)
+		case _:
+			return _member(vermerk, placed)
+
+
+def _member(vermerk: Vermerk, placed: _Placed) -> bool:
+	return any(concept in vermerk.members for concept in placed.chain)
 
 
 def _signed(amount: Decimal, direction: Direction) -> Decimal:
@@ -370,3 +475,42 @@ def _not_balanced(difference: Decimal) -> Finding:
 		"§ 242 Abs. 1, § 266 Abs. 1 Satz 1 HGB",
 		amount=difference,
 	)
+
+
+def _unitemized(year: _Year, shown: tuple[Position, ...], reference: str) -> Iterator[Finding]:
+	"""A balance on a position whose positions underneath are shown as well: the total would not add up."""
+	concepts = {position.concept for position in shown}
+	for position in shown:
+		own = year.own[position.concept]
+		if own and any(child.concept in concepts for child in position.children):
+			sources = ", ".join(f"„{source}“" for source in year.sources[position.concept])
+			named = f"{sources} ({position.concept})" if sources else position.concept
+			yield Finding(
+				Code.UNITEMIZED,
+				Severity.ERROR,
+				f"Der Saldo von {named} steht bei „{position.label}“, aber in keinem der Posten darunter; die "
+				"Zuordnung braucht einen dieser Posten.",
+				reference,
+				position.concept,
+				own,
+			)
+
+
+def _without_term(sheet: _Year, balance_sheet: BalanceSheet) -> Iterator[Finding]:
+	"""Each balance whose remaining term a Vermerk the balance sheet notes would need, once."""
+	seen: dict[int, None] = {}
+	for line in balance_sheet.aktiva + balance_sheet.passiva:
+		for noted in line.vermerke:
+			for placed in sheet.without_term[(line.position.concept, noted.vermerk.kind)]:
+				if id(placed) in seen:
+					continue
+				seen[id(placed)] = None
+				yield Finding(
+					Code.REMAINING_TERM_UNKNOWN,
+					Severity.ERROR,
+					f"Für {_named(placed.balance)} fehlt die Restlaufzeit, die der Vermerk „{noted.vermerk.label}“ "
+					f"bei „{line.label}“ braucht; die Zuordnung nennt sie.",
+					noted.vermerk.reference,
+					placed.balance.concept,
+					placed.balance.amount,
+				)
