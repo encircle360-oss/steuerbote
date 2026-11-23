@@ -28,7 +28,17 @@ class DeadlineReminder(Document):
 
 		company: DF.Link
 		due_date: DF.Date
-		kind: DF.Literal["Umsatzsteuer-Voranmeldung", "Zusammenfassende Meldung", "Sondervorauszahlung"]
+		kind: DF.Literal[
+			"Umsatzsteuer-Voranmeldung",
+			"Zusammenfassende Meldung",
+			"Sondervorauszahlung",
+			"Umsatzsteuererklärung",
+			"Körperschaftsteuererklärung",
+			"Gewerbesteuererklärung",
+			"E-Bilanz",
+			"Feststellung Jahresabschluss",
+			"Offenlegung Jahresabschluss",
+		]
 		period_label: DF.Data
 		sent_on: DF.Date
 	# end: auto-generated types
