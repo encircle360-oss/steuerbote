@@ -103,6 +103,7 @@ source = [
     "steuerbote/ustva",
     "steuerbote/elster",
     "steuerbote/eric",
+    "steuerbote.steuerbote.doctype.annual_filing_settings.rules",
     "steuerbote.steuerbote.doctype.elster_transmission.messages",
     "steuerbote.steuerbote.doctype.recapitulative_statement.bridge",
     "steuerbote.steuerbote.doctype.vat_id_confirmation.records",
