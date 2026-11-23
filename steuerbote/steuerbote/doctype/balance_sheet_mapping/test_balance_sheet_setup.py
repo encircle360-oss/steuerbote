@@ -3,12 +3,14 @@ defaults of its chart for the taxonomy, the accounts they give no place and the 
 a chart of its own or an ambiguous one, and not again once the company has one."""
 
 from datetime import date
+from types import MappingProxyType
 from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
 
 from steuerbote import balance_mapping_sync
+from steuerbote.ebilanz import defaults as ebilanz_defaults
 from steuerbote.setup.steps import Note, Outcome
 from steuerbote.steuerbote import setup
 from steuerbote.steuerbote.doctype.balance_sheet_mapping import balance_sheet_mapping
@@ -94,7 +96,11 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		self.assertEqual([found.key for found in setup.setup_steps()][-1], "balance_sheet_mapping")
 
 	def test_makes_the_mapping_with_the_defaults_of_revision_0_and_leaves_every_account_open(self):
-		result = result_of(setup.run(SKR04_COMPANY, TODAY), "balance_sheet_mapping")
+		with (
+			patch.object(balance_mapping_sync, "defaults_for", return_value=Defaults("SKR04", "6.9")),
+			patch.object(ebilanz_defaults, "REVISIONS", MappingProxyType({"6.9": 0})),
+		):
+			result = result_of(setup.run(SKR04_COMPANY, TODAY), "balance_sheet_mapping")
 		self.assertEqual((result.outcome, result.document), (Outcome.CREATED, (MAPPING, SKR04_COMPANY)))
 		mapping = frappe.get_doc(MAPPING, SKR04_COMPANY)
 		self.assertEqual(
@@ -116,6 +122,31 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 			"accounts 0, accounts outside the Bilanz and the GuV 0.",
 		)
 
+	def test_makes_the_mapping_with_the_defaults_of_the_datev_chart_and_leaves_no_account_open(self):
+		result = result_of(setup.run(SKR04_COMPANY, TODAY), "balance_sheet_mapping")
+		mapping = frappe.get_doc(MAPPING, SKR04_COMPANY)
+		self.assertEqual(
+			[(row.account_number, row.concept) for row in mapping.rules],
+			[
+				("1406", "bs.ass.currAss.receiv.other.vat"),
+				("1800", "bs.ass.currAss.cashEquiv.bank"),
+				("2900", "bs.eqLiab.equity.subscribed.corp"),
+				("3806", "bs.eqLiab.liab.other.theroffTax"),
+				(
+					"4400",
+					"is.netIncome.regular.operatingTC.grossTradingProfit.totalOutput.netSales.grossSales.generalRateVAT",
+				),
+			],
+		)
+		self.assertEqual(
+			result.notes,
+			(
+				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.1", 5, 0, 0)),
+				Note(step.CHECK_WITH_ADVISER, open=True),
+				Note(step.TAXONOMY_MISSING, ("6.9",), open=True),
+			),
+		)
+
 	def test_makes_the_mapping_with_the_rows_of_the_defaults_for_the_accounts_of_the_company(self):
 		self.installed(positions.view())
 		with patch.object(balance_mapping_sync, "defaults_for", return_value=DEFAULTS):
@@ -133,7 +164,7 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		self.assertEqual(
 			result.notes,
 			(
-				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.0", 3, 1, 0)),
+				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.1", 3, 1, 0)),
 				Note(step.WITHOUT_PLACE, (1,), open=True),
 				Note(step.CHECK_WITH_ADVISER, open=True),
 			),
@@ -183,4 +214,4 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 			(entry["label"], entry["outcome"], entry["doctype"], entry["name"]),
 			("Balance Sheet Mapping", "created", MAPPING, SKR04_COMPANY),
 		)
-		self.assertEqual([note["open"] for note in entry["notes"]], [False, True, True, True])
+		self.assertEqual([note["open"] for note in entry["notes"]], [False, True, True])

@@ -3,11 +3,13 @@ aktualisieren with the defaults of a chart, the file of a mapping from one compa
 books placed on the positions.
 
 The extended mini taxonomy (steuerbote/xbrl/tests/positions.py) stands in for the installed HGB-Taxonomie 6.9, and a
-small table of defaults for the defaults of the DATEV charts, which steuerbote/ebilanz/defaults.py holds empty at
-revision 0."""
+small table of defaults for the defaults of the DATEV charts (steuerbote/ebilanz/defaults.py); the empty table of
+revision 0 stands in for the defaults before them."""
 
 import json
+from contextlib import contextmanager
 from decimal import Decimal
+from types import MappingProxyType
 from unittest.mock import patch
 
 import frappe
@@ -15,6 +17,7 @@ from frappe.tests import IntegrationTestCase
 
 from steuerbote import balance_mapping_sync
 from steuerbote.balance_mapping_sync import FILE_FORMAT, default_items, dump_items, file_body, load_items
+from steuerbote.ebilanz import defaults as ebilanz_defaults
 from steuerbote.mappings import transfer
 from steuerbote.steuerbote.doctype.balance_sheet_mapping import balance_sheet_mapping
 from steuerbote.tests.helpers import make_account, make_company
@@ -118,6 +121,15 @@ class MappingTestCase(IntegrationTestCase):
 		patcher = patch.object(balance_mapping_sync, "defaults_for", return_value=defaults)
 		patcher.start()
 		self.addCleanup(patcher.stop)
+
+	@contextmanager
+	def at_revision_0(self):
+		"""The empty table of revision 0, before the defaults of the DATEV charts."""
+		with (
+			patch.object(balance_mapping_sync, "defaults_for", return_value=Defaults("SKR04", "6.9")),
+			patch.object(ebilanz_defaults, "REVISIONS", MappingProxyType({"6.9": 0})),
+		):
+			yield
 
 	def new_mapping(self, company: str = COMPANY, chart: str = "SKR04", **tables):
 		frappe.delete_doc_if_exists(MAPPING, company, force=True)
@@ -240,9 +252,57 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 				"excluded": [("9000", "Saldenvorträge der Klasse 9")],
 			},
 		)
-		self.assertEqual(stored.defaults_version, "SKR04 Taxonomie 6.9 2026.0")
+		self.assertEqual(stored.defaults_version, "SKR04 Taxonomie 6.9 2026.1")
 		self.assertEqual(load_items(stored.defaults_rows), default_items("SKR04", "6.9", set(ACCOUNTS)))
 		self.assertEqual(stored.rules[0].account, self.accounts["1800"])
+
+	def test_vorgaben_laden_takes_the_defaults_of_the_datev_chart_for_every_account(self):
+		"""The defaults of SKR04 for the HGB-Taxonomie 6.9 give each account of the company its place; without the
+		taxonomy the rows are saved unchecked."""
+		self.installed(None)
+		mapping = self.new_mapping()
+		self.assertEqual(mapping.load_defaults(), [])
+		mapping.insert()
+		stored = frappe.get_doc(MAPPING, COMPANY)
+		self.assertEqual(
+			rows(stored),
+			{
+				"rules": [
+					(
+						"1460",
+						"bs.ass.currAss.receiv.other.other",
+						"bs.eqLiab.liab.other.other",
+						"both",
+						0,
+						None,
+					),
+					("1800", BANK, "bs.eqLiab.liab.bank.other", "both", 0, None),
+					("1810", BANK, "bs.eqLiab.liab.bank.other", "both", 0, None),
+					("2900", SUBSCRIBED, None, "both", 0, None),
+					(
+						"3300",
+						"bs.eqLiab.liab.trade.genOther",
+						"bs.ass.currAss.receiv.other.other",
+						"both",
+						0,
+						None,
+					),
+					(
+						"4400",
+						"is.netIncome.regular.operatingTC.grossTradingProfit.totalOutput.netSales.grossSales.generalRateVAT",
+						None,
+						"both",
+						0,
+						None,
+					),
+				],
+				"watched": [],
+				"excluded": [
+					("9000", "Vortragskonto der Eröffnungsbuchungen, ausgeglichen nach dem Vortrag"),
+				],
+			},
+		)
+		self.assertEqual(stored.defaults_version, "SKR04 Taxonomie 6.9 2026.1")
 
 	def test_vorgaben_laden_keeps_the_level_of_a_watched_account(self):
 		self.with_defaults()
@@ -260,8 +320,9 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 
 	def test_the_defaults_of_revision_0_hold_no_rows(self):
 		mapping = self.new_mapping()
-		self.assertEqual(mapping.load_defaults(), sorted(ACCOUNTS))
-		mapping.insert()
+		with self.at_revision_0():
+			self.assertEqual(mapping.load_defaults(), sorted(ACCOUNTS))
+			mapping.insert()
 		self.assertEqual(
 			(mapping.rules, mapping.watched, mapping.excluded, mapping.defaults_version),
 			([], [], [], "SKR04 Taxonomie 6.9 2026.0"),
@@ -271,8 +332,9 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 		"""A mapping made before the defaults of the DATEV charts took over the empty table; every row of the first
 		defaults is a change of the defaults, checked in the dialog."""
 		mapping = self.new_mapping()
-		mapping.load_defaults()
-		mapping.insert()
+		with self.at_revision_0():
+			mapping.load_defaults()
+			mapping.insert()
 		self.with_defaults()
 		comparison = mapping.compare_with_defaults()
 		self.assertEqual(comparison["base_known"], True)
@@ -344,7 +406,7 @@ class IntegrationTestBalanceSheetMappingFile(MappingTestCase):
 		self.assertEqual(target.import_file(content=self.text, chosen=chosen), len(chosen))
 		target = frappe.get_doc(MAPPING, TARGET)
 		self.assertEqual(rows(target), rows(frappe.get_doc(MAPPING, COMPANY)))
-		self.assertEqual(target.defaults_version, "SKR04 Taxonomie 6.9 2026.0")
+		self.assertEqual(target.defaults_version, "SKR04 Taxonomie 6.9 2026.1")
 		self.assertEqual(target.defaults_rows, dump_items(load_items(self.source.defaults_rows)))
 
 	def test_an_import_refuses_a_file_of_another_taxonomy_another_chart_or_with_accounts_the_company_lacks(
