@@ -145,6 +145,7 @@ source = [
     "steuerbote/jahresmeldung",
     "steuerbote/xbrl",
     "steuerbote.steuerbote.doctype.annual_vat_return.bridge",
+    "steuerbote.steuerbote.doctype.annual_vat_return.layout",
 ]
 omit = ["*/tests/*", "*/steuerbote/eric/secrets.py"]
 branch = true
