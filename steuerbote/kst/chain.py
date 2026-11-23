@@ -34,12 +34,26 @@ postings behind it (``contributions``) and its manual lines. A line of the ledge
 half up, since the Jahresdokumentation gives no direction (steuerbote.ustva.rounding); the lines of § 8b and of the
 Termingeschäfte round as their modules say. ``figures`` writes the amounts of the findings in the number format of
 the site (steuerbote.ustva.plausibility.Figures).
+
+A Finding is one sentence in German with its code and its reference, the shape of the findings of the annual
+filings: an error holds the filing back from „Bereit“ (``KstResult.ready``), a hint changes nothing. The errors are
+a trading account without class, a balance on a later category (foreign taxes, investment funds), a watched account
+of the blocking level with a balance, dividends of the holdings beyond those of the ledger, a loss without
+Verlustrücktrag or its waiver (rule 8900343) or with one beyond the loss or 1 Million Euro (8900124), Zuwendungen that
+need the turnover of Anlage Z line 10 without it (8900101), and an Investitionsabzugsbetrag beyond 200 000 Euro
+(§ 7g Absatz 1 Satz 4 EStG). The hints: a watched account of the hint level with a balance; entertainment booked as
+deductible with nothing as non-deductible (§ 4 Absatz 5 Satz 1 Nummer 2 EStG), with the 30 % that the 70 % booked
+imply; dividends of no holding, taxed as Streubesitz; the trading book of § 8b Absatz 7 KStG, which KSt 1 line 16
+declares; a Solidaritätszuschlag of the Steuerbescheinigungen that is not 5.5 % of their Kapitalertragsteuer within
+0.05 € (rule 8912019); Entgelte für Schulden of 3 Millionen Euro or more, from which the Zinsschranke of § 4h EStG and
+§ 8a KStG may apply, which Steuerbote does not compute; an Investitionsabzugsbetrag with a profit beyond 200 000
+Euro without it (§ 7g Absatz 1 Satz 2 Nummer 1 Buchstabe b EStG).
 """
 
 from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import Enum
+from enum import Enum, StrEnum
 from types import MappingProxyType
 
 from steuerbote.kst.categories import Category, Classification, Contribution, Mapping, classify
@@ -55,7 +69,15 @@ from steuerbote.kst.losses import (
 from steuerbote.kst.years import HUNDRED, Year, year_of
 from steuerbote.ustva.calculation import LedgerLine
 from steuerbote.ustva.plausibility import Figures
-from steuerbote.ustva.rounding import CENT, ZERO, floor_euro, half_up_euro, require_decimal, truncate_cents
+from steuerbote.ustva.rounding import (
+	CENT,
+	ZERO,
+	floor_euro,
+	half_up_euro,
+	require_decimal,
+	to_cents,
+	truncate_cents,
+)
 
 
 class Source(Enum):
@@ -662,6 +684,46 @@ def step(key: str) -> Step:
 		raise KeyError(f"no step {key!r}") from None
 
 
+class Severity(Enum):
+	ERROR = "Fehler"
+	HINT = "Hinweis"
+
+
+class Code(StrEnum):
+	UNCLASSIFIED_TRADING = "KST-HANDEL-OHNE-KLASSE"
+	FOREIGN_TAX = "KST-AUSLAENDISCHE-STEUERN"
+	FUNDS = "KST-INVESTMENTFONDS"
+	WATCHED = "KST-KONTO-OHNE-KATEGORIE"
+	WATCHED_HINT = "KST-KONTO-BEOBACHTET"
+	ENTERTAINMENT = "KST-BEWIRTUNG"
+	STREUBESITZ = "KST-STREUBESITZ"
+	EXCESS_DIVIDENDS = "KST-BEZUEGE-UEBER-HAUPTBUCH"
+	TRADING_BOOK = "KST-8B-ABSATZ-7"
+	CARRY_BACK_MISSING = "KST-VERLUSTRUECKTRAG-FEHLT"
+	CARRY_BACK_TOO_HIGH = "KST-VERLUSTRUECKTRAG-ZU-HOCH"
+	TURNOVER_MISSING = "KST-UMSATZ-FEHLT"
+	SOLZ_ON_KAPEST = "KST-SOLZ-KAPEST"
+	INTEREST_BARRIER = "KST-ZINSSCHRANKE"
+	IAB_LIMIT = "KST-IAB-HOECHSTBETRAG"
+	IAB_PROFIT = "KST-IAB-GEWINNGRENZE"
+
+
+@dataclass(frozen=True, slots=True)
+class Finding:
+	"""A sentence in German on the filing; ``reference`` names its law or the rule of the Jahresdokumentation."""
+
+	code: str
+	severity: Severity
+	text: str
+	reference: str
+
+	@property
+	def blocking(self) -> bool:
+		return self.severity is Severity.ERROR
+
+
+# Rule 8912019 compares with „UngleichMitToleranz5“, 5 cents either way.
+SOLZ_TOLERANCE = Decimal("0.05")
 _TAKES_MANUAL_LINES = frozenset({Source.NET_INCOME, Source.LEDGER, Source.MANUAL})
 _P8B_LINES = (
 	("p8b_dividends", "exempt_dividends"),
@@ -759,6 +821,12 @@ class KstResult:
 	derivatives: Derivatives
 	donations: Donations
 	losses: LossDeduction
+	findings: tuple[Finding, ...]
+
+	@property
+	def ready(self) -> bool:
+		"""No finding holds the filing back."""
+		return not any(finding.blocking for finding in self.findings)
 
 	@property
 	def business_income(self) -> Decimal:
@@ -894,7 +962,198 @@ def compute(inputs: KstInputs, figures: Figures) -> KstResult:
 		pool,
 		gifts,
 		losses,
+		_findings(inputs, year, lines, classification, shares, gifts, losses, figures),
 	)
+
+
+def _findings(
+	inputs: KstInputs,
+	year: Year,
+	lines: dict[str, Line],
+	classification: Classification,
+	shares: P8b,
+	gifts: Donations,
+	losses: LossDeduction,
+	figures: Figures,
+) -> tuple[Finding, ...]:
+	money = figures.money
+	found: list[Finding] = []
+	error, hint = Severity.ERROR, Severity.HINT
+	for account in classification.unclassified:
+		found.append(
+			Finding(
+				Code.UNCLASSIFIED_TRADING,
+				error,
+				f"Konto {account.account_number}: Das Handelsergebnis (Haben {money(account.credit)}, Soll "
+				f"{money(account.debit)}) hat keine Klasse. Die Steuerberatung legt fest, ob es aus Anteilen, aus "
+				"Termingeschäften, aus Investmentfonds oder aus voll steuerpflichtigen Geschäften stammt.",
+				"§ 8b KStG, § 15 Absatz 4 Satz 3 EStG, § 20 InvStG",
+			)
+		)
+	if Category.FOREIGN_TAX in classification.later:
+		amount = money(classification.amount(Category.FOREIGN_TAX))
+		found.append(
+			Finding(
+				Code.FOREIGN_TAX,
+				error,
+				f"Auf ausländische Steuern sind {amount} gebucht. Ihre Anrechnung oder ihren Abzug mit der Anlage "
+				"AESt berechnet Steuerbote noch nicht.",
+				"§ 26 KStG, § 34c EStG",
+			)
+		)
+	if Category.FUNDS in classification.later:
+		amount = money(classification.amount(Category.FUNDS))
+		found.append(
+			Finding(
+				Code.FUNDS,
+				error,
+				f"Das Ergebnis aus Investmentfonds beträgt {amount}. Die Teilfreistellung berechnet Steuerbote noch "
+				"nicht.",
+				"§ 20 InvStG",
+			)
+		)
+	for account in classification.watched:
+		found.append(
+			Finding(
+				Code.WATCHED,
+				error,
+				f"Konto {account.account_number} hat einen Saldo (Soll {money(account.debit)}, Haben "
+				f"{money(account.credit)}), aber keine Kategorie der Kontenzuordnung Ertragsteuern.",
+				"Kontenzuordnung Ertragsteuern",
+			)
+		)
+	for account in classification.hinted:
+		found.append(
+			Finding(
+				Code.WATCHED_HINT,
+				hint,
+				f"Konto {account.account_number} hat einen Saldo (Soll {money(account.debit)}, Haben "
+				f"{money(account.credit)}); die Kontenzuordnung Ertragsteuern beobachtet es.",
+				"Kontenzuordnung Ertragsteuern",
+			)
+		)
+	deductible = classification.amount(Category.ENTERTAINMENT_DEDUCTIBLE)
+	if deductible > ZERO and not classification.amount(Category.ENTERTAINMENT_NONDEDUCTIBLE):
+		share = year.entertainment_deductible_percent
+		implied = to_cents(deductible * (HUNDRED - share) / share)
+		found.append(
+			Finding(
+				Code.ENTERTAINMENT,
+				hint,
+				f"Auf abzugsfähige Bewirtungskosten sind {money(deductible)} gebucht, auf nicht abzugsfähige nichts. "
+				f"Sind die gebuchten Kosten die abzugsfähigen {share} %, sind {money(implied)} nicht abziehbar.",
+				"§ 4 Absatz 5 Satz 1 Nummer 2 EStG",
+			)
+		)
+	if shares.unassigned_dividends:
+		found.append(
+			Finding(
+				Code.STREUBESITZ,
+				hint,
+				f"Bezüge von {money(shares.unassigned_dividends)} gehören zu keiner Beteiligung der Einstellungen und "
+				"bleiben als Streubesitz steuerpflichtig. Eine Beteiligung von mindestens 10 % zu Beginn des "
+				"Kalenderjahres gehört in die Einstellungen.",
+				"§ 8b Absatz 4 Satz 1 KStG",
+			)
+		)
+	if shares.excess_dividends:
+		found.append(
+			Finding(
+				Code.EXCESS_DIVIDENDS,
+				error,
+				f"Die Beteiligungen nennen {money(shares.excess_dividends)} mehr Bezüge, als das Hauptbuch auf den "
+				"Konten der Bezüge aus Anteilen hat.",
+				"§ 8b Absatz 1 KStG",
+			)
+		)
+	if inputs.trading_book:
+		found.append(
+			Finding(
+				Code.TRADING_BOOK,
+				hint,
+				"Nach den Einstellungen gilt § 8b Absatz 7 KStG: Bezüge, Gewinne und Verluste aus Anteilen sind voll "
+				"steuerpflichtig, und die Erklärung gibt das in KSt 1 Zeile 16 an.",
+				"§ 8b Absatz 7 KStG",
+			)
+		)
+	if losses.carry_back_missing:
+		found.append(
+			Finding(
+				Code.CARRY_BACK_MISSING,
+				error,
+				f"Der Gesamtbetrag der Einkünfte ist negativ ({money(-losses.loss)}). Die Anlage Verluste braucht in "
+				"Zeile 20 den Verlustrücktrag; 0 verzichtet auf ihn.",
+				"§ 10d Absatz 1 EStG; Regel 8900343",
+			)
+		)
+	if losses.carry_back_too_high:
+		found.append(
+			Finding(
+				Code.CARRY_BACK_TOO_HIGH,
+				error,
+				f"Der Verlustrücktrag von {money(losses.carry_back or ZERO)} ist höher als der Verlust von "
+				f"{money(losses.loss)} oder {money(year.loss_carry_back)}.",
+				"§ 10d Absatz 1 Satz 1 EStG; Regel 8900124",
+			)
+		)
+	if gifts.turnover_missing:
+		found.append(
+			Finding(
+				Code.TURNOVER_MISSING,
+				error,
+				f"Die Zuwendungen von {money(gifts.available)} übersteigen {year.donation_income_percent} % der "
+				"Summe der Einkünfte. Die Anlage Z braucht in Zeile 10 die Umsätze, Löhne und Gehälter des "
+				"Kalenderjahres, gegebenenfalls 0.",
+				"§ 9 Absatz 1 Nummer 2 KStG; Regel 8900101",
+			)
+		)
+	expected = to_cents(inputs.capital_gains_tax_credit * year.solz_rate / HUNDRED)
+	if inputs.capital_gains_tax_credit and abs(expected - inputs.solz_credit) > SOLZ_TOLERANCE:
+		found.append(
+			Finding(
+				Code.SOLZ_ON_KAPEST,
+				hint,
+				f"Der Solidaritätszuschlag der Steuerbescheinigungen ({money(inputs.solz_credit)}) weicht von "
+				f"{year.solz_rate} % der Kapitalertragsteuer ({money(expected)}) um mehr als "
+				f"{money(SOLZ_TOLERANCE)} ab.",
+				"§ 4 SolZG; Regel 8912019",
+			)
+		)
+	interest = classification.amount(Category.INTEREST)
+	if interest >= year.interest_barrier:
+		found.append(
+			Finding(
+				Code.INTEREST_BARRIER,
+				hint,
+				f"Die Entgelte für Schulden betragen {money(interest)}. Ab {money(year.interest_barrier)} "
+				"Nettozinsaufwand kann die Zinsschranke greifen, die Steuerbote nicht berechnet.",
+				"§ 4h Absatz 2 Satz 1 Buchstabe a EStG, § 8a KStG",
+			)
+		)
+	iab = lines["iab_deduction"].declared
+	if iab > year.iab_total_limit:
+		found.append(
+			Finding(
+				Code.IAB_LIMIT,
+				error,
+				f"Investitionsabzugsbeträge von {money(iab)} übersteigen den Höchstbetrag von "
+				f"{money(year.iab_total_limit)} je Betrieb.",
+				"§ 7g Absatz 1 Satz 4 EStG",
+			)
+		)
+	added_back = sum((lines[key].declared for key in ("iab_addback", "iab_addback_2", "iab_addback_3")), ZERO)
+	profit = lines[BUSINESS_INCOME].declared + iab - added_back
+	if iab and profit > year.iab_profit_limit:
+		found.append(
+			Finding(
+				Code.IAB_PROFIT,
+				hint,
+				f"Investitionsabzugsbeträge setzen einen Gewinn ohne sie von höchstens {money(year.iab_profit_limit)} "
+				f"voraus; die Einkünfte ohne sie betragen {money(profit)}.",
+				"§ 7g Absatz 1 Satz 2 Nummer 1 Buchstabe b EStG",
+			)
+		)
+	return tuple(found)
 
 
 def _put(
