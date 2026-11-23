@@ -16,8 +16,13 @@ plugin of the coming year.
 
 Every week check_versions loads the Mindestversionsliste, keeps it in the settings and tells the System Managers
 once of each failing check of steuerbote.eric.releases.notices, as the ERiC licence asks the Softwarehersteller to
-check regularly for new versions (§ 5 Abs. 4) and to use at least the Mindestversion (§ 5 Abs. 6). Only that job
-writes its fields; a save of the form keeps them.
+check regularly for new versions (§ 5 Abs. 4) and to use at least the Mindestversion (§ 5 Abs. 6); a site that keeps
+Annual Filing Settings hears also of the plugins of the annual filings of the year before. Only that job writes its
+fields; a save of the form keeps them.
+
+The settings keep the copyright notice of the manufacturer of the software, which the Vorsatz of every Erklärung
+carries (steuerbote/elster/vorsatz.py), at most 50 characters and without a default. A run of ERiC with an Erklärung
+needs it (vorsatz_copyright).
 """
 
 from datetime import datetime
@@ -40,7 +45,7 @@ from frappe.utils.background_jobs import is_job_enqueued
 from frappe.utils.user import get_system_managers
 
 import steuerbote
-from steuerbote.elster import ustva_xml
+from steuerbote.elster import ustva_xml, vorsatz
 from steuerbote.eric import proxy, releases, runtime
 from steuerbote.eric.releases import MinimumList, MinimumListError
 from steuerbote.eric.runtime import Check, RuntimeInstallError
@@ -48,6 +53,8 @@ from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 
 SETTINGS = "ERiC Settings"
+ANNUAL_FILING_SETTINGS = "Annual Filing Settings"
+DEFAULT_PRODUKT_NAME = "steuerbote"
 # NutzdatenHeader of the ELSTER Basisschema: ProduktName has 1 to 50 characters.
 PRODUKT_NAME_LENGTH = 50
 # ERiC licence, § 12: "Der Produkt- oder Herstellername darf jedoch nicht den Bestandteil "ELSTER" enthalten."
@@ -86,6 +93,7 @@ class ERiCSettings(Document):
 
 		archive_path: DF.Data | None
 		archive_sha256: DF.Data | None
+		copyright: DF.Data | None
 		datenlieferant: DF.SmallText | None
 		hersteller_id: DF.Data | None
 		installed_version: DF.Data | None
@@ -128,6 +136,7 @@ class ERiCSettings(Document):
 		self.check_produkt_name()
 		if len(self.datenlieferant) > DATENLIEFERANT_LENGTH:
 			frappe.throw(_("The Datenlieferant has at most {0} characters.").format(DATENLIEFERANT_LENGTH))
+		self.check_copyright()
 		self.check_proxy()
 		self.record_privacy_notice()
 		self.keep_version_check()
@@ -138,6 +147,14 @@ class ERiCSettings(Document):
 		before = self.get_doc_before_save()
 		for fieldname in VERSION_CHECK_FIELDS:
 			self.set(fieldname, before.get(fieldname) if before else None)
+
+	def check_copyright(self) -> None:
+		"""The copyright notice as the Vorsatz writes it: in the character set of ELSTER, at most 50 characters."""
+		if not (self.copyright or "").strip():
+			self.copyright = None
+			return
+		with xml_errors(_("ERiC Settings")):
+			self.copyright = vorsatz.copyright_text(self.copyright)
 
 	def check_proxy(self) -> None:
 		"""A proxy ERiC can use (steuerbote.eric.proxy); without its URL, user and password go as well."""
@@ -251,6 +268,23 @@ def run_installation() -> None:
 	)
 
 
+def vorsatz_copyright() -> str:
+	"""The copyright notice of the Vorsatz of an Erklärung, which the rules 10435 and 6 require (Jahresdokumentation
+	E50 2026, sheet „Vorsatz - Regeln“; Formale_Plausipruefungen.ods). A run of ERiC needs the one of the settings; the
+	simulation takes the product name in its place, as it takes 00000 for a missing Hersteller-ID."""
+	settings = frappe.get_single(SETTINGS)
+	if settings.copyright:
+		return settings.copyright
+	if cint(settings.simulation):
+		return settings.produkt_name or DEFAULT_PRODUKT_NAME
+	frappe.throw(_("Enter the Copyright Notice in the ERiC Settings."), title=_("ERiC Settings"))
+
+
+def has_annual_filings() -> bool:
+	"""Whether the site keeps annual filings: it has Annual Filing Settings, which come with them."""
+	return bool(frappe.db.table_exists(ANNUAL_FILING_SETTINGS) and frappe.db.count(ANNUAL_FILING_SETTINGS))
+
+
 def eric_log_root() -> Path:
 	"""Where the transmissions of this site let ERiC write eric.log, a directory per transmission."""
 	return Path(frappe.get_site_path("logs", "eric")).resolve()
@@ -322,7 +356,7 @@ def notify(minimum_list: MinimumList | None, notified: str | None) -> str:
 	"""Tell the System Managers of the failing checks of the installed runtimes not told before, and return the
 	notices of all failing checks, one per line, as told."""
 	installed = runtime.installations(transmission_adapter.runtime_root())
-	failing = releases.notices(installed, minimum_list, getdate())
+	failing = releases.notices(installed, minimum_list, getdate(), annual=has_annual_filings())
 	new = releases.due(failing, (notified or "").splitlines())
 	if new:
 		send_notice(new)

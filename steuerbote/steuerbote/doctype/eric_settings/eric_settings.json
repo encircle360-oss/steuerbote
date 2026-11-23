@@ -17,6 +17,7 @@
   "produkt_version",
   "column_break_manufacturer",
   "datenlieferant",
+  "copyright",
   "archive_section",
   "archive_path",
   "archive_sha256",
@@ -112,6 +113,12 @@
    "fieldname": "datenlieferant",
    "fieldtype": "Small Text",
    "label": "Datenlieferant"
+  },
+  {
+   "description": "Name and seat of the manufacturer of the software, such as (c) 2026 Beispiel GmbH, München, at most 50 characters. Every Erklärung, USt, KSt and GewSt, carries it in its Vorsatz; without it, none runs through ERiC.",
+   "fieldname": "copyright",
+   "fieldtype": "Data",
+   "label": "Copyright Notice"
   },
   {
    "fieldname": "archive_section",
@@ -254,7 +261,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-23 12:00:00.000000",
+ "modified": "2026-11-23 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "ERiC Settings",
