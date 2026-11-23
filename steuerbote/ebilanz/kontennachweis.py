@@ -20,7 +20,9 @@ on positions that have an amount; the Kontensaldo is the balance in the directio
 Werte zum Element „Kontosaldo“ soll dem Wert der Taxonomieposition entsprechen.“ (Technischer Leitfaden zur
 HGB-Taxonomie 6.10, Stand 08.06.2026, B.12.1). The tuples refer to the fiscal year, D-AKTJAHR, as the Kontensaldo is
 that „zum Ende-Stichtag der Berichtsperiode“ (Leitfaden 6.9, A.12). Number and description come from the books in the
-characters of ELSTER (steuerbote/elster/charset.py).
+characters of ELSTER (steuerbote/elster/charset.py). From taxonomy 6.10 on the tuple has a fifth part, „Konto nicht
+vorhanden oder nicht übermittelbar“ [detailedInformation.accountbalances.notPossible], NIL for an account, as the
+examples of Taxonomie_6_10 of the ERiC documentation 45.1.5.0 write it.
 
 Checks. With the component announced, „Wird der Berichtsteil „Bilanz“ oder „Eröffnungsbilanz ohne GuV“ angekündigt,
 ist zu mindestens einer dazugehörigen Position ein Kontensaldo zu übermitteln.“, and the same for the GuV (B.12;
@@ -30,6 +32,18 @@ rechnerisch verknüpfte Unterposition vorliegt, [ist] das Tupel „Kontensalden 
 übermitteln“, and the sum of the Kontensalden of a position should be its value (Leitfaden 6.10, B.12.1; rule 170195106
 of ERiC 45.1.5.0): a position by hand, without an account, and a correction show here, but the Jahresüberschuss of the
 Bilanz, whose amount comes from the GuV and its Kontensalden.
+
+Checks from 6.10 on. Jahresdokumentation_Bilanz_Taxonomie_6_10.ods deletes 170195104 („GELÖSCHT“) for structural error
+170195106, „Ein Kontennachweis ist für eine solche Position genau dann erforderlich, wenn sie selbst werthaltig ist und
+zu keiner rechnerisch verknüpften Unterposition ein Wert übermittelt wird.“, which the profile FISCAL checks with
+170195108 to 170195110 (steuerbote/xbrl/checks.py). A position that takes a Kontensaldo and that no account of the
+books lands on, the Jahresüberschuss of the Bilanz and a position by hand, takes the „in Ausnahmefällen anwendbaren
+Variante ohne Konteninformationen“: „Kontonummer“ and „Kontobeschreibung“ „nicht werthaltig“, „Konto nicht vorhanden
+oder nicht übermittelbar“ „mit dem Wert „true““, „maximal einmal zu einer Position“, and its amount the one of the
+position (Leitfaden 6.10, B.12.1); a position by hand shows as a hint. The Kontensalden of a position add up to its
+value (B.12.1, quoted above): a correction of a position with accounts is an error, as it belongs in the books. An
+account refused for its characters or its description holds the E-Bilanz back by its own finding and takes no
+Kontensaldo without account information, since renaming the account sends it.
 
 Without Kontensalden. „Um Härtefälle zu vermeiden, wird es für die Übermittlung von E-Bilanzen mit der
 Taxonomie-Version 6.9 nicht beanstandet, wenn ... die Bilanz und GuV ohne Kontennachweise ... übermittelt werden. In
@@ -47,7 +61,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 
-from steuerbote.ebilanz.calculation import BALANCE_SHEET_NET_INCOME, BILANZ, GUV, Calculation, Line
+from steuerbote.ebilanz.calculation import BALANCE_SHEET_NET_INCOME, BILANZ, GUV, Calculation, Line, Value
 from steuerbote.ebilanz.positions import Finding, euro, leitfaden, rule, unqualified
 from steuerbote.elster.charset import CharsetError, describe, transliterate
 from steuerbote.ustva.rounding import ZERO
@@ -60,6 +74,7 @@ ACCOUNT_NUMBER = "de-gaap-ci:detailedInformation.accountbalances.accountNumber"
 ACCOUNT_DESCRIPTION = "de-gaap-ci:detailedInformation.accountbalances.accountDescription"
 BALANCE = "de-gaap-ci:detailedInformation.accountbalances.amount"
 NOT_YET_POSSIBLE = "de-gcd:genInfo.report.id.reportElement.reportElements.transmissionNotYetPossible"
+NOT_POSSIBLE = "de-gaap-ci:detailedInformation.accountbalances.notPossible"
 LEITFADEN_6_10 = "Technischer Leitfaden zur HGB-Taxonomie 6.10, B.12.1; ERiC 45.1.5.0, Regel 170195106"
 BMF_2025 = "BMF-Schreiben vom 10.06.2025, IV C 6 - S 2133-b/00064/002/006"
 
@@ -69,22 +84,28 @@ class Kontennachweis:
 	"""The Kontensalden of an E-Bilanz, or the reason it sends none, with what the checks found."""
 
 	lines: tuple[Line, ...]
-	"""Each account of the current year with a balance, its texts in the characters of ELSTER."""
+	"""Each account of the current year with a balance, its texts in the characters of ELSTER, and from taxonomy 6.10
+	on a line without account, number and description empty, for each position that takes a Kontensaldo and that no
+	account lands on."""
 	reason: str
 	"""Why the E-Bilanz sends no Kontensalden; empty where it sends them."""
 	findings: tuple[Finding, ...]
+	not_possible: bool = False
+	"""Whether the tuples have the part „Konto nicht vorhanden oder nicht übermittelbar“, as from taxonomy 6.10 on."""
 
 	def facts(self) -> tuple[Tuple, ...]:
-		"""A tuple „Kontensalden zu einer Position“ per line, in the order of the lines."""
+		"""A tuple „Kontensalden zu einer Position“ per line, in the order of the lines, a line without account with
+		Kontonummer and Kontobeschreibung NIL."""
 		period = Period.WIRTSCHAFTSJAHR
 		return tuple(
 			Tuple(
 				ACCOUNT_BALANCES,
 				(
 					Item(POSITION_NAME, period, line.concept),
-					Item(ACCOUNT_NUMBER, period, line.account),
-					Item(ACCOUNT_DESCRIPTION, period, line.description),
+					Item(ACCOUNT_NUMBER, period, line.account or None),
+					Item(ACCOUNT_DESCRIPTION, period, line.description or None),
 					amount(BALANCE, period, line.amount),
+					*((Item(NOT_POSSIBLE, period, not line.account or None),) if self.not_possible else ()),
 				),
 			)
 			for line in self.lines
@@ -105,7 +126,10 @@ def kontennachweis(calculation: Calculation, *, reason: str = "") -> Kontennachw
 		texts = _texts(line, findings, taxonomy)
 		if texts is not None:
 			lines.append(Line(texts[0], texts[1], line.concept, line.amount))
+	if taxonomy.has(NOT_POSSIBLE):
+		return _of_6_10(calculation, lines, findings)
 	findings.extend(_announced(calculation, lines))
+
 	findings.extend(_ahead(calculation, lines))
 	return Kontennachweis(tuple(lines), "", tuple(findings))
 
@@ -215,3 +239,56 @@ def _ahead(calculation: Calculation, lines: Iterable[Line]) -> Iterable[Finding]
 				name,
 				Severity.HINT,
 			)
+
+
+def _of_6_10(calculation: Calculation, lines: list[Line], findings: list[Finding]) -> Kontennachweis:
+	"""The Kontensalden of a taxonomy with the part notPossible, 6.10 and later: a line without account for each
+	position that takes a Kontensaldo and that no account lands on, and the Kontensalden of each position with accounts
+	adding up to it (Leitfaden 6.10, B.12.1)."""
+	taxonomy = calculation.structure.taxonomy
+	sums: dict[str, Decimal] = {}
+	for line in calculation.lines:
+		if not line.prior:
+			sums[line.concept] = sums.get(line.concept, ZERO) + line.amount
+	without = []
+	for value in _taking_a_kontensaldo(calculation):
+		position = value.position
+		name = unqualified(position.concept)
+		if position.concept not in sums:
+			without.append(Line("", "", position.concept, value.amount))
+			if position.concept != BALANCE_SHEET_NET_INCOME:
+				findings.append(
+					Finding(
+						"EB-KONTENSALDEN-OHNE-KONTO",
+						f"Auf „{position.label}“ bucht kein Konto, der Betrag stammt von Hand; die E-Bilanz meldet ihn als "
+						"Kontensaldo ohne Konteninformationen.",
+						f"{leitfaden(taxonomy, 'B.12.1')}; {rule(taxonomy, '170195106', 'Strukturelle Fehler')}",
+						name,
+						Severity.HINT,
+					)
+				)
+		elif sums[position.concept] != value.amount:
+			findings.append(
+				Finding(
+					"EB-KONTENSALDEN-SUMME",
+					f"Die Kontensalden zu „{position.label}“ ergeben {euro(sums[position.concept])}, die Position meldet "
+					f"{euro(value.amount)}; sie sollen übereinstimmen, die Korrektur gehört in die Bücher.",
+					leitfaden(taxonomy, "B.12.1"),
+					name,
+				)
+			)
+	return Kontennachweis((*lines, *without), "", tuple(findings), not_possible=True)
+
+
+def _taking_a_kontensaldo(calculation: Calculation) -> Iterable[Value]:
+	"""The values of the current year that take a Kontensaldo: valued, in the calculation of their component, and
+	without a valued position under them there (Leitfaden 6.10, B.12.1; structural error 170195106)."""
+	taxonomy = calculation.structure.taxonomy
+	for value in calculation.values:
+		if value.period.prior or value.amount is None:
+			continue
+		network = taxonomy.calculation[value.position.role]
+		if value.concept in network and not any(
+			calculation.amount(arc.child, value.period) is not None for arc in network.children(value.concept)
+		):
+			yield value
