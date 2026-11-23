@@ -14,12 +14,15 @@ from steuerbote.xbrl.tests.test_checks import (
 	BVV_FACTS,
 	ENTITY,
 	KLEINST,
+	LEAVES,
 	PERIODS,
 	PRIOR,
 	complete,
 	disclosure,
 	euros,
+	kontensaldo,
 	replaced,
+	report_6_10,
 	without,
 )
 
@@ -38,6 +41,7 @@ def fiscal_findings(report, taxonomy):
 		*checks.calculation(report, taxonomy),
 		*checks.oberpositionen(report, taxonomy),
 		*checks.summenmussfelder(report, taxonomy),
+		*checks.kontensalden(report, taxonomy, facets),
 		*checks.contexts(writer.instance(report, taxonomy)),
 	)
 
@@ -140,6 +144,18 @@ class FiscalTest(TestCase):
 	def test_publishes_nothing(self):
 		with self.assertRaisesRegex(ProfileError, "only the Offenlegung names what it publishes"):
 			FISCAL.check(complete(), mini.view(), published=KLEINST)
+
+	def test_checks_the_kontensalden_of_6_10(self):
+		"""Technischer Leitfaden zur HGB-Taxonomie 6.10, B.12.1: a Kontensaldo for each valued position of Bilanz and
+		GuV without a valued one below it."""
+		view = mini.view(View.FISCAL, mini.VERSION_6_10)
+		report = report_6_10(*(kontensaldo(position, value) for position, value in LEAVES[1:]))
+		found = FISCAL.check(report, view)
+		self.assertEqual(found, fiscal_findings(report, view))
+		self.assertIn(
+			(Code.ACCOUNT_BALANCE_MISSING, f"{A}bs.ass.fixAss.intan.concessionBrands"),
+			[(finding.code, finding.concept) for finding in found],
+		)
 
 
 class DisclosureTest(TestCase):
