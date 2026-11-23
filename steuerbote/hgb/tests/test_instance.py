@@ -1086,11 +1086,19 @@ class FindingsTest(TestCase):
 		self.assertIn("JA-REGISTERANGABEN", codes)
 
 	def test_the_errors_of_the_statement_of_both_years(self):
-		books = (*KLEINST_2026, Balance("bs.ass.other", Decimal("10.00")))
-		instance = kleinst(statement=statement(2026, KLEINST, books, parents=PARENTS, prior=KLEINST_2025))
-		codes = {finding.code for finding in instance.findings}
-		self.assertIn("JA-RECHENPOSTEN", codes)
-		self.assertIn("JA-BILANZ-UNGLEICH", codes)
+		"""A balance on a position the statement computes and books that do not balance hold the Jahresabschluss
+		back (steuerbote/hgb/statement.py), of the year and of the previous one."""
+		books = (
+			*KLEINST_2026,
+			Balance("bs.ass.prepaidExp", Decimal("10.00")),
+			Balance("bs.eqLiab.equity.netIncome", Decimal("-5.00")),
+		)
+		prior = (*KLEINST_2025, Balance("bs.ass.prepaidExp", Decimal("1.00")))
+		instance = kleinst(statement=statement(2026, KLEINST, books, parents=PARENTS, prior=prior))
+		found = {(finding.code, finding.prior_year) for finding in instance.findings}
+		self.assertLessEqual(
+			{("JA-RECHENPOSTEN", False), ("JA-BILANZ-UNGLEICH", False), ("JA-BILANZ-UNGLEICH", True)}, found
+		)
 		self.assertTrue(all(finding.blocking for finding in instance.findings))
 
 	def test_a_feststellung_within_the_fiscal_year(self):
