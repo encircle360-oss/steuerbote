@@ -45,6 +45,7 @@ MAPPING = Mapping(
 	),
 	checks=(TaxCheck("Umsatzsteuer 19 %", ("8400", "8910", "2406"), ("1776",)),),
 	watched=("1769",),
+	year=2026,
 )
 SECTION_15A = {"1558": "E3008701", "1559": "E3008702"}
 
@@ -120,7 +121,7 @@ class OrderTest(TestCase):
 			"1528": "E3008803",
 			"1529": "E3008804",
 		}
-		result = split(SKR03, role_defaults=roles)
+		result = split(SKR03.for_year(2026), role_defaults=roles)
 		self.assertEqual(len(result.assignments), len(SKR03.rules))
 		for rule in SKR03.rules:
 			with self.subTest(account=rule.account_number):

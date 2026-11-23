@@ -112,6 +112,42 @@ class DeadlineTest(TestCase):
 		self.assertEqual(Period.quarter(2026, 1).deadline(holidays=holidays), date(2026, 4, 13))
 
 
+class Deadline2027Test(TestCase):
+	"""The periods of 2027 with their ELSTER codes and deadlines: the 10th day after the period (§ 18 Absatz 1 Satz 1
+	UStG), a month later with the Dauerfristverlängerung (§ 46 UStDV), on the next working day after a weekend or a
+	holiday the caller names (§ 108 Absatz 3 AO)."""
+
+	def test_january_is_due_on_wednesday_10_february(self):
+		january = Period.month(2027, 1)
+		self.assertEqual((january.code, january.label), ("01", "Januar 2027"))
+		self.assertEqual(date(2027, 2, 10).weekday(), 2)
+		self.assertEqual(january.deadline(), date(2027, 2, 10))
+		self.assertEqual(january.deadline(dauerfristverlaengerung=True), date(2027, 3, 10))
+
+	def test_the_first_quarter_is_due_on_monday_12_april(self):
+		quarter = Period.quarter(2027, 1)
+		self.assertEqual((quarter.code, quarter.label), ("41", "I. Kalendervierteljahr 2027"))
+		self.assertEqual(date(2027, 4, 10).weekday(), 5)
+		self.assertEqual(quarter.deadline(), date(2027, 4, 12))
+		self.assertEqual(quarter.deadline(dauerfristverlaengerung=True), date(2027, 5, 10))
+
+	def test_june_and_september_move_off_the_weekend(self):
+		self.assertEqual(date(2027, 7, 10).weekday(), 5)
+		self.assertEqual(Period.month(2027, 6).deadline(), date(2027, 7, 12))
+		self.assertEqual(date(2027, 10, 10).weekday(), 6)
+		self.assertEqual(Period.month(2027, 9).deadline(), date(2027, 10, 11))
+
+	def test_a_holiday_after_the_weekend_moves_the_deadline_further(self):
+		self.assertEqual(Period.month(2027, 9).deadline(holidays={date(2027, 10, 11)}), date(2027, 10, 12))
+
+	def test_december_and_the_fourth_quarter_are_due_in_2028(self):
+		self.assertEqual(Period.month(2027, 12).code, "12")
+		self.assertEqual(Period.quarter(2027, 4).code, "44")
+		self.assertEqual(Period.month(2027, 12).deadline(), date(2028, 1, 10))
+		self.assertEqual(Period.quarter(2027, 4).deadline(), date(2028, 1, 10))
+		self.assertEqual(Period.month(2027, 12).deadline(dauerfristverlaengerung=True), date(2028, 2, 10))
+
+
 class DeadlineHolidaysTest(TestCase):
 	"""§ 108 Absatz 3 AO moves a deadline off a Sunday, a public holiday or a Saturday, not off another weekly day
 	off of the company."""

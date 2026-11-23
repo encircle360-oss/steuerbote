@@ -86,6 +86,40 @@ class NutzdatenTest(TestCase):
 		self.assertEqual(parse(document).findtext("{*}Erstellungsdatum"), "20270105")
 
 
+class Year2027Test(TestCase):
+	"""Form USt 1 H 2027 in the schema of 2027 of the beta ERiC 45.1.5.0, with the elements of 2026 in both contexts."""
+
+	def test_writes_the_anmeldung_byte_for_byte(self):
+		self.assertEqual(
+			written(anmeldung(year=2027)),
+			(FIXTURES / "ust1h_2027_umsatzsteuersondervorauszahlung.xml").read_text(encoding="utf-8"),
+		)
+
+	def test_writes_the_antrag_byte_for_byte(self):
+		self.assertEqual(
+			written(antrag(year=2027)),
+			(FIXTURES / "ust1h_2027_dauerfristverlaengerung.xml").read_text(encoding="utf-8"),
+		)
+
+	def test_110085131_jahr_is_the_year_of_the_schema(self):
+		root = parse(written(anmeldung(year=2027, corrected=True, no_sepa_mandate=True)))
+		self.assertEqual(
+			(etree.QName(root).namespace, root.get("version")),
+			("http://finkonsens.de/elster/elsteranmeldung/ustva/v2027", "2027"),
+		)
+		self.assertEqual(
+			elements(written(anmeldung(year=2027, corrected=True, no_sepa_mandate=True))),
+			[
+				("Jahr", "2027"),
+				("Steuernummer", TEST_STEUERNUMMER),
+				("Kz09", HERSTELLER_ID),
+				("Kz10", "1"),
+				("Kz26", "1"),
+				("Kz38", "4000"),
+			],
+		)
+
+
 class ContextTest(TestCase):
 	def test_a_quarterly_filer_files_the_antrag_as_the_context_dauerfristverlaengerung(self):
 		self.assertIs(Context.for_rhythm(Rhythm.QUARTERLY), DF)
@@ -159,7 +193,7 @@ class ContextTest(TestCase):
 
 	def test_a_year_without_the_form_has_no_file(self):
 		with self.assertRaises(FormError) as raised:
-			anmeldung(year=2027)
+			anmeldung(year=dauerfrist_form.LATEST_YEAR + 1)
 		self.assertEqual(raised.exception.template, dauerfrist_form.NO_LAYOUT)
 
 

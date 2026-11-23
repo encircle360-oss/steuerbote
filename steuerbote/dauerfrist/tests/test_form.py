@@ -138,6 +138,81 @@ class LayoutTest(TestCase):
 			layout_for(2026).rule(DF, "Svz_Kz29_ohne_Kz10")
 
 
+class Layout2027Test(TestCase):
+	"""Form USt 1 H 2027 as Jahresdokumentation_UStVA_2027.ods of the beta ERiC 45.1.5.0 has it, against 2026: the
+	same fields in both contexts but Kz 09, which takes the Hersteller-ID alone, without the two rules on its length;
+	the lines and labels of form USt 1 H 2026 until the BMF letter with the form of 2027 (steuerbote/ustva/years.py)."""
+
+	def setUp(self):
+		self.layout = layout_for(2027)
+		self.before = layout_for(2026)
+
+	def test_knows_2027(self):
+		self.assertIs(self.layout, LAYOUTS[2027])
+		self.assertEqual((self.layout.year, LATEST_YEAR), (2027, 2027))
+
+	def test_both_contexts_keep_the_fields_of_2026(self):
+		for context in Context:
+			with self.subTest(context=context):
+				self.assertEqual(self.layout.elements(context), self.before.elements(context))
+
+	def test_every_field_but_kz09_and_the_year_of_kz38_is_that_of_2026(self):
+		for context in Context:
+			for field in self.layout.fields[context]:
+				if field.element in ("Kz09", "Kz38"):
+					continue
+				with self.subTest(context=context, element=field.element):
+					self.assertEqual(field, self.before.field(context, field.element))
+
+	def test_kz09_takes_the_hersteller_id_of_five_digits_alone(self):
+		for context in Context:
+			field = self.layout.field(context, "Kz09")
+			with self.subTest(context=context):
+				self.assertEqual(
+					(field.regex, field.format, field.min_length, field.max_length, field.line),
+					(r"^(?=.{5,5}$)[0-9]+", Format.GENERAL, 5, 5, 6),
+				)
+				self.assertTrue(field.accepts("12345"))
+				for text in ("12345*Berater*Mandant*1*2*3", "1234", "123456", "1234a"):
+					self.assertFalse(field.accepts(text), text)
+				self.assertTrue(self.before.field(context, "Kz09").accepts("12345*Berater*Mandant*1*2*3"))
+
+	def test_110085046_the_rules_on_the_length_of_kz09_are_gone(self):
+		names = {rule.name for rule in self.layout.rules}
+		self.assertFalse({"Df_Kz09_Laenge", "Svz_Kz09_Laenge"} & names)
+		self.assertEqual(
+			[rule for rule in self.before.rules if rule.code != "110085046"], list(self.layout.rules)
+		)
+		self.assertEqual(len(self.layout.rules), 18)
+
+	def test_kz38_is_the_sondervorauszahlung_2027_on_line_9(self):
+		field = self.layout.field(SVZ, "Kz38")
+		self.assertEqual((field.label, field.line), ("Davon 1/11 = Sondervorauszahlung 2027", 9))
+		self.assertEqual(field.regex, self.before.field(SVZ, "Kz38").regex)
+
+	def test_files_the_anmeldung_and_the_antrag_of_2027(self):
+		filing = anmeldung(year=2027, corrected=True, offset_requested=True)
+		self.assertEqual(
+			list(filing.texts().items()),
+			[("Jahr", "2027"), ("Kz10", "1"), ("Kz29", "1"), ("Kz38", "4000")],
+		)
+		self.assertEqual(antrag(year=2027).texts(), {"Jahr": "2027"})
+
+	def test_110085049_the_hint_on_kz500_stays(self):
+		filing = antrag(year=2027, supplementary_code="1", begruendung="Sachverhalt")
+		self.assertEqual(
+			[(rule.code, rule.name, rule.severity) for rule in filing.hints],
+			[("110085049", "Kz500_Hinweis", Severity.HINT)],
+		)
+
+	def test_11085150_kz29_still_needs_kz10(self):
+		with self.assertRaises(FormError) as caught:
+			anmeldung(year=2027, offset_requested=True)
+		self.assertEqual(
+			(caught.exception.template, caught.exception.rule.code), (OFFSET_WITHOUT_CORRECTION, "11085150")
+		)
+
+
 class FieldTest(TestCase):
 	def accepts(self, context: Context, element: str, text: str) -> bool:
 		return layout_for(2026).field(context, element).accepts(text)
@@ -469,6 +544,83 @@ class JahresdokumentationTest(TestCase):
 	def test_the_examples_of_the_documentation_fit_the_fields(self):
 		for context, example in ((DF, "UStVA_Df_2026.xml"), (SVZ, "UStVA_SoVZ_2026.xml")):
 			path = eric_schema.nutzdaten_xsd(2026).parents[2] / "Beispiele" / example
+			(element,) = etree.parse(str(path)).iter(f"{{*}}{context.value}")
+			for child in element.iterchildren(etree.Element):
+				name = etree.QName(child).localname
+				with self.subTest(example=example, element=name):
+					self.assertTrue(self.layout.field(context, name).accepts(child.text.strip()))
+
+
+class Jahresdokumentation2027Test(TestCase):
+	"""The layout of 2027 against the beta ERiC 45.1.5.0; skipped with a documentation that holds no UStVA 2027, such as
+	44.3.6.0 of the CI, see eric_schema.ustva_year."""
+
+	@classmethod
+	def setUpClass(cls) -> None:
+		super().setUpClass()
+		cls.documentation = eric_schema.ustva_year(2027)
+		cls.layout = layout_for(2027)
+
+	def test_fields_follow_the_sheet_felder(self):
+		rows = {
+			(row["Kontext"], row["Name"]): row
+			for row in jahresdokumentation.sheet(2027, "Anmeldungssteuern - Felder")
+		}
+		for context in Context:
+			kontext = f"Steuerfall/{context.value}"
+			with self.subTest(context=context):
+				self.assertEqual(
+					tuple(name for (row_kontext, name) in rows if row_kontext == kontext),
+					self.layout.elements(context),
+				)
+			for field in self.layout.fields[context]:
+				row = rows[(kontext, field.element)]
+				with self.subTest(context=context, element=field.element):
+					self.assertEqual(
+						(field.regex, field.format.value, field.min_length, field.max_length, field.line),
+						(
+							row["Format als regulärer Ausdruck"],
+							row["Formatkennzeichen"],
+							_number(row["Min. Länge"]),
+							_number(row["Max. Länge"]),
+							_number(row["Vordruckzeile"]),
+						),
+					)
+
+	def test_rules_follow_the_sheet_regeln(self):
+		documented = {
+			(row["Kontext"], row["Name"], row["Fehlercode"], row["Regelart"])
+			for row in jahresdokumentation.sheet(2027, "Anmeldungssteuern - Regeln")
+			if row["Kontext"] in {f"Steuerfall/{context.value}" for context in Context}
+			or (
+				row["Kontext"] == "Steuerfall"
+				and any(context.value in row["Prüfbedingung"] for context in Context)
+			)
+		}
+		ours = {
+			(
+				"Steuerfall" if rule.context is None else f"Steuerfall/{rule.context.value}",
+				rule.name,
+				rule.code,
+				rule.severity.value,
+			)
+			for rule in self.layout.rules
+		}
+		self.assertEqual(ours, documented)
+
+	def test_elements_follow_the_sequence_of_the_schema(self):
+		schema = etree.parse(str(eric_schema.nutzdaten_xsd(2027)))
+		for context in Context:
+			(type_name,) = schema.xpath("//xs:element[@name=$name]/@type", name=context.value, namespaces=XS)
+			elements = schema.xpath(
+				"//xs:complexType[@name=$type]/xs:sequence/xs:element/@name", type=type_name, namespaces=XS
+			)
+			with self.subTest(context=context):
+				self.assertEqual(tuple(elements), self.layout.elements(context))
+
+	def test_the_examples_of_the_documentation_fit_the_fields(self):
+		for context, example in ((DF, "UStVA_Df_2027.xml"), (SVZ, "UStVA_SoVZ_2027.xml")):
+			path = eric_schema.nutzdaten_xsd(2027).parents[2] / "Beispiele" / example
 			(element,) = etree.parse(str(path)).iter(f"{{*}}{context.value}")
 			for child in element.iterchildren(etree.Element):
 				name = etree.QName(child).localname

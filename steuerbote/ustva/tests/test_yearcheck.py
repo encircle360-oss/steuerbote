@@ -595,9 +595,59 @@ class DocumentationTest(TestCase):
 			(1, "catalogue 2026, Kz 66: line 37; Jahresdokumentation_UStVA_2026.ods: Vordruckzeile 38\n"),
 		)
 
+	def test_2027_agrees_with_the_documentation_of_the_beta_it_comes_from(self):
+		self.assertTrue(YEARS[2027].provisional)
+		documentation = eric_schema.ustva_year(2027)
+		self.assertEqual([str(difference) for difference in check(documentation, 2027)], [])
+		self.assertFalse(passes_over(documentation, 2027))
+
+	def test_2027_changes_kz09_and_its_rules_against_2026(self):
+		"""What the year check of 2027 finds with the data of 2026 in its place: the namespace and version of the
+		schema, Kz 09 of form USt 1 H, which takes the Hersteller-ID alone, and the two rules on its length, which are
+		gone (Jahresdokumentation_UStVA_2027.ods of the beta ERiC 45.1.5.0)."""
+		documentation = eric_schema.ustva_year(2027)
+		found = [str(difference) for difference in differences(read(documentation, 2027), data_for(2026))]
+		jd = "Jahresdokumentation_UStVA_2027.ods"
+		pattern = r"^(?=.{5,95}$)([0-9]{5})|([0-9]{5}\*.{0,85}\*.{0,85}\*.{0,85}\*.{0,85}\*.{0,85})"
+		self.assertEqual(
+			found,
+			[
+				"schema 2026, namespace: http://finkonsens.de/elster/elsteranmeldung/ustva/v2026; UStVA-2027.xsd: "
+				"http://finkonsens.de/elster/elsteranmeldung/ustva/v2027",
+				"schema 2026, version: 2026; UStVA-2027.xsd: 2027",
+				*(
+					line
+					for context in (DF, SVZ)
+					for line in (
+						f"layout 2026, {context}, Kz09: Format als regulärer Ausdruck {pattern}; {jd}: Format als "
+						r"regulärer Ausdruck ^(?=.{5,5}$)[0-9]+",
+						f"layout 2026, {context}, Kz09: Max. Länge 95; {jd}: Max. Länge 5",
+					)
+				),
+				f"layout 2026, rule Df_Kz09_Laenge of Steuerfall: 110085046, Fehler; {jd}: no such rule",
+				f"layout 2026, rule Svz_Kz09_Laenge of Steuerfall: 110085046, Fehler; {jd}: no such rule",
+			],
+		)
+
 	def test_runs_as_a_command_that_prints_nothing_for_2026(self):
 		completed = subprocess.run(  # noqa: S603 - this interpreter, a fixed module and the documentation of the test
 			[sys.executable, "-m", "steuerbote.ustva.yearcheck", str(self.documentation), "2026"],
+			capture_output=True,
+			cwd=APP_ROOT,
+			timeout=120,
+			check=False,
+		)
+		self.assertEqual((completed.returncode, completed.stdout, completed.stderr), (0, b"", b""))
+
+
+class BetaCommandTest(TestCase):
+	"""The command against the documentation of the beta ERiC 45.1.5.0, which holds 2026 and 2027; skipped with a
+	documentation that holds no UStVA 2027, see eric_schema.ustva_year."""
+
+	def test_prints_nothing_for_2026_and_2027(self):
+		documentation = eric_schema.ustva_year(2027)
+		completed = subprocess.run(  # noqa: S603 - this interpreter, a fixed module and the documentation of the test
+			[sys.executable, "-m", "steuerbote.ustva.yearcheck", str(documentation)],
 			capture_output=True,
 			cwd=APP_ROOT,
 			timeout=120,

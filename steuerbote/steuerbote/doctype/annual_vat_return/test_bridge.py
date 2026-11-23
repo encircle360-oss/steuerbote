@@ -54,6 +54,7 @@ MAPPING = Mapping(
 		WatchedAccount("8603", WatchLevel.HINT),
 		WatchedAccount("3552", WatchLevel.HINT),
 	),
+	year=2026,
 )
 SPLIT = split(
 	MAPPING,

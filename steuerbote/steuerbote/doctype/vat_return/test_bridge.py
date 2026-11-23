@@ -58,6 +58,14 @@ class SondervorauszahlungTest(TestCase):
 	def test_nothing_is_deducted_without_an_amount(self):
 		self.assertEqual(bridge.sondervorauszahlung_values(Period.month(2026, 12), True, d("0")), {})
 
+	def test_the_sondervorauszahlung_2027_is_deducted_in_december_2027(self):
+		values = bridge.sondervorauszahlung_values(Period.month(2027, 12), True, d("4000.00"))
+		self.assertEqual(values, {"39": d("4000.00")})
+		filing = bridge.filing([{"kennzahl": "39", "reported": 4000.0}, {"kennzahl": "83"}], 2027)
+		self.assertEqual(
+			(filing.totals["sondervorauszahlung"], filing.totals["kz83"]), (d("4000.00"), d("-4000.00"))
+		)
+
 
 class KennzahlRowsTest(TestCase):
 	def setUp(self):
@@ -594,6 +602,33 @@ class VoranmeldungTest(TestCase):
 		)
 		self.assertEqual((voranmeldung.supplementary_code, voranmeldung.begruendung), ("2", "Siehe Anlage"))
 		self.assertEqual(voranmeldung.reported_before, frozenset({"43"}))
+
+	def test_files_january_2027_in_the_schema_of_2027(self):
+		rows = list(
+			bridge.filing(
+				bridge.kennzahl_rows(calculate(verified_month(), SKR03.for_year(2027)), KENNZAHLEN, {}), 2027
+			).rows
+		)
+		voranmeldung = bridge.voranmeldung({"kennzahlen": rows, "kz83": 95.0}, Period.month(2027, 1))
+		document = ustva_xml.to_nutzdaten(
+			bridge.filer(
+				{
+					"company": "Beispiel GmbH",
+					"elster_tax_number": "9198011310010",
+					"street": "Hauptstraße 1",
+					"postal_code": "80331",
+					"city": "München",
+				}
+			),
+			voranmeldung,
+			date(2027, 2, 3),
+			"12345",
+		)
+		self.assertIn(
+			'<Anmeldungssteuern xmlns="http://finkonsens.de/elster/elsteranmeldung/ustva/v2027" version="2027">',
+			document,
+		)
+		self.assertIn("<Jahr>2027</Jahr>\n\t\t\t<Zeitraum>01</Zeitraum>", document)
 
 	def test_a_return_that_corrects_nothing_writes_no_zeros(self):
 		voranmeldung = bridge.voranmeldung(self.doc, Period.month(2026, 3), reported_before={"43"})

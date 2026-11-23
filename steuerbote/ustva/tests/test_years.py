@@ -27,9 +27,9 @@ UNKNOWN_YEAR = LATEST_YEAR + 1
 
 
 class YearTableTest(TestCase):
-	def test_files_2026(self):
-		self.assertEqual(tuple(YEARS), (2026,))
-		self.assertEqual(LATEST_YEAR, 2026)
+	def test_files_2026_and_2027(self):
+		self.assertEqual(tuple(YEARS), (2026, 2027))
+		self.assertEqual(LATEST_YEAR, 2027)
 
 	def test_holds_each_year_under_its_own_number_in_order(self):
 		self.assertEqual([year.year for year in YEARS.values()], list(YEARS))
@@ -45,6 +45,18 @@ class YearTableTest(TestCase):
 		)
 		self.assertTrue(year.url.startswith("https://www.bundesfinanzministerium.de/"))
 		self.assertIn("2025-12-29-vordruckmuster-USt-voranmeldung-2026.pdf", year.url)
+
+	def test_2027_is_provisional_from_the_beta_45_1_5_0_with_the_form_of_2026(self):
+		"""The BMF had published no letter with the forms of 2027 by 23 November 2026, the day of the latest BMF letter
+		being 13 November 2026, and ERiC 45 is a beta (ERiC-Entwicklerhandbuch, Kap. 2.3)."""
+		year = YEARS[2027]
+		self.assertTrue(year.provisional)
+		self.assertEqual((year.letter_date, year.reference, year.url, year.letter), (None, None, None, None))
+		self.assertEqual((year.documentation, year.form_year), ("Beta ERiC 45.1.5.0", 2026))
+		self.assertEqual(
+			year.source, "Jahresdokumentation_UStVA_2027.ods of the documentation of Beta ERiC 45.1.5.0"
+		)
+		self.assertEqual((year.datenart_version, year.plugin), ("UStVA_2027", "checkUStVA_2027"))
 
 	def test_the_data_of_each_year_cite_its_source(self):
 		for year in YEARS.values():

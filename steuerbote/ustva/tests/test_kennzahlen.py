@@ -132,6 +132,24 @@ class CatalogueTest(TestCase):
 			_index((kennzahl, kennzahl))
 
 
+class Catalogue2027Test(TestCase):
+	"""Jahresdokumentation_UStVA_2027.ods of the beta ERiC 45.1.5.0 lists the fields of Umsatzsteuervoranmeldung of 2026
+	with the same Vordruckzeile, Formatkennzeichen and Beschreibung, so 2027 keeps the Kennzahlen of form USt 1 A 2026
+	until the BMF letter with the form of 2027 (steuerbote/ustva/years.py)."""
+
+	def test_covers_exactly_the_kennzahlen_of_form_ust_1_a_2026(self):
+		self.assertEqual(set(CATALOGUES[2027]), set(FORM_UST_1_A_2026))
+
+	def test_every_kennzahl_keeps_its_line_label_kind_effect_rate_and_tax_kennzahl(self):
+		for number, kennzahl in CATALOGUES[2027].items():
+			with self.subTest(kennzahl=number):
+				self.assertEqual(kennzahl, CATALOGUE_2026[number])
+
+	def test_is_its_own_catalogue_of_its_year(self):
+		self.assertIs(catalogue_for(2027), CATALOGUES[2027])
+		self.assertIs(KENNZAHLEN, CATALOGUES[2027])
+
+
 class FormSumsTest(TestCase):
 	"""Every Kennzahl that changes the amount owed has to enter one of the sums the form computes."""
 
@@ -209,7 +227,9 @@ class CatalogueByYearTest(TestCase):
 		self.assertIs(catalogue_for(2026), CATALOGUES[2026])
 
 	def test_unknown_year_is_refused_with_the_known_years(self):
-		with self.assertRaisesRegex(UnknownYearError, "no Kennzahlen catalogue for 2019; known years: 2026"):
+		with self.assertRaisesRegex(
+			UnknownYearError, "no Kennzahlen catalogue for 2019; known years: 2026, 2027"
+		):
 			catalogue_for(2019)
 		self.assertTrue(issubclass(UnknownYearError, ValueError))
 

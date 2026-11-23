@@ -1,0 +1,25 @@
+<Anmeldungssteuern xmlns="http://finkonsens.de/elster/elsteranmeldung/ustva/v2027" version="2027">
+	<Erstellungsdatum>20270203</Erstellungsdatum>
+	<DatenLieferant>
+		<Name>Beispiel GmbH</Name>
+		<Strasse>Hauptstraße 1</Strasse>
+		<PLZ>80331</PLZ>
+		<Ort>München</Ort>
+	</DatenLieferant>
+	<Steuerfall>
+		<Umsatzsteuervoranmeldung>
+			<Jahr>2027</Jahr>
+			<Zeitraum>01</Zeitraum>
+			<Steuernummer>9198011310010</Steuernummer>
+			<Kz09>12345</Kz09>
+			<Kz21>2000</Kz21>
+			<Kz45>500</Kz45>
+			<Kz46>300</Kz46>
+			<Kz47>57.00</Kz47>
+			<Kz66>95.00</Kz66>
+			<Kz67>57.00</Kz67>
+			<Kz81>1000</Kz81>
+			<Kz83>95.00</Kz83>
+		</Umsatzsteuervoranmeldung>
+	</Steuerfall>
+</Anmeldungssteuern>

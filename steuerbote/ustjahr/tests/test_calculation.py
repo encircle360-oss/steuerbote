@@ -56,6 +56,7 @@ MAPPING = Mapping(
 		TaxCheck("Umsatzsteuer nach § 13b UStG 19 %", ("3123",), ("1787",)),
 	),
 	watched=("1769", "3075", "3151"),
+	year=2026,
 )
 ROLES = {"1558": "E3008701", "1559": "E3008702", "8910": "E3003405", "1794": "E3101702", "8105": "E3104401"}
 ANNUAL_RULES = (
@@ -141,6 +142,7 @@ class LinesTest(TestCase):
 		mapping = Mapping(
 			"test",
 			(AccountRule("3123", "46", Side.DEBIT), AccountRule("1787", "47", Side.CREDIT)),
+			year=2026,
 		)
 		result = calculate([line("3123", debit="100.00"), line("1787", credit="19.00")], split(mapping))
 		self.assertEqual(amounts(result, "E3102205", "E3102206"), (Decimal("100.00"), Decimal("19.00")))
@@ -260,6 +262,7 @@ class VerprobungTest(TestCase):
 			"test",
 			(AccountRule("8400", "81", Side.CREDIT),),
 			watched=(WatchedAccount("8603", WatchLevel.HINT),),
+			year=2026,
 		)
 		result = calculate([line("8603", credit="12.00")], split(mapping))
 		self.assertEqual(result.hinted, (AccountBalance("8603", ZERO, Decimal("12.00")),))
@@ -285,6 +288,7 @@ class ParagraphTest(TestCase):
 				AccountRule("8101", "48", Side.CREDIT),
 				AccountRule("8102", "48", Side.CREDIT),
 			),
+			year=2026,
 		)
 		choices = (
 			Choice("8100", "E3104502", "4 Nummer 14"),

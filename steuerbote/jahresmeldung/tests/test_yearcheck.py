@@ -165,8 +165,9 @@ class CommandTest(SyntheticTestCase):
 		self.assertLines(arguments=("2026",))
 
 	def test_names_a_year_of_the_ustva_beyond_its_table(self):
+		latest = ustva_years.LATEST_YEAR
 		eric_documentation.write(
-			self.directory, eric_documentation.documented(ustva_yearcheck.data_for(2026), 2027)
+			self.directory, eric_documentation.documented(ustva_yearcheck.data_for(latest), latest + 1)
 		)
 		code, found, _ = self.run_main("UStVA")
 		self.assertEqual(
@@ -174,7 +175,8 @@ class CommandTest(SyntheticTestCase):
 			(
 				1,
 				[
-					"UStVA 2027: not in YEARS of steuerbote/ustva/years.py; Jahresdokumentation_UStVA_2027.ods: documented"
+					f"UStVA {latest + 1}: not in YEARS of steuerbote/ustva/years.py; "
+					f"Jahresdokumentation_UStVA_{latest + 1}.ods: documented"
 				],
 			),
 		)
@@ -198,18 +200,20 @@ class UStVATest(SyntheticTestCase):
 		)
 
 	def test_compares_the_latest_data_with_the_documentation_of_a_new_year(self):
+		latest = ustva_years.LATEST_YEAR
+		new = latest + 1
 		eric_documentation.write(
-			self.directory, eric_documentation.documented(ustva_yearcheck.data_for(2026), 2027)
+			self.directory, eric_documentation.documented(ustva_yearcheck.data_for(latest), new)
 		)
-		code, found, _ = self.run_main("UStVA", "2027")
+		code, found, _ = self.run_main("UStVA", str(new))
 		self.assertEqual(code, 1)
 		self.assertEqual(
 			found[:2],
 			[
-				"UStVA 2027 is missing in YEARS of steuerbote/ustva/years.py, CATALOGUES of "
+				f"UStVA {new} is missing in YEARS of steuerbote/ustva/years.py, CATALOGUES of "
 				"steuerbote/ustva/kennzahlen.py, SCHEMAS of steuerbote/elster/ustva_xml.py, LAYOUTS of "
 				"steuerbote/dauerfrist/form.py; the latest data take its place:",
-				"UStVA 2027, schema 2026, version: 2026; UStVA-2027.xsd: 2027",
+				f"UStVA {new}, schema {latest}, version: {latest}; UStVA-{new}.xsd: {new}",
 			],
 		)
 
@@ -972,3 +976,13 @@ class DocumentationTest(TestCase):
 			check=False,
 		)
 		self.assertEqual((completed.returncode, completed.stdout, completed.stderr), (0, b"", b""))
+
+
+class BetaDocumentationTest(TestCase):
+	"""The UStVA against the documentation of the beta ERiC 45.1.5.0, which holds 2026 and 2027; skipped with a
+	documentation that holds no UStVA 2027, see eric_schema.ustva_year."""
+
+	def test_the_ustva_and_form_ust_1_h_agree_with_it_in_2026_and_2027(self):
+		stdout, stderr = io.StringIO(), io.StringIO()
+		code = main([str(eric_schema.ustva_year(2027)), "UStVA"], stdout, stderr)
+		self.assertEqual((code, stdout.getvalue(), stderr.getvalue()), (0, "", ""))
