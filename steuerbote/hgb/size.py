@@ -20,6 +20,13 @@ The criteria are the Bilanzsumme, the Umsatzerlöse „in den zwölf Monaten vor
 Arbeitnehmer „im Jahresdurchschnitt“ (§ 267 Abs. 1 and 2, § 267a Abs. 1 HGB). A criterion at its threshold does
 not exceed it.
 
+„Die Rechtsfolgen der Merkmale nach den Absätzen 1 bis 3 Satz 1 treten nur ein, wenn sie an den
+Abschlußstichtagen von zwei aufeinanderfolgenden Geschäftsjahren über- oder unterschritten werden.“ (§ 267 Abs. 4
+Satz 1 HGB, for Kleinst by § 267a Abs. 1 Satz 2) decide() applies this to each of the three boundaries between the
+classes: a boundary the criteria cross on one Abschlussstichtag only keeps the side the class of the previous year
+stood on. A company that grows from klein over two years into mittelgroß and then groß is therefore mittelgroß in
+the second year. Both Abschlussstichtage are measured against the thresholds of the fiscal year decided.
+
 „Als durchschnittliche Zahl der Arbeitnehmer gilt der vierte Teil der Summe aus den Zahlen der jeweils am
 31. März, 30. Juni, 30. September und 31. Dezember beschäftigten Arbeitnehmer einschließlich der im Ausland
 beschäftigten Arbeitnehmer, jedoch ohne die zu ihrer Berufsausbildung Beschäftigten.“ (§ 267 Abs. 5 HGB)
@@ -195,6 +202,76 @@ def indicated_class(criteria: Criteria, thresholds: YearThresholds) -> SizeClass
 		if not exceeds(criteria, limits):
 			return size
 	return SizeClass.GROSS
+
+
+class Basis(Enum):
+	"""Why a class applies to a fiscal year."""
+
+	CONFIRMED = "an zwei aufeinanderfolgenden Abschlussstichtagen"
+	CARRIED = "Größenklasse des Vorjahres"
+
+
+@dataclass(frozen=True, slots=True)
+class SizeDecision:
+	"""The class of a fiscal year: the class each Abschlussstichtag points to and the one that applies.
+
+	applied is None while the class of the previous year is needed and unknown; the Annual Accounts then ask
+	for it or for an override with a Begründung.
+	"""
+
+	year: int
+	indicated: SizeClass
+	previous_indicated: SizeClass | None
+	applied: SizeClass | None
+	basis: Basis | None
+
+	@property
+	def decided(self) -> bool:
+		return self.applied is not None
+
+
+def decide(
+	current: Criteria, previous: Criteria | None = None, previous_class: SizeClass | None = None
+) -> SizeDecision:
+	"""The class of the fiscal year ending on current.closing_date (§ 267 Abs. 4 Satz 1 HGB).
+
+	previous holds the criteria of the Abschlussstichtag before, previous_class the class that applied in
+	that fiscal year, as the size history of the Annual Filing Settings records it.
+	"""
+	if previous is not None and previous.closing_date >= current.closing_date:
+		raise SizeError(
+			f"the previous Abschlussstichtag {previous.closing_date.isoformat()} must lie before "
+			f"{current.closing_date.isoformat()}"
+		)
+	year = current.closing_date.year
+	thresholds = thresholds_for(year)
+	indicated = indicated_class(current, thresholds)
+	if previous is None:
+		if previous_class is indicated:
+			return SizeDecision(year, indicated, None, indicated, Basis.CARRIED)
+		return SizeDecision(year, indicated, None, None, None)
+	previous_indicated = indicated_class(previous, thresholds)
+	if previous_indicated is indicated:
+		return SizeDecision(year, indicated, previous_indicated, indicated, Basis.CONFIRMED)
+	if previous_class is None:
+		return SizeDecision(year, indicated, previous_indicated, None, None)
+	applied = _carried(current, previous, previous_class, thresholds)
+	return SizeDecision(year, indicated, previous_indicated, applied, Basis.CARRIED)
+
+
+def _carried(
+	current: Criteria, previous: Criteria, previous_class: SizeClass, thresholds: YearThresholds
+) -> SizeClass:
+	"""The class whose boundaries keep the side of previous_class unless both closing dates crossed them.
+
+	Thresholds rise from class to class, so a company above one boundary is above every lower one on the same
+	closing date, and the boundaries above the result never outnumber those below it.
+	"""
+	above = 0
+	for size, limits in thresholds.boundaries():
+		now, before = exceeds(current, limits), exceeds(previous, limits)
+		above += now if now == before else previous_class > size
+	return _ORDER[above]
 
 
 def headcount_dates(closing_date: date) -> tuple[date, ...]:
