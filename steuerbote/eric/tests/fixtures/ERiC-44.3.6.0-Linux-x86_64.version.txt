@@ -1,0 +1,9 @@
+Linux-x86_64/lib/plugins/libcommonData.so	44, 3, 4, 0         	2026, 44, 3, 4      
+Linux-x86_64/lib/plugins/libcheckUStVA_2016.so	44, 3, 2, 0         	2026, 44, 3, 2      
+Linux-x86_64/lib/plugins/libcheckZMDO.so	44, 3, 2, 0         	2026, 44, 3, 2      
+Linux-x86_64/lib/plugins/libcheckUStVA_2025.so	44, 3, 2, 0         	2026, 44, 3, 2      
+Linux-x86_64/lib/plugins/libcheckUStVA_2026.so	44, 3, 2, 0         	2026, 44, 3, 2      
+Linux-x86_64/lib/libericapi.so	44, 3, 4, 0         	2026, 44, 3, 4      
+Linux-x86_64/lib/libotto.so   	44, 3, 6, 0         	2026, 44, 3, 6      
+Linux-x86_64/lib/libericxerces.so	26, 8, 11, 0        	2026, 8, 11, 0      
+Linux-x86_64/lib/libeSigner.so	65, 0, 1, 5         	65, 0, 1, 5         

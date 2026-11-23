@@ -4,6 +4,12 @@ fixtures/eric_mindestversionsliste.yaml is an excerpt of the list as ELSTER publ
 releases.MINIMUM_LIST_URL on 23 November 2026 (list version 2.26.4.1, SHA-256 of the whole file
 b8a2cff42586eb02605c855126b720e766002908a5b2f2c98f208e1ee0a95426): the first libraries of each Betriebssystem and
 those of Linux Intel that steuerbote uses, with their lines unchanged and in their order.
+
+fixtures/ERiC-44.3.6.0-Linux-x86_64.version.txt is an excerpt of the Versionsinformationen of the package ERiC
+44.3.6.0 for Linux x86_64 as ELSTER published them at releases.versions_url("44.3.6.0") on 23 November 2026 (225
+libraries, Last-Modified 13 September 2026, SHA-256 of the whole file
+45f0bb38536b46989f29c87ce836151cb33da1b2930af922a0b3e05b6391bdf3): the base libraries and the plugins steuerbote
+uses, with their lines unchanged, padding and tabs included, and in their order.
 """
 
 import hashlib
@@ -22,32 +28,66 @@ from pathlib import Path
 from unittest import TestCase, mock
 
 from steuerbote import hooks
-from steuerbote.eric import releases
+from steuerbote.eric import releases, runtime
 from steuerbote.eric.releases import (
 	BILANZ_TAXONOMIES,
 	FIRST_ANNUAL_YEAR,
 	MAX_LIST_BYTES,
+	MAX_VERSIONS_BYTES,
 	MINIMUM_LIST_URL,
 	FetchedList,
 	Minimum,
 	MinimumList,
 	MinimumListError,
+	VersionsError,
 	annual_checks,
 	checks,
+	complete_versions,
 	due,
 	fetch_list,
+	fetch_versions,
 	format_version,
 	minimum_check,
 	next_year_check,
 	notices,
 	parse_list,
 	parse_version,
+	parse_versions,
+	read_versions,
 	shortfalls,
+	unread,
+	versions_url,
 )
-from steuerbote.eric.runtime import Check, Installation, install_from_archive, installations
+from steuerbote.eric.runtime import MANIFEST, Check, Installation, install_from_archive, installations, verify
 
 FIXTURE = Path(__file__).parent / "fixtures" / "eric_mindestversionsliste.yaml"
 PUBLISHED = FIXTURE.read_text(encoding="utf-8")
+VERSIONS_FIXTURE = Path(__file__).parent / "fixtures" / "ERiC-44.3.6.0-Linux-x86_64.version.txt"
+PUBLISHED_VERSIONS = VERSIONS_FIXTURE.read_text(encoding="utf-8")
+VERSIONS_44 = "https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Linux-x86_64.version.txt"
+# The files of the excerpt below Linux-x86_64/lib, which the archive of a test installs.
+PACKAGE_44 = tuple(
+	line.split("\t")[0].strip().removeprefix("Linux-x86_64/lib/") for line in PUBLISHED_VERSIONS.splitlines()
+)
+# The product versions of the excerpt by file name.
+LISTED_44 = {
+	"libcommonData.so": "44, 3, 4, 0",
+	"libcheckUStVA_2016.so": "44, 3, 2, 0",
+	"libcheckZMDO.so": "44, 3, 2, 0",
+	"libcheckUStVA_2025.so": "44, 3, 2, 0",
+	"libcheckUStVA_2026.so": "44, 3, 2, 0",
+	"libericapi.so": "44, 3, 4, 0",
+	"libotto.so": "44, 3, 6, 0",
+	"libericxerces.so": "26, 8, 11, 0",
+	"libeSigner.so": "65, 0, 1, 5",
+}
+# What the probe could read with EricVersion of ERiC 44.3.6.0, invented after the first run with the package on
+# 23 November 2026: every library by name, but a product version only for some of them.
+PROBED_44 = dict.fromkeys(LISTED_44, "") | {
+	"libericapi.so": "44, 3, 4, 0",
+	"libericxerces.so": "26, 8, 11, 0",
+	"libcommonData.so": "44, 3, 4, 0",
+}
 VERSIONS_JOB = "steuerbote.steuerbote.doctype.eric_settings.eric_settings.check_versions"
 # The product versions EricVersion could report for ERiC 44.3.6.0, invented after the pattern of the handbook.
 CURRENT = {
@@ -83,6 +123,15 @@ def listed(*entries: str, version: str = "2.27.4.1", system: str = "Linux Intel"
 def library(name: str, version: str, mandatory: str | None = None) -> str:
 	text = f"      - name: {name}\n        version: {version}\n"
 	return text + (f"        verpflichtend: {mandatory}\n" if mandatory is not None else "")
+
+
+def versions_of(versions: Mapping[str, str]) -> str:
+	"""Versionsinformationen of the published form for the files below lib: path, product version and file version,
+	separated by tabs and padded with spaces."""
+	return "".join(
+		f"Linux-x86_64/lib/{path}\t{version:<20}\t2026, 44, 3, 6      \n"
+		for path, version in versions.items()
+	)
 
 
 class VersionTest(TestCase):
@@ -453,6 +502,160 @@ class FetchTest(TestCase):
 		self.assertEqual(len(opener.calls), 1)
 
 
+class ParseVersionsTest(TestCase):
+	"""The Versionsinformationen of a package: per file its path, product version and file version, as the handbook
+	shows them for ERiC-37.1.3.0-Windows-x86_64.jar (HB Kap. 4.3 with footnote 21)."""
+
+	def test_reads_the_product_version_of_each_library_of_the_published_list(self):
+		self.assertEqual(
+			parse_versions(PUBLISHED_VERSIONS),
+			{
+				"plugins/libcommonData.so": "44, 3, 4, 0",
+				"plugins/libcheckUStVA_2016.so": "44, 3, 2, 0",
+				"plugins/libcheckZMDO.so": "44, 3, 2, 0",
+				"plugins/libcheckUStVA_2025.so": "44, 3, 2, 0",
+				"plugins/libcheckUStVA_2026.so": "44, 3, 2, 0",
+				"libericapi.so": "44, 3, 4, 0",
+				"libotto.so": "44, 3, 6, 0",
+				"libericxerces.so": "26, 8, 11, 0",
+				"libeSigner.so": "65, 0, 1, 5",
+			},
+		)
+
+	def test_the_published_list_pads_its_columns_with_spaces(self):
+		"""The fixture keeps the lines as ELSTER published them, so the reading is tested on their padding."""
+		lines = PUBLISHED_VERSIONS.splitlines()
+		self.assertIn("Linux-x86_64/lib/libotto.so   \t44, 3, 6, 0         \t2026, 44, 3, 6      ", lines)
+		self.assertIn("Linux-x86_64/lib/libeSigner.so\t65, 0, 1, 5         \t65, 0, 1, 5         ", lines)
+		self.assertEqual(sorted(parse_versions(PUBLISHED_VERSIONS)), sorted(PACKAGE_44))
+
+	def test_reads_line_ends_of_windows_and_empty_lines(self):
+		self.assertEqual(
+			parse_versions("Linux-x86_64/lib/libericapi.so\t44, 3, 4, 0\t2026, 44, 3, 4\r\n\r\n"),
+			{"libericapi.so": "44, 3, 4, 0"},
+		)
+
+	def test_leaves_out_what_lies_outside_the_libraries_of_linux(self):
+		self.assertEqual(
+			parse_versions(
+				"Linux-x86_64/bin/ericSystemCheck\tneu\n"
+				"Windows-x86_64/dll/ericapi.dll\t44, 3, 4, 0\t2026.44.3.4\n"
+				"Linux-x86_64/lib/libericapi.so\t44, 3, 4, 0\t2026, 44, 3, 4\n"
+			),
+			{"libericapi.so": "44, 3, 4, 0"},
+		)
+
+	def test_refuses_text_of_another_form(self):
+		for text, problem in (
+			("", "nennen keine Bibliothek unter Linux-x86_64/lib/"),
+			("Linux-x86_64/bin/ericSystemCheck\t44, 3, 6, 0\t2026, 44, 3, 6\n", "nennen keine Bibliothek"),
+			(
+				"Linux-x86_64/lib/libericapi.so 44, 3, 4, 0 2026, 44, 3, 4\n",
+				"Zeile 1: keine drei durch Tabulatoren getrennten Spalten",
+			),
+			(
+				"Linux-x86_64/lib/libericapi.so\t44, 3, 4, 0\n",
+				"Zeile 1: keine drei durch Tabulatoren getrennten Spalten",
+			),
+			(
+				"Linux-x86_64/lib/libericapi.so\t44, 3, 4, 0\t2026, 44, 3, 4\n"
+				"Linux-x86_64/lib/libotto.so\t44, 3, 6\t2026, 44, 3, 6\n",
+				"Zeile 2: die Produktversion „44, 3, 6“ hat keine vier Zahlen",
+			),
+			(
+				"Linux-x86_64/lib/libericapi.so\t44, 3, 4, 0\t2026, 44, 3, 4\n" * 2,
+				"Zeile 2: Linux-x86_64/lib/libericapi.so steht zweimal",
+			),
+			(
+				"Linux-x86_64/lib/../libericapi.so\t44, 3, 4, 0\t2026, 44, 3, 4\n",
+				"Zeile 1: unzulässiger Pfad Linux-x86_64/lib/../libericapi.so",
+			),
+			(
+				"Linux-x86_64/lib/plugins//libcommonData.so\t44, 3, 4, 0\t2026, 44, 3, 4\n",
+				"Zeile 1: unzulässiger Pfad",
+			),
+			(
+				"Linux-x86_64/lib/plugins\\libcommonData.so\t44, 3, 4, 0\t2026, 44, 3, 4\n",
+				"Zeile 1: unzulässiger Pfad",
+			),
+		):
+			with self.subTest(text=text), self.assertRaises(VersionsError) as raised:
+				parse_versions(text)
+			self.assertIn(problem, str(raised.exception))
+			self.assertTrue(str(raised.exception).startswith("Die Versionsinformationen "))
+
+	def test_a_problem_reads_as_a_sentence_about_the_versionsinformationen(self):
+		self.assertEqual(
+			str(VersionsError("nennen keine Bibliothek unter Linux-x86_64/lib/")),
+			"Die Versionsinformationen nennen keine Bibliothek unter Linux-x86_64/lib/.",
+		)
+		self.assertEqual(
+			str(VersionsError("sind größer als 1 MiB", f"von {VERSIONS_44}")),
+			f"Die Versionsinformationen von {VERSIONS_44} sind größer als 1 MiB.",
+		)
+
+
+class FetchVersionsTest(TestCase):
+	"""ELSTER publishes the Versionsinformationen of every package without login next to its download."""
+
+	def test_the_versionsinformationen_lie_next_to_the_package_of_their_version(self):
+		self.assertEqual(versions_url("44.3.6.0"), VERSIONS_44)
+		self.assertEqual(
+			versions_url("45.1.5.0"),
+			"https://download.elster.de/download/eric/eric_45/ERiC-45.1.5.0-Linux-x86_64.version.txt",
+		)
+
+	def test_gets_them_without_credentials_and_with_a_short_timeout(self):
+		answer = FakeAnswer(PUBLISHED_VERSIONS.encode())
+		opener = FakeOpener(answer)
+		self.assertEqual(fetch_versions("44.3.6.0", opener), PUBLISHED_VERSIONS)
+		((request, timeout),) = opener.calls
+		self.assertEqual((request.full_url, request.get_method(), request.data), (VERSIONS_44, "GET", None))
+		self.assertEqual(
+			[name for name, _ in request.header_items() if name.lower() in ("authorization", "cookie")], []
+		)
+		self.assertEqual(timeout, 10)
+		self.assertTrue(answer.closed)
+
+	def test_refuses_versionsinformationen_longer_than_the_limit(self):
+		with self.assertRaises(VersionsError) as raised:
+			fetch_versions("44.3.6.0", FakeOpener(FakeAnswer(b"x" * (MAX_VERSIONS_BYTES + 1))))
+		self.assertEqual(str(raised.exception), "Die Versionsinformationen sind größer als 1 MiB.")
+		self.assertEqual(
+			len(fetch_versions("44.3.6.0", FakeOpener(FakeAnswer(b"#" * MAX_VERSIONS_BYTES)))),
+			MAX_VERSIONS_BYTES,
+		)
+
+	def test_leaves_errors_to_the_caller(self):
+		for error in (
+			urllib.error.URLError("Name or service not known"),
+			TimeoutError("timed out"),
+			urllib.error.HTTPError(VERSIONS_44, 404, "Not Found", Message(), io.BytesIO(b"")),
+		):
+			with self.subTest(error=error), self.assertRaises(OSError):
+				fetch_versions("44.3.6.0", FakeOpener(error=error))
+		with self.assertRaises(UnicodeDecodeError):
+			fetch_versions("44.3.6.0", FakeOpener(FakeAnswer(b"Linux-x86_64/lib/\xff\n")))
+
+	def test_follows_no_redirect(self):
+		for status in (301, 302, 303, 307, 308):
+			opener = releases.make_opener()
+			server = FakeServer(status, "https://elster.example.org/ERiC-44.3.6.0-Linux-x86_64.version.txt")
+			opener.add_handler(server)
+			with self.subTest(status=status):
+				with self.assertRaises(urllib.error.HTTPError) as raised:
+					fetch_versions("44.3.6.0", opener)
+				self.assertEqual(raised.exception.code, status)
+				self.assertEqual(server.asked, [VERSIONS_44])
+
+	def test_without_an_opener_it_takes_one_that_follows_no_redirect(self):
+		opener = FakeOpener(FakeAnswer(PUBLISHED_VERSIONS.encode()))
+		with mock.patch.object(releases, "make_opener", return_value=opener) as made:
+			fetch_versions("44.3.6.0")
+		made.assert_called_once_with()
+		self.assertEqual(len(opener.calls), 1)
+
+
 class InstalledTestCase(TestCase):
 	"""Runtimes installed from invented archives, each with the product versions a probe reports for it."""
 
@@ -478,6 +681,26 @@ class InstalledTestCase(TestCase):
 		checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
 		probe = None if versions is None else (lambda info: dict(versions))
 		install_from_archive(archive, checksum, self.root, probe=probe)
+
+	def package(self, versions: Mapping[str, str] = PROBED_44) -> None:
+		"""Install the files of the excerpt of the Versionsinformationen of ERiC 44.3.6.0, with the product versions the
+		probe reads."""
+		lib = "ERiC-44.3.6.0/Linux-x86_64/lib"
+		archive = self.directory / "ERiC-44.3.6.0-Linux-x86_64.jar"
+		with zipfile.ZipFile(archive, "w") as jar:
+			for name in PACKAGE_44:
+				jar.writestr(f"{lib}/{name}", name.encode())
+		checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
+		install_from_archive(archive, checksum, self.root, probe=lambda info: dict(versions))
+
+	def listing(self, changes: Mapping[str, str]) -> bytes:
+		"""The excerpt of the Versionsinformationen of ERiC 44.3.6.0 with other product versions by file name."""
+		return versions_of(
+			{
+				name: changes.get(name.rsplit("/", 1)[-1], LISTED_44[name.rsplit("/", 1)[-1]])
+				for name in PACKAGE_44
+			}
+		).encode()
 
 	def installed(self) -> tuple[Installation, ...]:
 		return installations(self.root)
@@ -547,29 +770,61 @@ class ShortfallTest(InstalledTestCase):
 		(installation,) = self.installed()
 		self.assertEqual(shortfalls(installation, parse_list(PUBLISHED)), ())
 
-	def test_a_runtime_installed_without_reading_its_versions(self):
+	def test_a_runtime_without_any_version_read(self):
+		"""Neither the probe nor the Versionsinformationen of the package named a version, so nothing can be compared;
+		the next weekly check reads the Versionsinformationen, a new installation is not needed."""
 		self.install(versions=None)
 		(installation,) = self.installed()
 		self.assertEqual(
 			shortfalls(installation, parse_list(PUBLISHED)),
 			(
-				"die Versionen seiner Bibliotheken sind unbekannt, weil die Einrichtung sie nicht gelesen hat; das "
-				"Verzeichnis der Version entfernen und sie neu einrichten",
+				"die Versionen seiner Bibliotheken sind unbekannt, weil weder EricVersion bei der Einrichtung noch die "
+				"Versionsinformationen des Pakets sie genannt haben; die wöchentliche Prüfung liest diese von "
+				"download.elster.de oder aus der Datei, die steuerbote_eric_versions nennt",
 			),
 		)
+		self.assertEqual(unread(installation, parse_list(PUBLISHED)), ())
 		self.assertEqual(
 			minimum_check(self.installed(), parse_list(PUBLISHED)).notice, "minimum 2.26.4.1 44.3.6.0"
 		)
 
-	def test_a_library_whose_version_was_not_read(self):
+	def test_a_library_whose_version_was_not_read_is_a_hint_and_no_shortfall(self):
 		self.install(versions={"libericapi.so": "44, 3, 6, 0", "libotto.so": "unbekannt"})
 		(installation,) = self.installed()
+		minimums = parse_list(PUBLISHED)
+		self.assertEqual(shortfalls(installation, minimums), ())
 		self.assertEqual(
-			shortfalls(installation, parse_list(PUBLISHED)),
+			unread(installation, minimums),
 			(
-				"ohne gelesene Version: libericxerces.so, libeSigner.so, libotto.so, libcheckUStVA_2025.so, "
-				"libcheckUStVA_2026.so und 2 weitere",
+				"libericxerces.so",
+				"libeSigner.so",
+				"libotto.so",
+				"libcheckUStVA_2025.so",
+				"libcheckUStVA_2026.so",
+				"libcheckZMDO.so",
+				"libcommonData.so",
 			),
+		)
+		check = minimum_check(self.installed(), minimums)
+		self.assertEqual((check.ok, check.notice), (True, ""))
+		self.assertIn(
+			"Ohne gelesene Version und deshalb nicht verglichen: ERiC 44.3.6.0: libericxerces.so, libeSigner.so, "
+			"libotto.so, libcheckUStVA_2025.so, libcheckUStVA_2026.so und 2 weitere.",
+			check.detail,
+		)
+
+	def test_a_library_below_its_minimum_stays_a_shortfall_beside_the_hint(self):
+		self.install(versions={"libericapi.so": "43, 1, 2, 0"})
+		check = minimum_check(self.installed(), parse_list(PUBLISHED))
+		self.assertEqual((check.ok, check.notice), (False, "minimum 2.26.4.1 44.3.6.0"))
+		self.assertTrue(
+			check.detail.startswith(
+				"Abgleich mit der Mindestversionsliste 2.26.4.1: ERiC 44.3.6.0: libericapi.so 43.1.2.0 statt "
+				"mindestens 43.2.6.0. Mit einer Bibliothek unter ihrer Mindestversion ist kein Datenversand möglich "
+				"(ERiC-Entwicklerhandbuch, Kap. 5.4.2). Ohne gelesene Version und deshalb nicht verglichen: ERiC "
+				"44.3.6.0: libericxerces.so,"
+			),
+			check.detail,
 		)
 
 	def test_names_at_most_five_shortfalls_of_a_runtime(self):
@@ -660,6 +915,241 @@ class ShortfallTest(InstalledTestCase):
 				"Ohne ERiC-Laufzeit gibt es nichts mit der Mindestversionsliste 2.26.4.1 zu vergleichen.",
 			),
 		)
+
+
+class PackageVersionsTest(InstalledTestCase):
+	"""The Versionsinformationen of its package complete what the probe read of an installation with EricVersion: with
+	ERiC 44.3.6.0, EricVersion named every library but gave the product version of a few, so most of them had none to
+	compare with the Mindestversionsliste (HB Kap. 4.3 with footnote 21)."""
+
+	def published(self) -> FakeOpener:
+		return FakeOpener(FakeAnswer(PUBLISHED_VERSIONS.encode()))
+
+	def test_before_they_are_read_the_libraries_without_a_version_are_a_hint(self):
+		self.package()
+		(installation,) = self.installed()
+		minimums = parse_list(PUBLISHED)
+		self.assertEqual(shortfalls(installation, minimums), ())
+		self.assertEqual(
+			unread(installation, minimums),
+			(
+				"libeSigner.so",
+				"libotto.so",
+				"libcheckUStVA_2016.so",
+				"libcheckUStVA_2025.so",
+				"libcheckUStVA_2026.so",
+				"libcheckZMDO.so",
+			),
+		)
+		self.assertEqual(
+			minimum_check(self.installed(), minimums),
+			Check(
+				"minimum",
+				True,
+				"ERiC 44.3.6.0 erreicht die Mindestversionen der Mindestversionsliste 2.26.4.1 (libericapi.so ab "
+				"43.2.6.0), soweit ihre Versionen gelesen sind. Ohne gelesene Version und deshalb nicht verglichen: "
+				"ERiC 44.3.6.0: libeSigner.so, libotto.so, libcheckUStVA_2016.so, libcheckUStVA_2025.so, "
+				"libcheckUStVA_2026.so und 1 weitere. Ihre Versionen nennen die Versionsinformationen des Pakets, die "
+				"die wöchentliche Prüfung von download.elster.de liest oder aus der Datei, die "
+				"steuerbote_eric_versions nennt.",
+			),
+		)
+		self.assertEqual(notices(self.installed(), minimums, date(2026, 6, 1)), ())
+
+	def test_their_product_versions_complete_those_of_eric_version(self):
+		self.package()
+		opener = self.published()
+		self.assertEqual(complete_versions(self.installed(), opener=opener), ())
+		self.assertEqual([request.full_url for request, _timeout in opener.calls], [VERSIONS_44])
+		(installation,) = self.installed()
+		self.assertEqual(
+			(dict(installation.listed_versions), installation.listed_versions_source),
+			(LISTED_44, VERSIONS_44),
+		)
+		self.assertEqual(dict(installation.library_versions), PROBED_44)
+		minimums = parse_list(PUBLISHED)
+		self.assertEqual((shortfalls(installation, minimums), unread(installation, minimums)), ((), ()))
+		self.assertEqual(
+			minimum_check(self.installed(), minimums).detail,
+			"ERiC 44.3.6.0 erreicht die Mindestversionen der Mindestversionsliste 2.26.4.1 (libericapi.so ab "
+			"43.2.6.0).",
+		)
+		self.assertEqual(verify(installation), ())
+
+	def test_they_are_read_once(self):
+		self.package()
+		complete_versions(self.installed(), opener=self.published())
+		again = FakeOpener(error=AssertionError("read again"))
+		self.assertEqual(complete_versions(self.installed(), opener=again), ())
+		self.assertEqual(again.calls, [])
+
+	def test_the_manifest_keeps_everything_else(self):
+		self.package()
+		manifest = self.root / "44.3.6.0" / MANIFEST
+		before = json.loads(manifest.read_text(encoding="utf-8"))
+		mode = manifest.stat().st_mode
+		read_versions(self.installed()[0], opener=self.published())
+		self.assertEqual(
+			json.loads(manifest.read_text(encoding="utf-8")),
+			before | {"listed_versions": LISTED_44, "listed_versions_source": VERSIONS_44},
+		)
+		self.assertEqual(manifest.stat().st_mode, mode)
+		self.assertEqual(sorted(path.name for path in manifest.parent.iterdir()), ["lib", MANIFEST])
+
+	def test_reading_them_returns_the_installation_as_its_manifest_now_describes_it(self):
+		self.package()
+		completed = read_versions(self.installed()[0], opener=self.published())
+		self.assertEqual(completed, self.installed()[0])
+		self.assertEqual(dict(completed.listed_versions), LISTED_44)
+
+	def test_a_copy_the_operator_names_takes_the_place_of_the_download(self):
+		"""For a site without access to download.elster.de."""
+		self.package()
+		copy = self.directory / "ERiC-44.3.6.0-Linux-x86_64.version.txt"
+		copy.write_bytes(VERSIONS_FIXTURE.read_bytes())
+		opener = FakeOpener(error=urllib.error.URLError("Network is unreachable"))
+		self.assertEqual(complete_versions(self.installed(), copy, opener), ())
+		self.assertEqual(opener.calls, [])
+		(installation,) = self.installed()
+		self.assertEqual(
+			(dict(installation.listed_versions), installation.listed_versions_source), (LISTED_44, str(copy))
+		)
+
+	def test_a_copy_serves_only_the_version_its_name_names(self):
+		self.package()
+		copy = self.directory / "ERiC-45.1.5.0-Linux-x86_64.version.txt"
+		copy.write_text("Linux-x86_64/lib/libericapi.so\t45, 1, 3, 0\t2026, 45, 1, 3\n", encoding="utf-8")
+		self.assertEqual(complete_versions(self.installed(), copy, self.published()), ())
+		(installation,) = self.installed()
+		self.assertEqual(installation.listed_versions_source, VERSIONS_44)
+
+	def test_a_copy_bears_the_name_elster_gives_the_versionsinformationen(self):
+		self.package()
+		copy = self.directory / "versionen.txt"
+		copy.write_bytes(VERSIONS_FIXTURE.read_bytes())
+		self.assertEqual(
+			complete_versions(self.installed(), copy, self.published()),
+			(
+				f"Die Datei {copy} trägt nicht den Namen von Versionsinformationen, "
+				"ERiC-<Version>-Linux-x86_64.version.txt; Steuerbote nimmt sie nicht.",
+			),
+		)
+		(installation,) = self.installed()
+		self.assertEqual(installation.listed_versions_source, VERSIONS_44)
+
+	def test_what_cannot_be_read_is_named_and_leaves_the_manifest_as_it_was(self):
+		self.package()
+		manifest = self.root / "44.3.6.0" / MANIFEST
+		before = manifest.read_bytes()
+		absent = self.directory / "ERiC-44.3.6.0-Linux-x86_64.version.txt"
+		large = self.directory / "large" / "ERiC-44.3.6.0-Linux-x86_64.version.txt"
+		large.parent.mkdir()
+		large.write_bytes(b"#" * (MAX_VERSIONS_BYTES + 1))
+		without_zmdo = "".join(
+			line for line in PUBLISHED_VERSIONS.splitlines(keepends=True) if "ZMDO" not in line
+		)
+		downloaded = f"ERiC 44.3.6.0: Die Versionsinformationen von {VERSIONS_44}"
+		for copy, answer, problem in (
+			(
+				None,
+				urllib.error.URLError("Name or service not known"),
+				f"{downloaded} ließen sich nicht laden: <urlopen error Name or service not known>.",
+			),
+			(
+				None,
+				urllib.error.HTTPError(VERSIONS_44, 404, "Not Found", Message(), io.BytesIO(b"")),
+				f"{downloaded} ließen sich nicht laden: HTTP Error 404: Not Found.",
+			),
+			(None, TimeoutError("timed out"), f"{downloaded} ließen sich nicht laden: timed out."),
+			(
+				None,
+				FakeAnswer(b"\xff"),
+				f"{downloaded} sind kein UTF-8: 'utf-8' codec can't decode byte 0xff in position 0: invalid start "
+				"byte.",
+			),
+			(
+				None,
+				FakeAnswer(b"#" * (MAX_VERSIONS_BYTES + 1)),
+				f"{downloaded} sind größer als 1 MiB.",
+			),
+			(
+				None,
+				FakeAnswer(b"Linux-x86_64/lib/libericapi.so\t44, 3, 4\t2026, 44, 3, 4\n"),
+				f"{downloaded} haben nicht die erwartete Form: Zeile 1: die Produktversion „44, 3, 4“ hat keine vier "
+				"Zahlen.",
+			),
+			(
+				None,
+				FakeAnswer(without_zmdo.encode()),
+				f"{downloaded} nennen nicht alle Bibliotheken der Laufzeit, es fehlen plugins/libcheckZMDO.so; sie "
+				"gehören zu einem anderen Paket.",
+			),
+			(
+				absent,
+				None,
+				f"ERiC 44.3.6.0: Die Versionsinformationen aus {absent} ließen sich nicht lesen: [Errno 2] No such file "
+				f"or directory: '{absent}'.",
+			),
+			(large, None, f"ERiC 44.3.6.0: Die Versionsinformationen aus {large} sind größer als 1 MiB."),
+		):
+			opener = FakeOpener(error=answer) if isinstance(answer, Exception) else FakeOpener(answer)
+			with self.subTest(problem=problem):
+				self.assertEqual(complete_versions(self.installed(), copy, opener), (problem,))
+				self.assertEqual(manifest.read_bytes(), before)
+				(installation,) = self.installed()
+				self.assertEqual(
+					(dict(installation.listed_versions), installation.listed_versions_source), ({}, "")
+				)
+
+	def test_a_manifest_that_cannot_be_written_stays_as_it_was(self):
+		self.package()
+		manifest = self.root / "44.3.6.0" / MANIFEST
+		before = manifest.read_bytes()
+		with mock.patch.object(runtime.os, "replace", side_effect=OSError("No space left on device")):
+			found = complete_versions(self.installed(), opener=self.published())
+		self.assertEqual(
+			found,
+			(
+				f"ERiC 44.3.6.0: Die Versionsinformationen von {VERSIONS_44} ließen sich nicht im Manifest festhalten: "
+				"No space left on device.",
+			),
+		)
+		self.assertEqual(manifest.read_bytes(), before)
+		self.assertEqual(sorted(path.name for path in manifest.parent.iterdir()), ["lib", MANIFEST])
+
+	def test_where_both_name_a_version_they_agree(self):
+		"""A library whose versions disagree is a shortfall, for then the Versionsinformationen do not describe the
+		installed package."""
+		self.package(PROBED_44 | {"libotto.so": "44, 3, 7, 0"})
+		complete_versions(self.installed(), opener=self.published())
+		(installation,) = self.installed()
+		self.assertEqual(
+			shortfalls(installation, parse_list(PUBLISHED)),
+			("libotto.so 44.3.7.0 laut EricVersion, 44.3.6.0 laut den Versionsinformationen des Pakets",),
+		)
+		check = minimum_check(self.installed(), parse_list(PUBLISHED))
+		self.assertEqual((check.ok, check.notice), (False, "minimum 2.26.4.1 44.3.6.0"))
+		self.assertIn("ERiC 44.3.6.0: libotto.so 44.3.7.0 laut EricVersion, 44.3.6.0 laut den", check.detail)
+
+	def test_where_they_disagree_the_lower_version_counts(self):
+		self.package()
+		read_versions(
+			self.installed()[0], opener=FakeOpener(FakeAnswer(self.listing({"libericapi.so": "43, 1, 0, 0"})))
+		)
+		(installation,) = self.installed()
+		self.assertEqual(
+			shortfalls(installation, parse_list(PUBLISHED)),
+			(
+				"libericapi.so 43.1.0.0 statt mindestens 43.2.6.0",
+				"libericapi.so 44.3.4.0 laut EricVersion, 43.1.0.0 laut den Versionsinformationen des Pakets",
+			),
+		)
+
+	def test_a_version_of_another_form_counts_as_none(self):
+		self.package(PROBED_44 | {"libotto.so": "unbekannt"})
+		complete_versions(self.installed(), opener=self.published())
+		(installation,) = self.installed()
+		self.assertEqual(shortfalls(installation, parse_list(PUBLISHED)), ())
 
 
 class NextYearTest(InstalledTestCase):

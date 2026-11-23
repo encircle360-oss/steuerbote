@@ -22,6 +22,7 @@ from steuerbote.eric.runtime import (
 	installations,
 	is_beta,
 	platform_check,
+	record_listed_versions,
 	status,
 	verify,
 )
@@ -189,6 +190,79 @@ class InstallTest(ArchiveTestCase):
 				path.write_text(json.dumps(manifest))
 				(installation,) = installations(self.root)
 				self.assertEqual(dict(installation.library_versions), {})
+
+	def test_records_the_product_versions_of_the_versionsinformationen_beside_those_of_the_probe(self):
+		"""The Versionsinformationen of the package name the product version of every library, EricVersion only of
+		those ERiC loaded (ERiC-Entwicklerhandbuch, Kap. 4.3 with footnote 21); steuerbote.eric.releases reads them."""
+		self.install(LIBRARIES, probe=lambda info: {"libericapi.so": "44, 3, 4, 0", "libeSigner.so": ""})
+		path = self.root / "44.3.6.0" / MANIFEST
+		before = json.loads(path.read_text())
+		(installation,) = installations(self.root)
+		self.assertEqual((dict(installation.listed_versions), installation.listed_versions_source), ({}, ""))
+		listed = {
+			"libericapi.so": "44, 3, 4, 0",
+			"libericxerces.so": "26, 8, 11, 0",
+			"libeSigner.so": "65, 0, 1, 5",
+			"libcommonData.so": "44, 3, 4, 0",
+			"libcheckUStVA_2025.so": "44, 3, 2, 0",
+			"libcheckUStVA_2026.so": "44, 3, 2, 0",
+		}
+		source = "https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Linux-x86_64.version.txt"
+		recorded = record_listed_versions(installation, listed, source)
+		manifest = json.loads(path.read_text())
+		self.assertEqual(manifest, before | {"listed_versions": listed, "listed_versions_source": source})
+		self.assertEqual(recorded, installations(self.root)[0])
+		self.assertEqual(
+			(
+				dict(recorded.listed_versions),
+				recorded.listed_versions_source,
+				dict(recorded.library_versions),
+			),
+			(listed, source, {"libericapi.so": "44, 3, 4, 0", "libeSigner.so": ""}),
+		)
+		self.assertEqual(verify(recorded), ())
+
+	def test_recording_the_versions_replaces_the_manifest_in_one_step(self):
+		"""A run reads the manifest while a weekly check records the versions, so the manifest is never half written;
+		it keeps its permissions."""
+		self.install(LIBRARIES)
+		path = self.root / "44.3.6.0" / MANIFEST
+		path.chmod(0o640)
+		before = path.read_bytes()
+		(installation,) = installations(self.root)
+		with (
+			mock.patch.object(runtime.os, "replace", side_effect=OSError("No space left on device")),
+			self.assertRaises(OSError),
+		):
+			record_listed_versions(installation, {"libericapi.so": "44, 3, 4, 0"}, "kopie")
+		self.assertEqual(path.read_bytes(), before)
+		self.assertEqual(sorted(entry.name for entry in path.parent.iterdir()), ["lib", MANIFEST])
+		record_listed_versions(installation, {"libericapi.so": "44, 3, 4, 0"}, "kopie")
+		self.assertEqual(path.stat().st_mode & 0o777, 0o640)
+		self.assertEqual(sorted(entry.name for entry in path.parent.iterdir()), ["lib", MANIFEST])
+
+	def test_a_manifest_that_vanished_is_no_installation_to_record_in(self):
+		self.install(LIBRARIES)
+		(installation,) = installations(self.root)
+		shutil.rmtree(installation.path)
+		with self.assertRaises(OSError):
+			record_listed_versions(installation, {"libericapi.so": "44, 3, 4, 0"}, "kopie")
+
+	def test_reads_a_manifest_without_the_versions_of_the_versionsinformationen(self):
+		self.install()
+		path = self.root / "44.3.6.0" / MANIFEST
+		manifest = json.loads(path.read_text())
+		for listed_versions, source in ((["libericapi.so"], 7), ({"libericapi.so": 44}, None)):
+			with self.subTest(listed_versions=listed_versions):
+				path.write_text(
+					json.dumps(
+						manifest | {"listed_versions": listed_versions, "listed_versions_source": source}
+					)
+				)
+				(installation,) = installations(self.root)
+				self.assertEqual(
+					(dict(installation.listed_versions), installation.listed_versions_source), ({}, "")
+				)
 
 	def test_a_failing_probe_leaves_nothing_behind(self):
 		def probe(info: RuntimeInfo) -> None:
