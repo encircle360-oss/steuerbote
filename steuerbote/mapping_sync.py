@@ -7,11 +7,20 @@ defaults_for_accounts turns the default mapping of a chart into rows for the acc
 take and return plain dicts with the DocType's field names, so the controller stays thin and this module is
 tested without a bench.
 
+For Vorgaben aktualisieren and the file of a mapping, the rows are also items of steuerbote.mappings.diff: one per
+account with its place in the mapping, its rule or its watched entry, and one per Verprobung by its label. Each field
+is a text in one canonical form: a rate as its digits without trailing zeros, the accounts of a Verprobung sorted,
+so that the same mapping always gives the same items, however Frappe stored its rows. items_of_rows and
+rows_of_items turn rows into items and back, default_items gives the defaults of a chart for a company as items, and
+body_of_items and items_of_body turn items into the plain data of the stored defaults and of the file and back, and
+file_body and items_of_file_body make the body of the file of a mapping, its rows with the defaults it took over.
+
 A row holds what Frappe stores: an empty Float field is 0, an empty Data or Select field is "" or None,
 and a rule's account number is the one fetched from its account. The DocType's own validate runs before
 Frappe checks the mandatory fields, so a row can still lack a value here.
 """
 
+import json
 import re
 from collections.abc import Iterable, Set
 from collections.abc import Mapping as ReadOnlyMapping
@@ -19,6 +28,7 @@ from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
 from typing import Any, NamedTuple
 
+from steuerbote.mappings.transfer import canonical_json
 from steuerbote.ustva import (
 	AccountRule,
 	Mapping,
@@ -31,10 +41,35 @@ from steuerbote.ustva import (
 )
 
 Row = ReadOnlyMapping[str, Any]
+Key = tuple[str, str]
+Fields = dict[str, str | None]
+
+# The format of the file of a VAT Return Mapping (steuerbote.mappings.transfer).
+FILE_FORMAT = "steuerbote/vat-return-mapping"
+# The kinds of items of a VAT Return Mapping, and the places an account takes in it.
+ACCOUNT = "account"
+CHECK = "check"
+RULE = "rule"
+WATCHED = "watched"
+RULE_FIELDS = ("kennzahl", "side", "tax_rate", "also_kennzahl", "also_side")
+CHECK_FIELDS = ("base_accounts", "tax_accounts", "side")
+BODY_PARTS = {
+	"rules": ("account_number", *RULE_FIELDS),
+	"checks": ("label", *CHECK_FIELDS),
+	"watched": ("account_number", "level"),
+}
 
 # The DocType asks for account numbers separated by commas; blanks and line breaks separate them as well,
 # since a number never contains either.
 _ACCOUNT_SEPARATORS = re.compile(r"[\s,]+")
+
+
+class MappingRows(NamedTuple):
+	"""The rows of the three tables of a mapping, by account number."""
+
+	rule_rows: list[dict[str, Any]]
+	check_rows: list[dict[str, Any]]
+	watched_rows: list[dict[str, Any]]
 
 
 class DefaultRows(NamedTuple):
@@ -93,6 +128,189 @@ def defaults_for_accounts(
 		],
 		missing=sorted(_accounts_of(mapping).difference(existing_numbers)),
 	)
+
+
+def items_of_rows(
+	rule_rows: Iterable[Row], check_rows: Iterable[Row], watched_rows: Iterable[Row]
+) -> dict[Key, Fields]:
+	"""The items of the rows: the accounts of the rules, then the watched accounts, then the Verprobungen, each in
+	the order of its table. Raises MappingError for a row the core cannot read and for an account or a label that
+	two rows name, since an item has one place."""
+	items: dict[Key, Fields] = {}
+	for row in rule_rows:
+		rule = _rule(row)
+		_put(items, (ACCOUNT, rule.account_number), _rule_fields(rule), "account {0} is mapped twice")
+	for row in watched_rows:
+		watched = _watched(row)
+		key = (ACCOUNT, watched.account_number)
+		twice = items.get(key, {}).get("place") == WATCHED
+		_put(
+			items,
+			key,
+			{"place": WATCHED, "level": watched.level.value},
+			"account {0} is watched twice" if twice else "account {0} is watched but also mapped or checked",
+		)
+	for row in check_rows:
+		check = _check(row)
+		_put(items, (CHECK, check.label), _check_fields(check), "two tax checks have the label {0!r}")
+	return items
+
+
+def items_of_mapping(mapping: Mapping) -> dict[Key, Fields]:
+	"""The items of a core Mapping, as its rows would give them."""
+	return items_of_rows(
+		[_rule_row(rule) for rule in mapping.rules],
+		[
+			{
+				"label": check.label,
+				"base_accounts": ", ".join(check.base_accounts),
+				"tax_accounts": ", ".join(check.tax_accounts),
+				"side": check.side.value,
+			}
+			for check in mapping.checks
+		],
+		[
+			{"account_number": watched.account_number, "level": watched.level.value}
+			for watched in mapping.watched
+		],
+	)
+
+
+def default_items(chart: str, year: int, existing_numbers: Set[str]) -> dict[Key, Fields]:
+	"""What Vorgaben laden takes over from the defaults of a chart for a company with these accounts, as items: the
+	levels are those of the defaults, not those a company gave its watched accounts."""
+	defaults = defaults_for_accounts(chart, year, existing_numbers)
+	return items_of_rows(defaults.rule_rows, defaults.check_rows, defaults.watched_rows)
+
+
+def rows_of_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]]) -> MappingRows:
+	"""The rows of the items by account number, each table in the order of the items."""
+	rules, checks, watched = [], [], []
+	for (kind, key), fields in items.items():
+		if kind == CHECK:
+			checks.append({"label": key, **{name: fields[name] for name in CHECK_FIELDS}})
+		elif fields["place"] == WATCHED:
+			watched.append({"account_number": key, "level": fields["level"]})
+		else:
+			rate = fields["tax_rate"]
+			rules.append(
+				{
+					"account_number": key,
+					**{name: fields[name] for name in RULE_FIELDS},
+					"tax_rate": Decimal(rate) if rate else None,
+				}
+			)
+	return MappingRows(rules, checks, watched)
+
+
+def body_of_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]]) -> dict[str, list[dict]]:
+	"""The items as plain data, the form the stored defaults and the file of a mapping hold them in: rules, checks
+	and watched accounts with their fields as texts, the accounts of a check as a list."""
+	rows = rows_of_items(items)
+	return {
+		"rules": [{**row, "tax_rate": _rate_text(row["tax_rate"])} for row in rows.rule_rows],
+		"checks": [
+			{**row, **{part: list(_account_numbers(row[part])) for part in ("base_accounts", "tax_accounts")}}
+			for row in rows.check_rows
+		],
+		"watched": rows.watched_rows,
+	}
+
+
+def items_of_body(body: Any) -> dict[Key, Fields]:
+	"""The items of plain data as body_of_items writes it; raises MappingError for data of another shape."""
+	if not isinstance(body, dict) or set(body) != set(BODY_PARTS):
+		raise MappingError(f"a mapping holds {', '.join(BODY_PARTS)}")
+	for part, fields in BODY_PARTS.items():
+		rows = body[part]
+		if not isinstance(rows, list):
+			raise MappingError(f"{part} must be a list")
+		for row in rows:
+			if not isinstance(row, dict) or set(row) != set(fields):
+				raise MappingError(f"each of the {part} holds {', '.join(fields)}")
+			for name, value in row.items():
+				if not _plain(
+					value, list_of_numbers=part == "checks" and name in ("base_accounts", "tax_accounts")
+				):
+					raise MappingError(f"{part}: {name} cannot be {value!r}")
+	return items_of_rows(
+		body["rules"],
+		[
+			{**row, **{part: ", ".join(row[part]) for part in ("base_accounts", "tax_accounts")}}
+			for row in body["checks"]
+		],
+		body["watched"],
+	)
+
+
+def file_body(
+	items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]],
+	defaults: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]] | None,
+) -> dict[str, Any]:
+	"""The body of the file of a mapping (steuerbote.mappings.transfer): its rows, and the rows of the defaults it took
+	over, None for a mapping that knows none."""
+	return {
+		"mapping": body_of_items(items),
+		"defaults": None if defaults is None else body_of_items(defaults),
+	}
+
+
+def items_of_file_body(body: Any) -> tuple[dict[Key, Fields], dict[Key, Fields] | None]:
+	"""The items of the mapping and of its defaults that file_body wrote; raises MappingError for another shape."""
+	if not isinstance(body, dict) or set(body) != {"mapping", "defaults"}:
+		raise MappingError("the body of the file holds mapping and defaults")
+	defaults = body["defaults"]
+	return items_of_body(body["mapping"]), None if defaults is None else items_of_body(defaults)
+
+
+def dump_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]]) -> str:
+	"""The items as the canonical JSON of their body: keys sorted, no blanks, UTF-8 as it is."""
+	return canonical_json(body_of_items(items))
+
+
+def load_items(text: str) -> dict[Key, Fields]:
+	"""The items of the JSON dump_items wrote; raises MappingError for another text."""
+	try:
+		body = json.loads(text)
+	except ValueError:
+		raise MappingError("the stored defaults are no JSON") from None
+	return items_of_body(body)
+
+
+def _put(items: dict[Key, Fields], key: Key, fields: Fields, refusal: str) -> None:
+	if key in items:
+		raise MappingError(refusal.format(key[1]))
+	items[key] = fields
+
+
+def _plain(value: Any, list_of_numbers: bool) -> bool:
+	if list_of_numbers:
+		return isinstance(value, list) and all(isinstance(number, str) for number in value)
+	return value is None or isinstance(value, str)
+
+
+def _rule_fields(rule: AccountRule) -> Fields:
+	return {
+		"place": RULE,
+		"kennzahl": rule.kennzahl,
+		"side": rule.side.value,
+		"tax_rate": _rate_text(rule.tax_rate),
+		"also_kennzahl": rule.also_kennzahl,
+		"also_side": rule.also_side.value if rule.also_side else None,
+	}
+
+
+def _check_fields(check: TaxCheck) -> Fields:
+	return {
+		"base_accounts": ", ".join(sorted(check.base_accounts)),
+		"tax_accounts": ", ".join(sorted(check.tax_accounts)),
+		"side": check.side.value,
+	}
+
+
+def _rate_text(rate: Decimal | None) -> str | None:
+	"""A rate as its digits, 19 for 19.0 and 5.5 for 5.50, so that a rate reads the same however it was stored."""
+	return None if rate is None else format(rate.normalize(), "f")
 
 
 def _rule(row: Row) -> AccountRule:

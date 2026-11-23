@@ -1,0 +1,416 @@
+"""Steuerbote einrichten: the setup of a company in one step, from the page steuerbote-setup.
+
+set_up() runs the setup steps of steuerbote.setup.steps for a company: the three steps of this module, which make
+the VAT Return Settings, the VAT Return Mapping and the first Voranmeldungszeitraum, and every step that a module
+or app names in the hook steuerbote_setup_steps of its hooks.py:
+
+	steuerbote_setup_steps = [
+		{
+			"key": "balance_sheet_mapping",
+			"label": "Balance Sheet Mapping",
+			"order": 50,
+			"needs": ["vat_return_settings"],
+			"run": "steuerbote.steuerbote.doctype.balance_sheet_mapping.setup.run",
+		},
+	]
+
+The function a step names takes the SetupContext of the run and returns a StepResult. A step makes only what is
+missing and skips what exists, so a second run changes nothing; a step that needs another runs only once that one
+created or found its document. Each step runs in a savepoint of its own: a step that fails is rolled back and
+reported, and the others go on. Only a System Manager or an Accounts Manager sets up a company, and every document
+is made with their permissions.
+"""
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+from types import MappingProxyType
+
+import frappe
+from frappe import _
+from frappe.utils import escape_html, fmt_money, formatdate, getdate
+
+from steuerbote import dauerfrist_sources, ledger
+from steuerbote.mapping_sync import rows_to_mapping
+from steuerbote.setup import chart as charts
+from steuerbote.setup import rhythm, steps
+from steuerbote.setup.steps import Note, Outcome, Step, StepResult
+from steuerbote.ustva import CATALOGUES, DEFAULTS, MappingError, UnknownYearError, calculate
+from steuerbote.ustva.period import MONTH_NAMES
+
+STEPS_HOOK = "steuerbote_setup_steps"
+ROLES = ("System Manager", "Accounts Manager")
+SETTINGS = "VAT Return Settings"
+MAPPING = "VAT Return Mapping"
+OWN_CHART = "Eigener Kontenrahmen"
+EXISTING_COMPANY = "Existing Company"
+SAVEPOINT = "steuerbote_setup_step"
+# The parts of the Datenlieferant that saving the settings fills from the company, with their labels.
+DATENLIEFERANT_LABELS = (
+	("filer_name", "Name"),
+	("street", "Street and House Number"),
+	("postal_code", "Postal Code"),
+	("city", "Town"),
+	("phone", "Phone"),
+	("email", "Email"),
+)
+
+BUILT_IN_STEPS = (
+	{
+		"key": "vat_return_settings",
+		"label": "VAT Return Settings",
+		"order": 10,
+		"run": "steuerbote.steuerbote.setup.make_vat_return_settings",
+	},
+	{
+		"key": "vat_return_mapping",
+		"label": "VAT Return Mapping",
+		"order": 20,
+		"run": "steuerbote.steuerbote.setup.make_vat_return_mapping",
+	},
+	{
+		"key": "filing_period",
+		"label": "Filing Period",
+		"order": 30,
+		"needs": ["vat_return_settings", "vat_return_mapping"],
+		"run": "steuerbote.steuerbote.setup.propose_filing_period",
+	},
+)
+
+NOT_A_COMPANY = "There is no company {0}."
+NEEDS_STEPS = "Not run: it needs {0}, which did not create or find its document."
+STEP_FAILED = "The step stopped: {0}"
+STEP_BROKE = "The step stopped with an error; the Error Log names it."
+SETTINGS_EXIST = "The VAT Return Settings of {0} exist already; the setup leaves them as they are."
+SETTINGS_MADE = (
+	"Made the VAT Return Settings of {0} with the chart {1}, Soll-Versteuerung and no Dauerfristverlängerung."
+)
+VAT_ID_TAKEN = "USt-IdNr. {0} taken from the Tax ID of the company."
+DATENLIEFERANT_TAKEN = "Datenlieferant taken from the company and its address: {0}."
+STATE_AND_TAX_NUMBER = "Enter the Bundesland and the Steuernummer the Finanzamt issued in the VAT Return Settings: Steuerbote cannot take them from the company."
+MAPPING_EXISTS = (
+	"The VAT Return Mapping of {0} exists already with the chart {1}; the setup leaves it as it is."
+)
+MAPPING_WITH_DEFAULTS = "Made the VAT Return Mapping with the defaults of {0}: account rules {1}, tax checks {2}, watched accounts {3}."
+CHART_FROM_TEMPLATE = (
+	"The chart {0} follows from the template {1} the chart of accounts of the company was made from."
+)
+CHART_FROM_ACCOUNTS = "The chart {0} follows from the accounts {1} of the company."
+DEFAULTS_MISSING = "{0} accounts of the defaults do not exist in the company and were left out."
+OWN_CHART_EMPTY = "Neither the template of its chart of accounts nor its accounts show SKR03 or SKR04, so the mapping of {0} has no rules yet: give each account of the Voranmeldung a rule or watch it."
+AMBIGUOUS_CHART = "The template or the accounts of {0} point to SKR03 and SKR04 at once, so the mapping has no rules yet: choose the chart in the mapping and load its defaults."
+PERIODS_EXIST = "The VAT Return Settings have a Voranmeldungszeitraum already; the setup leaves it as it is."
+PROPOSED_FROM_TAX = "Proposed: {0} from {1}, because the tax of {2} comes to {3} by the ledger (§ 18 Absatz 2 Sätze 1 and 2 UStG)."
+PROPOSED_FROM_START = "Proposed: monthly from {0}, because the company began on {1}, and in the year it begins and the next the month is the Voranmeldungszeitraum (§ 18 Absatz 2 Satz 4 UStG)."
+EXEMPTION_POSSIBLE = "With a tax of at most 2,000 € the Finanzamt may exempt the company from the Voranmeldungen (§ 18 Absatz 2 Satz 3 UStG)."
+MONTH_POSSIBLE = (
+	"With a surplus of more than 9,000 € the company may choose the month instead (§ 18 Absatz 2a UStG)."
+)
+CHECK_WITH_FINANZAMT = "The Finanzamt sets the Voranmeldungszeitraum: compare the proposal with what it set."
+STARTED_THIS_YEAR = "No proposal: the company began on {0}, and until 2026 its expected tax of {1} decides (§ 18 Absatz 2 Satz 6 UStG), which Steuerbote does not know."
+STARTED_LAST_YEAR = "No proposal: the company began on {0}, and until 2026 its tax of {1} turned into the tax of a whole year decides (§ 18 Absatz 2 Satz 6 UStG), which Steuerbote does not compute."
+NOT_STARTED = "No proposal: the company begins on {0}, after {1}."
+NO_CATALOGUE = "No proposal: the tax of {0} decides (§ 18 Absatz 2 UStG), and Steuerbote does not know the Kennzahlen of {0} to compute it from the ledger."
+NO_DEFAULTS = "No proposal: the tax of {0} decides (§ 18 Absatz 2 UStG), and a mapping without the defaults of SKR03 or SKR04 cannot compute it from the ledger yet."
+MAPPING_UNFIT = "No proposal: the tax of {0} decides (§ 18 Absatz 2 UStG), and the mapping does not fit the form of {0}: {1}"
+NO_POSTINGS = (
+	"No proposal: the tax of {0} decides (§ 18 Absatz 2 UStG), and the ledger holds no postings of {0}."
+)
+NOT_READY = "No proposal: the tax of {0} decides (§ 18 Absatz 2 UStG), and in the ledger of {0} an account watched at the level Blocking has a balance or a Verprobung has a difference."
+ENTER_FILING_PERIOD = "Enter the Voranmeldungszeitraum the Finanzamt set in the VAT Return Settings."
+MESSAGES = (
+	NOT_A_COMPANY,
+	NEEDS_STEPS,
+	STEP_FAILED,
+	STEP_BROKE,
+	SETTINGS_EXIST,
+	SETTINGS_MADE,
+	VAT_ID_TAKEN,
+	DATENLIEFERANT_TAKEN,
+	STATE_AND_TAX_NUMBER,
+	MAPPING_EXISTS,
+	MAPPING_WITH_DEFAULTS,
+	CHART_FROM_TEMPLATE,
+	CHART_FROM_ACCOUNTS,
+	DEFAULTS_MISSING,
+	OWN_CHART_EMPTY,
+	AMBIGUOUS_CHART,
+	PERIODS_EXIST,
+	PROPOSED_FROM_TAX,
+	PROPOSED_FROM_START,
+	EXEMPTION_POSSIBLE,
+	MONTH_POSSIBLE,
+	CHECK_WITH_FINANZAMT,
+	STARTED_THIS_YEAR,
+	STARTED_LAST_YEAR,
+	NOT_STARTED,
+	NO_CATALOGUE,
+	NO_DEFAULTS,
+	MAPPING_UNFIT,
+	NO_POSTINGS,
+	NOT_READY,
+	ENTER_FILING_PERIOD,
+)
+
+
+@dataclass(frozen=True)
+class SetupContext:
+	"""What a step works with: the company, the day of the run, the chart the company books in, and the results of
+	the steps that ran before it, by key."""
+
+	company: str
+	today: date
+	chart: charts.Detection
+	results: Mapping[str, StepResult]
+
+
+@frappe.whitelist(methods=["POST"])
+def set_up(company: str) -> dict:
+	"""Steuerbote einrichten for the company: run every step and report what each did."""
+	frappe.only_for(ROLES, message=True)
+	if not company or not frappe.db.exists("Company", company):
+		frappe.throw(_(NOT_A_COMPANY).format(frappe.bold(escape_html(company or ""))))
+	frappe.has_permission("Company", "read", company, throw=True)
+	return report(company, run(company, getdate()))
+
+
+def setup_steps() -> tuple[Step, ...]:
+	"""The steps of this module and those of the hook, in the order they run."""
+	try:
+		return steps.plan(Step.from_hook(entry) for entry in (*BUILT_IN_STEPS, *frappe.get_hooks(STEPS_HOOK)))
+	except steps.SetupError as error:
+		frappe.throw(_(error.template).format(*error.values), title=_("Set Up Steuerbote"))
+
+
+def run(company: str, today: date) -> list[tuple[Step, StepResult]]:
+	"""Run the steps for the company, each in a savepoint of its own; returns each step with its result."""
+	planned = setup_steps()
+	results: dict[str, StepResult] = {}
+	context = SetupContext(company, today, company_chart(company), MappingProxyType(results))
+	labels = {step.key: step.label for step in planned}
+	done = []
+	for step in planned:
+		result = run_step(step, context, labels)
+		results[step.key] = result
+		done.append((step, result))
+	return done
+
+
+def run_step(step: Step, context: SetupContext, labels: Mapping[str, str]) -> StepResult:
+	if missing := steps.missing_needs(step, context.results):
+		names = ", ".join(_(labels[need]) for need in missing)
+		return StepResult(Outcome.BLOCKED, (Note(NEEDS_STEPS, (names,)),))
+	shown = len(frappe.local.message_log)
+	frappe.db.savepoint(SAVEPOINT)
+	try:
+		result = frappe.get_attr(step.run)(context)
+	except frappe.ValidationError as error:
+		frappe.db.rollback(save_point=SAVEPOINT)
+		del frappe.local.message_log[shown:]
+		return StepResult(Outcome.FAILED, (Note(STEP_FAILED, (str(error),)),))
+	except Exception:
+		frappe.db.rollback(save_point=SAVEPOINT)
+		del frappe.local.message_log[shown:]
+		frappe.log_error(title=_("The setup step {0} of {1} failed").format(step.key, context.company))
+		return StepResult(Outcome.FAILED, (Note(STEP_BROKE),))
+	frappe.db.release_savepoint(SAVEPOINT)
+	return result
+
+
+def report(company: str, done: list[tuple[Step, StepResult]]) -> dict:
+	"""What the page shows: each step with its label, outcome, notes and document, and whether the run changed
+	anything."""
+	return {
+		"company": company,
+		"changed": steps.changed(result for _step, result in done),
+		"steps": [
+			{
+				"key": step.key,
+				"label": _(step.label),
+				"outcome": result.outcome.value,
+				"notes": [{"text": text_of(note), "open": note.open} for note in result.notes],
+				"doctype": result.document[0] if result.document else None,
+				"document_label": _(result.document[0]) if result.document else None,
+				"name": result.document[1] if result.document else None,
+			}
+			for step, result in done
+		],
+	}
+
+
+def text_of(note: Note) -> str:
+	"""The note in the language of the user, amounts in euros and days in the date format of the site."""
+	return _(note.template).format(*(_value(value) for value in note.values))
+
+
+def _value(value: object) -> object:
+	if isinstance(value, Decimal):
+		return fmt_money(value, currency="EUR")
+	if isinstance(value, date):
+		return formatdate(value)
+	return value
+
+
+def company_chart(company: str) -> charts.Detection:
+	"""The chart the company books in, from the template of its chart of accounts and its account numbers."""
+	numbers = frappe.get_all("Account", filters={"company": company, "is_group": 0}, pluck="account_number")
+	return charts.detect(chart_template(company), [number.strip() for number in numbers if number])
+
+
+def chart_template(company: str) -> str | None:
+	"""The template the chart of accounts of the company was made from, through the companies it was copied from."""
+	seen = set()
+	while company and company not in seen:
+		seen.add(company)
+		values = frappe.db.get_value(
+			"Company",
+			company,
+			["chart_of_accounts", "create_chart_of_accounts_based_on", "existing_company"],
+			as_dict=True,
+		)
+		if not values:
+			return None
+		if values.create_chart_of_accounts_based_on != EXISTING_COMPANY:
+			return values.chart_of_accounts or None
+		company = values.existing_company
+	return None
+
+
+def make_vat_return_settings(context: SetupContext) -> StepResult:
+	"""The VAT Return Settings, if the company has none: the chart of the company, Soll-Versteuerung and the
+	defaults of the DocType; saving fills the own USt-IdNr. from the Tax ID of the company and the Datenlieferant
+	from the company and its address. The Bundesland and the Steuernummer stay for the user, and so does the
+	Voranmeldungszeitraum unless the step filing_period proposes one."""
+	company = context.company
+	if frappe.db.exists(SETTINGS, company):
+		settings = frappe.get_doc(SETTINGS, company)
+		notes = [Note(SETTINGS_EXIST, (company,))]
+		if not (settings.state and settings.tax_number):
+			notes.append(Note(STATE_AND_TAX_NUMBER, open=True))
+		return StepResult(Outcome.SKIPPED, tuple(notes), (SETTINGS, settings.name))
+	settings = frappe.new_doc(SETTINGS)
+	settings.company = company
+	settings.chart = context.chart.chart or OWN_CHART
+	settings.insert(ignore_mandatory=True)
+	notes = [Note(SETTINGS_MADE, (company, settings.chart))]
+	if settings.ust_idnr:
+		notes.append(Note(VAT_ID_TAKEN, (settings.ust_idnr,)))
+	if taken := [_(label) for field, label in DATENLIEFERANT_LABELS if settings.get(field)]:
+		notes.append(Note(DATENLIEFERANT_TAKEN, (", ".join(taken),)))
+	notes.append(Note(STATE_AND_TAX_NUMBER, open=True))
+	return StepResult(Outcome.CREATED, tuple(notes), (SETTINGS, settings.name))
+
+
+def make_vat_return_mapping(context: SetupContext) -> StepResult:
+	"""The VAT Return Mapping, if the company has none: with the defaults of SKR03 or SKR04 for the accounts the
+	company has (load_defaults), or without rules for a chart of its own or an ambiguous one."""
+	company = context.company
+	if frappe.db.exists(MAPPING, company):
+		chart = frappe.db.get_value(MAPPING, company, "chart")
+		return StepResult(Outcome.SKIPPED, (Note(MAPPING_EXISTS, (company, chart)),), (MAPPING, company))
+	detection = context.chart
+	mapping = frappe.new_doc(MAPPING)
+	mapping.company = company
+	if detection.chart not in DEFAULTS:
+		mapping.chart = OWN_CHART
+		mapping.insert()
+		template = AMBIGUOUS_CHART if detection.basis is charts.Basis.AMBIGUOUS else OWN_CHART_EMPTY
+		return StepResult(Outcome.CREATED, (Note(template, (company,), open=True),), (MAPPING, mapping.name))
+	mapping.chart = detection.chart
+	missing = mapping.load_defaults()
+	mapping.insert()
+	notes = [
+		Note(
+			MAPPING_WITH_DEFAULTS,
+			(mapping.chart, len(mapping.rules), len(mapping.checks), len(mapping.watched)),
+		),
+		_basis_note(detection, company),
+	]
+	if missing:
+		notes.append(Note(DEFAULTS_MISSING, (len(missing),)))
+	return StepResult(Outcome.CREATED, tuple(notes), (MAPPING, mapping.name))
+
+
+def _basis_note(detection: charts.Detection, company: str) -> Note:
+	if detection.basis is charts.Basis.TEMPLATE:
+		return Note(CHART_FROM_TEMPLATE, (detection.chart, chart_template(company)))
+	signature = ", ".join(sorted(charts.SIGNATURES[detection.chart]))
+	return Note(CHART_FROM_ACCOUNTS, (detection.chart, signature))
+
+
+def propose_filing_period(context: SetupContext) -> StepResult:
+	"""The first Voranmeldungszeitraum of the settings, from the year of the run on, if the settings have none and
+	§ 18 Absatz 2 UStG decides it from the start of the company or the tax of the previous year (steuerbote.setup.
+	rhythm). The tax comes from the ledger of that year with the mapping of the company, as Berechnen computes Kz 83.
+	"""
+	company, year = context.company, context.today.year
+	settings = frappe.get_doc(SETTINGS, company)
+	if settings.period_rules:
+		return StepResult(Outcome.SKIPPED, (Note(PERIODS_EXIST),), (SETTINGS, settings.name))
+	began = dauerfrist_sources.date_of_establishment(company)
+	tax, no_tax = (None, None)
+	if rhythm.needs_tax(year, began):
+		tax, no_tax = previous_year_tax(company, year - 1)
+	proposal = rhythm.propose(year, began, tax)
+	if proposal.rhythm is None:
+		reason = no_tax or _undecided(proposal.reason, year, began)
+		return StepResult(
+			Outcome.UNDECIDED, (reason, Note(ENTER_FILING_PERIOD, open=True)), (SETTINGS, settings.name)
+		)
+	month = rhythm.first_month(year, began)
+	settings.append(
+		"period_rules", {"year": year, "rhythm": proposal.rhythm.value, "valid_from_month": month}
+	)
+	# The settings the setup made lack the Bundesland and the Steuernummer until the user enters them.
+	settings.flags.ignore_mandatory = True
+	settings.save()
+	start = f"{MONTH_NAMES[month - 1]} {year}"
+	if proposal.reason is rhythm.Reason.STARTED:
+		notes = [Note(PROPOSED_FROM_START, (start, began))]
+	else:
+		notes = [Note(PROPOSED_FROM_TAX, (_(proposal.rhythm.value), start, year - 1, proposal.tax))]
+	if proposal.exemption_possible:
+		notes.append(Note(EXEMPTION_POSSIBLE))
+	if proposal.month_possible:
+		notes.append(Note(MONTH_POSSIBLE))
+	notes.append(Note(CHECK_WITH_FINANZAMT, open=True))
+	return StepResult(Outcome.CREATED, tuple(notes), (SETTINGS, settings.name))
+
+
+def _undecided(reason: rhythm.Reason, year: int, began: date | None) -> Note:
+	"""Why a company that began in the year, the year before or later gets no proposal."""
+	if reason is rhythm.Reason.STARTED_THIS_YEAR:
+		return Note(STARTED_THIS_YEAR, (began, year))
+	if reason is rhythm.Reason.STARTED_LAST_YEAR:
+		return Note(STARTED_LAST_YEAR, (began, year - 1))
+	return Note(NOT_STARTED, (began, year))
+
+
+def previous_year_tax(company: str, year: int) -> tuple[Decimal | None, Note | None]:
+	"""Kz 83 of the year by the ledger, with the mapping of the company, as Berechnen computes it for a period; or
+	None and the note why it is unknown: Steuerbote does not know the Kennzahlen of the year, the mapping has no
+	defaults or does not fit the form of the year, the ledger holds nothing of the year, or what it holds is not
+	ready to file."""
+	if year not in CATALOGUES:
+		return None, Note(NO_CATALOGUE, (year,))
+	doc = frappe.get_doc(MAPPING, company)
+	if doc.chart not in DEFAULTS:
+		return None, Note(NO_DEFAULTS, (year,))
+	try:
+		mapping = rows_to_mapping(
+			doc.chart,
+			[row.as_dict() for row in doc.rules],
+			[row.as_dict() for row in doc.checks],
+			[row.as_dict() for row in doc.watched],
+			year,
+		)
+	except (MappingError, UnknownYearError) as error:
+		return None, Note(MAPPING_UNFIT, (year, str(error)))
+	lines = ledger.load_lines(company, date(year, 1, 1), date(year, 12, 31))
+	if not lines:
+		return None, Note(NO_POSTINGS, (year,))
+	result = calculate(lines, mapping)
+	if not result.ready:
+		return None, Note(NOT_READY, (year,))
+	return result.kz83, None

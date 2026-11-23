@@ -62,6 +62,7 @@ class WorkspaceTest(IntegrationTestCase):
 				("DocType", "VAT Return Extension"),
 				("DocType", "VAT Return Mapping"),
 				("DocType", "VAT Return Settings"),
+				("Page", "steuerbote-setup"),
 				("Report", "Offene Fristen"),
 				("Report", "UStVA Kennzahlen"),
 			],

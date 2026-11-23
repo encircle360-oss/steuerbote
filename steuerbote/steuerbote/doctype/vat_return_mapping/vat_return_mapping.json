@@ -8,6 +8,8 @@
  "field_order": [
   "company",
   "chart",
+  "defaults_version",
+  "defaults_rows",
   "rules",
   "checks",
   "watched"
@@ -33,6 +35,21 @@
    "reqd": 1
   },
   {
+   "description": "The defaults Vorgaben laden or Vorgaben aktualisieren took over last: the chart, the edition of the DATEV chart and the revision of the defaults of Steuerbote.",
+   "fieldname": "defaults_version",
+   "fieldtype": "Data",
+   "label": "Defaults Version",
+   "read_only": 1
+  },
+  {
+   "description": "The rows the defaults gave this mapping when they were taken over last, against which Vorgaben aktualisieren tells the changes of the defaults from your own.",
+   "fieldname": "defaults_rows",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Defaults as Taken Over",
+   "read_only": 1
+  },
+  {
    "description": "Which account feeds which Kennzahl. The amount is the balance of the period on the given side.",
    "fieldname": "rules",
    "fieldtype": "Table",
@@ -55,7 +72,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-21 14:00:00.000000",
+ "modified": "2026-11-23 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Mapping",

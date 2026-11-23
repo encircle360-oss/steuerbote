@@ -1312,6 +1312,13 @@ SKR04 = _mapping("SKR04", SKR04_ACCOUNTS, SKR04_WATCHED, SKR04_WATCHED_FOR_HINTS
 
 DEFAULTS = MappingProxyType({"SKR03": SKR03, "SKR04": SKR04})
 
+# The edition of the DATEV charts these defaults follow, "Gültig für 2026" as the docstring cites them, and the
+# revision of the defaults within it. Every change of the defaults raises REVISION, and a new edition starts it at 1
+# again, so that a VAT Return Mapping can name the defaults it took over (its defaults_version) and the same version
+# always means the same defaults: test_defaults.py pins the content of each version.
+DATEV_EDITION = 2026
+REVISION = 1
+
 # The ignored accounts of each chart with the members of their ranges, which take the place of their first account.
 _DELIBERATELY_WITHOUT_KENNZAHL = MappingProxyType(
 	{
@@ -1330,6 +1337,13 @@ def default_mapping(chart: str, year: int) -> Mapping:
 			f"no default mapping for chart {chart!r}; known charts: {', '.join(DEFAULTS)}"
 		) from None
 	return mapping.for_year(year)
+
+
+def defaults_version(chart: str) -> str:
+	"""The version of the defaults of a chart: the chart, the DATEV edition and the revision, such as SKR03 2026.1."""
+	if chart not in DEFAULTS:
+		raise KeyError(f"no default mapping for chart {chart!r}; known charts: {', '.join(DEFAULTS)}")
+	return f"{chart} {DATEV_EDITION}.{REVISION}"
 
 
 def deliberately_without_kennzahl(chart: str) -> frozenset[str]:
