@@ -30,7 +30,7 @@ Jeder Beleg einer Jahresmeldung hat diese Felder mit diesen Feldnamen, Typen und
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
 | `company`, `year` | Unternehmen, Jahr | Pflicht. Das Jahr ist der Veranlagungszeitraum (VZ) von Umsatzsteuer und Körperschaftsteuer, der Erhebungszeitraum (EZ) der Gewerbesteuer und bei E-Bilanz und Jahresabschluss das Jahr, in dem das Wirtschaftsjahr endet |
-| `fiscal_year`, `from_date`, `to_date` | Geschäftsjahr, Von-Datum, Bis-Datum | setzt jedes Speichern: das Geschäftsjahr, das im Jahr endet, eines des Unternehmens oder eines ohne Unternehmen, das allen dient, wie ERPNext sie liest (Fiscal Year Company). Es muss genau eines geben |
+| `fiscal_year`, `from_date`, `to_date` | Geschäftsjahr, Von-Datum, Bis-Datum | setzt jedes Speichern: das Geschäftsjahr, das im Jahr endet, eines des Unternehmens vor einem ohne Unternehmen, das allen dient, wie ERPNext sie ordnet (Fiscal Year Company, `_get_fiscal_years`), damit ein kurzes erstes Wirtschaftsjahr neben dem Kalenderjahr der übrigen Unternehmen steht. Es muss genau eines geben |
 | `status` | Status | setzt nur Steuerbote, siehe [Status](#status) |
 | `ready`, `remarks` | Bereit zur Abgabe, Anmerkungen | „Bereit zur Abgabe“ setzt „Berechnen“. Die Anmerkungen begründen, warum ein Beleg, der nicht bereit ist, trotzdem abgegeben wird; nach einem Senden ändern sich nur noch sie |
 | `deadline` | Fälligkeitsdatum | was `compute_deadline` des Moduls nennt, gesetzt mit dem Geschäftsjahr |

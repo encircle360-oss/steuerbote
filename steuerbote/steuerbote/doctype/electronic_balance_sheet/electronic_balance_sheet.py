@@ -259,20 +259,11 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		}
 
 	def set_period(self) -> None:
-		"""Geschäftsjahr, Von-Datum, Bis-Datum, the Bilanzstichtag and the Fälligkeitsdatum. The Fiscal Year of the
-		company comes before one for every company, as ERPNext takes it, so that a short first Wirtschaftsjahr has its
-		E-Bilanz on a site with a calendar year for all."""
-		fiscal_year = ebilanz_sources.fiscal_year_of(self.company, cint(self.year))
-		start, end = getdate(fiscal_year.year_start_date), getdate(fiscal_year.year_end_date)
-		self.update(
-			{
-				"fiscal_year": fiscal_year.name,
-				"from_date": start,
-				"to_date": end,
-				"stichtag": start if self._opening else end,
-				"deadline": self.compute_deadline(),
-			}
-		)
+		"""The period of the base, whose Fiscal Year of the company comes before one for every company, so that a short
+		first Wirtschaftsjahr has its E-Bilanz on a site with a calendar year for all; and the Bilanzstichtag, the end of
+		the Wirtschaftsjahr, or its first day for an Eröffnungsbilanz."""
+		super().set_period()
+		self.stichtag = getdate(self.from_date) if self._opening else getdate(self.to_date)
 
 	# Transmittable.
 

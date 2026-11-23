@@ -1,8 +1,5 @@
 """What the E-Bilanz reads from ERPNext for its core in steuerbote/ebilanz.
 
-- The Fiscal Year of the Wirtschaftsjahr (fiscal_year_of): one that names the company before one that names none, as
-  ERPNext orders them (_get_fiscal_years in erpnext/accounts/utils.py), so that the short first Wirtschaftsjahr of a
-  company founded in the year stands beside a calendar year for every company.
 - The balances of the books through steuerbote/balances.py (books_of): the Bilanz up to the Stichtag and the GuV of
   the Wirtschaftsjahr, without its Period Closing Voucher, and the Period Closing Vouchers of the year; for an
   Eröffnungsbilanz the books on its day (opening_books). The Balance Sheet Mapping places them.
@@ -26,9 +23,8 @@ from decimal import Decimal
 import frappe
 from erpnext.accounts.report.asset_depreciations_and_balances import asset_depreciations_and_balances
 from erpnext.accounts.utils import get_fiscal_year
-from frappe import _
 from frappe.query_builder.functions import IfNull
-from frappe.utils import cstr, escape_html, getdate
+from frappe.utils import cstr, getdate
 
 from steuerbote import balances
 from steuerbote.ebilanz.gcd import MasterData
@@ -46,35 +42,8 @@ from steuerbote.xbrl.mapping import Books
 from steuerbote.xbrl.versions import TAXONOMIES
 
 DOCTYPE = "Electronic Balance Sheet"
-FISCAL_YEAR = "Fiscal Year"
 GROUP_BY_ASSET = "Asset"
 DISPOSALS = ("value_of_sold_asset", "value_of_scrapped_asset", "value_of_capitalized_asset")
-
-
-def fiscal_year_of(company: str, year: int) -> frappe._dict:
-	"""The Fiscal Year that ends in the year for the company: of those that are not disabled, the one that names the
-	company, else the one that names none; there has to be exactly one."""
-	ending = frappe.get_all(
-		FISCAL_YEAR,
-		filters={"disabled": 0, "year_end_date": ["between", (date(year, 1, 1), date(year, 12, 31))]},
-		fields=["name", "year_start_date", "year_end_date"],
-		order_by="year_end_date desc",
-	)
-	own, shared = [], []
-	for fiscal_year in ending:
-		companies = [row.company for row in frappe.get_cached_doc(FISCAL_YEAR, fiscal_year.name).companies]
-		if company in companies:
-			own.append(fiscal_year)
-		elif not companies:
-			shared.append(fiscal_year)
-	serving = own or shared
-	if len(serving) != 1:
-		frappe.throw(
-			_("{0} needs exactly one Fiscal Year that ends in {1}, not {2}.").format(
-				escape_html(company), year, len(serving)
-			)
-		)
-	return serving[0]
 
 
 def books_of(
