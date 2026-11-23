@@ -2,7 +2,7 @@
 
 frappe.ui.form.on("VAT Return Mapping", {
 	setup(frm) {
-		for (const table of ["rules", "watched"]) {
+		for (const table of ["rules", "watched", "annual_rules"]) {
 			frm.set_query("account", table, (doc) => ({
 				filters: { company: doc.company, is_group: 0 },
 			}));
@@ -17,10 +17,14 @@ frappe.ui.form.on("VAT Return Mapping", {
 
 	refresh(frm) {
 		frm.add_custom_button(__("Load Defaults"), () => {
-			const has_rows = ["rules", "checks", "watched"].some((table) => (frm.doc[table] || []).length);
+			const has_rows = ["rules", "checks", "watched", "annual_rules"].some(
+				(table) => (frm.doc[table] || []).length
+			);
 			if (has_rows) {
 				frappe.confirm(
-					__("Replace the account rules, tax checks and watched accounts with the defaults of the chart?"),
+					__(
+						"Replace the account rules, tax checks, watched accounts and rules for the annual return only with the defaults of the chart?"
+					),
 					() => load_defaults(frm)
 				);
 			} else {

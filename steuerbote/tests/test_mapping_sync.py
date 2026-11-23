@@ -7,9 +7,18 @@ from unittest import TestCase
 
 from steuerbote.mapping_sync import (
 	ACCOUNT,
+	ANNUAL_FIELD,
+	ANNUAL_RULE,
 	CHECK,
 	FILE_FORMAT,
+	annual_default_items,
+	annual_rows_for_accounts,
+	annual_rows_of_items,
+	annual_rules_of_rows,
+	annual_split,
 	body_of_items,
+	check_annual_rows,
+	choices_of_rows,
 	default_items,
 	defaults_for_accounts,
 	dump_items,
@@ -22,6 +31,8 @@ from steuerbote.mapping_sync import (
 	rows_of_items,
 	rows_to_mapping,
 )
+from steuerbote.ustjahr.split import AnnualRule, Choice, How, SplitError
+from steuerbote.ustjahr.years import LATEST_YEAR as ANNUAL_YEAR
 from steuerbote.ustva import (
 	DEFAULTS,
 	LATEST_YEAR,
@@ -758,3 +769,316 @@ class FileBodyTest(TestCase):
 
 	def test_the_format_names_the_vat_return_mapping(self):
 		self.assertEqual(FILE_FORMAT, "steuerbote/vat-return-mapping")
+
+
+def annual_row(
+	account_number: str | None, annual_field: Any = "E3100801", side: Any = "debit", **fields: Any
+) -> dict:
+	return {"account_number": account_number, "annual_field": annual_field, "side": side, **fields}
+
+
+class ChoicesOfRowsTest(TestCase):
+	"""What a rule row says for the annual return: its annual field and the paragraph of its line."""
+
+	def test_a_rule_row_with_an_annual_field_or_a_paragraph_is_a_choice(self):
+		rows = [
+			rule_row("8910", annual_field="E3003505"),
+			rule_row("8100", "48", paragraph="4 Nummer 14"),
+			rule_row("8400"),
+		]
+		self.assertEqual(
+			choices_of_rows(rows), (Choice("8910", "E3003505"), Choice("8100", paragraph="4 Nummer 14"))
+		)
+
+	def test_blank_fields_make_no_choice_and_texts_are_read_on_one_line(self):
+		rows = [
+			rule_row("8400", annual_field=" ", paragraph=""),
+			rule_row("8401", annual_field=None, paragraph=None),
+			rule_row("8100", "48", annual_field=" E3104502 ", paragraph=" 4 Nummer\n14 "),
+		]
+		self.assertEqual(choices_of_rows(rows), (Choice("8100", "E3104502", "4 Nummer 14"),))
+
+	def test_a_rule_row_without_its_account_is_refused(self):
+		with self.assertRaisesRegex(MappingError, "rule in row 3 has no account"):
+			choices_of_rows([rule_row(None, annual_field="E3003505", idx=3)])
+
+
+class AnnualRulesOfRowsTest(TestCase):
+	"""The rows of the accounts only the annual return reads."""
+
+	def test_rows_become_annual_rules_with_their_side_and_paragraph(self):
+		rows = [
+			annual_row("3552"),
+			annual_row("3075", "E3102804", "debit", paragraph=" "),
+			annual_row("8106", "E3103902", "credit", paragraph="4 Nummer 2,\n§ 8"),
+		]
+		self.assertEqual(
+			annual_rules_of_rows(rows),
+			(
+				AnnualRule("3552", "E3100801", Side.DEBIT),
+				AnnualRule("3075", "E3102804", Side.DEBIT),
+				AnnualRule("8106", "E3103902", Side.CREDIT, "4 Nummer 2, § 8"),
+			),
+		)
+
+	def test_a_row_needs_its_account_its_field_and_a_side(self):
+		for row, refusal in (
+			(annual_row(None, idx=2), "row for the annual return only in row 2 has no account"),
+			(annual_row("3552", annual_field=" "), "account 3552: no annual field"),
+			(annual_row("3552", side="left"), "account 3552: side must be credit or debit, not 'left'"),
+			(annual_row("3552", side=None), "account 3552: side must be credit or debit, not None"),
+		):
+			with self.subTest(refusal=refusal), self.assertRaisesRegex(MappingError, refusal):
+				annual_rules_of_rows([row])
+
+
+class AnnualSplitTest(TestCase):
+	"""The split of the rows for the annual return, which the annual return of U3 calls."""
+
+	rules = (rule_row("8400"), rule_row("8910"), rule_row("1558", "64", "debit"), rule_row("8130", "42"))
+	checks = (check_row(base="8400, 8910"),)
+
+	def test_the_rows_split_with_the_roles_of_the_chart_and_the_rows_for_the_annual_return(self):
+		result = annual_split("SKR03", self.rules, self.checks, [], [annual_row("3552")], ANNUAL_YEAR)
+		self.assertEqual(
+			{number: (assignment.field, assignment.how) for number, assignment in result.assignments.items()},
+			{
+				"8400": ("E3003303", How.DEFAULT),
+				"8910": ("E3003405", How.ROLE),
+				"1558": ("E3008701", How.ROLE),
+				"8130": ("E3101801", How.DEFAULT),
+				"3552": ("E3100801", How.ANNUAL),
+			},
+		)
+		self.assertEqual(result.mapping.year, ANNUAL_YEAR)
+
+	def test_the_annual_field_of_a_rule_comes_before_its_role(self):
+		rules = [rule_row("8400"), rule_row("8910", annual_field="E3003505", paragraph=None)]
+		result = annual_split("SKR03", rules, [], [], [], ANNUAL_YEAR)
+		self.assertEqual((result.field_of("8910"), result.assignment("8910").how), ("E3003505", How.RULE))
+
+	def test_a_chart_of_its_own_has_no_roles(self):
+		with self.assertRaisesRegex(SplitError, "Account 1558 feeds Kennzahl 64"):
+			annual_split("Eigener Kontenrahmen", self.rules, self.checks, [], [], ANNUAL_YEAR)
+		rules = [rule_row("8910"), rule_row("1558", "64", "debit", annual_field="E3008701")]
+		result = annual_split("Eigener Kontenrahmen", rules, [], [], [], ANNUAL_YEAR)
+		self.assertEqual((result.field_of("8910"), result.field_of("1558")), ("E3003303", "E3008701"))
+
+	def test_the_core_refuses_what_does_not_fit(self):
+		with self.assertRaisesRegex(MappingError, "unknown Kennzahl 99"):
+			annual_split("SKR03", [rule_row("8400", "99")], [], [], [], ANNUAL_YEAR)
+		with self.assertRaisesRegex(
+			SplitError, "Account 8400 feeds Kennzahl 81 of the Voranmeldung, so its line"
+		):
+			annual_split("SKR03", [rule_row("8400")], [], [], [annual_row("8400")], ANNUAL_YEAR)
+		with self.assertRaisesRegex(UnknownYearError, "2027"):
+			annual_split("SKR03", [rule_row("8400")], [], [], [], ANNUAL_YEAR + 1)
+
+
+class AnnualItemsTest(TestCase):
+	"""The annual field of a mapped account and an account only the annual return reads are items of their own."""
+
+	def test_an_annual_field_and_a_row_for_the_annual_return_are_items_after_the_others(self):
+		items = items_of_rows(
+			[rule_row("8910", annual_field="E3003505"), rule_row("8100", "48", paragraph=" 4 Nummer 14 ")],
+			[],
+			[{"account_number": "3075", "level": "blocking"}],
+			[annual_row("3075", "E3102804"), annual_row("3552", paragraph="x")],
+		)
+		self.assertEqual(list(items)[:3], [(ACCOUNT, "8910"), (ACCOUNT, "8100"), (ACCOUNT, "3075")])
+		self.assertEqual(
+			list(items.items())[3:],
+			[
+				((ANNUAL_FIELD, "8910"), {"annual_field": "E3003505", "paragraph": None}),
+				((ANNUAL_FIELD, "8100"), {"annual_field": None, "paragraph": "4 Nummer 14"}),
+				((ANNUAL_RULE, "3075"), {"annual_field": "E3102804", "side": "debit", "paragraph": None}),
+				((ANNUAL_RULE, "3552"), {"annual_field": "E3100801", "side": "debit", "paragraph": "x"}),
+			],
+		)
+
+	def test_rows_without_anything_for_the_annual_return_give_the_items_they_gave(self):
+		items = items_of_rows([rule_row("8400", annual_field="", paragraph=None)], [check_row()], [])
+		self.assertEqual(list(items), [(ACCOUNT, "8400"), (CHECK, "Umsatzsteuer 19 %")])
+
+	def test_an_account_has_one_row_for_the_annual_return_only(self):
+		with self.assertRaisesRegex(MappingError, "account 3552 has two rows for the annual return only"):
+			items_of_rows([], [], [], [annual_row("3552"), annual_row("3552", "E3101701")])
+
+	def test_the_defaults_give_the_rows_for_the_annual_return_of_the_accounts_a_company_has(self):
+		numbers = {"8400", "3552", "3075", "5552"}
+		self.assertEqual(
+			annual_rows_for_accounts("SKR03", ANNUAL_YEAR, numbers),
+			[annual_row("3552", paragraph=None), annual_row("3075", "E3102804", paragraph=None)],
+		)
+		self.assertEqual(
+			annual_default_items("SKR03", ANNUAL_YEAR, numbers),
+			{
+				(ANNUAL_RULE, "3552"): {"annual_field": "E3100801", "side": "debit", "paragraph": None},
+				(ANNUAL_RULE, "3075"): {"annual_field": "E3102804", "side": "debit", "paragraph": None},
+			},
+		)
+		self.assertEqual(
+			annual_rows_for_accounts("SKR04", ANNUAL_YEAR, numbers), [annual_row("5552", paragraph=None)]
+		)
+
+	def test_a_chart_of_its_own_has_no_rows_for_the_annual_return_in_its_defaults(self):
+		self.assertEqual(annual_rows_for_accounts("Eigener Kontenrahmen", ANNUAL_YEAR, {"3552"}), [])
+		self.assertEqual(annual_default_items("Eigener Kontenrahmen", ANNUAL_YEAR, {"3552"}), {})
+
+
+class AnnualRowsOfItemsTest(TestCase):
+	def test_an_annual_field_goes_back_into_the_row_of_its_rule(self):
+		items = {
+			(ANNUAL_FIELD, "8910"): {"annual_field": "E3003505", "paragraph": None},
+			(ACCOUNT, "8910"): RULE_8400,
+			(ACCOUNT, "8400"): RULE_8400,
+			(ANNUAL_RULE, "3552"): {"annual_field": "E3100801", "side": "debit", "paragraph": None},
+		}
+		rows = rows_of_items(items)
+		self.assertEqual(
+			rows.rule_rows,
+			[
+				rule_row(
+					"8910",
+					tax_rate=None,
+					also_kennzahl=None,
+					also_side=None,
+					annual_field="E3003505",
+					paragraph=None,
+				),
+				rule_row("8400", tax_rate=None, also_kennzahl=None, also_side=None),
+			],
+		)
+		self.assertEqual(annual_rows_of_items(items), [annual_row("3552", paragraph=None)])
+
+	def test_an_annual_field_without_the_rule_of_its_account_is_refused(self):
+		items = {(ANNUAL_FIELD, "8910"): {"annual_field": "E3003505", "paragraph": None}}
+		with self.assertRaisesRegex(MappingError, "account 8910 has an annual field but no rule"):
+			rows_of_items(items)
+		watched = {**items, (ACCOUNT, "8910"): {"place": "watched", "level": "hint"}}
+		with self.assertRaisesRegex(MappingError, "account 8910 has an annual field but no rule"):
+			rows_of_items(watched)
+
+	def test_the_rows_give_back_their_items(self):
+		rules = [rule_row("8910", annual_field="E3003505", paragraph="x"), rule_row("8400")]
+		annual = [annual_row("3552", paragraph=None)]
+		items = items_of_rows(rules, [], [], annual)
+		rows = rows_of_items(items)
+		self.assertEqual(items_of_rows(*rows, annual_rows_of_items(items)), items)
+
+
+class AnnualBodyTest(TestCase):
+	"""The annual fields and the rows for the annual return in the stored defaults and the file of a mapping."""
+
+	def setUp(self):
+		self.items = items_of_rows(
+			[rule_row("8910", annual_field="E3003505"), rule_row("8400")],
+			[check_row(base="8400, 8910")],
+			[],
+			[annual_row("3552")],
+		)
+
+	def test_the_body_holds_them_in_parts_of_their_own(self):
+		body = body_of_items(self.items)
+		self.assertEqual(
+			body["annual_fields"], [{"account_number": "8910", "annual_field": "E3003505", "paragraph": None}]
+		)
+		self.assertEqual(
+			body["annual_rules"],
+			[{"account_number": "3552", "annual_field": "E3100801", "side": "debit", "paragraph": None}],
+		)
+		self.assertEqual([rule["account_number"] for rule in body["rules"]], ["8910", "8400"])
+		self.assertNotIn("annual_field", body["rules"][0])
+
+	def test_a_body_without_them_has_the_parts_it_had(self):
+		body = body_of_items(items_of_rows([rule_row("8400")], [], []))
+		self.assertEqual(set(body), {"rules", "checks", "watched"})
+
+	def test_the_body_and_the_dump_give_back_the_items(self):
+		self.assertEqual(items_of_body(json.loads(json.dumps(body_of_items(self.items)))), self.items)
+		self.assertEqual(load_items(dump_items(self.items)), self.items)
+
+	def test_a_body_with_parts_of_another_shape_is_refused(self):
+		good = body_of_items(self.items)
+		choice, annual = good["annual_fields"][0], good["annual_rules"][0]
+		for body, refusal in (
+			({**good, "annual_fields": {}}, "annual_fields must be a list"),
+			({**good, "annual_fields": [{**choice, "side": "debit"}]}, "each of the annual_fields holds"),
+			({**good, "annual_rules": [{"account_number": "3552"}]}, "each of the annual_rules holds"),
+			({**good, "annual_rules": [{**annual, "side": 1}]}, "annual_rules: side cannot be 1"),
+			(
+				{**good, "annual_fields": [{**choice, "account_number": "9999"}]},
+				"account 9999 has an annual field but no rule",
+			),
+			({**good, "annual": []}, "a mapping holds rules, checks, watched"),
+		):
+			with self.subTest(refusal=refusal), self.assertRaisesRegex(MappingError, refusal):
+				items_of_body(body)
+
+
+class CheckAnnualRowsTest(TestCase):
+	"""What saving the mapping checks for the annual return: the annual fields and the rows for the annual return only
+	that the company gave, against the latest form, while a line the annual return asks for is left to it."""
+
+	def check(self, rules, annual=(), checks=(), watched=(), chart="SKR03") -> None:
+		check_annual_rows(chart, rules, checks, watched, annual, ANNUAL_YEAR)
+
+	def test_annual_fields_and_rows_that_fit_pass(self):
+		self.check(
+			[rule_row("8910", annual_field="E3003505"), rule_row("8100", "48", paragraph="4 Nummer 14")],
+			[annual_row("3552"), annual_row("3075", "E3102804")],
+			watched=[{"account_number": "3075"}],
+		)
+
+	def test_an_annual_field_that_is_not_a_line_of_its_kennzahl_is_refused(self):
+		for rules, refusal in (
+			(
+				[rule_row("8910", annual_field="E3003703")],
+				"Account 8910 feeds Kennzahl 81 of the Voranmeldung, which",
+			),
+			([rule_row("8910", annual_field="E9999999")], "Form USt 2 A 2026 has no field E9999999"),
+			([rule_row("8400", paragraph="4 Nummer 14")], "names no paragraph, so account 8400 gives none"),
+		):
+			with self.subTest(refusal=refusal), self.assertRaisesRegex(SplitError, refusal):
+				self.check(rules)
+
+	def test_a_row_for_the_annual_return_only_needs_an_account_no_kennzahl_takes_and_a_field_it_can_feed(
+		self,
+	):
+		for annual, refusal in (
+			(annual_row("8400"), "Account 8400 feeds Kennzahl 81 of the Voranmeldung, so its line"),
+			(annual_row("1776"), "Account 1776 is a tax account of the Verprobung"),
+			(annual_row("3552", "E3011101"), "Account 3552 cannot feed field E3011101 in line 124"),
+		):
+			with self.subTest(refusal=refusal), self.assertRaisesRegex(SplitError, refusal):
+				self.check([rule_row("8400")], [annual], checks=[check_row()])
+		with self.assertRaisesRegex(MappingError, "account 3552: no annual field"):
+			self.check([rule_row("8400")], [annual_row("3552", "")])
+
+	def test_an_account_of_kz_64_without_its_line_is_left_to_the_annual_return(self):
+		"""The Voranmeldung needs no line for it; the annual return asks for one (split.NO_DEFAULT)."""
+		self.check([rule_row("1550", "64", "debit")], chart="Eigener Kontenrahmen")
+		self.check([rule_row("8400", "64", "debit"), rule_row("8910", "64", "debit")])
+		with self.assertRaisesRegex(
+			SplitError, "Account 1550 feeds Kennzahl 64 of the Voranmeldung, which field"
+		):
+			self.check(
+				[rule_row("1550", "64", "debit", annual_field="E3003303")], chart="Eigener Kontenrahmen"
+			)
+
+	def test_an_account_of_a_kennzahl_without_a_line_is_left_out_unless_it_names_one(self):
+		"""Kz 39 has no line: the annual return takes the Sondervorauszahlung into its Vorauszahlungssoll."""
+		self.check([rule_row("1781", "39", "debit"), rule_row("8400")])
+		with self.assertRaisesRegex(
+			SplitError, "Account 1781 feeds Kennzahl 39 of the Voranmeldung, which field"
+		):
+			self.check([rule_row("1781", "39", "debit", annual_field="E3003303")])
+		with self.assertRaisesRegex(
+			SplitError, "Account 1781 feeds Kennzahl 39 of the Voranmeldung, so its line"
+		):
+			self.check([rule_row("1781", "39", "debit")], [annual_row("1781")])
+
+	def test_rules_the_form_of_the_annual_return_does_not_take_leave_the_check_to_the_voranmeldung(self):
+		"""Saving checks the rules against the form of the Voranmeldung first, which may know a Kennzahl the latest
+		form of the annual return does not."""
+		self.check([rule_row("8400", "99", annual_field="E3003303")])

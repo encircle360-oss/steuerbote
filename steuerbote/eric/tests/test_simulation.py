@@ -21,10 +21,10 @@ from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Message, Operation, 
 from steuerbote.eric.simulation import Checks, erklaerung
 from steuerbote.eric.simulation import bilanz as bilanz_checks
 
-# Invented Nutzdaten of an Erklärung: its main form with one field and its Vorsatz, as elster/vorsatz.py writes it.
+# Invented Nutzdaten of an Erklärung: its main form and its Vorsatz, as elster/vorsatz.py writes it.
 NUTZDATEN = (
 	'<{root} xmlns="{namespace}" version="{version}">\n'
-	"\t<{form}><Allg><Unternehmen><E3000901>Beispiel GmbH</E3000901></Unternehmen></Allg></{form}>\n"
+	"\t<{form}>{content}</{form}>\n"
 	"\t<Vorsatz>\n"
 	"\t\t<Unterfallart>{unterfallart}</Unterfallart>\n"
 	"\t\t<Vorgang>01</Vorgang>\n"
@@ -41,6 +41,23 @@ NUTZDATEN = (
 	"</{root}>\n"
 )
 MAIN_FORMS = MappingProxyType({"USt": "USt2A", "KSt": "KSt1", "GewSt": "GewSt1A"})
+# The main form holds the name of the company; USt2A holds a return of a year without amounts with the address and Kz
+# 133, which keeps the rules of the Jahresdokumentation E50 2026 that the simulation checks (simulation/ust.py).
+COMPANY = "<Allg><Unternehmen><E3000901>Beispiel GmbH</E3000901></Unternehmen></Allg>"
+CONTENTS = MappingProxyType(
+	{
+		"USt": (
+			"<Allg><Unternehmen><E3000901>Beispiel GmbH</E3000901><Adr><E3001101>Hauptstraße</E3001101>"
+			"<E3001203>1</E3001203><E3001206>80331</E3001206><E3001207>München</E3001207></Adr></Unternehmen>"
+			"<Best_Art><E3002203>1</E3002203></Best_Art></Allg>"
+			"<Umsaetze><Tabelle><Ums_allg><E3003303>0</E3003303><E3003304>0,00</E3003304></Ums_allg>"
+			"<Ums_Sum><E3006001>0,00</E3006001></Ums_Sum></Tabelle></Umsaetze>"
+			"<Berech_USt><Tabelle><E3009201>0,00</E3009201><E3009801>0,00</E3009801><E3010201>0,00</E3010201>"
+			"<E3010601>0,00</E3010601><Verbl_USt><E3011101>0,00</E3011101><E3011301>0,00</E3011301></Verbl_USt>"
+			"<Zahl_Erstatt><E3011401>0,00</E3011401></Zahl_Erstatt></Tabelle></Berech_USt>"
+		)
+	}
+)
 USt_2026 = ust(2026)
 HEADER = EnvelopeHeader(
 	hersteller_id="00000",
@@ -69,6 +86,7 @@ def nutzdaten(kind: Datenart) -> str:
 		namespace=kind.namespace,
 		version=kind.root_version,
 		form=MAIN_FORMS[kind.name],
+		content=CONTENTS.get(kind.name, COMPANY),
 		unterfallart=kind.unterfallart,
 	)
 

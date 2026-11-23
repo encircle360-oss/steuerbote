@@ -14,7 +14,9 @@ class VATReturnMappingRule(Document):
 		account_number: DF.Data | None
 		also_kennzahl: DF.Data | None
 		also_side: DF.Literal["", "credit", "debit"]
+		annual_field: DF.Data | None
 		kennzahl: DF.Data
+		paragraph: DF.Data | None
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data

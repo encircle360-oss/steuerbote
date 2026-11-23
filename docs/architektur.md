@@ -133,6 +133,7 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 | `rules` | Zuordnungen | Tabelle „Regel der Kontenzuordnung Umsatzsteuer“: Konto, Kontonummer (aus dem Konto), Kennzahl, Seite (Haben oder Soll), Steuersatz (%; leer oder 0 heißt kein Satz, die Tabelle zeigt ihn dann leer), Zusätzliche Kennzahl und Seite der zusätzlichen Kennzahl |
 | `checks` | Verprobungen | Tabelle „Verprobung der Kontenzuordnung Umsatzsteuer“: Bezeichnung, Grundlagenkonten und Steuerkonten (Kontonummern, durch Kommas getrennt), Seite |
 | `watched` | Beobachtete Konten | Tabelle „Beobachtetes Konto der Kontenzuordnung Umsatzsteuer“: Konto, Kontonummer und Stufe: „Sperrt“ (Vorgabe) hält die Meldung bei einem Saldo an, „Hinweis“ ergibt dann nur einen Hinweis |
+| `annual_rules` | Zuordnungen nur für die Umsatzsteuererklärung | Tabelle „Zuordnung nur für die Umsatzsteuererklärung“: Konto, Kontonummer, Feld der Umsatzsteuererklärung, Seite und Paragraf der Steuerbefreiung eines Kontos, dessen Saldo nur die Umsatzsteuererklärung liest. Die Zuordnungen tragen für sie ebenso ein Feld der Umsatzsteuererklärung und den Paragrafen der Steuerbefreiung, siehe [Kontenzuordnung der Umsatzsteuererklärung](ustva-kennzahlen.md#kontenzuordnung-der-umsatzsteuererklärung) |
 
 Die Schaltflächen „Vorgaben laden“, „Vorgaben aktualisieren“ und „Steuervorlagen prüfen“ beschreibt [Kontenzuordnung je Unternehmen](#kontenzuordnung-je-unternehmen).
 
@@ -429,6 +430,8 @@ So läuft „Berechnen“:
 | Bestätigung der USt-IdNrn. und ihr Ergebnis | `steuerbote/vatid`, `vat_id_confirmation/records.py` |
 | Grundlage, Sondervorauszahlung (Kz 38), Fristen und Zeitraum der Anrechnung der Dauerfristverlängerung, Vordruck USt 1 H mit Feldern und Regeln des Jahres | `steuerbote/dauerfrist`, Feiertage aus `steuerbote/holiday_list.py` |
 | Körperschaftsteuer mit Solidaritätszuschlag und Abschlusszahlung, steuerliches Einlagekonto, Gewerbeertrag, Messbetrag und Gewerbesteuer, Vorschläge für die Rückstellungen | `steuerbote/kst` und `steuerbote/gewst`, siehe [Rechenkern der Ertragsteuern](#rechenkern-der-ertragsteuern) |
+| Zeile der Umsatzsteuererklärung je Konto, Vorgaben der Zeilen je Rolle und Konten nur für die Erklärung | `steuerbote/ustjahr/split.py` mit `steuerbote/ustjahr/defaults.py`, aus der Kontenzuordnung über `to_split()`, siehe [Kontenzuordnung der Umsatzsteuererklärung](ustva-kennzahlen.md#kontenzuordnung-der-umsatzsteuererklärung) |
+| XML der Umsatzsteuererklärung für ERiC (E50 mit USt2A und Vorsatz), jeder Wert gegen das Muster seines Felds in der Jahresdokumentation geprüft | `steuerbote/elster/ust2a_xml.py` mit den Werten, die `steuerbote/ustjahr/rules.check()` prüft |
 
 ## Bericht „UStVA Kennzahlen“
 

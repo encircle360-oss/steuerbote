@@ -12,7 +12,8 @@
   "defaults_rows",
   "rules",
   "checks",
-  "watched"
+  "watched",
+  "annual_rules"
  ],
  "fields": [
   {
@@ -69,10 +70,17 @@
    "fieldtype": "Table",
    "label": "Watched Accounts",
    "options": "VAT Return Watched Account"
+  },
+  {
+   "description": "Accounts whose balance no Kennzahl of the Voranmeldung takes and only the annual return reads, such as the Erwerb des ersten Abnehmers in an innergemeinschaftliches Dreiecksgeschäft for Kz 789: the balance of the year on the given side goes into the field.",
+   "fieldname": "annual_rules",
+   "fieldtype": "Table",
+   "label": "Rules for the Annual Return Only",
+   "options": "VAT Return Annual Rule"
   }
  ],
  "links": [],
- "modified": "2026-11-23 15:00:00.000000",
+ "modified": "2026-11-23 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Mapping",
