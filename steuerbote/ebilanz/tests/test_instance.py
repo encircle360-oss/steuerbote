@@ -7,10 +7,11 @@ from pathlib import Path
 from unittest import TestCase
 
 from steuerbote.ebilanz.anlagenspiegel import Row, ValueType
-from steuerbote.ebilanz.calculation import BVV_RESULT, AccountBalance, EquityChanges
+from steuerbote.ebilanz.calculation import BALANCE_SHEET_NET_INCOME, BVV_RESULT, AccountBalance, EquityChanges
 from steuerbote.ebilanz.instance import EBilanzError, Sources, build
+from steuerbote.ebilanz.kontennachweis import ACCOUNT_BALANCES, NOT_POSSIBLE, NOT_YET_POSSIBLE, POSITION_NAME
 from steuerbote.ebilanz.positions import Finding, structure
-from steuerbote.ebilanz.tests.taxonomy import gaap, view
+from steuerbote.ebilanz.tests.taxonomy import gaap, view, view_6_10
 from steuerbote.ebilanz.tests.test_anlagenspiegel import LAND, SOFTWARE
 from steuerbote.ebilanz.tests.test_calculation import BOOKS, case
 from steuerbote.ebilanz.tests.test_gcd import MASTER, OPENING
@@ -214,3 +215,41 @@ class SourcesTest(TestCase):
 		self.assertEqual(sources.equity, EquityChanges())
 		self.assertEqual(sources.reason, "")
 		self.assertIsInstance(sources.adjustments, tuple)
+
+
+class Taxonomy610Test(TestCase):
+	"""The E-Bilanz of the invented GmbH on the mini taxonomy 6.10, whose Kontensalden the checks of the profile
+	FISCAL take by the structural errors 170195106 to 170195110 (steuerbote/xbrl/checks.py)."""
+
+	@classmethod
+	def setUpClass(cls):
+		cls.ebilanz = build(structure(view_6_10(), case()), MASTER, SOURCES)
+
+	def test_is_ready_without_a_finding(self):
+		self.assertEqual(self.ebilanz.findings, ())
+		self.assertTrue(self.ebilanz.ready)
+
+	def test_reports_the_jahresueberschuss_of_the_bilanz_without_an_account(self):
+		tuples = [fact for fact in self.ebilanz.report.facts if fact.concept == ACCOUNT_BALANCES]
+		self.assertEqual(len(tuples), len(BOOKS) + 1)
+		self.assertEqual(
+			[(item.concept, item.value) for item in tuples[-1].children][::4],
+			[(POSITION_NAME, BALANCE_SHEET_NET_INCOME), (NOT_POSSIBLE, True)],
+		)
+		self.assertNotIn(NOT_YET_POSSIBLE, concepts(self.ebilanz))
+
+	def test_170195106_names_a_position_left_without_a_kontensaldo(self):
+		ebilanz = build(
+			structure(view_6_10(), case()),
+			MASTER,
+			replace(
+				SOURCES,
+				balances=(
+					*BOOKS[:-1],
+					AccountBalance("7600", "Podatek łączny", "is.netIncome.tax", D("9000.00")),
+				),
+			),
+		)
+		self.assertEqual(codes(ebilanz), ["EB-KONTENSALDEN", "170195106"])
+		self.assertEqual(ebilanz.findings[-1].reference, "is.netIncome.tax")
+		self.assertFalse(ebilanz.ready)

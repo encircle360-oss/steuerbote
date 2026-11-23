@@ -244,7 +244,6 @@ class LiftTest(TestCase):
 		with self.assertRaisesRegex(LiftError, "lead to 6.10, not to 6.9"):
 			lift(SKR04, "6.9", changes=(MINI_CHANGES,))
 
-
 	def test_the_module_says_where_its_data_come_from(self):
 		for part in ("Änderungsnachweis", "conceptRename", "Watched"):
 			with self.subTest(part=part):

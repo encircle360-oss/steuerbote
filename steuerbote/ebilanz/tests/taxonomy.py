@@ -32,6 +32,7 @@ from steuerbote.xbrl.taxonomy import (
 	PeriodType,
 	Requirement,
 	Taxonomy,
+	View,
 )
 from steuerbote.xbrl.tests import mini
 
@@ -599,23 +600,42 @@ GCD_ARCS = (
 )
 
 
+NOT_YET_POSSIBLE = gcd("genInfo.report.id.reportElement.reportElements.transmissionNotYetPossible")
+
+
 @cache
 def view() -> Taxonomy:
 	"""The fiscal view of the mini taxonomy with the concepts and arcs above."""
-	base = mini.view()
+	return _extended(mini.view())
+
+
+@cache
+def view_6_10() -> Taxonomy:
+	"""The same on the mini taxonomy 6.10, the concepts in the namespaces of its modules, without the reason of 6.9
+	for an E-Bilanz without Kontensalden, which 6.10 deletes (Änderungsnachweis zum Taxonomie-Update 2026, 2.)."""
+	return _extended(mini.view(View.FISCAL, mini.VERSION_6_10), frozenset({NOT_YET_POSSIBLE}))
+
+
+def _extended(base: Taxonomy, excluded: frozenset[str] = frozenset()) -> Taxonomy:
+	"""A view of the mini taxonomy with the concepts and arcs above but the excluded ones, each concept in the
+	namespace the view gives its module."""
 	added = {
-		**BALANCE_SHEET_CONCEPTS,
-		**INCOME_STATEMENT_CONCEPTS,
-		**BVV_CONCEPTS,
-		**TRANSFER_CONCEPTS,
-		**GCD_CONCEPTS,
-		**{
-			gaap(name): (
-				_concept(gaap(name), period=DURATION, requirement=requirement),
-				label,
-			)
-			for name, (requirement, label) in FIXED_ASSET_COLUMNS.items()
-		},
+		name: (replace(concept, namespace=base.namespaces[concept.prefix]), label)
+		for name, (concept, label) in {
+			**BALANCE_SHEET_CONCEPTS,
+			**INCOME_STATEMENT_CONCEPTS,
+			**BVV_CONCEPTS,
+			**TRANSFER_CONCEPTS,
+			**GCD_CONCEPTS,
+			**{
+				gaap(name): (
+					_concept(gaap(name), period=DURATION, requirement=requirement),
+					label,
+				)
+				for name, (requirement, label) in FIXED_ASSET_COLUMNS.items()
+			},
+		}.items()
+		if name not in excluded
 	}
 	concepts = {**base.concepts, **{name: concept for name, (concept, _) in added.items()}}
 	labels = {name: dict(roles) for name, roles in base.labels.items()}
@@ -647,7 +667,8 @@ def view() -> Taxonomy:
 	for parent, child in TRANSFER_ARCS:
 		_add(presentation, mini.TRANSFERS_TO_TAX, gaap(parent), gaap(child))
 	for parent, child in GCD_ARCS:
-		_add(presentation, mini.GCD_ROLE, gcd(parent), gcd(child))
+		if gcd(child) not in excluded:
+			_add(presentation, mini.GCD_ROLE, gcd(parent), gcd(child))
 
 	calculation[mini.NOTES] = []
 	for parent, child, weight in FIXED_ASSET_CALCULATION:
