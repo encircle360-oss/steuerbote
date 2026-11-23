@@ -15,6 +15,7 @@ from steuerbote.ebilanz.positions import (
 	finding_of,
 	leitfaden,
 	qualified,
+	rule,
 	structure,
 	unqualified,
 )
@@ -204,6 +205,9 @@ class PositionsTest(TestCase):
 		self.assertEqual(qualified("bs.ass"), gaap("bs.ass"))
 		self.assertEqual(qualified(gcd("genInfo")), gcd("genInfo"))
 		self.assertEqual(leitfaden(view(), "B.14.2"), "Technischer Leitfaden zur HGB-Taxonomie 6.9, B.14.2")
+		self.assertEqual(
+			rule(view(), "170205010"), "Jahresdokumentation_Bilanz_Taxonomie_6_9.ods, Regel 170205010"
+		)
 
 
 class MussfelderTest(TestCase):
