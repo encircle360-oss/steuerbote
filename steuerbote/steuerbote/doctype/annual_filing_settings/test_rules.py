@@ -5,30 +5,46 @@ from unittest import TestCase
 
 from steuerbote.steuerbote.doctype.annual_filing_settings import rules as rules_module
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import (
+	AGS_ONLY_FOR_GEWERBESTEUER,
 	MESSAGES,
 	ROW_TEXT_LENGTHS,
 	TEXT_LENGTHS,
 	Address,
 	Director,
+	Establishment,
+	Holding,
 	LegalForm,
 	Period,
+	Prepayment,
 	SettingsError,
 	Shareholder,
 	ShareholderKind,
 	StreetSplit,
+	Tax,
+	TradeTaxRate,
 	YearSettings,
 	check_directors,
+	check_establishments,
+	check_holdings,
+	check_prepayments,
 	check_shareholders,
+	check_trade_tax_rates,
 	check_years,
 	directors_on,
 	early_request_window,
 	elster_tax_number,
 	elster_text,
+	establishments_in,
 	german_postal_code,
+	hebesatz_of,
+	holdings_of,
 	legal_form,
 	legal_status,
+	minimum_hebesatz,
+	normalized_ags,
 	normalized_idnr,
 	normalized_wid_nr,
+	prepayments_of,
 	rechtsform,
 	share_total,
 	shareholders_on,
@@ -53,6 +69,23 @@ def shareholder(row=1, name="Erika Mustermann", percent="100", start=date(2026, 
 		**fields,
 	}
 	return Shareholder(**values)
+
+
+def establishment(row=1, ags="09162000", start=date(2026, 1, 1), end=None, **fields):
+	values = {
+		"row": row,
+		"municipality": "München",
+		"postal_code": "80331",
+		"ags": ags,
+		"from_date": start,
+		"to_date": end,
+		**fields,
+	}
+	return Establishment(**values)
+
+
+def rate(ags="09162000", year=2026, hebesatz="490", source="Haushaltssatzung 2026", **fields):
+	return TradeTaxRate(ags=ags, year=year, hebesatz=Decimal(hebesatz), source=source, **fields)
 
 
 class LegalFormTest(TestCase):
@@ -551,6 +584,193 @@ class DirectorTest(TestCase):
 		]
 		self.assertEqual([d.row for d in directors_on(directors, date(2026, 3, 15))], [1, 2])
 		self.assertEqual([d.row for d in directors_on(directors, date(2026, 4, 1))], [2])
+
+
+class GewerbesteuerTest(TestCase):
+	def test_the_amtlicher_gemeindeschluessel_has_the_laenderschluessel_01_to_16_and_six_digits(self):
+		"""E4101103 of Jahresdokumentation E21 2025: (01|02|…|16){1}[0-9]{6}."""
+		for value, ags in (("09162000", "09162000"), (" 11 000 000 ", "11000000"), ("16055000", "16055000")):
+			with self.subTest(value=value):
+				self.assertEqual(normalized_ags(value), ags)
+		for value in ("00162000", "17000000", "9162000", "091620001", "0916200x", "", None):
+			with (
+				self.subTest(value=value),
+				self.assertRaisesRegex(SettingsError, "is not an Amtlicher Gemeindeschlüssel"),
+			):
+				normalized_ags(value)
+
+	def test_the_minimum_hebesatz_is_200_and_280_from_2027(self):
+		"""§ 16 Abs. 4 Satz 2 GewStG; Art. 8 Nr. 1 of the law of 29 June 2026 and § 36 Abs. 5b GewStG."""
+		self.assertEqual(minimum_hebesatz(2025), Decimal(200))
+		self.assertEqual(minimum_hebesatz(2026), Decimal(200))
+		self.assertEqual(minimum_hebesatz(2027), Decimal(280))
+		self.assertEqual(minimum_hebesatz(2030), Decimal(280))
+		with self.assertRaises(SettingsError):
+			minimum_hebesatz(26)
+
+	def test_refuses_a_hebesatz_below_the_minimum_of_its_year(self):
+		self.assertEqual(rate(year=2026, hebesatz="200").hebesatz, Decimal(200))
+		self.assertEqual(rate(year=2027, hebesatz="280").hebesatz, Decimal(280))
+		with self.assertRaises(SettingsError) as raised:
+			rate(year=2027, hebesatz="250.0")
+		self.assertEqual(
+			str(raised.exception),
+			"The Hebesatz of 09162000 for 2027 is 250 %; § 16 Abs. 4 Satz 2 GewStG sets at least 280 % for that year.",
+		)
+		for hebesatz in ("199.99", "NaN", "-Infinity"):
+			with self.subTest(hebesatz=hebesatz), self.assertRaises(SettingsError):
+				rate(hebesatz=hebesatz)
+
+	def test_a_hebesatz_names_its_source(self):
+		self.assertEqual(rate(source_date=date(2026, 2, 1)).source_date, date(2026, 2, 1))
+		for source in ("", "  ", None):
+			with (
+				self.subTest(source=source),
+				self.assertRaisesRegex(SettingsError, "The Hebesatz of 09162000 for 2026 needs its source"),
+			):
+				rate(source=source)
+
+	def test_a_gemeinde_has_one_hebesatz_per_year(self):
+		rates = [
+			rate(year=2026),
+			rate(year=2027, hebesatz="500"),
+			rate(ags="09184119", year=2026, hebesatz="330"),
+		]
+		check_trade_tax_rates(rates)
+		self.assertEqual(hebesatz_of(rates, "09162000", 2027).hebesatz, Decimal(500))
+		self.assertIsNone(hebesatz_of(rates, "09162000", 2028))
+		with self.assertRaisesRegex(SettingsError, "The Hebesatz of 09162000 for 2026 is entered twice."):
+			check_trade_tax_rates([*rates, rate(ags="0916 2000", year=2026)])
+
+	def test_a_betriebsstaette_in_a_gemeinde(self):
+		place = establishment(ags="0916 2000", hebenummer="12/345")
+		self.assertEqual((place.ags, place.period), ("09162000", Period(date(2026, 1, 1))))
+		with self.assertRaisesRegex(SettingsError, "123 is not a German postal code"):
+			establishment(postal_code="123")
+		with self.assertRaisesRegex(
+			SettingsError,
+			"Row 2 of the Betriebsstätten ends on 31. Dezember 2025, before its start on 1. Januar 2026.",
+		):
+			establishment(row=2, end=date(2025, 12, 31))
+
+	def test_the_betriebsstaetten_of_a_period(self):
+		places = [
+			establishment(1, end=date(2026, 3, 31)),
+			establishment(
+				2, ags="09184119", start=date(2026, 4, 1), municipality="Unterhaching", postal_code="82008"
+			),
+		]
+		self.assertEqual(
+			[place.row for place in establishments_in(places, date(2026, 1, 1), date(2026, 12, 31))], [1, 2]
+		)
+		self.assertEqual(
+			[place.row for place in establishments_in(places, date(2027, 1, 1), date(2027, 12, 31))], [2]
+		)
+		self.assertEqual(establishments_in(places, date(2025, 1, 1), date(2025, 12, 31)), [])
+
+	def test_a_betriebsstaette_is_entered_once_for_its_days(self):
+		places = [establishment(1, end=date(2026, 3, 31)), establishment(2, start=date(2026, 4, 1))]
+		check_establishments(places)
+		check_establishments([*places, establishment(3, postal_code="80333", start=date(2026, 2, 1))])
+		with self.assertRaisesRegex(
+			SettingsError,
+			"Rows 2 and 3 of the Betriebsstätten name the same Betriebsstätte in München for the same days.",
+		):
+			check_establishments([*places, establishment(3, start=date(2026, 6, 1), municipality="münchen ")])
+
+
+class HoldingTest(TestCase):
+	def test_a_holding_for_a_year_with_its_shares(self):
+		holding = Holding(
+			"Beispiel AG", 2026, Decimal("12.5"), Decimal(15), date(2020, 5, 4), identifier="DE0000000001"
+		)
+		self.assertEqual(
+			(holding.percent_on_1_january, holding.percent_at_start_of_ez), (Decimal("12.5"), Decimal(15))
+		)
+		Holding("Beispiel AG", 2026, Decimal(0), Decimal(100), date(2026, 3, 1), date(2026, 3, 1))
+
+	def test_a_share_lies_from_0_to_100(self):
+		for field in ("percent_on_1_january", "percent_at_start_of_ez"):
+			for percent in ("-0.1", "100.1", "NaN"):
+				with (
+					self.subTest(field=field, percent=percent),
+					self.assertRaisesRegex(
+						SettingsError, "The holding in Beispiel AG: a share in percent lies from 0 to 100"
+					),
+				):
+					Holding("Beispiel AG", 2026, **{field: Decimal(percent)})
+
+	def test_a_holding_is_sold_after_it_was_bought(self):
+		with self.assertRaisesRegex(
+			SettingsError,
+			"The holding in Beispiel AG is sold on 1. März 2026, before it was bought on 2. März 2026.",
+		):
+			Holding("Beispiel AG", 2026, bought_on=date(2026, 3, 2), sold_on=date(2026, 3, 1))
+		Holding("Beispiel AG", 2026, sold_on=date(2026, 3, 1))
+
+	def test_the_year_has_four_digits(self):
+		with self.assertRaisesRegex(SettingsError, "is not a four-digit year"):
+			Holding("Beispiel AG", 26)
+
+	def test_a_holding_has_one_row_per_year(self):
+		holdings = [Holding("Beispiel AG", 2026), Holding("Beispiel AG", 2027), Holding("Muster GmbH", 2026)]
+		check_holdings(holdings)
+		self.assertEqual([h.name for h in holdings_of(holdings, 2026)], ["Beispiel AG", "Muster GmbH"])
+		with self.assertRaisesRegex(SettingsError, "The holding in beispiel ag for 2026 is entered twice."):
+			check_holdings([*holdings, Holding("beispiel ag", 2026)])
+
+
+class PrepaymentTest(TestCase):
+	def test_a_vorauszahlung_of_a_notice(self):
+		payment = Prepayment(
+			"GewSt", 2026, date(2026, 2, 15), Decimal("1250.00"), date(2025, 12, 1), "0916 2000"
+		)
+		self.assertIs(payment.tax, Tax.GEWST)
+		self.assertEqual(payment.ags, "09162000")
+		self.assertEqual([tax.value for tax in Tax], ["KSt", "SolZ", "GewSt"])
+
+	def test_the_taxes_of_the_vorauszahlungen(self):
+		with self.assertRaisesRegex(SettingsError, "Grundsteuer is not a tax of the Vorauszahlungen"):
+			Prepayment("Grundsteuer", 2026, date(2026, 2, 15), Decimal(100))
+		with self.assertRaisesRegex(SettingsError, "is not a four-digit year"):
+			Prepayment(Tax.KST, 26, date(2026, 3, 10), Decimal(100))
+
+	def test_the_amount_is_in_cents_of_at_least_0(self):
+		Prepayment(Tax.SOLZ, 2026, date(2026, 3, 10), Decimal(0))
+		for amount in ("-1", "10.001", "NaN"):
+			with (
+				self.subTest(amount=amount),
+				self.assertRaisesRegex(
+					SettingsError, "The Vorauszahlung KSt of 2026 due on 10. März 2026 is an amount in cents"
+				),
+			):
+				Prepayment(Tax.KST, 2026, date(2026, 3, 10), Decimal(amount))
+		with self.assertRaises(TypeError):
+			Prepayment(Tax.KST, 2026, date(2026, 3, 10), 100.0)  # type: ignore[arg-type]
+
+	def test_only_the_gewerbesteuer_goes_to_a_gemeinde(self):
+		with self.assertRaises(SettingsError) as raised:
+			Prepayment(Tax.KST, 2026, date(2026, 3, 10), Decimal(100), ags="09162000")
+		self.assertEqual(raised.exception.template, AGS_ONLY_FOR_GEWERBESTEUER)
+		with self.assertRaisesRegex(SettingsError, "is not an Amtlicher Gemeindeschlüssel"):
+			Prepayment(Tax.GEWST, 2026, date(2026, 2, 15), Decimal(100), ags="1234")
+
+	def test_a_notice_sets_a_vorauszahlung_once_per_due_date(self):
+		payments = [
+			Prepayment(Tax.KST, 2026, date(2026, 3, 10), Decimal(100)),
+			Prepayment(Tax.KST, 2026, date(2026, 6, 10), Decimal(100)),
+			Prepayment(Tax.SOLZ, 2026, date(2026, 3, 10), Decimal("5.50")),
+			Prepayment(Tax.KST, 2027, date(2027, 3, 10), Decimal(200)),
+		]
+		check_prepayments(payments)
+		self.assertEqual(
+			[p.due_date for p in prepayments_of(payments, Tax.KST, 2026)],
+			[date(2026, 3, 10), date(2026, 6, 10)],
+		)
+		with self.assertRaisesRegex(
+			SettingsError, "The Vorauszahlung KSt of 2026 due on 10. Juni 2026 is entered twice."
+		):
+			check_prepayments([*payments, Prepayment(Tax.KST, 2026, date(2026, 6, 10), Decimal(50))])
 
 
 class SettingsErrorTest(TestCase):
