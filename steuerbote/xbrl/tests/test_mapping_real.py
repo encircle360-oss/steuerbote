@@ -1,0 +1,112 @@
+"""The checks of the Bilanzzuordnung against the HGB-Taxonomie 6.9 of esteuer.de (steuerbote/xbrl/tests/real.py)."""
+
+from unittest import TestCase
+
+from steuerbote.hgb.statement import RemainingTerm
+from steuerbote.xbrl import mapping
+from steuerbote.xbrl.mapping import Mapping, Part, Rule
+from steuerbote.xbrl.tests import real
+
+GROSS_SALES = "is.netIncome.regular.operatingTC.grossTradingProfit.totalOutput.netSales.grossSales"
+LIMITED_DEDUCTIBLE = "is.netIncome.regular.operatingTC.otherCost.limitedDeductible"
+SAMPLE = (
+	("0135", "bs.ass.fixAss.intan.concessionBrands", None, Part.BALANCE_SHEET),
+	("0520", "bs.ass.fixAss.tan.otherEquipm.passengerCars", None, Part.BALANCE_SHEET),
+	("0670", "bs.ass.fixAss.tan.otherEquipm.gwg", None, Part.BALANCE_SHEET),
+	("0675", "bs.ass.fixAss.tan.otherEquipm.gwgsammelposten", None, Part.BALANCE_SHEET),
+	("1600", "bs.ass.currAss.cashEquiv.cash", None, Part.BALANCE_SHEET),
+	("1800", "bs.ass.currAss.cashEquiv.bank", "bs.eqLiab.liab.bank.other", Part.BALANCE_SHEET),
+	("1200", "bs.ass.currAss.receiv.trade.other", None, Part.BALANCE_SHEET),
+	("1406", "bs.ass.currAss.receiv.other.vat", None, Part.BALANCE_SHEET),
+	("2900", "bs.eqLiab.equity.subscribed.corp", None, Part.BALANCE_SHEET),
+	("2970", "bs.eqLiab.equity.retainedEarnings", None, Part.BALANCE_SHEET),
+	("3035", "bs.eqLiab.accruals.tax.gewst", None, Part.BALANCE_SHEET),
+	("3040", "bs.eqLiab.accruals.tax.kst", None, Part.BALANCE_SHEET),
+	("3095", "bs.eqLiab.accruals.other", None, Part.BALANCE_SHEET),
+	("3300", "bs.eqLiab.liab.trade.genOther", None, Part.BALANCE_SHEET),
+	("3510", "bs.eqLiab.liab.shareholders.gmbh", None, Part.BALANCE_SHEET),
+	("3806", "bs.eqLiab.liab.other.theroffTax", None, Part.BALANCE_SHEET),
+	("4400", f"{GROSS_SALES}.generalRateVAT", None, Part.INCOME_STATEMENT),
+	("4125", f"{GROSS_SALES}.taxExemptUStG4_1b", None, Part.INCOME_STATEMENT),
+	("4338", f"{GROSS_SALES}.untaxable", None, Part.INCOME_STATEMENT),
+	("6024", "is.netIncome.regular.operatingTC.staff.salaries.managerPartner", None, Part.INCOME_STATEMENT),
+	("6027", "is.netIncome.regular.operatingTC.staff.salaries.misc", None, Part.INCOME_STATEMENT),
+	("6640", f"{LIMITED_DEDUCTIBLE}.entertainment.deductible", None, Part.INCOME_STATEMENT),
+	("6644", f"{LIMITED_DEDUCTIBLE}.entertainment.nonDeductible", None, Part.INCOME_STATEMENT),
+	("6610", f"{LIMITED_DEDUCTIBLE}.gifts.deductible", None, Part.INCOME_STATEMENT),
+	("6620", f"{LIMITED_DEDUCTIBLE}.gifts.nondeductible", None, Part.INCOME_STATEMENT),
+	("7600", "is.netIncome.tax.kst", None, Part.INCOME_STATEMENT),
+	("7610", "is.netIncome.tax.gewst", None, Part.INCOME_STATEMENT),
+	("6220", "is.netIncome.regular.operatingTC.deprAmort.fixAss.tan.other", None, Part.INCOME_STATEMENT),
+	("6260", "is.netIncome.regular.operatingTC.deprAmort.fixAss.tan.lowValueAs", None, Part.INCOME_STATEMENT),
+	("6310", "is.netIncome.regular.operatingTC.otherCost.leaseFix.other", None, Part.INCOME_STATEMENT),
+	("6315", "is.netIncome.regular.operatingTC.otherCost.leaseFix.shareholders", None, Part.INCOME_STATEMENT),
+)
+"""SKR04 accounts with the positions the research on the E-Bilanz proposes for them as a pattern of the defaults
+(stufe3-research-ebilanz.md, 3.3, after the DATEV-Kontenrahmen „Gültig für 2026“ and the taxonomy 6.9); 6315 stands for
+the rent paid to a shareholder."""
+
+
+class SamplePositionsTest(TestCase):
+	def test_the_positions_of_the_pattern_pass_the_checks_of_the_mapping(self):
+		sample = Mapping(
+			"SKR04", rules=[Rule(number, concept, opposite) for number, concept, opposite, _part in SAMPLE]
+		)
+		parts = {number: part for number, _concept, _opposite, part in SAMPLE}
+		self.assertEqual(
+			[problem.message for problem in mapping.check(sample, real.view(), parts)],
+			[],
+		)
+
+	def test_the_bank_with_a_credit_balance_goes_to_the_verbindlichkeiten_gegenueber_kreditinstituten(self):
+		taxonomy = real.view()
+		self.assertEqual(mapping.part_of(taxonomy, "bs.eqLiab.liab.bank.other"), Part.BALANCE_SHEET)
+		self.assertNotEqual(
+			taxonomy.concept("bs.ass.currAss.cashEquiv.bank").balance,
+			taxonomy.concept("bs.eqLiab.liab.bank.other").balance,
+		)
+
+	def test_the_remaining_terms_and_shareholders_go_with_forderungen_and_verbindlichkeiten(self):
+		rules = [
+			Rule("1200", "bs.ass.currAss.receiv.trade.other", remaining_term=RemainingTerm.OVER_FIVE_YEARS),
+			Rule("3300", "bs.eqLiab.liab.trade.genOther", remaining_term=RemainingTerm.UP_TO_ONE_YEAR),
+			Rule("3510", "bs.eqLiab.liab.shareholders.gmbh", shareholder=True),
+			Rule("0880", "bs.ass.fixAss.fin.loansToSharehold", shareholder=True),
+			Rule("0960", "bs.ass.fixAss.fin.otherLoans", shareholder=True),
+		]
+		self.assertEqual(mapping.check(Mapping("SKR04", rules=rules), real.view()), ())
+		self.assertEqual(
+			[
+				problem.refusal
+				for problem in mapping.check(
+					Mapping(
+						"SKR04",
+						rules=[
+							Rule("2900", "bs.eqLiab.equity.subscribed.corp", shareholder=True),
+							Rule(
+								"1800",
+								"bs.ass.currAss.cashEquiv.bank",
+								remaining_term=RemainingTerm.UP_TO_ONE_YEAR,
+							),
+						],
+					),
+					real.view(),
+				)
+			],
+			[mapping.SHAREHOLDER, mapping.REMAINING_TERM],
+		)
+
+	def test_refuses_the_positions_a_gmbh_does_not_report(self):
+		"""Positions of a partnership and of the Umsatzkostenverfahren, abstract and non-monetary ones and those outside
+		the Bilanz and the GuV, as the taxonomy 6.9 marks them."""
+		cases = {
+			"bs.eqLiab.equity.subscribed.limitedLiablePartners": mapping.LEGAL_FORM,
+			"is.netIncome.regular.operatingCOGS.grossOpProfit.netSales": mapping.COST_OF_SALES,
+			"bs": mapping.ABSTRACT,
+			"bs.eqLiab.equity.capIncreaseContributionsInclPremium.dateHR": mapping.NOT_MONETARY,
+			"BVV.profitLoss": mapping.NOT_A_STATEMENT_POSITION,
+		}
+		for concept, refusal in cases.items():
+			with self.subTest(concept=concept):
+				(problem,) = mapping.check(Mapping("SKR04", rules=[Rule("9999", concept)]), real.view())
+				self.assertEqual(problem.refusal, refusal)

@@ -10,10 +10,12 @@ from steuerbote.xbrl.mapping import (
 	Excluded,
 	Mapping,
 	MappingError,
+	Part,
 	Purpose,
 	Rule,
 	Watched,
 )
+from steuerbote.xbrl.tests import positions
 from steuerbote.xbrl.versions import LATEST
 
 BANK = "bs.ass.currAss.cashEquiv.bank"
@@ -214,3 +216,200 @@ class MappingTest(TestCase):
 			},
 		)
 		self.assertEqual(len(mapping.MESSAGES), len(set(mapping.MESSAGES)))
+
+
+CASH = "bs.ass.currAss.cashEquiv.cash"
+SALES = "is.netIncome.netSales"
+RECEIVABLES = "bs.ass.currAss.receiv.trade"
+LOANS = "bs.ass.fixAss.fin.otherLoans"
+SHARES = "bs.ass.fixAss.fin.sharesInAffil"
+
+
+def problems(*rules: Rule, parts: dict | None = None, taxonomy=None) -> list[tuple[str, tuple]]:
+	"""The templates and values of the problems of a mapping with the rules."""
+	found = mapping.check(Mapping("SKR03", rules=rules), taxonomy or positions.view(), parts)
+	return [(problem.refusal.template, problem.values) for problem in found]
+
+
+class PartTest(TestCase):
+	def test_a_position_belongs_to_the_bilanz_or_to_the_guv_by_its_presentation(self):
+		taxonomy = positions.view()
+		self.assertEqual(mapping.part_of(taxonomy, BANK), Part.BALANCE_SHEET)
+		self.assertEqual(mapping.part_of(taxonomy, f"de-gaap-ci:{SALES}"), Part.INCOME_STATEMENT)
+		self.assertIsNone(mapping.part_of(taxonomy, "BVV.profitLoss"))
+		self.assertIsNone(mapping.part_of(taxonomy, "bs.ass.unknown"))
+
+	def test_an_account_belongs_to_the_part_its_report_type_in_erpnext_names(self):
+		"""Account.report_type of ERPNext 16, „Balance Sheet“ for Asset, Liability and Equity, „Profit and Loss“ for
+		Income and Expense (erpnext/accounts/doctype/account/account.py)."""
+		self.assertEqual(Part.of_report_type("Balance Sheet"), Part.BALANCE_SHEET)
+		self.assertEqual(Part.of_report_type("Profit and Loss"), Part.INCOME_STATEMENT)
+		with self.assertRaises(ValueError):
+			Part.of_report_type("")
+
+
+class PositionTest(TestCase):
+	"""What a rule may name: a position of the Bilanz or the GuV that a GmbH or UG may send to the Finanzamt."""
+
+	def test_a_rule_with_positions_of_its_part_has_no_problem(self):
+		self.assertEqual(
+			problems(
+				Rule("1200", BANK, opposite=BANK_LIABILITY),
+				Rule("8400", f"de-gaap-ci:{SALES}"),
+				parts={"1200": Part.BALANCE_SHEET, "8400": Part.INCOME_STATEMENT},
+			),
+			[],
+		)
+
+	def test_refuses_a_position_the_taxonomy_does_not_have(self):
+		"""„Es dürfen bei der Einreichung nur Positionen der zugelassenen, standardisierten Taxonomie-Schemata ...
+		verwendet werden.“ (Technischer Leitfaden zur HGB-Taxonomie 6.9, B.10)"""
+		self.assertEqual(
+			problems(Rule("1200", "bs.ass.currAss.cashEquiv.gold")),
+			[(mapping.UNKNOWN_POSITION.template, ("1200", "bs.ass.currAss.cashEquiv.gold", "6.9"))],
+		)
+
+	def test_refuses_a_position_that_takes_no_amount_in_euros(self):
+		self.assertEqual(
+			problems(Rule("1200", "detailedInformation"), Rule("1300", "nt")),
+			[
+				(mapping.ABSTRACT.template, ("1200", "detailedInformation", "6.9")),
+				(mapping.NOT_MONETARY.template, ("1300", "nt", "6.9")),
+			],
+		)
+
+	def test_refuses_a_position_outside_the_bilanz_and_the_guv(self):
+		"""The mapping feeds the Bilanz and the GuV „einschließlich der unverdichteten Kontennachweise“ (§ 5b Abs. 1
+		Satz 1 EStG), the Betriebsvermögensvergleich derives from them."""
+		self.assertEqual(
+			problems(Rule("0800", "BVV.profitLoss"), Rule("0810", "de-gcd:genInfo.company.id.shareholder")),
+			[
+				(mapping.NOT_A_STATEMENT_POSITION.template, ("0800", "BVV.profitLoss", "6.9")),
+				(mapping.NOT_MONETARY.template, ("0810", "de-gcd:genInfo.company.id.shareholder", "6.9")),
+			],
+		)
+
+	def test_refuses_a_position_of_another_legal_form(self):
+		"""„nur Positionen mit der Auszeichnung „legalFormKSt“ = „true“ und Positionen, die keiner Rechtsform
+		zugeordnet sind“ (Leitfaden B.4.2): Steuerbote serves the GmbH and the UG."""
+		concept = "bs.eqLiab.equity.subscribed.limitedLiablePartners"
+		self.assertEqual(
+			problems(Rule("0800", concept)), [(mapping.LEGAL_FORM.template, ("0800", concept, "6.9"))]
+		)
+
+	def test_refuses_a_position_not_permitted_for_the_finanzverwaltung(self):
+		"""„Die mit „Einreichung an Finanzverwaltung“ gekennzeichneten Positionen dürfen für die Übermittlung von
+		E-Bilanzen an die Finanzverwaltung nicht verwendet werden.“ (Leitfaden A.9.3, B.14.6)"""
+		concept = "bs.ass.consolidationDifference"
+		self.assertEqual(
+			problems(Rule("0040", concept)), [(mapping.SUBMISSION.template, ("0040", concept, "6.9"))]
+		)
+
+	def test_refuses_a_position_of_a_sonder_or_ergaenzungsbilanz(self):
+		"""onlyPermittedForSoBil_ErgBil (Leitfaden A.9.3), which a GmbH never files."""
+		concept = "bs.eqLiab.liab.colEntity"
+		self.assertEqual(
+			problems(Rule("0700", concept)), [(mapping.SPECIAL_BALANCE.template, ("0700", concept, "6.9"))]
+		)
+
+	def test_refuses_a_position_of_the_umsatzkostenverfahren(self):
+		"""Steuerbote draws the GuV up by the Gesamtkostenverfahren, which takes no position marked UKV (Leitfaden
+		B.14.3.1.15)."""
+		concept = "is.netIncome.costOfSales"
+		self.assertEqual(
+			problems(Rule("4000", concept)), [(mapping.COST_OF_SALES.template, ("4000", concept, "6.9"))]
+		)
+
+	def test_refuses_a_position_without_a_debit_or_credit_balance(self):
+		"""„Wird ein Konto einer Position zugeordnet, die keine Soll/Haben-Auszeichnung besitzt, dann muss aus dem
+		fachlichen Kontext heraus individuell entschieden werden“ (Leitfaden A.13), which a mapping cannot."""
+		self.assertEqual(
+			problems(Rule("0001", "bs.ass.noSide")),
+			[(mapping.NO_SIDE.template, ("0001", "bs.ass.noSide", "6.9"))],
+		)
+
+	def test_checks_the_position_for_the_opposite_balance_alike(self):
+		self.assertEqual(
+			problems(Rule("1200", BANK, opposite="bs.eqLiab.liab.bank.overdraft")),
+			[(mapping.UNKNOWN_POSITION.template, ("1200", "bs.eqLiab.liab.bank.overdraft", "6.9"))],
+		)
+
+	def test_the_position_for_the_opposite_balance_lies_on_the_other_side(self):
+		"""The opposite position takes a balance on the other side of the position (Leitfaden A.13)."""
+		self.assertEqual(
+			problems(Rule("1200", BANK, opposite=CASH)), [(mapping.SAME_SIDE.template, ("1200", CASH, BANK))]
+		)
+
+	def test_both_positions_of_a_rule_belong_to_one_part(self):
+		self.assertEqual(
+			problems(Rule("1200", BANK, opposite=SALES)),
+			[(mapping.OTHER_PARTS.template, ("1200", BANK, SALES))],
+		)
+
+	def test_an_account_goes_to_a_position_of_its_own_part(self):
+		"""The Bilanz holds the Vermögen and the Schulden at the Stichtag, the GuV the Aufwendungen and Erträge of the
+		Geschäftsjahr (§ 242 Abs. 1 und 2 HGB): ERPNext sums a balance sheet account up to the day and a profit and loss
+		account within the year, so its balance fits only a position of its own part."""
+		self.assertEqual(
+			problems(
+				Rule("1200", SALES),
+				Rule("8400", BANK),
+				parts={"1200": Part.BALANCE_SHEET, "8400": Part.INCOME_STATEMENT},
+			),
+			[
+				(mapping.BALANCE_SHEET_ACCOUNT.template, ("1200", SALES)),
+				(mapping.INCOME_STATEMENT_ACCOUNT.template, ("8400", BANK)),
+			],
+		)
+
+	def test_a_remaining_term_goes_with_forderungen_and_verbindlichkeiten(self):
+		"""§ 268 Abs. 4 Satz 1 and Abs. 5 Satz 1 HGB note the remaining terms of the Forderungen and the
+		Verbindlichkeiten; a bank account with a credit balance is one of them."""
+		term = RemainingTerm.UP_TO_ONE_YEAR
+		self.assertEqual(
+			problems(
+				Rule("3150", BANK_LIABILITY, remaining_term=term),
+				Rule("1400", RECEIVABLES, remaining_term=term),
+				Rule("1200", BANK, opposite=BANK_LIABILITY, remaining_term=term),
+			),
+			[],
+		)
+		self.assertEqual(
+			problems(Rule("1000", CASH, remaining_term=term)),
+			[(mapping.REMAINING_TERM.template, ("1000", CASH))],
+		)
+
+	def test_the_shareholder_flag_goes_with_ausleihungen_forderungen_and_verbindlichkeiten(self):
+		"""„Ausleihungen, Forderungen und Verbindlichkeiten gegenüber Gesellschaftern“ (§ 42 Abs. 3 GmbHG)."""
+		self.assertEqual(
+			problems(
+				Rule("3500", BANK_LIABILITY, shareholder=True),
+				Rule("1300", RECEIVABLES, shareholder=True),
+				Rule("0505", LOANS, shareholder=True),
+			),
+			[],
+		)
+		self.assertEqual(
+			problems(Rule("0500", SHARES, shareholder=True), Rule("1000", CASH, shareholder=True)),
+			[
+				(mapping.SHAREHOLDER.template, ("0500", SHARES)),
+				(mapping.SHAREHOLDER.template, ("1000", CASH)),
+			],
+		)
+
+	def test_a_problem_reads_as_its_template_for_the_form_and_as_its_sentence_for_a_document(self):
+		(problem,) = mapping.check(
+			Mapping("SKR03", rules=[Rule("1000", CASH, shareholder=True)]), positions.view()
+		)
+		self.assertEqual(problem.message, mapping.SHAREHOLDER.template.format("1000", CASH))
+		self.assertEqual(problem.text, mapping.SHAREHOLDER.sentence.format("1000", CASH))
+		self.assertEqual((problem.account_number, problem.source), ("1000", "§ 42 Abs. 3 GmbHG"))
+		self.assertTrue(problem.text.startswith("Konto 1000"))
+
+	def test_every_refusal_has_a_template_a_sentence_and_a_source(self):
+		for refusal in mapping.REFUSALS:
+			with self.subTest(refusal=refusal.template):
+				self.assertTrue(refusal.template.startswith("Account {0}"))
+				self.assertTrue(refusal.sentence.startswith("Konto {0}"))
+				self.assertTrue(refusal.source)
+		self.assertEqual(len({refusal.template for refusal in mapping.REFUSALS}), len(mapping.REFUSALS))
