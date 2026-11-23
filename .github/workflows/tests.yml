@@ -50,9 +50,26 @@ jobs:
           echo "$ERIC_DOCUMENTATION_SHA256  $RUNNER_TEMP/eric-doc.zip" | sha256sum --check --strict
           unzip -q "$RUNNER_TEMP/eric-doc.zip" '*/Datenarten/ElsterAnmeldung/UStVA/*' '*/Datenarten/ElsterExtern/ZMDO/*' '*/Datenarten/ElsterErklaerung/USt/*' '*/Datenarten/ElsterErklaerung/KSt/*' '*/Datenarten/ElsterErklaerung/GewSt/*' '*/Datenarten/ElsterBilanz/*' '*/Datenartversionmatrix.ods' '*/ElsterBasisSchema/*' -d "$RUNNER_TEMP/eric-doc"
 
+      - name: Download the HGB-Taxonomie 6.9
+        # The taxonomy may not be passed on, so it is not in the repository: the tests of steuerbote/xbrl install it
+        # from the package of esteuer.de, as the operator does. esteuer.de does not send its intermediate certificate,
+        # which comes from GlobalSign with its SHA-256 checked.
+        env:
+          TAXONOMY: https://www.esteuer.de/download/taxonomie_20250618/german-gaap-taxonomy-v6.9-2025-04-01-xbrl.zip
+          TAXONOMY_SHA256: accd62202d73c036910fee118b30730f0392934afc9730617788e30a0480df87
+          INTERMEDIATE: http://secure.globalsign.com/cacert/gsgccr46dvtlsca2025.crt
+          INTERMEDIATE_SHA256: b59410f367b986e98e53a9789a6580553a74be515211d9f6ecb6e8a11e83aeaa
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/intermediate.crt" "$INTERMEDIATE"
+          echo "$INTERMEDIATE_SHA256  $RUNNER_TEMP/intermediate.crt" | sha256sum --check --strict
+          { cat /etc/ssl/certs/ca-certificates.crt; openssl x509 -inform DER -in "$RUNNER_TEMP/intermediate.crt"; } > "$RUNNER_TEMP/esteuer.pem"
+          curl --fail --silent --show-error --location --retry 3 --cacert "$RUNNER_TEMP/esteuer.pem" --output "$RUNNER_TEMP/taxonomy-6.9.zip" "$TAXONOMY"
+          echo "$TAXONOMY_SHA256  $RUNNER_TEMP/taxonomy-6.9.zip" | sha256sum --check --strict
+
       - name: Run the core tests with coverage
         env:
           STEUERBOTE_ERIC_DOC_DIR: ${{ runner.temp }}/eric-doc
+          STEUERBOTE_TAXONOMY_6_9: ${{ runner.temp }}/taxonomy-6.9.zip
         run: python -m pytest --cov --cov-report=term-missing --cov-report=xml
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
