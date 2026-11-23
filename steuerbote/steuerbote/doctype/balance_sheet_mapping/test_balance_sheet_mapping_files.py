@@ -8,8 +8,9 @@ import re
 from pathlib import Path
 from unittest import TestCase
 
-from steuerbote import balance_mapping_sync
+from steuerbote import balance_mapping_sync, hooks
 from steuerbote.mappings import transfer
+from steuerbote.setup.steps import Step
 from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl import mapping
 from steuerbote.xbrl.mapping import REMAINING_TERMS, Purpose
@@ -356,3 +357,41 @@ class FormFilesTest(TestCase):
 		german = translations()
 		self.assertEqual(german["Check Accounts"], "Konten prüfen")
 		self.assertEqual(german["Invalid Balance Sheet Mapping"], "Ungültige Bilanzzuordnung")
+
+
+class SetupStepTest(TestCase):
+	"""Steuerbote einrichten makes the Balance Sheet Mapping through the hook steuerbote_setup_steps."""
+
+	def test_the_hook_runs_the_step_of_the_mapping_after_those_of_the_voranmeldung_and_the_ertragsteuern(
+		self,
+	):
+		(entry,) = (
+			entry for entry in hooks.steuerbote_setup_steps if entry["key"] == "balance_sheet_mapping"
+		)
+		step = Step.from_hook(entry)
+		self.assertEqual(
+			(step.key, step.label, step.order, step.run, step.needs),
+			(
+				"balance_sheet_mapping",
+				"Balance Sheet Mapping",
+				50,
+				"steuerbote.steuerbote.doctype.balance_sheet_mapping.setup.run",
+				(),
+			),
+		)
+		self.assertEqual([entry["order"] for entry in hooks.steuerbote_setup_steps], [40, 50])
+		self.assertRegex(
+			(FOLDER / "setup.py").read_text(encoding="utf-8"), r"\ndef run\(context: SetupContext\)"
+		)
+
+	def test_every_note_of_the_step_reads_in_german(self):
+		source = (FOLDER / "setup.py").read_text(encoding="utf-8")
+		found = constants(source)
+		(listed,) = (
+			node.value
+			for node in ast.parse(source).body
+			if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "MESSAGES"
+		)
+		messages = {found[name.id] for name in listed.elts}
+		self.assertEqual(len(messages), 7)
+		self.assertEqual(sorted(messages - translations().keys()), [])

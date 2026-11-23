@@ -79,12 +79,13 @@ def test_steuerbote_einrichten_sets_up_a_company_once(desk, expect):
 	expect(report.locator(".steuerbote-setup-summary")).to_contain_text(
 		f"Steuerbote ist für {data.SETUP_COMPANY} eingerichtet."
 	)
-	expect(report.locator("tbody tr")).to_have_count(4)
+	expect(report.locator("tbody tr")).to_have_count(5)
 	for step, outcome in (
 		("vat_return_settings", "Angelegt"),
 		("vat_return_mapping", "Angelegt"),
 		("filing_period", "Offen"),
 		("income_tax_mapping", "Angelegt"),
+		("balance_sheet_mapping", "Angelegt"),
 	):
 		expect(report.locator(f'tr[data-step="{step}"]')).to_contain_text(outcome)
 	expect(report.locator('tr[data-step="vat_return_mapping"]')).to_contain_text("SKR03")
@@ -92,7 +93,7 @@ def test_steuerbote_einrichten_sets_up_a_company_once(desk, expect):
 	expect(report.locator(".steuerbote-setup-summary")).to_contain_text(
 		f"Nichts geändert: {data.SETUP_COMPANY} war schon eingerichtet."
 	)
-	for step in ("vat_return_settings", "vat_return_mapping", "income_tax_mapping"):
+	for step in ("vat_return_settings", "vat_return_mapping", "income_tax_mapping", "balance_sheet_mapping"):
 		expect(report.locator(f'tr[data-step="{step}"]')).to_contain_text("Übersprungen")
 	report.locator('tr[data-step="vat_return_mapping"] a').click()
 	expect(desk.page).to_have_url(re.compile(r"/desk/vat-return-mapping/"))
@@ -112,7 +113,12 @@ def remove_what_a_run_set_up(desk, company: str) -> None:
 	"""Delete the mappings and the settings of the company if an earlier run of the tests made them."""
 	desk.page.evaluate(
 		"""async (company) => {
-			for (const doctype of ["Income Tax Mapping", "VAT Return Mapping", "VAT Return Settings"]) {
+			for (const doctype of [
+				"Balance Sheet Mapping",
+				"Income Tax Mapping",
+				"VAT Return Mapping",
+				"VAT Return Settings",
+			]) {
 				if (await frappe.db.exists(doctype, company)) {
 					await frappe.db.delete_doc(doctype, company);
 				}

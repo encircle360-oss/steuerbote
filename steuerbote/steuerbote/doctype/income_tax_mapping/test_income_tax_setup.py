@@ -70,7 +70,13 @@ class IntegrationTestIncomeTaxSetup(IntegrationTestCase):
 	def test_the_setup_runs_the_step_of_the_hook_after_its_own(self):
 		self.assertEqual(
 			[found.key for found in setup.setup_steps()],
-			["vat_return_settings", "vat_return_mapping", "filing_period", "income_tax_mapping"],
+			[
+				"vat_return_settings",
+				"vat_return_mapping",
+				"filing_period",
+				"income_tax_mapping",
+				"balance_sheet_mapping",
+			],
 		)
 
 	def test_makes_the_mapping_with_the_defaults_and_leaves_the_classes_and_the_check_open(self):

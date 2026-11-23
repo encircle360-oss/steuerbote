@@ -247,7 +247,7 @@ class TranslationsTest(TestCase):
 
 class SetupStepTest(TestCase):
 	def test_the_hook_runs_the_step_of_the_mapping_after_the_steps_of_the_voranmeldung(self):
-		(entry,) = hooks.steuerbote_setup_steps
+		(entry,) = (entry for entry in hooks.steuerbote_setup_steps if entry["key"] == "income_tax_mapping")
 		step = Step.from_hook(entry)
 		self.assertEqual(
 			(step.key, step.label, step.order, step.run, step.needs),
