@@ -3,8 +3,9 @@ from unittest import TestCase
 from lxml import etree
 
 from steuerbote import __version__
-from steuerbote.elster import ust1h_xml, ustva_xml
-from steuerbote.elster.envelope import envelope_of, to_envelope, transfer_datenlieferant
+from steuerbote.elster import ust1h_xml, ustva_xml, vorsatz
+from steuerbote.elster.envelope import envelope_for, envelope_of, to_envelope, transfer_datenlieferant
+from steuerbote.elster.tests import eric_schema
 from steuerbote.elster.tests.examples import (
 	CREATED,
 	FIXTURES,
@@ -17,6 +18,7 @@ from steuerbote.elster.tests.examples import (
 	voranmeldung,
 )
 from steuerbote.elster.ustva_xml import XmlError, to_nutzdaten
+from steuerbote.eric.datenart import EBILANZ_NAMESPACE, Datenart, bilanz, gewst, kst, ust
 
 CONTACT = {"phone": "089 1234567", "email": "erika@example.org"}
 
@@ -158,3 +160,119 @@ class TransferDatenlieferantTest(TestCase):
 			transfer_datenlieferant(filer(**CONTACT), "x" * 200)
 		self.assertEqual(raised.exception.template, ustva_xml.TEXT_TOO_LONG)
 		self.assertEqual(raised.exception.values[1], 256)
+
+
+ERSTELLER = "Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; Deutschland; 089 1234567; info@example.org"
+
+
+def erklaerung(kind: Datenart) -> etree._Element:
+	"""The Nutzdaten of an Erklärung of the Datenart with nothing but its Vorsatz."""
+	root = etree.Element(f"{{{kind.namespace}}}{kind.root}", nsmap={None: kind.namespace})
+	root.set("version", kind.root_version)
+	filer = vorsatz.Vorsatz(
+		steuernummer="9198011310010",
+		name="Beispiel GmbH",
+		street="Hauptstraße 1",
+		postal_code="80331",
+		city="München",
+		copyright="(c) 2026 Beispiel Software GmbH, München",
+	)
+	vorsatz.append_to(root, kind, filer)
+	return root
+
+
+def ebilanz() -> etree._Element:
+	"""The Nutzdaten of an E-Bilanz: its Stichtag and an XBRL instance without facts."""
+	root = etree.Element(f"{{{EBILANZ_NAMESPACE}}}EBilanz", nsmap={"ebilanz": EBILANZ_NAMESPACE}, version="2")
+	etree.SubElement(root, f"{{{EBILANZ_NAMESPACE}}}stichtag").text = "20261231"
+	etree.SubElement(
+		root, "{http://www.xbrl.org/2003/instance}xbrl", nsmap={"xbrli": "http://www.xbrl.org/2003/instance"}
+	)
+	return root
+
+
+def delivery(nutzdaten: etree._Element, kind: Datenart, **arguments) -> bytes:
+	values: dict = {
+		"empfaenger": "9198",
+		"hersteller_id": "12345",
+		"testmerker": True,
+		"datenlieferant": "Beispiel GmbH; Erika Beispiel",
+		"produkt_version": "0.1.0",
+		**arguments,
+	}
+	return envelope_for(nutzdaten, kind, **values)
+
+
+class ErklaerungEnvelopeTest(TestCase):
+	"""The envelope of an Erklärung follows elster11_<root>_<Jahr>_extern.xsd of its Datenart (ERiC-Entwicklerhandbuch
+	44.3.6.0, Tabellen 7-9, 7-13 and 7-15)."""
+
+	def test_names_the_verfahren_datenart_and_vorgang_of_the_erklaerung(self):
+		fields = header(delivery(erklaerung(ust(2026)), ust(2026)), "TransferHeader")
+		self.assertEqual(
+			fields[:6],
+			[
+				("Verfahren", "ElsterErklaerung"),
+				("DatenArt", "USt"),
+				("Vorgang", "send-Auth"),
+				("Testmerker", "700000004"),
+				("HerstellerID", "12345"),
+				("DatenLieferant", "Beispiel GmbH; Erika Beispiel"),
+			],
+		)
+		self.assertEqual([name for name, _ in fields[6:]], ["Datei"])
+
+	def test_sends_to_the_finanzamt_and_carries_the_nutzdaten(self):
+		document = delivery(erklaerung(kst(2026)), kst(2026), testmerker=False)
+		(empfaenger,) = parse(document).iter("{*}Empfaenger")
+		self.assertEqual((empfaenger.get("id"), empfaenger.text), ("F", "9198"))
+		self.assertNotIn("Testmerker", dict(header(document, "TransferHeader")))
+		((nutzdaten,),) = parse(document).iter("{*}Nutzdaten")
+		self.assertEqual(
+			etree.tostring(nutzdaten, method="c14n2", strip_text=True),
+			etree.tostring(erklaerung(kst(2026)), method="c14n2", strip_text=True),
+		)
+
+	def test_refuses_an_hersteller_id_of_another_shape(self):
+		with self.assertRaises(XmlError) as raised:
+			delivery(erklaerung(ust(2026)), ust(2026), hersteller_id="74931")
+		self.assertEqual(raised.exception.template, ustva_xml.ILLUSTRATION_HERSTELLER_ID)
+
+	def test_passes_the_schema_of_the_delivery_of_each_erklaerung(self):
+		for kind in (ust(2026), kst(2025), gewst(2025)):
+			for testmerker in (True, False):
+				with self.subTest(datenart=kind.version, testmerker=testmerker):
+					schema = eric_schema.erklaerung_envelope_schema(kind.name, kind.root, kind.year)
+					document = etree.fromstring(delivery(erklaerung(kind), kind, testmerker=testmerker))
+					if not schema.validate(document):
+						self.fail(str(schema.error_log))
+
+
+class BilanzEnvelopeTest(TestCase):
+	"""The envelope of an E-Bilanz follows ebilanz_000002.xsd with the DatenLieferant in its NutzdatenHeader
+	(ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 9.7.1)."""
+
+	def test_names_the_datenlieferant_of_the_nutzdaten_header_after_the_hersteller(self):
+		document = delivery(ebilanz(), bilanz("6.9"), nutzdaten_datenlieferant=ERSTELLER)
+		self.assertEqual(
+			[name for name, _ in header(document, "NutzdatenHeader")],
+			["NutzdatenTicket", "Empfaenger", "Hersteller", "DatenLieferant"],
+		)
+		self.assertEqual(dict(header(document, "NutzdatenHeader"))["DatenLieferant"], ERSTELLER)
+		self.assertEqual(dict(header(document, "TransferHeader"))["Verfahren"], "ElsterBilanz")
+
+	def test_another_delivery_names_none(self):
+		names = [name for name, _ in header(delivery(erklaerung(ust(2026)), ust(2026)), "NutzdatenHeader")]
+		self.assertNotIn("DatenLieferant", names)
+
+	def test_passes_the_schema_of_the_delivery_of_the_bilanz(self):
+		for testmerker in (True, False):
+			with self.subTest(testmerker=testmerker):
+				schema = eric_schema.bilanz_envelope_schema()
+				document = etree.fromstring(
+					delivery(
+						ebilanz(), bilanz("6.9"), testmerker=testmerker, nutzdaten_datenlieferant=ERSTELLER
+					)
+				)
+				if not schema.validate(document):
+					self.fail(str(schema.error_log))
