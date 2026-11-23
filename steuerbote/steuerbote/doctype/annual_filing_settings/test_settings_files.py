@@ -18,6 +18,8 @@ from steuerbote.steuerbote.doctype.annual_filing_settings.rules import (
 
 DOCTYPE_DIR = Path(__file__).resolve().parents[1]
 SETTINGS = DOCTYPE_DIR / "annual_filing_settings"
+ARCHITECTURE = Path(__file__).resolve().parents[4] / "docs" / "architektur.md"
+LAYOUT = frozenset({"Section Break", "Column Break"})
 # The numbers of natural persons, which only the Körperschaftsteuererklärung may carry (§ 139b Abs. 2 AO).
 IDENTIFIERS = ("tax_number_state", "tax_number", "idnr", "wid_nr", "foreign_id")
 
@@ -155,3 +157,16 @@ class SettingsFilesTest(TestCase):
 		for method in methods:
 			with self.subTest(method=method):
 				self.assertRegex(source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+
+	def test_the_architecture_describes_every_field_of_the_settings(self):
+		text = ARCHITECTURE.read_text(encoding="utf-8")
+		start = text.index("### Einstellungen Jahresmeldungen (`Annual Filing Settings`)")
+		section = text[start : text.index("\n### ", start + 1)]
+		described = {
+			name
+			for line in section.splitlines()
+			if line.startswith("| `")
+			for name in re.findall(r"`(\w+)`", line.split(" | ")[0])
+		}
+		data_fields = {name for name, field in self.fields.items() if field["fieldtype"] not in LAYOUT}
+		self.assertEqual(described, data_fields)
