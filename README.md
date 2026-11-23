@@ -83,11 +83,10 @@ bench --site <site> install-app steuerbote
 
 ### Wo finde ich Steuerbote?
 
-In der Leiste links, bei den Bereichen von ERPNext wie Rechnungswesen und Vertrieb, steht „Steuern“. Der Eintrag öffnet den Arbeitsbereich „Steuern“ mit den Voranmeldungen, den Dauerfristverlängerungen, den Zusammenfassenden Meldungen, dem Bericht „UStVA Kennzahlen“ und den Einstellungen. Ihn sehen Benutzer mit einer der Rollen Accounts User, Accounts Manager oder System Manager.
+In der Leiste links, bei den Bereichen von ERPNext wie Rechnungswesen und Vertrieb, steht „Steuern“. Der Eintrag öffnet den Arbeitsbereich „Steuern“ mit den offenen Fristen, den Voranmeldungen, den Dauerfristverlängerungen, den Zusammenfassenden Meldungen, den Jahresmeldungen und der Einrichtung. Daneben führt die Seitenleiste zu jeder Liste, jedem Bericht und zu „Steuerbote einrichten“: oben die Voranmeldungen, Dauerfristanträge, Zusammenfassenden Meldungen und USt-IdNr.-Prüfungen, darunter die Gruppen „Jahresmeldungen“, „Übermittlung“, „Berichte“ und „Einrichtung“. Den Eintrag sehen Benutzer mit einer der Rollen Accounts User, Accounts Manager oder System Manager.
 
 - Wer die Leiste für alle oder für sich angeordnet hat, bekommt „Steuern“ nicht von selbst dazu, sondern nimmt den Eintrag im Benutzermenü über „Dock verwalten“ auf.
 - In der App-Übersicht steht Steuerbote nicht als eigene Kachel, weil es sich in die Leiste von ERPNext einhängt. Als Standard-App eines Benutzers lässt es sich trotzdem wählen. Mehr dazu in [Architektur](docs/architektur.md#platz-im-desk).
-- Die Jahresmeldungen und ihre Einstellungen stehen noch nicht im Arbeitsbereich „Steuern“ und in seiner Seitenleiste. Bis der Abschnitt „Jahresmeldungen“ kommt, findet die Suche des Desks sie unter ihren Namen: „Einstellungen Jahresmeldungen“, „Kontenzuordnung Ertragsteuern“, „Bilanzzuordnung“, „Umsatzsteuererklärung“, „Körperschaftsteuererklärung“ und „Gewerbesteuererklärung“.
 
 ## Dokumentation
 

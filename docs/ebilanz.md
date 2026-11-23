@@ -42,7 +42,7 @@ Je Unternehmen, Jahr und Bilanzart ein Beleg, benannt nach dem Jahr, für das er
 | `transfers` | Überleitungsrechnung | Tabelle „Eintrag der Überleitungsrechnung“, nur bei HGBM, siehe [Überleitungsrechnung](#überleitungsrechnung) |
 | `accounts` | Kontensalden | Tabelle „Kontensaldo der E-Bilanz“, die „Berechnen“ füllt: der Kontennachweis mit der Position (`position`), der Bezeichnung der Position (`position_label`), dem Konto (`account`), der Kontonummer (`account_number`), der Kontobezeichnung (`account_label`) und dem Kontosaldo in der Richtung der Position (`amount`) |
 
-Rechte wie bei der Voranmeldung: System Manager und Accounts Manager legen an, berechnen, ändern und geben ab; ein Accounts User legt an, berechnet und ändert, gibt aber nicht ab. Die Liste kommt als „E-Bilanzen“ mit dem Abschnitt „Jahresmeldungen“ in Seitenleiste und Arbeitsbereich (Welle 3); bis dahin findet die Suche des Desks sie als „E-Bilanz“.
+Rechte wie bei der Voranmeldung: System Manager und Accounts Manager legen an, berechnen, ändern und geben ab; ein Accounts User legt an, berechnet und ändert, gibt aber nicht ab. Die Liste steht als „E-Bilanzen“ in der Seitenleiste in der Gruppe „Jahresmeldungen“ und im gleichnamigen Abschnitt des Arbeitsbereichs „Steuern“, dort neben „Neue E-Bilanz“; der Bericht „E-Bilanz Positionen“ steht in der Gruppe „Berichte“.
 
 ## Berechnen
 
