@@ -5,7 +5,16 @@ from unittest import TestCase
 
 from steuerbote.hgb.schemes import VermerkKind, balance_sheet_scheme
 from steuerbote.hgb.size import SizeClass
-from steuerbote.hgb.statement import Balance, Code, RemainingTerm, Severity, build, entered
+from steuerbote.hgb.statement import (
+	Balance,
+	Code,
+	ProfitPresentation,
+	RemainingTerm,
+	Severity,
+	build,
+	entered,
+	ug_reserve_minimum,
+)
 
 GKV = "is.netIncome.regular.operatingTC"
 SALES = f"{GKV}.grossTradingProfit.totalOutput.netSales"
@@ -284,14 +293,13 @@ class DeficitTest(TestCase):
 				(line.position.concept, line.amount)
 				for line in self.sheet.passiva
 				if line.position.marker != "III."
-			][:7],
+			][:6],
 			[
 				("bs.eqLiab.equity", Decimal("0.00")),
 				("bs.eqLiab.equity.subscribed", Decimal("25000.00")),
 				("bs.eqLiab.equity.capRes", Decimal("0")),
 				("bs.eqLiab.equity.retainedEarnings", Decimal("-30000.00")),
 				("bs.eqLiab.equity.netIncome", Decimal("-5000.00")),
-				("bs.eqLiab.equity.profitLoss", Decimal("0")),
 				("bs.eqLiab.equity.deficitNotCoveredByCapital", Decimal("10000.00")),
 			],
 		)
@@ -649,3 +657,89 @@ class ShownTest(TestCase):
 				(VermerkKind.SHAREHOLDERS, False),
 			],
 		)
+
+
+LEGAL_RESERVE = "bs.eqLiab.equity.revenueRes.legal"
+BILANZGEWINN = "bs.eqLiab.equity.profitLoss"
+AFTER = ProfitPresentation.AFTER_PARTIAL_APPROPRIATION
+# The invented company of BOOKS as an UG that puts a quarter of its Jahresüberschuss into the gesetzliche Rücklage.
+APPROPRIATED = (
+	*BOOKS,
+	Balance(LEGAL_RESERVE, Decimal("-2625.00"), source="0846 Gesetzliche Rücklage"),
+	Balance(BILANZGEWINN, Decimal("2625.00"), source="2496 Einstellungen in die gesetzliche Rücklage"),
+)
+
+
+def concepts(lines) -> list[str]:
+	return [line.position.concept for line in lines]
+
+
+class ProfitPresentationTest(TestCase):
+	"""§ 268 Abs. 1 HGB: after part of the result is appropriated, the Bilanzgewinn replaces IV. and V."""
+
+	def test_before_the_appropriation_the_balance_sheet_shows_the_profit_carried_forward_and_the_result(self):
+		sheet = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS).balance_sheet
+		self.assertIn(CARRIED_FORWARD, concepts(sheet.passiva))
+		self.assertIn("bs.eqLiab.equity.netIncome", concepts(sheet.passiva))
+		self.assertNotIn(BILANZGEWINN, concepts(sheet.passiva))
+
+	def test_after_part_of_it_the_bilanzgewinn_takes_their_place(self):
+		sheet = build(2026, SizeClass.KLEIN, APPROPRIATED, parents=PARENTS, presentation=AFTER).balance_sheet
+		self.assertEqual(
+			[(line.position.concept, line.position.marker, line.amount) for line in sheet.passiva[:6]],
+			[
+				("bs.eqLiab.equity", "A.", Decimal("38500.00")),
+				("bs.eqLiab.equity.subscribed", "I.", Decimal("25000.00")),
+				("bs.eqLiab.equity.capRes", "II.", Decimal("0")),
+				("bs.eqLiab.equity.revenueRes", "III.", Decimal("2625.00")),
+				(BILANZGEWINN, "IV.", Decimal("10875.00")),
+				("bs.eqLiab.equity.deficitNotCoveredByCapital", "", Decimal("0")),
+			],
+		)
+
+	def test_notes_the_profit_carried_forward_in_the_bilanzgewinn(self):
+		sheet = build(
+			2026, SizeClass.KLEIN, APPROPRIATED, parents=PARENTS, presentation=AFTER, prior=PRIOR_BOOKS
+		)
+		(vermerk,) = sheet.balance_sheet.line(BILANZGEWINN).vermerke
+		self.assertEqual(
+			(vermerk.vermerk.kind, vermerk.amount, vermerk.prior, vermerk.shown),
+			(VermerkKind.PROFIT_CARRIED_FORWARD, Decimal("3000.00"), Decimal("0"), True),
+		)
+		self.assertEqual(sheet.balance_sheet.line(BILANZGEWINN).prior, Decimal("3000.00"))
+
+	def test_a_bilanzgewinn_before_the_appropriation_is_an_error(self):
+		statement = build(2026, SizeClass.KLEIN, APPROPRIATED, parents=PARENTS)
+		(finding,) = [finding for finding in statement.findings if finding.code is Code.APPROPRIATION]
+		self.assertEqual(
+			(finding.severity, finding.concept, finding.amount, finding.reference),
+			(Severity.ERROR, BILANZGEWINN, Decimal("2625.00"), "§ 268 Abs. 1 Satz 2 HGB"),
+		)
+		after = build(2026, SizeClass.KLEIN, APPROPRIATED, parents=PARENTS, presentation=AFTER)
+		self.assertEqual(after.findings, ())
+		empty = build(2026, SizeClass.KLEIN, (*BOOKS, Balance(BILANZGEWINN, Decimal("0"))), parents=PARENTS)
+		self.assertEqual(empty.findings, ())
+
+	def test_kleinst_shows_the_eigenkapital_alike_either_way(self):
+		for presentation in ProfitPresentation:
+			with self.subTest(presentation=presentation):
+				sheet = build(
+					2026, SizeClass.KLEINST, APPROPRIATED, parents=PARENTS, presentation=presentation
+				).balance_sheet
+				self.assertEqual(sheet.line("bs.eqLiab.equity").amount, Decimal("38500.00"))
+
+
+class UgReserveTest(TestCase):
+	"""§ 5a Abs. 3 Satz 1 GmbHG: a quarter of the Jahresüberschuss less a Verlustvortrag aus dem Vorjahr."""
+
+	def test_takes_a_quarter_of_the_jahresueberschuss(self):
+		self.assertEqual(ug_reserve_minimum(Decimal("10500.00"), Decimal("3000.00")), Decimal("2625.00"))
+
+	def test_takes_the_verlustvortrag_off_first_and_rounds_up_to_the_cent(self):
+		self.assertEqual(ug_reserve_minimum(Decimal("10000.01"), Decimal("-1000.00")), Decimal("2250.01"))
+
+	def test_takes_nothing_from_a_jahresueberschuss_the_verlustvortrag_uses_up_or_from_a_jahresfehlbetrag(
+		self,
+	):
+		self.assertEqual(ug_reserve_minimum(Decimal("800.00"), Decimal("-1000.00")), Decimal("0.00"))
+		self.assertEqual(ug_reserve_minimum(Decimal("-500.00"), Decimal("4000.00")), Decimal("0.00"))
