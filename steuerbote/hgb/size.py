@@ -31,6 +31,10 @@ Absatzes 1, 2 oder 3 am ersten Abschlußstichtag nach der Umwandlung oder Neugr�
 Falle des Formwechsels keine Anwendung, sofern der formwechselnde Rechtsträger eine Kapitalgesellschaft oder eine
 Personenhandelsgesellschaft im Sinne des § 264a Absatz 1 ist.“ (§ 267 Abs. 4 Satz 2 and 3 HGB)
 
+„Keine Kleinstkapitalgesellschaften sind“ the Investmentgesellschaften, the Unternehmensbeteiligungsgesellschaften
+and a pure holding (§ 267a Abs. 3 HGB, KLEINST_EXCLUSIONS). Such a company keeps the reliefs of klein, so decide()
+gives it klein where its criteria point to Kleinst; the Annual Filing Settings record it with ``holding_267a_3``.
+
 „Als durchschnittliche Zahl der Arbeitnehmer gilt der vierte Teil der Summe aus den Zahlen der jeweils am
 31. März, 30. Juni, 30. September und 31. Dezember beschäftigten Arbeitnehmer einschließlich der im Ausland
 beschäftigten Arbeitnehmer, jedoch ohne die zu ihrer Berufsausbildung Beschäftigten.“ (§ 267 Abs. 5 HGB)
@@ -237,6 +241,8 @@ class SizeDecision:
 	previous_indicated: SizeClass | None
 	applied: SizeClass | None
 	basis: Basis | None
+	kleinst_excluded: bool = False
+	"""True when § 267a Abs. 3 HGB turned Kleinst into klein."""
 
 	@property
 	def decided(self) -> bool:
@@ -249,12 +255,14 @@ def decide(
 	previous_class: SizeClass | None = None,
 	*,
 	first_after: Origin | None = None,
+	excluded_from_kleinst: bool = False,
 ) -> SizeDecision:
 	"""The class of the fiscal year ending on ``current.closing_date`` (§ 267 Abs. 4 HGB).
 
 	``previous`` holds the criteria of the Abschlussstichtag before, ``previous_class`` the class that applied in
 	that fiscal year, as the size history of the Annual Filing Settings records it. ``first_after`` names what the
 	fiscal year is the first after: the founding year of the company is the first after its Neugründung.
+	``excluded_from_kleinst`` marks a company of § 267a Abs. 3 HGB.
 	"""
 	if previous is not None and previous.closing_date >= current.closing_date:
 		raise SizeError(
@@ -265,18 +273,31 @@ def decide(
 	thresholds = thresholds_for(year)
 	indicated = indicated_class(current, thresholds)
 	previous_indicated = None if previous is None else indicated_class(previous, thresholds)
+	applied, basis = _applied(indicated, current, previous, previous_class, first_after, thresholds)
+	if excluded_from_kleinst and applied is SizeClass.KLEINST:
+		return SizeDecision(
+			year, indicated, previous_indicated, SizeClass.KLEIN, basis, kleinst_excluded=True
+		)
+	return SizeDecision(year, indicated, previous_indicated, applied, basis)
+
+
+def _applied(
+	indicated: SizeClass,
+	current: Criteria,
+	previous: Criteria | None,
+	previous_class: SizeClass | None,
+	first_after: Origin | None,
+	thresholds: YearThresholds,
+) -> tuple[SizeClass | None, Basis | None]:
 	if first_after in (Origin.NEUGRUENDUNG, Origin.UMWANDLUNG):
-		return SizeDecision(year, indicated, previous_indicated, indicated, Basis.FOUNDING)
+		return indicated, Basis.FOUNDING
 	if previous is None:
-		if previous_class is indicated:
-			return SizeDecision(year, indicated, None, indicated, Basis.CARRIED)
-		return SizeDecision(year, indicated, None, None, None)
-	if previous_indicated is indicated:
-		return SizeDecision(year, indicated, previous_indicated, indicated, Basis.CONFIRMED)
+		return (indicated, Basis.CARRIED) if previous_class is indicated else (None, None)
+	if indicated_class(previous, thresholds) is indicated:
+		return indicated, Basis.CONFIRMED
 	if previous_class is None:
-		return SizeDecision(year, indicated, previous_indicated, None, None)
-	applied = _carried(current, previous, previous_class, thresholds)
-	return SizeDecision(year, indicated, previous_indicated, applied, Basis.CARRIED)
+		return None, None
+	return _carried(current, previous, previous_class, thresholds), Basis.CARRIED
 
 
 def _carried(
@@ -340,4 +361,24 @@ HEADCOUNT_CONVENTIONS: tuple[HeadcountConvention, ...] = (
 	HeadcountConvention("zu ihrer Berufsausbildung Beschäftigte", Counting.NOT_COUNTED, "§ 267 Abs. 5 HGB"),
 	HeadcountConvention("Teilzeitbeschäftigte, je Kopf gezählt", Counting.UNVERIFIED, ""),
 	HeadcountConvention("Geschäftsführer", Counting.UNVERIFIED, ""),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class KleinstExclusion:
+	who: str
+	reference: str
+
+
+KLEINST_EXCLUSIONS: tuple[KleinstExclusion, ...] = (
+	KleinstExclusion("Investmentgesellschaften im Sinne des § 1 Absatz 11 KAGB", "§ 267a Abs. 3 Nr. 1 HGB"),
+	KleinstExclusion(
+		"Unternehmensbeteiligungsgesellschaften im Sinne des § 1a Absatz 1 UBGG", "§ 267a Abs. 3 Nr. 2 HGB"
+	),
+	KleinstExclusion(
+		"Unternehmen, deren einziger Zweck darin besteht, Beteiligungen an anderen Unternehmen zu erwerben sowie die "
+		"Verwaltung und Verwertung dieser Beteiligungen wahrzunehmen, ohne dass sie unmittelbar oder mittelbar in "
+		"die Verwaltung dieser Unternehmen eingreifen",
+		"§ 267a Abs. 3 Nr. 3 HGB",
+	),
 )
