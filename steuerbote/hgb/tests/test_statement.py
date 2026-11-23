@@ -914,3 +914,30 @@ def random_books(randomness: random.Random) -> tuple[Balance, ...]:
 		Balance(MANAGER, salaries),
 		Balance(PENSIONS, pensions),
 	)
+
+
+class SubscribedCapitalTest(TestCase):
+	"""§ 272 Abs. 1 HGB: the Gezeichnetes Kapital at its Nennbetrag, before the uncalled contributions are offset."""
+
+	def test_gives_the_gezeichnetes_kapital_of_every_class(self):
+		books = (*BOOKS, Balance(UNCALLED, Decimal("12500.00")), Balance(BANK, Decimal("-12500.00")))
+		for size_class in SizeClass:
+			with self.subTest(size_class=size_class):
+				sheet = build(
+					2026, size_class, books, parents=VERMERK_PARENTS, prior=PRIOR_BOOKS
+				).balance_sheet
+				self.assertEqual(
+					(sheet.subscribed_capital, sheet.prior_subscribed_capital),
+					(Decimal("25000.00"), Decimal("25000.00")),
+				)
+
+	def test_has_none_of_a_previous_year_without_one(self):
+		self.assertIsNone(
+			build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS).balance_sheet.prior_subscribed_capital
+		)
+
+	def test_keeps_it_in_full_euros(self):
+		sheet = in_full_euros(
+			build(2026, SizeClass.KLEINST, BOOKS, parents=PARENTS, prior=PRIOR_BOOKS)
+		).balance_sheet
+		self.assertEqual((sheet.subscribed_capital, sheet.prior_subscribed_capital), (Decimal("25000"),) * 2)

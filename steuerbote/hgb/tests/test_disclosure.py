@@ -16,6 +16,7 @@ from steuerbote.hgb.disclosure import (
 	Signature,
 	adoption_deadline,
 	adoption_problems,
+	capital_problems,
 	deadline_kept,
 	default_mode,
 	disclosure_deadline,
@@ -357,3 +358,23 @@ class ErgebnisverwendungTest(TestCase):
 					(use.disclosed, use.follows, use.reference),
 					(True, True, "§ 285 Nr. 34, § 325 Abs. 1b Satz 2, § 328 Abs. 3 HGB"),
 				)
+
+
+class CapitalTest(TestCase):
+	"""The Bundesamt für Justiz: „muss zumindest das Stammkapital in Höhe des am Bilanzstichtag geltenden
+	Handelsregistereintrags vorhanden sein“."""
+
+	def test_a_gezeichnetes_kapital_at_the_stammkapital_of_the_register_raises_nothing(self):
+		self.assertEqual(capital_problems(Decimal("25000.00"), Decimal("25000")), ())
+
+	def test_a_gezeichnetes_kapital_apart_from_the_stammkapital_holds_the_disclosure_back(self):
+		(finding,) = capital_problems(Decimal("0"), Decimal("25000"))
+		self.assertEqual(
+			(finding.code, finding.severity, finding.amount, finding.reference),
+			(
+				DisclosureCode.CAPITAL,
+				Severity.ERROR,
+				Decimal("-25000"),
+				"§ 42 Abs. 1 GmbHG, § 272 Abs. 1 Satz 1 HGB; Bundesamt für Justiz, FAQ zu Inhalts- und Formverstößen",
+			),
+		)
