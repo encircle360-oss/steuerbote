@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:de-gaap-ci="http://www.xbrl.de/taxonomies/de-gaap-ci-2025-04-01" xmlns:de-gcd="http://www.xbrl.de/taxonomies/de-gcd-2025-04-01">
+	<link:schemaRef xlink:type="simple" xlink:href="http://www.xbrl.de/taxonomies/de-gcd-2025-04-01/de-gcd-2025-04-01-shell.xsd"/>
+	<link:schemaRef xlink:type="simple" xlink:href="http://www.xbrl.de/taxonomies/de-gaap-ci-2025-04-01/de-gaap-ci-2025-04-01-shell-fiscal.xsd"/>
+	<xbrli:context id="I-AKTJAHR">
+		<xbrli:entity>
+			<xbrli:identifier scheme="http://www.rzf-nrw.de/Steuernummer">9198011310010</xbrli:identifier>
+		</xbrli:entity>
+		<xbrli:period>
+			<xbrli:instant>2026-12-31</xbrli:instant>
+		</xbrli:period>
+	</xbrli:context>
+	<xbrli:context id="D-AKTJAHR">
+		<xbrli:entity>
+			<xbrli:identifier scheme="http://www.rzf-nrw.de/Steuernummer">9198011310010</xbrli:identifier>
+		</xbrli:entity>
+		<xbrli:period>
+			<xbrli:startDate>2026-01-01</xbrli:startDate>
+			<xbrli:endDate>2026-12-31</xbrli:endDate>
+		</xbrli:period>
+	</xbrli:context>
+	<xbrli:context id="D-AKTJAHR-1">
+		<xbrli:entity>
+			<xbrli:identifier scheme="http://www.rzf-nrw.de/Steuernummer">9198011310010</xbrli:identifier>
+		</xbrli:entity>
+		<xbrli:period>
+			<xbrli:startDate>2026-01-01</xbrli:startDate>
+			<xbrli:endDate>2026-12-31</xbrli:endDate>
+		</xbrli:period>
+		<xbrli:scenario>
+			<xbrldi:explicitMember dimension="de-gaap-ci:dim_changes.nt.ass.gross">de-gaap-ci:bs.ass.fixAss.tan</xbrldi:explicitMember>
+			<xbrldi:explicitMember dimension="de-gaap-ci:dim_taxTrans">de-gaap-ci:dim_taxBal</xbrldi:explicitMember>
+		</xbrli:scenario>
+	</xbrli:context>
+	<xbrli:unit id="EUR">
+		<xbrli:measure>iso4217:EUR</xbrli:measure>
+	</xbrli:unit>
+	<xbrli:unit id="PURE">
+		<xbrli:measure>xbrli:pure</xbrli:measure>
+	</xbrli:unit>
+	<de-gcd:genInfo.report.id.reportStatus>
+		<de-gcd:genInfo.report.id.reportStatus.reportStatus.E contextRef="D-AKTJAHR"/>
+	</de-gcd:genInfo.report.id.reportStatus>
+	<de-gcd:genInfo.doc.id.generationDate contextRef="D-AKTJAHR">2027-03-31</de-gcd:genInfo.doc.id.generationDate>
+	<de-gcd:genInfo.company.id.idNo>
+		<de-gcd:genInfo.company.id.idNo.type.companyId.ST13 contextRef="D-AKTJAHR">9198011310010</de-gcd:genInfo.company.id.idNo.type.companyId.ST13>
+	</de-gcd:genInfo.company.id.idNo>
+	<de-gcd:genInfo.company.id.shareholder>
+		<de-gcd:genInfo.company.id.shareholder.name contextRef="D-AKTJAHR">Erika Mustermann</de-gcd:genInfo.company.id.shareholder.name>
+		<de-gcd:genInfo.company.id.shareholder.currentnumber contextRef="D-AKTJAHR" unitRef="PURE" decimals="0">1</de-gcd:genInfo.company.id.shareholder.currentnumber>
+	</de-gcd:genInfo.company.id.shareholder>
+	<de-gaap-ci:bs.ass contextRef="I-AKTJAHR" unitRef="EUR" decimals="2">1500.00</de-gaap-ci:bs.ass>
+	<de-gaap-ci:bs.ass.fixAss.intan contextRef="I-AKTJAHR" unitRef="EUR" xsi:nil="true"/>
+	<de-gaap-ci:gross contextRef="D-AKTJAHR-1" unitRef="EUR" decimals="2">1000.50</de-gaap-ci:gross>
+	<de-gaap-ci:detailedInformation.accountBalances>
+		<de-gaap-ci:detailedInformation.accountbalances.positionName contextRef="D-AKTJAHR">de-gaap-ci:bs.ass.currAss.cashEquiv.bank</de-gaap-ci:detailedInformation.accountbalances.positionName>
+		<de-gaap-ci:detailedInformation.accountbalances.accountNumber contextRef="D-AKTJAHR">1200</de-gaap-ci:detailedInformation.accountbalances.accountNumber>
+		<de-gaap-ci:detailedInformation.accountbalances.accountDescription contextRef="D-AKTJAHR">Bank</de-gaap-ci:detailedInformation.accountbalances.accountDescription>
+		<de-gaap-ci:detailedInformation.accountbalances.amount contextRef="D-AKTJAHR" unitRef="EUR" decimals="2">1500.00</de-gaap-ci:detailedInformation.accountbalances.amount>
+	</de-gaap-ci:detailedInformation.accountBalances>
+</xbrli:xbrl>

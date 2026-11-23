@@ -10,17 +10,23 @@ point Steuerbote reads, as in the real one.
 
 The labels and amounts are invented; the names follow the real taxonomy where a test needs a familiar position, and
 are made up elsewhere. ``write(directory)`` writes the package, ``archive(directory)`` zips it as esteuer.de
-publishes the real one, with the module directories at the top.
+publishes the real one, with the module directories at the top, and ``view()`` reads a view of it for the tests that
+only read the taxonomy, from a package written once per run.
 """
 
+import atexit
 import hashlib
+import shutil
+import tempfile
 import zipfile
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 
 from lxml import etree
 
+from steuerbote.xbrl.taxonomy import Taxonomy, View, load
 from steuerbote.xbrl.versions import TAXONOMIES
 
 VERSION = TAXONOMIES["6.9"]
@@ -1372,6 +1378,19 @@ def _table_definition(dimensions: str, schema: str) -> bytes:
 			**attributes,
 		)
 	return linkbase.bytes()
+
+
+@cache
+def view(name: View = View.FISCAL) -> Taxonomy:
+	"""A view of the mini taxonomy."""
+	return load(_package(), VERSION, name)
+
+
+@cache
+def _package() -> Path:
+	directory = Path(tempfile.mkdtemp(prefix="steuerbote-xbrl-mini-"))
+	atexit.register(shutil.rmtree, directory, ignore_errors=True)
+	return write(directory)
 
 
 def archive(directory: Path, name: str = VERSION.archive_name) -> tuple[Path, str]:
