@@ -43,6 +43,19 @@ the balance sheet of the class notes one is an error, since the Vermerk would be
 contributions are offset, the position takes the name the law gives it: „der verbleibende Betrag ist als Posten
 „Eingefordertes Kapital“ in der Hauptspalte der Passivseite auszuweisen“ (§ 272 Abs. 1 Satz 2 HGB).
 
+Ergebnisverwendung. „Die Bilanz darf auch unter Berücksichtigung der vollständigen oder teilweisen Verwendung des
+Jahresergebnisses aufgestellt werden. Wird die Bilanz unter Berücksichtigung der teilweisen Verwendung des
+Jahresergebnisses aufgestellt, so tritt an die Stelle der Posten „Jahresüberschuß/Jahresfehlbetrag“ und
+„Gewinnvortrag/Verlustvortrag“ der Posten „Bilanzgewinn/Bilanzverlust“; ein vorhandener Gewinn- oder
+Verlustvortrag ist in den Posten „Bilanzgewinn/Bilanzverlust“ einzubeziehen und in der Bilanz gesondert
+anzugeben.“ (§ 268 Abs. 1 Satz 1 and 2 HGB) ProfitPresentation chooses: before the appropriation the balance sheet
+shows „IV.“ and „V.“, after part of it the Bilanzgewinn adds both to the balances of the appropriation, which the
+mapping places on the Bilanzgewinn, and notes the Gewinnvortrag; a balance on the Bilanzgewinn before the
+appropriation is an error. An UG draws its balance sheet up after part of the appropriation: „In der Bilanz des
+nach den §§ 242, 264 des Handelsgesetzbuchs aufzustellenden Jahresabschlusses ist eine gesetzliche Rücklage zu
+bilden, in die ein Viertel des um einen Verlustvortrag aus dem Vorjahr geminderten Jahresüberschusses einzustellen
+ist.“ (§ 5a Abs. 3 Satz 1 GmbHG, ug_reserve_minimum())
+
 Previous year. „In der Bilanz sowie in der Gewinn- und Verlustrechnung ist zu jedem Posten der entsprechende
 Betrag des vorhergehenden Geschäftsjahrs anzugeben.“ (§ 265 Abs. 2 Satz 1 HGB) The previous year goes through the
 same steps in the form of the current class, from its books or, in the first year with Steuerbote, from the
@@ -77,6 +90,7 @@ from steuerbote.hgb.schemes import (
 	income_statement_scheme,
 )
 from steuerbote.hgb.size import SizeClass
+from steuerbote.ustva.rounding import ceil_cents
 
 ZERO = Decimal("0")
 NO_PARENTS: Mapping[str, str] = MappingProxyType({})
@@ -85,6 +99,8 @@ PROFIT_CARRIED_FORWARD = "bs.eqLiab.equity.retainedEarnings"
 EQUITY = "bs.eqLiab.equity"
 DEFICIT = "bs.ass.deficitNotCoveredByCapital"
 DEFICIT_IN_EQUITY = "bs.eqLiab.equity.deficitNotCoveredByCapital"
+BILANZGEWINN = "bs.eqLiab.equity.profitLoss"
+_UG_RESERVE_SHARE = Decimal("4")
 CALLED_CAPITAL = "Eingefordertes Kapital"
 _SCHEMES_REFERENCE = "§§ 266, 275 HGB"
 
@@ -133,6 +149,19 @@ def entered(
 	return Balance(position.concept, _signed(amount, position.direction), shareholder, remaining_term, source)
 
 
+class ProfitPresentation(Enum):
+	BEFORE_APPROPRIATION = "vor Verwendung des Jahresergebnisses"
+	AFTER_PARTIAL_APPROPRIATION = "nach teilweiser Verwendung des Jahresergebnisses"
+
+
+def ug_reserve_minimum(net_income: Decimal, carried_forward: Decimal) -> Decimal:
+	"""What an UG puts into its gesetzliche Rücklage at least (§ 5a Abs. 3 Satz 1 GmbHG): a quarter of the
+	Jahresüberschuss less the Verlustvortrag, both as the lines show them, rounded up to the cent; nothing from a
+	Jahresfehlbetrag or a Jahresüberschuss the Verlustvortrag uses up."""
+	base = net_income + min(carried_forward, ZERO)
+	return ceil_cents(max(base, ZERO) / _UG_RESERVE_SHARE)
+
+
 class Severity(Enum):
 	ERROR = "Fehler"
 	HINT = "Hinweis"
@@ -144,6 +173,7 @@ class Code(StrEnum):
 	NOT_BALANCED = "JA-BILANZ-UNGLEICH"
 	UNITEMIZED = "JA-OHNE-UNTERPOSTEN"
 	REMAINING_TERM_UNKNOWN = "JA-RESTLAUFZEIT-FEHLT"
+	APPROPRIATION = "JA-BILANZGEWINN"
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,10 +303,12 @@ class _Year:
 		self.sources: defaultdict[str, list[str]] = defaultdict(list)
 		self.noted: defaultdict[tuple[str, VermerkKind], Decimal] = defaultdict(Decimal)
 		self.without_term: defaultdict[tuple[str, VermerkKind], list[_Placed]] = defaultdict(list)
+		self.placed: defaultdict[str, list[_Placed]] = defaultdict(list)
 		self._amounts: dict[str, Decimal] = {}
 
 	def add(self, placed: _Placed) -> None:
 		position, balance = placed.position, placed.balance
+		self.placed[position.concept].append(placed)
 		self.own[position.concept] += _signed(balance.amount, position.direction)
 		if balance.source:
 			self.sources[position.concept].append(balance.source)
@@ -386,6 +418,7 @@ def build(
 	prior: Iterable[Balance] | None = None,
 	prior_net_income: Decimal | None = None,
 	method: Method = Method.GKV,
+	presentation: ProfitPresentation = ProfitPresentation.BEFORE_APPROPRIATION,
 ) -> AnnualStatement:
 	"""The balance sheet and the income statement of ``size_class`` for the fiscal year that ends in ``year``.
 
@@ -393,7 +426,8 @@ def build(
 	Balance Sheet Mapping delivers them; ``parents`` the hierarchy of their concepts. ``prior`` holds those of the
 	previous year in the same form: from its books, or for the first year entered by hand from the last
 	festgestellter Jahresabschluss at the positions of the class (entered()); ``prior_net_income`` gives the
-	Jahresüberschuss/Jahresfehlbetrag of such a previous year without its income statement.
+	Jahresüberschuss/Jahresfehlbetrag of such a previous year without its income statement. ``presentation``
+	chooses whether the balance sheet is drawn up before or after part of the result is appropriated.
 	"""
 	balance_scheme = balance_sheet_scheme(year)
 	income_scheme = income_statement_scheme(year, method)
@@ -415,8 +449,8 @@ def build(
 	balance_sheet = BalanceSheet(
 		balance_scheme,
 		size_class,
-		_lines(current, previous, balance_scheme, balance_scheme.aktiva, size_class),
-		_lines(current, previous, balance_scheme, balance_scheme.passiva, size_class),
+		_lines(current, previous, balance_scheme, balance_scheme.aktiva, size_class, presentation),
+		_lines(current, previous, balance_scheme, balance_scheme.passiva, size_class, presentation),
 		current.aktiva_total,
 		current.passiva_total,
 		current.sheet.amount(EQUITY),
@@ -426,23 +460,32 @@ def build(
 		None if previous is None else previous.passiva_total,
 		None if previous is None else previous.bilanzsumme,
 	)
-	findings = list(_year_findings(current, balance_sheet, size_class, method))
+	findings = list(_year_findings(current, balance_sheet, size_class, method, presentation))
 	if previous is not None:
 		findings.extend(
 			replace(finding, text=f"Vorjahr: {finding.text}", prior_year=True)
-			for finding in _year_findings(previous, balance_sheet, size_class, method)
+			for finding in _year_findings(previous, balance_sheet, size_class, method, presentation)
 		)
 	return AnnualStatement(balance_sheet, income_statement, tuple(findings))
 
 
 _PARAGRAPHS = MappingProxyType({Method.GKV: 2, Method.UKV: 3})
 _ALWAYS_SHOWN = frozenset({EQUITY, "bs.eqLiab.equity.subscribed"})
+_REPLACED_BY_BILANZGEWINN = frozenset({PROFIT_CARRIED_FORWARD, NET_INCOME})
 
 
 def _year_findings(
-	books: _Books, balance_sheet: BalanceSheet, size_class: SizeClass, method: Method
+	books: _Books,
+	balance_sheet: BalanceSheet,
+	size_class: SizeClass,
+	method: Method,
+	presentation: ProfitPresentation,
 ) -> Iterator[Finding]:
 	yield from books.findings
+	if presentation is ProfitPresentation.BEFORE_APPROPRIATION:
+		for placed in books.sheet.placed[BILANZGEWINN]:
+			if placed.balance.amount:
+				yield _appropriated(placed.balance)
 	yield from _unitemized(
 		books.sheet, balance_sheet.scheme.visible(size_class), LEVELS[size_class].reference
 	)
@@ -490,11 +533,14 @@ def _lines(
 	scheme: BalanceSheetScheme,
 	side: Position,
 	size_class: SizeClass,
+	presentation: ProfitPresentation,
 ) -> tuple[Line, ...]:
 	"""The lines of one side of the balance sheet: the positions ``size_class`` shows, in their order."""
+	after = presentation is ProfitPresentation.AFTER_PARTIAL_APPROPRIATION
+	hidden = _REPLACED_BY_BILANZGEWINN if after else frozenset({BILANZGEWINN})
 	lines: list[Line] = []
 	for position in side.walk():
-		if position is side or not scheme.shows(position.concept, size_class):
+		if position is side or position.concept in hidden or not scheme.shows(position.concept, size_class):
 			continue
 		line = _line_of(
 			position,
@@ -502,12 +548,21 @@ def _lines(
 			current.sheet,
 			None if previous is None else previous.sheet,
 		)
+		if position.concept == BILANZGEWINN:
+			amount = _bilanzgewinn(current.sheet)
+			prior = None if previous is None else _bilanzgewinn(previous.sheet)
+			line = replace(line, amount=amount, prior=prior, shown=bool(amount) or bool(prior))
 		if any(
 			noted.vermerk.kind is VermerkKind.UNCALLED_CAPITAL and noted.amount for noted in line.vermerke
 		):
 			line = replace(line, label=CALLED_CAPITAL)
 		lines.append(line)
 	return tuple(lines)
+
+
+def _bilanzgewinn(sheet: _Year) -> Decimal:
+	"""The Bilanzgewinn/Bilanzverlust: the Gewinnvortrag, the Jahresüberschuss and what was appropriated."""
+	return sheet.amount(PROFIT_CARRIED_FORWARD) + sheet.amount(NET_INCOME) + sheet.amount(BILANZGEWINN)
 
 
 def _place(
@@ -630,3 +685,15 @@ def _without_term(sheet: _Year, balance_sheet: BalanceSheet) -> Iterator[Finding
 					placed.balance.concept,
 					placed.balance.amount,
 				)
+
+
+def _appropriated(balance: Balance) -> Finding:
+	return Finding(
+		Code.APPROPRIATION,
+		Severity.ERROR,
+		f"Der Saldo von {_named(balance)} steht auf dem Bilanzgewinn, die Bilanz ist aber vor Verwendung des "
+		"Jahresergebnisses aufgestellt; sie braucht die Darstellung nach teilweiser Verwendung.",
+		"§ 268 Abs. 1 Satz 2 HGB",
+		balance.concept,
+		balance.amount,
+	)
