@@ -28,17 +28,27 @@ the day of the same number (§ 187 Abs. 2, § 188 Abs. 2 BGB), the year after th
 number or the last day of its month (§ 187 Abs. 1, § 188 Abs. 2 und 3 BGB). Whether § 193 BGB moves a day on a
 weekend is unverified, so Steuerbote keeps the day and says so (``on_weekend``) for an early reminder.
 
+After which Feststellung. Only „den festgestellten Jahresabschluss“ is disclosed (§ 325 Abs. 1 Satz 1 Nr. 1 HGB),
+and „Das Datum der Feststellung oder der Billigung [...] ist anzugeben“ (§ 328 Abs. 1a Satz 1 HGB). „Der
+Jahresabschluß ist vom Kaufmann unter Angabe des Datums zu unterzeichnen.“ (§ 245 Satz 1 HGB) For a GmbH that is
+every Geschäftsführer: „Der Jahresabschluss ist von sämtlichen Geschäftsführern einer GmbH zu unterzeichnen. Daher
+reicht eine alleinige Unterzeichnung, auch bei Einzelvertretungsbefugnis, nicht aus.“ (Bundesamt für Justiz, FAQ
+zu Inhalts- und Formverstößen, read on 23 November 2026) The disclosed version names each of them with the date,
+such as „gez. Max Mustermann“; a sole shareholder and Geschäftsführer may sign on the day of the Feststellung and
+states that date twice (same source). adoption_problems() and transmission_problems() check this.
+
 The Annual Accounts read the class of the fiscal year from steuerbote.hgb.size, the form of the balance sheet from
-steuerbote.hgb.schemes and the Angaben from steuerbote.hgb.notes. Text of §§ 9, 264, 316, 325, 326, 327 HGB, § 42a GmbHG
+steuerbote.hgb.schemes and the Angaben from steuerbote.hgb.notes. Text of §§ 9, 245, 264, 316, 325, 326, 327, 328 HGB, § 42a GmbHG
 and §§ 187, 188, 193 BGB as read on gesetze-im-internet.de on 23 November 2026.
 """
 
 import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
-from enum import Enum
+from enum import Enum, StrEnum
 
 from steuerbote.hgb.size import SizeClass
+from steuerbote.hgb.statement import Finding, Severity
 
 
 class DisclosureError(ValueError):
@@ -216,3 +226,131 @@ def _add_months(first: date, months: int) -> date:
 	"""The first day of the month ``months`` after the month of ``first``, itself a first day."""
 	index = first.month - 1 + months
 	return date(first.year + index // 12, index % 12 + 1, 1)
+
+
+class DisclosureCode(StrEnum):
+	NOT_ADOPTED = "JA-NICHT-FESTGESTELLT"
+	ADOPTED_EARLY = "JA-FESTSTELLUNG-DATUM"
+	UNSIGNED = "JA-UNTERSCHRIFT-FEHLT"
+	UNDATED = "JA-UNTERSCHRIFT-OHNE-DATUM"
+	SIGNED_EARLY = "JA-UNTERSCHRIFT-DATUM"
+	BEFORE_ADOPTION = "JA-VOR-FESTSTELLUNG"
+	NO_SIGNATURE = "JA-OHNE-UNTERSCHRIFT"
+
+
+_ADOPTION_REFERENCE = "§ 325 Abs. 1 Satz 1 Nr. 1, § 328 Abs. 1a Satz 1 HGB"
+_SIGNATURE_REFERENCE = "§ 245 Satz 1 HGB; Bundesamt für Justiz, FAQ zu Inhalts- und Formverstößen"
+
+
+@dataclass(frozen=True, slots=True)
+class Director:
+	"""A Geschäftsführer of the company and the days of the office, as the Annual Filing Settings record them."""
+
+	name: str
+	start: date | None = None
+	end: date | None = None
+
+	def in_office(self, day: date) -> bool:
+		return (self.start is None or self.start <= day) and (self.end is None or day <= self.end)
+
+
+@dataclass(frozen=True, slots=True)
+class Signature:
+	"""A signature of the Jahresabschluss: who, in which function, where and on which day."""
+
+	name: str
+	function: str
+	place: str
+	signed_on: date | None
+
+
+def adoption_problems(
+	fiscal_year_end: date,
+	adopted_on: date | None,
+	directors: tuple[Director, ...],
+	signatures: tuple[Signature, ...],
+) -> tuple[Finding, ...]:
+	"""What keeps the Jahresabschluss from the register: no Feststellung or one dated within the fiscal year, and a
+	Geschäftsführer in office on the day of the Feststellung without a dated signature after the fiscal year."""
+	findings: list[Finding] = []
+	if adopted_on is None:
+		findings.append(
+			_finding(
+				DisclosureCode.NOT_ADOPTED, "Der Jahresabschluss ist nicht festgestellt.", _ADOPTION_REFERENCE
+			)
+		)
+	elif adopted_on <= fiscal_year_end:
+		findings.append(
+			_finding(
+				DisclosureCode.ADOPTED_EARLY,
+				"Der Jahresabschluss kann nicht vor dem Ende seines Geschäftsjahres festgestellt sein.",
+				"§ 42a Abs. 2 Satz 1 GmbHG",
+			)
+		)
+	by_name = {_normal(signature.name): signature for signature in signatures}
+	for director in directors:
+		if not director.in_office(adopted_on or fiscal_year_end):
+			continue
+		signature = by_name.get(_normal(director.name))
+		if signature is None:
+			findings.append(
+				_finding(
+					DisclosureCode.UNSIGNED,
+					f"{director.name} hat den Jahresabschluss nicht unterzeichnet; jeder Geschäftsführer unterzeichnet.",
+					_SIGNATURE_REFERENCE,
+					director.name,
+				)
+			)
+		elif signature.signed_on is None:
+			findings.append(
+				_finding(
+					DisclosureCode.UNDATED,
+					f"Der Unterschrift von {director.name} fehlt das Datum.",
+					_SIGNATURE_REFERENCE,
+					director.name,
+				)
+			)
+		elif signature.signed_on <= fiscal_year_end:
+			findings.append(
+				_finding(
+					DisclosureCode.SIGNED_EARLY,
+					f"{director.name} kann den Jahresabschluss nicht vor dem Ende seines Geschäftsjahres "
+					"unterzeichnet haben.",
+					_SIGNATURE_REFERENCE,
+					director.name,
+				)
+			)
+	return tuple(findings)
+
+
+def transmission_problems(
+	adopted_on: date | None, transmitted_on: date, signatures: tuple[Signature, ...]
+) -> tuple[Finding, ...]:
+	"""What keeps a transmission from counting: one before the Feststellung, and one without a dated signature."""
+	findings: list[Finding] = []
+	if adopted_on is None or transmitted_on < adopted_on:
+		findings.append(
+			_finding(
+				DisclosureCode.BEFORE_ADOPTION,
+				"Übermittelt wird erst der festgestellte Jahresabschluss; eine Übermittlung davor wahrt die Frist "
+				"nicht.",
+				"§ 325 Abs. 1 Satz 1 Nr. 1, Abs. 4 Satz 2 HGB",
+			)
+		)
+	if not any(signature.signed_on is not None for signature in signatures):
+		findings.append(
+			_finding(
+				DisclosureCode.NO_SIGNATURE,
+				"Der übermittelte Jahresabschluss braucht die Unterschriften mit Datum.",
+				_SIGNATURE_REFERENCE,
+			)
+		)
+	return tuple(findings)
+
+
+def _normal(name: str) -> str:
+	return " ".join(name.split()).casefold()
+
+
+def _finding(code: DisclosureCode, text: str, reference: str, concept: str = "") -> Finding:
+	return Finding(code, Severity.ERROR, text, reference, concept)
