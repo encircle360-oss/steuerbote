@@ -20,6 +20,8 @@ from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Message, Operation, Outcome
 from steuerbote.eric.simulation import Checks, erklaerung
 from steuerbote.eric.simulation import bilanz as bilanz_checks
+from steuerbote.eric.simulation import gewst as gewst_checks
+from steuerbote.eric.simulation import kst as kst_checks
 
 # Invented Nutzdaten of an Erklärung: its main form and its Vorsatz, as elster/vorsatz.py writes it.
 NUTZDATEN = (
@@ -126,6 +128,19 @@ class ErklaerungTest(SimulationTestCase):
 	that the Jahresdokumentationen E50, E30 and E20 require, sheets „Allg. Information“ and „Vorsatz - Regeln“."""
 
 	KINDS = (ust(2026), kst(2026), gewst(2026))
+
+	def setUp(self):
+		super().setUp()
+		# The invented Nutzdaten of KSt and GewSt hold the name of the company alone, which the rules of their Vordrucke
+		# refuse: these tests check the structure, and those rules have tests of their own (test_simulation_kst.py,
+		# test_simulation_gewst.py).
+		structure = {
+			kind.name: erklaerung.checks(module.TITLE, module.MAIN_FORM)
+			for kind, module in ((kst(2026), kst_checks), (gewst(2026), gewst_checks))
+		}
+		patcher = mock.patch.object(fake, "CHECKS", MappingProxyType({**fake.CHECKS, **structure}))
+		patcher.start()
+		self.addCleanup(patcher.stop)
 
 	def test_valid_nutzdaten_of_each_erklaerung_are_valid_and_nothing_is_sent(self):
 		for kind in self.KINDS:

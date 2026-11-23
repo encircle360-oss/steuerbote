@@ -13,9 +13,10 @@ Transmission name the first.
 Berechnen of a test document reads its field source, JSON such as [{"key": "A", "label": "Umsätze", "computed":
 "100.00"}], where an entry with "finding" is a finding of the sources; check_reported finds an error on a line that
 reports less than zero, so that a correction changes what Berechnen checked. The test document of FILING goes to
-ELSTER as the Körperschaftsteuererklärung of its year, whose schema ERiC 44.3.6.0 does not have yet, so the simulation
-checks its structure and its Vorsatz; with the kind Bilanz it goes as the E-Bilanz of taxonomy 6.9, in the frame of
-ebilanz_000002.xsd. All names, numbers and addresses are invented.
+ELSTER as the Körperschaftsteuererklärung of its year with an empty KSt1, whose schema ERiC 44.3.6.0 does not have
+yet; under structure_only() the simulation checks its structure and its Vorsatz without the rules of the Vordrucke of
+the year (steuerbote.eric.simulation.kst), which refuse an empty KSt1. With the kind Bilanz it goes as the E-Bilanz
+of taxonomy 6.9, in the frame of ebilanz_000002.xsd. All names, numbers and addresses are invented.
 """
 
 import json
@@ -23,6 +24,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
+from types import MappingProxyType
 from typing import Any
 from unittest.mock import patch
 
@@ -33,7 +35,9 @@ from frappe.utils import cint, getdate
 from lxml import etree
 
 from steuerbote.elster import vorsatz
-from steuerbote.eric import datenart
+from steuerbote.eric import datenart, fake
+from steuerbote.eric.simulation import erklaerung
+from steuerbote.eric.simulation import kst as kst_checks
 from steuerbote.jahresmeldung import overrides
 from steuerbote.jahresmeldung.findings import Finding, Severity
 from steuerbote.jahresmeldung.lifecycle import ACCOUNTS, FILING, Lifecycle, standard_fields
@@ -205,6 +209,14 @@ def use_controller() -> Iterator[None]:
 		patch.object(elster_transmission, "DOCUMENT_TYPES", documents),
 		patch.object(transmission, "DOCUMENT_TYPES", documents),
 	):
+		yield
+
+
+@contextmanager
+def structure_only() -> Iterator[None]:
+	"""While it lasts, the simulation checks a Körperschaftsteuererklärung for its structure and its Vorsatz alone."""
+	structure = erklaerung.checks(kst_checks.TITLE, kst_checks.MAIN_FORM)
+	with patch.object(fake, "CHECKS", MappingProxyType({**fake.CHECKS, datenart.kst(2026).name: structure})):
 		yield
 
 

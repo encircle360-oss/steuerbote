@@ -2,6 +2,7 @@
 steuerbote/tests/annual_document.py: an Erklärung in the Datenart of its year with its Vorsatz and the copyright
 notice of the ERiC Settings, the E-Bilanz with the DatenLieferant of its NutzdatenHeader, the Steuernummer of the
 Annual Filing Settings, and the printout ERiC makes of each, the Freizeichnungsdokument or the Übertragungsprotokoll.
+The simulation checks the structure and the Vorsatz of the Erklärung alone (annual_document.structure_only()).
 
 Without a runtime the simulation answers; FakeEric of steuerbote/tests/transmitting.py stands in for an installed
 ERiC."""
@@ -31,6 +32,7 @@ class AnnualTransmissionTestCase(Transmitting, IntegrationTestCase):
 		super().setUp()
 		self.eric_settings(copyright=COPYRIGHT)
 		self.enterContext(annual_document.use_controller())
+		self.enterContext(annual_document.structure_only())
 		self.addCleanup(annual_document.discard_all)
 
 	def calculated(self, **fields):
