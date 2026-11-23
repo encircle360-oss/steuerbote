@@ -65,6 +65,9 @@ innergemeinschaftliches Dreiecksgeschäft (Kz 789, line 55, new in 2026), which 
 Lieferungen des ersten Abnehmers in Kz 742 (rule 30013); the bases of line 63 and of lines 66 to 69, whose taxes
 the Voranmeldung reports in Kz 69; and the ergänzende Angaben of lines 75 to 83 but Kz 209, 214, 721 and 205.
 
+Paragraphs. Lines 46, 52 and 54 print „Umsätze nach § … UStG“, „nach § 4 Nummer … UStG“ and „nach § … UStG“: each
+amount comes with a text field of its line that names the paragraph of the exemption (``paragraph``).
+
 Rate lines. The tax of a base at 19 or 7 % has a field of its own, which ERiC checks against the rate times the
 base within one euro (rules 30639 to 30644, 30656, 30658 and 30012); ``rate`` and ``base`` name it, and ``tax``
 names the tax of a base, which ERiC takes only together with it.
@@ -199,8 +202,9 @@ class Field:
 	``kennzahl`` is the Kennzahl the form prints, ``ustva`` the Kennzahl of the Voranmeldung whose amounts the field
 	takes, with ``sign`` -1 where it takes them negated, and ``default`` marks the line a split Kennzahl defaults to.
 	``rate`` and ``base`` make a tax that follows from its base; ``tax`` names the tax of a base. ``parts`` are the
-	fields a sum adds up, each with its sign. ``length`` is the most characters a text takes, ``mandatory`` the
-	Pflichtfeld of the JD, and ``repeat`` how often the context of the field may repeat.
+	fields a sum adds up, each with its sign. ``paragraph`` is the text field of the line that names the paragraph of
+	the amount. ``length`` is the most characters a text takes, ``mandatory`` the Pflichtfeld of the JD, and
+	``repeat`` how often the context of the field may repeat.
 	"""
 
 	element: str
@@ -216,6 +220,7 @@ class Field:
 	base: str | None = None
 	tax: str | None = None
 	parts: tuple[Part, ...] = ()
+	paragraph: str | None = None
 	scope: Scope = Scope.IN
 	length: int | None = None
 	mandatory: bool = False
@@ -299,6 +304,7 @@ class Catalogue:
 		)
 		object.__setattr__(self, "_rules", MappingProxyType(_rules(self.rules)))
 		self._validate_parts()
+		self._validate_paragraphs()
 		self._validate_pairs()
 		self._validate_defaults()
 		self._validate_ustva()
@@ -349,6 +355,14 @@ class Catalogue:
 			for part, _sign in field.parts:
 				if part not in self._fields or not self._fields[part].format.amount:
 					raise ValueError(f"{field.element}: {part} is no amount of the form")
+
+	def _validate_paragraphs(self) -> None:
+		for field in self.fields:
+			if field.paragraph is None:
+				continue
+			text = self._fields.get(field.paragraph)
+			if text is None or text.format is not Format.TEXT or text.line != field.line:
+				raise ValueError(f"{field.element}: {field.paragraph} is no text of line {field.line}")
 
 	def _validate_pairs(self) -> None:
 		"""A base and its tax name each other, so that a writer never files one without the other."""
@@ -844,6 +858,7 @@ _FIELDS_2026 = (
 		"Umsätze nach §",
 		ustva="43",
 		default=True,
+		paragraph="E3103901",
 	),
 	Field(
 		"E3104001",
@@ -904,6 +919,7 @@ _FIELDS_2026 = (
 		kennzahl="287",
 		ustva="48",
 		default=True,
+		paragraph="E3104501",
 	),
 	Field(
 		"E3104701",
@@ -924,6 +940,7 @@ _FIELDS_2026 = (
 		"nach §",
 		kennzahl="240",
 		ustva="48",
+		paragraph="E3104901",
 	),
 	Field(
 		"E3100801",
