@@ -10,6 +10,7 @@ from steuerbote.hgb.size import (
 	Basis,
 	Counting,
 	Criteria,
+	Origin,
 	SizeClass,
 	SizeError,
 	Thresholds,
@@ -310,3 +311,33 @@ class TwoClosingDatesTest(TestCase):
 	def test_measures_both_closing_dates_with_the_thresholds_of_the_year_decided(self):
 		with self.assertRaises(UnknownYearError):
 			decide(Criteria(date(2027, 12, 31), Decimal("1"), Decimal("1"), Decimal("1")), KLEIN_2026)
+
+
+class FirstClosingDateTest(TestCase):
+	"""§ 267 Abs. 4 Satz 2 and 3 HGB: after a Neugründung or Umwandlung the first Abschlussstichtag decides."""
+
+	def test_the_first_closing_date_after_a_neugruendung_decides_alone(self):
+		decision = decide(KLEIN_2026, first_after=Origin.NEUGRUENDUNG)
+		self.assertEqual((decision.applied, decision.basis), (SizeClass.KLEIN, Basis.FOUNDING))
+
+	def test_so_does_the_first_after_an_umwandlung(self):
+		decision = decide(KLEIN_2026, KLEINST_2025, SizeClass.KLEINST, first_after=Origin.UMWANDLUNG)
+		self.assertEqual(
+			(decision.previous_indicated, decision.applied, decision.basis),
+			(SizeClass.KLEINST, SizeClass.KLEIN, Basis.FOUNDING),
+		)
+
+	def test_a_formwechsel_of_a_kapitalgesellschaft_keeps_the_two_closing_dates(self):
+		decision = decide(KLEIN_2026, KLEINST_2025, SizeClass.KLEINST, first_after=Origin.FORMWECHSEL)
+		self.assertEqual((decision.applied, decision.basis), (SizeClass.KLEINST, Basis.CARRIED))
+
+	def test_names_each_origin_as_the_law_does(self):
+		self.assertEqual(
+			[origin.value for origin in Origin],
+			[
+				"Neugründung",
+				"Umwandlung",
+				"Formwechsel einer Kapitalgesellschaft oder einer Personenhandelsgesellschaft im Sinne des "
+				"§ 264a Absatz 1",
+			],
+		)
