@@ -14,8 +14,8 @@ account, ("account", number), with its place, rule, watched or excluded, and the
 shareholder flag is "1" or None. An account has one place, so a change of its place is one difference.
 items_of_rows and rows_of_items turn rows into items and back, default_items gives the defaults of a chart for a
 company as items, and body_of_items and items_of_body turn items into the plain data of the stored defaults and of the
-file and back, with the flag as true or false; file_body and items_of_file_body make the body of the file, the rows
-with the defaults the mapping took over.
+file and back, with the flag as true or false; file_body and items_of_file_body make the body of the file, the
+version of the taxonomy whose positions the rows name, the rows and the defaults the mapping took over.
 
 A row holds what Frappe stores: an empty Check field is 0, an empty Data or Select field is "" or None, and an
 account number is the one fetched from its account. The validate of the DocType runs before Frappe checks the
@@ -80,7 +80,9 @@ NOT_A_BODY = (
 	"A Balance Sheet Mapping holds rules, watched accounts and accounts outside the Bilanz and the GuV."
 )
 BAD_ROWS = "Each row of the {0} holds {1}, as texts, the shareholder flag as true or false."
-NOT_A_FILE_BODY = "The body of the file holds the mapping and the defaults it took over."
+NOT_A_FILE_BODY = (
+	"The body of the file holds the version of the taxonomy, the mapping and the defaults it took over."
+)
 MESSAGES = (NO_ACCOUNT, NO_ACCOUNT_NUMBER, NOT_JSON, NOT_A_BODY, BAD_ROWS, NOT_A_FILE_BODY)
 
 
@@ -217,23 +219,34 @@ def items_of_body(body: Any) -> dict[Key, Fields]:
 
 
 def file_body(
+	taxonomy_version: str,
 	items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]],
 	defaults: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]] | None,
 ) -> dict[str, Any]:
-	"""The body of the file of a mapping (steuerbote.mappings.transfer): its rows, and the rows of the defaults it took
-	over, None for a mapping that knows none."""
+	"""The body of the file of a mapping (steuerbote.mappings.transfer): the version of the taxonomy its positions
+	belong to, its rows, and the rows of the defaults it took over, None for a mapping that knows none."""
 	return {
+		"taxonomy_version": taxonomy_version,
 		"mapping": body_of_items(items),
 		"defaults": None if defaults is None else body_of_items(defaults),
 	}
 
 
-def items_of_file_body(body: Any) -> tuple[dict[Key, Fields], dict[Key, Fields] | None]:
-	"""The items of the mapping and of its defaults that file_body wrote; raises MappingError for another shape."""
-	if not isinstance(body, dict) or set(body) != {"mapping", "defaults"}:
+def items_of_file_body(body: Any) -> tuple[str, dict[Key, Fields], dict[Key, Fields] | None]:
+	"""The version of the taxonomy and the items of the mapping and of its defaults that file_body wrote; raises
+	MappingError for another shape."""
+	if (
+		not isinstance(body, dict)
+		or set(body) != {"taxonomy_version", "mapping", "defaults"}
+		or not isinstance(body["taxonomy_version"], str)
+	):
 		raise MappingError(NOT_A_FILE_BODY)
 	defaults = body["defaults"]
-	return items_of_body(body["mapping"]), None if defaults is None else items_of_body(defaults)
+	return (
+		body["taxonomy_version"],
+		items_of_body(body["mapping"]),
+		None if defaults is None else items_of_body(defaults),
+	)
 
 
 def dump_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]]) -> str:
