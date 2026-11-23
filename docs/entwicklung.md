@@ -43,7 +43,7 @@ steuerbote/                    Repository
 │   ├── vatid/                 Bestätigung ausländischer USt-IdNrn. beim BZSt, VIES als Ausweichdienst, reines Python ohne Frappe-Import
 │   ├── dauerfrist/            Rechenkern von Dauerfristverlängerung und Sondervorauszahlung (USt 1 H), reines Python ohne Frappe-Import
 │   ├── deadlines/             Fristen von Voranmeldung, ZM und Sondervorauszahlung mit Status, reines Python ohne Frappe-Import; Bericht „Offene Fristen“, tägliche Erinnerung und Fristerinnerung im Frappe-Modul, siehe Fristen
-│   ├── eric/                  ERiC: Datenarten, Einrichtung, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
+│   ├── eric/                  ERiC: Datenarten, Einrichtung, Mindestversionsliste, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
 │   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
 │   ├── invoices.py            liest die Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns, reines Python

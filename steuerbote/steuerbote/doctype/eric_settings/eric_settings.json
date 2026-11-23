@@ -25,6 +25,15 @@
   "lib_dir",
   "log_dir",
   "last_check",
+  "versions_section",
+  "minimum_list_version",
+  "minimum_list_modified",
+  "minimum_eric_version",
+  "column_break_versions",
+  "versions_checked_on",
+  "versions_check_failed",
+  "minimum_versions",
+  "version_notices",
   "proxy_section",
   "proxy_url",
   "column_break_proxy",
@@ -152,6 +161,66 @@
    "read_only": 1
   },
   {
+   "description": "Each week Steuerbote loads the Mindestversionsliste ELSTER publishes for ERiC and compares the libraries of every installed runtime with it. The System Managers hear once of each finding; Check Runtime shows the comparison.",
+   "fieldname": "versions_section",
+   "fieldtype": "Section Break",
+   "label": "ERiC Versions"
+  },
+  {
+   "description": "The version of the list itself, which ELSTER publishes at https://www.elster.de/elsterweb/attachments/eric/eric_mindestversionsliste.yaml.",
+   "fieldname": "minimum_list_version",
+   "fieldtype": "Data",
+   "label": "Version of the Mindestversionsliste",
+   "read_only": 1
+  },
+  {
+   "description": "As the server of ELSTER states it (Last-Modified).",
+   "fieldname": "minimum_list_modified",
+   "fieldtype": "Datetime",
+   "label": "Mindestversionsliste Changed On",
+   "read_only": 1
+  },
+  {
+   "description": "The Mindestversion of libericapi.so, the API library of ERiC, for Linux x86_64 in the list.",
+   "fieldname": "minimum_eric_version",
+   "fieldtype": "Data",
+   "label": "Minimum Version of ERiC",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_versions",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "versions_checked_on",
+   "fieldtype": "Datetime",
+   "label": "Versions Last Checked",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.versions_check_failed",
+   "description": "The Error Log names the reason; the next weekly check tries again.",
+   "fieldname": "versions_check_failed",
+   "fieldtype": "Check",
+   "label": "Version Check Failed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "minimum_versions",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Minimum Versions",
+   "read_only": 1
+  },
+  {
+   "fieldname": "version_notices",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Notices Sent",
+   "read_only": 1
+  },
+  {
    "collapsible": 1,
    "collapsible_depends_on": "eval:doc.proxy_url",
    "description": "Only where the server reaches ELSTER through a proxy. ERiC takes http://, socks4:// or socks5:// with host and port, a SOCKS proxy without user and password.",
@@ -185,7 +254,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-21 12:00:00.000000",
+ "modified": "2026-11-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "ERiC Settings",

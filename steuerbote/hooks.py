@@ -52,5 +52,10 @@ doc_events = {
 	}
 }
 
-# Every day the recipients in the VAT Return Settings of each company hear of its deadlines not filed.
-scheduler_events = {"daily": ["steuerbote.steuerbote.deadlines.send_reminders"]}
+# Every day the recipients in the VAT Return Settings of each company hear of its deadlines not filed. Every week
+# Steuerbote loads the Mindestversionsliste of ERiC and tells the System Managers of what the installed runtimes
+# lack, as the ERiC licence asks the Softwarehersteller to check regularly for new versions (§ 5 Abs. 4).
+scheduler_events = {
+	"daily": ["steuerbote.steuerbote.deadlines.send_reminders"],
+	"weekly": ["steuerbote.steuerbote.doctype.eric_settings.eric_settings.check_versions"],
+}
