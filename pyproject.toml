@@ -124,6 +124,7 @@ source = [
     "steuerbote/deadlines",
     "steuerbote/ustjahr",
     "steuerbote/kst",
+    "steuerbote/gewst",
 ]
 omit = ["*/tests/*", "*/steuerbote/eric/secrets.py"]
 branch = true
