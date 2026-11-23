@@ -1,6 +1,7 @@
-"""The Datenarten of steuerbote.eric.datenart, also against the ERiC documentation 44.3.6.0: its examples, its
-schemas, its Datenartversionmatrix and the Jahresdokumentation ZMDO, read as steuerbote/elster/tests/eric_schema.py
-finds them."""
+"""The Datenarten of steuerbote.eric.datenart, also against the ERiC documentation 44.3.6.0 that
+steuerbote/elster/tests/eric_schema.py finds: its examples, its schemas, its Datenartversionmatrix and the
+Jahresdokumentationen of the Erklärungen, the Bilanz and ZMDO, all but that of ZMDO read with
+steuerbote/jahresmeldung/documentation.py."""
 
 from pathlib import Path
 from types import MappingProxyType
@@ -21,6 +22,7 @@ from steuerbote.eric.datenart import (
 	ust,
 	ustva,
 )
+from steuerbote.jahresmeldung import documentation
 from steuerbote.ustva import years
 
 ELSTER = "{http://www.elster.de/elsterxml/schema/v11}"
@@ -245,11 +247,7 @@ class ErklaerungDocumentationTest(TestCase):
 	EXAMPLES = MappingProxyType({"USt": "USt_2026.xml", "KSt": "kst_2025_ok.xml", "GewSt": "GewSt_2025.xml"})
 
 	def jahresdokumentation(self, kind: Datenart) -> Path:
-		return (
-			eric_schema.erklaerung_directory(kind.name)
-			/ "Jahresdokumentation"
-			/ f"Jahresdokumentation_{kind.root}_{kind.year}.ods"
-		)
+		return documentation.jahresdokumentation_path(eric_schema.documentation(), kind)
 
 	def test_the_examples_go_as_the_datenarten_describe_them(self):
 		for kind in self.KINDS:
@@ -274,7 +272,7 @@ class ErklaerungDocumentationTest(TestCase):
 				)
 
 	def test_the_datenartversionmatrix_names_their_datenart_version_and_plugin(self):
-		rows = eric_schema.datenart_versions()
+		rows = documentation.datenart_versions(eric_schema.documentation())
 		for kind in (*self.KINDS, ust(2027), kst(2026), gewst(2026)):
 			with self.subTest(datenart=kind.version):
 				(row,) = (
@@ -302,8 +300,8 @@ class ErklaerungDocumentationTest(TestCase):
 	def test_the_jahresdokumentation_names_namespace_root_and_unterfallart(self):
 		for kind in self.KINDS:
 			with self.subTest(datenart=kind.version):
-				path = self.jahresdokumentation(kind)
-				information = eric_schema.lines(path, "Allg. Information")
+				jahresdokumentation = documentation.read(self.jahresdokumentation(kind))
+				information = jahresdokumentation.information
 				self.assertIn(
 					f"Für Nutzdaten muss der Namensraum '{kind.namespace}' angegeben werden.", information
 				)
@@ -313,7 +311,7 @@ class ErklaerungDocumentationTest(TestCase):
 				)
 				fields = {
 					row["Name"]: row["Format als regulärer Ausdruck"]
-					for row in eric_schema.sheet(path, "Vorsatz - Felder")
+					for row in jahresdokumentation.vordruck("Vorsatz").fields
 				}
 				self.assertEqual(fields["Unterfallart"], f"^(?=.{{2,2}}$){kind.unterfallart}")
 
@@ -396,7 +394,7 @@ class BilanzDocumentationTest(TestCase):
 	def test_the_datenartversionmatrix_names_the_datenart_version_and_plugin_of_the_taxonomy(self):
 		(row,) = (
 			row
-			for row in eric_schema.datenart_versions()
+			for row in documentation.datenart_versions(eric_schema.documentation())
 			if (row["Verfahren"], row["Datenart(en)"], row["Jahr / Version"])
 			== (self.KIND.verfahren, self.KIND.name, f"HGB-Taxonomie {self.KIND.taxonomy}")
 		)
@@ -419,14 +417,8 @@ class BilanzDocumentationTest(TestCase):
 		self.assertEqual(bounds, [1, int(self.KIND.root_version)])
 
 	def test_the_jahresdokumentation_takes_the_finanzamt_as_the_only_recipient(self):
-		path = (
-			eric_schema.bilanz_directory()
-			/ "Jahresdokumentation"
-			/ f"Jahresdokumentation_Bilanz_Taxonomie_{self.KIND.taxonomy.replace('.', '_')}.ods"
-		)
-		(rule,) = (
-			row for row in eric_schema.sheet(path, "Header - Regeln") if row["Fehlercode"] == "170205015"
-		)
+		path = documentation.jahresdokumentation_path(eric_schema.documentation(), self.KIND)
+		(rule,) = documentation.read(path).vordruck("Header").rules_of("170205015")
 		self.assertEqual(rule["Prüfbedingung"], f'[ndh:Empfaenger_id]!="{self.KIND.recipient_id}"')
 
 
@@ -454,7 +446,10 @@ class DocumentationTest(TestCase):
 
 	def test_the_datenartversionmatrix_names_their_datenart_version_and_plugin(self):
 		"""Datenartversionmatrix.ods: UStVA_<Jahr> with checkUStVA_<Jahr>, ZMDO with checkZMDO and no year."""
-		rows = {(row["Verfahren"], row["Datenart(en)"]): row for row in eric_schema.datenart_versions()}
+		rows = {
+			(row["Verfahren"], row["Datenart(en)"]): row
+			for row in documentation.datenart_versions(eric_schema.documentation())
+		}
 		for kind in (ustva(2026), ZMDO):
 			with self.subTest(datenart=kind.version):
 				row = rows[(kind.verfahren, kind.name)]
