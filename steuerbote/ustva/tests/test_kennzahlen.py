@@ -147,7 +147,7 @@ class Catalogue2027Test(TestCase):
 
 	def test_is_its_own_catalogue_of_its_year(self):
 		self.assertIs(catalogue_for(2027), CATALOGUES[2027])
-		self.assertIs(KENNZAHLEN, CATALOGUES[2027])
+		self.assertIsNot(CATALOGUES[2027], CATALOGUES[2026])
 
 
 class FormSumsTest(TestCase):

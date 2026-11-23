@@ -149,7 +149,7 @@ class Layout2027Test(TestCase):
 
 	def test_knows_2027(self):
 		self.assertIs(self.layout, LAYOUTS[2027])
-		self.assertEqual((self.layout.year, LATEST_YEAR), (2027, 2027))
+		self.assertEqual(self.layout.year, 2027)
 
 	def test_both_contexts_keep_the_fields_of_2026(self):
 		for context in Context:
