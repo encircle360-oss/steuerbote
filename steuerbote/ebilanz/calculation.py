@@ -83,6 +83,7 @@ from steuerbote.ebilanz.positions import (
 	Mark,
 	Position,
 	Structure,
+	euro,
 	leitfaden,
 	qualified,
 	rule,
@@ -333,8 +334,8 @@ def betriebsvermoegensvergleich(
 		findings.append(
 			Finding(
 				"170405109",
-				f"Der Betriebsvermögensvergleich ergibt {_euro(compared)}, der Jahresüberschuss der GuV ist "
-				f"{_euro(net_income)}: Es fehlen Einlagen oder Ausschüttungen von {_euro(compared - net_income)}, "
+				f"Der Betriebsvermögensvergleich ergibt {euro(compared)}, der Jahresüberschuss der GuV ist "
+				f"{euro(net_income)}: Es fehlen Einlagen oder Ausschüttungen von {euro(compared - net_income)}, "
 				"oder das Betriebsvermögen des Vorjahres stimmt nicht.",
 				f"{leitfaden(taxonomy, 'B.14.3.2.12')}; {rule(taxonomy, '170405109')}",
 				unqualified(BVV_RESULT),
@@ -397,7 +398,7 @@ def _booked_position(
 		findings.append(
 			Finding(
 				"EB-NICHT-ZUGEORDNET",
-				f"{account} hat einen Saldo von {_euro(balance.amount)}, aber keine Position in der Bilanzzuordnung; die "
+				f"{account} hat einen Saldo von {euro(balance.amount)}, aber keine Position in der Bilanzzuordnung; die "
 				"E-Bilanz ließe ihn aus.",
 				"§ 5b Abs. 1 Satz 1 EStG; " + source,
 				balance.account,
@@ -573,7 +574,7 @@ def _on_a_total(
 	]
 	accounts = ", ".join(line.account for line in lines)
 	text = (
-		f"Auf „{position.label}“ selbst stehen {_euro(own)}"
+		f"Auf „{position.label}“ selbst stehen {euro(own)}"
 		+ (f" (Konten {accounts})" if accounts else "")
 		+ ", obwohl Positionen darunter Beträge haben; ihre Summe ergäbe die Position ohne diesen Betrag. Er gehört "
 		+ (
@@ -611,8 +612,8 @@ def _balanced(structure: Structure, amounts: Mapping[Key, Decimal | None], prior
 			findings.append(
 				Finding(
 					"170205010",
-					f"Die Summe der Aktiva{suffix} ist {_euro(assets)}, die der Passiva {_euro(liabilities)}: Es fehlen "
-					f"{_euro(abs(assets - liabilities))}, etwa ein Konto ohne Saldo im Bericht oder eine Buchung.",
+					f"Die Summe der Aktiva{suffix} ist {euro(assets)}, die der Passiva {euro(liabilities)}: Es fehlen "
+					f"{euro(abs(assets - liabilities))}, etwa ein Konto ohne Saldo im Bericht oder eine Buchung.",
 					f"{leitfaden(taxonomy, 'B.14.3.2.2')}; {rule(taxonomy, '170205010')}",
 					unqualified(ASSETS),
 				)
@@ -649,8 +650,3 @@ def _require_cents(value: object, what: str) -> None:
 		raise TypeError(f"{what} is a Decimal, not {type(value).__name__}")
 	if not value.is_finite() or value != value.quantize(CENT):
 		raise ValueError(f"{what} is {value}, not an amount in euros and cents")
-
-
-def _euro(value: Decimal) -> str:
-	"""An amount as the German text writes it, such as 1.234,56 €."""
-	return f"{value:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".") + " €"

@@ -178,6 +178,11 @@ def rule(taxonomy: Taxonomy, code: str, sheet: str = "Regel") -> str:
 	return f"Jahresdokumentation_Bilanz_Taxonomie_{taxonomy.version.replace('.', '_')}.ods, {sheet} {code}"
 
 
+def euro(value: Decimal) -> str:
+	"""An amount as a German text writes it, such as 1.234,56 €."""
+	return f"{value:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".") + " €"
+
+
 def qualified(name: str) -> str:
 	"""A name of the GAAP module with its prefix, as the facts name it."""
 	return name if ":" in name else f"{GAAP}:{name}"
