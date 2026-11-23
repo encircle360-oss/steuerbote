@@ -34,27 +34,58 @@ Jahresdokumentation_E20_2025.ods (ERiC documentation 44.3.6.0), provisionally fo
   Körperschaftsteuer does (rules 8901005 and 8901006 of the Jahresdokumentation E30), which is unverified for the
   Gewerbesteuer.
 
+Then the computation that the declaration leaves to the Finanzamt and the Gemeinde, for the provision:
+- § 10a GewStG: „Der maßgebende Gewerbeertrag wird bis zu einem Betrag in Höhe von 1 Million Euro um die Fehlbeträge
+  gekürzt, die sich bei der Ermittlung des maßgebenden Gewerbeertrags für die vorangegangenen Erhebungszeiträume ...
+  ergeben haben“ (Satz 1), „Der 1 Million Euro übersteigende maßgebende Gewerbeertrag ist bis zu 60 Prozent um nach
+  Satz 1 nicht berücksichtigte Fehlbeträge der vorangegangenen Erhebungszeiträume zu kürzen“ (Satz 2), after
+  steuerbote.kst.losses.minimum_taxation; a negative Gewerbeertrag is a Fehlbetrag that remains at the end of the EZ
+  (Satz 7), whose Feststellung the declaration serves (Satz 6). Line 148 (E4014801) holds the Fehlbetrag assessed for
+  the previous EZ;
+- § 11 Absatz 1 Satz 3 GewStG: „Der Gewerbeertrag ist auf volle 100 Euro nach unten abzurunden“; a Kapitalgesellschaft
+  has no Freibetrag; § 11 Absatz 2: „Die Steuermesszahl für den Gewerbeertrag beträgt 3,5 Prozent“; R 14.1 Satz 3
+  GewStR 2009: „Der Steuermessbetrag ist erforderlichenfalls auf volle Euro nach unten abzurunden“;
+- § 16 GewStG: the Gewerbesteuer is the Messbetrag times the Hebesatz of the Gemeinde, at least the minimum of § 16
+  Absatz 4 Satz 2 (steuerbote.gewst.years); with a whole Hebesatz it has no fraction of a cent, any other is rounded to
+  cents. Steuerbote has one Gemeinde; a Zerlegung (GewSt 1 D) is a later module;
+- § 19 GewStG: the Vorauszahlungen of the EZ are credited; the balance is the Abschlusszahlung, a refund below 0.
+
 Each line is a Line of steuerbote.kst.chain with a Step of STEPS; the amounts of the ledger are declared in whole
 euros rounded half up (steuerbote.ustva.rounding). The financing parts and the cuts without a field of their own
 are exact, since only the Gewerbeertrag is rounded. Other Hinzurechnungen and Kürzungen (§ 8 Nummer 8, 10 and 12,
 § 9 Nummer 2, 3 and 8) and the Kürzung of the Hinzurechnung for costs of cut dividends (Anlage BEG line 20) are not
-in Steuerbote's scope.
+in Steuerbote's scope; costs that would need the latter give a hint.
+
+The findings are steuerbote.kst.chain.Finding: a missing Hebesatz and one below the minimum hold the filing back.
 """
 
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 from types import MappingProxyType
 
 from steuerbote.gewst.years import Year, year_of
 from steuerbote.kst.categories import Category
-from steuerbote.kst.chain import KstResult, Line, Source, Step
+from steuerbote.kst.chain import Finding, KstResult, Line, Severity, Source, Step
 from steuerbote.kst.holdings import Exemption, HoldingDividends
+from steuerbote.kst.losses import minimum_taxation
 from steuerbote.kst.years import HUNDRED
 from steuerbote.ustva.plausibility import Figures
-from steuerbote.ustva.rounding import CENT, EURO, ZERO, ceil_euro, floor_euro, half_up_euro, require_decimal
+from steuerbote.ustva.rounding import (
+	CENT,
+	EURO,
+	ZERO,
+	ceil_euro,
+	floor_euro,
+	floor_hundred,
+	half_up_euro,
+	require_decimal,
+	to_cents,
+)
 
 GEWST1A = "GewSt1A"
 GEWERBEERTRAG_BEFORE_LOSS = "gewerbeertrag_before_loss"
+GEWERBEERTRAG = "gewerbeertrag"
 PER_MILLE = Decimal("1000")
 _LEDGER, _COMPUTED = Source.LEDGER, Source.COMPUTED
 
@@ -217,6 +248,57 @@ STEPS: tuple[Step, ...] = (
 		"",
 		None,
 		1,
+		GEWERBEERTRAG,
+		(),
+		_COMPUTED,
+	),
+	Step(
+		"loss_deduction",
+		"Gewerbeverlust der vorangegangenen Erhebungszeiträume",
+		"§ 10a Satz 1 und 2 GewStG",
+		"",
+		"",
+		None,
+		-1,
+		GEWERBEERTRAG,
+		(),
+		_COMPUTED,
+	),
+	Step(GEWERBEERTRAG, "Gewerbeertrag", "§ 10a GewStG", "", "", None, 1, None, (), _COMPUTED),
+	Step(
+		"gewerbeertrag_rounded",
+		"Gewerbeertrag, auf volle 100 Euro abgerundet",
+		"§ 11 Absatz 1 Satz 3 GewStG",
+		"",
+		"",
+		None,
+		1,
+		None,
+		(),
+		_COMPUTED,
+	),
+	Step(
+		"messbetrag",
+		"Steuermessbetrag",
+		"§ 11 Absatz 1 Satz 2 und Absatz 2 GewStG; R 14.1 Satz 3 GewStR 2009",
+		"",
+		"",
+		None,
+		1,
+		None,
+		(),
+		_COMPUTED,
+	),
+	Step("gewst", "Gewerbesteuer", "§ 16 Absatz 1 GewStG", "", "", None, 1, "balance", (), _COMPUTED),
+	Step("prepayments", "Vorauszahlungen", "§ 19 GewStG", "", "", None, -1, "balance", (), Source.INPUT),
+	Step(
+		"balance",
+		"Abschlusszahlung oder Erstattung der Gewerbesteuer",
+		"§ 20 GewStG",
+		"",
+		"",
+		None,
+		1,
 		None,
 		(),
 		_COMPUTED,
@@ -279,6 +361,38 @@ class GewstResult:
 	lines: MappingProxyType[str, Line]
 	beg: tuple[BegLine, ...]
 	donation_carry_forward: Decimal
+	loss_carry_forward: Decimal
+	findings: tuple[Finding, ...]
+
+	@property
+	def ready(self) -> bool:
+		"""No finding holds the filing back."""
+		return not any(finding.blocking for finding in self.findings)
+
+	@property
+	def gewerbeertrag(self) -> Decimal:
+		"""The Gewerbeertrag rounded down to full 100 euros, 0 when it is not positive."""
+		return self.lines["gewerbeertrag_rounded"].declared
+
+	@property
+	def messbetrag(self) -> Decimal:
+		return self.lines["messbetrag"].declared
+
+	@property
+	def gewst(self) -> Decimal:
+		"""The Gewerbesteuer of the Gemeinde, 0 without a Hebesatz."""
+		return self.lines["gewst"].declared
+
+	@property
+	def balance(self) -> Decimal:
+		"""The Abschlusszahlung of Gewerbesteuer, a refund below 0."""
+		return self.lines["balance"].declared
+
+
+class Code(StrEnum):
+	HEBESATZ_MISSING = "GEWST-HEBESATZ-FEHLT"
+	HEBESATZ_TOO_LOW = "GEWST-HEBESATZ-UNTER-MINDESTSATZ"
+	BEG_FINANCING = "GEWST-BEG-FINANZIERUNGSANTEILE"
 
 
 def compute(kst: KstResult, inputs: GewstInputs, figures: Figures) -> GewstResult:
@@ -291,6 +405,13 @@ def compute(kst: KstResult, inputs: GewstInputs, figures: Figures) -> GewstResul
 	eligible = inputs.eligible_donations
 	if eligible is not None and (not _is_cents(eligible) or eligible < ZERO):
 		raise ValueError(f"the Zuwendungen must be an amount in cents of at least 0, not {eligible}")
+	hebesatz = inputs.hebesatz
+	if hebesatz is not None and (not require_decimal(hebesatz).is_finite() or hebesatz <= ZERO):
+		raise ValueError(f"the Hebesatz must be a percentage above 0, not {hebesatz}")
+	if not _is_cents(inputs.prepayments) or inputs.prepayments < ZERO:
+		raise ValueError(
+			f"the Vorauszahlungen must be an amount in cents of at least 0, not {inputs.prepayments}"
+		)
 	classification = kst.classification
 	lines: dict[str, Line] = {}
 
@@ -337,12 +458,65 @@ def compute(kst: KstResult, inputs: GewstInputs, figures: Figures) -> GewstResul
 	put("donation_cut", max(min(available, cap), ZERO))
 	put(GEWERBEERTRAG_BEFORE_LOSS, *_total(GEWERBEERTRAG_BEFORE_LOSS, lines))
 
+	before = lines[GEWERBEERTRAG_BEFORE_LOSS].declared
+	first, limited = minimum_taxation(before, inputs.loss_carry_forward, year.loss_unlimited, year.loss_share)
+	put("loss_deduction", first + limited)
+	put(GEWERBEERTRAG, *_total(GEWERBEERTRAG, lines))
+	remaining_loss = inputs.loss_carry_forward - first - limited + max(-before, ZERO)
+	gewerbeertrag = lines[GEWERBEERTRAG].declared
+	put("gewerbeertrag_rounded", gewerbeertrag, floor_hundred(max(gewerbeertrag, ZERO)))
+	assessed = lines["gewerbeertrag_rounded"].declared * year.messzahl / HUNDRED
+	put("messbetrag", assessed, floor_euro(assessed))
+	tax = lines["messbetrag"].declared * (hebesatz or ZERO) / HUNDRED
+	put("gewst", tax, to_cents(tax))
+	put("prepayments", inputs.prepayments)
+	put("balance", *_total("balance", lines))
+
 	return GewstResult(
 		year,
 		MappingProxyType({item.key: lines[item.key] for item in STEPS if item.key in lines}),
 		beg,
 		available - lines["donation_cut"].declared,
+		remaining_loss,
+		_findings(year, hebesatz, beg, figures),
 	)
+
+
+def _findings(
+	year: Year, hebesatz: Decimal | None, beg: tuple[BegLine, ...], figures: Figures
+) -> tuple[Finding, ...]:
+	found: list[Finding] = []
+	if hebesatz is None:
+		found.append(
+			Finding(
+				Code.HEBESATZ_MISSING,
+				Severity.ERROR,
+				f"Für die Gemeinde fehlt der Hebesatz des Erhebungszeitraums {year.year} mit seiner Quelle.",
+				"§ 16 Absatz 1 GewStG",
+			)
+		)
+	elif hebesatz < year.minimum_hebesatz:
+		found.append(
+			Finding(
+				Code.HEBESATZ_TOO_LOW,
+				Severity.ERROR,
+				f"Der Hebesatz von {hebesatz} % liegt unter dem Mindesthebesatz von {year.minimum_hebesatz} %.",
+				"§ 16 Absatz 4 Satz 2 GewStG",
+			)
+		)
+	for line in beg:
+		if line.paragraph is not None and line.financing_costs:
+			found.append(
+				Finding(
+					Code.BEG_FINANCING,
+					Severity.HINT,
+					f"Bei {line.holding.result.holding.name} mindern {figures.money(line.financing_costs)} "
+					"Aufwendungen im Sinne des § 8 Nummer 1 GewStG die Kürzung. Um sie kürzt Anlage BEG Zeile 20 die "
+					"Hinzurechnung; das berechnet Steuerbote nicht.",
+					"§ 9 Nummer 2a Satz 3 GewStG",
+				)
+			)
+	return tuple(found)
 
 
 def _beg(holding: HoldingDividends, year: Year, kst: KstResult) -> BegLine | None:
