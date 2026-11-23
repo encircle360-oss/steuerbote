@@ -37,6 +37,19 @@ zu Inhalts- und Formverstößen, read on 23 November 2026) The disclosed version
 such as „gez. Max Mustermann“; a sole shareholder and Geschäftsführer may sign on the day of the Feststellung and
 states that date twice (same source). adoption_problems() and transmission_problems() check this.
 
+What being late costs. The Bundesamt für Justiz threatens the Geschäftsführer and the company with an Ordnungsgeld
+„innerhalb einer Frist von sechs Wochen vom Zugang der Androhung an ihrer gesetzlichen Verpflichtung nachzukommen“
+(§ 335 Abs. 3 Satz 1 HGB); „Das Ordnungsgeld beträgt mindestens zweitausendfünfhundert und höchstens
+fünfundzwanzigtausend Euro.“ (§ 335 Abs. 1 Satz 4 HGB) Filed after the six weeks, it is lowered „auf einen Betrag von
+500 Euro, wenn die Beteiligten von dem Recht einer Kleinstkapitalgesellschaft nach § 326 Absatz 2 Gebrauch gemacht
+haben“, to 1 000 Euro for a small company and to 2 500 Euro otherwise (§ 335 Abs. 4 Satz 2 Nr. 1 to 3 HGB); Nr. 4
+lowers it further for a short delay, at the discretion of the Bundesamt. A procedure costs 100,00 Euro (Nr. 1210 of
+the Kostenverzeichnis of the JVKostG), and against several persons „entstehen die Gebühren für jede Person
+gesondert“ (Vorbemerkung 1.2.1). The register charges 18,50 Euro for the
+Einstellung of a Kleinst and 25,00 Euro for klein (Nr. 1420 and 1421 KV JVKostG), 3,00 Euro a year for a company with
+the reliefs of § 326 HGB (Nr. 1410), half more for documents changed before the Einstellung and half less for a
+withdrawal (Vorbemerkung 1.4.2 Abs. 2 und 3), read on gesetze-im-internet.de on 23 November 2026.
+
 The Annual Accounts read the class of the fiscal year from steuerbote.hgb.size, the form of the balance sheet from
 steuerbote.hgb.schemes and the Angaben from steuerbote.hgb.notes. Text of §§ 9, 245, 264, 316, 325, 326, 327, 328 HGB, § 42a GmbHG
 and §§ 187, 188, 193 BGB as read on gesetze-im-internet.de on 23 November 2026.
@@ -45,7 +58,9 @@ and §§ 187, 188, 193 BGB as read on gesetze-im-internet.de on 23 November 2026
 import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 from enum import Enum, StrEnum
+from types import MappingProxyType
 
 from steuerbote.hgb.size import SizeClass
 from steuerbote.hgb.statement import Finding, Severity
@@ -354,3 +369,79 @@ def _normal(name: str) -> str:
 
 def _finding(code: DisclosureCode, text: str, reference: str, concept: str = "") -> Finding:
 	return Finding(code, Severity.ERROR, text, reference, concept)
+
+
+@dataclass(frozen=True, slots=True)
+class Ordnungsgeld:
+	minimum: Decimal
+	maximum: Decimal
+	weeks: int
+	reference: str
+	procedure_fee: Decimal
+	procedure_fee_reference: str
+
+
+ORDNUNGSGELD = Ordnungsgeld(
+	Decimal("2500"),
+	Decimal("25000"),
+	6,
+	"§ 335 Abs. 1 Satz 4, Abs. 3 Satz 1 HGB",
+	Decimal("100.00"),
+	"Nr. 1210 KV JVKostG",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class Reduction:
+	amount: Decimal
+	reference: str
+
+
+def reduced_ordnungsgeld(size_class: SizeClass, mode: Mode) -> Reduction:
+	"""What the Ordnungsgeld is lowered to when the company files after the six weeks (§ 335 Abs. 4 Satz 2 Nr. 1 to
+	3 HGB); a Kleinst that published counts as the small company it is."""
+	if size_class is SizeClass.KLEINST and mode is Mode.HINTERLEGUNG:
+		return Reduction(Decimal("500"), "§ 335 Abs. 4 Satz 2 Nr. 1 HGB")
+	if size_class.is_small:
+		return Reduction(Decimal("1000"), "§ 335 Abs. 4 Satz 2 Nr. 2 HGB")
+	return Reduction(Decimal("2500"), "§ 335 Abs. 4 Satz 2 Nr. 3 HGB")
+
+
+@dataclass(frozen=True, slots=True)
+class Fees:
+	filing: Decimal
+	filing_reference: str
+	yearly: Decimal
+	yearly_reference: str
+
+
+_YEARLY_WITH_RELIEFS = (Decimal("3.00"), "Nr. 1410 KV JVKostG")
+_FILING_FEES = MappingProxyType(
+	{
+		SizeClass.KLEINST: Fees(Decimal("18.50"), "Nr. 1420 KV JVKostG", *_YEARLY_WITH_RELIEFS),
+		SizeClass.KLEIN: Fees(Decimal("25.00"), "Nr. 1421 KV JVKostG", *_YEARLY_WITH_RELIEFS),
+	}
+)
+
+
+def filing_fees(size_class: SizeClass) -> Fees:
+	"""What the register charges a class Steuerbote prepares for the Einstellung and every year."""
+	try:
+		return _FILING_FEES[size_class]
+	except KeyError:
+		raise DisclosureError(
+			f"Steuerbote names the fees of Kleinst and klein only, not of a {size_class.value}"
+		) from None
+
+
+@dataclass(frozen=True, slots=True)
+class FeeChanges:
+	"""The factor on the fee for documents changed before the Einstellung and for a withdrawal before it; a
+	withdrawal on the day of the transmission costs nothing."""
+
+	changed: Decimal
+	withdrawn: Decimal
+	reference: str
+
+
+FEE_CHANGES = FeeChanges(Decimal("1.5"), Decimal("0.5"), "Vorbemerkung 1.4.2 Abs. 2 und 3 KV JVKostG")
