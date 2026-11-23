@@ -1,6 +1,7 @@
 """The Überleitungsrechnung of the Handelsbilanz of the invented GmbH, on the mini taxonomy: its tuples with the entries
 of every total, the steuerlicher Ausgleichsposten, the Sammelposten, the Steuerbilanz that results, and the refusals."""
 
+from dataclasses import replace
 from decimal import Decimal
 from unittest import TestCase
 
@@ -228,7 +229,7 @@ class RefusalsTest(TestCase):
 			[
 				"170145086",
 				"EB-DAVON",
-				"EB-UEBERLEITUNG-BERECHNET",
+				"EB-UEBERLEITUNG-SUMME",
 				"EB-UEBERLEITUNG-BERECHNET",
 				"EB-UEBERLEITUNG-BERECHNET",
 				"170145129",
@@ -237,6 +238,30 @@ class RefusalsTest(TestCase):
 			],
 		)
 		self.assertEqual(found.groups[0].transfers, (SOFTWARE, SALES))
+
+	def test_takes_an_entry_of_a_total_the_books_fill_themselves(self):
+		"""A Mussfeld of the HGB-Taxonomie 6.9 such as „sonstige Rückstellungen“ adds up positions the books may leave
+		empty: with nothing below it, an entry changes it as it changes any position (Leitfaden B.15.1)."""
+		books = tuple(
+			replace(balance, concept="bs.ass.currAss.cashEquiv")
+			if balance.concept == gaap("bs.ass.currAss.cashEquiv.bank")
+			else balance
+			for balance in HANDELSBILANZ
+		)
+		cash = Transfer(CHANGE, "bs.ass.currAss.cashEquiv", D("-500.00"), reason="Bewertung")
+		found = of(SOFTWARE, SALES, cash, books=books)
+		self.assertEqual(found.findings, ())
+		entries = {entry.position: entry.current for entry in found.groups[0].entries}
+		self.assertEqual(entries[gaap("bs.ass.currAss.cashEquiv")], D("-500.00"))
+		self.assertEqual(entries[gaap("bs.ass.currAss")], D("-500.00"))
+		self.assertEqual(found.steuerbilanz[(gaap("bs.ass.currAss.cashEquiv"), AT)], D("68000.00"))
+		below = Transfer(CHANGE, "bs.ass.currAss.cashEquiv.cash", D("100.00"), reason="Kassenfehlbetrag")
+		found = of(SOFTWARE, SALES, cash, below, books=books)
+		self.assertEqual(
+			[(finding.code, finding.reference) for finding in found.findings],
+			[("EB-UEBERLEITUNG-SUMME", "bs.ass.currAss.cashEquiv")],
+		)
+		self.assertEqual(found.groups[0].transfers, (SOFTWARE, SALES, below))
 
 	def test_a_position_steuerlich_not_permitted_is_zero_after_the_ueberleitung(self):
 		"""Leitfaden B.15.2."""
