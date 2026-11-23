@@ -4,12 +4,13 @@ by hand, what a save keeps, one draft and one filing per key, the Berichtigung, 
 computed again before it."""
 
 from datetime import date
+from decimal import Decimal
 
 import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, getdate, today
 
-from steuerbote.jahresmeldung import corrections
+from steuerbote.jahresmeldung import corrections, overrides
 from steuerbote.tests import annual_document
 from steuerbote.tests.annual_document import COMPANY, DOCTYPE, LINE_DOCTYPE, LINES, NEGATIVE, source
 from steuerbote.tests.transmitting import TICKET, TRANSMISSION, Transmitting
@@ -408,3 +409,45 @@ class TestStatusDesBerichts(AnnualFilingTestCase):
 		doc = self.calculated()
 		self.assertIs(doc.berichtigung(), corrections.KST)
 		self.assertFalse(doc.revision_status)
+
+
+class TestWhatAModuleCalls(AnnualFilingTestCase):
+	"""What a module calls of the base for its own actions, such as XBRL exportieren of the E-Bilanz."""
+
+	def test_a_file_is_made_of_a_document_that_could_be_filed_or_is_filed(self):
+		doc = self.document()
+		with self.assertRaisesRegex(frappe.ValidationError, "before filing it"):
+			doc.require_fit_for_export()
+		doc.calculate()
+		doc.reload()
+		doc.require_fit_for_export()
+		self.filed(doc).require_fit_for_export()
+
+	def test_a_file_waits_for_the_remarks_of_a_document_that_is_not_ready(self):
+		doc = self.calculated(*LINES, SOURCE_ERROR)
+		with self.assertRaisesRegex(frappe.ValidationError, "is not ready"):
+			doc.require_fit_for_export()
+
+	def test_no_file_is_made_of_a_document_that_elster_may_have(self):
+		doc = self.calculated()
+		doc.new_transmission("send", simulated=False, status="Unbekannt")
+		with self.assertRaisesRegex(frappe.ValidationError, "is unknown"):
+			doc.require_fit_for_export()
+
+	def test_no_file_is_made_of_amounts_changed_past_the_save(self):
+		doc = self.calculated()
+		frappe.db.set_value(LINE_DOCTYPE, doc.lines[0].name, {"correction": 50, "correction_reason": REASON})
+		with self.assertRaisesRegex(frappe.ValidationError, "do not agree with its lines as stored"):
+			frappe.get_doc(DOCTYPE, doc.name).require_fit_for_export()
+
+	def test_no_file_is_made_of_a_cancelled_document(self):
+		doc = self.calculated()
+		frappe.db.set_value(DOCTYPE, doc.name, "docstatus", 2)
+		with self.assertRaisesRegex(frappe.ValidationError, "is cancelled and makes no file"):
+			frappe.get_doc(DOCTYPE, doc.name).require_fit_for_export()
+
+	def test_names_the_lines_by_hand_for_a_module_whose_computation_takes_them_in(self):
+		doc = self.calculated()
+		doc.append("lines", {"key": "C", "correction": 5, "correction_reason": "Von Hand"})
+		doc.save()
+		self.assertEqual(doc.manual_lines(), (overrides.ManualLine("C", Decimal("5.00"), "Von Hand"),))
