@@ -1,16 +1,22 @@
 """What Kleinst states under the balance sheet and klein in its Anhang."""
 
+from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.hgb.notes import (
 	CATALOGUE,
 	EXEMPT_FOR_KLEIN,
+	Answer,
+	NoteAnswer,
+	NoteCode,
 	NotesError,
 	Placement,
 	Requirement,
+	answer_problems,
 	catalogue,
 )
 from steuerbote.hgb.size import SizeClass
+from steuerbote.hgb.statement import Severity
 
 
 def codes(entries) -> list[str]:
@@ -147,3 +153,81 @@ class ClassesTest(TestCase):
 		for item in CATALOGUE:
 			with self.subTest(code=item.code):
 				self.assertTrue(item.kleinst or item.klein or item.code == "EIGENE-AKTIEN")
+
+
+YES, NO, NOT_APPLICABLE = Answer.YES, Answer.NO, Answer.NOT_APPLICABLE
+
+
+def answers(size_class, **given) -> list[NoteAnswer]:
+	"""An answer to every item of the class: nein, unless ``given`` names another for its code."""
+	result = []
+	for entry in catalogue(size_class):
+		answer = given.get(entry.item.code.replace("-", "_"))
+		if answer is None:
+			answer = (
+				NoteAnswer(entry.item.code, YES, text="Lineare Abschreibung.")
+				if entry.requirement is Requirement.REQUIRED
+				else NoteAnswer(entry.item.code, NO)
+			)
+		result.append(answer)
+	return result
+
+
+class AnswersTest(TestCase):
+	"""The Annual Accounts answer each Angabe with ja, nein or entfällt, and a ja with a text or an amount."""
+
+	def test_a_complete_set_of_answers_raises_nothing(self):
+		for size_class in (SizeClass.KLEINST, SizeClass.KLEIN):
+			with self.subTest(size_class=size_class):
+				self.assertEqual(answer_problems(catalogue(size_class), answers(size_class)), ())
+
+	def test_an_item_without_an_answer_holds_the_jahresabschluss_back(self):
+		given = answers(SizeClass.KLEIN)[1:]
+		(finding,) = answer_problems(catalogue(SizeClass.KLEIN), given)
+		self.assertEqual(
+			(finding.code, finding.severity, finding.reference, finding.concept),
+			(NoteCode.UNANSWERED, Severity.ERROR, "§ 264 Abs. 2 Satz 2 und 4 HGB", "ZUSAETZLICHE-ANGABEN"),
+		)
+		self.assertIn("Zusätzliche Angaben", finding.text)
+
+	def test_a_required_item_needs_a_ja(self):
+		for answer in (NO, NOT_APPLICABLE):
+			with self.subTest(answer=answer):
+				given = answers(SizeClass.KLEIN, ARBEITNEHMER=NoteAnswer("ARBEITNEHMER", answer))
+				(finding,) = answer_problems(catalogue(SizeClass.KLEIN), given)
+				self.assertEqual((finding.code, finding.concept), (NoteCode.DENIED, "ARBEITNEHMER"))
+
+	def test_an_item_where_it_applies_takes_nein_or_entfaellt(self):
+		given = answers(SizeClass.KLEINST, ORGANKREDITE=NoteAnswer("ORGANKREDITE", NOT_APPLICABLE))
+		self.assertEqual(answer_problems(catalogue(SizeClass.KLEINST), given), ())
+
+	def test_a_ja_needs_a_text_or_an_amount(self):
+		empty = answers(
+			SizeClass.KLEINST, HAFTUNGSVERHAELTNISSE=NoteAnswer("HAFTUNGSVERHAELTNISSE", YES, text="  ")
+		)
+		(finding,) = answer_problems(catalogue(SizeClass.KLEINST), empty)
+		self.assertEqual((finding.code, finding.concept), (NoteCode.EMPTY, "HAFTUNGSVERHAELTNISSE"))
+		amount = answers(SizeClass.KLEIN, ARBEITNEHMER=NoteAnswer("ARBEITNEHMER", YES, amount=Decimal("0")))
+		self.assertEqual(answer_problems(catalogue(SizeClass.KLEIN), amount), ())
+
+	def test_an_answer_to_an_item_the_class_does_not_owe_is_refused(self):
+		given = [
+			*answers(SizeClass.KLEINST),
+			NoteAnswer("BEWERTUNGSMETHODEN", YES, text="Anschaffungskosten."),
+		]
+		(finding,) = answer_problems(catalogue(SizeClass.KLEINST), given)
+		self.assertEqual((finding.code, finding.concept), (NoteCode.UNKNOWN, "BEWERTUNGSMETHODEN"))
+
+	def test_an_item_answered_twice_is_refused(self):
+		given = [*answers(SizeClass.KLEINST), NoteAnswer("ORGANKREDITE", NO)]
+		(finding,) = answer_problems(catalogue(SizeClass.KLEINST), given)
+		self.assertEqual((finding.code, finding.concept), (NoteCode.TWICE, "ORGANKREDITE"))
+
+	def test_an_eigenkapital_of_zero_needs_its_explanation(self):
+		entries = catalogue(SizeClass.KLEINST, equity_zero=True)
+		(finding,) = answer_problems(entries, answers(SizeClass.KLEINST))
+		self.assertEqual((finding.code, finding.concept), (NoteCode.UNANSWERED, "EIGENKAPITAL-NULL"))
+
+	def test_takes_a_decimal_amount(self):
+		with self.assertRaises(TypeError):
+			NoteAnswer("ARBEITNEHMER", YES, amount=3)  # type: ignore[arg-type]
