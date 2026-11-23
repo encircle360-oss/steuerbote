@@ -60,13 +60,34 @@ http://www.xbrl.de/taxonomies/de-gaap-ci/role/balanceSheet, the GuV …/incomeSt
 parents() names, for the calculation networks of some roles, the position each position adds up to: the hierarchy the
 schemes of the Jahresabschluss sum their balances along (steuerbote/hgb/statement.py).
 
+Cache and installation. dumps() writes a parsed view as JSON and loads() reads it back, in the FORMAT of this release;
+a site reads its views so instead of parsing the package for every document. install_from_archive() installs the
+package the operator names in common_site_config.json, as steuerbote_taxonomy_6_9 with its SHA-256 as
+steuerbote_taxonomy_6_9_sha256, the way steuerbote/eric/runtime.py installs ERiC: the checksum is checked before
+anything is unpacked; the archive must hold the entry points of the version, regular files on safe paths only, each
+once, within the limits below; the package goes to <root>/<version>/package outside every site, each view beside it as
+<view>.json, and the manifest steuerbote-taxonomy.json names the archive, its checksum, the format and the SHA-256 of
+every file. The version directory appears only complete, by renaming it into place. Installing the same archive again
+keeps the installation, or reads the package anew for the views of a new format; another archive of an installed
+version is refused. A view is read only while its file is the one of the manifest; verify() names every file that
+differs, and status() what „Laufzeitumgebung prüfen“ shows of each version. Messages for the operator are German.
+
 This module is pure Python with lxml and never imports Frappe.
 """
 
+import hashlib
+import hmac
+import json
+import os
 import posixpath
+import re
+import shutil
+import stat
+import tempfile
+import zipfile
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
-from datetime import date
+from dataclasses import dataclass, field, replace
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
@@ -74,7 +95,8 @@ from types import MappingProxyType
 
 from lxml import etree
 
-from steuerbote.xbrl.versions import BASE_URL, Version
+from steuerbote.eric.runtime import Check
+from steuerbote.xbrl.versions import BASE_URL, TAXONOMIES, Version
 
 XS = "http://www.w3.org/2001/XMLSchema"
 XSI = "http://www.w3.org/2001/XMLSchema-instance"
@@ -130,6 +152,17 @@ NOT_PERMITTED_FISCAL = "steuerlich"
 """„Die mit „steuerlich“ unzulässig gekennzeichneten Positionen dürfen nur in der Handelsbilanz vorkommen“ (A.9.3)."""
 NOT_PERMITTED_COMMERCIAL = "handelsrechtlich"
 NEUTRAL = "neutral"
+
+FORMAT = 1
+"""The format of the JSON of a view; another one makes „Taxonomie einrichten“ read the package anew."""
+MANIFEST = "steuerbote-taxonomy.json"
+PACKAGE = "package"
+MAX_ARCHIVE_BYTES = 64 << 20
+MAX_EXTRACTED_BYTES = 512 << 20
+MAX_MEMBERS = 10_000
+"""Guards against an archive far larger than the package: 6.9 has 279 files, 2.8 MB packed and 32 MB unpacked."""
+_CHUNK = 1 << 20
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 _PARSER = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False, remove_comments=True)
 _LINKS = MappingProxyType(
@@ -1193,3 +1226,531 @@ def _tables(definition: Mapping[str, tuple[DefinitionArc, ...]]) -> tuple[Table,
 				)
 			)
 	return tuple(tables)
+
+
+def dumps(taxonomy: Taxonomy) -> str:
+	"""A parsed view as JSON: the same view gives the same text."""
+	return json.dumps(
+		{
+			"format": FORMAT,
+			"version": taxonomy.version,
+			"view": taxonomy.view.value,
+			"entry_points": list(taxonomy.entry_points),
+			"namespaces": dict(taxonomy.namespaces),
+			"roles": dict(taxonomy.roles),
+			"concepts": [_concept_data(concept) for concept in taxonomy.concepts.values()],
+			"labels": {name: dict(roles) for name, roles in taxonomy.labels.items()},
+			"presentation": {
+				role: [[arc.parent, arc.child, str(arc.order), arc.preferred_label] for arc in network.arcs]
+				for role, network in taxonomy.presentation.items()
+			},
+			"calculation": {
+				role: [[arc.parent, arc.child, str(arc.order), str(arc.weight)] for arc in network.arcs]
+				for role, network in taxonomy.calculation.items()
+			},
+			"definition": {
+				role: [
+					[
+						arc.arcrole,
+						arc.source,
+						arc.target,
+						str(arc.order),
+						arc.context_element,
+						arc.closed,
+						arc.usable,
+						arc.target_role,
+					]
+					for arc in arcs
+				]
+				for role, arcs in taxonomy.definition.items()
+			},
+		},
+		ensure_ascii=False,
+		separators=(",", ":"),
+	)
+
+
+def loads(text: str) -> Taxonomy:
+	"""The view dumps() wrote, in the FORMAT of this release."""
+	try:
+		data = json.loads(text)
+		if data.get("format") != FORMAT:
+			raise TaxonomyError(f"the cache has the format {data.get('format')}, Steuerbote reads {FORMAT}")
+		concepts = {item["name"]: _concept_of(item) for item in data["concepts"]}
+		return Taxonomy(
+			version=data["version"],
+			view=View(data["view"]),
+			entry_points=tuple(data["entry_points"]),
+			namespaces=MappingProxyType(data["namespaces"]),
+			concepts=MappingProxyType(concepts),
+			roles=MappingProxyType(data["roles"]),
+			labels=MappingProxyType(
+				{name: MappingProxyType(roles) for name, roles in data["labels"].items()}
+			),
+			presentation=MappingProxyType(
+				{
+					role: Network(
+						role,
+						tuple(
+							Arc(parent, child, Decimal(order), preferred_label=label)
+							for parent, child, order, label in arcs
+						),
+					)
+					for role, arcs in data["presentation"].items()
+				}
+			),
+			calculation=MappingProxyType(
+				{
+					role: Network(
+						role,
+						tuple(
+							Arc(parent, child, Decimal(order), Decimal(weight))
+							for parent, child, order, weight in arcs
+						),
+					)
+					for role, arcs in data["calculation"].items()
+				}
+			),
+			definition=MappingProxyType(
+				{
+					role: tuple(
+						DefinitionArc(
+							arcrole, source, target, Decimal(order), context, closed, usable, target_role
+						)
+						for arcrole, source, target, order, context, closed, usable, target_role in arcs
+					)
+					for role, arcs in data["definition"].items()
+				}
+			),
+		)
+	except TaxonomyError:
+		raise
+	except (ValueError, KeyError, TypeError, AttributeError, InvalidOperation) as error:
+		raise TaxonomyError(f"the text is no cache of a view of the taxonomy: {error!r}") from None
+
+
+def _concept_data(concept: Concept) -> dict:
+	fiscal = concept.fiscal
+	content = concept.content
+	return {
+		"name": concept.name,
+		"namespace": concept.namespace,
+		"kind": concept.kind.value,
+		"substitution_group": concept.substitution_group,
+		"item_type": concept.item_type,
+		"period_type": None if concept.period_type is None else concept.period_type.value,
+		"balance": None if concept.balance is None else concept.balance.value,
+		"abstract": concept.abstract,
+		"nillable": concept.nillable,
+		"content": None
+		if content is None
+		else [
+			content.group,
+			content.min_occurs,
+			content.max_occurs,
+			[[particle.concept, particle.min_occurs, particle.max_occurs] for particle in content.particles],
+		],
+		"fiscal": {
+			"requirement": None if fiscal.requirement is None else fiscal.requirement.value,
+			"legal_forms": sorted(form.value for form in fiscal.legal_forms),
+			"operating_results": sorted(fiscal.operating_results),
+			"not_permitted_for": sorted(fiscal.not_permitted_for),
+			"required_since": _iso(fiscal.required_since),
+			"required_through": _iso(fiscal.required_through),
+			"special_balance_only": fiscal.special_balance_only,
+		},
+		"valid_since": _iso(concept.valid_since),
+		"valid_through": _iso(concept.valid_through),
+	}
+
+
+def _concept_of(item: Mapping) -> Concept:
+	fiscal = item["fiscal"]
+	content = item["content"]
+	return Concept(
+		name=item["name"],
+		namespace=item["namespace"],
+		kind=Kind(item["kind"]),
+		substitution_group=item["substitution_group"],
+		item_type=item["item_type"],
+		period_type=None if item["period_type"] is None else PeriodType(item["period_type"]),
+		balance=None if item["balance"] is None else Balance(item["balance"]),
+		abstract=item["abstract"],
+		nillable=item["nillable"],
+		content=None
+		if content is None
+		else Content(
+			content[0],
+			content[1],
+			content[2],
+			tuple(Particle(name, low, high) for name, low, high in content[3]),
+		),
+		fiscal=Fiscal(
+			requirement=None if fiscal["requirement"] is None else Requirement(fiscal["requirement"]),
+			legal_forms=frozenset(LegalForm(form) for form in fiscal["legal_forms"]),
+			operating_results=frozenset(fiscal["operating_results"]),
+			not_permitted_for=frozenset(fiscal["not_permitted_for"]),
+			required_since=_date_of(fiscal["required_since"]),
+			required_through=_date_of(fiscal["required_through"]),
+			special_balance_only=fiscal["special_balance_only"],
+		),
+		valid_since=_date_of(item["valid_since"]),
+		valid_through=_date_of(item["valid_through"]),
+	)
+
+
+def _iso(day: date | None) -> str | None:
+	return None if day is None else day.isoformat()
+
+
+def _date_of(text: str | None) -> date | None:
+	return None if text is None else date.fromisoformat(text)
+
+
+@dataclass(frozen=True)
+class Installation:
+	"""An installed version as its manifest describes it."""
+
+	version: str
+	path: Path
+	archive: str
+	archive_sha256: str
+	format: int
+	files: Mapping[str, str]
+	"""The SHA-256 of each file of the package, by its path below package."""
+	views: Mapping[str, str]
+	"""The SHA-256 of the JSON of each view."""
+	installed_at: str
+	installed_by: str
+
+	@property
+	def package(self) -> Path:
+		return self.path / PACKAGE
+
+	def view(self, view: View) -> Taxonomy:
+		"""The parsed view, read while its file is the one of the manifest."""
+		if self.format != FORMAT:
+			raise TaxonomyError(
+				f"Die HGB-Taxonomie {self.version} ist mit einer anderen Fassung von Steuerbote eingerichtet; "
+				"„Taxonomie einrichten“ liest sie neu."
+			)
+		path = self.path / f"{view.value}.json"
+		try:
+			data = path.read_bytes()
+		except OSError as error:
+			raise TaxonomyError(
+				f"Die Ansicht {view.value} der HGB-Taxonomie {self.version} fehlt: {error}"
+			) from None
+		if not hmac.compare_digest(_sha256(data), self.views.get(view.value, "")):
+			raise TaxonomyError(
+				f"Die Ansicht {view.value} der HGB-Taxonomie {self.version} ist verändert; das Verzeichnis {self.path} "
+				"entfernen und die Taxonomie neu einrichten."
+			)
+		return loads(data.decode("utf-8"))
+
+
+def install_from_archive(
+	archive_path: Path, sha256: str, root: Path, version: Version, *, installed_by: str = ""
+) -> Installation:
+	"""Install the package of the version from the archive into root/<version> after checking its SHA-256."""
+	expected = sha256.strip().lower()
+	if not _SHA256.fullmatch(expected):
+		raise TaxonomyError("Die SHA-256-Summe besteht aus 64 Hexadezimalziffern.")
+	try:
+		archive_file = archive_path.open("rb")
+	except OSError as error:
+		raise TaxonomyError(f"Das Archiv {archive_path} lässt sich nicht lesen: {error}") from error
+	with archive_file:
+		if os.fstat(archive_file.fileno()).st_size > MAX_ARCHIVE_BYTES:
+			raise TaxonomyError(f"Das Archiv ist größer als {MAX_ARCHIVE_BYTES >> 20} MiB.")
+		digest = hashlib.sha256()
+		while chunk := archive_file.read(_CHUNK):
+			digest.update(chunk)
+		if not hmac.compare_digest(digest.hexdigest(), expected):
+			raise TaxonomyError(
+				f"Die SHA-256-Summe des Archivs ist {digest.hexdigest()}, erwartet war {expected}."
+			)
+		archive_file.seek(0)
+		try:
+			archive = zipfile.ZipFile(archive_file)
+		except zipfile.BadZipFile as error:
+			raise TaxonomyError(f"Das Archiv ist kein ZIP-Archiv: {error}") from error
+		with archive:
+			members = _package_members(archive, version)
+			return _install(archive, members, archive_path.name, expected, root, version, installed_by)
+
+
+def installed(root: Path, version: Version) -> Installation | None:
+	"""The installation of the version below root, None without a complete one."""
+	return _read_manifest(root / version.version)
+
+
+def installations(root: Path) -> tuple[Installation, ...]:
+	"""The complete installations below root, newest version first."""
+	if not root.is_dir():
+		return ()
+	found = [
+		installation
+		for path in sorted(root.iterdir())
+		if path.name in TAXONOMIES and (installation := _read_manifest(path)) is not None
+	]
+	return tuple(sorted(found, key=lambda installation: _version_key(installation.version), reverse=True))
+
+
+def verify(installation: Installation) -> tuple[str, ...]:
+	"""What differs from the manifest: changed, missing and unknown files of the package and the views, and every
+	link. Links are never followed, and nothing but a regular file is read."""
+	files: dict[str, Path] = {}
+	others: list[str] = []
+	links: list[str] = []
+	for directory, subdirectories, names in os.walk(installation.package):
+		for name in (*subdirectories, *names):
+			path = Path(directory, name)
+			relative = path.relative_to(installation.package).as_posix()
+			mode = path.lstat().st_mode
+			if stat.S_ISLNK(mode):
+				links.append(f"{PACKAGE}/{relative}")
+			elif stat.S_ISREG(mode):
+				files[relative] = path
+			elif not stat.S_ISDIR(mode):
+				others.append(f"{PACKAGE}/{relative}")
+	expected = installation.files
+	views = {f"{view}.json": checksum for view, checksum in installation.views.items()}
+	changed = [
+		f"{PACKAGE}/{name}"
+		for name in sorted(expected)
+		if name in files and _file_sha256(files[name]) != expected[name]
+	]
+	missing = [f"{PACKAGE}/{name}" for name in sorted(expected) if name not in files]
+	for name, checksum in views.items():
+		path = installation.path / name
+		if not path.is_file():
+			missing.append(name)
+		elif _file_sha256(path) != checksum:
+			changed.append(name)
+	unknown = sorted({f"{PACKAGE}/{name}" for name in files.keys() - expected.keys()} | set(others))
+	return (
+		*(f"verändert: {name}" for name in changed),
+		*(f"fehlt: {name}" for name in missing),
+		*(f"unbekannt: {name}" for name in unknown),
+		*(f"Link: {name}" for name in sorted(links)),
+	)
+
+
+def status(root: Path, configured: Mapping[str, tuple[Path, str] | None]) -> tuple[Check, ...]:
+	"""What „Laufzeitumgebung prüfen“ reports of each version of steuerbote/xbrl/versions.py: whether
+	common_site_config.json names its package, whether that package is installed and whether its files are
+	unchanged. ``configured`` holds the archive and SHA-256 the bench names for a version."""
+	checks = []
+	for entry in TAXONOMIES.values():
+		name = f"taxonomy_{entry.version.replace('.', '_')}"
+		subject = f"Die HGB-Taxonomie {entry.version}"
+		named = configured.get(entry.version)
+		installation = installed(root, entry)
+		if installation is None:
+			detail = (
+				f"{subject} ist noch nicht eingerichtet: „Taxonomie einrichten“."
+				if named
+				else f"{subject} ist nicht eingerichtet: {entry.config_key} und {entry.config_sha256_key} in "
+				"common_site_config.json nennen ihr Paket nicht."
+			)
+			checks.append(Check(name, False, detail))
+		elif named and named[1].strip().lower() != installation.archive_sha256:
+			checks.append(
+				Check(
+					name,
+					False,
+					f"{subject} ist aus einem anderen Archiv eingerichtet, als common_site_config.json nennt; das "
+					f"Verzeichnis {installation.path} entfernen und sie neu einrichten.",
+				)
+			)
+		elif installation.format != FORMAT:
+			checks.append(
+				Check(
+					name,
+					False,
+					f"{subject} ist mit einer anderen Fassung von Steuerbote eingerichtet: „Taxonomie einrichten“ "
+					"liest sie neu.",
+				)
+			)
+		elif problems := verify(installation):
+			checks.append(Check(name, False, f"{subject} weicht vom Manifest ab: {', '.join(problems)}"))
+		else:
+			checks.append(Check(name, True, f"{subject} ist eingerichtet und unverändert."))
+	return tuple(checks)
+
+
+def _package_members(archive: zipfile.ZipFile, version: Version) -> dict[zipfile.ZipInfo, PurePosixPath]:
+	"""The files of the package with their paths in it: below the directory that holds the module of the GCD."""
+	seen: set[str] = set()
+	files: list[zipfile.ZipInfo] = []
+	for info in archive.infolist():
+		parts = info.filename.split("/")
+		if any(part in ("", ".", "..") or "\\" in part for part in parts[: -1 if info.is_dir() else None]):
+			raise TaxonomyError(f"Unzulässiger Pfad im Archiv: {info.filename}")
+		if info.is_dir():
+			continue
+		if stat.S_IFMT(info.external_attr >> 16) not in (0, stat.S_IFREG):
+			raise TaxonomyError(f"Das Archiv enthält einen Link oder eine Sonderdatei: {info.filename}")
+		if info.filename in seen:
+			raise TaxonomyError(f"Das Archiv enthält {info.filename} doppelt.")
+		seen.add(info.filename)
+		files.append(info)
+	if len(files) > MAX_MEMBERS:
+		raise TaxonomyError(f"Das Archiv enthält mehr als {MAX_MEMBERS} Dateien.")
+	shells = [info.filename for info in files if info.filename.endswith(version.gcd_shell)]
+	prefix = shells[0].removesuffix(version.gcd_shell) if shells else ""
+	members = {
+		info: PurePosixPath(info.filename.removeprefix(prefix))
+		for info in files
+		if info.filename.startswith(prefix)
+	}
+	present = {path.as_posix() for path in members.values()}
+	missing = [entry for entry in _entry_points(version) if entry not in present]
+	if missing:
+		raise TaxonomyError(
+			f"Das Archiv enthält die HGB-Taxonomie {version.version} nicht: es fehlen {', '.join(missing)}."
+		)
+	if sum(info.file_size for info in members) > MAX_EXTRACTED_BYTES:
+		raise TaxonomyError(
+			f"Die Dateien im Archiv sind entpackt größer als {MAX_EXTRACTED_BYTES >> 20} MiB."
+		)
+	return members
+
+
+def _entry_points(version: Version) -> tuple[str, ...]:
+	return tuple(dict.fromkeys(entry for view in View for entry in view.entry_points(version)))
+
+
+def _install(
+	archive: zipfile.ZipFile,
+	members: Mapping[zipfile.ZipInfo, PurePosixPath],
+	archive_name: str,
+	archive_sha256: str,
+	root: Path,
+	version: Version,
+	installed_by: str,
+) -> Installation:
+	target = root / version.version
+	existing = _read_manifest(target)
+	if existing is not None and existing.archive_sha256 == archive_sha256:
+		problems = [
+			problem for problem in verify(existing) if problem.split(": ", 1)[1].startswith(f"{PACKAGE}/")
+		]
+		if problems:
+			raise TaxonomyError(
+				f"Die HGB-Taxonomie {version.version} ist aus diesem Archiv eingerichtet, aber ihre Dateien weichen vom "
+				f"Manifest ab ({', '.join(problems)}). Das Verzeichnis {target} entfernen und neu einrichten."
+			)
+		if existing.format == FORMAT and not verify(existing):
+			return existing
+		return _write(target, existing.files, archive_name, archive_sha256, version, installed_by)
+	if target.exists():
+		raise TaxonomyError(
+			f"Die HGB-Taxonomie {version.version} ist bereits aus einem anderen Archiv eingerichtet; das Verzeichnis "
+			f"{target} entfernen und sie neu einrichten."
+		)
+	root.mkdir(parents=True, exist_ok=True)
+	partial = Path(tempfile.mkdtemp(prefix=f".{version.version}-", dir=root))
+	try:
+		files = {
+			path.as_posix(): _extract(archive, info, partial / PACKAGE / path)
+			for info, path in sorted(members.items(), key=lambda member: member[1])
+		}
+		installation = _write(partial, files, archive_name, archive_sha256, version, installed_by)
+		partial.rename(target)
+	except TaxonomyError:
+		shutil.rmtree(partial, ignore_errors=True)
+		raise
+	except Exception as error:
+		shutil.rmtree(partial, ignore_errors=True)
+		raise TaxonomyError(
+			f"Die Einrichtung der HGB-Taxonomie {version.version} ist fehlgeschlagen: {error}"
+		) from error
+	return replace(installation, path=target)
+
+
+def _write(
+	directory: Path,
+	files: Mapping[str, str],
+	archive_name: str,
+	archive_sha256: str,
+	version: Version,
+	installed_by: str,
+) -> Installation:
+	"""Parse each view of the package in directory, write it as JSON and the manifest after it."""
+	views = {}
+	for view in View:
+		try:
+			text = dumps(load(directory / PACKAGE, version, view))
+		except TaxonomyError as error:
+			raise TaxonomyError(
+				f"Die HGB-Taxonomie {version.version} im Archiv lässt sich nicht lesen: {error}"
+			) from error
+		data = text.encode("utf-8")
+		(directory / f"{view.value}.json").write_bytes(data)
+		views[view.value] = _sha256(data)
+	manifest = {
+		"version": version.version,
+		"archive": archive_name,
+		"archive_sha256": archive_sha256,
+		"format": FORMAT,
+		"files": dict(files),
+		"views": views,
+		"installed_at": datetime.now(UTC).isoformat(timespec="seconds"),
+		"installed_by": installed_by,
+	}
+	(directory / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+	return _installation(directory, manifest)
+
+
+def _extract(archive: zipfile.ZipFile, info: zipfile.ZipInfo, destination: Path) -> str:
+	destination.parent.mkdir(parents=True, exist_ok=True)
+	digest = hashlib.sha256()
+	try:
+		with archive.open(info) as source, destination.open("xb") as target:
+			while chunk := source.read(_CHUNK):
+				digest.update(chunk)
+				target.write(chunk)
+	except zipfile.BadZipFile as error:
+		raise TaxonomyError(f"Der Eintrag {info.filename} im Archiv ist beschädigt: {error}") from error
+	destination.chmod(0o644)
+	return digest.hexdigest()
+
+
+def _read_manifest(path: Path) -> Installation | None:
+	try:
+		installation = _installation(path, json.loads((path / MANIFEST).read_text(encoding="utf-8")))
+	except OSError, ValueError, KeyError, TypeError:
+		return None
+	return installation if installation.version == path.name else None
+
+
+def _installation(path: Path, data: Mapping) -> Installation:
+	return Installation(
+		version=data["version"],
+		path=path,
+		archive=data["archive"],
+		archive_sha256=data["archive_sha256"],
+		format=data["format"],
+		files=MappingProxyType(dict(data["files"])),
+		views=MappingProxyType(dict(data["views"])),
+		installed_at=data["installed_at"],
+		installed_by=data["installed_by"],
+	)
+
+
+def _sha256(data: bytes) -> str:
+	return hashlib.sha256(data).hexdigest()
+
+
+def _file_sha256(path: Path) -> str:
+	digest = hashlib.sha256()
+	with path.open("rb") as file:
+		while chunk := file.read(_CHUNK):
+			digest.update(chunk)
+	return digest.hexdigest()
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+	return tuple(int(part) for part in version.split("."))
