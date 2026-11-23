@@ -28,6 +28,20 @@ function transmission_blocked(frm) {
 	return frm.doc.transmission_in_progress || elster_state(frm).sent;
 }
 
+// After a Senden that ELSTER accepted or whose outcome is unknown, the Finanzamt or the BZSt has the draft, or may
+// have it, as it was sent: the server refuses every change but the remarks (refuse_if_sent in transmission.py).
+function locked_as_sent(frm) {
+	return Boolean(elster_state(frm).locked);
+}
+
+// Frappe offers Discard in the menu of every draft (add_discard in its toolbar.js), which the server refuses for a
+// draft locked as sent; the toolbar has built the menu by the time the form refreshes.
+function remove_discard_when_locked_as_sent(frm) {
+	if (locked_as_sent(frm)) {
+		frm.page.menu.find(`[data-label="${encodeURIComponent(__("Discard"))}"]`).closest("li").remove();
+	}
+}
+
 // A run whose background job is gone keeps its lock until the form closes it.
 function release_stale_transmission(frm) {
 	if (elster_state(frm).stale && frm.perm[0] && frm.perm[0].write) {
@@ -49,6 +63,9 @@ function elster_notes(frm, texts) {
 		if (elster_state(frm).sent) {
 			notes.push(texts.sent);
 		}
+		if (locked_as_sent(frm)) {
+			notes.push(locked_as_sent_note(frm));
+		}
 		if (frm.doc.transmission_in_progress) {
 			notes.push(texts.running);
 		}
@@ -65,6 +82,24 @@ function elster_notes(frm, texts) {
 		}
 	}
 	return notes;
+}
+
+// What is left of a draft locked as sent, after an unknown outcome in the words of refuse_if_sent in transmission.py.
+function locked_as_sent_note(frm) {
+	const { transmission, status, transferticket } = elster_state(frm).locked;
+	if (status === "Unbekannt") {
+		return __(
+			"Whether {0} reached ELSTER is unknown, so {1} stays as it was sent. Check in Mein ELSTER whether it arrived: if it did, note its filing; if not, a System Manager deletes {0}, then it can change again. Only its remarks can change meanwhile.",
+			[
+				frappe.utils.get_form_link("ELSTER Transmission", transmission, true),
+				frappe.utils.escape_html(frm.doc.name),
+			]
+		);
+	}
+	return __(
+		"Transmitted with Transferticket {0}: only Buchen or a correction is left; the remarks can still change.",
+		[frappe.utils.escape_html(transferticket)]
+	);
 }
 
 // A check with hints and no errors succeeds, so the form names the errors and hints of the latest finished run,

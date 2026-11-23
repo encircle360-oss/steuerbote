@@ -1,5 +1,5 @@
 """The Umsatzsteuer-Voranmeldung of the seed for October 2026: Berechnen, the menu ELSTER, the file for Mein ELSTER
-and the print preview.
+and the print preview; and the form of the return of the second company, whose Senden ELSTER accepted.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -62,3 +62,18 @@ def test_the_print_preview_shows_the_return_in_its_print_format(desk, expect, re
 	expect(preview).to_contain_text(f"Umsatzsteuer-Voranmeldung {data.YEAR}")
 	expect(preview).to_contain_text(data.MONTH_LABEL)
 	expect(preview).to_contain_text(data.COMPANY)
+
+
+def test_a_return_elster_accepted_offers_neither_berechnen_nor_verwerfen(desk, expect, records):
+	"""ELSTER accepted the Senden of the return of the second company, but submitting it failed: the return keeps
+	all but its remarks, so its form offers neither Berechnen nor Verwerfen, which the return of the seed offers,
+	and says what is left of it."""
+	open_return(desk, records)
+	expect(desk.button("Berechnen")).to_be_visible()
+	expect(desk.menu().get_by_role("menuitem", name="Verwerfen", exact=True)).to_be_visible()
+	desk.open(f"/desk/vat-return/{records['sent_vat_return']}")
+	expect(desk.message(data.ACCEPTED_NOTE)).to_be_visible()
+	expect(desk.button("Berechnen")).to_have_count(0)
+	menu = desk.menu()
+	expect(menu.get_by_role("menuitem", name="Neu laden", exact=True)).to_be_visible()
+	expect(menu.get_by_role("menuitem", name="Verwerfen", exact=True)).to_have_count(0)

@@ -415,10 +415,14 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 	def test_the_form_learns_whether_eric_is_simulated(self):
 		doc = self.form(**BASE_BY_HAND)
 		doc.run_method("onload")
-		self.assertEqual(doc.get_onload("elster"), {"simulation": True, "stale": False, "sent": False})
+		self.assertEqual(
+			doc.get_onload("elster"), {"simulation": True, "stale": False, "sent": False, "locked": None}
+		)
 		self.use_runtime()
 		doc.run_method("onload")
-		self.assertEqual(doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False})
+		self.assertEqual(
+			doc.get_onload("elster"), {"simulation": False, "stale": False, "sent": False, "locked": None}
+		)
 
 	def test_the_form_names_the_errors_and_hints_of_its_latest_run(self):
 		"""As on the VAT Return: hints never stop a check (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.2.4.1)."""

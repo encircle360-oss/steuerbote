@@ -120,14 +120,21 @@ def accountant_session(playwright: Playwright, base_url: str, admin_password: st
 
 @pytest.fixture(scope="session")
 def records(playwright: Playwright, base_url: str, admin_session: StorageState) -> dict[str, str]:
-	"""The names of the documents of the seed, which their naming series gives them on the site."""
+	"""The names of the documents of the seed, which their naming series gives them on the site; those of the
+	second company, which went to ELSTER, under sent_."""
 	api = playwright.request.new_context(base_url=base_url, storage_state=admin_session)
 	period = {"company": data.COMPANY, "year": data.YEAR, "period_index": data.MONTH, "docstatus": 0}
+	sent = {**period, "company": data.SENT_COMPANY}
 	try:
 		return {
 			"vat_return": only_name(api, "VAT Return", period),
 			"statement": only_name(api, "Recapitulative Statement", period),
 			"extension": only_name(api, "VAT Return Extension", {"company": data.COMPANY, "year": data.YEAR}),
+			"sent_vat_return": only_name(api, "VAT Return", sent),
+			"sent_statement": only_name(api, "Recapitulative Statement", sent),
+			"sent_extension": only_name(
+				api, "VAT Return Extension", {"company": data.SENT_COMPANY, "year": data.YEAR}
+			),
 		}
 	finally:
 		api.dispose()

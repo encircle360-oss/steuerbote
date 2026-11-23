@@ -74,6 +74,16 @@ class Desk:
 		self.page.locator(f'.page-head .inner-group-button[data-label="{group}"] > button').click()
 		return self.page.get_by_role("menuitem", name=label, exact=True)
 
+	def menu(self) -> Locator:
+		"""Open the menu of the page head, behind its button with three dots, and return it."""
+		self.button("Menü").click()
+		return self.page.get_by_role("menu")
+
+	def message(self, text: str) -> Locator:
+		"""The block above the fields of the form that shows the text: the intro, the note that the document is
+		ready to file and the latest run each have a block of their own."""
+		return self.page.locator(".form-message").filter(has_text=text)
+
 	def dialog(self) -> Locator:
 		"""The dialog on top of the page."""
 		return self.page.locator(".modal.show")

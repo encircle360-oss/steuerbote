@@ -83,15 +83,21 @@ CHANGEABLE_AFTER_SENDING = frozenset({"remarks"})
 class Transmittable:
 	"""A document that goes to ELSTER through ERiC, mixed into its controller before Document."""
 
-	def elster_state(self) -> dict[str, bool]:
+	def elster_state(self) -> dict:
 		"""For the banner and the buttons of the form: whether ERiC runs as a simulation, whether the lock of a
-		transmission is stale and whether ELSTER accepted the document while its submission failed."""
+		transmission is stale, whether ELSTER accepted the document while its submission failed, and the Senden that
+		locks the draft, which then keeps all but its remarks (refuse_if_sent), with status and Transferticket."""
 		simulation = frappe.get_cached_doc(ERIC_SETTINGS).simulation
 		draft = self.docstatus == 0 and not self.is_new()
+		sent = self.sent_record() if draft else None
+		locked = None
+		if sent:
+			locked = {"transmission": sent.name, "status": sent.status, "transferticket": sent.transferticket}
 		return {
 			"simulation": bool(cint(simulation)),
 			"stale": draft and self._has_stale_transmission(),
 			"sent": draft and self.was_accepted(),
+			"locked": locked,
 		}
 
 	@frappe.whitelist(methods=["POST"])

@@ -11,7 +11,8 @@ frappe.ui.form.on("VAT Return", {
 	refresh(frm) {
 		release_stale_transmission(frm);
 		offer_buchen_only_for_an_accepted_send(frm);
-		if (frm.doc.docstatus === 0 && !frm.is_new()) {
+		remove_discard_when_locked_as_sent(frm);
+		if (frm.doc.docstatus === 0 && !frm.is_new() && !locked_as_sent(frm)) {
 			frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
 		}
 		if (can_make_import_file(frm.doc)) {
