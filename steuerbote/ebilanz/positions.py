@@ -173,6 +173,11 @@ def leitfaden(taxonomy: Taxonomy, sections: str) -> str:
 	return f"{LEITFADEN} {taxonomy.version}, {sections}"
 
 
+def rule(taxonomy: Taxonomy, code: str, sheet: str = "Regel") -> str:
+	"""A rule of the Jahresdokumentation of the version in the ERiC documentation 44.3.6.0, by its Fehlercode."""
+	return f"Jahresdokumentation_Bilanz_Taxonomie_{taxonomy.version.replace('.', '_')}.ods, {sheet} {code}"
+
+
 def qualified(name: str) -> str:
 	"""A name of the GAAP module with its prefix, as the facts name it."""
 	return name if ":" in name else f"{GAAP}:{name}"
