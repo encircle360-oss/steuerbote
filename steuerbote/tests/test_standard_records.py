@@ -544,7 +544,14 @@ class DefaultPrintFormatFilesTest(TestCase):
 		)
 		self.assertEqual(
 			set(formats),
-			{"VAT Return", "Recapitulative Statement", "VAT Return Extension", "Annual VAT Return"},
+			{
+				"VAT Return",
+				"Recapitulative Statement",
+				"VAT Return Extension",
+				"Annual VAT Return",
+				"Corporate Income Tax Return",
+				"Trade Tax Return",
+			},
 		)
 
 	def test_each_property_setter_is_named_and_shaped_as_frappe_makes_it(self):

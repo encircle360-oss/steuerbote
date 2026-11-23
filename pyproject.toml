@@ -116,6 +116,7 @@ testpaths = [
     "steuerbote/ebilanz",
     "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_bridge.py",
     "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_income_tax_files.py",
+    "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_income_tax_site_files.py",
     "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_layout.py",
     "steuerbote/steuerbote/doctype/trade_tax_return/test_bridge.py",
     "steuerbote/steuerbote/report/ertragsteuer_kontennachweis/test_attribution.py",

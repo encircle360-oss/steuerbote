@@ -74,3 +74,11 @@ MAPPING_ABBR = "STE2Z"
 TRANSFERTICKET = "e2026e2etransferticketerfunden01"
 # What the form of such a draft says above its fields after ELSTER accepted its Senden.
 ACCEPTED_NOTE = f"Mit Transferticket {TRANSFERTICKET} übermittelt: nur noch Buchen oder berichtigen; Anmerkungen bleiben änderbar."
+
+# A fifth company with the Körperschaft- and the Gewerbesteuererklärung of YEAR: SKR03 accounts, Annual Filing Settings
+# with its shareholder and its one Betriebsstätte, the Kontenzuordnung Ertragsteuern of "Vorgaben laden" and a ledger
+# of the year. Both returns are calculated drafts, and nothing of the company goes to ELSTER.
+INCOME_TAX_COMPANY = "Steuerbote E2E Ertragsteuern GmbH"
+INCOME_TAX_ABBR = "STE2K"
+# Until ELSTER publishes the forms of YEAR, both returns take those of the Jahresdokumentation of the year before.
+DOCUMENTATION_YEAR = YEAR - 1
