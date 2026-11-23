@@ -1,5 +1,5 @@
-"""What the Körperschaftsteuer carries from one year to the next: the Verlustabzug of § 10d EStG (Anlage Verluste)
-and the Termingeschäfte of § 15 Absatz 4 Satz 3 EStG.
+"""What the Körperschaftsteuer carries from one year to the next: the Verlustabzug of § 10d EStG (Anlage Verluste),
+the Termingeschäfte of § 15 Absatz 4 Satz 3 EStG and the Zuwendungen of § 9 Absatz 1 Nummer 2 KStG (Anlage Z).
 
 § 10d EStG (Stand Art. 1 G v. 15.10.2026 I Nr. 307), which § 8 Absatz 1 KStG applies:
 - Absatz 1 Satz 1: „Negative Einkünfte, die bei der Ermittlung des Gesamtbetrags der Einkünfte nicht ausgeglichen
@@ -49,6 +49,20 @@ year's gains from Termingeschäfte; that and hedges of shares (Satz 5) are for t
 
 For the Gewerbesteuer § 15 Absatz 4 EStG does not apply (R 7.1 Absatz 3 Satz 1 Nummer 4 with Absatz 4 Satz 3
 GewStR 2009): steuerbote.gewst.chain reverses lines 51 and 52.
+
+§ 9 Absatz 1 Nummer 2 Satz 1 KStG makes Zuwendungen deductible „bis zur Höhe von insgesamt a) 20 Prozent des
+Einkommens oder b) 4 Promille der Summe der gesamten Umsätze und der im Kalenderjahr aufgewendeten Löhne und
+Gehälter“, Einkommen „vor Abzug der in Absatz 1 Nr. 2 bezeichneten Zuwendungen und vor dem Verlustabzug nach § 10d“
+(Absatz 2 Satz 1), which is the Summe der Einkünfte of Anlage ZVE line 32; Satz 9: „Abziehbare Zuwendungen, die die
+Höchstbeträge nach Satz 1 überschreiten, sind im Rahmen der Höchstbeträge in den folgenden Veranlagungszeiträumen
+abzuziehen.“ Anlage Z carries it in whole euros: line 1 (E8009401), the Zuwendungsvortrag of the previous VZ; line 5
+(E8005602), the Zuwendungen of the year, Aufrunden of the sum of the receipts (rule 8901012); line 6 (E8009701),
+their sum (8900204); line 7 (E8006101), the deductible part, the lower of line 6 and Aufrunden of the higher cap
+(8901005, 8901006), which Anlage ZVE line 34 deducts; line 8 (E8010101), the Zuwendungsvortrag left (8900351); line 10
+(E8006001), the turnover and wages, which the rules ask for once the Zuwendungen exceed 20 % of a positive Summe der
+Einkünfte, or there is none (8900101). Only Zuwendungen for the purposes of §§ 52 to 54 AO with a receipt count;
+donations to political parties or without a qualifying recipient are added back but never deducted, so the caller
+passes the Zuwendungen of its receipts.
 """
 
 from dataclasses import dataclass
@@ -176,6 +190,63 @@ def derivatives(year: Year, gains: Decimal, losses: Decimal, carry_forward: Deci
 
 
 _NONE = Amount(ZERO, ZERO)
+PER_MILLE = Decimal("1000")
+
+
+@dataclass(frozen=True, slots=True)
+class Donations:
+	"""Anlage Z: the Zuwendungsvortrag of the previous VZ (line 1), the Zuwendungen of the year (line 5), the turnover
+	and wages (line 10, None while unknown) and the deductible part (line 7). ``turnover_missing`` says that the
+	rules need line 10 and it is unknown."""
+
+	carry_forward: Decimal
+	donations: Amount
+	turnover_and_wages: Decimal | None
+	deductible: Decimal
+	turnover_missing: bool
+
+	@property
+	def available(self) -> Decimal:
+		"""Line 6: the Zuwendungsvortrag and the Zuwendungen of the year."""
+		return self.carry_forward + self.donations.declared
+
+	@property
+	def remaining(self) -> Decimal:
+		"""Line 8: the Zuwendungsvortrag at the end of the VZ."""
+		return self.available - self.deductible
+
+	@property
+	def required(self) -> bool:
+		"""Anlage Z is filed with Zuwendungen or a Zuwendungsvortrag."""
+		return self.available > ZERO
+
+
+def donations(
+	year: Year,
+	sum_of_income: Decimal,
+	eligible: Decimal,
+	carry_forward: Decimal,
+	turnover_and_wages: Decimal | None = None,
+) -> Donations:
+	"""Anlage Z from the Summe der Einkünfte (Anlage ZVE line 32), the Zuwendungen of the receipts in cents, the
+	Zuwendungsvortrag and the turnover and wages, all but the Zuwendungen in whole euros."""
+	_require_euros(sum_of_income, "the Summe der Einkünfte", negative=True)
+	if not require_decimal(eligible).is_finite() or eligible != eligible.quantize(CENT) or eligible < ZERO:
+		raise ValueError(f"the Zuwendungen must be an amount in cents of at least 0, not {eligible}")
+	_require_euros(carry_forward, "the Zuwendungsvortrag")
+	if turnover_and_wages is not None:
+		_require_euros(turnover_and_wages, "the Umsätze, Löhne und Gehälter")
+	line_5 = Amount(eligible, ceil_euro(eligible))
+	available = carry_forward + line_5.declared
+	income_cap = sum_of_income * year.donation_income_percent / HUNDRED
+	turnover_cap = (turnover_and_wages or ZERO) * year.donation_turnover_per_mille / PER_MILLE
+	deductible = max(min(available, ceil_euro(max(income_cap, turnover_cap))), ZERO)
+	missing = (
+		turnover_and_wages is None
+		and available > ZERO
+		and (sum_of_income <= ZERO or available > ceil_euro(income_cap))
+	)
+	return Donations(carry_forward, line_5, turnover_and_wages, deductible, missing)
 
 
 def _require_euros(amount: Decimal, what: str, negative: bool = False) -> None:
