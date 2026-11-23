@@ -18,6 +18,15 @@ credit (steuerbote.hgb.schemes.Direction). A balance on the other side counts ne
 under „Gewinnvortrag/Verlustvortrag“. A position adds up the positions under it, and a result of the income
 statement adds up the items above it, each with its sign.
 
+Results. The income statement computes the Jahresüberschuss/Jahresfehlbetrag, and the balance sheet takes it as
+„V. Jahresüberschuß/Jahresfehlbetrag“ (§ 266 Abs. 3 A. V. HGB): before the Period Closing Voucher no account of the
+balance sheet holds the result of the year, so it comes from the income statement alone. Both sides of the
+balance sheet then add up to the same total, or the books are not complete: the balance sheet of § 242 Abs. 1 HGB
+sets the Vermögen against the Schulden and the Eigenkapital in Kontoform (§ 266 Abs. 1 Satz 1 HGB). The
+Bilanzsumme of the size criteria „setzt sich aus den Posten zusammen, die in den Buchstaben A bis E des § 266
+Absatz 2 aufgeführt sind“ (§ 267 Abs. 4a HGB), and the Umsatzerlöse are the first item of the income statement,
+as § 277 Abs. 1 HGB defines them.
+
 Each line names the sources of the balances that landed on it, as the drill-down of the Annual Accounts shows
 them. The schemes and their sources are steuerbote.hgb.schemes.
 """
@@ -42,6 +51,9 @@ from steuerbote.hgb.size import SizeClass
 
 ZERO = Decimal("0")
 NO_PARENTS: Mapping[str, str] = MappingProxyType({})
+NET_INCOME = "bs.eqLiab.equity.netIncome"
+EQUITY = "bs.eqLiab.equity"
+DEFICIT = "bs.ass.deficitNotCoveredByCapital"
 _SCHEMES_REFERENCE = "§§ 266, 275 HGB"
 
 
@@ -74,6 +86,7 @@ class Severity(Enum):
 class Code(StrEnum):
 	UNPLACED = "JA-OHNE-POSTEN"
 	COMPUTED = "JA-RECHENPOSTEN"
+	NOT_BALANCED = "JA-BILANZ-UNGLEICH"
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,19 +115,47 @@ class Line:
 	sources: tuple[str, ...] = ()
 
 
+def _line(lines: Iterable[Line], concept: str) -> Line:
+	for line in lines:
+		if line.position.concept == concept:
+			return line
+	raise KeyError(f"no line shows the position {concept}")
+
+
 @dataclass(frozen=True, slots=True)
 class IncomeStatement:
+	"""The income statement: its lines, the Jahresüberschuss/Jahresfehlbetrag and the Umsatzerlöse."""
+
 	scheme: IncomeStatementScheme
 	lines: tuple[Line, ...]
 	net_income: Decimal
+	sales: Decimal
+
+	def line(self, concept: str) -> Line:
+		return _line(self.lines, concept)
 
 
 @dataclass(frozen=True, slots=True)
 class BalanceSheet:
+	"""The balance sheet of a size class: the lines of each side, their totals, the Eigenkapital and the
+	Bilanzsumme of § 267 Abs. 4a HGB."""
+
 	scheme: BalanceSheetScheme
 	size_class: SizeClass
 	aktiva: tuple[Line, ...]
 	passiva: tuple[Line, ...]
+	aktiva_total: Decimal
+	passiva_total: Decimal
+	equity: Decimal
+	bilanzsumme: Decimal
+
+	@property
+	def difference(self) -> Decimal:
+		"""Aktiva less Passiva; anything but zero means the books are not complete."""
+		return self.aktiva_total - self.passiva_total
+
+	def line(self, concept: str) -> Line:
+		return _line(self.aktiva + self.passiva, concept)
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,8 +176,11 @@ class _Placed:
 class _Year:
 	"""The amounts one fiscal year gives the positions of one scheme."""
 
-	def __init__(self, scheme: BalanceSheetScheme | IncomeStatementScheme) -> None:
+	def __init__(
+		self, scheme: BalanceSheetScheme | IncomeStatementScheme, fixed: Mapping[str, Decimal] | None = None
+	) -> None:
 		self.scheme = scheme
+		self.fixed = dict(fixed or {})
 		self.own: defaultdict[str, Decimal] = defaultdict(Decimal)
 		self.sources: defaultdict[str, list[str]] = defaultdict(list)
 		self._amounts: dict[str, Decimal] = {}
@@ -153,6 +197,8 @@ class _Year:
 		return self._amounts[concept]
 
 	def _compute(self, position: Position) -> Decimal:
+		if position.concept in self.fixed:
+			return self.fixed[position.concept]
 		if position.terms:
 			return sum(
 				(self.amount(term) * _sign(self.scheme.position(term), position) for term in position.terms),
@@ -199,20 +245,29 @@ def build(
 	income = _Year(income_scheme)
 	for placed in placed_income:
 		income.add(placed)
-	sheet = _Year(balance_scheme)
-	for placed in placed_balance:
-		sheet.add(placed)
+	net_income = income.amount(income_scheme.net_income.concept)
 	income_statement = IncomeStatement(
 		income_scheme,
 		tuple(income.line(position) for position in income_scheme.positions()),
-		income.amount(income_scheme.net_income.concept),
+		net_income,
+		income.amount(income_scheme.sales.concept),
 	)
+	sheet = _Year(balance_scheme, {NET_INCOME: net_income})
+	for placed in placed_balance:
+		sheet.add(placed)
+	aktiva_total = sheet.amount(balance_scheme.aktiva.concept)
 	balance_sheet = BalanceSheet(
 		balance_scheme,
 		size_class,
 		_lines(sheet, balance_scheme, balance_scheme.aktiva, size_class),
 		_lines(sheet, balance_scheme, balance_scheme.passiva, size_class),
+		aktiva_total,
+		sheet.amount(balance_scheme.passiva.concept),
+		sheet.amount(EQUITY),
+		aktiva_total - sheet.amount(DEFICIT),
 	)
+	if balance_sheet.difference:
+		findings.append(_not_balanced(balance_sheet.difference))
 	return AnnualStatement(balance_sheet, income_statement, tuple(findings))
 
 
@@ -278,4 +333,15 @@ def _computed(balance: Balance, position: Position) -> Finding:
 		_SCHEMES_REFERENCE,
 		balance.concept,
 		balance.amount,
+	)
+
+
+def _not_balanced(difference: Decimal) -> Finding:
+	return Finding(
+		Code.NOT_BALANCED,
+		Severity.ERROR,
+		"Aktiva und Passiva der Bilanz weichen voneinander ab; ein Konto mit Saldo fehlt in der Zuordnung, oder die "
+		"Salden enthalten die Abschlussbuchung des Geschäftsjahres.",
+		"§ 242 Abs. 1, § 266 Abs. 1 Satz 1 HGB",
+		amount=difference,
 	)
