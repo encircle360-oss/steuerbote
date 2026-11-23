@@ -13,6 +13,14 @@ Offenlegung research. Kleinst and klein draw up no Lagebericht (§ 264 Abs. 1 Sa
 (§ 316 Abs. 1 Satz 1 HGB). Steuerbote prepares the disclosure of Kleinst and klein; for mittelgroß, which § 327 HGB
 spares part of it, and groß it names the parts only.
 
+The Ergebnisverwendung. The Anhang states „der Vorschlag für die Verwendung des Ergebnisses oder der Beschluss über
+seine Verwendung“ (§ 285 Nr. 34 HGB), which small companies need not state (§ 288 Abs. 1 Nr. 1 HGB); a Kleinst has no
+Anhang (§ 264 Abs. 1 Satz 5 HGB) and transmits the balance sheet only (§ 326 Abs. 2 Satz 1 HGB). „Ist im
+Jahresabschluss nur der Vorschlag für die Ergebnisverwendung enthalten, ist der Beschluss über die
+Ergebnisverwendung nach seinem Vorliegen nach Absatz 1 Satz 1 offenzulegen.“ (§ 325 Abs. 1b Satz 2 HGB), naming the
+Jahresabschluss it belongs to (§ 328 Abs. 3 HGB). In the balance sheet the appropriation shows through the
+Bilanzgewinn (steuerbote.hgb.statement).
+
 By when. „Der Jahresabschluß und der Lagebericht sind von den gesetzlichen Vertretern in den ersten drei Monaten des
 Geschäftsjahrs für das vergangene Geschäftsjahr aufzustellen“; a small company „dürfen den Jahresabschluß auch
 später aufstellen, wenn dies einem ordnungsgemäßen Geschäftsgang entspricht, jedoch innerhalb der ersten sechs
@@ -51,7 +59,7 @@ the reliefs of § 326 HGB (Nr. 1410), half more for documents changed before the
 withdrawal (Vorbemerkung 1.4.2 Abs. 2 und 3), read on gesetze-im-internet.de on 23 November 2026.
 
 The Annual Accounts read the class of the fiscal year from steuerbote.hgb.size, the form of the balance sheet from
-steuerbote.hgb.schemes and the Angaben from steuerbote.hgb.notes. Text of §§ 9, 245, 264, 316, 325, 326, 327, 328 HGB, § 42a GmbHG
+steuerbote.hgb.schemes and the Angaben from steuerbote.hgb.notes. Text of §§ 9, 245, 264, 285, 288, 316, 325, 326, 327, 328 HGB, § 42a GmbHG
 and §§ 187, 188, 193 BGB as read on gesetze-im-internet.de on 23 November 2026.
 """
 
@@ -445,3 +453,23 @@ class FeeChanges:
 
 
 FEE_CHANGES = FeeChanges(Decimal("1.5"), Decimal("0.5"), "Vorbemerkung 1.4.2 Abs. 2 und 3 KV JVKostG")
+
+
+@dataclass(frozen=True, slots=True)
+class ResultUse:
+	"""Whether a class discloses its Ergebnisverwendung, and whether a Beschluss follows a Vorschlag disclosed with
+	the Jahresabschluss."""
+
+	disclosed: bool
+	follows: bool
+	reference: str
+
+
+def ergebnisverwendung(size_class: SizeClass) -> ResultUse:
+	match size_class:
+		case SizeClass.KLEINST:
+			return ResultUse(False, False, "§ 264 Abs. 1 Satz 5, § 326 Abs. 2 Satz 1 HGB")
+		case SizeClass.KLEIN:
+			return ResultUse(False, False, "§ 288 Abs. 1 Nr. 1, § 285 Nr. 34 HGB")
+		case _:
+			return ResultUse(True, True, "§ 285 Nr. 34, § 325 Abs. 1b Satz 2, § 328 Abs. 3 HGB")
