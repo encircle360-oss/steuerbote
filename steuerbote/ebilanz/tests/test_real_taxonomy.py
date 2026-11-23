@@ -14,12 +14,13 @@ from lxml import etree
 from steuerbote.ebilanz.anlagenspiegel import Row, ValueType
 from steuerbote.ebilanz.calculation import AccountBalance, EquityChanges
 from steuerbote.ebilanz.gcd import facts
-from steuerbote.ebilanz.instance import Sources, build
+from steuerbote.ebilanz.instance import EBilanz, Sources, build
 from steuerbote.ebilanz.positions import Case, Mark, structure
 from steuerbote.ebilanz.tests.test_gcd import MASTER
 from steuerbote.ebilanz.ueberleitung import Kind, Transfer
 from steuerbote.elster.tests.eric_schema import bilanz_example
 from steuerbote.xbrl.facts import Periods, Tuple
+from steuerbote.xbrl.taxonomy import Taxonomy
 from steuerbote.xbrl.tests import real
 
 D = Decimal
@@ -151,48 +152,49 @@ class StructureTest(TestCase):
 		self.assertFalse(set(self.structure.refused) & set(self.structure.required))
 
 
-class InventedGmbHTest(TestCase):
-	"""The E-Bilanz of the invented GmbH, as an Einheitsbilanz, a Handelsbilanz with its Überleitung, an
-	Eröffnungsbilanz and as a UG, passes every check of the profile FISCAL on the package."""
-
-	def assert_ready(self, ebilanz):
-		self.assertEqual([(finding.code, finding.reference) for finding in ebilanz.findings], [])
-		self.assertTrue(ebilanz.ready)
-		self.assertTrue(ebilanz.xml().startswith(b'<?xml version="1.0" encoding="UTF-8"?>'))
-
-	def test_an_einheitsbilanz(self):
-		self.assert_ready(
+def invented(taxonomy: Taxonomy) -> tuple[tuple[str, EBilanz], ...]:
+	"""The E-Bilanzen of the invented GmbH on the fiscal view of the package 6.9, each with a name for its file: as an
+	Einheitsbilanz, a Handelsbilanz with its Überleitung, an Eröffnungsbilanz and as a UG. The XBRL job of the CI has
+	Arelle validate them (steuerbote/xbrl/tests/arelle_validation.py)."""
+	return (
+		(
+			"einheitsbilanz",
 			build(
-				structure(real.view(), Case("GmbH", YEAR)),
-				MASTER,
-				Sources(BOOKS, assets=ASSETS, equity=EQUITY),
-			)
-		)
-
-	def test_a_handelsbilanz_with_its_ueberleitung(self):
-		self.assert_ready(
+				structure(taxonomy, Case("GmbH", YEAR)), MASTER, Sources(BOOKS, assets=ASSETS, equity=EQUITY)
+			),
+		),
+		(
+			"handelsbilanz",
 			build(
-				structure(real.view(), Case("GmbH", YEAR, accounting_standard="HGBM")),
+				structure(taxonomy, Case("GmbH", YEAR, accounting_standard="HGBM")),
 				MASTER,
 				Sources(HANDELSBILANZ, assets=HANDELSBILANZ_ASSETS, transfers=TRANSFERS, equity=EQUITY),
-			)
-		)
-
-	def test_an_eroeffnungsbilanz(self):
-		self.assert_ready(
+			),
+		),
+		(
+			"eroeffnungsbilanz",
 			build(
-				structure(real.view(), Case("GmbH", OPENING, statement_type="EB")),
+				structure(taxonomy, Case("GmbH", OPENING, statement_type="EB")),
 				MASTER,
 				Sources(OPENING_BOOKS, first_year=True),
-			)
-		)
-
-	def test_an_ug(self):
-		self.assert_ready(
+			),
+		),
+		(
+			"ug",
 			build(
-				structure(real.view(), Case("UG", YEAR)), MASTER, Sources(BOOKS, assets=ASSETS, equity=EQUITY)
-			)
-		)
+				structure(taxonomy, Case("UG", YEAR)), MASTER, Sources(BOOKS, assets=ASSETS, equity=EQUITY)
+			),
+		),
+	)
+
+
+class InventedGmbHTest(TestCase):
+	def test_passes_every_check_of_the_profile_fiscal(self):
+		for name, ebilanz in invented(real.view()):
+			with self.subTest(name=name):
+				self.assertEqual([(finding.code, finding.reference) for finding in ebilanz.findings], [])
+				self.assertTrue(ebilanz.ready)
+				self.assertTrue(ebilanz.xml().startswith(b'<?xml version="1.0" encoding="UTF-8"?>'))
 
 
 class GcdExampleTest(TestCase):
