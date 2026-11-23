@@ -123,6 +123,7 @@ testpaths = [
     "steuerbote/steuerbote/report/ertragsteuer_kontennachweis/test_attribution.py",
     "steuerbote/steuerbote/doctype/annual_accounts/test_annual_accounts_files.py",
     "steuerbote/steuerbote/doctype/annual_accounts/test_bridge.py",
+    "steuerbote/steuerbote/doctype/annual_accounts/test_docs.py",
     "steuerbote/steuerbote/doctype/annual_accounts/test_layout.py",
 ]
 # The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
