@@ -1,12 +1,21 @@
-"""The defaults of the annual return for SKR03 and SKR04: the annual field of an account by its role."""
+"""The defaults of the annual return for SKR03 and SKR04: the annual field of an account by its role, and the accounts
+only the annual return reads."""
 
 from unittest import TestCase
 
 from steuerbote.ustjahr import defaults
-from steuerbote.ustjahr.defaults import ROLE_FIELDS, role_defaults
-from steuerbote.ustjahr.form import catalogue_for
-from steuerbote.ustjahr.split import How, split
-from steuerbote.ustva.defaults import SKR03, SKR03_RANGES, SKR04, SKR04_RANGES, default_mapping, with_ranges
+from steuerbote.ustjahr.defaults import ROLE_FIELDS, annual_rules, role_defaults
+from steuerbote.ustjahr.form import Format, catalogue_for
+from steuerbote.ustjahr.split import AnnualRule, How, split
+from steuerbote.ustva.defaults import (
+	SKR03,
+	SKR03_RANGES,
+	SKR04,
+	SKR04_RANGES,
+	default_mapping,
+	deliberately_without_kennzahl,
+	with_ranges,
+)
 from steuerbote.ustva.mapping import AccountRule, Mapping, Side, WatchLevel
 from steuerbote.ustva.years import UnknownYearError
 
@@ -66,6 +75,25 @@ ROLES_2026 = (
 # The tax the Auslagerer owes, line 63 (Kz 853): the defaults of the Voranmeldung watch its account, which takes its
 # line once the company maps it to Kz 69.
 WATCHED_ROLES_2026 = (("1769", "3839", "69", "E3102805"),)
+
+# Every account only the annual return reads in 2026: SKR03 account, SKR04 account, the field it feeds and the side of
+# its balance.
+ANNUAL_2026 = (
+	# Erwerb des ersten Abnehmers in an innergemeinschaftliches Dreiecksgeschäft, line 55 (Kz 789)
+	("3552", "5552", "E3100801", Side.DEBIT),
+	# Erwerb als letzter Abnehmer in a Dreiecksgeschäft at 19 % and its Skonti, line 66 (Kz 751)
+	("3089", "5189", "E3101701", Side.DEBIT),
+	("3553", "5553", "E3101701", Side.DEBIT),
+	("3792", "5792", "E3101701", Side.DEBIT),
+	("3793", "5793", "E3101701", Side.DEBIT),
+	# Einkauf aus einem Umsatzsteuerlager, the Lieferungen before the Auslagerung, line 63 (Kz 852)
+	("3075", "5175", "E3102804", Side.DEBIT),
+	("3076", "5176", "E3102804", Side.DEBIT),
+	("3560", "5560", "E3102804", Side.DEBIT),
+	("3565", "5565", "E3102804", Side.DEBIT),
+)
+# The tax of a base only the annual return reads, which the Voranmeldung holds in Kz 69: SKR03 account, SKR04 account.
+TAXES_OF_ANNUAL_BASES = {"E3101701": ("1794", "3819"), "E3102804": ("1769", "3839")}
 
 COLUMNS = {"SKR03": 0, "SKR04": 1}
 
@@ -178,3 +206,76 @@ class RoleFieldsTest(TestCase):
 		self.assertIn("BMF letter of 29 December 2025 (GZ III C 3 - S 7344/00040/008/034)", text)
 		self.assertIn("Art.-Nr. 11174", text)
 		self.assertIn("Art.-Nr. 11175", text)
+
+
+class AnnualRulesTest(TestCase):
+	"""The accounts only the annual return reads, „Zuordnung nur für die Umsatzsteuererklärung“."""
+
+	def test_each_chart_reads_the_accounts_of_the_dreiecksgeschaeft_and_of_the_umsatzsteuerlager(self):
+		for chart in CHARTS:
+			with self.subTest(chart=chart):
+				self.assertEqual(
+					annual_rules(chart, YEAR),
+					tuple(AnnualRule(row[COLUMNS[chart]], row[2], row[3]) for row in ANNUAL_2026),
+				)
+
+	def test_every_field_is_a_base_only_the_annual_return_asks_for(self):
+		catalogue = catalogue_for(YEAR)
+		for element in {row[2] for row in ANNUAL_2026}:
+			with self.subTest(field=element):
+				field = catalogue.field(element)
+				self.assertTrue(field.fed)
+				self.assertIsNone(field.ustva)
+				self.assertIs(field.format, Format.EUROS)
+
+	def test_the_tax_of_each_base_comes_through_kz_69_by_the_role_of_its_account(self):
+		catalogue = catalogue_for(YEAR)
+		for chart in CHARTS:
+			roles = role_defaults(chart, YEAR)
+			for base, accounts in TAXES_OF_ANNUAL_BASES.items():
+				with self.subTest(chart=chart, base=base):
+					self.assertEqual(roles[accounts[COLUMNS[chart]]], catalogue.field(base).tax)
+
+	def test_the_voranmeldung_leaves_each_account_without_kennzahl_or_watches_it(self):
+		"""An account the mapping maps or checks as a tax account cannot be one only the annual return reads."""
+		for chart, (mapping, _) in CHARTS.items():
+			ignored = deliberately_without_kennzahl(chart)
+			watched = {account.account_number for account in mapping.watched}
+			for rule in annual_rules(chart, YEAR):
+				with self.subTest(chart=chart, account=rule.account_number):
+					self.assertIsNone(mapping.rule_for(rule.account_number))
+					self.assertFalse(
+						any(rule.account_number in check.tax_accounts for check in mapping.checks)
+					)
+					self.assertIn(rule.account_number, ignored | watched)
+
+	def test_the_default_mappings_split_with_their_annual_rules(self):
+		for chart in CHARTS:
+			result = split(
+				default_mapping(chart, YEAR), (), role_defaults(chart, YEAR), annual_rules(chart, YEAR)
+			)
+			for row in ANNUAL_2026:
+				with self.subTest(chart=chart, account=row[COLUMNS[chart]]):
+					assignment = result.assignment(row[COLUMNS[chart]])
+					self.assertEqual(
+						(assignment.field, assignment.how, assignment.side), (row[2], How.ANNUAL, row[3])
+					)
+
+	def test_the_sales_under_paragraphs_25_and_25a_stay_out(self):
+		"""Lines 37 and 38 are not filed by Steuerbote (steuerbote/ustjahr/form.py, Scope.TRAVEL_AND_MARGIN)."""
+		for chart, accounts in (("SKR03", ("8198", "8199")), ("SKR04", ("4133", "4134"))):
+			with self.subTest(chart=chart):
+				numbers = {rule.account_number for rule in annual_rules(chart, YEAR)} | set(
+					role_defaults(chart, YEAR)
+				)
+				self.assertEqual(numbers & set(accounts), set())
+
+	def test_a_chart_without_defaults_has_no_annual_rules(self):
+		with self.assertRaisesRegex(
+			KeyError, "no defaults of the annual return for chart 'Eigener Kontenrahmen'"
+		):
+			annual_rules("Eigener Kontenrahmen", YEAR)
+
+	def test_a_year_without_its_form_has_no_annual_rules(self):
+		with self.assertRaisesRegex(UnknownYearError, "Umsatzsteuererklärung 2027"):
+			annual_rules("SKR04", YEAR + 1)
