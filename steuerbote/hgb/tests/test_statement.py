@@ -239,3 +239,61 @@ class TotalsTest(TestCase):
 		self.assertEqual(self.statement.income_statement.line(SALARIES).amount, Decimal("36000.00"))
 		with self.assertRaises(KeyError):
 			self.sheet.line(TRADE_RECEIVABLES)
+
+
+SHAREHOLDER_LOAN = "bs.eqLiab.liab.shareholders"
+# An invented GmbH whose losses have used up its Eigenkapital, financed by a loan of its shareholder.
+LOSSES = (
+	Balance(BANK, Decimal("30000.00"), source="1200 Bank"),
+	Balance(SUBSCRIBED, Decimal("-25000.00"), source="0800 Gezeichnetes Kapital"),
+	Balance(CARRIED_FORWARD, Decimal("30000.00"), source="0868 Verlustvortrag vor Verwendung"),
+	Balance(SHAREHOLDER_LOAN, Decimal("-40000.00"), source="0755 Darlehen des Gesellschafters"),
+	Balance(RENT, Decimal("5000.00"), source="4210 Miete"),
+)
+
+
+class DeficitTest(TestCase):
+	"""§ 268 Abs. 3 HGB: an Eigenkapital used up by losses shows as a Fehlbetrag at the end of the Aktiva."""
+
+	def setUp(self):
+		self.sheet = build(2026, SizeClass.KLEIN, LOSSES, parents=PARENTS).balance_sheet
+
+	def test_shows_the_excess_of_the_passiva_as_a_fehlbetrag_at_the_end_of_the_aktiva(self):
+		self.assertEqual(self.sheet.aktiva[-1].position.concept, "bs.ass.deficitNotCoveredByCapital")
+		self.assertEqual(self.sheet.aktiva[-1].amount, Decimal("10000.00"))
+		self.assertEqual(self.sheet.deficit, Decimal("10000.00"))
+
+	def test_brings_the_eigenkapital_to_zero_with_the_same_amount(self):
+		self.assertEqual(
+			[
+				(line.position.concept, line.amount)
+				for line in self.sheet.passiva
+				if line.position.marker != "III."
+			][:7],
+			[
+				("bs.eqLiab.equity", Decimal("0.00")),
+				("bs.eqLiab.equity.subscribed", Decimal("25000.00")),
+				("bs.eqLiab.equity.capRes", Decimal("0")),
+				("bs.eqLiab.equity.retainedEarnings", Decimal("-30000.00")),
+				("bs.eqLiab.equity.netIncome", Decimal("-5000.00")),
+				("bs.eqLiab.equity.profitLoss", Decimal("0")),
+				("bs.eqLiab.equity.deficitNotCoveredByCapital", Decimal("10000.00")),
+			],
+		)
+		self.assertEqual(self.sheet.equity, Decimal("0"))
+
+	def test_both_sides_rise_by_the_fehlbetrag(self):
+		self.assertEqual((self.sheet.aktiva_total, self.sheet.passiva_total), (Decimal("40000.00"),) * 2)
+
+	def test_leaves_the_fehlbetrag_out_of_the_bilanzsumme_of_the_size_criteria(self):
+		self.assertEqual(self.sheet.bilanzsumme, Decimal("30000.00"), "§ 267 Abs. 4a Satz 2 HGB")
+
+	def test_kleinst_shows_an_eigenkapital_of_zero(self):
+		sheet = build(2026, SizeClass.KLEINST, LOSSES, parents=PARENTS).balance_sheet
+		self.assertEqual(sheet.line("bs.eqLiab.equity").amount, Decimal("0"))
+		self.assertEqual(sheet.line("bs.ass.deficitNotCoveredByCapital").amount, Decimal("10000.00"))
+
+	def test_a_positive_eigenkapital_leaves_no_fehlbetrag(self):
+		sheet = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS).balance_sheet
+		self.assertEqual(sheet.deficit, Decimal("0"))
+		self.assertEqual(sheet.line("bs.eqLiab.equity.deficitNotCoveredByCapital").amount, Decimal("0"))
