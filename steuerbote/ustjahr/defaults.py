@@ -1,5 +1,5 @@
 """Defaults of the annual return for the DATEV standard charts SKR03 and SKR04, editions valid for 2026: the annual
-field of an account by the role it plays in its chart.
+field of an account by the role it plays in its chart, and the accounts only the annual return reads.
 
 Sources: form USt 2 A 2026 and its Anleitung USt 2 E 2026, BMF letter of 29 December 2025 (GZ III C 3 - S
 7344/00040/008/034), cited as USt 2 E; the DATEV-Kontenrahmen nach dem Bilanzrichtlinie-Umsetzungsgesetz,
@@ -17,7 +17,8 @@ has none:
   entgeltlichen sonstigen Leistungen gleichgestellt“ (USt 2 E, Zeilen 24 bis 33), so the Entnahme and the
   unentgeltliche Zuwendung of goods are Lieferungen nach § 3 Absatz 1b UStG (lines 25 and 28), the Verwendung of goods
   and the unentgeltliche Erbringung of a sonstige Leistung sonstige Leistungen nach § 3 Absatz 9a UStG (lines 26 and
-  29). Sachbezüge, which the staff pays for with its work, stay in line 24 and line 27 with the other sales.
+  29). Sachbezüge stay in lines 24 and 27 with the other sales: whether the staff pays for one with its work or
+  receives it free, which makes it a Wertabgabe, depends on the case and is unverified.
 - Exempt sales with Vorsteuerabzug: „Bitte tragen Sie in Zeile 45 steuerfreie Ausfuhrlieferungen ein (§ 4 Nummer 1
   Buchstabe a, § 6 UStG)“, Umsätze im Sinne des Offshore-Steuerabkommens „(Zeile 47)“ and „Reiseleistungen, soweit die
   Reisevorleistungen im Drittlandsgebiet bewirkt werden (§ 25 Absatz 2 UStG) (Zeile 49)“ (USt 2 E, Zeile 45 and
@@ -43,15 +44,44 @@ has none:
   2 E, Zeile 63). The defaults of the Voranmeldung watch the account of the latter, SKR03 1769 and SKR04 3839, whose
   Kennzahl they leave open; once the company maps it to Kz 69, it takes line 63.
 
-role_defaults() gives the annual field of each account of a chart by the role of the account, members of its DATEV
-range included. A company with a chart of its own has no roles: its rules name their annual fields themselves.
+Accounts only the annual return reads. Some amounts are in no Kennzahl of the Voranmeldung
+(steuerbote/ustjahr/form.py), so an account that holds one feeds its field directly with its balance, „Zuordnung nur
+für die Umsatzsteuererklärung“ (AnnualRule in steuerbote/ustjahr/split.py). ANNUAL_ACCOUNTS names them by the year of
+the form:
+
+- Line 55 (Kz 789): „Bitte füllen Sie die Zeile 55 bei innergemeinschaftlichen Dreiecksgeschäften aus, wenn Sie der
+  erste Abnehmer sind und Ihr Erwerb als besteuert gilt (§ 25b Absatz 3 UStG)“ (USt 2 E, Zeile 55): the account
+  „Erwerb 1. Abnehmer innerhalb eines Dreiecksgeschäftes“. ERiC takes Kz 789 only together with Kz 742, the
+  Lieferungen des ersten Abnehmers (rule 30013 of the Jahresdokumentation E50 2026).
+- Line 66 (Kz 751): „Die Bemessungsgrundlage und die Steuer, die der letzte Abnehmer nach § 25b Absatz 2 UStG für die
+  Lieferung des ersten Abnehmers schuldet, tragen Sie bitte in den Zeilen 66, 67 und 69 ein“ (USt 2 E, Zeilen 65 bis
+  70): the Erwerb of raw materials and of goods „als letzter Abnehmer innerhalb Dreiecksgeschäft 19 %“ and their
+  Skonti, which lower the base. Its tax comes through Kz 69 by the role of its account.
+- Line 63 (Kz 852): „Tragen Sie bitte in Zeile 63 die Lieferungen ein, die den Auslagerungen von Gegenständen aus
+  einem Umsatzsteuerlager vorangegangen sind. Die Umsatzsteuer für diese Umsätze schuldet der Unternehmer, dem die
+  Auslagerung zuzurechnen ist (Auslagerer)“ (USt 2 E, Zeile 63): the purchases „aus einem USt-Lager § 13a UStG“ of
+  raw materials and of goods at 7 and 19 %. Its tax comes through Kz 69 by the role of its account.
+
+The defaults of the Voranmeldung leave the accounts of lines 55 and 66 without a Kennzahl and watch those of line 63,
+so that none of them is mapped and its balance never counts twice (steuerbote/ustjahr/split.py). DATEV marks SKR04
+5792 without „U“, unlike its twin SKR03 3792; both are read alike, since a Skonto lowers the base of line 66 either
+way.
+
+Out of these defaults stay the sales under §§ 25 and 25a UStG (SKR03 8198 and 8199, SKR04 4133 and 4134): lines 37
+and 38, which Steuerbote does not file (Scope.TRAVEL_AND_MARGIN in steuerbote/ustjahr/form.py).
+
+role_defaults() gives the annual field of each account of a chart by the role of the account and annual_rules() the
+accounts only the annual return reads, members of their DATEV ranges included. A company with a chart of its own has
+neither: its rules name their annual fields, and its rows for the annual return their accounts, themselves.
 """
 
 from collections.abc import Mapping as ReadOnlyMapping
 from types import MappingProxyType
 
+from steuerbote.ustjahr.split import AnnualRule
 from steuerbote.ustjahr.years import year_of
 from steuerbote.ustva.defaults import SKR03_ACCOUNTS, SKR03_RANGES, SKR04_ACCOUNTS, SKR04_RANGES, with_ranges
+from steuerbote.ustva.mapping import Side
 
 # role: annual field of form USt 2 A 2026
 _ROLE_FIELDS_2026 = {
@@ -108,17 +138,59 @@ ROLE_FIELDS: MappingProxyType[int, MappingProxyType[str, str]] = MappingProxyTyp
 	{2026: MappingProxyType(_ROLE_FIELDS_2026)}
 )
 
-# The accounts of the roles the defaults of the Voranmeldung give no rule, by chart.
-_UNMAPPED_ROLES = MappingProxyType(
+# purpose, annual field of form USt 2 A 2026 and side of the balance of the accounts only the annual return reads
+_ANNUAL_2026 = (
+	# Erwerb des ersten Abnehmers in an innergemeinschaftliches Dreiecksgeschäft, line 55 (Kz 789)
+	("acquisition_triangular_first_buyer", "E3100801", Side.DEBIT),
+	# Erwerb als letzter Abnehmer in a Dreiecksgeschäft at 19 % and its Skonti, line 66 (Kz 751)
+	("acquisition_triangular_last_buyer_materials_19", "E3101701", Side.DEBIT),
+	("acquisition_triangular_last_buyer_goods_19", "E3101701", Side.DEBIT),
+	("cash_discount_triangular_last_buyer_materials_19", "E3101701", Side.DEBIT),
+	("cash_discount_triangular_last_buyer_goods_19", "E3101701", Side.DEBIT),
+	# Einkauf aus einem Umsatzsteuerlager, the Lieferungen before the Auslagerung, line 63 (Kz 852)
+	("purchase_tax_warehouse_materials_7", "E3102804", Side.DEBIT),
+	("purchase_tax_warehouse_materials_19", "E3102804", Side.DEBIT),
+	("purchase_tax_warehouse_goods_7", "E3102804", Side.DEBIT),
+	("purchase_tax_warehouse_goods_19", "E3102804", Side.DEBIT),
+)
+
+ANNUAL_ACCOUNTS: MappingProxyType[int, tuple[tuple[str, str, Side], ...]] = MappingProxyType(
+	{2026: _ANNUAL_2026}
+)
+
+# The accounts of the roles the defaults of the Voranmeldung give no rule, and those of the purposes above.
+SKR03_ANNUAL_ACCOUNTS = MappingProxyType(
 	{
-		"SKR03": MappingProxyType({"output_tax_tax_warehouse": "1769"}),
-		"SKR04": MappingProxyType({"output_tax_tax_warehouse": "3839"}),
+		"output_tax_tax_warehouse": "1769",
+		"acquisition_triangular_first_buyer": "3552",
+		"acquisition_triangular_last_buyer_materials_19": "3089",
+		"acquisition_triangular_last_buyer_goods_19": "3553",
+		"cash_discount_triangular_last_buyer_materials_19": "3792",
+		"cash_discount_triangular_last_buyer_goods_19": "3793",
+		"purchase_tax_warehouse_materials_7": "3075",
+		"purchase_tax_warehouse_materials_19": "3076",
+		"purchase_tax_warehouse_goods_7": "3560",
+		"purchase_tax_warehouse_goods_19": "3565",
+	}
+)
+SKR04_ANNUAL_ACCOUNTS = MappingProxyType(
+	{
+		"output_tax_tax_warehouse": "3839",
+		"acquisition_triangular_first_buyer": "5552",
+		"acquisition_triangular_last_buyer_materials_19": "5189",
+		"acquisition_triangular_last_buyer_goods_19": "5553",
+		"cash_discount_triangular_last_buyer_materials_19": "5792",
+		"cash_discount_triangular_last_buyer_goods_19": "5793",
+		"purchase_tax_warehouse_materials_7": "5175",
+		"purchase_tax_warehouse_materials_19": "5176",
+		"purchase_tax_warehouse_goods_7": "5560",
+		"purchase_tax_warehouse_goods_19": "5565",
 	}
 )
 _CHARTS = MappingProxyType(
 	{
-		"SKR03": (MappingProxyType({**SKR03_ACCOUNTS, **_UNMAPPED_ROLES["SKR03"]}), SKR03_RANGES),
-		"SKR04": (MappingProxyType({**SKR04_ACCOUNTS, **_UNMAPPED_ROLES["SKR04"]}), SKR04_RANGES),
+		"SKR03": (MappingProxyType({**SKR03_ACCOUNTS, **SKR03_ANNUAL_ACCOUNTS}), SKR03_RANGES),
+		"SKR04": (MappingProxyType({**SKR04_ACCOUNTS, **SKR04_ANNUAL_ACCOUNTS}), SKR04_RANGES),
 	}
 )
 
@@ -134,6 +206,17 @@ def role_defaults(chart: str, year: int) -> ReadOnlyMapping[str, str]:
 			if (number := accounts[role]) is not None
 			for member in with_ranges((number,), ranges)
 		}
+	)
+
+
+def annual_rules(chart: str, year: int) -> tuple[AnnualRule, ...]:
+	"""The accounts of the chart only the annual return reads, each with the field it feeds and its side."""
+	accounts, ranges = _chart(chart)
+	year_of(year)
+	return tuple(
+		AnnualRule(member, field, side)
+		for purpose, field, side in ANNUAL_ACCOUNTS[year]
+		for member in with_ranges((accounts[purpose],), ranges)
 	)
 
 
