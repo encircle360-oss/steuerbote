@@ -1069,6 +1069,7 @@
 "{0} is a draft for the same company and year already. File it or delete it first.","{0} ist bereits ein Entwurf für dasselbe Unternehmen und Jahr. Bitte zuerst abgeben oder löschen."
 "{0} is a draft for {1} already. File it or delete it first.","{0} ist bereits ein Entwurf für {1}. Bitte zuerst abgeben oder löschen."
 "{0} is a public file; Steuerbote imports a mapping only from a private file.","{0} ist eine öffentliche Datei; Steuerbote importiert eine Kontenzuordnung nur aus einer privaten Datei."
+"{0} is cancelled and makes no file.","{0} ist storniert und ergibt keine Datei."
 "{0} is filed already for the same company and year. Make a Berichtigung of it with Make Berichtigung.","{0} ist für dasselbe Unternehmen und Jahr bereits abgegeben. Bitte dort mit „Berichtigung anlegen“ eine Berichtigung erstellen."
 "{0} is filed and cannot be cancelled. A change goes to the Finanzamt as a Berichtigung of it.","{0} ist abgegeben und lässt sich nicht stornieren. Eine Änderung geht als Berichtigung an das Finanzamt."
 "{0} is filed through Senden or by noting its filing in Mein ELSTER or outside Steuerbote, not by Buchen alone.","{0} wird durch Senden abgegeben oder durch den Vermerk, dass der Beleg in Mein ELSTER oder außerhalb von Steuerbote abgegeben wurde, nicht durch Buchen allein."

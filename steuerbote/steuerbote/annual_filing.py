@@ -411,6 +411,19 @@ class AnnualFiling:
 				).format(self.name)
 			)
 
+	def require_fit_for_export(self) -> None:
+		"""Before a file of the document is made, such as the XBRL of the E-Bilanz: a filed document makes its file as it
+		was filed; a draft one only while it could be filed and was neither sent nor filed another way."""
+		if self.docstatus == 1:
+			return
+		if self.docstatus != 0:
+			frappe.throw(_("{0} is cancelled and makes no file.").format(self.name))
+		if self.transmits:
+			self.refuse_sent_document()
+		self.refuse_second_filing()
+		self.check_fit_for_filing()
+		self.require_amounts_as_stored(self)
+
 	def refuse_second_filing(self) -> None:
 		"""A key is filed once, also through a Senden of another document of it, cancelled or not: every further
 		document of it is a Berichtigung."""
@@ -435,6 +448,10 @@ class AnnualFiling:
 					"{0} was transmitted already with Transferticket {1}. A change goes to the Finanzamt as a Berichtigung."
 				).format(self.name, sent[0].transferticket)
 			)
+
+	def manual_lines(self) -> tuple[overrides.ManualLine, ...]:
+		"""The lines by hand, for a module whose computation takes them in."""
+		return self._lines(overrides.manual_lines, _rows(self.get(self.LINES or "")), self.LINE_COLUMNS)
 
 	def berichtigung(self) -> corrections.Berichtigung:
 		"""How the Datenart of the document marks a Berichtigung (jahresmeldung.corrections)."""
