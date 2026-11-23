@@ -232,13 +232,28 @@ class ItemsTest(TestCase):
 			with self.subTest(body=body), self.assertRaises(MappingError):
 				items_of_body(body)
 
-	def test_the_file_holds_the_mapping_and_the_defaults_it_took_over(self):
-		self.assertEqual(file_body(ITEMS, None), {"mapping": BODY, "defaults": None})
-		self.assertEqual(items_of_file_body({"mapping": BODY, "defaults": BODY}), (ITEMS, ITEMS))
-		self.assertEqual(items_of_file_body({"mapping": BODY, "defaults": None}), (ITEMS, None))
-		with self.assertRaises(MappingError) as caught:
-			items_of_file_body({"mapping": BODY})
-		self.assertEqual(caught.exception.template, sync.NOT_A_FILE_BODY)
+	def test_the_file_holds_the_version_of_the_taxonomy_the_mapping_and_the_defaults_it_took_over(self):
+		"""The positions of the rows are those of one version of the taxonomy, so the file names it."""
+		self.assertEqual(
+			file_body("6.9", ITEMS, None), {"taxonomy_version": "6.9", "mapping": BODY, "defaults": None}
+		)
+		self.assertEqual(
+			items_of_file_body({"taxonomy_version": "6.9", "mapping": BODY, "defaults": BODY}),
+			("6.9", ITEMS, ITEMS),
+		)
+		self.assertEqual(
+			items_of_file_body({"taxonomy_version": "6.9", "mapping": BODY, "defaults": None}),
+			("6.9", ITEMS, None),
+		)
+		for body in (
+			{"mapping": BODY, "defaults": None},
+			{"taxonomy_version": 6.9, "mapping": BODY, "defaults": None},
+			{"taxonomy_version": "6.9", "mapping": BODY},
+			[],
+		):
+			with self.subTest(body=body), self.assertRaises(MappingError) as caught:
+				items_of_file_body(body)
+			self.assertEqual(caught.exception.template, sync.NOT_A_FILE_BODY)
 		self.assertEqual(FILE_FORMAT, "steuerbote/balance-sheet-mapping")
 
 	def test_every_template_is_one_the_frappe_layer_translates(self):
