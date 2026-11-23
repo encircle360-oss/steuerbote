@@ -197,3 +197,45 @@ class PlacementFindingsTest(TestCase):
 		self.assertEqual(
 			[finding.reference for finding in statement.findings], ["§§ 266, 275 HGB", "§§ 266, 275 HGB"]
 		)
+
+
+class TotalsTest(TestCase):
+	def setUp(self):
+		self.statement = build(2026, SizeClass.KLEIN, BOOKS, parents=PARENTS)
+		self.sheet = self.statement.balance_sheet
+
+	def test_the_balance_sheet_takes_the_jahresueberschuss_of_the_income_statement(self):
+		self.assertEqual(self.sheet.line("bs.eqLiab.equity.netIncome").amount, Decimal("10500.00"))
+		self.assertEqual(self.sheet.line("bs.eqLiab.equity").amount, Decimal("38500.00"))
+		self.assertEqual(self.sheet.equity, Decimal("38500.00"))
+
+	def test_both_sides_add_up_to_the_same_total(self):
+		self.assertEqual(
+			(self.sheet.aktiva_total, self.sheet.passiva_total, self.sheet.difference),
+			(Decimal("44280.00"), Decimal("44280.00"), Decimal("0")),
+		)
+		self.assertEqual(self.statement.findings, ())
+
+	def test_books_that_do_not_balance_hold_the_statement_back(self):
+		statement = build(2026, SizeClass.KLEIN, BOOKS[1:], parents=PARENTS)
+		(finding,) = statement.findings
+		self.assertEqual(
+			(finding.code, finding.severity, finding.amount, finding.reference),
+			(
+				Code.NOT_BALANCED,
+				Severity.ERROR,
+				Decimal("-37929.50"),
+				"§ 242 Abs. 1, § 266 Abs. 1 Satz 1 HGB",
+			),
+		)
+		self.assertEqual(statement.balance_sheet.difference, Decimal("-37929.50"))
+
+	def test_gives_the_bilanzsumme_and_the_umsatzerloese_of_the_size_criteria(self):
+		self.assertEqual(self.sheet.bilanzsumme, Decimal("44280.00"))
+		self.assertEqual(self.statement.income_statement.sales, Decimal("60000.00"))
+
+	def test_finds_a_line_by_the_concept_of_its_position(self):
+		self.assertEqual(self.sheet.line("bs.ass.currAss.receiv").amount, Decimal("6350.50"))
+		self.assertEqual(self.statement.income_statement.line(SALARIES).amount, Decimal("36000.00"))
+		with self.assertRaises(KeyError):
+			self.sheet.line(TRADE_RECEIVABLES)
