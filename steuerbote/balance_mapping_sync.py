@@ -27,31 +27,33 @@ The balances placed on their positions (steuerbote.xbrl.mapping.place) feed both
   position its rule gives it, debit minus credit, the shareholder flag and the remaining term of the rule, and the
   account as its source. A „davon“ position goes as it is, which the statement notes as its Vermerk where one names
   it; the Restlaufzeiten and the shareholders come from the flags.
-- the E-Bilanz takes position_values(), the value of each position its accounts count in, in the direction of the
-  position (Technischer Leitfaden zur HGB-Taxonomie 6.9, A.13), davon_values() for the „davon“ positions, and
-  kontennachweis(), one AccountLine per account with a balance: „der dem Konto zugeordneten Position (technisch:
-  QName), der Kontonummer ..., der Kontobezeichnung ... und dem Kontosaldo zum Ende-Stichtag“ (Leitfaden A.12), on the
-  position its value counts in, so that „Die Summe der Werte zum Element „Kontosaldo“ ... dem Wert der
-  Taxonomieposition entsprechen“ (Technischer Leitfaden 6.10, B.12.1) and no Kontensaldo names a position no
-  calculation holds. An account without a label is described by its name, since the elements „dürfen nicht leer
-  übermittelt werden“ (Leitfaden 6.9, B.12).
+- the E-Bilanz (steuerbote/ebilanz/calculation.py) takes ebilanz_balances(): an AccountBalance per account with
+  its number, its label, the position its value counts in and debit minus credit, from which calculate() gives each
+  position its amount in its direction (Technischer Leitfaden zur HGB-Taxonomie 6.9, A.13), the sums and the
+  Kontensalden of kontennachweis.py. A balance on a „davon“ position counts in the position above it, as „Zu
+  rechnerisch nicht verknüpften Positionen darf das Tupel „Kontensalden zu einer Position“ nicht übermittelt
+  werden“ (Technischer Leitfaden 6.10, B.12.1), and ebilanz_davon_lines() gives the davon position itself as a line
+  by hand with the sum of its accounts (davon_values()), since it takes no balance of the books. An account without
+  a label is described by its name, since the elements of a Kontensaldo „dürfen nicht leer übermittelt werden“
+  (Leitfaden 6.9, B.12). What place() leaves out or refuses is in neither: its findings say why.
 """
 
 import json
 from collections.abc import Iterable, Set
 from collections.abc import Mapping as ReadOnlyMapping
-from dataclasses import dataclass
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Any, NamedTuple
 
+from steuerbote.ebilanz.calculation import AccountBalance as EBilanzBalance
+from steuerbote.ebilanz.calculation import Adjustment
 from steuerbote.ebilanz.defaults import defaults_for
 from steuerbote.hgb.statement import Balance
 from steuerbote.mappings.transfer import canonical_json
 from steuerbote.ustva.mapping import WatchLevel
 from steuerbote.xbrl.mapping import Excluded, Mapping, MappingError, Placement, Purpose, Rule, Watched
-from steuerbote.xbrl.taxonomy import GAAP_PREFIX, Taxonomy
 from steuerbote.xbrl.taxonomy import Balance as Side
+from steuerbote.xbrl.taxonomy import Taxonomy
 from steuerbote.xbrl.versions import LATEST
 
 Row = ReadOnlyMapping[str, Any]
@@ -84,6 +86,8 @@ NOT_A_FILE_BODY = (
 	"The body of the file holds the version of the taxonomy, the mapping and the defaults it took over."
 )
 MESSAGES = (NO_ACCOUNT, NO_ACCOUNT_NUMBER, NOT_JSON, NOT_A_BODY, BAD_ROWS, NOT_A_FILE_BODY)
+DAVON_REASON = "Summe der Konten, die die Bilanzzuordnung dieser davon-Position zuordnet"
+"""Why a „davon“ position of the E-Bilanz has its amount, as the line by hand of ebilanz_davon_lines() says it."""
 
 
 class MappingRows(NamedTuple):
@@ -263,22 +267,6 @@ def load_items(text: str) -> dict[Key, Fields]:
 	return items_of_body(body)
 
 
-@dataclass(frozen=True, slots=True)
-class AccountLine:
-	"""A Kontensaldo of the E-Bilanz: the position the value of the account counts in, without the prefix of the GAAP
-	module, the account number, its description and its balance in the direction of the position."""
-
-	position: str
-	account_number: str
-	description: str
-	amount: Decimal
-
-	@property
-	def position_name(self) -> str:
-		"""The QName of the position, as detailedInformation.accountbalances.positionName holds it."""
-		return f"{GAAP_PREFIX}:{self.position}"
-
-
 def statement_balances(placement: Placement) -> tuple[Balance, ...]:
 	"""The placed balances as the Balance rows of the Jahresabschluss, in the order of the books."""
 	return tuple(
@@ -287,14 +275,6 @@ def statement_balances(placement: Placement) -> tuple[Balance, ...]:
 		)
 		for item in placement.placed
 	)
-
-
-def position_values(placement: Placement) -> dict[str, Decimal]:
-	"""The value of each position the placed balances count in, in the order the books first name them."""
-	values: dict[str, Decimal] = {}
-	for item in placement.placed:
-		values[item.position] = values.get(item.position, Decimal(0)) + item.value
-	return values
 
 
 def davon_values(placement: Placement, taxonomy: Taxonomy) -> dict[str, Decimal]:
@@ -308,18 +288,30 @@ def davon_values(placement: Placement, taxonomy: Taxonomy) -> dict[str, Decimal]
 	return values
 
 
-def kontennachweis(placement: Placement) -> tuple[AccountLine, ...]:
-	"""One Kontensaldo per placed account, by position and account number."""
-	lines = (
-		AccountLine(
-			item.position,
+def ebilanz_balances(placement: Placement, *, prior: bool = False) -> tuple[EBilanzBalance, ...]:
+	"""The placed balances as the AccountBalance rows of the E-Bilanz, in the order of the books; ``prior`` marks
+	those of the previous year, which only a Handelsbilanz shows."""
+	return tuple(
+		EBilanzBalance(
 			item.balance.number,
 			item.balance.label or item.balance.account,
-			item.value,
+			item.position,
+			item.amount,
+			prior,
 		)
 		for item in placement.placed
 	)
-	return tuple(sorted(lines, key=lambda line: (line.position, line.account_number)))
+
+
+def ebilanz_davon_lines(
+	placement: Placement, taxonomy: Taxonomy, *, prior: bool = False
+) -> tuple[Adjustment, ...]:
+	"""Each „davon“ position the rules name as a line by hand of the E-Bilanz, with the sum of its accounts in its
+	own direction; a correction of the same position by hand goes after it, so that it wins."""
+	return tuple(
+		Adjustment(concept, value, DAVON_REASON, prior)
+		for concept, value in davon_values(placement, taxonomy).items()
+	)
 
 
 def _plain_row(row: Any, fields: tuple[str, ...]) -> bool:
