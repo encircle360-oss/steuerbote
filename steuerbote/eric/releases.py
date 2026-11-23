@@ -16,10 +16,16 @@ datenartversionListe with the Mindestversionen of single datenartVersionen. ERiC
 
 The libraries of a package carry product versions of their own, which can differ from the version of the release
 (HB Kap. 4.3: ericapi.dll 37, 1, 2, 0 and eSigner.dll 54.0.0.1 in ERiC-37.1.3.0), and an update raises only the
-versions of the libraries it changes (HB Kap. 3.5.4.1). So each library of an installation is compared by the
-product version EricVersion() reported for it when the installation was probed (steuerbote.eric.runtime), and a
-datenartVersion steuerbote sends by the version of its plugin, the library the Mindestversion of a datenartVersion
-is set for (HB Kap. 5.4.2).
+versions of the libraries it changes (HB Kap. 3.5.4.1). So each library of an installation is compared by its
+product version, and a datenartVersion steuerbote sends by the version of its plugin, the library the Mindestversion
+of a datenartVersion is set for (HB Kap. 5.4.2). The probe of an installation reads the product versions with
+EricVersion() (steuerbote.eric.runtime), which with ERiC 44.3.6.0 names every library but gives the product version
+only of those ERiC loaded. The rest come from the Versionsinformationen of the package, which list every library of
+the download with its product version (HB Kap. 4.3, footnote 21: the link „Versionsinformationen“ of the ERiC
+download area). ELSTER publishes them without login next to the download at VERSIONS_URL (download server as of 23
+November 2026, for 44.3.6.0 and 45.1.5.0), and an operator whose server does not reach it names a copy. Where
+EricVersion and the Versionsinformationen both give a version they must agree, else the Versionsinformationen do
+not describe the installed package. A library without any version is not compared, which is a hint and no shortfall.
 
 The list does not name the newest release. A new year comes with the main release, planned for mid November
 (HB Kap. 2.3), and in April the Mindestversion rises (HB Kap. 2.3 and 5.4.2; on 27 April 2026 to the November
@@ -44,15 +50,18 @@ import urllib.request
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
 from steuerbote.eric.datenart import of_version, ustva
 from steuerbote.eric.runtime import (
 	LIBRARY,
+	PLATFORM,
 	Check,
 	Installation,
 	annual_plugin_checks,
 	plugin_check,
+	record_listed_versions,
 	year_check,
 )
 
@@ -64,6 +73,15 @@ LIBRARY_SUFFIX = ".linux-so"
 FETCH_TIMEOUT_SECONDS = 10.0
 MAX_LIST_BYTES = 1 << 20
 """Far more than the list of 23 November 2026 with its 79 KB."""
+VERSIONS_URL = "https://download.elster.de/download/eric/eric_{major}/ERiC-{version}-Linux-x86_64.version.txt"
+"""The Versionsinformationen of the package of a version for Linux x86_64, beside the download of its
+documentation."""
+MAX_VERSIONS_BYTES = 1 << 20
+"""Far more than the 20 KB of the Versionsinformationen of ERiC 44.3.6.0 with their 225 libraries."""
+VERSIONS_FILE = re.compile(r"ERiC-(?P<version>\d+\.\d+\.\d+\.\d+)-Linux-x86_64\.version\.txt")
+"""The name ELSTER gives the Versionsinformationen of a package, which a copy keeps."""
+LIBRARIES = f"{PLATFORM}/lib/"
+"""Where the Versionsinformationen list the libraries steuerbote installs."""
 MAIN_RELEASE_DUE = (11, 15)
 """Month and day from which the main release with the coming year is due: „Mitte November“ (HB Kap. 2.3)."""
 SHOWN = 5
@@ -81,14 +99,29 @@ _PAIR = re.compile(r"(?P<key>[A-Za-z_][A-Za-z0-9_-]*):(?: +(?P<value>.*))?")
 _UNSUPPORTED = tuple("[{&*!|>%@`")
 """Flow collections, anchors, aliases, tags, block scalars, directives and reserved indicators, none of which the
 list uses."""
-_UNREAD = (
-	"die Versionen seiner Bibliotheken sind unbekannt, weil die Einrichtung sie nicht gelesen hat; das Verzeichnis "
-	"der Version entfernen und sie neu einrichten"
+_READ_BY = (
+	"die wöchentliche Prüfung liest diese von download.elster.de oder aus der Datei, die steuerbote_eric_versions "
+	"nennt"
+)
+_UNKNOWN = (
+	"die Versionen seiner Bibliotheken sind unbekannt, weil weder EricVersion bei der Einrichtung noch die "
+	f"Versionsinformationen des Pakets sie genannt haben; {_READ_BY}"
 )
 
 
 class MinimumListError(ValueError):
 	pass
+
+
+class VersionsError(ValueError):
+	"""What is wrong with the Versionsinformationen of a package, said of them: ``problem`` completes the sentence
+	„Die Versionsinformationen …“, ``source`` says where they came from, such as „von <address>“."""
+
+	def __init__(self, problem: str, source: str = "") -> None:
+		self.problem = problem
+		self.source = source
+		where = f" {source}" if source else ""
+		super().__init__(f"Die Versionsinformationen{where} {problem}.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,48 +238,147 @@ def fetch_list(
 	Errors pass to the caller: urllib's URLError and HTTPError, also for a redirect, TimeoutError, a body that is no
 	UTF-8, and MinimumListError for a body longer than MAX_LIST_BYTES.
 	"""
-	request = urllib.request.Request(MINIMUM_LIST_URL)
-	with (opener or make_opener()).open(request, timeout=timeout_seconds) as answer:
-		body = answer.read(MAX_LIST_BYTES + 1)
-		last_modified = answer.headers.get("Last-Modified")
+	body, last_modified = _fetch(MINIMUM_LIST_URL, MAX_LIST_BYTES, opener, timeout_seconds)
 	if len(body) > MAX_LIST_BYTES:
 		raise MinimumListError(f"Die Mindestversionsliste ist größer als {MAX_LIST_BYTES >> 20} MiB.")
 	return FetchedList(body.decode("utf-8"), _http_date(last_modified))
 
 
+def versions_url(version: str) -> str:
+	"""Where ELSTER publishes the Versionsinformationen of the package of the version for Linux x86_64."""
+	return VERSIONS_URL.format(major=version.split(".", 1)[0], version=version)
+
+
+def fetch_versions(
+	version: str,
+	opener: urllib.request.OpenerDirector | None = None,
+	timeout_seconds: float = FETCH_TIMEOUT_SECONDS,
+) -> str:
+	"""The Versionsinformationen of the package of the version from versions_url, fetched as the list is.
+
+	Errors pass to the caller: urllib's URLError and HTTPError, also for a redirect, TimeoutError, a body that is no
+	UTF-8, and VersionsError for a body longer than MAX_VERSIONS_BYTES.
+	"""
+	body, _ = _fetch(versions_url(version), MAX_VERSIONS_BYTES, opener, timeout_seconds)
+	return _versions_text(body)
+
+
+def parse_versions(text: str) -> dict[str, str]:
+	"""The product version of each library the Versionsinformationen of a package list, by its path below lib.
+
+	They hold a line per file of the package with its path below the directory ERiC-<version>, its product version
+	and its file version, separated by tabs and padded with spaces, as HB Kap. 4.3 shows them for
+	ERiC-37.1.3.0-Windows-x86_64.jar. What lies outside Linux-x86_64/lib is left out. VersionsError for text of
+	another form.
+	"""
+	listed: dict[str, str] = {}
+	for number, line in enumerate(text.splitlines(), start=1):
+		columns = [column.strip(" ") for column in line.split("\t")]
+		if not columns[0].startswith(LIBRARIES):
+			continue
+		if len(columns) != 3:
+			raise _versions_form(number, "keine drei durch Tabulatoren getrennten Spalten")
+		path, product_version, _file_version = columns
+		try:
+			parse_version(product_version)
+		except ValueError:
+			raise _versions_form(
+				number, f"die Produktversion „{product_version}“ hat keine vier Zahlen"
+			) from None
+		inside = path.removeprefix(LIBRARIES)
+		if "\\" in inside or any(part in ("", ".", "..") for part in inside.split("/")):
+			raise _versions_form(number, f"unzulässiger Pfad {path}")
+		if inside in listed:
+			raise _versions_form(number, f"{path} steht zweimal")
+		listed[inside] = product_version
+	if not listed:
+		raise VersionsError(f"nennen keine Bibliothek unter {LIBRARIES}")
+	return listed
+
+
+def read_versions(
+	installation: Installation,
+	copy: Path | None = None,
+	opener: urllib.request.OpenerDirector | None = None,
+) -> Installation:
+	"""The installation with the product versions of its package recorded in its manifest, from the
+	Versionsinformationen in ``copy`` or else from download.elster.de.
+
+	They are taken only if they list every file of the installation, for else they describe another package.
+	VersionsError says why they were not taken; the manifest then stays as it was.
+	"""
+	origin = str(copy) if copy is not None else versions_url(installation.version)
+	source = f"aus {origin}" if copy is not None else f"von {origin}"
+	try:
+		text = _read_copy(copy) if copy is not None else fetch_versions(installation.version, opener=opener)
+		listed = parse_versions(text)
+	except VersionsError as error:
+		raise VersionsError(error.problem, source) from error
+	except UnicodeDecodeError as error:
+		raise VersionsError(f"sind kein UTF-8: {error}", source) from error
+	except OSError as error:
+		verb = "lesen" if copy is not None else "laden"
+		raise VersionsError(f"ließen sich nicht {verb}: {error}", source) from error
+	missing = sorted(set(installation.files) - set(listed))
+	if missing:
+		raise VersionsError(
+			f"nennen nicht alle Bibliotheken der Laufzeit, es fehlen {_some(missing)}; sie gehören zu einem anderen "
+			"Paket",
+			source,
+		)
+	versions = {PurePosixPath(name).name: listed[name] for name in sorted(installation.files)}
+	try:
+		return record_listed_versions(installation, versions, origin)
+	except OSError as error:
+		raise VersionsError(f"ließen sich nicht im Manifest festhalten: {error}", source) from error
+
+
+def complete_versions(
+	installed: Iterable[Installation],
+	copy: Path | None = None,
+	opener: urllib.request.OpenerDirector | None = None,
+) -> tuple[str, ...]:
+	"""Read the Versionsinformationen of each installation whose manifest lacks them (read_versions): from ``copy``,
+	the copy an operator names, where its name is that of the Versionsinformationen of the version, else from
+	download.elster.de. Returns what kept them from being read, a sentence each."""
+	problems: list[str] = []
+	copied = None
+	if copy is not None:
+		match = VERSIONS_FILE.fullmatch(copy.name)
+		if match is None:
+			problems.append(
+				f"Die Datei {copy} trägt nicht den Namen von Versionsinformationen, "
+				"ERiC-<Version>-Linux-x86_64.version.txt; Steuerbote nimmt sie nicht."
+			)
+		else:
+			copied = match["version"]
+	for installation in installed:
+		if installation.listed_versions:
+			continue
+		try:
+			read_versions(installation, copy if installation.version == copied else None, opener)
+		except VersionsError as error:
+			problems.append(f"ERiC {installation.version}: {error}")
+	return tuple(problems)
+
+
 def shortfalls(installation: Installation, minimum_list: MinimumList) -> tuple[str, ...]:
-	"""What of the installation falls short of the list: each library or plugin of a datenartVersion of steuerbote
-	below its Mindestversion, each mandatory library it lacks, and the libraries whose version it did not read.
+	"""What keeps the installation from transmitting under the list: each library or plugin of a datenartVersion of
+	steuerbote below its Mindestversion, each mandatory library it lacks, each library whose product versions from
+	EricVersion and from the Versionsinformationen of its package disagree, and, without any version read at all,
+	that its versions are unknown.
 
 	A library the list names but the installation lacks is no shortfall unless it is mandatory; a library the list
-	does not name has no Mindestversion.
+	does not name has no Mindestversion. Where the two versions of a library disagree, the lower one is compared.
 	"""
-	compared = [(minimum, minimum.name, minimum.name) for minimum in minimum_list.libraries]
-	compared += [
-		(minimum, plugin, f"{plugin} ({minimum.name})")
-		for minimum in minimum_list.datenartversionen
-		if (plugin := _plugin_of(minimum.name)) is not None
-	]
-	below: list[str] = []
-	missing: list[str] = []
-	unread: dict[str, None] = {}
-	for minimum, library, label in compared:
-		if not installation.has_plugin(library):
-			if minimum.mandatory:
-				missing.append(f"{library} fehlt")
-			continue
-		version = _product_version(installation, library)
-		if version is None:
-			unread[library] = None
-		elif version < minimum.version:
-			below.append(
-				f"{label} {format_version(version)} statt mindestens {format_version(minimum.version)}"
-			)
-	if not unread:
-		return (*below, *missing)
-	if not installation.library_versions:
-		return (*missing, _UNREAD)
-	return (*below, *missing, f"ohne gelesene Version: {_some(list(unread))}")
+	return _compare(installation, minimum_list)[0]
+
+
+def unread(installation: Installation, minimum_list: MinimumList) -> tuple[str, ...]:
+	"""The libraries of the installation the list names whose product version neither EricVersion nor the
+	Versionsinformationen of its package gave: they are not compared, which is a hint and no shortfall. None while no
+	version is known at all, which shortfalls names."""
+	return _compare(installation, minimum_list)[1]
 
 
 def minimum_check(installed: tuple[Installation, ...], minimum_list: MinimumList | None) -> Check:
@@ -261,11 +393,9 @@ def minimum_check(installed: tuple[Installation, ...], minimum_list: MinimumList
 	name = f"Mindestversionsliste {minimum_list.version}"
 	if not installed:
 		return Check("minimum", False, f"Ohne ERiC-Laufzeit gibt es nichts mit der {name} zu vergleichen.")
-	failing = [
-		(installation, found)
-		for installation in installed
-		if (found := shortfalls(installation, minimum_list))
-	]
+	compared = [(installation, *_compare(installation, minimum_list)) for installation in installed]
+	failing = [(installation, found) for installation, found, _ in compared if found]
+	hint = _unread_hint([(installation, names) for installation, _, names in compared if names])
 	if failing:
 		detail = "; ".join(
 			f"ERiC {installation.version}: {_some(list(found))}" for installation, found in failing
@@ -274,15 +404,18 @@ def minimum_check(installed: tuple[Installation, ...], minimum_list: MinimumList
 			"minimum",
 			False,
 			f"Abgleich mit der {name}: {detail}. Mit einer Bibliothek unter ihrer Mindestversion ist kein Datenversand "
-			"möglich (ERiC-Entwicklerhandbuch, Kap. 5.4.2).",
+			f"möglich (ERiC-Entwicklerhandbuch, Kap. 5.4.2).{hint}",
 			f"minimum {minimum_list.version} "
 			+ " ".join(installation.version for installation, _ in failing),
 		)
 	verb = "erreicht" if len(installed) == 1 else "erreichen"
 	eric = minimum_list.eric
 	floor = f" ({LIBRARY} ab {format_version(eric.version)})" if eric is not None else ""
+	read = ", soweit ihre Versionen gelesen sind" if hint else ""
 	versions = _enumeration([installation.version for installation in installed])
-	return Check("minimum", True, f"ERiC {versions} {verb} die Mindestversionen der {name}{floor}.")
+	return Check(
+		"minimum", True, f"ERiC {versions} {verb} die Mindestversionen der {name}{floor}{read}.{hint}"
+	)
 
 
 def next_year_check(installed: tuple[Installation, ...], today: date) -> Check:
@@ -358,6 +491,102 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 		raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
 
 
+def _fetch(
+	url: str, limit: int, opener: urllib.request.OpenerDirector | None, timeout_seconds: float
+) -> tuple[bytes, str | None]:
+	"""At most limit + 1 bytes of what a plain GET of the address answers, without credentials or cookies and with
+	no redirect followed, and the Last-Modified the server states."""
+	request = urllib.request.Request(url)  # noqa: S310 - only the fixed HTTPS addresses of ELSTER
+	with (opener or make_opener()).open(request, timeout=timeout_seconds) as answer:
+		return answer.read(limit + 1), answer.headers.get("Last-Modified")
+
+
+def _read_copy(path: Path) -> str:
+	with path.open("rb") as file:
+		return _versions_text(file.read(MAX_VERSIONS_BYTES + 1))
+
+
+def _versions_text(body: bytes) -> str:
+	if len(body) > MAX_VERSIONS_BYTES:
+		raise VersionsError(f"sind größer als {MAX_VERSIONS_BYTES >> 20} MiB")
+	return body.decode("utf-8")
+
+
+def _versions_form(number: int, problem: str) -> VersionsError:
+	return VersionsError(f"haben nicht die erwartete Form: Zeile {number}: {problem}")
+
+
+def _compare(
+	installation: Installation, minimum_list: MinimumList
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+	"""The shortfalls of the installation under the list and the libraries it holds that the list names without a
+	version to compare."""
+	versions, disagreeing = _versions(installation)
+	compared = [(minimum, minimum.name, minimum.name) for minimum in minimum_list.libraries]
+	compared += [
+		(minimum, plugin, f"{plugin} ({minimum.name})")
+		for minimum in minimum_list.datenartversionen
+		if (plugin := _plugin_of(minimum.name)) is not None
+	]
+	below: list[str] = []
+	missing: list[str] = []
+	unknown: dict[str, None] = {}
+	for minimum, library, label in compared:
+		if not installation.has_plugin(library):
+			if minimum.mandatory:
+				missing.append(f"{library} fehlt")
+			continue
+		version = versions.get(library)
+		if version is None:
+			unknown[library] = None
+		elif version < minimum.version:
+			below.append(
+				f"{label} {format_version(version)} statt mindestens {format_version(minimum.version)}"
+			)
+	if unknown and not versions:
+		return (*missing, _UNKNOWN), ()
+	return (*below, *missing, *disagreeing), tuple(unknown)
+
+
+def _versions(installation: Installation) -> tuple[dict[str, Version], tuple[str, ...]]:
+	"""The product version of each library of the installation, from EricVersion and from the Versionsinformationen
+	of its package, the lower one where they disagree, and the libraries whose versions disagree."""
+	versions: dict[str, Version] = {}
+	disagreeing: list[str] = []
+	for name in sorted(installation.library_versions.keys() | installation.listed_versions.keys()):
+		reported = _parsed(installation.library_versions.get(name))
+		listed = _parsed(installation.listed_versions.get(name))
+		if reported is not None and listed is not None and reported != listed:
+			disagreeing.append(
+				f"{name} {format_version(reported)} laut EricVersion, {format_version(listed)} laut den "
+				"Versionsinformationen des Pakets"
+			)
+		known = [version for version in (reported, listed) if version is not None]
+		if known:
+			versions[name] = min(known)
+	return versions, tuple(disagreeing)
+
+
+def _parsed(text: str | None) -> Version | None:
+	try:
+		return parse_version(text) if text is not None else None
+	except ValueError:
+		return None
+
+
+def _unread_hint(unread_by: list[tuple[Installation, tuple[str, ...]]]) -> str:
+	if not unread_by:
+		return ""
+	named = "; ".join(
+		f"ERiC {installation.version}: {_some(list(names))}" for installation, names in unread_by
+	)
+	return (
+		f" Ohne gelesene Version und deshalb nicht verglichen: {named}. Ihre Versionen nennen die "
+		"Versionsinformationen des Pakets, die die wöchentliche Prüfung von download.elster.de liest oder aus der "
+		"Datei, die steuerbote_eric_versions nennt."
+	)
+
+
 def _http_date(value: str | None) -> datetime | None:
 	if not value:
 		return None
@@ -404,16 +633,6 @@ def _plugin_of(datenart_version: str) -> str | None:
 	"""The plugin file of a datenartVersion steuerbote sends, None for any other."""
 	try:
 		return of_version(datenart_version).plugin_library
-	except ValueError:
-		return None
-
-
-def _product_version(installation: Installation, library: str) -> Version | None:
-	reported = installation.library_versions.get(library)
-	if reported is None:
-		return None
-	try:
-		return parse_version(reported)
 	except ValueError:
 		return None
 
