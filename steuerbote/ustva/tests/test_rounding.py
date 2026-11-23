@@ -2,6 +2,7 @@ from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.ustva.rounding import (
+	ceil_cents,
 	ceil_euro,
 	floor_euro,
 	floor_hundred,
@@ -185,3 +186,20 @@ class HalfUpEuroTest(TestCase):
 	def test_rejects_floats(self):
 		with self.assertRaises(TypeError):
 			half_up_euro(1234.5)
+
+
+class CeilCentsTest(TestCase):
+	def test_rounds_any_fraction_of_a_cent_up(self):
+		self.assertEqual(ceil_cents(Decimal("2250.0025")), Decimal("2250.01"))
+		self.assertEqual(ceil_cents(Decimal("2625.0000")), Decimal("2625.00"))
+
+	def test_keeps_two_decimals_on_whole_amounts(self):
+		self.assertEqual(str(ceil_cents(Decimal("100"))), "100.00")
+
+	def test_rounds_towards_positive_infinity_without_negative_zero(self):
+		self.assertEqual(str(ceil_cents(Decimal("-0.001"))), "0.00")
+		self.assertEqual(ceil_cents(Decimal("-1.009")), Decimal("-1.00"))
+
+	def test_rejects_floats(self):
+		with self.assertRaises(TypeError):
+			ceil_cents(0.1)
