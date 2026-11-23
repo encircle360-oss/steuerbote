@@ -1,6 +1,7 @@
 """Tests for steuerbote.balance_mapping_sync, plain unittest without Frappe so that every test runner collects them."""
 
 import json
+from decimal import Decimal
 from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
@@ -26,9 +27,12 @@ from steuerbote.balance_mapping_sync import (
 	rows_of_mapping,
 	rows_to_mapping,
 )
-from steuerbote.hgb.statement import RemainingTerm
+from steuerbote.hgb.size import SizeClass
+from steuerbote.hgb.statement import Balance, RemainingTerm, build
 from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl.mapping import (
+	AccountBalance,
+	Books,
 	DefaultExcluded,
 	DefaultRule,
 	Defaults,
@@ -36,10 +40,14 @@ from steuerbote.xbrl.mapping import (
 	Excluded,
 	Mapping,
 	MappingError,
+	Part,
 	Purpose,
 	Rule,
 	Watched,
+	place,
 )
+from steuerbote.xbrl.taxonomy import BALANCE_SHEET, INCOME_STATEMENT
+from steuerbote.xbrl.tests import positions, real
 
 BANK = "bs.ass.currAss.cashEquiv.bank"
 BANK_LIABILITY = "bs.eqLiab.liab.bank.other"
@@ -297,3 +305,193 @@ class DefaultsRowsTest(TestCase):
 
 	def test_names_the_accounts_of_a_company_the_defaults_leave_without_a_place(self):
 		self.assertEqual(sync.without_defaults("SKR04", "6.9", {"1810", "4400", "0027"}), ("0027", "4400"))
+
+
+def placed_balances():
+	"""Books of a small GmbH on the positions of the extended mini taxonomy (steuerbote/xbrl/tests/positions.py)."""
+	rules = (
+		Rule("1800", "bs.ass.currAss.cashEquiv.bank", opposite="bs.eqLiab.liab.bank"),
+		Rule("1810", "bs.ass.currAss.cashEquiv.bank", opposite="bs.eqLiab.liab.bank"),
+		Rule(
+			"1210", "bs.ass.currAss.receiv.trade.above1year", remaining_term=RemainingTerm.ONE_TO_FIVE_YEARS
+		),
+		Rule("3500", "bs.eqLiab.liab.other", shareholder=True, remaining_term=RemainingTerm.UP_TO_ONE_YEAR),
+		Rule("2900", "bs.eqLiab.equity.subscribed.corp"),
+		Rule("4400", "is.netIncome.netSales"),
+		Rule("4401", "is.netIncome.netSales"),
+	)
+	books = Books(
+		(
+			AccountBalance("1800 - Bank - MG", "1800", "Bank", Part.BALANCE_SHEET, Decimal("30000")),
+			AccountBalance("1810 - Bank 2 - MG", "1810", "Bank 2", Part.BALANCE_SHEET, credit=Decimal("500")),
+			AccountBalance(
+				"1210 - Forderungen - MG", "1210", "Forderungen", Part.BALANCE_SHEET, Decimal("2000")
+			),
+			AccountBalance(
+				"3500 - Darlehen - MG", "3500", "Darlehen", Part.BALANCE_SHEET, credit=Decimal("1500")
+			),
+			AccountBalance(
+				"2900 - Kapital - MG",
+				"2900",
+				"Gezeichnetes Kapital",
+				Part.BALANCE_SHEET,
+				credit=Decimal("25000"),
+			),
+			AccountBalance(
+				"4400 - Erlöse - MG", "4400", "Erlöse 19 %", Part.INCOME_STATEMENT, credit=Decimal("5500")
+			),
+			AccountBalance("4401 - Erlöse - MG", "4401", "", Part.INCOME_STATEMENT, Decimal("500")),
+		)
+	)
+	return place(Mapping("SKR04", rules=rules), books, positions.view(), Purpose.BOTH)
+
+
+class StatementBalancesTest(TestCase):
+	"""The input of the Jahresabschluss: „Balance(concept, amount, shareholder, remaining_term, source)“ with the
+	balance as debit minus credit (steuerbote/hgb/statement.py)."""
+
+	def test_each_placed_balance_is_a_balance_of_the_statement_with_the_flags_of_its_rule(self):
+		self.assertEqual(
+			sync.statement_balances(placed_balances()),
+			(
+				Balance("bs.ass.currAss.cashEquiv.bank", Decimal("30000"), source="1800 - Bank - MG"),
+				Balance("bs.eqLiab.liab.bank", Decimal("-500"), source="1810 - Bank 2 - MG"),
+				Balance(
+					"bs.ass.currAss.receiv.trade.above1year",
+					Decimal("2000"),
+					remaining_term=RemainingTerm.ONE_TO_FIVE_YEARS,
+					source="1210 - Forderungen - MG",
+				),
+				Balance(
+					"bs.eqLiab.liab.other",
+					Decimal("-1500"),
+					shareholder=True,
+					remaining_term=RemainingTerm.UP_TO_ONE_YEAR,
+					source="3500 - Darlehen - MG",
+				),
+				Balance("bs.eqLiab.equity.subscribed.corp", Decimal("-25000"), source="2900 - Kapital - MG"),
+				Balance("is.netIncome.netSales", Decimal("-5500"), source="4400 - Erlöse - MG"),
+				Balance("is.netIncome.netSales", Decimal("500"), source="4401 - Erlöse - MG"),
+			),
+		)
+
+
+class KontennachweisTest(TestCase):
+	"""The input of the E-Bilanz: the value of each position and the Kontensalden, one per account with a balance."""
+
+	def test_the_value_of_each_position_adds_up_its_accounts_in_its_direction(self):
+		"""„Entspricht die Soll/Haben-Auszeichnung eines Kontos der Soll/Haben-Auszeichnung der Position, dann ist der
+		Kontensaldo unverändert ... zu addieren“ (Technischer Leitfaden zur HGB-Taxonomie 6.9, A.13)."""
+		self.assertEqual(
+			sync.position_values(placed_balances()),
+			{
+				"bs.ass.currAss.cashEquiv.bank": Decimal("30000"),
+				"bs.eqLiab.liab.bank": Decimal("500"),
+				"bs.ass.currAss.receiv.trade": Decimal("2000"),
+				"bs.eqLiab.liab.other": Decimal("1500"),
+				"bs.eqLiab.equity.subscribed.corp": Decimal("25000"),
+				"is.netIncome.netSales": Decimal("5000"),
+			},
+		)
+
+	def test_a_davon_position_has_its_value_besides(self):
+		self.assertEqual(
+			sync.davon_values(placed_balances(), positions.view()),
+			{"bs.ass.currAss.receiv.trade.above1year": Decimal("2000")},
+		)
+
+	def test_one_kontensaldo_per_account_on_the_position_its_value_counts_in(self):
+		"""„der dem Konto zugeordneten Position (technisch: QName), der Kontonummer ..., der Kontobezeichnung ... und
+		dem Kontosaldo“ (Leitfaden A.12); „Die Summe der Werte zum Element „Kontosaldo“ soll dem Wert der
+		Taxonomieposition entsprechen“ (Technischer Leitfaden 6.10, B.12.1). An account without a label is described
+		by its name."""
+		lines = sync.kontennachweis(placed_balances())
+		self.assertEqual(
+			[(line.position_name, line.account_number, line.description, line.amount) for line in lines],
+			[
+				("de-gaap-ci:bs.ass.currAss.cashEquiv.bank", "1800", "Bank", Decimal("30000")),
+				("de-gaap-ci:bs.ass.currAss.receiv.trade", "1210", "Forderungen", Decimal("2000")),
+				(
+					"de-gaap-ci:bs.eqLiab.equity.subscribed.corp",
+					"2900",
+					"Gezeichnetes Kapital",
+					Decimal("25000"),
+				),
+				("de-gaap-ci:bs.eqLiab.liab.bank", "1810", "Bank 2", Decimal("500")),
+				("de-gaap-ci:bs.eqLiab.liab.other", "3500", "Darlehen", Decimal("1500")),
+				("de-gaap-ci:is.netIncome.netSales", "4400", "Erlöse 19 %", Decimal("5500")),
+				("de-gaap-ci:is.netIncome.netSales", "4401", "4401 - Erlöse - MG", Decimal("-500")),
+			],
+		)
+		by_position = {}
+		for line in lines:
+			by_position[line.position] = by_position.get(line.position, Decimal(0)) + line.amount
+		self.assertEqual(by_position, sync.position_values(placed_balances()))
+
+
+class JahresabschlussTest(TestCase):
+	"""The books of an invented small GmbH in SKR04 through the mapping into the Jahresabschluss of
+	steuerbote/hgb/statement.py and the values of the E-Bilanz, against the package 6.9 (steuerbote/xbrl/tests/
+	real.py)."""
+
+	def setUp(self):
+		up_to_one_year = RemainingTerm.UP_TO_ONE_YEAR
+		gross_sales = "is.netIncome.regular.operatingTC.grossTradingProfit.totalOutput.netSales.grossSales"
+		self.mapping = Mapping(
+			"SKR04",
+			rules=(
+				Rule("0135", "bs.ass.fixAss.intan.concessionBrands"),
+				Rule("1200", "bs.ass.currAss.receiv.trade.other", remaining_term=up_to_one_year),
+				Rule("1800", "bs.ass.currAss.cashEquiv.bank", opposite="bs.eqLiab.liab.bank.other"),
+				Rule("2900", "bs.eqLiab.equity.subscribed.corp"),
+				Rule("3300", "bs.eqLiab.liab.trade.genOther", remaining_term=up_to_one_year),
+				Rule("3806", "bs.eqLiab.liab.other.theroffTax", remaining_term=up_to_one_year),
+				Rule("4400", f"{gross_sales}.generalRateVAT"),
+				Rule("6310", "is.netIncome.regular.operatingTC.otherCost.leaseFix.other"),
+				Rule(
+					"6640",
+					"is.netIncome.regular.operatingTC.otherCost.limitedDeductible.entertainment.deductible",
+				),
+			),
+		)
+		self.books = Books(
+			(
+				account("0135", "EDV-Software", debit="2000"),
+				account("1200", "Forderungen aus Lieferungen und Leistungen", debit="5950"),
+				account("1800", "Bank", debit="33000"),
+				account("2900", "Gezeichnetes Kapital", credit="25000"),
+				account("3300", "Verbindlichkeiten aus Lieferungen und Leistungen", credit="1190"),
+				account("3806", "Umsatzsteuer 19 %", credit="950"),
+				account("4400", "Erlöse 19 % USt", Part.INCOME_STATEMENT, credit="20000"),
+				account("6310", "Miete", Part.INCOME_STATEMENT, debit="6000"),
+				account("6640", "Bewirtungskosten", Part.INCOME_STATEMENT, debit="190"),
+			)
+		)
+
+	def test_the_jahresabschluss_balances_with_the_result_of_the_guv(self):
+		taxonomy = real.view()
+		placement = place(self.mapping, self.books, taxonomy, Purpose.COMMERCIAL)
+		self.assertEqual((placement.findings, placement.left_out), ((), ()))
+		statement = build(
+			2026,
+			SizeClass.KLEIN,
+			sync.statement_balances(placement),
+			parents=taxonomy.parents((BALANCE_SHEET, INCOME_STATEMENT)),
+		)
+		self.assertEqual([finding.text for finding in statement.findings if finding.blocking], [])
+		self.assertEqual(statement.income_statement.net_income, Decimal("13810"))
+		self.assertEqual(statement.balance_sheet.difference, Decimal(0))
+		self.assertEqual(statement.balance_sheet.aktiva_total, Decimal("40950"))
+
+	def test_the_kontensalden_of_the_e_bilanz_add_up_to_the_values_of_their_positions(self):
+		placement = place(self.mapping, self.books, real.view(), Purpose.BOTH)
+		lines = sync.kontennachweis(placement)
+		self.assertEqual(len(lines), 9)
+		self.assertEqual(
+			sum(line.amount for line in lines if line.position.startswith("bs.ass")), Decimal("40950")
+		)
+		self.assertEqual(sync.position_values(placement)["bs.eqLiab.liab.other.theroffTax"], Decimal("950"))
+
+
+def account(number: str, label: str, part: Part = Part.BALANCE_SHEET, debit: str = "0", credit: str = "0"):
+	return AccountBalance(f"{number} - {label} - SG", number, label, part, Decimal(debit), Decimal(credit))
