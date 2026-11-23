@@ -9,6 +9,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, getdate, today
 
+from steuerbote.jahresmeldung import corrections
 from steuerbote.tests import annual_document
 from steuerbote.tests.annual_document import COMPANY, DOCTYPE, LINE_DOCTYPE, LINES, NEGATIVE, source
 from steuerbote.tests.transmitting import TICKET, TRANSMISSION, Transmitting
@@ -364,7 +365,46 @@ class TestOneFilingPerKey(AnnualFilingTestCase):
 			with (
 				self.subTest(corrects=corrects),
 				self.assertRaisesRegex(
-					frappe.ValidationError, "A Berichtigung corrects a filed document for the same company and year"
+					frappe.ValidationError,
+					"A Berichtigung corrects a filed document for the same company and year",
 				),
 			):
 				self.document(is_correction=1, corrects=corrects)
+
+
+class TestStatusDesBerichts(AnnualFilingTestCase):
+	"""The Status des Berichts of a document of the Datenart Bilanz in its field revision_status (FAQ zur E-Bilanz,
+	Version 2026-01, Tz. 4 d), and the Berichtigung of each Datenart."""
+
+	def test_the_first_e_bilanz_is_erstmalig(self):
+		doc = self.calculated(kind="Bilanz")
+		self.assertEqual(doc.revision_status, "E")
+		self.assertIs(doc.berichtigung(), corrections.BILANZ)
+
+	def test_a_first_e_bilanz_names_no_status_of_a_berichtigung(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "The first E-Bilanz is erstmalig"):
+			self.document(kind="Bilanz", revision_status="B")
+
+	def test_a_berichtigung_names_its_status_by_the_time_it_is_filed(self):
+		note = "Von der Steuerberatung übermittelt"
+		first = self.filed(self.calculated(kind="Bilanz"), "other_way", note=note)
+		correction = frappe.get_doc(DOCTYPE, first.make_correction())
+		self.assertFalse(correction.revision_status)
+		with self.assertRaisesRegex(frappe.ValidationError, "names its Status des Berichts"):
+			correction.mark_filed_outside("other_way", note=note)
+		correction.reload()
+		correction.revision_status = "B"
+		correction.save()
+		correction = self.filed(correction, "other_way", note=note)
+		self.assertEqual((correction.status, correction.revision_status), ("Abgegeben", "B"))
+
+	def test_the_correction_by_the_tax_administration_is_not_for_a_filing(self):
+		with self.assertRaisesRegex(
+			frappe.ValidationError, "Korrektur durch Finanzverwaltung, is not for a filing"
+		):
+			self.document(kind="Bilanz", revision_status="K")
+
+	def test_an_erklaerung_has_no_status_des_berichts(self):
+		doc = self.calculated()
+		self.assertIs(doc.berichtigung(), corrections.KST)
+		self.assertFalse(doc.revision_status)
