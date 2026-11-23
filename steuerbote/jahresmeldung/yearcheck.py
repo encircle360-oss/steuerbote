@@ -8,8 +8,10 @@ every one without, for the years it is given, else for every year of their year 
 HGB-Taxonomie such as 6.10 is a key of the Bilanz alone. Each check prints a line for each fact on which Steuerbote
 and the documentation disagree, left what Steuerbote says, right the file and what it says, as
 steuerbote/ustva/yearcheck.py does, with the Datenart and the year or version in front. Run for the years of its
-tables, a check also names the years and versions the documentation holds beyond them. The command ends with 0 when
-it prints nothing, with 1 when it prints a line and with 2 when the documentation lacks a file it reads.
+tables, a check also names the years and versions the documentation holds beyond them, and leaves out a key its
+module passes over: a provisional year of the UStVA whose Jahresdokumentation the documentation does not hold. The
+command ends with 0 when it prints nothing, with 1 when it prints a line and with 2 when the documentation lacks a
+file it reads.
 
 A year a table lacks is a year in the making: its first line names those tables, and the data of the latest year take
 its place, so that the lines that follow are what the new year changes. A provisional year, such as KSt and GewSt
@@ -132,13 +134,20 @@ class Module:
 	``keys`` are the years or versions of its year table, which the command checks when it is given none; ``check``
 	gives the lines of one of them, or of a year, against the directory Dokumentation and raises DocumentationError
 	when the documentation lacks a file it reads; ``beyond`` gives the lines for what the documentation holds beyond
-	the year table.
+	the year table; ``passes_over`` names a key of the year table that a run without keys leaves out.
 	"""
 
 	name: str
 	keys: Callable[[], tuple[int | str, ...]]
 	check: Callable[[Path, int | str], Iterator[str]]
 	beyond: Callable[[Path], Iterator[str]]
+	passes_over: Callable[[Path, int | str], bool] | None = None
+
+	def default_keys(self, root: Path) -> tuple[int | str, ...]:
+		"""The keys of the year table that a run without keys checks against the directory Dokumentation."""
+		return tuple(
+			key for key in self.keys() if self.passes_over is None or not self.passes_over(root, key)
+		)
 
 
 @dataclass(frozen=True, slots=True)
@@ -458,7 +467,7 @@ def main(
 	lines: list[str] = []
 	errors: list[str] = []
 	for module, keys in selected:
-		for key in keys or module.keys():
+		for key in keys or module.default_keys(root):
 			_collect(module.check(root, key), lines, errors)
 		if not keys:
 			_collect(module.beyond(root), lines, errors)
@@ -889,6 +898,7 @@ MODULES = (
 		lambda: tuple(ustva_years.YEARS),
 		check_ustva,
 		lambda root: _beyond_years(USTVA, root, ustva, USTVA_YEARS),
+		lambda root, year: ustva_yearcheck.passes_over(root, int(year)),
 	),
 	Module(
 		UST,

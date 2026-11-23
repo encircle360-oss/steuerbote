@@ -20,11 +20,16 @@ adds the Steuernummer and the Wirtschafts-Identifikationsnummer of the filer; Us
 says. The fields and rules of a year are data, taken from the JD of that year: the JD of 2025 still had Kz 23 where
 2026 has Kz 500. LAYOUTS holds one layout for each year of YEARS in steuerbote/ustva/years.py, and
 python -m steuerbote.ustva.yearcheck compares it with the JD and the schema of its year.
+
+2027 comes provisionally from Jahresdokumentation_UStVA_2027.ods of the documentation of Beta ERiC 45.1.5.0 and its
+UStVA-2027.xsd: the fields of 2026 in both contexts, but Kz 09 of five digits alone, without the data of a Berater
+that 2026 took after them, and so without the rules Df_Kz09_Laenge and Svz_Kz09_Laenge (110085046) on its length.
+Lines and labels are those of form USt 1 H 2026 until the BMF letter with the form of 2027.
 """
 
 import re
 from collections.abc import Mapping as ReadOnlyMapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import Enum
 from types import MappingProxyType
@@ -267,8 +272,29 @@ _LAYOUT_2026 = Layout(
 	rules=_RULES_2026,
 )
 
+_HERSTELLER_ID_2027 = Field("Kz09", "Hersteller-ID", Format.GENERAL, r"^(?=.{5,5}$)[0-9]+", 5, 5, line=6)
+_FIELDS_OF_THE_FILER_2027 = tuple(
+	_HERSTELLER_ID_2027 if field.element == "Kz09" else field for field in _FIELDS_OF_THE_FILER_2026
+)
+_SONDERVORAUSZAHLUNG_FIELDS_2027 = tuple(
+	replace(field, label="Davon 1/11 = Sondervorauszahlung 2027") if field.element == "Kz38" else field
+	for field in _SONDERVORAUSZAHLUNG_FIELDS_2026
+)
+_RULES_2027 = tuple(rule for rule in _RULES_2026 if rule.name not in ("Df_Kz09_Laenge", "Svz_Kz09_Laenge"))
+
+_LAYOUT_2027 = Layout(
+	year=2027,
+	fields={
+		DF: (*_FIELDS_OF_THE_FILER_2027, *_SUPPLEMENTARY_FIELDS_2026),
+		SVZ: (*_FIELDS_OF_THE_FILER_2027, *_SONDERVORAUSZAHLUNG_FIELDS_2027, *_SUPPLEMENTARY_FIELDS_2026),
+	},
+	rules=_RULES_2027,
+)
+
 # Each layout under the year it names, so that a year cannot carry the layout of another.
-LAYOUTS: MappingProxyType[int, Layout] = MappingProxyType({layout.year: layout for layout in (_LAYOUT_2026,)})
+LAYOUTS: MappingProxyType[int, Layout] = MappingProxyType(
+	{layout.year: layout for layout in (_LAYOUT_2026, _LAYOUT_2027)}
+)
 LATEST_YEAR = max(LAYOUTS)
 
 

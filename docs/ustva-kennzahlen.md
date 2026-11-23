@@ -14,10 +14,12 @@ Das Schreiben führt für die Voranmeldungszeiträume ab Januar 2026 vier Vordru
 |---|---|---|
 | USt 1 A | Umsatzsteuer-Voranmeldung 2026 | Zeilen, Kennzahlen und Bezeichnungen des Katalogs |
 | USt 1 E | Anleitung zur Umsatzsteuer-Voranmeldung 2026 | Rundung, Fälligkeit |
-| USt 1 H | Antrag auf Dauerfristverlängerung und Anmeldung der Sondervorauszahlung 2026 | Stufe 2 der [Roadmap](roadmap.md) |
-| USt 5 E | Anleitung zum Antrag auf Dauerfristverlängerung/zur Anmeldung der Sondervorauszahlung 2026 | Stufe 2 der Roadmap |
+| USt 1 H | Antrag auf Dauerfristverlängerung und Anmeldung der Sondervorauszahlung 2026 | Zeilen und Bezeichnungen des Vordrucks, siehe [Dauerfristverlängerung](dauerfristverlaengerung.md) |
+| USt 5 E | Anleitung zum Antrag auf Dauerfristverlängerung/zur Anmeldung der Sondervorauszahlung 2026 | Sondervorauszahlung und Fristen, siehe [Dauerfristverlängerung](dauerfristverlaengerung.md) |
 
-[`kennzahlen.py`](../steuerbote/ustva/kennzahlen.py) führt einen Katalog je Jahr des Vordrucks (`CATALOGUES`), bisher für 2026, für die Jahre der Jahrestabelle `YEARS` in [`years.py`](../steuerbote/ustva/years.py). Der Katalog 2026 folgt dem Vordruck USt 1 A 2026 Zeile für Zeile. [`test_kennzahlen.py`](../steuerbote/ustva/tests/test_kennzahlen.py) hält jede Kennzahl mit Zeile, Art, Wirkung, Steuersatz und Steuer-Kennzahl so fest, wie sie auf dem Vordruck steht, und prüft den Katalog dagegen. `catalogue_for(year)` wählt den Katalog nach dem Jahr des Zeitraums, `KENNZAHLEN` ist der neueste (`LATEST_YEAR`). Für ein Jahr ohne Katalog gibt es einen `UnknownYearError`.
+Für 2027 gibt es noch kein solches Schreiben; Steuerbote kennt 2027 vorläufig aus der Dokumentation der Beta ERiC 45.1.5.0, siehe [Jahrgang 2027, vorläufig](#jahrgang-2027-vorläufig).
+
+[`kennzahlen.py`](../steuerbote/ustva/kennzahlen.py) führt einen Katalog je Jahr des Vordrucks (`CATALOGUES`), für 2026 und vorläufig für 2027, für die Jahre der Jahrestabelle `YEARS` in [`years.py`](../steuerbote/ustva/years.py). Der Katalog 2026 folgt dem Vordruck USt 1 A 2026 Zeile für Zeile. [`test_kennzahlen.py`](../steuerbote/ustva/tests/test_kennzahlen.py) hält jede Kennzahl mit Zeile, Art, Wirkung, Steuersatz und Steuer-Kennzahl so fest, wie sie auf dem Vordruck steht, und prüft den Katalog dagegen. `catalogue_for(year)` wählt den Katalog nach dem Jahr des Zeitraums, `KENNZAHLEN` ist der neueste (`LATEST_YEAR`). Für ein Jahr ohne Katalog gibt es einen `UnknownYearError`.
 
 Vordruck und Anleitung ändern sich jedes Jahr. Deshalb kommt zu jedem Jahreswechsel ein Katalog für das neue Jahr dazu, Zeile für Zeile gegen das neue BMF-Schreiben geprüft, siehe [Jahreswechsel](#jahreswechsel). Der erste Katalog ist der für 2026; Kataloge für frühere Jahre sind nicht geplant, siehe [Roadmap](roadmap.md#grundsätze).
 
@@ -133,6 +135,26 @@ Hinweise:
 - Negative Werte sind überall möglich. Zu Zeile 44 schreibt die Anleitung: „Handelt es sich bei den Berichtigungsbeträgen um zurückzuzahlende Vorsteuerbeträge, tragen Sie bitte vor dem Betrag ein Minuszeichen ein.“ Ein negativer Betrag in Kz 64 mindert die Summe der Vorsteuer und erhöht damit Kz 83.
 - Die Zeilen 1 bis 9 (Steuernummer, Wirtschafts-Identifikationsnummer, Finanzamt, Unternehmer, Voranmeldungszeitraum) sind Kopfdaten und keine Kennzahlen.
 - Kz 500 nimmt einen der Schlüssel 1 bis 4 auf, die der Vordruck in Zeile 55 erklärt.
+
+## Jahrgang 2027, vorläufig
+
+Am 23. November 2026 hatte das BMF kein Schreiben mit den Vordruckmustern 2027 veröffentlicht, sein neuestes BMF-Schreiben war vom 13. November 2026, und ERiC 45 gab es nur als Beta. Steuerbote kennt 2027 deshalb vorläufig (`provisional` in `YEARS`): Kennzahlen, Formatkennzeichen und Regeln kommen aus `Jahresdokumentation_UStVA_2027.ods` (Versionslabel 4.0) und `UStVA-2027.xsd` der ERiC-Dokumentation 45.1.5.0 (Beta), Zeilen und Bezeichnungen aus dem Vordruck USt 1 A 2026 (`form_year` 2026). Die Jahresdokumentationen 2026 aus ERiC 44.3.6.0 und 2027 aus der Beta, Blatt für Blatt verglichen:
+
+| Teil | 2026 | 2027 | In Steuerbote |
+|---|---|---|---|
+| Kennzahlen des Kontexts `Umsatzsteuervoranmeldung` | 50 | dieselben 50, mit derselben Vordruckzeile, demselben Formatkennzeichen und derselben Beschreibung | der Katalog 2027 ist der von 2026 |
+| Kz 09, Hersteller-ID, in allen drei Kontexten | fünf Ziffern, auch mit fünf weiteren, durch `*` getrennten Angaben, höchstens 95 Zeichen | genau fünf Ziffern | der Schreiber schreibt in jedem Jahr nur die Hersteller-ID |
+| Regel 110085046 (`UStVA_Laenge_Kz09`, `Df_Kz09_Laenge`, `Svz_Kz09_Laenge`) | Kz 09 trägt nur die Hersteller-ID, sobald Unternehmer, Berater oder Mandant angegeben sind | entfällt, das Format von Kz 09 sagt es schon | das Layout USt 1 H 2027 hat die beiden Regeln nicht mehr |
+| Regel 11085156 (`UStVA_Kz44_BZSt_Hinweis`), Hinweis | – | neu: Lieferungen neuer Fahrzeuge in Kz 44 sind auch dem BZSt zu melden (§ 18c UStG, § 1 Abs. 1 FzgLiefgMeldV) | die Simulation gibt den Hinweis ab 2027, siehe [ERiC](eric.md#simulation) |
+| Regel 110085049 (`Kz500_Hinweis`), Hinweis | in allen drei Kontexten | anderer Hinweistext | nichts: Steuerbote führt die Regel, nicht ihren Text |
+| Schema | Namensraum `…/ustva/v2026`, Version 2026 | `…/ustva/v2027`, Version 2027, Elemente in der Reihenfolge von 2026 | `SCHEMAS` in `elster/ustva_xml.py` |
+| datenartVersion und Plugin | `UStVA_2026`, `checkUStVA_2026` | `UStVA_2027`, `checkUStVA_2027` | aus dem Jahr gebildet; `libcheckUStVA_2027.so` kommt mit ERiC 45 |
+
+In Zahlen: keine neue, keine entfallene und keine geänderte Kennzahl; ein geändertes Feld, Kz 09, in jedem der drei Kontexte; von den 109 Regeln 2026 entfallen drei (110085046) und kommt eine dazu (11085156), drei behalten Code und Art bei neuem Text (110085049); 107 Regeln 2027. Rundung, Zeiträume und Fristen bleiben, siehe [Zeiträume und Fristen](#zeiträume-und-fristen).
+
+Solange 2027 vorläufig ist, steht an jeder Voranmeldung 2027 „Vorläufige Vordrucke“, sie wird mit „Berechnen“ nicht „Bereit“ und geht nur mit Anmerkungen ab, die sagen, warum trotzdem, wie die Erklärungen der Ertragsteuern mit ihren vorläufigen Vordrucken (siehe [Ertragsteuern](ertragsteuern.md#vorläufige-vordrucke-2026)). Ihr Ausdruck behält den Aufbau des Vordrucks 2026 und trägt unter dem Titel „vorläufig (Beta ERiC 45.1.5.0, Vordruck 2026)“.
+
+Das Vorläufige heben zwei Veröffentlichungen auf: eine freigegebene Version von ERiC 45 mit `libcheckUStVA_2027.so` und ihrer Dokumentation, gegen die die Jahresprüfung 2027 noch einmal läuft; und das BMF-Schreiben mit den Vordruckmustern USt 1 A und USt 1 H 2027, gegen das Katalog, Bezeichnungen, Vordruck USt 1 H und die Druckformate Zeile für Zeile geprüft werden. Dann bekommt `YEARS` Datum, Geschäftszeichen und Adresse des Schreibens, und `provisional` fällt weg; ab dem nächsten „Berechnen“ kann eine Voranmeldung 2027 „Bereit“ werden. Die Vorgaben für SKR03 und SKR04 bleiben bis dahin auf den DATEV-Ausgaben 2026, siehe [Jahreswechsel](#jahreswechsel), Schritt 5.
 
 ## Kontenzuordnung
 
@@ -997,7 +1019,7 @@ Diesen Kennzahlen ordnen die Vorgaben bewusst kein Konto zu:
 
 Kz 63 (Vorsteuer nach allgemeinen Durchschnittssätzen, § 23a UStG) geht auf 1587 aus verbreiteten SKR03-Varianten und 1484 aus der Vorlage von ERPNext. Kz 50 bekommen die Forderungsverluste zusätzlich zu ihrer Bemessungsgrundlage, denn die Anleitung zu Zeile 51 sagt: „Erfolgt die Änderung nach § 17 Absatz 2 Nummer 1 Satz 1 UStG, weil das vereinbarte Entgelt für einen steuerpflichtigen Umsatz uneinbringlich geworden ist, tragen Sie die Minderung der Bemessungsgrundlage bitte zusätzlich in Zeile 51 ein.“ Kennzeichen, Datum und Schlüssel (Kz 10, 22, 70, 29, 26 und 500) nehmen kein Konto auf, Kz 83 wird berechnet.
 
-Wer einen dieser Fälle hat, klärt Konto und Kennzahl mit der Steuerberatung und ergänzt die Zuordnung der eigenen Firma (Einstellungen geplant, Paket 1 der Roadmap). In die Vorgaben kommt eine Kennzahl erst, wenn Konto und Kennzahl bestätigt sind und eine Quelle dafür vorliegt, nach dem Ablauf in [CONTRIBUTING.md](../CONTRIBUTING.md).
+Wer einen dieser Fälle hat, klärt Konto und Kennzahl mit der Steuerberatung und ergänzt die Kontenzuordnung Umsatzsteuer des eigenen Unternehmens, siehe [Einrichtung](einrichtung.md). In die Vorgaben kommt eine Kennzahl erst, wenn Konto und Kennzahl bestätigt sind und eine Quelle dafür vorliegt, nach dem Ablauf in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ### Prüfung der Steuervorlagen
 
@@ -1276,6 +1298,8 @@ Keine Ist-Versteuerung. Geprüft im Quelltext von ERPNext 16.60.0 und des Frappe
 
 Beispiele aus den Tests: Januar 2026 ist am 10. Februar 2026 fällig, mit Dauerfristverlängerung am 10. März 2026. Das I. Kalendervierteljahr 2026 ist am 10. April 2026 fällig. Für September 2026 gilt der 12. Oktober 2026, weil der 10. Oktober ein Samstag ist. Dezember 2026 ist am 11. Januar 2027 fällig, weil der 10. Januar ein Sonntag ist.
 
+Für 2027 gilt dasselbe: Januar 2027 ist am Mittwoch, 10. Februar 2027 fällig, mit Dauerfristverlängerung am 10. März 2027. Das I. Kalendervierteljahr 2027 ist am Montag, 12. April 2027 fällig, Juni am Montag, 12. Juli 2027, September am Montag, 11. Oktober 2027, weil der 10. ein Samstag oder Sonntag ist; ein Feiertag am 11. Oktober schöbe die Frist auf den 12. Oktober. Dezember 2027 und das IV. Kalendervierteljahr 2027 sind am Montag, 10. Januar 2028 fällig, Dezember mit Dauerfristverlängerung am Donnerstag, 10. Februar 2028.
+
 ## Jahreswechsel
 
 Den ganzen Ablauf mit Jahrestabelle, Schema, Vordruck USt 1 H, Plugin und Release beschreibt [Entwicklung, Jahreswechsel](entwicklung.md#jahreswechsel). Hier stehen die Prüfungen am Vordruck USt 1 A und an den Vorgaben. Zu jedem neuen Jahr:
@@ -1290,3 +1314,5 @@ Den ganzen Ablauf mit Jahrestabelle, Schema, Vordruck USt 1 H, Plugin und Releas
 8. Die Umsatzsteuererklärung hat eine eigene Uhr: Ihr Vordruck für ein Jahr erscheint erst nach dessen Voranmeldungen. Mit ihm die [Vorgaben der Umsatzsteuererklärung](#vorgaben-der-umsatzsteuererklärung) gegen die Anleitung USt 2 E des Jahres prüfen und als Jahrgang in `ROLE_FIELDS`, `ANNUAL_ACCOUNTS` und `REVISIONS` von [`ustjahr/defaults.py`](../steuerbote/ustjahr/defaults.py) anlegen, die Summen der neuen Stände in `DIGESTS` von `ustjahr/tests/test_defaults.py`, und die Muster und Listen der Felder aus der Jahresdokumentation E50 des Jahres in `SCHEMAS` von [`elster/ust2a_xml.py`](../steuerbote/elster/ust2a_xml.py). [`ustjahr/tests/test_years.py`](../steuerbote/ustjahr/tests/test_years.py) schlägt fehl, bis jede Tabelle das Jahr hat; die Tests von `ust2a_xml.py` vergleichen jedes Muster mit der Jahresdokumentation.
 
 Warum ein Katalog je Jahr: ELSTER nimmt eine Meldung nur in der Datenart des Jahres ihres Zeitraums an und hält das laufende Jahr und die drei Jahre davor offen. Steuerbote wählt den Katalog deshalb nach dem Jahr des Zeitraums. So behalten frühere Zeiträume und berichtigte Anmeldungen ihre Kennzahlen, und der Katalog für ein neues Jahr kann dazukommen, sobald das BMF den Vordruck veröffentlicht.
+
+Ein Jahr kann vor seinem BMF-Schreiben dazukommen, aus der Dokumentation der Beta, so 2027 (siehe [Jahrgang 2027, vorläufig](#jahrgang-2027-vorläufig)): dann trägt `YEARS` statt des Schreibens `provisional`, die Dokumentation (`documentation`) und das Jahr des Vordrucks, dessen Zeilen und Bezeichnungen es behält (`form_year`), und die Docstrings von `kennzahlen.py` und `form.py` zitieren die Jahresdokumentation statt des Schreibens. Mit dem Schreiben holt der Jahrgang die Schritte 1 bis 6 nach, mit der freigegebenen Version von ERiC Schritt 7; dann fällt `provisional` weg.

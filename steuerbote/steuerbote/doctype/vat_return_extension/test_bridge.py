@@ -7,7 +7,7 @@ from types import MappingProxyType
 from unittest import TestCase
 
 from steuerbote.dauerfrist import Context, FormError, Ust1H
-from steuerbote.dauerfrist.form import NO_LAYOUT
+from steuerbote.dauerfrist.form import LATEST_YEAR, NO_LAYOUT
 from steuerbote.steuerbote.doctype.vat_return_extension import bridge
 from steuerbote.steuerbote.doctype.vat_return_extension.bridge import (
 	Activity,
@@ -314,5 +314,17 @@ class FormTest(TestCase):
 
 	def test_a_year_without_its_form_is_refused_by_the_core(self):
 		with self.assertRaises(FormError) as caught:
-			bridge.form(self.doc(year=2027))
+			bridge.form(self.doc(year=LATEST_YEAR + 1))
 		self.assertEqual(caught.exception.template, NO_LAYOUT)
+
+	def test_builds_the_anmeldung_der_sondervorauszahlung_2027(self):
+		form = bridge.form(
+			self.doc(year=2027, is_correction=1, supplementary_code="1", kz500_begruendung="Anlage")
+		)
+		self.assertEqual(
+			form, Ust1H(2027, SVZ, d("4000"), corrected=True, supplementary_code="1", begruendung="Anlage")
+		)
+		self.assertEqual(
+			form.texts(),
+			{"Jahr": "2027", "Kz10": "1", "Kz38": "4000", "Kz500": "1", "Kz500_Begruendung": "Anlage"},
+		)

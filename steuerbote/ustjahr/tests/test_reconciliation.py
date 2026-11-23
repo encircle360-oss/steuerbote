@@ -42,6 +42,7 @@ MAPPING = Mapping(
 	),
 	checks=(TaxCheck("Umsatzsteuer 19 %", ("8400",), ("1776",)), TaxCheck("§ 13b", ("3123",), ("1787",))),
 	watched=("1769",),
+	year=2026,
 )
 SPLIT = split(
 	MAPPING, role_defaults={"1558": "E3008701"}, annual_rules=(AnnualRule("1769", "E3102805", Side.CREDIT),)

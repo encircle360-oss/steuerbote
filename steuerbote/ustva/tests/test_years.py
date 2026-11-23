@@ -27,9 +27,9 @@ UNKNOWN_YEAR = LATEST_YEAR + 1
 
 
 class YearTableTest(TestCase):
-	def test_files_2026(self):
-		self.assertEqual(tuple(YEARS), (2026,))
-		self.assertEqual(LATEST_YEAR, 2026)
+	def test_files_2026_and_2027(self):
+		self.assertEqual(tuple(YEARS), (2026, 2027))
+		self.assertEqual(LATEST_YEAR, 2027)
 
 	def test_holds_each_year_under_its_own_number_in_order(self):
 		self.assertEqual([year.year for year in YEARS.values()], list(YEARS))
@@ -46,17 +46,67 @@ class YearTableTest(TestCase):
 		self.assertTrue(year.url.startswith("https://www.bundesfinanzministerium.de/"))
 		self.assertIn("2025-12-29-vordruckmuster-USt-voranmeldung-2026.pdf", year.url)
 
-	def test_the_data_of_each_year_cite_its_bmf_letter(self):
+	def test_2027_is_provisional_from_the_beta_45_1_5_0_with_the_form_of_2026(self):
+		"""The BMF had published no letter with the forms of 2027 by 23 November 2026, the day of the latest BMF letter
+		being 13 November 2026, and ERiC 45 is a beta (ERiC-Entwicklerhandbuch, Kap. 2.3)."""
+		year = YEARS[2027]
+		self.assertTrue(year.provisional)
+		self.assertEqual((year.letter_date, year.reference, year.url, year.letter), (None, None, None, None))
+		self.assertEqual((year.documentation, year.form_year), ("Beta ERiC 45.1.5.0", 2026))
+		self.assertEqual(
+			year.source, "Jahresdokumentation_UStVA_2027.ods of the documentation of Beta ERiC 45.1.5.0"
+		)
+		self.assertEqual((year.datenart_version, year.plugin), ("UStVA_2027", "checkUStVA_2027"))
+
+	def test_the_data_of_each_year_cite_its_source(self):
 		for year in YEARS.values():
 			for module in (kennzahlen, form):
 				with self.subTest(year=year.year, module=module.__name__):
-					self.assertIn(year.letter, " ".join((module.__doc__ or "").split()))
+					self.assertIn(year.source, " ".join((module.__doc__ or "").split()))
+
+	def test_a_final_year_has_the_bmf_letter_as_its_source_and_the_layout_of_its_own_form(self):
+		year = YEARS[2026]
+		self.assertFalse(year.provisional)
+		self.assertIsNone(year.documentation)
+		self.assertEqual((year.source, year.form_year), (year.letter, 2026))
+		self.assertEqual(Year(2099, date(2098, 12, 1), "TEST", "https://example.org/").form_year, 2099)
+
+	def test_a_final_year_names_the_bmf_letter_of_its_forms(self):
+		for letter in ((None, None, None), (date(2098, 12, 1), None, "https://example.org/")):
+			with self.subTest(letter=letter), self.assertRaisesRegex(ValueError, "names the BMF letter"):
+				Year(2099, *letter)
 
 	def test_is_read_only(self):
 		with self.assertRaises(TypeError):
 			YEARS[UNKNOWN_YEAR] = YEARS[LATEST_YEAR]  # type: ignore[index]
 		with self.assertRaises(AttributeError):
 			YEARS[2026].year = UNKNOWN_YEAR  # type: ignore[misc]
+
+
+class ProvisionalYearTest(TestCase):
+	"""A year before the BMF letter with its forms: its data come from the Jahresdokumentation and the schema of the
+	year in the documentation of a beta of ERiC, its lines and labels from the form of an earlier year."""
+
+	def setUp(self):
+		self.year = Year(
+			2099, None, None, None, provisional=True, documentation="Beta ERiC 99.1.0.0", form_year=2098
+		)
+
+	def test_has_no_letter_and_cites_the_jahresdokumentation_of_its_documentation(self):
+		self.assertIsNone(self.year.letter)
+		self.assertEqual(
+			self.year.source, "Jahresdokumentation_UStVA_2099.ods of the documentation of Beta ERiC 99.1.0.0"
+		)
+
+	def test_keeps_the_layout_of_the_form_of_an_earlier_year(self):
+		self.assertEqual(self.year.form_year, 2098)
+
+	def test_names_the_documentation_it_comes_from(self):
+		with self.assertRaisesRegex(ValueError, "names the documentation it comes from"):
+			Year(2099, None, None, None, provisional=True)
+
+	def test_takes_the_names_of_its_year(self):
+		self.assertEqual((self.year.datenart_version, self.year.plugin), ("UStVA_2099", "checkUStVA_2099"))
 
 
 class PartsTest(TestCase):

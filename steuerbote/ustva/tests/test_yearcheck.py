@@ -22,14 +22,33 @@ from steuerbote.ustva import kennzahlen, yearcheck
 from steuerbote.ustva.documentation import read
 from steuerbote.ustva.kennzahlen import Kind
 from steuerbote.ustva.tests import eric_documentation
-from steuerbote.ustva.yearcheck import Data, Difference, check, data_for, differences, main, missing
-from steuerbote.ustva.years import LATEST_YEAR, YEARS
+from steuerbote.ustva.yearcheck import (
+	Data,
+	Difference,
+	check,
+	data_for,
+	differences,
+	main,
+	missing,
+	passes_over,
+)
+from steuerbote.ustva.years import LATEST_YEAR, YEARS, Year
 
 APP_ROOT = Path(__file__).resolve().parents[3]
 DF = Context.DAUERFRISTVERLAENGERUNG.value
 SVZ = Context.UMSATZSTEUERSONDERVORAUSZAHLUNG.value
 USTVA = "Umsatzsteuervoranmeldung"
 UNKNOWN_YEAR = LATEST_YEAR + 1
+# A year whose data come from the beta of a later release of ERiC, before the BMF letter with its forms.
+PROVISIONAL = Year(
+	UNKNOWN_YEAR,
+	None,
+	None,
+	None,
+	provisional=True,
+	documentation="Beta ERiC 99.1.0.0",
+	form_year=LATEST_YEAR,
+)
 
 
 def kennzahl(data: Data, number: str, **changes: object) -> Data:
@@ -492,6 +511,51 @@ class CommandTest(SyntheticTestCase):
 		self.assertEqual((exited.exception.code, stdout.getvalue()), (0, ""))
 
 
+class ProvisionalYearTest(SyntheticTestCase):
+	"""A provisional year comes from the documentation of a later release, which a documentation of an earlier one does
+	not hold: the 44.3.6.0 of the CI knows nothing of 2027, whose data come from the beta 45.1.5.0."""
+
+	def run_main(self, *arguments: str) -> tuple[int, str, str]:
+		stdout, stderr = io.StringIO(), io.StringIO()
+		with mock.patch.object(yearcheck, "YEARS", MappingProxyType({**YEARS, UNKNOWN_YEAR: PROVISIONAL})):
+			code = main(list(arguments), stdout, stderr)
+		return code, stdout.getvalue(), stderr.getvalue()
+
+	def test_passes_over_a_provisional_year_whose_jahresdokumentation_the_documentation_lacks(self):
+		directory = self.written()
+		with mock.patch.object(yearcheck, "YEARS", MappingProxyType({**YEARS, UNKNOWN_YEAR: PROVISIONAL})):
+			self.assertTrue(passes_over(directory, UNKNOWN_YEAR))
+			self.assertFalse(passes_over(directory, 2026))
+		self.assertEqual(self.run_main(str(directory)), (0, "", ""))
+
+	def test_checks_a_provisional_year_whose_jahresdokumentation_the_documentation_holds(self):
+		eric_documentation.write(self.directory, eric_documentation.documented(self.data, UNKNOWN_YEAR))
+		with mock.patch.object(yearcheck, "YEARS", MappingProxyType({**YEARS, UNKNOWN_YEAR: PROVISIONAL})):
+			self.assertFalse(passes_over(self.written(), UNKNOWN_YEAR))
+		code, stdout, _ = self.run_main(str(self.written()))
+		self.assertEqual(code, 1)
+		self.assertIn(f"{UNKNOWN_YEAR} is missing in CATALOGUES of steuerbote/ustva/kennzahlen.py", stdout)
+
+	def test_a_provisional_year_named_needs_its_documentation(self):
+		code, stdout, stderr = self.run_main(str(self.written()), str(UNKNOWN_YEAR))
+		self.assertEqual((code, stdout), (2, ""))
+		self.assertIn(f"Jahresdokumentation_UStVA_{UNKNOWN_YEAR}.ods cannot be read", stderr)
+
+	def test_a_final_year_needs_its_documentation(self):
+		directory = self.written()
+		(
+			directory
+			/ "Datenarten/ElsterAnmeldung/UStVA/Jahresdokumentation/Jahresdokumentation_UStVA_2026.ods"
+		).unlink()
+		self.assertFalse(passes_over(directory, 2026))
+		code, _, stderr = self.run_main(str(directory))
+		self.assertEqual(code, 2)
+		self.assertIn("Jahresdokumentation_UStVA_2026.ods cannot be read", stderr)
+
+	def test_a_year_outside_the_table_is_not_passed_over(self):
+		self.assertFalse(passes_over(self.written(), UNKNOWN_YEAR))
+
+
 class DocumentationTest(TestCase):
 	"""Every year of the year table against the ERiC documentation; skipped without it, see eric_schema.py."""
 
@@ -501,7 +565,10 @@ class DocumentationTest(TestCase):
 		cls.documentation = eric_schema.documentation()
 
 	def test_every_year_agrees_with_its_documentation(self):
+		"""Every year the documentation holds; a provisional year it does not hold has a test of its own below."""
 		for year in YEARS:
+			if passes_over(self.documentation, year):
+				continue
 			with self.subTest(year=year):
 				self.assertEqual([str(difference) for difference in check(self.documentation, year)], [])
 
@@ -528,9 +595,59 @@ class DocumentationTest(TestCase):
 			(1, "catalogue 2026, Kz 66: line 37; Jahresdokumentation_UStVA_2026.ods: Vordruckzeile 38\n"),
 		)
 
+	def test_2027_agrees_with_the_documentation_of_the_beta_it_comes_from(self):
+		self.assertTrue(YEARS[2027].provisional)
+		documentation = eric_schema.ustva_year(2027)
+		self.assertEqual([str(difference) for difference in check(documentation, 2027)], [])
+		self.assertFalse(passes_over(documentation, 2027))
+
+	def test_2027_changes_kz09_and_its_rules_against_2026(self):
+		"""What the year check of 2027 finds with the data of 2026 in its place: the namespace and version of the
+		schema, Kz 09 of form USt 1 H, which takes the Hersteller-ID alone, and the two rules on its length, which are
+		gone (Jahresdokumentation_UStVA_2027.ods of the beta ERiC 45.1.5.0)."""
+		documentation = eric_schema.ustva_year(2027)
+		found = [str(difference) for difference in differences(read(documentation, 2027), data_for(2026))]
+		jd = "Jahresdokumentation_UStVA_2027.ods"
+		pattern = r"^(?=.{5,95}$)([0-9]{5})|([0-9]{5}\*.{0,85}\*.{0,85}\*.{0,85}\*.{0,85}\*.{0,85})"
+		self.assertEqual(
+			found,
+			[
+				"schema 2026, namespace: http://finkonsens.de/elster/elsteranmeldung/ustva/v2026; UStVA-2027.xsd: "
+				"http://finkonsens.de/elster/elsteranmeldung/ustva/v2027",
+				"schema 2026, version: 2026; UStVA-2027.xsd: 2027",
+				*(
+					line
+					for context in (DF, SVZ)
+					for line in (
+						f"layout 2026, {context}, Kz09: Format als regulärer Ausdruck {pattern}; {jd}: Format als "
+						r"regulärer Ausdruck ^(?=.{5,5}$)[0-9]+",
+						f"layout 2026, {context}, Kz09: Max. Länge 95; {jd}: Max. Länge 5",
+					)
+				),
+				f"layout 2026, rule Df_Kz09_Laenge of Steuerfall: 110085046, Fehler; {jd}: no such rule",
+				f"layout 2026, rule Svz_Kz09_Laenge of Steuerfall: 110085046, Fehler; {jd}: no such rule",
+			],
+		)
+
 	def test_runs_as_a_command_that_prints_nothing_for_2026(self):
 		completed = subprocess.run(  # noqa: S603 - this interpreter, a fixed module and the documentation of the test
 			[sys.executable, "-m", "steuerbote.ustva.yearcheck", str(self.documentation), "2026"],
+			capture_output=True,
+			cwd=APP_ROOT,
+			timeout=120,
+			check=False,
+		)
+		self.assertEqual((completed.returncode, completed.stdout, completed.stderr), (0, b"", b""))
+
+
+class BetaCommandTest(TestCase):
+	"""The command against the documentation of the beta ERiC 45.1.5.0, which holds 2026 and 2027; skipped with a
+	documentation that holds no UStVA 2027, see eric_schema.ustva_year."""
+
+	def test_prints_nothing_for_2026_and_2027(self):
+		documentation = eric_schema.ustva_year(2027)
+		completed = subprocess.run(  # noqa: S603 - this interpreter, a fixed module and the documentation of the test
+			[sys.executable, "-m", "steuerbote.ustva.yearcheck", str(documentation)],
 			capture_output=True,
 			cwd=APP_ROOT,
 			timeout=120,

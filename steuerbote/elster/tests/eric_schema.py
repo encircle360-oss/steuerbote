@@ -6,6 +6,10 @@ variable STEUERBOTE_ERIC_DOC_DIR names: the directory the zip was unzipped into,
 Dokumentation. Without the variable the tests against the schemas are skipped, except in a CI, which has to
 run them. The workflow downloads the zip and checks its SHA-256 first, see docs/entwicklung.md. The same goes
 for the spreadsheets of the documentation that the tests compare with the rules written down in the code.
+
+A provisional year comes from the documentation of a beta, which the CI does not pin: 2027 from ERiC 45.1.5.0
+(``BETA_DOWNLOAD``, steuerbote/ustva/years.py). The tests of such a year take its files from the same directory
+through ``ustva_year`` and are skipped, in a CI too, while it holds a release that knows nothing of the year.
 """
 
 import os
@@ -19,6 +23,10 @@ from lxml import etree
 VARIABLE = "STEUERBOTE_ERIC_DOC_DIR"
 VERSION = "44.3.6.0"
 DOWNLOAD = f"https://download.elster.de/download/eric/eric_44/ERiC-{VERSION}-Dokumentation.zip"
+BETA_VERSION = "45.1.5.0"
+BETA_DOWNLOAD = f"https://download.elster.de/download/eric/eric_45/ERiC-{BETA_VERSION}-Dokumentation.zip"
+# The zip as download.elster.de serves it, last modified on 16 October 2026.
+BETA_SHA256 = "9b43f426d006e1b892bbc9cd15d789c18dc3017f7f0d4d5c0399dfbf48b30b64"
 
 
 def documentation() -> Path:
@@ -41,6 +49,24 @@ def documentation() -> Path:
 
 def _ustva() -> Path:
 	return documentation() / "Datenarten" / "ElsterAnmeldung" / "UStVA"
+
+
+def ustva_year(year: int) -> Path:
+	"""The directory Dokumentation once it holds the UStVA of the year, its Jahresdokumentation and its schema; skips
+	the test, in a CI too, while it holds a release that knows nothing of the year."""
+	root = documentation()
+	ustva = root / "Datenarten" / "ElsterAnmeldung" / "UStVA"
+	files = (
+		ustva / "Jahresdokumentation" / f"Jahresdokumentation_UStVA_{year}.ods",
+		ustva / "Schema" / str(year) / f"UStVA-{year}.xsd",
+	)
+	missing = [path.name for path in files if not path.is_file()]
+	if missing:
+		raise SkipTest(
+			f"{root} holds no {' and no '.join(missing)}: the UStVA of {year} is not checked against the ERiC "
+			f"documentation. Unzip {BETA_DOWNLOAD} (SHA-256 {BETA_SHA256}) and set {VARIABLE} to its directory."
+		)
+	return root
 
 
 def nutzdaten_xsd(year: int) -> Path:

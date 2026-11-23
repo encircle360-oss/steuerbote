@@ -85,7 +85,7 @@ def class_attribute(name: str) -> object:
 
 def example_rows() -> dict[str, list[dict]]:
 	"""The rows Berechnen writes for a small year: a sale in the first quarter, and no Voranmeldung filed."""
-	mapping = Mapping("SKR03", (AccountRule("8400", "81", Side.CREDIT),))
+	mapping = Mapping("SKR03", (AccountRule("8400", "81", Side.CREDIT),), year=2026)
 	quarters = bridge.year_periods([PeriodRule(2026, FilingRhythm.QUARTERLY)], 2026)
 	lines = [LedgerLine("8400", Decimal("0"), Decimal("1000"), "Sales Invoice:R1")]
 	result = calculate(lines, split(mapping))

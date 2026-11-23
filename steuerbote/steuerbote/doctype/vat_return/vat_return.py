@@ -13,7 +13,8 @@ Vorperiodenvergleich (build_comparison) and the hints (build_hints) of steuerbot
 inform and never change an amount or whether the return is ready, and the reconciliation with the reports Sales
 Register and Purchase Register (build_reconciliation, steuerbote.ustva.registers): a difference there needs an
 explanation in its row, or the remarks, before the return is transmitted, made into a file or filed, as a return
-that is not ready needs the remarks. A period is filed once; every further return for it is a corrected return
+that is not ready needs the remarks. A return of a year whose forms are provisional (steuerbote/ustva/years.py) is not
+ready either and says so in Vorläufige Vordrucke, as the Körperschaftsteuererklärung does. A period is filed once; every further return for it is a corrected return
 (Kz 10), and filing one marks the returns before it as replaced. "XML für
 Mein ELSTER" (make_import_file) writes the return as saved into the file for the import into Mein ELSTER
 through steuerbote.elster.ustva_xml and attaches it to the return.
@@ -142,6 +143,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		period_code: DF.Data | None
 		period_index: DF.Int
 		period_label: DF.Data | None
+		provisional: DF.Check
 		ready: DF.Check
 		register_reconciliation: DF.Table[VATReturnRegisterReconciliation]
 		regelbesteuerung_from: DF.Date | None
@@ -177,6 +179,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
 		self._require_catalogue()
+		self.provisional = int(bridge.provisional_forms(cint(self.year)) is not None)
 		self._set_period()
 		self._refuse_second_return()
 		self._keep_the_calculation()
@@ -251,8 +254,8 @@ class VATReturn(Confirming, Transmittable, Document):
 		self.set(
 			"hints", bridge.hint_rows(build_hints(self, period, mapping, result, comparison, reconciliation))
 		)
-		self.ready = int(result.ready)
-		self.status = READY if result.ready else CALCULATED
+		self.ready = int(result.ready and bridge.provisional_forms(year) is None)
+		self.status = READY if self.ready else CALCULATED
 		self.accounts_without_number = len(accounts_without_number(self.company))
 		self.flags.calculating = True
 		try:
@@ -375,12 +378,25 @@ class VATReturn(Confirming, Transmittable, Document):
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the return before submitting it."))
 		if not self.ready and not (self.remarks or "").strip():
-			frappe.throw(
-				_(
-					"The return is not ready: a Verprobung deviates or a watched account has a balance. Explain in the remarks why it is filed nonetheless."
-				)
-			)
+			frappe.throw(self._not_ready())
 		self._require_explained_differences()
+
+	def _not_ready(self) -> str:
+		"""Why a return that is not ready is filed with remarks only: the forms of a provisional year, or else the
+		Verprobung and the watched accounts."""
+		forms = bridge.provisional_forms(cint(self.year))
+		if forms is not None:
+			return _(
+				"Steuerbote has the forms of {0} provisionally from the documentation of {1} and form USt 1 A {2}: until ERiC and the BMF publish those of {0}, the return is not ready. Explain in the remarks why it is filed nonetheless."
+			).format(cint(self.year), forms["documentation"], forms["form_year"])
+		return _(
+			"The return is not ready: a Verprobung deviates or a watched account has a balance. Explain in the remarks why it is filed nonetheless."
+		)
+
+	def provisional_forms(self) -> dict | None:
+		"""The documentation of ERiC and the year of the form that a provisional year takes, for the mark under the title
+		of the print format „Umsatzsteuer-Voranmeldung“; None for a final year."""
+		return bridge.provisional_forms(cint(self.year))
 
 	def _require_explained_differences(self) -> None:
 		"""Eine Abweichung muss erklärt sein (docs/roadmap.md, Grundsätze): each difference to the registers needs an
@@ -609,11 +625,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		self._refuse_sent_return()
 		self._refuse_second_filing()
 		if not self.ready and not (self.remarks or "").strip():
-			frappe.throw(
-				_(
-					"The return is not ready: a Verprobung deviates or a watched account has a balance. Explain in the remarks why it is filed nonetheless."
-				)
-			)
+			frappe.throw(self._not_ready())
 		self._require_explained_differences()
 		self._require_amounts_as_stored(self)
 

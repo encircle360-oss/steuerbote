@@ -31,6 +31,7 @@ from steuerbote.ustva import (
 )
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL, SONDERVORAUSZAHLUNG_KENNZAHL
 from steuerbote.ustva.rounding import ZERO, to_cents
+from steuerbote.ustva.years import YEARS
 from steuerbote.vatid.result import Outcome
 
 
@@ -51,6 +52,15 @@ def sondervorauszahlung_values(period: Period, has_dauerfrist: bool, amount: Dec
 	if has_dauerfrist and amount and period.next().year != period.year:
 		return {SONDERVORAUSZAHLUNG_KENNZAHL: amount}
 	return {}
+
+
+def provisional_forms(year: int) -> dict[str, Any] | None:
+	"""The documentation of ERiC and the year of the form that a provisional year takes, which its documents and prints
+	name, None for a final year and for a year without data (steuerbote/ustva/years.py)."""
+	data = YEARS.get(year)
+	if data is None or not data.provisional:
+		return None
+	return {"documentation": data.documentation, "form_year": data.form_year}
 
 
 @dataclass(frozen=True, slots=True)

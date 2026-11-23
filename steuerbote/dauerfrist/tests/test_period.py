@@ -95,6 +95,10 @@ class ObligationTest(TestCase):
 			Obligation(SVZ, date(2027, 8, 10), antrag=True),
 		)
 
+	def test_the_sondervorauszahlung_2027_is_due_on_wednesday_10_february_2027(self):
+		self.assertEqual(date(2027, 2, 10).weekday(), 2)
+		self.assertEqual(obligation(2027, Rhythm.MONTHLY), Obligation(SVZ, date(2027, 2, 10), antrag=False))
+
 	def test_a_monthly_filer_registers_the_sondervorauszahlung_every_year(self):
 		self.assertEqual(obligation(2029, Rhythm.MONTHLY), Obligation(SVZ, date(2029, 2, 12), antrag=False))
 
@@ -154,3 +158,12 @@ class CreditingPeriodTest(TestCase):
 				with self.subTest(period=period.label):
 					credited = bool(sondervorauszahlung_values(period, True, Decimal("4000.00")))
 					self.assertEqual(credited, period == crediting_period(2026, rhythm))
+
+	def test_the_sondervorauszahlung_2027_is_credited_in_kz39_of_december_2027(self):
+		self.assertEqual(crediting_period(2027, Rhythm.MONTHLY), Period.month(2027, 12))
+		self.assertEqual(crediting_period(2027, Rhythm.QUARTERLY), Period.quarter(2027, 4))
+		self.assertEqual(
+			sondervorauszahlung_values(Period.month(2027, 12), True, Decimal("4000.00")),
+			{"39": Decimal("4000.00")},
+		)
+		self.assertEqual(sondervorauszahlung_values(Period.month(2027, 11), True, Decimal("4000.00")), {})

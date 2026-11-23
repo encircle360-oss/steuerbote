@@ -3,6 +3,8 @@
 	29 December 2025, GZ III C 3 - S 7344/00039/007/036). Every amount is the final amount of a row of the
 	return, or a sum the VAT Return keeps of them; lines 45 and 48 are the differences of those sums that the
 	form itself prints. The form computes the tax of lines 13, 14, 25 and 26 from the base in full euros.
+	A year whose forms are provisional prints this form under the mark „vorläufig“ with the documentation of ERiC
+	and the form it takes (steuerbote/ustva/years.py), 2027 until the BMF letter with the form of 2027.
 	Text fields print as Frappe formats them, since Frappe sanitises their markup when a document is saved.
 -#}
 {%- set settings = frappe.db.get_value("VAT Return Settings", doc.company, ["tax_number", "elster_tax_number", "tax_office"], as_dict=True) or {} -%}
@@ -83,6 +85,10 @@
 
 <div class="sb-ustva">
 	<h1>Umsatzsteuer-Voranmeldung {{ doc.year }}</h1>
+	{%- set provisional = doc.provisional_forms() %}
+	{%- if provisional %}
+	<p class="sb-subtitle">vorläufig ({{ provisional.documentation }}, Vordruck {{ provisional.form_year }})</p>
+	{%- endif %}
 	{%- if doc.is_correction %}
 	<p class="sb-subtitle">Berichtigte Anmeldung</p>
 	{%- endif %}

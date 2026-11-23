@@ -14,6 +14,7 @@ from frappe.desk.notifications import get_open_count
 from frappe.tests import IntegrationTestCase
 from frappe.utils import getdate
 
+from steuerbote.dauerfrist import form as dauerfrist_form
 from steuerbote.eric import secrets
 from steuerbote.eric.datenart import ustva
 from steuerbote.eric.result import ERROR, HINT, UNKNOWN_MESSAGE, Message, Operation, Outcome
@@ -142,6 +143,22 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 			),
 		)
 
+	def test_pruefen_in_the_simulation_checks_the_provisional_form_of_2027_in_its_datenart(self):
+		doc = self.calculated(year=2027)
+		self.assertEqual((doc.context, doc.status, doc.provisional), (SVZ, "Berechnet", 1))
+		transmission, _, run = self.transmitted(doc, "validate")
+		self.assertEqual((transmission.status, transmission.outcome), ("Erfolgreich", "valid"))
+		operation, nutzdaten, header, *_ = run.call_args.args
+		self.assertEqual((operation, header.datenart_version), (Operation.VALIDATE, "UStVA_2027"))
+		for element in (
+			'<Anmeldungssteuern xmlns="http://finkonsens.de/elster/elsteranmeldung/ustva/v2027" version="2027">',
+			"<Jahr>2027</Jahr>",
+			"<Kz09>00000</Kz09>",
+			"<Kz38>4000</Kz38>",
+		):
+			with self.subTest(element=element):
+				self.assertIn(element, nutzdaten)
+
 	def test_the_antrag_of_a_quarterly_filer_goes_as_the_context_dauerfristverlaengerung(self):
 		doc = self.calculated(QUARTERLY_COMPANY)
 		self.assertEqual((doc.context, doc.status), (DF, "Bereit"))
@@ -223,8 +240,9 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 		self.assertEqual(enqueue.call_args.kwargs["operation"], "send")
 
 	def test_only_a_calculated_draft_of_a_known_form_is_transmitted(self):
+		year = dauerfrist_form.LATEST_YEAR + 1
 		draft = self.form(**BASE_BY_HAND)
-		unknown = self.form(year=2027, **BASE_BY_HAND)
+		unknown = self.form(year=year, **BASE_BY_HAND)
 		unknown.calculate()
 		unknown.reload()
 		filed = self.calculated(QUARTERLY_COMPANY)
@@ -232,7 +250,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 		filed.reload()
 		for doc, message in (
 			(draft, "Calculate the form before transmitting it"),
-			(unknown, "does not know form USt 1 H for 2027"),
+			(unknown, f"does not know form USt 1 H for {year}"),
 			(filed, "Only a draft form can be transmitted"),
 		):
 			with (

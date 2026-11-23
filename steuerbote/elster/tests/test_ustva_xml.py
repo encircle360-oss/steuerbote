@@ -20,7 +20,14 @@ from steuerbote.elster.tests.examples import (
 	voranmeldung,
 	write,
 )
-from steuerbote.elster.ustva_xml import SCHEMAS, XmlError, import_file_name, to_import_file, to_nutzdaten
+from steuerbote.elster.ustva_xml import (
+	SCHEMAS,
+	XmlError,
+	import_file_name,
+	schema_for,
+	to_import_file,
+	to_nutzdaten,
+)
 from steuerbote.ustva import Kind, Period, catalogue_for, to_cents
 
 # The children of Umsatzsteuervoranmeldung in the order of UStVA-2026.xsd, as docs/abgabe-mein-elster.md
@@ -124,6 +131,43 @@ class NutzdatenTest(TestCase):
 		with self.assertRaises(XmlError) as raised:
 			to_nutzdaten(filer(), voranmeldung(), CREATED, "74931")
 		self.assertEqual(raised.exception.template, ustva_xml.ILLUSTRATION_HERSTELLER_ID)
+
+
+class Year2027Test(TestCase):
+	"""January 2027 in the schema of 2027, UStVA-2027.xsd of the beta ERiC 45.1.5.0: the namespace and version of the
+	year, the elements of 2026 in their order; Kz 09 takes the Hersteller-ID alone, as the writer always wrote it."""
+
+	JANUARY = Period.month(2027, 1)
+	CREATED = date(2027, 2, 3)
+
+	def test_writes_the_import_file_of_january_byte_for_byte(self):
+		self.assertEqual(
+			to_import_file(filer(), voranmeldung(period=self.JANUARY), self.CREATED),
+			(FIXTURES / "UStVA_2027_01.xml").read_bytes(),
+		)
+
+	def test_writes_the_nutzdaten_of_january_byte_for_byte(self):
+		self.assertEqual(
+			to_nutzdaten(filer(), voranmeldung(period=self.JANUARY), self.CREATED, "12345"),
+			(FIXTURES / "nutzdaten_2027_01.xml").read_text(encoding="utf-8"),
+		)
+
+	def test_the_schema_has_the_namespace_and_version_of_2027_and_the_elements_of_2026(self):
+		schema = schema_for(2027)
+		self.assertEqual(
+			(schema.year, schema.namespace), (2027, "http://finkonsens.de/elster/elsteranmeldung/ustva/v2027")
+		)
+		self.assertEqual(schema.elements, SCHEMA_ORDER)
+		self.assertEqual(schema.unsigned, frozenset({"37", "39", "50"}))
+
+	def test_names_the_file_of_january(self):
+		self.assertEqual(import_file_name(voranmeldung(period=self.JANUARY)), "UStVA_2027_01.xml")
+
+	def test_takes_every_kennzahl_of_the_catalogue_of_2027(self):
+		self.assertEqual(
+			{name.removeprefix("Kz") for name in schema_for(2027).elements if name.startswith("Kz")} - {"09"},
+			{*catalogue_for(2027), "500_Begruendung"},
+		)
 
 
 class OrderTest(TestCase):

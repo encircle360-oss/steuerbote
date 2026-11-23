@@ -11,6 +11,11 @@ and its Anleitung. Line numbers (Zeile) and labels follow that form. Lines 37, 4
 form computes itself and have no Kennzahl. Every Kennzahl that changes the amount owed lies in one of
 these sums or is the Sondervorauszahlung in Kennzahl 39; a catalogue that breaks this is refused when
 it is built.
+
+2027, provisionally: Jahresdokumentation_UStVA_2027.ods of the documentation of Beta ERiC 45.1.5.0 (Versionslabel
+4.0), sheet "Anmeldungssteuern - Felder", lists the fields of the context Umsatzsteuervoranmeldung of 2026 with the
+same Vordruckzeile, Formatkennzeichen and Beschreibung, so 2027 keeps the Kennzahlen, lines and labels of form USt 1
+A 2026 until the BMF letter with the form of 2027 (steuerbote/ustva/years.py).
 """
 
 from dataclasses import dataclass
@@ -372,6 +377,9 @@ _FORM_2026 = (
 )
 
 
+_FORM_2027 = _FORM_2026
+
+
 BALANCE_KENNZAHL = "83"
 SONDERVORAUSZAHLUNG_KENNZAHL = "39"
 
@@ -410,7 +418,7 @@ def _index(form: tuple[Kennzahl, ...]) -> MappingProxyType[str, Kennzahl]:
 
 
 CATALOGUES: MappingProxyType[int, MappingProxyType[str, Kennzahl]] = MappingProxyType(
-	{2026: _index(_FORM_2026)}
+	{2026: _index(_FORM_2026), 2027: _index(_FORM_2027)}
 )
 LATEST_YEAR = max(CATALOGUES)
 
