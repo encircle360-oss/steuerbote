@@ -166,7 +166,9 @@ class PageTest(TestCase):
 	def test_the_architecture_names_the_module_and_links_the_pages(self):
 		text = ARCHITECTURE.read_text(encoding="utf-8")
 		self.assertIn("| `electronic_balance_sheet/` mit `steuerbote/ebilanz_sources.py` |", text)
-		self.assertIn("## E-Bilanz", text)
+		self.assertNotIn("\n## E-Bilanz\n", text)
+		jahresmeldungen = text.split("\n## Jahresmeldungen\n", 1)[1].split("\n## ", 1)[0]
+		self.assertIn("\n### E-Bilanz\n", jahresmeldungen)
 		self.assertIn("](ebilanz.md)", text)
 		self.assertIn("](taxonomie.md)", text)
 
