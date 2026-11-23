@@ -65,6 +65,14 @@ Vorauszahlungen. The Körperschaftsteuer is paid ahead on 10 March, June, Septem
 § 37 Abs. 1 EStG), the Solidaritätszuschlag with it (§ 3 Abs. 1 Nr. 2 SolZG), the Gewerbesteuer to the Gemeinde on
 15 February, May, August and November (§ 19 Abs. 1 GewStG). Each row is an amount in cents of a notice.
 
+Carry-forwards. The amounts the Finanzamt last stated: the Verlustvortrag (§ 10d Abs. 4 EStG), the losses from
+Termingeschäfte (§ 15 Abs. 4 Satz 3 to 5 EStG), the Zuwendungsvortrag of the Körperschaftsteuer (§ 9 Abs. 1 Nr. 2
+KStG) and of the Gewerbesteuer (§ 9 Nr. 5 GewStG), the Fehlbetrag (§ 10a GewStG), the steuerliches Einlagekonto
+(§ 27 Abs. 2 KStG) and the Sonderausweis (§ 28 Abs. 1 Satz 3 KStG).
+
+Size. § 267 Abs. 4 HGB decides the size class on two consecutive Abschlussstichtage, so the settings keep the
+criteria of § 267 and § 267a HGB per fiscal year and the class applied, with its source.
+
 Messages are English templates with positional placeholders. SettingsError keeps the template and its values
 apart, so that the Frappe layer translates the template before formatting it. This module is pure Python and never
 imports Frappe.
@@ -786,6 +794,128 @@ def prepayments_of(prepayments: Iterable[Prepayment], tax: Tax, year: int) -> li
 	return [prepayment for prepayment in prepayments if prepayment.tax is tax and prepayment.year == year]
 
 
+# Carry-forwards
+
+NOT_A_CARRY_FORWARD = "{0} is not a kind of carry-forward."
+CARRY_FORWARD_NOT_IN_CENTS = "{0} as of {1} is an amount in cents of at least 0, not {2}."
+CARRY_FORWARD_TWICE = "{0} as of {1} is entered twice."
+
+
+class CarryForwardKind(StrEnum):
+	LOSS = "Loss Carried Forward (§ 10d EStG)"
+	TERMINGESCHAEFTE = "Loss from Termingeschäfte (§ 15 Abs. 4 EStG)"
+	DONATIONS_KST = "Donations Carried Forward (KSt)"
+	FEHLBETRAG = "Fehlbetrag (§ 10a GewStG)"
+	DONATIONS_GEWST = "Donations Carried Forward (GewSt)"
+	EINLAGEKONTO = "Einlagekonto (§ 27 KStG)"
+	SONDERAUSWEIS = "Sonderausweis (§ 28 KStG)"
+
+
+@dataclass(frozen=True, slots=True)
+class CarryForward:
+	"""An amount the Finanzamt stated as of a day, and whether someone checked it against the notice."""
+
+	kind: CarryForwardKind
+	as_of: date
+	amount: Decimal
+	notice_date: date | None = None
+	confirmed: bool = False
+
+	def __post_init__(self) -> None:
+		object.__setattr__(self, "kind", _member(CarryForwardKind, self.kind, NOT_A_CARRY_FORWARD))
+		if not _in_cents(self.amount):
+			raise SettingsError(
+				CARRY_FORWARD_NOT_IN_CENTS, self.kind, day_label(self.as_of), _number(self.amount)
+			)
+
+
+def check_carry_forwards(carry_forwards: Iterable[CarryForward]) -> None:
+	duplicate = _first_duplicate(
+		(carry_forward.kind, carry_forward.as_of) for carry_forward in carry_forwards
+	)
+	if duplicate is not None:
+		kind, as_of = duplicate
+		raise SettingsError(CARRY_FORWARD_TWICE, kind, day_label(as_of))
+
+
+def latest_carry_forward(
+	carry_forwards: Iterable[CarryForward], kind: CarryForwardKind, day: date
+) -> CarryForward | None:
+	"""The latest amount of a kind stated as of ``day`` or before."""
+	stated = [
+		carry_forward
+		for carry_forward in carry_forwards
+		if carry_forward.kind is kind and carry_forward.as_of <= day
+	]
+	return max(stated, key=lambda carry_forward: carry_forward.as_of, default=None)
+
+
+# Size
+
+NOT_A_SIZE_CLASS = "{0} is not a size class: Kleinst, Klein, Mittelgroß or Groß."
+SIZE_CRITERION_NEGATIVE = "The size of the fiscal year ending on {0}: the {1} cannot be negative."
+SIZE_WITHOUT_SOURCE = "The size of the fiscal year ending on {0} needs its source."
+SIZE_TWICE = "The size of the fiscal year ending on {0} is entered twice."
+
+BALANCE_SHEET_TOTAL = "Bilanzsumme"
+REVENUE = "Umsatzerlöse"
+EMPLOYEES = "Arbeitnehmer"
+
+
+class SizeClass(StrEnum):
+	KLEINST = "Kleinst"
+	KLEIN = "Klein"
+	MITTELGROSS = "Mittelgroß"
+	GROSS = "Groß"
+
+
+@dataclass(frozen=True, slots=True)
+class SizeRecord:
+	"""The criteria of § 267 and § 267a HGB on one Abschlussstichtag and the size class applied for that year."""
+
+	fiscal_year_end: date
+	size_class: SizeClass
+	source: str
+	balance_sheet_total: Decimal | None = None
+	revenue: Decimal | None = None
+	employees: Decimal | None = None
+	reason: str | None = None
+
+	def __post_init__(self) -> None:
+		object.__setattr__(self, "size_class", _member(SizeClass, self.size_class, NOT_A_SIZE_CLASS))
+		for criterion, value in (
+			(BALANCE_SHEET_TOTAL, self.balance_sheet_total),
+			(REVENUE, self.revenue),
+			(EMPLOYEES, self.employees),
+		):
+			if value is not None and (not require_decimal(value).is_finite() or value < ZERO):
+				raise SettingsError(SIZE_CRITERION_NEGATIVE, day_label(self.fiscal_year_end), criterion)
+		if not (self.source or "").strip():
+			raise SettingsError(SIZE_WITHOUT_SOURCE, day_label(self.fiscal_year_end))
+
+
+def check_size_history(history: Iterable[SizeRecord]) -> None:
+	duplicate = _first_duplicate(record.fiscal_year_end for record in history)
+	if duplicate is not None:
+		raise SettingsError(SIZE_TWICE, day_label(duplicate))
+
+
+def size_class_on(history: Iterable[SizeRecord], fiscal_year_end: date) -> SizeClass | None:
+	"""The size class the settings applied to the fiscal year ending on that day, if they hold it."""
+	return next((record.size_class for record in history if record.fiscal_year_end == fiscal_year_end), None)
+
+
+# Employment Types
+
+EMPLOYMENT_TYPE_TWICE = "The Employment Type {0} is listed twice."
+
+
+def check_employment_types(names: Iterable[str]) -> None:
+	duplicate = _first_duplicate(names)
+	if duplicate is not None:
+		raise SettingsError(EMPLOYMENT_TYPE_TWICE, duplicate)
+
+
 MESSAGES = (
 	NOT_A_LEGAL_FORM,
 	TEXT_TOO_LONG,
@@ -828,6 +958,14 @@ MESSAGES = (
 	PREPAYMENT_NOT_IN_CENTS,
 	AGS_ONLY_FOR_GEWERBESTEUER,
 	PREPAYMENT_TWICE,
+	NOT_A_CARRY_FORWARD,
+	CARRY_FORWARD_NOT_IN_CENTS,
+	CARRY_FORWARD_TWICE,
+	NOT_A_SIZE_CLASS,
+	SIZE_CRITERION_NEGATIVE,
+	SIZE_WITHOUT_SOURCE,
+	SIZE_TWICE,
+	EMPLOYMENT_TYPE_TWICE,
 )
 
 
