@@ -1,9 +1,12 @@
 """What a GmbH or UG publishes of its Jahresabschluss, by when, after which Feststellung, and what being late costs."""
 
 from datetime import date
+from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.hgb.disclosure import (
+	FEE_CHANGES,
+	ORDNUNGSGELD,
 	DeadlineKind,
 	Director,
 	DisclosureCode,
@@ -16,9 +19,11 @@ from steuerbote.hgb.disclosure import (
 	deadline_kept,
 	default_mode,
 	disclosure_deadline,
+	filing_fees,
 	modes,
 	preparation_deadline,
 	publication,
+	reduced_ordnungsgeld,
 	transmission_problems,
 )
 from steuerbote.hgb.size import SizeClass
@@ -271,4 +276,62 @@ class TransmissionProblemsTest(TestCase):
 		self.assertEqual(
 			coded(transmission_problems(ADOPTED, date(2027, 6, 1), undated)),
 			[(DisclosureCode.NO_SIGNATURE, "")],
+		)
+
+
+class OrdnungsgeldTest(TestCase):
+	"""§ 335 HGB: the Bundesamt für Justiz threatens an Ordnungsgeld with six weeks to file, and sets it after them."""
+
+	def test_threatens_between_2500_and_25000_euro_with_six_weeks_to_file(self):
+		self.assertEqual(
+			(ORDNUNGSGELD.minimum, ORDNUNGSGELD.maximum, ORDNUNGSGELD.weeks),
+			(Decimal("2500"), Decimal("25000"), 6),
+		)
+		self.assertEqual(ORDNUNGSGELD.reference, "§ 335 Abs. 1 Satz 4, Abs. 3 Satz 1 HGB")
+
+	def test_each_person_threatened_pays_the_fee_of_the_procedure(self):
+		self.assertEqual(
+			(ORDNUNGSGELD.procedure_fee, ORDNUNGSGELD.procedure_fee_reference),
+			(Decimal("100.00"), "Nr. 1210 KV JVKostG"),
+		)
+
+	def test_a_late_filing_after_the_six_weeks_lowers_it_by_class(self):
+		for size_class, mode, amount, number in (
+			(SizeClass.KLEINST, Mode.HINTERLEGUNG, "500", 1),
+			(SizeClass.KLEINST, Mode.OFFENLEGUNG, "1000", 2),
+			(SizeClass.KLEIN, Mode.OFFENLEGUNG, "1000", 2),
+			(SizeClass.MITTELGROSS, Mode.OFFENLEGUNG, "2500", 3),
+			(SizeClass.GROSS, Mode.OFFENLEGUNG, "2500", 3),
+		):
+			with self.subTest(size_class=size_class, mode=mode):
+				reduced = reduced_ordnungsgeld(size_class, mode)
+				self.assertEqual(
+					(reduced.amount, reduced.reference),
+					(Decimal(amount), f"§ 335 Abs. 4 Satz 2 Nr. {number} HGB"),
+				)
+
+
+class FeesTest(TestCase):
+	"""What the register charges for the Einstellung and every year, by the Kostenverzeichnis of the JVKostG."""
+
+	def test_charges_by_the_class_steuerbote_prepares(self):
+		kleinst, klein = filing_fees(SizeClass.KLEINST), filing_fees(SizeClass.KLEIN)
+		self.assertEqual(
+			(kleinst.filing, kleinst.filing_reference, kleinst.yearly, kleinst.yearly_reference),
+			(Decimal("18.50"), "Nr. 1420 KV JVKostG", Decimal("3.00"), "Nr. 1410 KV JVKostG"),
+		)
+		self.assertEqual(
+			(klein.filing, klein.filing_reference, klein.yearly),
+			(Decimal("25.00"), "Nr. 1421 KV JVKostG", Decimal("3.00")),
+		)
+
+	def test_has_no_fees_for_the_classes_steuerbote_does_not_prepare(self):
+		for size_class in (SizeClass.MITTELGROSS, SizeClass.GROSS):
+			with self.subTest(size_class=size_class), self.assertRaises(DisclosureError):
+				filing_fees(size_class)
+
+	def test_a_change_before_the_einstellung_costs_half_more_and_a_withdrawal_half_less(self):
+		self.assertEqual(
+			(FEE_CHANGES.changed, FEE_CHANGES.withdrawn, FEE_CHANGES.reference),
+			(Decimal("1.5"), Decimal("0.5"), "Vorbemerkung 1.4.2 Abs. 2 und 3 KV JVKostG"),
 		)
