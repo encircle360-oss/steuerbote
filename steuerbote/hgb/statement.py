@@ -27,6 +27,13 @@ Bilanzsumme of the size criteria „setzt sich aus den Posten zusammen, die in d
 Absatz 2 aufgeführt sind“ (§ 267 Abs. 4a HGB), and the Umsatzerlöse are the first item of the income statement,
 as § 277 Abs. 1 HGB defines them.
 
+Fehlbetrag. „Ist das Eigenkapital durch Verluste aufgebraucht und ergibt sich ein Überschuß der Passivposten über
+die Aktivposten, so ist dieser Betrag am Schluß der Bilanz auf der Aktivseite gesondert unter der Bezeichnung
+„Nicht durch Eigenkapital gedeckter Fehlbetrag“ auszuweisen.“ (§ 268 Abs. 3 HGB) The same amount within the
+Eigenkapital brings it to zero, so both sides rise by it; the Bilanzsumme of the size criteria leaves it out
+(§ 267 Abs. 4a Satz 2 HGB). An Eigenkapital of zero is what the Bundesamt für Justiz asks a Kleinst to explain
+(steuerbote.hgb.notes).
+
 Each line names the sources of the balances that landed on it, as the drill-down of the Annual Accounts shows
 them. The schemes and their sources are steuerbote.hgb.schemes.
 """
@@ -54,6 +61,7 @@ NO_PARENTS: Mapping[str, str] = MappingProxyType({})
 NET_INCOME = "bs.eqLiab.equity.netIncome"
 EQUITY = "bs.eqLiab.equity"
 DEFICIT = "bs.ass.deficitNotCoveredByCapital"
+DEFICIT_IN_EQUITY = "bs.eqLiab.equity.deficitNotCoveredByCapital"
 _SCHEMES_REFERENCE = "§§ 266, 275 HGB"
 
 
@@ -147,6 +155,7 @@ class BalanceSheet:
 	aktiva_total: Decimal
 	passiva_total: Decimal
 	equity: Decimal
+	deficit: Decimal
 	bilanzsumme: Decimal
 
 	@property
@@ -190,6 +199,11 @@ class _Year:
 		self.own[position.concept] += _signed(placed.balance.amount, position.direction)
 		if placed.balance.source:
 			self.sources[position.concept].append(placed.balance.source)
+
+	def fix(self, concept: str, amount: Decimal) -> None:
+		"""Set the amount of a computed position, which every amount computed before may have to take in."""
+		self.fixed[concept] = amount
+		self._amounts.clear()
 
 	def amount(self, concept: str) -> Decimal:
 		if concept not in self._amounts:
@@ -255,7 +269,9 @@ def build(
 	sheet = _Year(balance_scheme, {NET_INCOME: net_income})
 	for placed in placed_balance:
 		sheet.add(placed)
+	_offset_deficit(sheet)
 	aktiva_total = sheet.amount(balance_scheme.aktiva.concept)
+	deficit = sheet.amount(DEFICIT)
 	balance_sheet = BalanceSheet(
 		balance_scheme,
 		size_class,
@@ -264,11 +280,20 @@ def build(
 		aktiva_total,
 		sheet.amount(balance_scheme.passiva.concept),
 		sheet.amount(EQUITY),
-		aktiva_total - sheet.amount(DEFICIT),
+		deficit,
+		aktiva_total - deficit,
 	)
 	if balance_sheet.difference:
 		findings.append(_not_balanced(balance_sheet.difference))
 	return AnnualStatement(balance_sheet, income_statement, tuple(findings))
+
+
+def _offset_deficit(sheet: _Year) -> None:
+	"""§ 268 Abs. 3 HGB: a negative Eigenkapital shows as a Fehlbetrag on the Aktiva and is offset within it."""
+	equity = sheet.amount(EQUITY)
+	if equity < 0:
+		sheet.fix(DEFICIT, -equity)
+		sheet.fix(DEFICIT_IN_EQUITY, -equity)
 
 
 def _lines(
