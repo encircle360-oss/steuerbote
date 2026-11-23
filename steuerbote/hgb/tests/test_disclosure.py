@@ -124,6 +124,8 @@ class PreparationDeadlineTest(TestCase):
 	def test_counts_the_months_from_the_day_after_any_closing_date(self):
 		self.assertEqual(preparation_deadline(date(2026, 11, 15), SizeClass.GROSS).due, date(2027, 2, 15))
 		self.assertEqual(preparation_deadline(date(2026, 8, 31), SizeClass.KLEIN).due, date(2027, 2, 28))
+		self.assertEqual(preparation_deadline(date(2027, 3, 30), SizeClass.GROSS).due, date(2027, 6, 30))
+		self.assertEqual(preparation_deadline(date(2026, 8, 30), SizeClass.KLEIN).due, date(2027, 2, 28))
 
 
 class AdoptionDeadlineTest(TestCase):
