@@ -55,7 +55,7 @@ from steuerbote.kst.losses import (
 from steuerbote.kst.years import HUNDRED, Year, year_of
 from steuerbote.ustva.calculation import LedgerLine
 from steuerbote.ustva.plausibility import Figures
-from steuerbote.ustva.rounding import CENT, ZERO, floor_euro, half_up_euro, require_decimal
+from steuerbote.ustva.rounding import CENT, ZERO, floor_euro, half_up_euro, require_decimal, truncate_cents
 
 
 class Source(Enum):
@@ -785,6 +785,21 @@ class KstResult:
 		"""Anlage ZVE line 71, the festzusetzende Körperschaftsteuer."""
 		return self.lines["corporate_income_tax"].declared
 
+	@property
+	def kst_balance(self) -> Decimal:
+		"""The Abschlusszahlung of Körperschaftsteuer, a refund below zero (§ 36 Absatz 4 EStG)."""
+		return self.lines["kst_balance"].declared
+
+	@property
+	def solz(self) -> Decimal:
+		"""The Solidaritätszuschlag: 5.5 % of the festzusetzende Körperschaftsteuer, the fractions of a cent dropped."""
+		return self.lines["solz"].declared
+
+	@property
+	def solz_balance(self) -> Decimal:
+		"""The Abschlusszahlung of Solidaritätszuschlag, a refund below zero."""
+		return self.lines["solz_balance"].declared
+
 
 def compute(inputs: KstInputs, figures: Figures) -> KstResult:
 	"""The Körperschaftsteuer of a VZ; see the module docstring."""
@@ -859,6 +874,17 @@ def compute(inputs: KstInputs, figures: Figures) -> KstResult:
 	_put(lines, "zve", _total("zve", lines))
 	taxed = max(lines["zve"].declared, ZERO) * year.rate / HUNDRED
 	_put(lines, "corporate_income_tax", Amount(taxed, floor_euro(taxed)))
+	for key in ("capital_gains_tax_credit", "kst_prepayments", "solz_credit", "solz_prepayments"):
+		given = getattr(inputs, key)
+		if not _is_cents(given) or given < ZERO:
+			raise ValueError(f"{key} must be an amount in cents of at least 0, not {given}")
+		_put(lines, key, Amount(given, given))
+	_put(lines, "kst_remaining", _total("kst_remaining", lines))
+	_put(lines, "kst_balance", _total("kst_balance", lines))
+	surcharge = lines["corporate_income_tax"].declared * year.solz_rate / HUNDRED
+	_put(lines, "solz", Amount(surcharge, truncate_cents(surcharge)))
+	_put(lines, "solz_remaining", _total("solz_remaining", lines))
+	_put(lines, "solz_balance", _total("solz_balance", lines))
 
 	return KstResult(
 		year,
