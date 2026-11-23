@@ -1,7 +1,13 @@
 from decimal import Decimal
 from unittest import TestCase
 
-from steuerbote.ustva.rounding import require_decimal, tax_from_base, to_cents, to_full_euros
+from steuerbote.ustva.rounding import (
+	floor_euro,
+	require_decimal,
+	tax_from_base,
+	to_cents,
+	to_full_euros,
+)
 
 
 class ToFullEurosTest(TestCase):
@@ -67,3 +73,27 @@ class RequireDecimalTest(TestCase):
 	def test_names_the_offending_type(self):
 		with self.assertRaisesRegex(TypeError, "not int"):
 			require_decimal(1)
+
+
+class FloorEuroTest(TestCase):
+	"""§ 31 Abs. 1 Satz 2 KStG with rule 8900331 of Jahresdokumentation_E30_2025.ods, R 14.1 Satz 3 GewStR."""
+
+	def test_rounds_the_koerperschaftsteuer_down_to_whole_euros(self):
+		self.assertEqual(floor_euro(Decimal("111200") * Decimal("0.15")), Decimal("16680"))
+		self.assertEqual(floor_euro(Decimal("16680.99")), Decimal("16680"))
+
+	def test_rounds_the_steuermessbetrag_down_to_whole_euros(self):
+		self.assertEqual(floor_euro(Decimal("107600") * Decimal("0.035")), Decimal("3766"))
+
+	def test_keeps_whole_amounts(self):
+		self.assertEqual(floor_euro(Decimal("250.00")), Decimal("250"))
+
+	def test_goes_down_for_negative_amounts_as_well(self):
+		self.assertEqual(floor_euro(Decimal("-0.40")), Decimal("-1"))
+
+	def test_never_returns_negative_zero(self):
+		self.assertEqual(str(floor_euro(Decimal("-0.00"))), "0")
+
+	def test_rejects_floats(self):
+		with self.assertRaises(TypeError):
+			floor_euro(16680.5)
