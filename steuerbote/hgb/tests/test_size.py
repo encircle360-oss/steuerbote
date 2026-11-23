@@ -6,6 +6,7 @@ from unittest import TestCase
 
 from steuerbote.hgb.size import (
 	HEADCOUNT_CONVENTIONS,
+	KLEINST_EXCLUSIONS,
 	YEARS,
 	Basis,
 	Counting,
@@ -339,5 +340,46 @@ class FirstClosingDateTest(TestCase):
 				"Umwandlung",
 				"Formwechsel einer Kapitalgesellschaft oder einer Personenhandelsgesellschaft im Sinne des "
 				"§ 264a Absatz 1",
+			],
+		)
+
+
+class KleinstExclusionTest(TestCase):
+	"""§ 267a Abs. 3 HGB: some companies are never Kleinstkapitalgesellschaften, whatever their criteria."""
+
+	def test_an_excluded_company_within_the_kleinst_thresholds_is_klein(self):
+		decision = decide(KLEINST_2026, KLEINST_2025, SizeClass.KLEINST, excluded_from_kleinst=True)
+		self.assertEqual(
+			(decision.indicated, decision.applied, decision.basis, decision.kleinst_excluded),
+			(SizeClass.KLEINST, SizeClass.KLEIN, Basis.CONFIRMED, True),
+		)
+
+	def test_it_changes_nothing_for_a_larger_company(self):
+		decision = decide(KLEIN_2026, KLEIN_2025, SizeClass.KLEIN, excluded_from_kleinst=True)
+		self.assertEqual((decision.applied, decision.kleinst_excluded), (SizeClass.KLEIN, False))
+
+	def test_it_applies_after_a_neugruendung_too(self):
+		decision = decide(KLEINST_2026, first_after=Origin.NEUGRUENDUNG, excluded_from_kleinst=True)
+		self.assertEqual((decision.applied, decision.kleinst_excluded), (SizeClass.KLEIN, True))
+
+	def test_an_undecided_year_stays_undecided(self):
+		decision = decide(KLEINST_2026, KLEIN_2025, excluded_from_kleinst=True)
+		self.assertEqual((decision.applied, decision.kleinst_excluded), (None, False))
+
+	def test_names_the_companies_the_law_excludes(self):
+		self.assertEqual(
+			[(exclusion.who, exclusion.reference) for exclusion in KLEINST_EXCLUSIONS],
+			[
+				("Investmentgesellschaften im Sinne des § 1 Absatz 11 KAGB", "§ 267a Abs. 3 Nr. 1 HGB"),
+				(
+					"Unternehmensbeteiligungsgesellschaften im Sinne des § 1a Absatz 1 UBGG",
+					"§ 267a Abs. 3 Nr. 2 HGB",
+				),
+				(
+					"Unternehmen, deren einziger Zweck darin besteht, Beteiligungen an anderen Unternehmen zu "
+					"erwerben sowie die Verwaltung und Verwertung dieser Beteiligungen wahrzunehmen, ohne dass sie "
+					"unmittelbar oder mittelbar in die Verwaltung dieser Unternehmen eingreifen",
+					"§ 267a Abs. 3 Nr. 3 HGB",
+				),
 			],
 		)
