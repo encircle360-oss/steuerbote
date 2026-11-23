@@ -5,6 +5,7 @@ from steuerbote.ustva.rounding import (
 	ceil_euro,
 	floor_euro,
 	floor_hundred,
+	half_up_euro,
 	require_decimal,
 	tax_from_base,
 	to_cents,
@@ -166,3 +167,21 @@ class CeilEuroTest(TestCase):
 	def test_rejects_floats(self):
 		with self.assertRaises(TypeError):
 			ceil_euro(1000.01)
+
+
+class HalfUpEuroTest(TestCase):
+	"""Declared amounts in whole euros where no source names the direction, an unverified policy."""
+
+	def test_rounds_half_up_to_whole_euros(self):
+		self.assertEqual(half_up_euro(Decimal("1234.50")), Decimal("1235"))
+		self.assertEqual(half_up_euro(Decimal("1234.49")), Decimal("1234"))
+
+	def test_rounds_half_away_from_zero_for_negative_amounts(self):
+		self.assertEqual(half_up_euro(Decimal("-1234.50")), Decimal("-1235"))
+
+	def test_never_returns_negative_zero(self):
+		self.assertEqual(str(half_up_euro(Decimal("-0.40"))), "0")
+
+	def test_rejects_floats(self):
+		with self.assertRaises(TypeError):
+			half_up_euro(1234.5)
