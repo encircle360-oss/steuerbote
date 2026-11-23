@@ -5,12 +5,13 @@ the record the BZSt returns is the proof of the query (UStAE 18e.1 Abs. 2 Satz 5
 schriftliche Bestätigungsmitteilung.“ (BZSt, "Fragen und Antworten" zur USt-IdNr.). So nobody changes or deletes
 a record or its answer once it is stored; steuerbote.steuerbote.record_files keeps the File of the answer as it
 was stored. A confirmation of steuerbote.vatid can take two queries, and store() keeps each, the
-later one pointing to the earlier; latest() gives the newest record of each number of a company, which the lines
-of a Zusammenfassende Meldung show.
+later one pointing to the earlier, with the document it came from; latest() gives the newest record of each number
+of a company, which the lines of a Zusammenfassende Meldung show.
 """
 
 from collections.abc import Iterable
 from datetime import datetime
+from types import MappingProxyType
 
 import frappe
 from frappe import _
@@ -31,6 +32,10 @@ LATEST_FIELDS = (
 	"consultation_id",
 	"valid_from",
 	"valid_until",
+)
+# The field of a record that names the document whose USt-IdNrn. its confirmation asked about.
+SOURCE_FIELDS: MappingProxyType[str, str] = MappingProxyType(
+	{"Recapitulative Statement": "recapitulative_statement"}
 )
 
 
@@ -88,9 +93,11 @@ class VATIDConfirmation(Document):
 		)
 
 
-def store(confirmation: Confirmation, company: str, statement: str | None = None) -> str:
-	"""Record each query of the confirmation, the first first, with its answer as a private file; returns the
-	name of the record of the last query."""
+def store(confirmation: Confirmation, company: str, source: tuple[str, str] | None = None) -> str:
+	"""Record each query of the confirmation, the first first, with its answer as a private file; ``source`` is the
+	DocType and the name of the document whose USt-IdNrn. the confirmation asked about. Returns the name of the
+	record of the last query."""
+	origin = {SOURCE_FIELDS[source[0]]: source[1]} if source else {}
 	previous = None
 	for query, values in zip(confirmation.queries(), records.records(confirmation), strict=True):
 		record = frappe.get_doc(
@@ -99,7 +106,7 @@ def store(confirmation: Confirmation, company: str, statement: str | None = None
 				**values,
 				**{name: _site_time(values[name]) for name in records.TIME_FIELDS},
 				"company": company,
-				"recapitulative_statement": statement,
+				**origin,
 				"user": frappe.session.user,
 				"previous": previous,
 			}

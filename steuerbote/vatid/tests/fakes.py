@@ -40,6 +40,20 @@ class FakeFetch:
 		return [request.url for request in self.requests]
 
 
+class FakeBzst:
+	"""Answers each query with the next of the answers for its number, as the eVatR API would, and keeps the
+	queries as JSON; for the confirmations of a document with several numbers."""
+
+	def __init__(self, answers: dict[str, list[Response]]) -> None:
+		self.answers = {number: list(queue) for number, queue in answers.items()}
+		self.requests: list[dict] = []
+
+	def __call__(self, request: Request) -> Response:
+		query = json.loads(request.body)
+		self.requests.append(query)
+		return self.answers[query["angefragteUstid"]].pop(0)
+
+
 class FakeClock:
 	"""Starts at START and moves on by one second with each reading."""
 
