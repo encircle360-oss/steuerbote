@@ -2,7 +2,8 @@
 
 The package and the documentation are not part of the repository (steuerbote/xbrl/tests/real.py,
 steuerbote/elster/tests/eric_schema.py): without them these tests are skipped, except in a CI. The invented GmbH is
-that of the tests on the mini taxonomy, its accounts mapped to the positions of the package.
+that of the tests on the mini taxonomy, its accounts mapped to the positions of the package. The same GmbH runs
+against the package 6.10 as well (STEUERBOTE_TAXONOMY_6_10), whose positions it names unchanged.
 """
 
 from datetime import date
@@ -12,9 +13,10 @@ from unittest import TestCase
 from lxml import etree
 
 from steuerbote.ebilanz.anlagenspiegel import Row, ValueType
-from steuerbote.ebilanz.calculation import AccountBalance, EquityChanges
+from steuerbote.ebilanz.calculation import BALANCE_SHEET_NET_INCOME, AccountBalance, EquityChanges
 from steuerbote.ebilanz.gcd import facts
 from steuerbote.ebilanz.instance import EBilanz, Sources, build
+from steuerbote.ebilanz.kontennachweis import NOT_YET_POSSIBLE
 from steuerbote.ebilanz.positions import Case, Mark, structure
 from steuerbote.ebilanz.tests.test_gcd import MASTER
 from steuerbote.ebilanz.ueberleitung import Kind, Transfer
@@ -237,3 +239,58 @@ class GcdExampleTest(TestCase):
 		required = {name for name in self.structure.required if name.startswith("de-gcd:")}
 		self.assertEqual(sorted(required - self.example), [])
 		self.assertEqual(sorted(required - self.ours), [])
+
+
+class Structure610Test(TestCase):
+	"""The Mussfelder of a GmbH with the Gesamtkostenverfahren on the package 6.10: those of 6.9 with the new Mussfeld
+	„sonstige Steuern, Grundsteuer“, which makes „sonstige Steuern“ a Summenmussfeld, and without the reason for an
+	E-Bilanz without Kontensalden, which 6.10 deletes (steuerbote/xbrl/changes.py)."""
+
+	@classmethod
+	def setUpClass(cls):
+		cls.structure = structure(real.view_6_10(), Case("GmbH", YEAR))
+		cls.before = structure(real.view(), Case("GmbH", YEAR))
+
+	def test_bilanz_guv_and_betriebsvermoegensvergleich(self):
+		for component, expected in (("B", (82, 49)), ("GuV", (155, 60)), ("BVV", (5, 2))):
+			with self.subTest(component=component):
+				self.assertEqual(
+					(
+						len(self.structure.mussfelder(component)),
+						len(self.structure.mussfelder(component, Mark.SUMMENMUSSFELD)),
+					),
+					expected,
+				)
+
+	def test_the_mussfelder_6_10_adds_and_deletes(self):
+		required, before = set(self.structure.required), set(self.before.required)
+		self.assertEqual(sorted(required - before), ["de-gaap-ci:is.netIncome.otherTaxes.GrSt"])
+		self.assertEqual(sorted(before - required), [NOT_YET_POSSIBLE])
+		self.assertIs(self.structure.position("de-gaap-ci:is.netIncome.otherTaxes").mark, Mark.SUMMENMUSSFELD)
+		self.assertIs(self.before.position("de-gaap-ci:is.netIncome.otherTaxes").mark, Mark.MUSSFELD)
+
+	def test_the_gcd(self):
+		self.assertEqual(len([name for name in self.structure.required if name.startswith("de-gcd:")]), 51)
+
+	def test_the_anlagenspiegel_per_row(self):
+		marks = [column.mark for column in self.structure.columns]
+		self.assertEqual((marks.count(Mark.MUSSFELD), marks.count(Mark.SUMMENMUSSFELD)), (13, 4))
+
+	def test_a_ug_has_the_mussfelder_of_a_gmbh(self):
+		ug = structure(real.view_6_10(), Case("UG", YEAR))
+		self.assertEqual(ug.required, self.structure.required)
+		self.assertEqual(ug.refused, self.structure.refused)
+
+
+class InventedGmbH610Test(TestCase):
+	def test_passes_every_check_of_the_profile_fiscal_on_the_package_6_10(self):
+		"""The fiscal year 2026 may take the taxonomy 6.10 (rule 170205007 of 6.10), with the Kontensaldo without account
+		information for the Jahresüberschuss of the Bilanz but in the Eröffnungsbilanz, which has none."""
+		for name, ebilanz in invented(real.view_6_10()):
+			with self.subTest(name=name):
+				self.assertEqual([(finding.code, finding.reference) for finding in ebilanz.findings], [])
+				self.assertTrue(ebilanz.ready)
+				without = [line.concept for line in ebilanz.kontennachweis.lines if not line.account]
+				expected = [] if name == "eroeffnungsbilanz" else [BALANCE_SHEET_NET_INCOME]
+				self.assertEqual(without, expected)
+				self.assertIn(b"http://www.xbrl.de/taxonomies/de-gaap-ci-2026-04-01", ebilanz.xml())
