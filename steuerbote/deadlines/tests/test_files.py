@@ -1,5 +1,6 @@
 """The records the deadlines come with fit together, read from their files without a bench: the report Offene
-Fristen, the Deadline Reminder, the fields of the VAT Return Settings and the daily job in hooks.py."""
+Fristen, the Deadline Reminder, the fields of the VAT Return Settings, the daily job in hooks.py and the DocTypes of the
+annual filings, which come with their modules."""
 
 import ast
 import csv
@@ -9,7 +10,7 @@ from pathlib import Path
 from unittest import TestCase
 
 from steuerbote import hooks
-from steuerbote.deadlines import DOCUMENT_TYPES, Kind
+from steuerbote.deadlines import DOCUMENT_TYPES, Kind, annual
 
 APP = Path(__file__).resolve().parents[2]
 MODULE = APP / "steuerbote"
@@ -123,9 +124,12 @@ class ReminderFilesTest(TestCase):
 		(document,) = [node for node in controller if isinstance(node, ast.ClassDef)]
 		self.assertIn("autoname", {node.name for node in document.body if isinstance(node, ast.FunctionDef)})
 
-	def test_each_kind_is_filed_with_a_doctype_of_the_module(self):
+	def test_each_kind_is_filed_with_a_doctype_of_the_module_or_awaits_it(self):
 		names = {read_json(path)["name"] for path in (MODULE / "doctype").glob("*/*.json")}
-		self.assertLessEqual(set(DOCUMENT_TYPES.values()), names)
+		self.assertLessEqual(set(DOCUMENT_TYPES.values()) - names, set(annual.AWAITING_DOCTYPES))
+		self.assertLessEqual(
+			{doctype for kind, doctype in DOCUMENT_TYPES.items() if kind not in annual.KINDS}, names
+		)
 
 
 class SettingsFilesTest(TestCase):
