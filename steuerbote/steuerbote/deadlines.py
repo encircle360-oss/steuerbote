@@ -11,9 +11,7 @@ ELSTER accepted or that is unknown, even if it was cancelled or discarded since 
 Offene Fristen shows the deadlines, and annual_deadline() gives an annual document its Fälligkeitsdatum.
 
 The annual documents are read through the registry steuerbote.deadlines.annual.DOCTYPES, by the fields every annual
-document carries (steuerbote.jahresmeldung.lifecycle.standard_fields). Their DocTypes come with the modules of the
-annual filings, so a site may lack one of steuerbote.deadlines.annual.AWAITING_DOCTYPES: this module reads each only
-where the site has it, and the deadlines of a DocType the site lacks stay out of the overview (installed).
+document carries (steuerbote.jahresmeldung.lifecycle.standard_fields).
 
 send_reminders() runs once a day (scheduler_events in hooks.py). For each company with VAT Return Settings or Annual
 Filing Settings whose VAT Return Settings name recipients, it sends one e-mail in German with the deadlines that are
@@ -155,19 +153,12 @@ def fiscal_year_ends(company: str) -> list[date]:
 	return ends
 
 
-def installed(doctype: str) -> bool:
-	"""Whether the site has the DocType of an annual document: one of AWAITING_DOCTYPES comes with its module, so a
-	site may lack it yet."""
-	return doctype not in annual.AWAITING_DOCTYPES or bool(frappe.db.exists("DocType", doctype))
-
-
 def document_types() -> dict[Kind, str]:
-	"""The DocType of each kind of deadline on the site: those of the Voranmeldung, the Zusammenfassende Meldung and
-	the Sondervorauszahlung, and each annual DocType of the registry that the site has."""
+	"""The DocType of each kind of deadline: those of the Voranmeldung, the Zusammenfassende Meldung and the
+	Sondervorauszahlung, and the annual DocTypes of the registry."""
 	found = {kind: doctype for kind, doctype in deadlines.DOCUMENT_TYPES.items() if kind not in annual.KINDS}
 	for doctype, entry in annual.DOCTYPES.items():
-		if installed(doctype):
-			found.update(dict.fromkeys(entry.kinds, doctype))
+		found.update(dict.fromkeys(entry.kinds, doctype))
 	return found
 
 
@@ -257,14 +248,12 @@ def _extensions(company: str) -> list[Filing]:
 
 
 def _annual_documents(company: str) -> list[Filing]:
-	"""The annual documents of the company in each DocType of the registry the site has, the latest first, read by
-	the fields every annual document carries; the day a Senden or the note of a filing outside Steuerbote files one
+	"""The annual documents of the company in each DocType of the registry, the latest first, read by the fields
+	every annual document carries; the day a Senden or the note of a filing outside Steuerbote files one
 	comes from its ELSTER Transmissions (transmission.filings), and the Bilanzart of an E-Bilanz tells its
 	Eröffnungsbilanz apart."""
 	found: list[Filing] = []
 	for doctype, entry in annual.DOCTYPES.items():
-		if not installed(doctype):
-			continue
 		opening = entry.opening_balance_field
 		if opening and not frappe.get_meta(doctype).has_field(opening):
 			opening = None

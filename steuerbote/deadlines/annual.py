@@ -39,15 +39,13 @@ zu dem in der Anordnung bestimmten Zeitpunkt“ (§ 152 Abs. 2 Nr. 1 and 3 AO). 
 computes no surcharge.
 
 Documents. Each annual kind is filed by the documents of one DocType of DOCTYPES, read by the fields every annual
-document carries (steuerbote.jahresmeldung.lifecycle.standard_fields); the modules of the annual filings bring these
-DocTypes, so a site may lack those of AWAITING_DOCTYPES, and the Frappe layer leaves out a deadline whose DocType it
-lacks, since no document could file it. An Erklärung and the E-Bilanz are filed once they are submitted, which only an
-accepted Senden or the note of their filing does, or once they were sent through Steuerbote with an outcome that ELSTER
-accepted or that is unknown, cancelled or not, since the Finanzamt has them or may have them (docs/architektur.md,
-„Lebenslauf einer Meldung“). Submitting the Jahresabschluss is its Feststellung (§ 42a Abs. 2 Satz 1 GmbHG), which a
-cancelled one no longer holds, and it is offengelegt once it is übermittelt or eingestellt: „Für die Wahrung der
-Fristen [...] ist der Zeitpunkt der Übermittlung der Unterlagen maßgebend“ (§ 325 Abs. 4 Satz 2 HGB), so after its
-upload it stays offengelegt even when a change cancels and replaces it.
+document carries (steuerbote.jahresmeldung.lifecycle.standard_fields). An Erklärung and the E-Bilanz are filed once
+they are submitted, which only an accepted Senden or the note of their filing does, or once they were sent through
+Steuerbote with an outcome that ELSTER accepted or that is unknown, cancelled or not, since the Finanzamt has them or
+may have them (docs/architektur.md, „Lebenslauf einer Meldung“). Submitting the Jahresabschluss is its Feststellung
+(§ 42a Abs. 2 Satz 1 GmbHG), which a cancelled one no longer holds, and it is offengelegt once it is übermittelt or
+eingestellt: „Für die Wahrung der Fristen [...] ist der Zeitpunkt der Übermittlung der Unterlagen maßgebend“
+(§ 325 Abs. 4 Satz 2 HGB), so after its upload it stays offengelegt even when a change cancels and replaces it.
 
 A year is the VZ, the EZ and the year the Wirtschaftsjahr ends in, which is how the annual documents count it
 (steuerbote.jahresmeldung.lifecycle.standard_fields). The first year is 2026 (docs/roadmap.md, „Ab 2026“), or the year
@@ -271,15 +269,6 @@ DOCTYPES: MappingProxyType[str, AnnualDocType] = MappingProxyType(
 """The DocTypes of the annual documents by name, as company_data_to_be_ignored in hooks.py names them, with what
 each files. A module whose DocType files its deadlines otherwise than by the fields every annual document carries
 extends its entry here."""
-AWAITING_DOCTYPES = (
-	"Annual VAT Return",
-	"Electronic Balance Sheet",
-	"Corporate Income Tax Return",
-	"Trade Tax Return",
-	"Annual Accounts",
-)
-"""The annual DocTypes that come with their modules, so that a site may lack them: the Frappe layer reads each only
-where the site has it, and the deadlines it files appear with it."""
 
 
 @dataclass(frozen=True, slots=True)
