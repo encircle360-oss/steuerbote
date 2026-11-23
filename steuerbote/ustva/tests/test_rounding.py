@@ -8,6 +8,7 @@ from steuerbote.ustva.rounding import (
 	tax_from_base,
 	to_cents,
 	to_full_euros,
+	truncate_cents,
 )
 
 
@@ -119,3 +120,24 @@ class FloorHundredTest(TestCase):
 	def test_rejects_floats(self):
 		with self.assertRaises(TypeError):
 			floor_hundred(107654.32)
+
+
+class TruncateCentsTest(TestCase):
+	"""§ 4 Satz 3 SolZG: „Bruchteile eines Cents bleiben außer Ansatz.“"""
+
+	def test_drops_the_fractions_of_a_cent_of_the_solidaritaetszuschlag(self):
+		self.assertEqual(truncate_cents(Decimal("16680") * Decimal("0.055")), Decimal("917.40"))
+		self.assertEqual(truncate_cents(Decimal("1234.5678")), Decimal("1234.56"))
+
+	def test_drops_them_towards_zero_for_negative_amounts(self):
+		self.assertEqual(truncate_cents(Decimal("-0.019")), Decimal("-0.01"))
+
+	def test_keeps_two_decimals(self):
+		self.assertEqual(str(truncate_cents(Decimal("92.4"))), "92.40")
+
+	def test_never_returns_negative_zero(self):
+		self.assertEqual(str(truncate_cents(Decimal("-0.009"))), "0.00")
+
+	def test_rejects_floats(self):
+		with self.assertRaises(TypeError):
+			truncate_cents(917.4)
