@@ -1,12 +1,15 @@
 """The Balance Sheet Mapping, read from its files without a bench: its DocTypes with the fields and options the core
 reads (steuerbote/xbrl/mapping.py, steuerbote/balance_mapping_sync.py), and every text in German."""
 
+import ast
 import csv
 import json
+import re
 from pathlib import Path
 from unittest import TestCase
 
 from steuerbote import balance_mapping_sync
+from steuerbote.mappings import transfer
 from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl import mapping
 from steuerbote.xbrl.mapping import REMAINING_TERMS, Purpose
@@ -24,7 +27,17 @@ MAPPING_DOCTYPES = (
 # The charts and the versions of the taxonomy read the same in every language, and Frappe translates its own labels,
 # which the app keeps out of: ERPNext translates „Purpose“ as „Zweck“, so the Abschlusszweck keeps its German name.
 UNTRANSLATED = frozenset(
-	{"SKR03", "SKR04", "Eigener Kontenrahmen", *TAXONOMIES, "Company", "Account", "Position", "Reason"}
+	{
+		"SKR03",
+		"SKR04",
+		"Eigener Kontenrahmen",
+		*TAXONOMIES,
+		"Company",
+		"Account",
+		"Position",
+		"Reason",
+		"Root Type",
+	}
 )
 
 
@@ -229,3 +242,117 @@ class TranslationsTest(TestCase):
 			*balance_mapping_sync.MESSAGES,
 		}
 		self.assertEqual(sorted(messages - translations().keys()), [])
+
+
+FOLDER = DOCTYPES / "balance_sheet_mapping"
+DIFFERENCES_SCRIPT = APP / "public" / "js" / "mapping_differences.js"
+TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
+
+
+def constants(source: str) -> dict[str, object]:
+	"""The module-level constants of a source whose value is a literal."""
+	found = {}
+	for node in ast.parse(source).body:
+		if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+			try:
+				found[node.targets[0].id] = ast.literal_eval(node.value)
+			except ValueError:
+				continue
+	return found
+
+
+def function(script: str, name: str) -> str:
+	found = re.search(rf"\nfunction {name}\([^)]*\) \{{\n(?P<body>.*?)\n\}}\n", script, re.DOTALL)
+	if found is None:
+		raise AssertionError(f"no function {name}")
+	return found["body"]
+
+
+class FormFilesTest(TestCase):
+	"""The form of the Balance Sheet Mapping, as the one of the VAT Return Mapping: the methods it calls are
+	whitelisted for POST, its dialogs escape what the site holds, the file stays private, and every text reads in
+	German."""
+
+	def setUp(self):
+		self.script = (FOLDER / "balance_sheet_mapping.js").read_text(encoding="utf-8")
+		self.source = (FOLDER / "balance_sheet_mapping.py").read_text(encoding="utf-8")
+
+	def test_the_methods_the_form_calls_are_whitelisted_for_post(self):
+		methods = sorted(set(re.findall(r'frm\.call\("(\w+)"', self.script)))
+		self.assertEqual(
+			methods,
+			[
+				"accounts_without_place",
+				"compare_with_defaults",
+				"compare_with_file",
+				"export_mapping",
+				"import_file",
+				"load_defaults",
+				"update_from_defaults",
+				"watch_accounts_without_place",
+			],
+		)
+		for method in methods:
+			with self.subTest(method=method):
+				self.assertRegex(self.source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+
+	def test_the_form_offers_the_ledger_accounts_of_the_company_in_each_table(self):
+		self.assertIn('for (const table of ["rules", "watched", "excluded"])', self.script)
+		self.assertIn("filters: { company: doc.company, is_group: 0 },", self.script)
+		self.assertIn('["rules", "watched", "excluded"].some(', self.script)
+
+	def test_the_form_shows_the_differences_in_the_dialog_of_the_mappings_headed_by_account(self):
+		self.assertTrue(
+			self.script.startswith('{% include "steuerbote/public/js/mapping_differences.js" %}\n')
+		)
+		self.assertEqual(self.script.count('subject_label: __("Account"),'), 2)
+		dialog = DIFFERENCES_SCRIPT.read_text(encoding="utf-8")
+		self.assertIn("subject_label, proposed_label", dialog)
+		self.assertIn('${escape(subject_label || __("Account or Tax Check"))}', dialog)
+
+	def test_the_export_is_saved_by_the_browser_under_its_name(self):
+		body = function(self.script, "export_mapping")
+		for part in ("new Blob([file.content]", "link.download = file.file_name;", "frm.reload_doc();"):
+			with self.subTest(part=part):
+				self.assertIn(part, body)
+		self.assertIn('return f"Bilanzzuordnung-{re.sub(', self.source)
+
+	def test_an_upload_stays_private_and_the_file_browser_stays_closed(self):
+		body = function(self.script, "upload_mapping_file")
+		for part in (
+			"docname: frm.doc.name,",
+			"allow_toggle_private: false,",
+			"allow_web_link: false,",
+			"disable_file_browser: true,",
+			'allowed_file_types: [".json"]',
+		):
+			with self.subTest(part=part):
+				self.assertIn(part, body)
+
+	def test_the_dialog_of_the_accounts_escapes_what_the_site_holds(self):
+		body = function(self.script, "show_accounts_without_place")
+		self.assertIn("const escape = frappe.utils.escape_html;", body)
+		for value in ("account.account_number", "account.account_name", "account.root_type"):
+			with self.subTest(value=value):
+				shown = re.findall(rf"\$\{{[^}}]*{re.escape(value)}[^}}]*\}}", body)
+				self.assertTrue(shown)
+				self.assertTrue(all("escape" in expression for expression in shown), shown)
+
+	def test_every_field_of_a_difference_has_a_german_label(self):
+		labels = constants(self.source)["FIELD_LABELS"]
+		self.assertEqual(set(labels), {"place", *balance_mapping_sync.RULE_FIELDS, "level", "reason"})
+		self.assertEqual(sorted(set(labels.values()) - translations().keys() - UNTRANSLATED), [])
+
+	def test_every_text_of_the_form_and_its_controller_reads_in_german(self):
+		found = constants(self.source)
+		texts = {
+			*TRANSLATED_LITERAL.findall(self.script),
+			*TRANSLATED_LITERAL.findall(self.source),
+			*(found[name] for name in ("INVALID", "NOT_CHECKED", "OTHER_TAXONOMY", "NOTHING_TO_WATCH")),
+			*transfer.MESSAGES,
+		}
+		self.assertIn("Check Accounts", texts)
+		self.assertEqual(sorted(texts - translations().keys() - UNTRANSLATED), [])
+		german = translations()
+		self.assertEqual(german["Check Accounts"], "Konten prüfen")
+		self.assertEqual(german["Invalid Balance Sheet Mapping"], "Ungültige Bilanzzuordnung")
