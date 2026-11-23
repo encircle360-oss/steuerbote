@@ -4,4 +4,6 @@ This package is pure Python. It never imports Frappe, so it can be tested withou
 
 - years.py: the Erhebungszeiträume with the Messzahl, the Hinzurechnungen, Kürzungen and Fehlbeträge, the minimum
   Hebesatz, the provisional forms and the files of the year check.
+- chain.py: compute(KstResult, GewstInputs, figures) -> GewstResult, the lines of GewSt 1 A (STEPS) and the Anlagen
+  BEG (BegLine) from the result of steuerbote.kst.chain.
 """
