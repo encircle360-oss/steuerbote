@@ -5,12 +5,17 @@ from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.hgb.size import (
+	HEADCOUNT_CONVENTIONS,
 	YEARS,
+	Counting,
 	Criteria,
 	SizeClass,
+	SizeError,
 	Thresholds,
 	UnknownYearError,
+	average_employees,
 	exceeds,
+	headcount_dates,
 	indicated_class,
 	thresholds_for,
 )
@@ -156,3 +161,73 @@ class IndicatedClassTest(TestCase):
 		self.assertIs(
 			indicated_class(criteria("25000000", "50000000", "250"), self.thresholds), SizeClass.MITTELGROSS
 		)
+
+
+class HeadcountDatesTest(TestCase):
+	def test_counts_on_the_four_quarter_ends_of_the_calendar_year(self):
+		self.assertEqual(
+			headcount_dates(CLOSING_2026),
+			(date(2026, 3, 31), date(2026, 6, 30), date(2026, 9, 30), date(2026, 12, 31)),
+		)
+
+	def test_takes_the_last_four_quarter_ends_up_to_another_closing_date(self):
+		self.assertEqual(
+			headcount_dates(date(2026, 6, 30)),
+			(date(2025, 9, 30), date(2025, 12, 31), date(2026, 3, 31), date(2026, 6, 30)),
+		)
+		self.assertEqual(
+			headcount_dates(date(2026, 11, 15)),
+			(date(2025, 12, 31), date(2026, 3, 31), date(2026, 6, 30), date(2026, 9, 30)),
+		)
+
+
+class AverageEmployeesTest(TestCase):
+	"""§ 267 Abs. 5 HGB: der vierte Teil der Summe der Zahlen der vier Stichtage."""
+
+	def counts(self, *numbers: int) -> dict[date, int]:
+		return dict(zip(headcount_dates(CLOSING_2026), numbers, strict=True))
+
+	def test_is_a_quarter_of_the_sum_of_the_four_headcounts(self):
+		self.assertEqual(average_employees(self.counts(10, 11, 10, 10), CLOSING_2026), Decimal("10.25"))
+
+	def test_keeps_the_quarters_exactly(self):
+		self.assertEqual(str(average_employees(self.counts(1, 0, 0, 0), CLOSING_2026)), "0.25")
+		self.assertEqual(average_employees(self.counts(0, 0, 0, 0), CLOSING_2026), Decimal("0"))
+
+	def test_needs_exactly_the_four_days(self):
+		counts = self.counts(1, 2, 3, 4)
+		del counts[date(2026, 6, 30)]
+		with self.assertRaises(SizeError):
+			average_employees(counts, CLOSING_2026)
+		with self.assertRaises(SizeError):
+			average_employees({**self.counts(1, 2, 3, 4), date(2026, 1, 31): 5}, CLOSING_2026)
+
+	def test_counts_whole_people(self):
+		with self.assertRaises(TypeError):
+			average_employees({**self.counts(1, 2, 3, 4), date(2026, 3, 31): 1.5}, CLOSING_2026)
+		with self.assertRaises(TypeError):
+			average_employees({**self.counts(1, 2, 3, 4), date(2026, 3, 31): True}, CLOSING_2026)
+		with self.assertRaises(ValueError):
+			average_employees(self.counts(1, -1, 3, 4), CLOSING_2026)
+
+
+class HeadcountConventionsTest(TestCase):
+	def test_counts_staff_abroad_but_not_apprentices_as_the_law_says(self):
+		by_whom = {convention.who: convention for convention in HEADCOUNT_CONVENTIONS}
+		abroad = by_whom["im Ausland beschäftigte Arbeitnehmer"]
+		apprentices = by_whom["zu ihrer Berufsausbildung Beschäftigte"]
+		self.assertEqual((abroad.counting, abroad.reference), (Counting.COUNTED, "§ 267 Abs. 5 HGB"))
+		self.assertEqual(
+			(apprentices.counting, apprentices.reference), (Counting.NOT_COUNTED, "§ 267 Abs. 5 HGB")
+		)
+
+	def test_leaves_part_timers_and_geschaeftsfuehrer_unverified(self):
+		unverified = [
+			convention.who
+			for convention in HEADCOUNT_CONVENTIONS
+			if convention.counting is Counting.UNVERIFIED
+		]
+		self.assertEqual(unverified, ["Teilzeitbeschäftigte, je Kopf gezählt", "Geschäftsführer"])
+		for convention in HEADCOUNT_CONVENTIONS:
+			with self.subTest(who=convention.who):
+				self.assertEqual(convention.counting is Counting.UNVERIFIED, convention.reference == "")
