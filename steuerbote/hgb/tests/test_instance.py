@@ -1197,3 +1197,13 @@ class EntriesTest(TestCase):
 				"Mitglieder des Geschäftsführungsorgans: Vorschüsse und Kredite 8.000 €; wesentliche Bedingungen:"
 			)
 		)
+
+	def test_an_advance_without_its_conditions_names_none(self):
+		advance = replace(KLEINST_NOTES.advances[0], conditions=" ")
+		instance = kleinst(notes=replace(KLEINST_NOTES, advances=(advance,)))
+		self.assertEqual(
+			text(instance, "nt.relationships.creditsToMembers"),
+			"Mitglieder des Geschäftsführungsorgans: Vorschüsse und Kredite 8.000 €, Zinssatz 3,5 % im Jahr; im "
+			"Geschäftsjahr zurückgezahlt 2.000 €.",
+		)
+		self.assertIn("JA-ORGANKREDIT-BEDINGUNGEN", {finding.code for finding in instance.findings})

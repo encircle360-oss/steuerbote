@@ -558,14 +558,32 @@ class _Angaben:
 			self._paragraph(slot.text, text)
 			self._contingencies(slot, answer)
 		elif slot.code == "ORGANKREDITE":
-			for total in advances(self.notes.advances):
+			totals = advances(self.notes.advances)
+			if not totals:
+				self._paragraph(slot.text, _with_amount(text, answer.amount))
+				return
+			self._require_total(slot.code, answer, sum((total.amount for total in totals), _ZERO))
+			for total in totals:
 				self._paragraph(slot.text, self.texts.clean(_advance_text(total), slot.code))
 			self._paragraph(slot.text, text)
 		elif slot.amount:
 			self._number(slot, answer)
 		else:
-			figure = "" if answer.amount is None else _euro(answer.amount)
-			self._paragraph(slot.text, f"{text} ({figure})" if text and figure else text or figure)
+			self._paragraph(slot.text, _with_amount(text, answer.amount))
+
+	def _require_total(self, code: str, answer: NoteAnswer, exact: Decimal) -> None:
+		"""The amount of an answer with entries behind it is their total."""
+		if answer.amount is not None and answer.amount != exact:
+			self.findings.append(
+				Finding(
+					Code.AMOUNT,
+					Severity.ERROR,
+					f"Der Betrag der Angabe {code} ist nicht die Summe ihrer Einträge von {_euro(exact)}.",
+					"§ 268 Abs. 7, § 285 Nr. 9 Buchst. c HGB",
+					code,
+					answer.amount,
+				)
+			)
 
 	def _contingencies(self, slot: Slot, answer: NoteAnswer) -> None:
 		totals = contingencies(self.notes.contingent)
@@ -575,18 +593,7 @@ class _Angaben:
 					amount(f"{GAAP}{CONTINGENCIES}", Period.STICHTAG, half_up_euro(answer.amount))
 				)
 			return
-		exact = sum((total.amount for total in totals), _ZERO)
-		if answer.amount is not None and answer.amount != exact:
-			self.findings.append(
-				Finding(
-					Code.AMOUNT,
-					Severity.ERROR,
-					f"Der Betrag der Haftungsverhältnisse ist nicht die Summe ihrer Einträge von {_euro(exact)}.",
-					"§ 268 Abs. 7, § 251 HGB",
-					slot.code,
-					answer.amount,
-				)
-			)
+		self._require_total(slot.code, answer, sum((total.amount for total in totals), _ZERO))
 		rounded = apportion_full_euros(tuple(total.amount for total in totals))
 		self.amounts.append(amount(f"{GAAP}{CONTINGENCIES}", Period.STICHTAG, sum(rounded, _ZERO)))
 		securities = []
@@ -687,6 +694,13 @@ def _advance_text(total: AdvanceTotal) -> str:
 	if total.guarantees:
 		parts.append(f"zu ihren Gunsten eingegangene Haftungsverhältnisse: {'; '.join(total.guarantees)}")
 	return "; ".join(parts) + "."
+
+
+def _with_amount(text: str, value: Decimal | None) -> str:
+	"""A text with the amount of its answer after it, for a place of the taxonomy that takes no amount."""
+	if value is None:
+		return text
+	return f"{text} ({_euro(value)})" if text else _euro(value)
 
 
 def _euro(value: Decimal) -> str:
