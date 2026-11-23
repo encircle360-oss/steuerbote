@@ -20,6 +20,7 @@
   "crediting_period_label",
   "status",
   "transmission_in_progress",
+  "provisional",
   "amended_from",
   "base_section",
   "base_rows",
@@ -165,6 +166,14 @@
    "label": "Transmission Running",
    "no_copy": 1,
    "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "The forms of the year come provisionally from the documentation of a beta of ERiC and the form of an earlier year, until ERiC and the BMF publish those of the year. Until then the document is not ready.",
+   "fieldname": "provisional",
+   "fieldtype": "Check",
+   "label": "Provisional Forms",
    "read_only": 1
   },
   {
@@ -373,7 +382,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-20 23:30:00.000000",
+ "modified": "2026-11-23 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Extension",

@@ -2,7 +2,9 @@
 	Form USt 1 H, Antrag auf Dauerfristverlängerung and Anmeldung der Sondervorauszahlung, in the order and wording
 	of the form of 2026 (BMF letter of 29 December 2025, GZ III C 3 - S 7344/00039/007/036), after the filed VAT
 	Returns of the previous year that make the base. Every amount is one the form keeps, the print computes
-	none. Text fields print as Frappe formats them, since Frappe sanitises their markup when a document is saved.
+	none. A year whose form is provisional prints it under the mark „vorläufig“ with the documentation of ERiC and
+	the form it takes (steuerbote/ustva/years.py), 2027 until the BMF letter with the form of 2027. Text fields print
+	as Frappe formats them, since Frappe sanitises their markup when a document is saved.
 -#}
 {%- set settings = frappe.db.get_value("VAT Return Settings", doc.company, ["tax_number", "elster_tax_number", "tax_office"], as_dict=True) or {} -%}
 {%- set with_sondervorauszahlung = doc.context == "Umsatzsteuersondervorauszahlung" -%}
@@ -30,6 +32,10 @@
 
 <div class="sb-dfv">
 	<h1>{{ "Anmeldung der Sondervorauszahlung" if with_sondervorauszahlung else "Antrag auf Dauerfristverlängerung" }} {{ doc.year }}</h1>
+	{%- set provisional = doc.provisional_forms() %}
+	{%- if provisional %}
+	<p class="sb-subtitle">vorläufig ({{ provisional.documentation }}, Vordruck {{ provisional.form_year }})</p>
+	{%- endif %}
 	{%- if with_sondervorauszahlung and doc.antrag %}
 	<p class="sb-subtitle">mit Antrag auf Dauerfristverlängerung</p>
 	{%- endif %}

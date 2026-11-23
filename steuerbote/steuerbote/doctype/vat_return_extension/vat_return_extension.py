@@ -123,6 +123,7 @@ class VATReturnExtension(Transmittable, Document):
 		naming_series: DF.Literal["DFV-.{year}.-.#####"]
 		no_sepa_mandate: DF.Check
 		offset_requested: DF.Check
+		provisional: DF.Check
 		remarks: DF.SmallText | None
 		rhythm: DF.Literal["", "monthly", "quarterly"]
 		sondervorauszahlung: DF.Currency
@@ -150,6 +151,7 @@ class VATReturnExtension(Transmittable, Document):
 		if not self.company or self.year is None:
 			return  # the mandatory check that follows names the missing field
 		self._set_form(settings_for(self.company))
+		self.provisional = int(vat_return_bridge.provisional_forms(cint(self.year)) is not None)
 		self._refuse_second_form()
 		self._require_correction_of_a_filed_form()
 		self._keep_the_calculation()
@@ -457,14 +459,26 @@ class VATReturnExtension(Transmittable, Document):
 
 	def _check_form(self) -> str | None:
 		"""Refuse what form USt 1 H does not take. A year whose form Steuerbote does not know yet is an open
-		point instead, since the form can still be entered in Mein ELSTER by hand."""
+		point instead, since the form can still be entered in Mein ELSTER by hand, and so is a year whose form is
+		provisional (steuerbote/ustva/years.py), as at the Körperschaftsteuererklärung."""
+		year = cint(self.year)
 		try:
-			layout_for(cint(self.year))
+			layout_for(year)
 		except FormError as error:
 			return _(error.template).format(*error.values)
 		with self._form_errors():
 			bridge.form(self)
-		return None
+		forms = vat_return_bridge.provisional_forms(year)
+		if forms is None:
+			return None
+		return _(
+			"Steuerbote has form USt 1 H of {0} provisionally from the documentation of {1} and the form of {2}: until ERiC and the BMF publish that of {0}, the form is not ready."
+		).format(year, forms["documentation"], forms["form_year"])
+
+	def provisional_forms(self) -> dict | None:
+		"""The documentation of ERiC and the year of the form that a provisional year takes, for the mark under the title
+		of the print format „Dauerfristverlängerung“; None for a final year."""
+		return vat_return_bridge.provisional_forms(cint(self.year))
 
 	@contextmanager
 	def _form_errors(self) -> Iterator[None]:

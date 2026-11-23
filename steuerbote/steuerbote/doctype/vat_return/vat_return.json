@@ -32,6 +32,7 @@
   "sondervorauszahlung",
   "kz83",
   "ready",
+  "provisional",
   "verprobung_section",
   "checks",
   "deviations",
@@ -246,6 +247,14 @@
    "read_only": 1
   },
   {
+   "default": "0",
+   "description": "The forms of the year come provisionally from the documentation of a beta of ERiC and the form of an earlier year, until ERiC and the BMF publish those of the year. Until then the document is not ready.",
+   "fieldname": "provisional",
+   "fieldtype": "Check",
+   "label": "Provisional Forms",
+   "read_only": 1
+  },
+  {
    "fieldname": "verprobung_section",
    "fieldtype": "Section Break",
    "label": "Verprobung"
@@ -381,7 +390,7 @@
    "link_fieldname": "vat_return"
   }
  ],
- "modified": "2026-11-23 13:00:00.000000",
+ "modified": "2026-11-23 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return",
