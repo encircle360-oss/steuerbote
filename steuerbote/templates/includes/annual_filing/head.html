@@ -1,0 +1,31 @@
+{#-
+	The head of an annual document: label and value in two columns. A print format sets head_rows, a list of label
+	and value, for the lines of its own between the due date and the document; annual is doc.annual_print().
+-#}
+{%- set annual = annual if annual is defined else doc.annual_print() -%}
+{%- set ways = {"eric": "über ERiC", "mein_elster": "in Mein ELSTER", "other_way": "auf anderem Weg", "upload": "über den Upload ins Unternehmensregister"} -%}
+{%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
+<table class="sb-head">
+	<tr><td class="sb-label">Unternehmen</td><td class="sb-value">{{ doc.company | e }}</td></tr>
+	{%- if annual.tax_number %}
+	<tr><td class="sb-label">Steuernummer</td><td class="sb-value">{{ annual.tax_number | e }}</td></tr>
+	{%- endif %}
+	{%- if annual.elster_tax_number %}
+	<tr><td class="sb-label">Steuernummer im ELSTER-Format</td><td class="sb-value">{{ annual.elster_tax_number | e }}</td></tr>
+	{%- endif %}
+	<tr><td class="sb-label">Jahr</td><td class="sb-value">{{ doc.year }}</td></tr>
+	<tr><td class="sb-label">Geschäftsjahr</td><td class="sb-value">{{ day(doc.from_date) }} bis {{ day(doc.to_date) }}</td></tr>
+	{%- if doc.deadline %}
+	<tr><td class="sb-label">Fällig am</td><td class="sb-value">{{ day(doc.deadline) }}</td></tr>
+	{%- endif %}
+	{%- for label, value in head_rows | default([]) %}
+	<tr><td class="sb-label">{{ label | e }}</td><td class="sb-value">{{ value | e }}</td></tr>
+	{%- endfor %}
+	<tr><td class="sb-label">Beleg</td><td class="sb-value">{{ doc.name | e }}, {{ doc.status | e }}</td></tr>
+	{%- if doc.is_correction %}
+	<tr><td class="sb-label">Berichtigung zu</td><td class="sb-value">{{ (doc.corrects or "") | e }}</td></tr>
+	{%- endif %}
+	{%- if doc.filed_on %}
+	<tr><td class="sb-label">Abgegeben am</td><td class="sb-value">{{ day(doc.filed_on) }}{% if doc.filed_via %}, {{ ways.get(doc.filed_via, doc.filed_via) | e }}{% endif %}</td></tr>
+	{%- endif %}
+</table>

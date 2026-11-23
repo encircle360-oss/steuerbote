@@ -27,7 +27,8 @@ the same way, so AnnualFiling generalises the rules of the VAT Return and the Zu
   nutzdaten_datenlieferant for the E-Bilanz; the Vorsatz of an Erklärung carries the copyright notice of the ERiC
   Settings (vorsatz).
 
-The hooks a module implements, its fields and the API are listed in docs/jahresmeldungen.md.
+The print formats of the annual documents share the parts in templates/includes/annual_filing, which read
+annual_print. The hooks a module implements, its fields and the API are listed in docs/jahresmeldungen.md.
 """
 
 from collections.abc import Callable, Mapping, Sequence
@@ -456,6 +457,34 @@ class AnnualFiling:
 	def berichtigung(self) -> corrections.Berichtigung:
 		"""How the Datenart of the document marks a Berichtigung (jahresmeldung.corrections)."""
 		return corrections.berichtigung_of(self.datenart().name if self.transmits else "Offenlegung")
+
+	def annual_print(self) -> dict[str, Any]:
+		"""What the shared includes of the print formats read (templates/includes/annual_filing)."""
+		tax_number, elster_tax_number = self.tax_numbers()
+		columns = self.LINE_COLUMNS
+		corrected = [
+			row
+			for row in (self.get(self.LINES) if self.LINES else ())
+			if cint(row.get(columns.manual)) or cstr(row.get(columns.reason)).strip()
+		]
+		return {
+			"accounts": self.LIFECYCLE.submitted_by_hand,
+			"mein_elster": self.transmits and MEIN_ELSTER in self.FILED_OUTSIDE,
+			"tax_number": tax_number,
+			"elster_tax_number": elster_tax_number,
+			"findings": list(self.get(FINDINGS_TABLE) or ()),
+			"corrections": [
+				{
+					"key": row.get(columns.key),
+					"label": row.get(columns.described[0]) if columns.described else "",
+					"manual": cint(row.get(columns.manual)),
+					"computed": row.get(columns.amount),
+					"reported": row.get(columns.reported),
+					"reason": row.get(columns.reason),
+				}
+				for row in corrected
+			],
+		}
 
 	def tax_numbers(self) -> tuple[str | None, str | None]:
 		"""The Steuernummer of the document as the Finanzamt gave it and in the 13 digits of ELSTER."""
