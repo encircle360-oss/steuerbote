@@ -535,7 +535,10 @@ class DefaultPrintFormatFilesTest(TestCase):
 			{setter["doc_type"]: setter["value"] for setter in self.setters},
 			formats,
 		)
-		self.assertEqual(set(formats), {"VAT Return", "Recapitulative Statement", "VAT Return Extension"})
+		self.assertEqual(
+			set(formats),
+			{"VAT Return", "Recapitulative Statement", "VAT Return Extension", "Annual VAT Return"},
+		)
 
 	def test_each_property_setter_is_named_and_shaped_as_frappe_makes_it(self):
 		for setter in self.setters:

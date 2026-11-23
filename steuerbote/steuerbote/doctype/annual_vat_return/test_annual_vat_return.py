@@ -511,3 +511,24 @@ class TestAnnualVATReturn(Transmitting, IntegrationTestCase):
 				doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		finally:
 			frappe.set_user("Administrator")
+
+	def test_prints_the_return_in_the_order_and_wording_of_the_form(self):
+		doc = self.calculated()
+		html = frappe.get_print(DOCTYPE, doc.name, "Umsatzsteuererklärung")
+		for text in (
+			"Umsatzsteuererklärung 2026",
+			COMPANY,
+			"A. Allgemeine Angaben",
+			"K. Berechnung der zu entrichtenden Umsatzsteuer",
+			"Lieferungen und sonstige Leistungen zu 19 %",
+			"3.900",
+			"741,00",
+			"Keine Eintragungen",
+			"Abgleich je Voranmeldungszeitraum",
+			"spätere Buchungen",
+			"Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.",
+		):
+			with self.subTest(text=text):
+				self.assertIn(text, html)
+		self.assertLess(html.index("B. Steuerpflichtige"), html.index("C. Steuerfreie"))
+		self.assertLess(html.index("J. Berichtigung"), html.index("K. Berechnung"))

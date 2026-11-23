@@ -1,5 +1,6 @@
 """The files of the Annual VAT Return, read without a bench: its DocTypes with the standard fields of an annual
-document, the fields the controller and the bridge write, the form script and the German of every text."""
+document, the fields the controller and the bridge write, the form script, the print format and the German of every
+text."""
 
 import ast
 import csv
@@ -28,6 +29,8 @@ DIRECTORY = DOCTYPES / "annual_vat_return"
 CONTROLLER = DIRECTORY / "annual_vat_return.py"
 SCRIPT = DIRECTORY / "annual_vat_return.js"
 SOURCES = APP / "ustjahr_sources.py"
+PRINT_FORMAT = MODULE / "print_format" / "umsatzsteuererklärung"
+INCLUDES = APP / "templates" / "includes" / "annual_filing"
 TRANSLATIONS = APP / "translations" / "de.csv"
 CHILDREN = (
 	"annual_vat_return_line",
@@ -44,6 +47,9 @@ FRAMEWORK_LABELS = frozenset(
 	| {"Series", "Status", "To Date"}
 )
 UNTRANSLATED = frozenset({"Kz 39", "Kz 83", "Transferticket", "Verprobung"})
+HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
+CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')
+CLASS_SELECTOR = re.compile(r"\.(-?[A-Za-z_][\w-]*)")
 
 
 def read_json(path: Path) -> dict:
@@ -281,6 +287,98 @@ class FormScriptFilesTest(TestCase):
 	def test_says_that_mein_elster_imports_no_umsatzsteuererklaerung(self):
 		self.assertIn("Mein ELSTER imports no Umsatzsteuererklärung", self.script)
 		self.assertIn("as Mein ELSTER takes no file of it", self.script)
+
+
+class PrintFormatFilesTest(TestCase):
+	def setUp(self):
+		self.record = read_json(PRINT_FORMAT / "umsatzsteuererklärung.json")
+		self.template = (PRINT_FORMAT / "umsatzsteuererklärung.html").read_text(encoding="utf-8")
+
+	def test_is_a_standard_jinja_format_of_the_return_on_a4(self):
+		self.assertEqual(
+			{
+				key: self.record[key]
+				for key in (
+					"name",
+					"doc_type",
+					"print_format_type",
+					"standard",
+					"module",
+					"custom_format",
+					"paper_size",
+				)
+			},
+			{
+				"name": "Umsatzsteuererklärung",
+				"doc_type": "Annual VAT Return",
+				"print_format_type": "Jinja",
+				"standard": "Yes",
+				"module": "Steuerbote",
+				"custom_format": 0,
+				"paper_size": "A4",
+			},
+		)
+
+	def test_builds_on_the_parts_of_the_annual_documents(self):
+		includes = re.findall(
+			r'\{% include "steuerbote/templates/includes/annual_filing/(\w+)\.html" %\}', self.template
+		)
+		self.assertEqual(includes, ["style", "head", "corrections", "findings", "remarks", "footer"])
+		self.assertIn("{%- set annual = doc.annual_print() -%}", self.template)
+		self.assertIn("{%- set form = doc.annual_vat_print() -%}", self.template)
+
+	def test_prints_in_black_and_grey(self):
+		for text in (self.template, self.record["css"]):
+			for colour in HEX_COLOUR.findall(text):
+				with self.subTest(colour=colour):
+					channels = colour if len(colour) == 3 else (colour[0:2], colour[2:4], colour[4:6])
+					self.assertEqual(len(set(channels)), 1)
+		self.assertNotIn("<img", self.template)
+
+	def test_keeps_to_classes_of_its_own_and_styles_each_it_uses(self):
+		used = {name for value in CLASS_ATTRIBUTE.findall(self.template) for name in value.split()}
+		style = (INCLUDES / "style.html").read_text(encoding="utf-8") + self.record["css"]
+		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", style)))
+		self.assertEqual(sorted(name for name in used if not name.startswith("sb-")), [])
+		self.assertEqual(sorted(used - styled), [])
+
+	def test_prints_the_sections_and_rows_the_layout_gives(self):
+		read = set(re.findall(r"\bsection\.(\w+)", self.template))
+		self.assertEqual(read, {"letter", "title", "left", "right", "rows"})
+		read = set(re.findall(r"\brow\.(\w+)", self.template)) - {"get_formatted"}
+		written = {"heading", "line", "label", "text", "sum", "left_kz", "left", "right_kz", "right"}
+		document = {
+			"period_label",
+			"vat_return",
+			"kz83",
+			"kz39",
+			"kz83_now",
+			"difference",
+			"cause",
+			"waiver_reason",
+			"kennzahl",
+			"filed",
+			"annual",
+			"late",
+			"corrections",
+			"unfiled",
+			"rounding",
+			"annual_only",
+			"rest",
+		}
+		self.assertEqual(sorted(read - written - document), [])
+		self.assertEqual(
+			sorted(
+				document
+				- set(fields_of("annual_vat_return_period"))
+				- set(fields_of("annual_vat_return_reconciliation"))
+			),
+			[],
+		)
+
+	def test_names_each_cause_in_german(self):
+		(causes,) = re.findall(r"set causes = (\{[^}]*\})", self.template)
+		self.assertEqual(set(ast.literal_eval(causes)), set(bridge.CAUSES.values()))
 
 
 def texts_of_the_doctypes() -> set[str]:
