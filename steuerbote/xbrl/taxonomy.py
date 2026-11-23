@@ -48,6 +48,18 @@ ValidSince and ValidThrough (A.9.2). A position of no legal form is for every le
 format for both (A.9.1). Several dates of one kind give the narrowest validity; two fiscal requirements of one concept
 stop the loader.
 
+Tables. A Tabellenbereich such as the Anlagenspiegel is a hypercube of XBRL Dimensions 1.0: an „all“ arc from the root
+of its primary items to the hypercube, the dimensions of the hypercube, each with its domain and the members below, all
+in one role of the definition linkbase. „Alle Dimensionen der HGB-Taxonomie sind Szenario-Dimensionen“ (Leitfaden
+A.14.2.1), and the members follow the hierarchy of the calculation: „Summenpositionen in der Hierarchie einer Dimension
+[sind] immer über den Summanden-Positionen zu finden“. A member of an arc with xbrldt:usable="false" is no value of
+its dimension. The taxonomy keeps its tables in their own roles, so Steuerbote follows no xbrldt:targetRole.
+
+Roles. The components of a report are presentation link roles (Leitfaden B.14.10), the Bilanz
+http://www.xbrl.de/taxonomies/de-gaap-ci/role/balanceSheet, the GuV …/incomeStatement and the others below.
+parents() names, for the calculation networks of some roles, the position each position adds up to: the hierarchy the
+schemes of the Jahresabschluss sum their balances along (steuerbote/hgb/statement.py).
+
 This module is pure Python with lxml and never imports Frappe.
 """
 
@@ -93,6 +105,23 @@ GUIDANCE = "http://www.xbrl.org/2003/role/definitionGuidance"
 DOCUMENTATION = "http://www.xbrl.org/2003/role/documentation"
 LABEL_ROLES = (LABEL, TERSE_LABEL, TERSE60_LABEL, GUIDANCE)
 LANGUAGE = "de"
+
+ROLE = "http://www.xbrl.de/taxonomies/de-gaap-ci/role/"
+BALANCE_SHEET = f"{ROLE}balanceSheet"
+INCOME_STATEMENT = f"{ROLE}incomeStatement"
+INCOME_STATEMENT_MICROBILG = f"{ROLE}incomeStatementMicroBilG"
+APPROPRIATION_PROFITS = f"{ROLE}appropriationProfits"
+TRANSFERS_TAX_ASSETS = f"{ROLE}transfersTaxAssets"
+"""The steuerlicher Betriebsvermögensvergleich (Leitfaden B.14.10.9)."""
+NOTES = f"{ROLE}notes"
+"""The Anhang, which presents the Anlagenspiegel (B.14.10.5)."""
+DETAILED_INFORMATION = f"{ROLE}detailedInformation"
+"""„Detailinformationen zu Positionen“ with the Kontensalden (A.12)."""
+TRANSFERS_COMMERCIAL_CODE_TO_TAX = f"{ROLE}transfersCommercialCodeToTax"
+"""„Steuerliche Modifikationen“ with the Überleitungsrechnung (A.11)."""
+FIXED_ASSETS_GROSS = f"{ROLE}notesTableStatementOfChangesInFixedAssetsGross"
+"""The role of the table „Anlagenspiegel (brutto)“ in the definition linkbase (A.14.1)."""
+GCD = "http://www.xbrl.de/taxonomies/de-gcd/role/gcd"
 
 NOT_PERMITTED_SUBMISSION = "Einreichung an Finanzverwaltung"
 """„Die mit „Einreichung an Finanzverwaltung“ gekennzeichneten Positionen dürfen für die Übermittlung von E-Bilanzen an
@@ -436,6 +465,39 @@ class DefinitionArc:
 
 
 @dataclass(frozen=True)
+class Dimension:
+	"""An explicit dimension of a table with its domain and the members below it; a typed dimension has neither."""
+
+	name: str
+	domain: str | None
+	members: tuple[str, ...]
+	"""The domain and its members, depth first in their order, without those that are not usable."""
+	tree: Network = field(repr=False, compare=False)
+
+	def parent(self, member: str) -> str | None:
+		"""The member a member belongs to, None for the domain."""
+		return None if member == self.domain else self.tree.parent(member)
+
+
+@dataclass(frozen=True)
+class Table:
+	"""A hypercube with the primary items under its root and its dimensions (XBRL Dimensions 1.0)."""
+
+	role: str
+	hypercube: str
+	primary: str
+	"""The root of the primary items, the source of the „all“ arc."""
+	context_element: str | None
+	dimensions: tuple[Dimension, ...]
+	primary_items: tuple[str, ...]
+	"""The root and the primary items below it, depth first in their order."""
+	tree: Network = field(repr=False, compare=False)
+
+	def primary_parent(self, name: str) -> str | None:
+		return self.tree.parent(name)
+
+
+@dataclass(frozen=True)
 class Taxonomy:
 	"""One view of one version of the taxonomy."""
 
@@ -455,6 +517,7 @@ class Taxonomy:
 	_substitutes: Mapping[str, tuple[str, ...]] = field(init=False, repr=False, compare=False)
 	_tuples: Mapping[str, tuple[str, ...]] = field(init=False, repr=False, compare=False)
 	_presented: frozenset[str] = field(init=False, repr=False, compare=False)
+	tables: tuple[Table, ...] = field(init=False, repr=False, compare=False)
 
 	def __post_init__(self) -> None:
 		substitutes: dict[str, list[str]] = {}
@@ -478,6 +541,7 @@ class Taxonomy:
 			"_presented",
 			frozenset(name for network in self.presentation.values() for name in network._concepts),
 		)
+		object.__setattr__(self, "tables", _tables(self.definition))
 
 	def has(self, name: str) -> bool:
 		return self._qualified(name) in self.concepts
@@ -498,6 +562,33 @@ class Taxonomy:
 		"""Whether a presentation network of the view holds the concept, which makes it transmittable (Leitfaden
 		B.11)."""
 		return self._qualified(name) in self._presented
+
+	def table(self, role: str) -> Table:
+		"""The table of a role of the definition linkbase, such as FIXED_ASSETS_GROSS."""
+		found = next((table for table in self.tables if table.role == role), None)
+		if found is None:
+			raise TaxonomyError(f"the HGB-Taxonomie {self.version} has no table in the role {role}")
+		return found
+
+	def tables_of(self, name: str) -> tuple[Table, ...]:
+		"""The tables whose primary items include a concept."""
+		qualified = self._qualified(name)
+		return tuple(table for table in self.tables if qualified in table.primary_items)
+
+	def parents(self, roles: Iterable[str]) -> dict[str, str]:
+		"""Each position of the calculation networks of the roles with the position it adds up to, both named without
+		the prefix of the GAAP module; a „davon“ position, which no calculation holds, adds up to nothing."""
+		parents: dict[str, str] = {}
+		for role in roles:
+			network = self.calculation.get(role)
+			if network is None:
+				raise TaxonomyError(f"the HGB-Taxonomie {self.version} has no calculation in the role {role}")
+			for arc in network.arcs:
+				child, parent = self._unqualified(arc.child), self._unqualified(arc.parent)
+				known = parents.setdefault(child, parent)
+				if known != parent:
+					raise TaxonomyError(f"{child} adds up to {known} and to {parent}")
+		return parents
 
 	def substitutes(self, head: str) -> tuple[str, ...]:
 		"""The concepts in the substitution group of a head, in the order of their schema."""
@@ -526,6 +617,10 @@ class Taxonomy:
 	@staticmethod
 	def _qualified(name: str) -> str:
 		return name if ":" in name else f"{GAAP_PREFIX}:{name}"
+
+	@staticmethod
+	def _unqualified(name: str) -> str:
+		return name.removeprefix(f"{GAAP_PREFIX}:")
 
 
 def load(directory: Path, version: Version, view: View) -> Taxonomy:
@@ -1050,3 +1145,51 @@ def _definitions(linkbases: _Linkbases) -> dict[str, tuple[DefinitionArc, ...]]:
 			)
 		)
 	return {role: tuple(role_arcs) for role, role_arcs in sorted(arcs.items())}
+
+
+def _tables(definition: Mapping[str, tuple[DefinitionArc, ...]]) -> tuple[Table, ...]:
+	"""The hypercubes of the definition linkbase, each with the primary items of its „all“ arc and its dimensions."""
+	tables: list[Table] = []
+	for role, arcs in definition.items():
+		members = Network(
+			role,
+			tuple(Arc(arc.source, arc.target, arc.order) for arc in arcs if arc.arcrole == DOMAIN_MEMBER),
+		)
+		unusable = frozenset(
+			arc.target for arc in arcs if not arc.usable and arc.arcrole in (DIMENSION_DOMAIN, DOMAIN_MEMBER)
+		)
+		for link in (arc for arc in arcs if arc.arcrole == ALL):
+			dimensions = []
+			for edge in sorted(
+				(arc for arc in arcs if arc.arcrole == HYPERCUBE_DIMENSION and arc.source == link.target),
+				key=lambda arc: arc.order,
+			):
+				domain = next(
+					(
+						arc.target
+						for arc in arcs
+						if arc.arcrole == DIMENSION_DOMAIN and arc.source == edge.target
+					),
+					None,
+				)
+				values = () if domain is None else (domain, *members.descendants(domain))
+				dimensions.append(
+					Dimension(
+						edge.target,
+						domain,
+						tuple(value for value in values if value not in unusable),
+						members,
+					)
+				)
+			tables.append(
+				Table(
+					role=role,
+					hypercube=link.target,
+					primary=link.source,
+					context_element=link.context_element,
+					dimensions=tuple(dimensions),
+					primary_items=(link.source, *members.descendants(link.source)),
+					tree=members,
+				)
+			)
+	return tuple(tables)
