@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import TestCase
 
 from steuerbote.mapping_sync import CHECK_FIELDS, RULE_FIELDS
+from steuerbote.mappings import transfer
 from steuerbote.mappings.diff import Change, Origin
 
 APP = Path(__file__).resolve().parents[3]
@@ -35,6 +36,9 @@ class MappingFormFilesTest(TestCase):
 			[
 				"check_tax_templates",
 				"compare_with_defaults",
+				"compare_with_file",
+				"export_mapping",
+				"import_file",
 				"load_defaults",
 				"update_from_defaults",
 				"watch_template_accounts",
@@ -120,3 +124,50 @@ class DifferencesFilesTest(TestCase):
 				)
 		self.assertIn("${escape(intro)}", self.dialog)
 		self.assertIn("${escape(proposed_label)}", self.dialog)
+
+
+class MappingFileFilesTest(TestCase):
+	"""Zuordnung exportieren and Zuordnung importieren: the browser saves the file, an upload stays private, and every
+	message reads in German."""
+
+	def setUp(self):
+		self.source = (FOLDER / "vat_return_mapping.py").read_text(encoding="utf-8")
+		self.script = (FOLDER / "vat_return_mapping.js").read_text(encoding="utf-8")
+
+	def test_every_message_of_the_file_reads_in_german(self):
+		german = translations()
+		values = {
+			node.targets[0].id: node.value
+			for node in ast.parse(self.source).body
+			if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+		}
+		file_messages = {ast.literal_eval(values[name.id]) for name in values["FILE_MESSAGES"].elts}
+		self.assertEqual(len(file_messages), 7)
+		self.assertEqual(sorted((file_messages | set(transfer.MESSAGES)) - german.keys()), [])
+		self.assertEqual(german["Export Mapping"], "Zuordnung exportieren")
+		self.assertEqual(german["Import Mapping"], "Zuordnung importieren")
+
+	def test_the_export_is_saved_by_the_browser_under_its_name(self):
+		export = re.search(
+			r"\nfunction export_mapping\(frm\) \{\n(?P<body>.*?)\n\}\n", self.script, re.DOTALL
+		)
+		self.assertIsNotNone(export)
+		for part in ("new Blob([file.content]", "link.download = file.file_name;", "frm.reload_doc();"):
+			with self.subTest(part=part):
+				self.assertIn(part, export["body"])
+
+	def test_an_upload_stays_private_and_the_file_browser_stays_closed(self):
+		upload = re.search(
+			r"\nfunction upload_mapping_file\(frm, dialog\) \{\n(?P<body>.*?)\n\}\n", self.script, re.DOTALL
+		)
+		self.assertIsNotNone(upload)
+		for part in (
+			"docname: frm.doc.name,",
+			"allow_toggle_private: false,",
+			"allow_web_link: false,",
+			"disable_file_browser: true,",
+			'allowed_file_types: [".json"]',
+		):
+			with self.subTest(part=part):
+				self.assertIn(part, upload["body"])
+		self.assertNotIn("make_attachments_public", upload["body"])

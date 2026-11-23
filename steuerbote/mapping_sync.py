@@ -12,7 +12,8 @@ account with its place in the mapping, its rule or its watched entry, and one pe
 is a text in one canonical form: a rate as its digits without trailing zeros, the accounts of a Verprobung sorted,
 so that the same mapping always gives the same items, however Frappe stored its rows. items_of_rows and
 rows_of_items turn rows into items and back, default_items gives the defaults of a chart for a company as items, and
-body_of_items and items_of_body turn items into the plain data of the stored defaults and of the file and back.
+body_of_items and items_of_body turn items into the plain data of the stored defaults and of the file and back, and
+file_body and items_of_file_body make the body of the file of a mapping, its rows with the defaults it took over.
 
 A row holds what Frappe stores: an empty Float field is 0, an empty Data or Select field is "" or None,
 and a rule's account number is the one fetched from its account. The DocType's own validate runs before
@@ -27,6 +28,7 @@ from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
 from typing import Any, NamedTuple
 
+from steuerbote.mappings.transfer import canonical_json
 from steuerbote.ustva import (
 	AccountRule,
 	Mapping,
@@ -42,6 +44,8 @@ Row = ReadOnlyMapping[str, Any]
 Key = tuple[str, str]
 Fields = dict[str, str | None]
 
+# The format of the file of a VAT Return Mapping (steuerbote.mappings.transfer).
+FILE_FORMAT = "steuerbote/vat-return-mapping"
 # The kinds of items of a VAT Return Mapping, and the places an account takes in it.
 ACCOUNT = "account"
 CHECK = "check"
@@ -239,6 +243,26 @@ def items_of_body(body: Any) -> dict[Key, Fields]:
 	)
 
 
+def file_body(
+	items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]],
+	defaults: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]] | None,
+) -> dict[str, Any]:
+	"""The body of the file of a mapping (steuerbote.mappings.transfer): its rows, and the rows of the defaults it took
+	over, None for a mapping that knows none."""
+	return {
+		"mapping": body_of_items(items),
+		"defaults": None if defaults is None else body_of_items(defaults),
+	}
+
+
+def items_of_file_body(body: Any) -> tuple[dict[Key, Fields], dict[Key, Fields] | None]:
+	"""The items of the mapping and of its defaults that file_body wrote; raises MappingError for another shape."""
+	if not isinstance(body, dict) or set(body) != {"mapping", "defaults"}:
+		raise MappingError("the body of the file holds mapping and defaults")
+	defaults = body["defaults"]
+	return items_of_body(body["mapping"]), None if defaults is None else items_of_body(defaults)
+
+
 def dump_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]]) -> str:
 	"""The items as the canonical JSON of their body: keys sorted, no blanks, UTF-8 as it is."""
 	return canonical_json(body_of_items(items))
@@ -251,11 +275,6 @@ def load_items(text: str) -> dict[Key, Fields]:
 	except ValueError:
 		raise MappingError("the stored defaults are no JSON") from None
 	return items_of_body(body)
-
-
-def canonical_json(data: Any) -> str:
-	"""JSON in one form for the same data, so that its text, and a digest of it, depend on nothing else."""
-	return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def _put(items: dict[Key, Fields], key: Key, fields: Fields, refusal: str) -> None:

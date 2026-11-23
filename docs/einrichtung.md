@@ -101,8 +101,19 @@ steuerbote_setup_steps = [
 - **Ältere Zuordnungen.** Eine Zuordnung von vor diesem Stand kennt ihre Vorgaben nicht: Jeder Unterschied gilt als eigene Änderung und ist nicht angehakt. Nach dem ersten „Vorgaben laden“ oder „Vorgaben aktualisieren“ kennt sie sie.
 - **Bezeichnungen.** Eine Verprobung ist über ihre Bezeichnung zu erkennen, deshalb lehnt das Speichern zwei Verprobungen mit derselben Bezeichnung ab.
 
+## Zuordnung exportieren und importieren
+
+Eine Kontenzuordnung lässt sich als Datei sichern oder an ein zweites Unternehmen mit denselben Kontonummern weitergeben. Beide Schaltflächen stehen an einer gespeicherten Zuordnung unter „Datei“.
+
+- **Zuordnung exportieren** legt die Zuordnung, wie sie gespeichert ist, als JSON-Datei privat an die Zuordnung (`Kontenzuordnung-<Unternehmen>-<Tag>.json`), und der Browser speichert sie; eine Datei desselben Inhalts, die schon anhängt, bleibt statt einer zweiten. Eine öffentliche Datei legt Steuerbote nie an.
+- **Aufbau der Datei** (`steuerbote/mappings/transfer.py`): ein Kopf mit Format (`steuerbote/vat-return-mapping`) und Formatversion (1), Version von Steuerbote, Unternehmen, Kontenrahmen, Stand der Vorgaben, Tag des Exports und der SHA-256-Summe des Inhalts, dann der Inhalt: die Zeilen der Zuordnung, Zuordnungen, Verprobungen und beobachtete Konten nach Kontonummer, und die übernommenen Vorgaben (`file_body` in `mapping_sync.py`). Die Summe gilt der kanonischen Form des Inhalts, JSON mit sortierten Schlüsseln, ohne Leerzeichen, in UTF-8; die Einrückung der Datei spielt keine Rolle. Sie erkennt eine beschädigte oder nach dem Export von Hand geänderte Datei; eine Signatur ist sie nicht, denn jeder kann sie neu berechnen.
+- **Zuordnung importieren** nimmt eine Datei, die der Dialog privat an die Zuordnung hochlädt, oder ihren eingefügten Inhalt. Steuerbote prüft der Reihe nach: JSON, Kopf und Inhalt, Format und Formatversion, die Felder des Kopfs, die Prüfsumme, den Kontenrahmen, der der Zuordnung gleichen muss, dass das Unternehmen jedes Konto der Datei als Buchungskonto mit dieser Nummer hat, und dass der Kern die Zeilen annimmt. Fehlt dem Unternehmen ein Konto, nennt die Ablehnung alle fehlenden Nummern; die Konten anlegen und die Datei noch einmal importieren. Eine öffentliche Datei oder eine, die an einem anderen Dokument hängt, lehnt der Import ab.
+- **Übernehmen.** Die Unterschiede zeigt derselbe Dialog wie „Vorgaben aktualisieren“, hier ist jeder angehakt; „Angehakte importieren“ übernimmt die angehakten, alles andere bleibt. Danach gelten Stand und Zeilen der Vorgaben der Datei als übernommen, so dass „Vorgaben aktualisieren“ beim zweiten Unternehmen genauso unterscheidet wie beim ersten.
+- **Weitergabe an ein zweites Unternehmen.** Exportieren beim ersten, beim zweiten eine Zuordnung mit demselben Kontenrahmen anlegen und die Datei mit allen Unterschieden importieren: Die Zuordnung gleicht dann der des ersten Zeile für Zeile, Stand und übernommene Vorgaben eingeschlossen.
+
 ## Quellen
 
 - § 18 Abs. 2 und 2a UStG, https://www.gesetze-im-internet.de/ustg_1980/__18.html, abgerufen am 23.11.2026.
 - ERPNext 16 (`version-16`): die Vorlagen `erpnext/accounts/doctype/account/chart_of_accounts/verified/de_kontenplan_SKR03.json` und `de_kontenplan_SKR04.json` und das DocType Company mit `chart_of_accounts`, `create_chart_of_accounts_based_on`, `existing_company`, `tax_id` und `date_of_establishment`.
 - DATEV-Kontenrahmen SKR 03 und SKR 04, „Gültig für 2026“, wie in [Kennzahlen und Kontenzuordnung](ustva-kennzahlen.md) zitiert.
+- Frappe 16 (`version-16`): `frappe/public/js/frappe/file_uploader` (privates Hochladen ohne Dateiauswahl), `frappe/core/doctype/file/file.py` (`get_content`) und `frappe/utils/response.py` (`send_private_file`, das eine JSON-Datei im Browser anzeigt statt sie zu laden; deshalb speichert der Browser den Export aus dem Text der Antwort).

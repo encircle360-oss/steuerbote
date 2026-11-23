@@ -8,12 +8,14 @@ from unittest import TestCase
 from steuerbote.mapping_sync import (
 	ACCOUNT,
 	CHECK,
+	FILE_FORMAT,
 	body_of_items,
-	canonical_json,
 	default_items,
 	defaults_for_accounts,
 	dump_items,
+	file_body,
 	items_of_body,
+	items_of_file_body,
 	items_of_mapping,
 	items_of_rows,
 	load_items,
@@ -683,7 +685,6 @@ class BodyTest(TestCase):
 		self.assertEqual(text, dump_items(load_items(text)))
 
 	def test_the_dump_is_canonical_json(self):
-		self.assertEqual(canonical_json({"b": [1, "ä"], "a": None}), '{"a":null,"b":[1,"ä"]}')
 		self.assertEqual(
 			dump_items({(ACCOUNT, "1548"): {"place": "watched", "level": "hint"}}),
 			'{"checks":[],"rules":[],"watched":[{"account_number":"1548","level":"hint"}]}',
@@ -722,3 +723,38 @@ class BodyTest(TestCase):
 		):
 			with self.subTest(refusal=refusal), self.assertRaisesRegex(MappingError, refusal):
 				items_of_body(body)
+
+
+class FileBodyTest(TestCase):
+	"""The body of the file of a mapping: its rows and the rows of the defaults it took over."""
+
+	def setUp(self):
+		self.items = items_of_mapping(DEFAULTS["SKR04"])
+		self.defaults = default_items("SKR04", LATEST_YEAR, {"4400", "3806"})
+
+	def test_the_body_holds_the_mapping_and_its_defaults(self):
+		self.assertEqual(
+			file_body(self.items, self.defaults),
+			{"mapping": body_of_items(self.items), "defaults": body_of_items(self.defaults)},
+		)
+		self.assertEqual(file_body(self.items, None)["defaults"], None)
+
+	def test_the_body_gives_back_the_mapping_and_its_defaults(self):
+		for defaults in (self.defaults, None):
+			with self.subTest(defaults=bool(defaults)):
+				body = json.loads(json.dumps(file_body(self.items, defaults)))
+				self.assertEqual(items_of_file_body(body), (self.items, defaults))
+
+	def test_a_body_of_another_shape_is_refused(self):
+		good = file_body(self.items, None)
+		for body in ([], {"mapping": good["mapping"]}, {**good, "more": 1}):
+			with (
+				self.subTest(body=type(body).__name__),
+				self.assertRaisesRegex(MappingError, "the body of the file holds mapping and defaults"),
+			):
+				items_of_file_body(body)
+		with self.assertRaisesRegex(MappingError, "a mapping holds"):
+			items_of_file_body({**good, "defaults": {"rules": []}})
+
+	def test_the_format_names_the_vat_return_mapping(self):
+		self.assertEqual(FILE_FORMAT, "steuerbote/vat-return-mapping")
