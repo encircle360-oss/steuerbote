@@ -24,7 +24,10 @@ recursively (Kap. 4.1.1). Each Datenart has its plugin (steuerbote.eric.datenart
 from Datenartversionmatrix.ods): the UStVA of a year checkUStVA_<Jahr>, as the year table
 steuerbote/ustva/years.py names it, the Zusammenfassende Meldung checkZMDO for every year, the Erklärungen of a year
 checkUSt_<Jahr>, checkKSt_<Jahr> and checkGewSt_<Jahr>, the E-Bilanz checkBilanz_<major>_<minor> of its taxonomy.
-ERiC runs on Linux x86_64 with glibc 2.28 or newer (Kap. 2.4.4.5).
+ERiC for Linux runs on Intel 64 and AMD64 (Tabelle 2-1) with glibc 2.28 or newer (Kap. 2.4.4.5), and ELSTER ships a
+package for each platform, ERiC-<version>-<os>.jar with the directory <os> (Kap. 3.1.2 and 3.1.4, Tabellen 3-1 and
+3-2). platform_refusal decides for the status page and the installation alike, and the installation refuses a site and
+a package of another platform before it unpacks a file: the probe would fail there only once the libraries are unpacked.
 
 A main release in November starts with a beta, from which no real case can be sent; its major number is
 odd and the beta is its first delivery, <major>.1 (Kap. 2.3 with the graphic of the release cycle, and
@@ -33,7 +36,8 @@ Mindestversion rises and older releases are rejected (Kap. 5.4.2), so a Datenart
 runtime with its plugin, and a beta only for a check or a test send that no released runtime serves yet, such
 as one of a year that only the beta knows.
 
-Messages are German, for the operator. This module is pure Python and never imports Frappe.
+Messages are German, for the operator; a refusal of the platform is an English template that the installation job
+translates (UnsupportedPlatform). This module is pure Python and never imports Frappe.
 """
 
 import hashlib
@@ -59,6 +63,15 @@ from steuerbote.ustva.years import plugin_year
 
 MANIFEST = "steuerbote-runtime.json"
 PLATFORM = "Linux-x86_64"
+PLATFORMS = (
+	"AIX-ppc64",
+	"Darwin-universal",
+	"Linux-ppc64le",
+	"Linux-x86_64",
+	"Windows-x86",
+	"Windows-x86_64",
+)
+"""The platform of each package of ERiC, in its name and as its directory (Tabellen 3-1 and 3-2)."""
 LIBRARY = "libericapi.so"
 COMMON_DATA = "libcommonData.so"
 LOG_DIRECTORY = "log"
@@ -66,16 +79,38 @@ MIN_GLIBC = (2, 28)
 MAX_ARCHIVE_BYTES = 1 << 30
 MAX_EXTRACTED_BYTES = 4 << 30
 """Guards against an archive that unpacks to far more than the libraries of ERiC take."""
+UNSUPPORTED_SITE = "ERiC runs on Linux x86_64 only; this site runs on {0} {1}."
+NO_GLIBC = "ERiC needs glibc 2.28 or newer; this site has no glibc."
+OLD_GLIBC = "ERiC needs glibc 2.28 or newer; this site has {0}."
+OTHER_PACKAGE = "{0} is the ERiC package for {1}; Steuerbote installs only the one for Linux x86_64."
+PLATFORM_MESSAGES = (UNSUPPORTED_SITE, NO_GLIBC, OLD_GLIBC, OTHER_PACKAGE)
+"""The refusals of a platform, which the installation job translates (translations/de.csv)."""
 
 _CHUNK = 1 << 20
 _VERSION = re.compile(r"\d+\.\d+\.\d+\.\d+")
-_PACKAGE = re.compile(r"ERiC-(?P<version>\d+\.\d+\.\d+\.\d+)(?:-.*)?")
+_PACKAGE = re.compile(r"ERiC-(?P<version>\d+\.\d+\.\d+\.\d+)(?:-(?P<platform>.*))?")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _GLIBC = re.compile(r"glibc (?P<major>\d+)\.(?P<minor>\d+)")
+# The status page shows its checks in German, as written for the operator; only the installation job translates.
+_PLATFORM_DETAILS = {
+	UNSUPPORTED_SITE: "ERiC läuft nur unter Linux x86_64, nicht unter {0} {1}.",
+	NO_GLIBC: "Keine glibc gefunden; ERiC braucht glibc 2.28 oder neuer.",
+	OLD_GLIBC: "ERiC braucht glibc 2.28 oder neuer, hier ist {0}.",
+}
 
 
 class RuntimeInstallError(Exception):
 	pass
+
+
+class UnsupportedPlatform(RuntimeInstallError):
+	"""A site or a package of a platform other than Linux x86_64; ``template`` and ``values`` make the message, so that
+	the installation job can translate it."""
+
+	def __init__(self, template: str, *values: str) -> None:
+		super().__init__(template.format(*values))
+		self.template = template
+		self.values = values
 
 
 class RuntimeIntegrityError(Exception):
@@ -206,10 +241,13 @@ def install_from_archive(
 ) -> RuntimeInfo:
 	"""Install the Linux x86_64 libraries of an ERiC archive into target_root/<version>.
 
-	The checksum is verified first. probe, given the unpacked runtime, may load it before it is
-	activated; any exception it raises cancels the installation. Installing the same archive again
-	returns the installed runtime; another archive of an installed version is refused.
+	A site of another platform and a package named for one are refused first, before the archive is read, and a
+	package that holds another platform before anything is unpacked (UnsupportedPlatform). Then the checksum is
+	verified. probe, given the unpacked runtime, may load it before it is activated; any exception it raises cancels
+	the installation. Installing the same archive again returns the installed runtime; another archive of an installed
+	version is refused.
 	"""
+	_refuse_other_platforms(archive_path.name)
 	expected = sha256.strip().lower()
 	if not _SHA256.fullmatch(expected):
 		raise RuntimeInstallError("Die SHA-256-Summe besteht aus 64 Hexadezimalziffern.")
@@ -343,17 +381,25 @@ def record_listed_versions(
 	return replace(installation, listed_versions=MappingProxyType(listed), listed_versions_source=source)
 
 
-def platform_check(system: str, machine: str, libc: str | None) -> Check:
-	"""Whether ERiC for Linux x86_64 can run here; libc as os.confstr("CS_GNU_LIBC_VERSION") names it."""
+def platform_refusal(system: str, machine: str, libc: str | None) -> UnsupportedPlatform | None:
+	"""Why ERiC for Linux x86_64 cannot run on the platform, None where it can: system as sys.platform names it, libc
+	as os.confstr("CS_GNU_LIBC_VERSION") does."""
 	if system != "linux" or machine != "x86_64":
-		return Check("platform", False, f"ERiC läuft nur unter Linux x86_64, nicht unter {system} {machine}.")
+		return UnsupportedPlatform(UNSUPPORTED_SITE, system, machine)
 	match = _GLIBC.fullmatch(libc or "")
 	if match is None:
-		return Check("platform", False, "Keine glibc gefunden; ERiC braucht glibc 2.28 oder neuer.")
-	version = (int(match["major"]), int(match["minor"]))
-	if version < MIN_GLIBC:
-		return Check("platform", False, f"ERiC braucht glibc 2.28 oder neuer, hier ist {libc}.")
-	return Check("platform", True, f"Linux x86_64 mit {libc}.")
+		return UnsupportedPlatform(NO_GLIBC)
+	if (int(match["major"]), int(match["minor"])) < MIN_GLIBC:
+		return UnsupportedPlatform(OLD_GLIBC, match[0])
+	return None
+
+
+def platform_check(system: str, machine: str, libc: str | None) -> Check:
+	"""Whether ERiC for Linux x86_64 can run on the platform, as platform_refusal decides for the installation."""
+	refusal = platform_refusal(system, machine, libc)
+	if refusal is None:
+		return Check("platform", True, f"Linux x86_64 mit {libc}.")
+	return Check("platform", False, _PLATFORM_DETAILS[refusal.template].format(*refusal.values))
 
 
 def status(target_root: Path, *, year: int | None = None, hersteller_id: str = "") -> tuple[Check, ...]:
@@ -386,6 +432,17 @@ def status(target_root: Path, *, year: int | None = None, hersteller_id: str = "
 	return tuple(checks)
 
 
+def _refuse_other_platforms(archive_name: str) -> None:
+	"""Refuse a site ERiC does not run on and a package whose name ERiC-<version>-<os>.jar (Kap. 3.1) names another
+	platform."""
+	refusal = platform_refusal(*_platform())
+	if refusal is not None:
+		raise refusal
+	named = _named_platform(archive_name)
+	if named not in (None, PLATFORM):
+		raise UnsupportedPlatform(OTHER_PACKAGE, archive_name, named)
+
+
 def _install(
 	archive: zipfile.ZipFile,
 	archive_name: str,
@@ -394,7 +451,7 @@ def _install(
 	installed_by: str,
 	probe: Callable[[RuntimeInfo], object] | None,
 ) -> RuntimeInfo:
-	members, prefix = _library_members(archive)
+	members, prefix = _library_members(archive, archive_name)
 	version = _version(prefix, archive_name)
 	names = {path.as_posix() for path in members.values()}
 	if LIBRARY not in names:
@@ -458,14 +515,17 @@ def _install(
 
 
 def _library_members(
-	archive: zipfile.ZipFile,
+	archive: zipfile.ZipFile, archive_name: str
 ) -> tuple[dict[zipfile.ZipInfo, PurePosixPath], tuple[str, ...]]:
-	"""The entries below <prefix>/Linux-x86_64/lib with their paths below lib, and the prefix."""
+	"""The entries below <prefix>/Linux-x86_64/lib with their paths below lib, and the prefix; UnsupportedPlatform
+	for a package whose directories are those of another platform only."""
 	members: dict[zipfile.ZipInfo, PurePosixPath] = {}
 	seen: set[str] = set()
 	prefixes = set()
+	platforms: set[str] = set()
 	for info in archive.infolist():
 		parts = info.filename.split("/")
+		platforms.update(part for part in parts[:-1] if part in PLATFORMS)
 		start = next(
 			(
 				index
@@ -487,6 +547,8 @@ def _library_members(
 		prefixes.add(tuple(parts[:start]))
 		members[info] = PurePosixPath(*inside)
 	if not members:
+		if platforms and PLATFORM not in platforms:
+			raise UnsupportedPlatform(OTHER_PACKAGE, archive_name, ", ".join(sorted(platforms)))
 		raise RuntimeInstallError(
 			f"Das Archiv enthält keine ERiC-Bibliotheken für Linux x86_64 ({PLATFORM}/lib)."
 		)
@@ -505,6 +567,13 @@ def _version(prefix: tuple[str, ...], archive_name: str) -> str:
 	raise RuntimeInstallError(
 		f"Die Version von ERiC steht weder im Archiv (ERiC-<version>/) noch im Dateinamen {archive_name}."
 	)
+
+
+def _named_platform(archive_name: str) -> str | None:
+	"""The platform of Tabelle 3-1 that the name of a package names, None for a name that names none."""
+	match = _PACKAGE.fullmatch(Path(archive_name).stem)
+	named = match["platform"] if match else None
+	return named if named in PLATFORMS else None
 
 
 def _extract(archive: zipfile.ZipFile, info: zipfile.ZipInfo, destination: Path) -> str:
@@ -627,7 +696,13 @@ def _hersteller_id_check(hersteller_id: str) -> Check:
 
 
 def _platform() -> tuple[str, str, str | None]:
-	libc = os.confstr("CS_GNU_LIBC_VERSION") if "CS_GNU_LIBC_VERSION" in os.confstr_names else None
+	"""The platform of the site: sys.platform, the machine and the glibc, None without one."""
+	# musl knows the name but no value for it and raises OSError, as platform.libc_ver of the standard library expects;
+	# a system without the name raises ValueError.
+	try:
+		libc = os.confstr("CS_GNU_LIBC_VERSION")
+	except ValueError, OSError:
+		libc = None
 	return sys.platform, platform.machine(), libc
 
 

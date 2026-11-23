@@ -25,6 +25,7 @@ Quelle ist die ERiC-Dokumentation 44.3.6.0: Entwicklerhandbuch (zitiert mit Kapi
 
    Nur dort zählen sie: Eine Laufzeit dient allen Sites der Bench, und die Probe beim Einrichten lädt die Bibliothek des Archivs als Benutzer der Bench. Was in der `site_config.json` einer Site steht, nimmt Steuerbote nicht, und die ERiC-Einstellungen zeigen Pfad und Summe nur an, sodass auch ein System Manager kein anderes Archiv wählen kann.
 4. In den ERiC-Einstellungen „Laufzeitumgebung installieren“ wählen. Der Hintergrundjob liest Pfad und Summe selbst aus der `common_site_config.json`. Steuerbote
+   - nimmt nur Linux x86_64 mit glibc 2.28 oder neuer (Tabelle 2-1, Kap. 2.4.4.5) und weist eine Site auf einer anderen Plattform ab, bevor es das Archiv liest, ebenso ein Paket einer anderen Plattform nach seinem Namen `ERiC-<version>-<os>.jar` oder seinem Inhalt (Kap. 3.1.2 und 3.1.4, Tabellen 3-1 und 3-2), bevor es etwas entpackt; die Meldung nennt die Plattform der Site oder das Paket mit seiner Plattform;
    - prüft die SHA-256-Summe, bevor es etwas entpackt, und nimmt nur Archive bis 1 GiB;
    - entpackt nur die Dateien unter `ERiC-<version>/Linux-x86_64/lib/`, die Basisbibliotheken und darunter die Plugins (Kap. 3.1.4, Tabellen 3-2 und 3-3), und verlangt `libericapi.so` und das Plugin `libcommonData.so`, das ERiC immer braucht (Kap. 3.1.6.1);
    - weist Pfade außerhalb dieses Verzeichnisses, Links, doppelte Einträge und Bibliotheken zweier Pakete zurück;
