@@ -114,6 +114,7 @@ testpaths = [
     "steuerbote/steuerbote/doctype/annual_vat_return/test_bridge.py",
     "steuerbote/steuerbote/doctype/annual_vat_return/test_docs.py",
     "steuerbote/steuerbote/doctype/annual_vat_return/test_layout.py",
+    "steuerbote/steuerbote/doctype/annual_vat_return/test_revenue.py",
     "steuerbote/ebilanz",
     "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_bridge.py",
     "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_docs.py",
