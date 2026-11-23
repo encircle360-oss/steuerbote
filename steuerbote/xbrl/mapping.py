@@ -32,18 +32,56 @@ data. Every account has one place in it:
 An account in two places is refused, so that a balance never counts twice. Account numbers are compared as written,
 like every account number of Steuerbote.
 
-Errors are MappingError with an English template and its values, which the Frappe layer translates; MESSAGES lists
-the templates. This module is pure Python and never imports Frappe.
+Positions. check() tells what the rules may not name, against a view of the taxonomy (steuerbote/xbrl/taxonomy.py):
+
+- a position the taxonomy does not have: „Es dürfen bei der Einreichung nur Positionen der zugelassenen,
+  standardisierten Taxonomie-Schemata ... verwendet werden“ (Leitfaden B.10);
+- an abstract position and one that takes no amount in euros: a balance is an amount, which only a monetary item
+  holds (XBRL 2.1, Kap. 5.1.1; Leitfaden A.13);
+- a position outside the Bilanz and the GuV, the parts § 5b Abs. 1 Satz 1 EStG names with their Kontennachweise and
+  the presentation networks balanceSheet and incomeStatement hold (Leitfaden B.9.3, B.11);
+- a position of another legal form: Steuerbote serves the GmbH and the UG, and a Kapitalgesellschaft reports „nur
+  Positionen mit der Auszeichnung „legalFormKSt“ = „true“ und Positionen, die keiner Rechtsform zugeordnet sind“
+  (Leitfaden B.4.2);
+- a position marked „Einreichung an Finanzverwaltung“ (Leitfaden A.9.3, B.14.6) or „onlyPermittedForSoBil_ErgBil“,
+  which has a value only in a Sonder- or Ergänzungsbilanz (A.9.3) that a GmbH never files;
+- a position of the Umsatzkostenverfahren: Steuerbote draws the GuV up by the Gesamtkostenverfahren, and „dürfen
+  Positionen mit der Auszeichnung typeOperatingResult = UKV nicht übermittelt werden“ (Leitfaden B.14.3.1.15), as
+  the ledger knows the kind of an expense, not its function;
+- a position without a debit or credit balance, for which „muss aus dem fachlichen Kontext heraus individuell
+  entschieden werden, ob eine Multiplikation mit „-1“ ... erforderlich ist“ (Leitfaden A.13);
+- a position for the opposite balance on the same side as the position, or in the other part;
+- with the part of each account, a position of the other part: the Bilanz holds the Vermögen and the Schulden at
+  the Stichtag, the GuV the Aufwendungen and Erträge of the Geschäftsjahr (§ 242 Abs. 1 und 2 HGB), and ERPNext sums
+  a balance sheet account up to the day and a profit and loss account within the year (its report_type, Part);
+- a remaining term on a position that is neither a Forderung nor a Verbindlichkeit (§ 268 Abs. 4 and 5 HGB), and a
+  shareholder flag on one that is no Ausleihung, Forderung or Verbindlichkeit (§ 42 Abs. 3 GmbHG): the flags are
+  where the Offenlegung notes them, at the position or at the position for the opposite balance.
+
+Each Problem has an English template for the form of the mapping and a German sentence for the findings of a
+document, as the findings of steuerbote/xbrl/checks.py and steuerbote/hgb/statement.py read.
+
+Errors are MappingError with an English template and its values, which the Frappe layer translates; MESSAGES and the
+templates of REFUSALS are those templates. This module is pure Python and never imports Frappe.
 """
 
 from collections.abc import Iterable
+from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
 
 from steuerbote.hgb.statement import RemainingTerm
 from steuerbote.ustva.mapping import WatchLevel, is_account_number
-from steuerbote.xbrl.taxonomy import GAAP_PREFIX
+from steuerbote.xbrl.taxonomy import (
+	BALANCE_SHEET,
+	GAAP_PREFIX,
+	INCOME_STATEMENT,
+	NOT_PERMITTED_SUBMISSION,
+	IncomeStatementFormat,
+	LegalForm,
+	Taxonomy,
+)
 from steuerbote.xbrl.versions import LATEST, TAXONOMIES
 
 NOT_AN_ACCOUNT_NUMBER = "{0} is no account number: it is a text without blanks at either end."
@@ -78,6 +116,21 @@ REMAINING_TERMS: MappingProxyType[str, RemainingTerm] = MappingProxyType(
 )
 """The remaining terms by the values a row of the mapping holds them under."""
 _TERM_VALUES = MappingProxyType({term: value for value, term in REMAINING_TERMS.items()})
+KAPITALGESELLSCHAFT = LegalForm.KST
+"""The kind of legal form of a GmbH and an UG, the companies Steuerbote serves (Leitfaden B.4.1)."""
+INCOME_STATEMENT_FORMAT = IncomeStatementFormat.GKV
+TERM_SCOPES = ("bs.ass.currAss.receiv", "bs.eqLiab.liab")
+"""The Forderungen und sonstigen Vermögensgegenstände and the Verbindlichkeiten (§ 266 Abs. 2 B. II., Abs. 3 C. HGB),
+whose remaining terms § 268 Abs. 4 Satz 1 and Abs. 5 Satz 1 HGB note."""
+SHAREHOLDER_SCOPES = (
+	"bs.ass.fixAss.fin.loansToSharehold",
+	"bs.ass.fixAss.fin.loansToAffil",
+	"bs.ass.fixAss.fin.loansToParticip",
+	"bs.ass.fixAss.fin.otherLoans",
+	*TERM_SCOPES,
+)
+"""The Ausleihungen (§ 266 Abs. 2 A. III. 2., 4. and 6. HGB and those to the shareholders), Forderungen and
+Verbindlichkeiten, which § 42 Abs. 3 GmbHG notes „gegenüber Gesellschaftern“."""
 
 
 class MappingError(ValueError):
@@ -87,6 +140,27 @@ class MappingError(ValueError):
 		super().__init__(template.format(*values))
 		self.template = template
 		self.values = values
+
+
+class Part(StrEnum):
+	"""The part of the Jahresabschluss an account and a position belong to."""
+
+	BALANCE_SHEET = "Bilanz"
+	INCOME_STATEMENT = "GuV"
+
+	@property
+	def role(self) -> str:
+		"""The presentation network of the part (Leitfaden B.9.3)."""
+		return BALANCE_SHEET if self is Part.BALANCE_SHEET else INCOME_STATEMENT
+
+	@classmethod
+	def of_report_type(cls, report_type: str) -> Part:
+		"""The part of an account of ERPNext by its report_type, which its root type sets: „Balance Sheet“ for Asset,
+		Liability and Equity, „Profit and Loss“ for Income and Expense (erpnext/accounts/doctype/account/account.py)."""
+		try:
+			return {"Balance Sheet": cls.BALANCE_SHEET, "Profit and Loss": cls.INCOME_STATEMENT}[report_type]
+		except KeyError:
+			raise ValueError(f"{report_type!r} is no report type of an account of ERPNext") from None
 
 
 class Purpose(StrEnum):
@@ -229,3 +303,228 @@ def _require_number(value: object) -> str:
 def _concept_name(value: object) -> str:
 	"""A position without blanks and without the prefix of the GAAP module."""
 	return str(value or "").strip().removeprefix(f"{GAAP_PREFIX}:")
+
+
+@dataclass(frozen=True, slots=True)
+class Refusal:
+	"""Why a rule may not name a position: an English template for the form, a German sentence for the findings of a
+	document, both with the account as {0} and the position as {1}, and the source of the rule."""
+
+	template: str
+	sentence: str
+	source: str
+
+
+UNKNOWN_POSITION = Refusal(
+	"Account {0}: the HGB-Taxonomie {2} has no position {1}.",
+	"Konto {0}: Die HGB-Taxonomie {2} kennt keine Position {1}.",
+	"Technischer Leitfaden zur HGB-Taxonomie 6.9, B.10",
+)
+ABSTRACT = Refusal(
+	"Account {0}: {1} is an abstract position, which takes no amount.",
+	"Konto {0}: {1} ist eine abstrakte Position, die keinen Betrag aufnimmt.",
+	"XBRL 2.1, Kap. 5.1.1",
+)
+NOT_MONETARY = Refusal(
+	"Account {0}: {1} takes no amount in euros.",
+	"Konto {0}: {1} nimmt keinen Betrag in Euro auf.",
+	"Technischer Leitfaden zur HGB-Taxonomie 6.9, A.13",
+)
+NOT_A_STATEMENT_POSITION = Refusal(
+	"Account {0}: {1} is no position of the Bilanz or the GuV.",
+	"Konto {0}: {1} ist keine Position der Bilanz oder der GuV.",
+	"§ 5b Abs. 1 Satz 1 EStG; Technischer Leitfaden zur HGB-Taxonomie 6.9, B.9.3, B.11",
+)
+LEGAL_FORM = Refusal(
+	"Account {0}: {1} is no position of a Kapitalgesellschaft.",
+	"Konto {0}: {1} ist keine Position einer Kapitalgesellschaft.",
+	"Technischer Leitfaden zur HGB-Taxonomie 6.9, B.4.2",
+)
+SUBMISSION = Refusal(
+	"Account {0}: {1} may not be sent to the tax administration („Einreichung an Finanzverwaltung“).",
+	"Konto {0}: {1} darf nicht an die Finanzverwaltung übermittelt werden („Einreichung an Finanzverwaltung“).",
+	"Technischer Leitfaden zur HGB-Taxonomie 6.9, A.9.3, B.14.6",
+)
+SPECIAL_BALANCE = Refusal(
+	"Account {0}: {1} takes a value only in a Sonder- or Ergänzungsbilanz.",
+	"Konto {0}: {1} hat nur in einer Sonder- oder Ergänzungsbilanz einen Wert.",
+	"Technischer Leitfaden zur HGB-Taxonomie 6.9, A.9.3",
+)
+COST_OF_SALES = Refusal(
+	"Account {0}: {1} is a position of the Umsatzkostenverfahren; Steuerbote draws the GuV up by the "
+	"Gesamtkostenverfahren.",
+	"Konto {0}: {1} ist eine Position des Umsatzkostenverfahrens; Steuerbote stellt die GuV nach dem "
+	"Gesamtkostenverfahren auf.",
+	"Technischer Leitfaden zur HGB-Taxonomie 6.9, B.14.3.1.15",
+)
+NO_SIDE = Refusal(
+	"Account {0}: {1} has no debit or credit balance, so the sign of a balance on it is undecided.",
+	"Konto {0}: {1} hat kein Soll oder Haben, so dass das Vorzeichen eines Saldos darauf offen ist.",
+	"Technischer Leitfaden zur HGB-Taxonomie 6.9, A.13",
+)
+SAME_SIDE = Refusal(
+	"Account {0}: the position for the opposite balance {1} lies on the same side as {2}.",
+	"Konto {0}: Die Position für den Gegensaldo {1} liegt auf derselben Seite wie {2}.",
+	"Technischer Leitfaden zur HGB-Taxonomie 6.9, A.13",
+)
+OTHER_PARTS = Refusal(
+	"Account {0}: {1} and its position for the opposite balance {2} belong to different parts, the Bilanz and the "
+	"GuV.",
+	"Konto {0}: {1} und die Position für den Gegensaldo {2} gehören zu verschiedenen Teilen, Bilanz und GuV.",
+	"§ 242 Abs. 1 und 2 HGB",
+)
+BALANCE_SHEET_ACCOUNT = Refusal(
+	"Account {0} is a balance sheet account, but {1} is a position of the GuV.",
+	"Konto {0} ist ein Bestandskonto, aber {1} ist eine Position der GuV.",
+	"§ 242 Abs. 1 und 2 HGB",
+)
+INCOME_STATEMENT_ACCOUNT = Refusal(
+	"Account {0} is a profit and loss account, but {1} is a position of the Bilanz.",
+	"Konto {0} ist ein Erfolgskonto, aber {1} ist eine Position der Bilanz.",
+	"§ 242 Abs. 1 und 2 HGB",
+)
+REMAINING_TERM = Refusal(
+	"Account {0}: a remaining term goes only with Forderungen and Verbindlichkeiten, and {1} is neither.",
+	"Konto {0}: Eine Restlaufzeit gibt es nur für Forderungen und Verbindlichkeiten, und {1} ist keins von beiden.",
+	"§ 268 Abs. 4 Satz 1, Abs. 5 Satz 1 HGB",
+)
+SHAREHOLDER = Refusal(
+	"Account {0}: only Ausleihungen, Forderungen and Verbindlichkeiten are noted as owed to or by the "
+	"shareholders, and {1} is none of them.",
+	"Konto {0}: Nur Ausleihungen, Forderungen und Verbindlichkeiten werden gegenüber Gesellschaftern vermerkt, und "
+	"{1} ist keins davon.",
+	"§ 42 Abs. 3 GmbHG",
+)
+REFUSALS = (
+	UNKNOWN_POSITION,
+	ABSTRACT,
+	NOT_MONETARY,
+	NOT_A_STATEMENT_POSITION,
+	LEGAL_FORM,
+	SUBMISSION,
+	SPECIAL_BALANCE,
+	COST_OF_SALES,
+	NO_SIDE,
+	SAME_SIDE,
+	OTHER_PARTS,
+	BALANCE_SHEET_ACCOUNT,
+	INCOME_STATEMENT_ACCOUNT,
+	REMAINING_TERM,
+	SHAREHOLDER,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class Problem:
+	"""A rule refused: why, and the values of the template and the sentence, the account first."""
+
+	refusal: Refusal
+	values: tuple[object, ...]
+
+	@property
+	def account_number(self) -> str:
+		return str(self.values[0])
+
+	@property
+	def message(self) -> str:
+		"""The English message, which the Frappe layer gives through its translation of the template instead."""
+		return self.refusal.template.format(*self.values)
+
+	@property
+	def text(self) -> str:
+		"""The German sentence for the findings of a document."""
+		return self.refusal.sentence.format(*self.values)
+
+	@property
+	def source(self) -> str:
+		return self.refusal.source
+
+
+def check(
+	mapping: Mapping, taxonomy: Taxonomy, parts: ReadOnlyMapping[str, Part] | None = None
+) -> tuple[Problem, ...]:
+	"""Every problem of the rules of the mapping against a view of the taxonomy, rule by rule; ``parts`` gives the
+	part of each account whose part is known, which its positions must belong to."""
+	return tuple(
+		problem
+		for rule in mapping.rules
+		for problem in rule_problems(rule, taxonomy, (parts or {}).get(rule.account_number))
+	)
+
+
+def rule_problems(rule: Rule, taxonomy: Taxonomy, part: Part | None = None) -> tuple[Problem, ...]:
+	"""The problems of a rule: first those of each of its positions, then those of the rule as a whole."""
+	number, concept, opposite = rule.account_number, rule.concept, rule.opposite
+	concepts = (concept,) if opposite is None else (concept, opposite)
+	found = [
+		problem for name in concepts if (problem := position_problem(taxonomy, number, name)) is not None
+	]
+	if found:
+		return tuple(found)
+	own = part_of(taxonomy, concept)
+	if opposite is not None:
+		if part_of(taxonomy, opposite) is not own:
+			found.append(Problem(OTHER_PARTS, (number, concept, opposite)))
+		elif taxonomy.concept(opposite).balance is taxonomy.concept(concept).balance:
+			found.append(Problem(SAME_SIDE, (number, opposite, concept)))
+	if part is not None and part is not own:
+		refusal = BALANCE_SHEET_ACCOUNT if part is Part.BALANCE_SHEET else INCOME_STATEMENT_ACCOUNT
+		found.append(Problem(refusal, (number, concept)))
+	if rule.remaining_term is not None and not _within(taxonomy, concepts, TERM_SCOPES):
+		found.append(Problem(REMAINING_TERM, (number, concept)))
+	if rule.shareholder and not _within(taxonomy, concepts, SHAREHOLDER_SCOPES):
+		found.append(Problem(SHAREHOLDER, (number, concept)))
+	return tuple(found)
+
+
+def position_problem(taxonomy: Taxonomy, account_number: str, concept: str) -> Problem | None:
+	"""Why an account may not go to a position on its own, None where it may."""
+	values = (account_number, concept, taxonomy.version)
+	if not taxonomy.has(concept):
+		return Problem(UNKNOWN_POSITION, values)
+	position = taxonomy.concept(concept)
+	if position.abstract:
+		refusal = ABSTRACT
+	elif not position.monetary:
+		refusal = NOT_MONETARY
+	elif part_of(taxonomy, concept) is None:
+		refusal = NOT_A_STATEMENT_POSITION
+	elif not position.applies_to(KAPITALGESELLSCHAFT):
+		refusal = LEGAL_FORM
+	elif not position.permitted_for(NOT_PERMITTED_SUBMISSION):
+		refusal = SUBMISSION
+	elif position.fiscal.special_balance_only:
+		refusal = SPECIAL_BALANCE
+	elif not position.suits(INCOME_STATEMENT_FORMAT):
+		refusal = COST_OF_SALES
+	elif position.balance is None:
+		refusal = NO_SIDE
+	else:
+		return None
+	return Problem(refusal, values)
+
+
+def part_of(taxonomy: Taxonomy, concept: str) -> Part | None:
+	"""The part whose presentation network holds a position, None for one of neither."""
+	name = _qualified(concept)
+	for part in Part:
+		network = taxonomy.presentation.get(part.role)
+		if network is not None and name in network:
+			return part
+	return None
+
+
+def _within(taxonomy: Taxonomy, concepts: Iterable[str], scopes: Iterable[str]) -> bool:
+	"""Whether one of the positions is a scope or lies below one in the presentation of the Bilanz."""
+	network = taxonomy.presentation.get(BALANCE_SHEET)
+	wanted = {_qualified(scope) for scope in scopes}
+	for concept in concepts:
+		name = _qualified(concept)
+		above = network.ancestors(name) if network is not None else ()
+		if wanted.intersection((name, *above)):
+			return True
+	return False
+
+
+def _qualified(concept: str) -> str:
+	return concept if ":" in concept else f"{GAAP_PREFIX}:{concept}"
