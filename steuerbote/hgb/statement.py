@@ -43,13 +43,23 @@ the balance sheet of the class notes one is an error, since the Vermerk would be
 contributions are offset, the position takes the name the law gives it: „der verbleibende Betrag ist als Posten
 „Eingefordertes Kapital“ in der Hauptspalte der Passivseite auszuweisen“ (§ 272 Abs. 1 Satz 2 HGB).
 
+Previous year. „In der Bilanz sowie in der Gewinn- und Verlustrechnung ist zu jedem Posten der entsprechende
+Betrag des vorhergehenden Geschäftsjahrs anzugeben.“ (§ 265 Abs. 2 Satz 1 HGB) The previous year goes through the
+same steps in the form of the current class, from its books or, in the first year with Steuerbote, from the
+figures of the last festgestellter Jahresabschluss entered at the positions (entered()); its findings say
+„Vorjahr“. „Ein Posten der Bilanz oder der Gewinn- und Verlustrechnung, der keinen Betrag ausweist, braucht nicht
+aufgeführt zu werden, es sei denn, daß im vorhergehenden Geschäftsjahr unter diesem Posten ein Betrag ausgewiesen
+wurde.“ (§ 265 Abs. 8 HGB) A line without an amount in either year is therefore not ``shown``, except the
+Eigenkapital and the Gezeichnetes Kapital, which § 42 Abs. 1 GmbHG wants in every balance sheet of a GmbH, and the
+results of the income statement.
+
 Each line names the sources of the balances that landed on it, as the drill-down of the Annual Accounts shows
 them. The schemes and their sources are steuerbote.hgb.schemes.
 """
 
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import Enum, StrEnum
 from types import MappingProxyType
@@ -110,6 +120,19 @@ class Balance:
 			raise TypeError(f"amount must be Decimal, not {type(self.amount).__name__}")
 
 
+def entered(
+	position: Position,
+	amount: Decimal,
+	*,
+	shareholder: bool = False,
+	remaining_term: RemainingTerm | None = None,
+	source: str = "Vorjahr",
+) -> Balance:
+	"""The balance of an amount entered at a position in its direction, such as a figure of the last festgestellter
+	Jahresabschluss for the first previous year."""
+	return Balance(position.concept, _signed(amount, position.direction), shareholder, remaining_term, source)
+
+
 class Severity(Enum):
 	ERROR = "Fehler"
 	HINT = "Hinweis"
@@ -134,6 +157,7 @@ class Finding:
 	reference: str
 	concept: str = ""
 	amount: Decimal | None = None
+	prior_year: bool = False
 
 	@property
 	def blocking(self) -> bool:
@@ -142,20 +166,31 @@ class Finding:
 
 @dataclass(frozen=True, slots=True)
 class VermerkLine:
+	"""A Vermerk of a line with its amount and the amount of the previous year, None without one."""
+
 	vermerk: Vermerk
 	amount: Decimal
+	prior: Decimal | None = None
+
+	@property
+	def shown(self) -> bool:
+		"""§ 265 Abs. 8 HGB: a Vermerk without an amount in either year need not be noted."""
+		return bool(self.amount) or bool(self.prior)
 
 
 @dataclass(frozen=True, slots=True)
 class Line:
 	"""A line of the balance sheet or the income statement: its position, its name, its amount in the direction of
-	the position, its Vermerke and the sources of its balances."""
+	the position and that of the previous year (None without one), its Vermerke and the sources of its balances.
+	``shown`` is False for a line § 265 Abs. 8 HGB leaves out."""
 
 	position: Position
 	label: str
 	amount: Decimal
+	prior: Decimal | None = None
 	vermerke: tuple[VermerkLine, ...] = ()
 	sources: tuple[str, ...] = ()
+	shown: bool = True
 
 
 def _line(lines: Iterable[Line], concept: str) -> Line:
@@ -167,12 +202,15 @@ def _line(lines: Iterable[Line], concept: str) -> Line:
 
 @dataclass(frozen=True, slots=True)
 class IncomeStatement:
-	"""The income statement: its lines, the Jahresüberschuss/Jahresfehlbetrag and the Umsatzerlöse."""
+	"""The income statement: its lines, the Jahresüberschuss/Jahresfehlbetrag and the Umsatzerlöse, each also of the
+	previous year."""
 
 	scheme: IncomeStatementScheme
 	lines: tuple[Line, ...]
 	net_income: Decimal
 	sales: Decimal
+	prior_net_income: Decimal | None = None
+	prior_sales: Decimal | None = None
 
 	def line(self, concept: str) -> Line:
 		return _line(self.lines, concept)
@@ -181,7 +219,7 @@ class IncomeStatement:
 @dataclass(frozen=True, slots=True)
 class BalanceSheet:
 	"""The balance sheet of a size class: the lines of each side, their totals, the Eigenkapital and the
-	Bilanzsumme of § 267 Abs. 4a HGB."""
+	Bilanzsumme of § 267 Abs. 4a HGB, the totals and the Bilanzsumme also of the previous year."""
 
 	scheme: BalanceSheetScheme
 	size_class: SizeClass
@@ -192,6 +230,9 @@ class BalanceSheet:
 	equity: Decimal
 	deficit: Decimal
 	bilanzsumme: Decimal
+	prior_aktiva_total: Decimal | None = None
+	prior_passiva_total: Decimal | None = None
+	prior_bilanzsumme: Decimal | None = None
 
 	@property
 	def difference(self) -> Decimal:
@@ -263,6 +304,11 @@ class _Year:
 			self._amounts[concept] = self._compute(self.scheme.position(concept))
 		return self._amounts[concept]
 
+	def vermerk(self, concept: str, vermerk: Vermerk) -> Decimal:
+		if vermerk.kind is VermerkKind.PROFIT_CARRIED_FORWARD:
+			return self.amount(PROFIT_CARRIED_FORWARD)
+		return self.noted[(concept, vermerk.kind)]
+
 	def _compute(self, position: Position) -> Decimal:
 		if position.concept in self.fixed:
 			return self.fixed[position.concept]
@@ -276,15 +322,6 @@ class _Year:
 		)
 		return self.own[position.concept] + children
 
-	def line(self, position: Position, vermerke: tuple[Vermerk, ...]) -> Line:
-		return Line(
-			position,
-			position.label,
-			self.amount(position.concept),
-			tuple(VermerkLine(vermerk, self.noted[(position.concept, vermerk.kind)]) for vermerk in vermerke),
-			tuple(self.sources[position.concept]),
-		)
-
 	def _up_from(self, position: Position) -> Iterator[Position]:
 		current: Position | None = position
 		while current is not None:
@@ -295,71 +332,124 @@ class _Year:
 		return any(holder.concept == scope for holder in self._up_from(position))
 
 
+class _Books:
+	"""One fiscal year of the books in both schemes, with the findings of placing its balances."""
+
+	def __init__(
+		self,
+		balance_scheme: BalanceSheetScheme,
+		income_scheme: IncomeStatementScheme,
+		balances: Iterable[Balance],
+		parents: Mapping[str, str],
+		net_income: Decimal | None = None,
+	) -> None:
+		self.findings: list[Finding] = []
+		self.income = _Year(income_scheme)
+		placed_balance: list[_Placed] = []
+		with_income = False
+		for balance in balances:
+			for scheme in (balance_scheme, income_scheme):
+				found = _place(balance, scheme, parents)
+				if found is None:
+					continue
+				if found.position.computed:
+					self.findings.append(_computed(balance, found.position))
+				elif scheme is income_scheme:
+					self.income.add(found)
+					with_income = True
+				else:
+					placed_balance.append(found)
+				break
+			else:
+				self.findings.append(_unplaced(balance))
+		self.net_income = self.income.amount(income_scheme.net_income.concept)
+		if net_income is not None and not with_income:
+			self.net_income = net_income
+		self.sales = self.income.amount(income_scheme.sales.concept)
+		self.sheet = _Year(balance_scheme, {NET_INCOME: self.net_income})
+		for placed in placed_balance:
+			self.sheet.add(placed)
+		_offset_deficit(self.sheet)
+		self.aktiva_total = self.sheet.amount(balance_scheme.aktiva.concept)
+		self.passiva_total = self.sheet.amount(balance_scheme.passiva.concept)
+		self.bilanzsumme = self.aktiva_total - self.sheet.amount(DEFICIT)
+		if self.aktiva_total != self.passiva_total:
+			self.findings.append(_not_balanced(self.aktiva_total - self.passiva_total))
+
+
 def build(
 	year: int,
 	size_class: SizeClass,
 	balances: Iterable[Balance],
 	*,
 	parents: Mapping[str, str] = NO_PARENTS,
+	prior: Iterable[Balance] | None = None,
+	prior_net_income: Decimal | None = None,
 	method: Method = Method.GKV,
 ) -> AnnualStatement:
 	"""The balance sheet and the income statement of ``size_class`` for the fiscal year that ends in ``year``.
 
 	``balances`` holds the balances of the books, of the balance sheet and of the income statement alike, as the
-	Balance Sheet Mapping delivers them; ``parents`` the hierarchy of their concepts.
+	Balance Sheet Mapping delivers them; ``parents`` the hierarchy of their concepts. ``prior`` holds those of the
+	previous year in the same form: from its books, or for the first year entered by hand from the last
+	festgestellter Jahresabschluss at the positions of the class (entered()); ``prior_net_income`` gives the
+	Jahresüberschuss/Jahresfehlbetrag of such a previous year without its income statement.
 	"""
 	balance_scheme = balance_sheet_scheme(year)
 	income_scheme = income_statement_scheme(year, method)
-	findings: list[Finding] = []
-	placed_balance: list[_Placed] = []
-	placed_income: list[_Placed] = []
-	for balance in balances:
-		for scheme, placed in ((balance_scheme, placed_balance), (income_scheme, placed_income)):
-			found = _place(balance, scheme, parents)
-			if found is not None:
-				if found.position.computed:
-					findings.append(_computed(balance, found.position))
-				else:
-					placed.append(found)
-				break
-		else:
-			findings.append(_unplaced(balance))
-	income = _Year(income_scheme)
-	for placed in placed_income:
-		income.add(placed)
-	net_income = income.amount(income_scheme.net_income.concept)
-	income_lines = tuple(income.line(position, position.vermerke) for position in income_scheme.positions())
-	income_statement = IncomeStatement(
-		income_scheme, income_lines, net_income, income.amount(income_scheme.sales.concept)
+	current = _Books(balance_scheme, income_scheme, balances, parents)
+	previous = (
+		None if prior is None else _Books(balance_scheme, income_scheme, prior, parents, prior_net_income)
 	)
-	sheet = _Year(balance_scheme, {NET_INCOME: net_income})
-	for placed in placed_balance:
-		sheet.add(placed)
-	_offset_deficit(sheet)
-	aktiva_total = sheet.amount(balance_scheme.aktiva.concept)
-	deficit = sheet.amount(DEFICIT)
+	income_statement = IncomeStatement(
+		income_scheme,
+		tuple(
+			_line_of(position, position.vermerke, current.income, previous and previous.income)
+			for position in income_scheme.positions()
+		),
+		current.net_income,
+		current.sales,
+		None if previous is None else previous.net_income,
+		None if previous is None else previous.sales,
+	)
 	balance_sheet = BalanceSheet(
 		balance_scheme,
 		size_class,
-		_lines(sheet, balance_scheme, balance_scheme.aktiva, size_class),
-		_lines(sheet, balance_scheme, balance_scheme.passiva, size_class),
-		aktiva_total,
-		sheet.amount(balance_scheme.passiva.concept),
-		sheet.amount(EQUITY),
-		deficit,
-		aktiva_total - deficit,
+		_lines(current, previous, balance_scheme, balance_scheme.aktiva, size_class),
+		_lines(current, previous, balance_scheme, balance_scheme.passiva, size_class),
+		current.aktiva_total,
+		current.passiva_total,
+		current.sheet.amount(EQUITY),
+		current.sheet.amount(DEFICIT),
+		current.bilanzsumme,
+		None if previous is None else previous.aktiva_total,
+		None if previous is None else previous.passiva_total,
+		None if previous is None else previous.bilanzsumme,
 	)
-	if balance_sheet.difference:
-		findings.append(_not_balanced(balance_sheet.difference))
-	findings.extend(_unitemized(sheet, balance_scheme.visible(size_class), LEVELS[size_class].reference))
-	findings.extend(
-		_unitemized(income, tuple(income_scheme.positions()), f"§ 275 Abs. {_PARAGRAPHS[method]} HGB")
-	)
-	findings.extend(_without_term(sheet, balance_sheet))
+	findings = list(_year_findings(current, balance_sheet, size_class, method))
+	if previous is not None:
+		findings.extend(
+			replace(finding, text=f"Vorjahr: {finding.text}", prior_year=True)
+			for finding in _year_findings(previous, balance_sheet, size_class, method)
+		)
 	return AnnualStatement(balance_sheet, income_statement, tuple(findings))
 
 
 _PARAGRAPHS = MappingProxyType({Method.GKV: 2, Method.UKV: 3})
+_ALWAYS_SHOWN = frozenset({EQUITY, "bs.eqLiab.equity.subscribed"})
+
+
+def _year_findings(
+	books: _Books, balance_sheet: BalanceSheet, size_class: SizeClass, method: Method
+) -> Iterator[Finding]:
+	yield from books.findings
+	yield from _unitemized(
+		books.sheet, balance_sheet.scheme.visible(size_class), LEVELS[size_class].reference
+	)
+	yield from _unitemized(
+		books.income, tuple(books.income.scheme.positions()), f"§ 275 Abs. {_PARAGRAPHS[method]} HGB"
+	)
+	yield from _without_term(books.sheet, balance_sheet)
 
 
 def _offset_deficit(sheet: _Year) -> None:
@@ -370,27 +460,53 @@ def _offset_deficit(sheet: _Year) -> None:
 		sheet.fix(DEFICIT_IN_EQUITY, -equity)
 
 
+def _line_of(
+	position: Position, vermerke: tuple[Vermerk, ...], current: _Year, previous: _Year | None
+) -> Line:
+	concept = position.concept
+	amount = current.amount(concept)
+	prior = None if previous is None else previous.amount(concept)
+	return Line(
+		position,
+		position.label,
+		amount,
+		prior,
+		tuple(
+			VermerkLine(
+				vermerk,
+				current.vermerk(concept, vermerk),
+				None if previous is None else previous.vermerk(concept, vermerk),
+			)
+			for vermerk in vermerke
+		),
+		tuple(current.sources[concept]),
+		bool(position.terms) or concept in _ALWAYS_SHOWN or bool(amount) or bool(prior),
+	)
+
+
 def _lines(
-	sheet: _Year, scheme: BalanceSheetScheme, side: Position, size_class: SizeClass
+	current: _Books,
+	previous: _Books | None,
+	scheme: BalanceSheetScheme,
+	side: Position,
+	size_class: SizeClass,
 ) -> tuple[Line, ...]:
 	"""The lines of one side of the balance sheet: the positions ``size_class`` shows, in their order."""
 	lines: list[Line] = []
 	for position in side.walk():
 		if position is side or not scheme.shows(position.concept, size_class):
 			continue
-		line = sheet.line(position, scheme.vermerke(position.concept, size_class))
-		vermerke = tuple(
-			VermerkLine(noted.vermerk, sheet.amount(PROFIT_CARRIED_FORWARD))
-			if noted.vermerk.kind is VermerkKind.PROFIT_CARRIED_FORWARD
-			else noted
-			for noted in line.vermerke
+		line = _line_of(
+			position,
+			scheme.vermerke(position.concept, size_class),
+			current.sheet,
+			None if previous is None else previous.sheet,
 		)
-		uncalled = any(
-			noted.vermerk.kind is VermerkKind.UNCALLED_CAPITAL and noted.amount for noted in vermerke
-		)
-		lines.append(
-			Line(position, CALLED_CAPITAL if uncalled else line.label, line.amount, vermerke, line.sources)
-		)
+		if any(
+			noted.vermerk.kind is VermerkKind.UNCALLED_CAPITAL and noted.amount for noted in line.vermerke
+		):
+			line = replace(line, label=CALLED_CAPITAL)
+		lines.append(line)
 	return tuple(lines)
 
 
