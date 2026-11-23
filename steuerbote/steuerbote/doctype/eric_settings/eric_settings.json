@@ -26,6 +26,10 @@
   "lib_dir",
   "log_dir",
   "last_check",
+  "taxonomy_section",
+  "taxonomy_archives",
+  "column_break_taxonomy",
+  "installed_taxonomies",
   "versions_section",
   "minimum_list_version",
   "minimum_list_modified",
@@ -167,6 +171,30 @@
    "fieldname": "last_check",
    "fieldtype": "Datetime",
    "label": "Last Check",
+   "read_only": 1
+  },
+  {
+   "description": "The HGB-Taxonomie of the E-Bilanz and the Offenlegung. Steuerbote ships no taxonomy: the operator puts the package of each version from esteuer.de on the server and names it in common_site_config.json of the bench, and Install Taxonomy unpacks it outside every site. Check Runtime reports each version.",
+   "fieldname": "taxonomy_section",
+   "fieldtype": "Section Break",
+   "label": "HGB Taxonomy"
+  },
+  {
+   "description": "Set on the server in common_site_config.json, such as steuerbote_taxonomy_6_9 and steuerbote_taxonomy_6_9_sha256: the absolute path of the package of the version from esteuer.de and its SHA-256, the one esteuer.de publishes. Shown here, changed only there.",
+   "fieldname": "taxonomy_archives",
+   "fieldtype": "Small Text",
+   "label": "Taxonomy Packages",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_taxonomy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Each version unpacked outside every site, with the package it came from.",
+   "fieldname": "installed_taxonomies",
+   "fieldtype": "Small Text",
+   "label": "Installed Taxonomies",
    "read_only": 1
   },
   {
