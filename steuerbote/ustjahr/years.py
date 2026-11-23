@@ -15,13 +15,21 @@ the Voranmeldung, although the BMF signed both on the same day, so this table do
 steuerbote/ustva/years.py. The annual return also keeps a clock of its own: in 2027 the Voranmeldungen are those of
 2027, while the annual return filed then is that of 2026. Every table above holds exactly the years of YEARS
 (steuerbote/ustjahr/tests/test_years.py).
+
+The deadline of the return follows the Abgabenordnung, the same for every year: filing_deadline().
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from types import MappingProxyType
 
+from steuerbote.ustva.period import next_working_day
 from steuerbote.ustva.years import MONTHS, UnknownYearError
+
+JULY = 7
+MARCH = 3
+LAST_OF_JULY = 31
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +101,29 @@ def plugin(year: int) -> str:
 def plugin_library(year: int) -> str:
 	"""The file of the plugin under Linux, lib<plugin>.so."""
 	return f"lib{plugin(year)}.so"
+
+
+def filing_deadline(
+	year: int, advisor: bool = False, requested: date | None = None, holidays: Collection[date] = ()
+) -> date:
+	"""The day the Umsatzsteuererklärung of ``year`` is due.
+
+	Without a Steuerberatung „spätestens sieben Monate nach Ablauf des Kalenderjahres“ (§ 149 Absatz 2 Satz 1 AO),
+	as the Anleitung prints it for 2026: „Abgabefrist: bis 31. Juli 2027“ (USt 2 E 2026). Prepared by a
+	Steuerberatung (``advisor``), „bis zum letzten Tag des Monats Februar ... des zweiten auf den
+	Besteuerungszeitraum folgenden Kalenderjahres“ (§ 149 Absatz 3 Nummer 4 AO). A day the Finanzamt orders
+	(``requested``, § 149 Absatz 4 AO) replaces both. A deadline on a Saturday, a Sunday or one of the
+	``holidays`` moves to the next working day: § 108 Absatz 3 AO, which applies to „die Erklärungsfrist (§ 149
+	AO)“ (AEAO zu § 108).
+	"""
+	_require_year(year)
+	if requested is not None:
+		due = requested
+	elif advisor:
+		due = date(year + 2, MARCH, 1) - timedelta(days=1)
+	else:
+		due = date(year + 1, JULY, LAST_OF_JULY)
+	return next_working_day(due, holidays)
 
 
 def _require_year(year: object) -> None:
