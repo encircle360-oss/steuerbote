@@ -2,6 +2,7 @@ from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.ustva.rounding import (
+	apportion_full_euros,
 	ceil_cents,
 	ceil_euro,
 	floor_euro,
@@ -203,3 +204,53 @@ class CeilCentsTest(TestCase):
 	def test_rejects_floats(self):
 		with self.assertRaises(TypeError):
 			ceil_cents(0.1)
+
+
+def euros(*values: str) -> tuple[Decimal, ...]:
+	return tuple(Decimal(value) for value in values)
+
+
+class ApportionFullEurosTest(TestCase):
+	"""Full euros for parts that keep adding up to their total, such as the positions of a balance sheet."""
+
+	def test_rounds_each_part_half_up_where_that_meets_the_total(self):
+		self.assertEqual(apportion_full_euros(euros("1.40", "2.60"), Decimal("4")), euros("1", "3"))
+
+	def test_takes_a_euro_from_the_part_rounded_up_the_most(self):
+		self.assertEqual(
+			apportion_full_euros(euros("6350.50", "37929.50"), Decimal("44280")), euros("6350", "37930")
+		)
+
+	def test_adds_a_euro_to_the_part_rounded_down_the_most(self):
+		self.assertEqual(
+			apportion_full_euros(euros("0.40", "0.45", "0.40"), Decimal("1")), euros("0", "1", "0")
+		)
+
+	def test_takes_the_rounded_sum_of_the_parts_without_a_total(self):
+		self.assertEqual(apportion_full_euros(euros("1.25", "1.25")), euros("2", "1"))
+
+	def test_keeps_whole_parts_and_zero_as_they_are(self):
+		self.assertEqual(
+			apportion_full_euros(euros("25000", "0.50", "0", "0.50"), Decimal("25001")),
+			euros("25000", "0", "0", "1"),
+		)
+
+	def test_counts_negative_parts_with_their_sign(self):
+		self.assertEqual(apportion_full_euros(euros("-1.50", "3.00"), Decimal("2")), euros("-1", "3"))
+
+	def test_refuses_a_total_the_parts_cannot_reach_without_moving_a_whole_part(self):
+		with self.assertRaises(ValueError):
+			apportion_full_euros(euros("1", "2"), Decimal("4"))
+
+	def test_refuses_a_total_with_cents(self):
+		with self.assertRaises(ValueError):
+			apportion_full_euros(euros("1.50"), Decimal("1.50"))
+
+	def test_never_returns_negative_zero(self):
+		self.assertEqual([str(part) for part in apportion_full_euros(euros("-0.40"), Decimal("0"))], ["0"])
+
+	def test_rejects_floats(self):
+		with self.assertRaises(TypeError):
+			apportion_full_euros((0.5,), Decimal("1"))
+		with self.assertRaises(TypeError):
+			apportion_full_euros(euros("0.5"), 1.0)
