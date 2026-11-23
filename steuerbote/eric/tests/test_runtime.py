@@ -155,6 +155,41 @@ class InstallTest(ArchiveTestCase):
 		self.assertNotEqual(info.lib_dir, self.root / "44.3.6.0" / "lib")
 		self.assertFalse(info.log_dir.exists())
 
+	def test_records_the_product_versions_the_probe_reads(self):
+		"""EricVersion names each library with its product version (EricVersion.xsd), which can differ from the version
+		of the release (ERiC-Entwicklerhandbuch, Kap. 4.3); the Mindestversionsliste is compared with them."""
+		versions = {
+			"libericapi.so": "44, 3, 6, 0",
+			"plugins2/libcheckUStVA_2026.so": "44, 3, 6, 0",
+			"libeSigner.so": 65,
+		}
+		self.install(probe=lambda info: versions)
+		manifest = json.loads((self.root / "44.3.6.0" / MANIFEST).read_text())
+		self.assertEqual(
+			manifest["library_versions"],
+			{"libericapi.so": "44, 3, 6, 0", "libcheckUStVA_2026.so": "44, 3, 6, 0"},
+		)
+		(installation,) = installations(self.root)
+		self.assertEqual(dict(installation.library_versions), manifest["library_versions"])
+
+	def test_without_an_answer_of_the_probe_no_version_is_recorded(self):
+		self.install(probe=lambda info: None)
+		manifest = json.loads((self.root / "44.3.6.0" / MANIFEST).read_text())
+		self.assertEqual(manifest["library_versions"], {})
+
+	def test_reads_a_manifest_without_product_versions(self):
+		self.install()
+		path = self.root / "44.3.6.0" / MANIFEST
+		manifest = json.loads(path.read_text())
+		del manifest["library_versions"]
+		for library_versions in (None, ["libericapi.so"], {"libericapi.so": 44}):
+			with self.subTest(library_versions=library_versions):
+				if library_versions is not None:
+					manifest["library_versions"] = library_versions
+				path.write_text(json.dumps(manifest))
+				(installation,) = installations(self.root)
+				self.assertEqual(dict(installation.library_versions), {})
+
 	def test_a_failing_probe_leaves_nothing_behind(self):
 		def probe(info: RuntimeInfo) -> None:
 			raise OSError("libgcc_s.so.1: cannot open shared object file")
@@ -545,6 +580,15 @@ class StatusTest(ArchiveTestCase):
 				"kein Senden.",
 			),
 		)
+
+	def test_the_plugin_of_the_year_is_noticed_while_it_fails(self):
+		"""The weekly check of the versions tells the System Managers once of each failing check with a notice."""
+		self.install(LIBRARIES)
+		failing = {check.name: check.notice for check in status(self.root, year=2027, hersteller_id="12345")}
+		self.assertEqual(failing["plugin"], "year 2027")
+		self.assertEqual({name for name, notice in failing.items() if notice}, {"plugin"})
+		passing = {check.name: check.notice for check in status(self.root, year=2026, hersteller_id="12345")}
+		self.assertEqual(passing["plugin"], "")
 
 	def test_without_a_year_the_plugin_check_is_left_out(self):
 		checks = self.checks(hersteller_id="12345")

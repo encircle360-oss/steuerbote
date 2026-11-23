@@ -20,7 +20,7 @@ from steuerbote.eric import service
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.result import ERROR, TESTMERKER, Operation, Outcome
-from steuerbote.eric.runtime import RuntimeInfo, install_from_archive
+from steuerbote.eric.runtime import RuntimeInfo, install_from_archive, installations
 from steuerbote.eric.service import (
 	PrivacyNoticeNotConfirmed,
 	WorkerError,
@@ -530,3 +530,8 @@ class VersionTest(ServiceTestCase):
 		checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
 		info = install_from_archive(archive, checksum, self.directory / "eric", probe=library_versions)
 		self.assertTrue((info.lib_dir / "libericapi.so").is_file())
+		(installation,) = installations(self.directory / "eric")
+		self.assertEqual(
+			dict(installation.library_versions),
+			{"libericapi.so": "44, 3, 6, 0", "libcheckUStVA_2026.so": "44, 3, 6, 0"},
+		)
