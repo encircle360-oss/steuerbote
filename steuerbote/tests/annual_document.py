@@ -1,18 +1,20 @@
-"""A small annual document for the Frappe tests of the base of the annual documents,
+"""Small annual documents for the Frappe tests of the base of the annual documents,
 steuerbote/steuerbote/annual_filing.py.
 
 The DocTypes of the annual filings come with their modules, so the tests of the base make DocTypes of their own while
 they run: Steuerbote Test Annual Filing, a custom DocType with the standard fields of the lifecycle FILING
 (steuerbote.jahresmeldung.lifecycle.standard_fields), a table of lines and a few fields of its own, and its child
-Steuerbote Test Annual Filing Line. A custom DocType has no controller of its own, Frappe gives it Document
-(import_controller in frappe/model/document.py), so use_controller() lets frappe.get_doc take TestAnnualFiling for it
-while a test runs, and lets the ELSTER Transmission name it.
+Steuerbote Test Annual Filing Line; and Steuerbote Test Annual Accounts, with the standard fields of the lifecycle
+ACCOUNTS of the Jahresabschluss and the same lines, which goes to no Finanzamt. A custom DocType has no controller of
+its own, Frappe gives it Document (import_controller in frappe/model/document.py), so use_controller() lets
+frappe.get_doc take TestAnnualFiling and TestAnnualAccounts for them while a test runs, and lets the ELSTER
+Transmission name the first.
 
-Berechnen of the test document reads its field source, JSON such as [{"key": "A", "label": "Umsätze", "computed":
+Berechnen of a test document reads its field source, JSON such as [{"key": "A", "label": "Umsätze", "computed":
 "100.00"}], where an entry with "finding" is a finding of the sources; check_reported finds an error on a line that
-reports less than zero, so that a correction changes what Berechnen checked. The document goes to ELSTER as the
-Körperschaftsteuererklärung of its year, whose schema ERiC 44.3.6.0 does not have yet, so the simulation checks its
-structure and its Vorsatz; with the kind Bilanz it goes as the E-Bilanz of taxonomy 6.9, in the frame of
+reports less than zero, so that a correction changes what Berechnen checked. The test document of FILING goes to
+ELSTER as the Körperschaftsteuererklärung of its year, whose schema ERiC 44.3.6.0 does not have yet, so the simulation
+checks its structure and its Vorsatz; with the kind Bilanz it goes as the E-Bilanz of taxonomy 6.9, in the frame of
 ebilanz_000002.xsd. All names, numbers and addresses are invented.
 """
 
@@ -34,13 +36,14 @@ from steuerbote.elster import vorsatz
 from steuerbote.eric import datenart
 from steuerbote.jahresmeldung import overrides
 from steuerbote.jahresmeldung.findings import Finding, Severity
-from steuerbote.jahresmeldung.lifecycle import FILING, standard_fields
+from steuerbote.jahresmeldung.lifecycle import ACCOUNTS, FILING, Lifecycle, standard_fields
 from steuerbote.steuerbote.annual_filing import AnnualFiling, Calculation
 from steuerbote.steuerbote.doctype.elster_transmission import elster_transmission, transmission
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import TRANSMISSION, Transmittable
 from steuerbote.tests.helpers import ensure_fiscal_year, make_company, make_settings
 
 DOCTYPE = "Steuerbote Test Annual Filing"
+ACCOUNTS_DOCTYPE = "Steuerbote Test Annual Accounts"
 LINE_DOCTYPE = "Steuerbote Test Annual Filing Line"
 COMPANY = "Steuerbote Test Jahresmeldung GmbH"
 ABBR = "STJM"
@@ -73,9 +76,8 @@ def _field(fieldname: str, fieldtype: str, label: str, options: str | None = Non
 	return {"fieldname": fieldname, "fieldtype": fieldtype, "label": label, "options": options, **flags}
 
 
-def definition() -> dict[str, Any]:
-	"""The test document: the standard fields, then the fields of its own."""
-	fields = [
+def _standard_fields(lifecycle: Lifecycle, doctype: str, *, transmits: bool) -> list[dict]:
+	return [
 		_field(
 			field.fieldname,
 			field.fieldtype,
@@ -84,20 +86,26 @@ def definition() -> dict[str, Any]:
 			read_only=int(field.read_only),
 			reqd=int(field.reqd),
 		)
-		for field in standard_fields(FILING, DOCTYPE, transmits=True)
+		for field in standard_fields(lifecycle, doctype, transmits=transmits)
 	]
-	fields += [
-		_field("kind", "Select", "Kind", "KSt\nBilanz", default="KSt"),
-		_field("revision_status", "Select", "Revision Status", "\nE\nB\nG\nBG\nsK\nI\nK"),
+
+
+def _lines_and_amendment(doctype: str) -> list[dict]:
+	"""The fields of its own that both test documents have: the sources, what Berechnen read, the total of the lines as
+	filed, the lines and the link of an amendment."""
+	return [
 		_field("source", "Small Text", "Source"),
 		_field("lines_read", "Int", "Lines Read", read_only=1),
 		_field("total", "Currency", "Total", read_only=1),
 		_field("lines", "Table", "Lines", LINE_DOCTYPE),
-		_field("amended_from", "Link", "Amended From", DOCTYPE, read_only=1, no_copy=1, print_hide=1),
+		_field("amended_from", "Link", "Amended From", doctype, read_only=1, no_copy=1, print_hide=1),
 	]
+
+
+def _doctype(name: str, fields: list[dict]) -> dict[str, Any]:
 	return {
 		"doctype": "DocType",
-		"name": DOCTYPE,
+		"name": name,
 		"module": "Steuerbote",
 		"custom": 1,
 		"is_submittable": 1,
@@ -111,10 +119,35 @@ def definition() -> dict[str, Any]:
 				"create": 1,
 				"submit": 1,
 				"cancel": 1,
+				"amend": 1,
 				"delete": 1,
 			}
 		],
 	}
+
+
+def definition() -> dict[str, Any]:
+	"""The test document of the lifecycle FILING: the standard fields, then the fields of its own."""
+	return _doctype(
+		DOCTYPE,
+		[
+			*_standard_fields(FILING, DOCTYPE, transmits=True),
+			_field("kind", "Select", "Kind", "KSt\nBilanz", default="KSt"),
+			_field("revision_status", "Select", "Revision Status", "\nE\nB\nG\nBG\nsK\nI\nK"),
+			*_lines_and_amendment(DOCTYPE),
+		],
+	)
+
+
+def accounts_definition() -> dict[str, Any]:
+	"""The test document of the lifecycle ACCOUNTS: the standard fields, then the fields of its own."""
+	return _doctype(
+		ACCOUNTS_DOCTYPE,
+		[
+			*_standard_fields(ACCOUNTS, ACCOUNTS_DOCTYPE, transmits=False),
+			*_lines_and_amendment(ACCOUNTS_DOCTYPE),
+		],
+	)
 
 
 def line_definition() -> dict[str, Any]:
@@ -137,8 +170,8 @@ def line_definition() -> dict[str, Any]:
 
 
 def install() -> None:
-	"""Make the DocTypes of the test document once per site; like those of Frappe's own tests, they stay."""
-	for record in (line_definition(), definition()):
+	"""Make the DocTypes of the test documents once per site; like those of Frappe's own tests, they stay."""
+	for record in (line_definition(), definition(), accounts_definition()):
 		if not frappe.db.exists("DocType", record["name"]):
 			frappe.get_doc(record).insert(ignore_permissions=True)
 
@@ -158,12 +191,13 @@ def make_company_with_settings() -> None:
 
 @contextmanager
 def use_controller() -> Iterator[None]:
-	"""While it lasts, frappe.get_doc takes TestAnnualFiling for the test document, and the ELSTER Transmission records
-	its runs."""
+	"""While it lasts, frappe.get_doc takes TestAnnualFiling and TestAnnualAccounts for the test documents, and the
+	ELSTER Transmission records the runs of the first."""
 	original = frappe.model.document.get_controller
+	controllers = {DOCTYPE: TestAnnualFiling, ACCOUNTS_DOCTYPE: TestAnnualAccounts}
 
 	def controller(doctype: str):
-		return TestAnnualFiling if doctype == DOCTYPE else original(doctype)
+		return controllers.get(doctype) or original(doctype)
 
 	documents = (*elster_transmission.DOCUMENT_TYPES, DOCTYPE)
 	with (
@@ -178,17 +212,20 @@ def discard_all() -> None:
 	"""Take the test documents out with their ELSTER Transmissions: a filed one cannot be cancelled, so it leaves the
 	database directly, and its key is free for the next test."""
 	frappe.db.delete(TRANSMISSION, {"document_type": DOCTYPE})
-	for name in frappe.get_all(DOCTYPE, pluck="name"):
-		frappe.db.set_value(DOCTYPE, name, "docstatus", 2, update_modified=False)
-		frappe.delete_doc(DOCTYPE, name, force=True, ignore_permissions=True)
+	for doctype in (DOCTYPE, ACCOUNTS_DOCTYPE):
+		for name in frappe.get_all(doctype, pluck="name"):
+			frappe.db.set_value(doctype, name, "docstatus", 2, update_modified=False)
+			frappe.delete_doc(doctype, name, force=True, ignore_permissions=True)
 
 
 def source(*entries: Mapping[str, Any]) -> str:
-	"""The field source of the test document: its lines and the findings of its sources."""
+	"""The field source of a test document: its lines and the findings of its sources."""
 	return json.dumps(list(entries))
 
 
-class TestAnnualFiling(AnnualFiling, Transmittable, Document):
+class TestDocument:
+	"""What both test documents compute from their field source, and how they sum up their lines."""
+
 	LINES = "lines"
 	LINE_COLUMNS = overrides.Columns(key="key", amounts=("computed",), described=("label",))
 	CALCULATED_FIELDS = ("lines_read",)
@@ -206,9 +243,6 @@ class TestAnnualFiling(AnnualFiling, Transmittable, Document):
 			if "finding" in entry
 		]
 		return Calculation(lines=lines, values={"lines_read": len(lines)}, findings=found)
-
-	def correction_values(self) -> dict[str, Any]:
-		return {"kind": self.kind, "source": self.source}
 
 	def check_reported(self, lines: Sequence[Mapping[str, Any]]) -> Sequence[Finding]:
 		return [
@@ -233,6 +267,11 @@ class TestAnnualFiling(AnnualFiling, Transmittable, Document):
 			(overrides.reported(row.as_dict(), self.LINE_COLUMNS) for row in self.lines), Decimal("0.00")
 		)
 
+
+class TestAnnualFiling(TestDocument, AnnualFiling, Transmittable, Document):
+	def correction_values(self) -> dict[str, Any]:
+		return {"kind": self.kind, "source": self.source}
+
 	def datenart(self) -> datenart.Datenart:
 		return datenart.bilanz(TAXONOMY) if self.kind == "Bilanz" else datenart.kst(cint(self.year))
 
@@ -249,3 +288,7 @@ class TestAnnualFiling(AnnualFiling, Transmittable, Document):
 		etree.SubElement(root, f"{{{kind.namespace}}}KSt1")
 		vorsatz.append_to(root, kind, self.vorsatz())
 		return etree.tostring(root, encoding="unicode")
+
+
+class TestAnnualAccounts(TestDocument, AnnualFiling, Document):
+	LIFECYCLE = ACCOUNTS

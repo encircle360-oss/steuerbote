@@ -1,7 +1,8 @@
-"""The base of the annual documents, steuerbote/steuerbote/annual_filing.py, on the test document of
+"""The base of the annual documents, steuerbote/steuerbote/annual_filing.py, on the test documents of
 steuerbote/tests/annual_document.py: the start as a draft of its Fiscal Year, Berechnen with the corrections and lines
 by hand, what a save keeps, one draft and one filing per key, the Berichtigung, the note of a filing and the amounts
-computed again before it."""
+computed again before it; and the Jahresabschluss, adopted by Buchen, transmitted, eingestellt, and cancelled and
+amended when it changes."""
 
 import html
 import re
@@ -14,7 +15,15 @@ from frappe.utils import add_days, flt, getdate, today
 
 from steuerbote.jahresmeldung import corrections, lifecycle, overrides
 from steuerbote.tests import annual_document
-from steuerbote.tests.annual_document import COMPANY, DOCTYPE, LINE_DOCTYPE, LINES, NEGATIVE, source
+from steuerbote.tests.annual_document import (
+	ACCOUNTS_DOCTYPE,
+	COMPANY,
+	DOCTYPE,
+	LINE_DOCTYPE,
+	LINES,
+	NEGATIVE,
+	source,
+)
 from steuerbote.tests.transmitting import TICKET, TRANSMISSION, Transmitting
 
 # The form of TransferTicketSType in headerbasis_datentypen.xsd, invented.
@@ -548,3 +557,132 @@ class TestPrint(AnnualFilingTestCase):
 		self.assertNotIn("Mein ELSTER", text)
 		doc.LIFECYCLE = lifecycle.ACCOUNTS
 		self.assertIn("Dieser Ausdruck ist keine Offenlegung.", self.printed(doc))
+
+
+class TestJahresabschluss(AnnualFilingTestCase):
+	"""The lifecycle ACCOUNTS of the Jahresabschluss on its test document: Buchen is the Feststellung, the Übermittlung
+	to the Unternehmensregister and the Einstellung follow it, and a change is a cancellation and an amendment
+	(§ 42a Abs. 2 GmbHG, § 325 Abs. 1b HGB)."""
+
+	def accounts(self, *entries, **fields):
+		doc = frappe.get_doc(
+			{
+				"doctype": ACCOUNTS_DOCTYPE,
+				"company": COMPANY,
+				"year": 2026,
+				"source": source(*(entries or LINES)),
+				**fields,
+			}
+		).insert()
+		doc.calculate()
+		doc.reload()
+		return doc
+
+	def adopted(self):
+		doc = self.accounts()
+		doc.submit()
+		doc.reload()
+		return doc
+
+	def test_buchen_adopts_a_calculated_jahresabschluss(self):
+		doc = self.accounts()
+		self.assertEqual((doc.status, doc.ready), ("Berechnet", 1))
+		doc.submit()
+		doc.reload()
+		self.assertEqual((doc.docstatus, doc.status), (1, "Festgestellt"))
+
+	def test_a_draft_is_calculated_before_its_feststellung(self):
+		doc = frappe.get_doc(
+			{"doctype": ACCOUNTS_DOCTYPE, "company": COMPANY, "year": 2026, "source": source(*LINES)}
+		).insert()
+		with self.assertRaisesRegex(frappe.ValidationError, "before filing it"):
+			doc.submit()
+
+	def test_the_uebermittlung_and_the_einstellung_follow_the_feststellung(self):
+		doc = self.adopted()
+		self.assertEqual(
+			doc.move_on(lifecycle.Event.TRANSMIT, filed_via="upload", note="Auftrag 2027-0815"), "Übermittelt"
+		)
+		doc.reload()
+		self.assertEqual(
+			(doc.status, doc.filed_via, getdate(doc.filed_on), doc.filing_note, doc.filed_by),
+			("Übermittelt", "upload", getdate(today()), "Auftrag 2027-0815", frappe.session.user),
+		)
+		doc.move_on(lifecycle.Event.PUBLISH)
+		doc.reload()
+		self.assertEqual((doc.docstatus, doc.status, doc.filed_via), (1, "Eingestellt", "upload"))
+
+	def test_moves_on_only_as_its_lifecycle_does_and_only_once_adopted(self):
+		doc = self.accounts()
+		with self.assertRaisesRegex(frappe.ValidationError, "is not submitted, so its status stays"):
+			doc.move_on(lifecycle.Event.TRANSMIT)
+		doc.submit()
+		doc.reload()
+		for event in (lifecycle.Event.PUBLISH, lifecycle.Event.FILE, lifecycle.Event.CALCULATE):
+			with (
+				self.subTest(event=event),
+				self.assertRaisesRegex(frappe.ValidationError, "cannot change from Festgestellt"),
+			):
+				doc.move_on(event)
+		for values, message in (
+			({"filed_via": "fax"}, "knows no way of filing"),
+			({"filed_via": "upload", "filed_on": add_days(today(), 1)}, "in the future"),
+		):
+			with self.subTest(values=values), self.assertRaisesRegex(frappe.ValidationError, message):
+				doc.move_on(lifecycle.Event.TRANSMIT, **values)
+		self.assertEqual(
+			frappe.db.get_value(ACCOUNTS_DOCTYPE, doc.name, ["status", "filed_via"]), ("Festgestellt", None)
+		)
+
+	def test_a_changed_jahresabschluss_is_cancelled_and_amended_and_the_amendment_replaces_it(self):
+		first = self.adopted()
+		first.cancel()
+		amendment = frappe.copy_doc(first)
+		amendment.update({"docstatus": 0, "amended_from": first.name})
+		amendment.insert()
+		self.assertEqual((amendment.status, amendment.ready, amendment.findings), ("Entwurf", 0, []))
+		amendment.calculate()
+		amendment.reload()
+		amendment.submit()
+		first.reload()
+		self.assertEqual((first.docstatus, first.status), (2, "Ersetzt"))
+		self.assertEqual((amendment.docstatus, amendment.status), (1, "Festgestellt"))
+
+	def test_changes_by_stornieren_and_berichtigen_and_not_by_a_berichtigung_of_its_own(self):
+		doc = self.adopted()
+		self.assertFalse(doc.annual_state()["can_correct"])
+		with self.assertRaisesRegex(frappe.ValidationError, "changes by Stornieren and Berichtigen"):
+			doc.make_correction()
+		with self.assertRaisesRegex(frappe.ValidationError, "changes by Stornieren and Berichtigen"):
+			frappe.get_doc(
+				{
+					"doctype": ACCOUNTS_DOCTYPE,
+					"company": COMPANY,
+					"year": 2026,
+					"is_correction": 1,
+					"corrects": doc.name,
+				}
+			).insert()
+
+	def test_goes_to_no_finanzamt_and_is_disclosed_again_when_it_changes(self):
+		doc = self.accounts()
+		self.assertEqual(
+			doc.annual_state(),
+			{
+				"calculated": ["Berechnet"],
+				"filings": ["Festgestellt", "Übermittelt", "Eingestellt"],
+				"filed_outside": [],
+				"submitted_by_hand": True,
+				"can_correct": False,
+			},
+		)
+		self.assertIs(doc.berichtigung(), corrections.OFFENLEGUNG)
+		with self.assertRaisesRegex(frappe.ValidationError, "does not go to the Finanzamt"):
+			doc.mark_filed_outside("other_way", note="Von der Steuerberatung übermittelt")
+
+	def test_the_print_is_no_offenlegung(self):
+		doc = self.adopted()
+		text = cells(frappe.render_template(PRINT_FORMAT, {"doc": doc}))
+		self.assertIn(f"Beleg | {doc.name}, Festgestellt |", text)
+		self.assertIn("Dieser Ausdruck ist keine Offenlegung.", text)
+		self.assertNotIn("Mein ELSTER", text)
