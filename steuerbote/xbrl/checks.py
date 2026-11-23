@@ -56,6 +56,20 @@ Ausgleichsposten“ (B.14.14).
 Contexts. On the written instance: „Jeder der im eingereichten Datensatz spezifizierten Kontexte muss von mindestens
 einem Fakt referenziert werden.“, and one entity in all of them (B.14.7).
 
+Offenlegung. A small company discloses „nur die Bilanz und den Anhang“, a Kleinstkapitalgesellschaft „nur die Bilanz“
+(§ 326 Abs. 1 Satz 1, Abs. 2 Satz 1 HGB), at the levels of its class (§ 266 Abs. 1 Satz 3 und 4 HGB), and the register
+shows every position reported: „lediglich die Positionen, zu denen Werte berichtet werden, sowie deren übergeordnete
+Positionen“ („Arbeitshilfe für die Einreichung von Jahresabschlüssen/Finanzberichten im XBRL-Format“, Stand September
+2025). published() takes the concepts the class shows, as steuerbote/hgb/schemes.py names them, and refuses every other
+position of the GAAP module and every fact of a component the Offenlegung withholds: the GuV; the Anlagenspiegel and
+the Ergebnisverwendung, which a small company need not give (§ 288 Abs. 1 Nr. 1 with § 284 Abs. 3 and § 285 Nr. 34
+HGB) and a Kleinstkapitalgesellschaft has no Anhang for; the Kontensalden, the Betriebsvermögensvergleich and the
+Überleitung, which belong to the E-Bilanz and to no document of § 325 Abs. 1 Satz 1 HGB, the Kontensalden publishing
+the balance of each account. The master data of the GCD are free. closing_dates() wants each Posten of the Bilanz, a
+position its calculation adds up, for both closing dates: „zu jedem Posten der entsprechende Betrag des vorhergehenden
+Geschäftsjahrs“ (§ 265 Abs. 2 Satz 1 HGB), also where only the previous year shows an amount (§ 265 Abs. 8 HGB); a
+company in its first fiscal year has no previous year to give.
+
 This module is pure Python with lxml and never imports Frappe.
 """
 
@@ -63,6 +77,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum, StrEnum
+from types import MappingProxyType
 
 from lxml import etree
 
@@ -71,6 +86,7 @@ from steuerbote.xbrl.taxonomy import (
 	APPROPRIATION_PROFITS,
 	BALANCE_SHEET,
 	DETAILED_INFORMATION,
+	GAAP_PREFIX,
 	GCD,
 	INCOME_STATEMENT,
 	INCOME_STATEMENT_MICROBILG,
@@ -84,6 +100,7 @@ from steuerbote.xbrl.taxonomy import (
 	IncomeStatementFormat,
 	Kind,
 	LegalForm,
+	Network,
 	Requirement,
 	Taxonomy,
 )
@@ -147,6 +164,8 @@ class Code(StrEnum):
 	SUMMENMUSSFELD = "XBRL-SUMMENMUSSFELD"
 	CONTEXT = "XBRL-KONTEXT"
 	ENTITY = "XBRL-UNTERNEHMEN"
+	NOT_PUBLISHED = "XBRL-NICHT-OFFENZULEGEN"
+	PRIOR_YEAR_AMOUNT = "XBRL-VORJAHRESBETRAG"
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +248,19 @@ COMPONENTS = (
 	ANHANG,
 )
 """The components Steuerbote knows, in the order of Leitfaden B.9.4 and B.9.3."""
+_NOT_DISCLOSED = "§ 325 Abs. 1 Satz 1 HGB"
+WITHHELD = MappingProxyType(
+	{
+		GUV: "§ 326 Abs. 1 Satz 1 und Abs. 2 Satz 1 HGB",
+		GUV_MICROBILG: "§ 326 Abs. 1 Satz 1 und Abs. 2 Satz 1 HGB",
+		BETRIEBSVERMOEGENSVERGLEICH: _NOT_DISCLOSED,
+		ANLAGENSPIEGEL: "§ 288 Abs. 1 Nr. 1 mit § 284 Abs. 3 und § 326 Abs. 2 Satz 1 HGB",
+		KONTENNACHWEIS: _NOT_DISCLOSED,
+		UEBERLEITUNG: _NOT_DISCLOSED,
+		ERGEBNISVERWENDUNG: "§ 288 Abs. 1 Nr. 1 mit § 285 Nr. 34 und § 326 Abs. 2 Satz 1 HGB",
+	}
+)
+"""The components the Offenlegung of a small company or a Kleinstkapitalgesellschaft withholds, each with its rule."""
 
 _FACETS = {
 	"legal_status": LEGAL_STATUS,
@@ -632,6 +664,74 @@ def contexts(instance: etree._Element) -> tuple[Finding, ...]:
 				"Technischer Leitfaden zur HGB-Taxonomie, B.14.7",
 			)
 		)
+	return tuple(findings)
+
+
+def published(report: Report, taxonomy: Taxonomy, concepts: Iterable[str]) -> tuple[Finding, ...]:
+	"""Only what the Offenlegung discloses: of the GAAP module the concepts the class shows, named with their prefix or
+	without, and nothing of a component it withholds; inside a tuple as well."""
+	shown = frozenset(name if ":" in name else f"{GAAP_PREFIX}:{name}" for name in concepts)
+
+	def refused(facts: Iterable[Fact]) -> Iterator[Finding]:
+		for fact in facts:
+			label = taxonomy.label(fact.concept)
+			withheld = next(
+				(component for component in WITHHELD if component.holds(taxonomy, fact.concept)), None
+			)
+			if withheld is not None:
+				yield Finding(
+					Code.NOT_PUBLISHED,
+					f"„{label}“ gehört zum Berichtsbestandteil „{withheld.label}“, den die Offenlegung einer kleinen "
+					"Kapitalgesellschaft oder Kleinstkapitalgesellschaft nicht enthält.",
+					WITHHELD[withheld],
+					*_where(fact),
+				)
+			elif fact.concept.startswith(f"{GAAP_PREFIX}:") and fact.concept not in shown:
+				yield Finding(
+					Code.NOT_PUBLISHED,
+					f"„{label}“ steht nicht in der Gliederung der Größenklasse und wird nicht offengelegt: das "
+					"Unternehmensregister zeigt jede übermittelte Position.",
+					"§ 266 Abs. 1 Satz 3 und 4, § 326 HGB",
+					*_where(fact),
+				)
+			elif isinstance(fact, Tuple):
+				yield from refused(fact.children)
+
+	return tuple(refused(report.facts))
+
+
+def closing_dates(report: Report, taxonomy: Taxonomy) -> tuple[Finding, ...]:
+	"""Each Posten of the Bilanz for both closing dates or for neither, if the report has a previous year (§ 265 Abs. 2
+	Satz 1 and Abs. 8 HGB)."""
+	if report.periods.prior_fiscal_year_end is None:
+		return ()
+	posten = taxonomy.calculation.get(BALANCE_SHEET, Network(BALANCE_SHEET, ()))
+	reported = {(item.concept, item.period) for item, ancestors in report.items() if not ancestors}
+	findings = []
+	for item, ancestors in report.items():
+		if ancestors or item.dimensions or item.concept not in posten:
+			continue
+		label = taxonomy.label(item.concept)
+		if item.period is Period.STICHTAG and (item.concept, Period.VORJAHR_STICHTAG) not in reported:
+			findings.append(
+				Finding(
+					Code.PRIOR_YEAR_AMOUNT,
+					f"Zu „{label}“ fehlt der Betrag des Vorjahres; er steht zu jedem Posten der Bilanz, null, wenn der "
+					"Posten im Vorjahr keinen Betrag auswies.",
+					"§ 265 Abs. 2 Satz 1 HGB",
+					*_where(item),
+				)
+			)
+		elif item.period is Period.VORJAHR_STICHTAG and (item.concept, Period.STICHTAG) not in reported:
+			findings.append(
+				Finding(
+					Code.PRIOR_YEAR_AMOUNT,
+					f"„{label}“ hat einen Betrag im Vorjahr, aber keinen im Geschäftsjahr; der Posten wird mit null "
+					"aufgeführt.",
+					"§ 265 Abs. 8 HGB",
+					*_where(item),
+				)
+			)
 	return tuple(findings)
 
 
