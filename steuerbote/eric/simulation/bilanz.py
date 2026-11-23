@@ -92,6 +92,13 @@ ANLAGENSPIEGEL = "SIM-011"
 DUE_SINCE = date(2016, 12, 31)
 """The Anlagenspiegel is due for every fiscal year that begins after this day (Leitfaden B.14.12.1)."""
 TAXONOMY_CHECK = "SIM-012"
+KONTENSALDEN_SINCE = date(2024, 12, 31)
+"""The Kontensalden are due for every fiscal year beginning after this day: „Nach § 5b EStG ist für Wirtschaftsjahre,
+die nach dem 31. Dezember 2024 beginnen, der Kontennachweis zur Bilanz und GuV verpflichtend zu übermitteln.“
+(Technischer Leitfaden zur HGB-Taxonomie 6.10, Stand 08.06.2026, B.12.1), which rule 170405002 of 6.10 checks: „Der
+Berichtsbestandteil "Kontensalden" muss angekündigt werden, wenn der Beginn des Wirtschaftsjahres nach dem 31.12.2024
+liegt.“"""
+
 
 REPORT_ELEMENT = "genInfo.report.id.reportElement"
 STATEMENT_TYPE = "genInfo.report.id.statementType"
@@ -357,6 +364,34 @@ def _ends_too_late(tolerated: bool) -> Callable[[Instance, Datenart, EnvelopeHea
 	return strikes
 
 
+def _takes_a_reason(kind: Datenart) -> bool:
+	"""Whether the taxonomy takes a reason for an E-Bilanz without Kontensalden; an unknown one is checked as 6.9."""
+	window = _version_window(kind)
+	return window is None or window.kontensalden_reason
+
+
+def _without_kontensalden(instance: Instance, kind: Datenart) -> bool:
+	"""Rule 170405002: the Kontensalden not announced, in 6.9 without the reason, from 6.10 for a fiscal year beginning
+	after the day the duty starts."""
+	if instance.announced("KS"):
+		return False
+	if _takes_a_reason(kind):
+		return not instance.given(NOT_YET_POSSIBLE)
+	begin = instance.date(FISCAL_YEAR_BEGIN)
+	return begin is not None and begin > KONTENSALDEN_SINCE
+
+
+def _kontensalden_terms(version: str) -> tuple[str, ...]:
+	announced = _not_given(f"{REPORT_ELEMENT}.reportElements.KS")
+	if version_of(version).kontensalden_reason:
+		return (announced, _not_given(NOT_YET_POSSIBLE))
+	return (
+		announced,
+		f"FeldAngegeben(gcd:{FISCAL_YEAR_BEGIN})",
+		f"[gcd:{FISCAL_YEAR_BEGIN}]>{_datum(KONTENSALDEN_SINCE)}",
+	)
+
+
 def _kst_without_bilanzgewinn(instance: Instance) -> bool:
 	"""A GmbH or UG of the Kerntaxonomie without a Bilanzgewinn, as rules 170405070 and 170405071 take them."""
 	return (
@@ -619,10 +654,10 @@ RULES: tuple[BilanzRule, ...] = (
 	BilanzRule(
 		"170405002",
 		"FehlendeAngabeBerichtsbestandteilKS",
-		"Die Kontensalden sind nicht angekündigt, und das GCD sagt nicht, warum.",
+		"Die Kontensalden sind nicht angekündigt; nur die HGB-Taxonomie 6.9 nimmt dafür eine Begründung im GCD.",
 		f"{REPORT_ELEMENT}.reportElements.KS",
-		lambda instance, kind, header: not instance.announced("KS") and not instance.given(NOT_YET_POSSIBLE),
-		_always(_not_given(f"{REPORT_ELEMENT}.reportElements.KS"), _not_given(NOT_YET_POSSIBLE)),
+		lambda instance, kind, header: _without_kontensalden(instance, kind),
+		lambda version: _kontensalden_terms(version),
 	),
 	BilanzRule(
 		"170205095",
