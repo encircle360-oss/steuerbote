@@ -12,7 +12,6 @@ from steuerbote.ustjahr.years import (
 	plugin_library,
 	year_of,
 )
-
 from steuerbote.ustva import years as ustva_years
 from steuerbote.ustva.years import UnknownYearError
 
