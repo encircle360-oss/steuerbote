@@ -66,12 +66,18 @@ wurde.“ (§ 265 Abs. 8 HGB) A line without an amount in either year is therefo
 Eigenkapital and the Gezeichnetes Kapital, which § 42 Abs. 1 GmbHG wants in every balance sheet of a GmbH, and the
 results of the income statement.
 
+Full euros. in_full_euros() gives the statement in full euros, the default of the Offenlegung research; that the
+register requires it is unverified. Each total is rounded half up and apportioned to the lines under it
+(steuerbote.ustva.rounding.apportion_full_euros), so every total stays the sum of its lines, Aktiva and Passiva
+stay alike, the Fehlbetrag shows the same on both sides and the Jahresüberschuss of the income statement is that
+of the balance sheet; a „davon“ amount stays within its line.
+
 Each line names the sources of the balances that landed on it, as the drill-down of the Annual Accounts shows
 them. The schemes and their sources are steuerbote.hgb.schemes.
 """
 
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import Enum, StrEnum
@@ -90,7 +96,7 @@ from steuerbote.hgb.schemes import (
 	income_statement_scheme,
 )
 from steuerbote.hgb.size import SizeClass
-from steuerbote.ustva.rounding import ceil_cents
+from steuerbote.ustva.rounding import apportion_full_euros, ceil_cents
 
 ZERO = Decimal("0")
 NO_PARENTS: Mapping[str, str] = MappingProxyType({})
@@ -698,3 +704,256 @@ def _appropriated(balance: Balance) -> Finding:
 		balance.concept,
 		balance.amount,
 	)
+
+
+_PART_KINDS = frozenset(
+	{
+		*_REMAINING_TERM_KINDS,
+		VermerkKind.SHAREHOLDERS,
+		VermerkKind.CONVERTIBLE,
+		VermerkKind.TAXES,
+		VermerkKind.SOCIAL_SECURITY,
+		VermerkKind.PENSIONS,
+		VermerkKind.AFFILIATED,
+	}
+)
+_TERM_PAIR = (VermerkKind.LIABILITIES_UP_TO_ONE_YEAR, VermerkKind.LIABILITIES_OVER_ONE_YEAR)
+
+
+def in_full_euros(statement: AnnualStatement) -> AnnualStatement:
+	"""The statement in full euros: each total rounded half up and apportioned to the lines under it, the
+	Fehlbetrag alike on both sides and the Jahresüberschuss of the income statement that of the balance sheet."""
+	sheet = statement.balance_sheet
+	deficit = sheet.line(DEFICIT)
+	pinned = _pinned(deficit.amount)
+	prior_pinned = None if deficit.prior is None else _pinned(deficit.prior)
+	aktiva, aktiva_total, prior_aktiva_total = _side_in_full_euros(
+		sheet.scheme, sheet.aktiva, sheet.aktiva_total, sheet.prior_aktiva_total, pinned, prior_pinned
+	)
+	passiva, passiva_total, prior_passiva_total = _side_in_full_euros(
+		sheet.scheme, sheet.passiva, sheet.passiva_total, sheet.prior_passiva_total, pinned, prior_pinned
+	)
+	rounded_deficit = _line(aktiva, DEFICIT)
+	net_income = next((line for line in passiva if line.position.concept == NET_INCOME), None)
+	balance_sheet = BalanceSheet(
+		sheet.scheme,
+		sheet.size_class,
+		aktiva,
+		passiva,
+		aktiva_total,
+		passiva_total,
+		_line(passiva, EQUITY).amount,
+		rounded_deficit.amount,
+		aktiva_total - rounded_deficit.amount,
+		prior_aktiva_total,
+		prior_passiva_total,
+		None if prior_aktiva_total is None else prior_aktiva_total - (rounded_deficit.prior or ZERO),
+	)
+	income_statement = _income_in_full_euros(
+		statement.income_statement,
+		None if net_income is None else net_income.amount,
+		None if net_income is None else net_income.prior,
+	)
+	return AnnualStatement(balance_sheet, income_statement, statement.findings)
+
+
+def _pinned(deficit: Decimal) -> Mapping[str, Decimal]:
+	(rounded,) = apportion_full_euros((deficit,))
+	return {DEFICIT: rounded, DEFICIT_IN_EQUITY: rounded}
+
+
+def _side_in_full_euros(
+	scheme: BalanceSheetScheme,
+	lines: tuple[Line, ...],
+	total: Decimal,
+	prior_total: Decimal | None,
+	pinned: Mapping[str, Decimal],
+	prior_pinned: Mapping[str, Decimal] | None,
+) -> tuple[tuple[Line, ...], Decimal, Decimal | None]:
+	"""The lines of one side in full euros, each total apportioned to the lines the class shows under it."""
+	concepts = {line.position.concept for line in lines}
+	children: defaultdict[str | None, list[Line]] = defaultdict(list)
+	for line in lines:
+		parent = scheme.parent(line.position.concept)
+		while parent is not None and parent.concept not in concepts:
+			parent = scheme.parent(parent.concept)
+		children[None if parent is None else parent.concept].append(line)
+	amounts, rounded_total = _apportioned(children, total, _amount_of, pinned)
+	priors, rounded_prior_total = (
+		(None, None)
+		if prior_total is None or prior_pinned is None
+		else _apportioned(children, prior_total, _prior_of, prior_pinned)
+	)
+	rounded = tuple(
+		_rounded_line(
+			line,
+			amounts[line.position.concept],
+			None if priors is None else priors[line.position.concept],
+		)
+		for line in lines
+	)
+	return rounded, rounded_total, rounded_prior_total
+
+
+def _amount_of(line: Line) -> Decimal:
+	return line.amount
+
+
+def _prior_of(line: Line) -> Decimal:
+	return line.prior or ZERO
+
+
+def _apportioned(
+	children: Mapping[str | None, list[Line]],
+	total: Decimal,
+	value: Callable[[Line], Decimal],
+	pinned: Mapping[str, Decimal],
+) -> tuple[dict[str, Decimal], Decimal]:
+	"""Each line in full euros from the total down; a pinned line keeps its amount where the others can make up
+	the rest."""
+	(rounded_total,) = apportion_full_euros((total,))
+	rounded: dict[str, Decimal] = {}
+	pending: list[tuple[str | None, Decimal, Decimal]] = [(None, total, rounded_total)]
+	while pending:
+		key, exact, target = pending.pop()
+		lines = children.get(key, [])
+		if not lines:
+			continue
+		parts = [value(line) for line in lines]
+		results = _apportion_lines(lines, parts, exact - sum(parts, ZERO), target, pinned)
+		for line, part, result in zip(lines, parts, results, strict=False):
+			rounded[line.position.concept] = result
+			pending.append((line.position.concept, part, result))
+	return rounded, rounded_total
+
+
+def _apportion_lines(
+	lines: list[Line],
+	parts: list[Decimal],
+	remainder: Decimal,
+	target: Decimal,
+	pinned: Mapping[str, Decimal],
+) -> tuple[Decimal, ...]:
+	"""The parts of one total in full euros; the remainder stands for a balance on the total itself."""
+	fixed = {
+		index: pinned[line.position.concept]
+		for index, line in enumerate(lines)
+		if line.position.concept in pinned
+	}
+	if fixed:
+		free = [index for index in range(len(parts)) if index not in fixed]
+		try:
+			rest = apportion_full_euros(
+				(*(parts[index] for index in free), remainder), target - sum(fixed.values(), ZERO)
+			)
+		except ValueError:
+			return apportion_full_euros((*parts, remainder), target)
+		results = dict(zip(free, rest, strict=False)) | fixed
+		return tuple(results[index] for index in range(len(parts)))
+	return apportion_full_euros((*parts, remainder), target)
+
+
+def _income_in_full_euros(
+	income: IncomeStatement, net_income: Decimal | None, prior_net_income: Decimal | None
+) -> IncomeStatement:
+	"""The income statement in full euros from the Jahresüberschuss down; the balance sheet gives it where it shows
+	it, so both statements show the same."""
+	scheme = income.scheme
+	lines = {line.position.concept: line for line in income.lines}
+	amounts = _results_apportioned(scheme, lines, _amount_of, income.net_income, net_income)
+	priors = (
+		None
+		if income.prior_net_income is None
+		else _results_apportioned(scheme, lines, _prior_of, income.prior_net_income, prior_net_income)
+	)
+	rounded = tuple(
+		_rounded_line(
+			line,
+			amounts[line.position.concept],
+			None if priors is None else priors[line.position.concept],
+		)
+		for line in income.lines
+	)
+	return IncomeStatement(
+		scheme,
+		rounded,
+		amounts[scheme.net_income.concept],
+		amounts[scheme.sales.concept],
+		None if priors is None else priors[scheme.net_income.concept],
+		None if priors is None else priors[scheme.sales.concept],
+	)
+
+
+def _results_apportioned(
+	scheme: IncomeStatementScheme,
+	lines: Mapping[str, Line],
+	value: Callable[[Line], Decimal],
+	exact_net_income: Decimal,
+	net_income: Decimal | None,
+) -> dict[str, Decimal]:
+	"""Each item in full euros: a result apportioned to the items it adds up, an item to its parts."""
+	if net_income is None:
+		(net_income,) = apportion_full_euros((exact_net_income,))
+	rounded: dict[str, Decimal] = {}
+	pending: list[tuple[Position, Decimal]] = [(scheme.net_income, net_income)]
+	while pending:
+		position, result = pending.pop()
+		rounded[position.concept] = result
+		below = (
+			[scheme.position(term) for term in position.terms] if position.terms else list(position.children)
+		)
+		if not below:
+			continue
+		signs = [_sign(item, position) for item in below]
+		parts = [value(lines[item.concept]) * sign for item, sign in zip(below, signs, strict=True)]
+		remainder = value(lines[position.concept]) - sum(parts, ZERO)
+		results = apportion_full_euros((*parts, remainder), result)
+		pending.extend((item, part * sign) for item, sign, part in zip(below, signs, results, strict=False))
+	return rounded
+
+
+def _rounded_line(line: Line, amount: Decimal, prior: Decimal | None) -> Line:
+	current = _rounded_notes(line.vermerke, line.amount, amount, _vermerk_amount)
+	previous = (
+		None if prior is None else _rounded_notes(line.vermerke, line.prior or ZERO, prior, _vermerk_prior)
+	)
+	vermerke = tuple(
+		VermerkLine(noted.vermerk, current[index], None if previous is None else previous[index])
+		for index, noted in enumerate(line.vermerke)
+	)
+	return replace(line, amount=amount, prior=prior, vermerke=vermerke)
+
+
+def _vermerk_amount(noted: VermerkLine) -> Decimal:
+	return noted.amount
+
+
+def _vermerk_prior(noted: VermerkLine) -> Decimal:
+	return noted.prior or ZERO
+
+
+def _rounded_notes(
+	vermerke: tuple[VermerkLine, ...],
+	exact: Decimal,
+	rounded: Decimal,
+	value: Callable[[VermerkLine], Decimal],
+) -> list[Decimal]:
+	"""The Vermerke of a line in full euros: a part within its line, the remaining terms of a liability adding up
+	to the line when they did so exactly."""
+	result = [_rounded_part(noted.vermerk.kind, value(noted), exact, rounded) for noted in vermerke]
+	pair = [index for index, noted in enumerate(vermerke) if noted.vermerk.kind in _TERM_PAIR]
+	if len(pair) == len(_TERM_PAIR) and sum((value(vermerke[index]) for index in pair), ZERO) == exact:
+		apportioned = apportion_full_euros(tuple(value(vermerke[index]) for index in pair), rounded)
+		for index, part in zip(pair, apportioned, strict=True):
+			result[index] = part
+	return result
+
+
+def _rounded_part(kind: VermerkKind, value: Decimal, exact: Decimal, rounded: Decimal) -> Decimal:
+	(half_up,) = apportion_full_euros((value,))
+	if kind not in _PART_KINDS:
+		return half_up
+	if value == exact:
+		return rounded
+	within = ZERO <= value <= exact or exact <= value <= ZERO
+	return rounded if within and abs(half_up) > abs(rounded) else half_up

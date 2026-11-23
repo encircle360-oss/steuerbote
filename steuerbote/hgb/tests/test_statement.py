@@ -4,7 +4,7 @@ import random
 from decimal import Decimal
 from unittest import TestCase
 
-from steuerbote.hgb.schemes import VermerkKind, balance_sheet_scheme
+from steuerbote.hgb.schemes import Level, VermerkKind, balance_sheet_scheme
 from steuerbote.hgb.size import SizeClass
 from steuerbote.hgb.statement import (
 	Balance,
@@ -825,6 +825,17 @@ class FullEurosTest(TestCase):
 			(sheet.bilanzsumme, sheet.equity, sheet.deficit),
 			(Decimal("44280"), Decimal("38500"), Decimal("0")),
 		)
+
+	def test_lets_the_fehlbetrag_go_where_a_side_cannot_keep_it_and_still_adds_up(self):
+		books = (
+			Balance(BANK, Decimal("-1.00")),
+			Balance(CARRIED_FORWARD, Decimal("0.50")),
+			Balance(TRADE_PAYABLES, Decimal("0.50"), remaining_term=SHORT),
+		)
+		sheet = in_full_euros(build(2026, SizeClass.KLEIN, books, parents=PARENTS)).balance_sheet
+		letters = [line.amount for line in sheet.aktiva if line.position.level is Level.LETTER]
+		self.assertEqual(sheet.aktiva_total, sum(letters))
+		self.assertEqual(sheet.aktiva_total, sheet.passiva_total)
 
 	def test_keeps_the_findings(self):
 		books = (*BOOKS, Balance("bs.unknown.concept", Decimal("5.00")))
