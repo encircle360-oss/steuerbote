@@ -1,25 +1,35 @@
 """The annual deadlines of a company: the Umsatzsteuer-, Körperschaftsteuer- and Gewerbesteuererklärung with and
 without a Steuerberatung, after an early order of the Finanzamt and on a holiday, the E-Bilanz with the
 Körperschaftsteuererklärung and the Eröffnungsbilanz of the founding year, and the Feststellung and the Offenlegung of
-the Jahresabschluss by the closing day and the size class of the fiscal year."""
+the Jahresabschluss by the closing day and the size class of the fiscal year; when an annual document files them, and
+which DocType files which."""
 
 from dataclasses import replace
 from datetime import date
 from unittest import TestCase
 
 from steuerbote.deadlines.annual import (
+	AWAITING_DOCTYPES,
+	DOCTYPES,
 	FIRST_YEAR,
 	KINDS,
+	OPENING_BALANCE,
+	OPENING_BALANCE_FIELD,
+	UPLOAD,
+	AnnualDocType,
+	AnnualDocument,
 	AnnualRules,
 	AnnualYear,
 	Note,
 	OpeningBalance,
 	annual_due,
 	annual_obligations,
+	filing_day,
 	year_obligations,
 )
 from steuerbote.deadlines.obligations import Kind, Obligation
 from steuerbote.hgb.size import SizeClass
+from steuerbote.jahresmeldung.lifecycle import FILED_VIA, Status
 from steuerbote.steuerbote.doctype.annual_filing_settings import rules as settings
 
 UST = Kind.UMSATZSTEUERERKLAERUNG
@@ -326,3 +336,119 @@ class OpeningBalanceTest(TestCase):
 	def test_is_named_after_its_year(self):
 		self.assertEqual(OpeningBalance(2027).label, "Eröffnungsbilanz 2027")
 		self.assertNotEqual(OpeningBalance(2027), 2027)
+
+
+# The day a document was last changed, and the day of a filing before it.
+MODIFIED = date(2027, 5, 4)
+FILED = date(2027, 5, 3)
+
+
+def document(status: Status = Status.DRAFT, docstatus: int = 0, **fields) -> AnnualDocument:
+	return AnnualDocument("KSt-2026-00001", 2026, status, MODIFIED, docstatus=docstatus, **fields)
+
+
+class ErklaerungFilingTest(TestCase):
+	def test_a_draft_keeps_its_deadline_open(self):
+		for status in (Status.DRAFT, Status.CALCULATED, Status.READY):
+			with self.subTest(status=status):
+				self.assertIsNone(filing_day(KST, document(status)))
+
+	def test_a_submitted_erklaerung_is_filed_on_the_day_of_its_filing(self):
+		self.assertEqual(filing_day(KST, document(Status.FILED, 1, filed_on=FILED)), FILED)
+		self.assertEqual(filing_day(KST, document(Status.FILED, 1)), MODIFIED)
+
+	def test_a_replaced_erklaerung_stays_filed(self):
+		self.assertEqual(filing_day(UST, document(Status.REPLACED, 1, filed_on=FILED)), FILED)
+
+	def test_a_draft_sent_through_steuerbote_is_filed_on_the_day_of_the_transmission(self):
+		"""ELSTER accepted it, or the outcome is unknown, or its filing was noted outside Steuerbote, and the document
+		stayed a draft or was cancelled since: the Finanzamt has it, or may have it."""
+		self.assertEqual(filing_day(GEWST, document(sent_on=FILED)), FILED)
+		self.assertEqual(filing_day(EBILANZ, document(Status.FILED, 2, sent_on=FILED)), FILED)
+		self.assertEqual(filing_day(KST, document(Status.FILED, 1, filed_on=MODIFIED, sent_on=FILED)), FILED)
+
+	def test_a_cancelled_erklaerung_without_a_transmission_files_nothing(self):
+		self.assertIsNone(filing_day(KST, document(Status.FILED, 2, filed_on=FILED)))
+
+
+class JahresabschlussFilingTest(TestCase):
+	def test_a_submitted_jahresabschluss_is_festgestellt(self):
+		for status in (Status.ADOPTED, Status.TRANSMITTED, Status.PUBLISHED):
+			with self.subTest(status=status):
+				self.assertEqual(filing_day(FESTSTELLUNG, document(status, 1)), MODIFIED)
+
+	def test_a_draft_or_a_cancelled_one_is_not(self):
+		self.assertIsNone(filing_day(FESTSTELLUNG, document(Status.CALCULATED)))
+		self.assertIsNone(filing_day(FESTSTELLUNG, document(Status.ADOPTED, 2)))
+		self.assertIsNone(
+			filing_day(FESTSTELLUNG, document(Status.REPLACED, 2, filed_via=UPLOAD, filed_on=FILED))
+		)
+
+	def test_the_offenlegung_is_filed_once_it_is_uebermittelt_or_eingestellt(self):
+		for status in (Status.TRANSMITTED, Status.PUBLISHED):
+			with self.subTest(status=status):
+				uploaded = document(status, 1, filed_via=UPLOAD, filed_on=FILED)
+				self.assertEqual(filing_day(OFFENLEGUNG, uploaded), FILED)
+				self.assertEqual(filing_day(OFFENLEGUNG, document(status, 1)), MODIFIED)
+
+	def test_a_festgestellter_jahresabschluss_keeps_the_offenlegung_open(self):
+		self.assertIsNone(filing_day(OFFENLEGUNG, document(Status.ADOPTED, 1)))
+		self.assertIsNone(filing_day(OFFENLEGUNG, document(Status.CALCULATED)))
+
+	def test_an_upload_keeps_the_offenlegung_filed_after_the_jahresabschluss_is_cancelled_or_replaced(self):
+		"""§ 325 Abs. 4 Satz 2 HGB: the day of the transmission keeps the deadline; the register has the documents."""
+		for status in (Status.TRANSMITTED, Status.REPLACED):
+			with self.subTest(status=status):
+				cancelled = document(status, 2, filed_via=UPLOAD, filed_on=FILED)
+				self.assertEqual(filing_day(OFFENLEGUNG, cancelled), FILED)
+		self.assertIsNone(filing_day(OFFENLEGUNG, document(Status.REPLACED, 2)))
+
+	def test_refuses_a_kind_that_is_no_annual_filing(self):
+		with self.assertRaisesRegex(ValueError, "Umsatzsteuer-Voranmeldung"):
+			filing_day(Kind.VORANMELDUNG, document())
+
+
+class AnnualDocumentTest(TestCase):
+	def test_files_the_year_or_the_eroeffnungsbilanz_of_its_year(self):
+		self.assertEqual(document().period, 2026)
+		self.assertEqual(document(opening_balance=True).period, OpeningBalance(2026))
+
+	def test_is_named_with_its_status_and_the_day_it_changed(self):
+		found = document()
+		self.assertEqual(
+			(found.name, found.year, found.status, found.modified, found.docstatus),
+			("KSt-2026-00001", 2026, Status.DRAFT, MODIFIED, 0),
+		)
+		self.assertEqual(
+			(found.filed_via, found.filed_on, found.sent_on, found.opening_balance), (None, None, None, False)
+		)
+
+
+class RegistryTest(TestCase):
+	def test_each_annual_doctype_files_its_kinds(self):
+		self.assertEqual(
+			dict(DOCTYPES),
+			{
+				"Annual VAT Return": AnnualDocType((UST,)),
+				"Corporate Income Tax Return": AnnualDocType((KST,)),
+				"Trade Tax Return": AnnualDocType((GEWST,)),
+				"Electronic Balance Sheet": AnnualDocType(
+					(EBILANZ,), opening_balance_field=OPENING_BALANCE_FIELD
+				),
+				"Annual Accounts": AnnualDocType((FESTSTELLUNG, OFFENLEGUNG)),
+			},
+		)
+
+	def test_every_annual_kind_has_one_doctype(self):
+		self.assertEqual(tuple(kind for entry in DOCTYPES.values() for kind in entry.kinds), KINDS)
+
+	def test_the_e_bilanz_names_its_eroeffnungsbilanz_by_the_bilanzart(self):
+		self.assertEqual((OPENING_BALANCE_FIELD, OPENING_BALANCE), ("statement_type", "Eröffnungsbilanz"))
+		self.assertEqual(AnnualDocType((KST,)).opening_balance_field, None)
+
+	def test_awaits_only_doctypes_of_the_registry(self):
+		self.assertTrue(AWAITING_DOCTYPES)
+		self.assertLessEqual(set(AWAITING_DOCTYPES), set(DOCTYPES))
+
+	def test_the_upload_to_the_unternehmensregister_is_a_way_of_filing(self):
+		self.assertIn(UPLOAD, FILED_VIA)
