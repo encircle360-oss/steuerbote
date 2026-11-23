@@ -1,4 +1,5 @@
 import hashlib
+import html
 import json
 from datetime import date
 from unittest import TestCase
@@ -17,6 +18,7 @@ from steuerbote.mappings.transfer import (
 	TransferFile,
 	canonical_json,
 	checksum,
+	message,
 	read,
 	write,
 )
@@ -166,3 +168,27 @@ class ReadTest(TestCase):
 	def test_the_messages_name_what_is_wrong(self):
 		self.assertEqual(str(TransferError(OTHER_FORMAT, "x", KIND)), f"The file holds x, not {KIND}.")
 		self.assertEqual(len(set(MESSAGES)), 6)
+
+
+class MessageTest(TestCase):
+	"""The text of a refusal as Zuordnung importieren shows it, in a dialog that reads it as HTML."""
+
+	def refused(self, text: str) -> TransferError:
+		with self.assertRaises(TransferError) as raised:
+			read(text, KIND)
+		return raised.exception
+
+	def test_translates_the_template_and_escapes_each_value_of_the_file(self):
+		german = {OTHER_FORMAT: "Die Datei enthält {0}, nicht {1}."}
+		error = self.refused(changed(written(), "header", format="<b>Müller & Söhne</b>"))
+		self.assertEqual(
+			message(error, lambda text: german.get(text, text), html.escape),
+			f"Die Datei enthält &lt;b&gt;Müller &amp; Söhne&lt;/b&gt;, nicht {KIND}.",
+		)
+
+	def test_escapes_a_value_that_is_no_text_as_its_text(self):
+		error = self.refused(changed(written(), "header", format_version=2))
+		self.assertEqual(
+			message(error, str, html.escape),
+			f"The file has the format version 2; this Steuerbote reads up to {FORMAT_VERSION}.",
+		)

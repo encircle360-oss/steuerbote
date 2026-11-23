@@ -377,6 +377,13 @@ class IntegrationTestBalanceSheetMappingFile(MappingTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "this mapping is one of SKR03"):
 			other.compare_with_file(content=self.text)
 
+	def test_the_refusal_shows_what_the_file_holds_as_text(self):
+		content = json.dumps({"header": {"format": "<b>Müller & Söhne</b>"}, "body": {}})
+		with self.assertRaisesRegex(
+			frappe.ValidationError, f"The file holds &lt;b&gt;Müller &amp; Söhne&lt;/b&gt;, not {FILE_FORMAT}"
+		):
+			self.source.compare_with_file(content=content)
+
 
 class IntegrationTestBalanceSheetMappingAccounts(MappingTestCase):
 	def test_konten_pruefen_names_the_accounts_without_a_place(self):

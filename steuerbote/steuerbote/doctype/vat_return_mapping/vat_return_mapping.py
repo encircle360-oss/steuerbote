@@ -345,7 +345,7 @@ class VATReturnMapping(Document):
 		try:
 			found = transfer.read(self._file_text(file_url, content), FILE_FORMAT)
 		except transfer.TransferError as error:
-			frappe.throw(_(error.template).format(*error.values), title=title)
+			frappe.throw(transfer.message(error, _, escape_html), title=title)
 		if found.header.chart != self.chart:
 			frappe.throw(_(OTHER_CHART).format(escape_html(found.header.chart), self.chart), title=title)
 		try:

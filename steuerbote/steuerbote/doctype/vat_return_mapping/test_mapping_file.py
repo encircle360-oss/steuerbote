@@ -201,6 +201,14 @@ class IntegrationTestMappingFile(IntegrationTestCase):
 				self.source.compare_with_file(content=content)
 		frappe.clear_messages()
 
+	def test_the_refusal_shows_what_the_file_holds_as_text(self):
+		content = json.dumps({"header": {"format": "<b>Müller & Söhne</b>"}, "body": {}})
+		with self.assertRaisesRegex(
+			frappe.ValidationError, f"The file holds &lt;b&gt;Müller &amp; Söhne&lt;/b&gt;, not {FILE_FORMAT}"
+		):
+			self.source.compare_with_file(content=content)
+		frappe.clear_messages()
+
 	def test_a_file_of_another_chart_is_refused(self):
 		target = new_mapping(TARGET, chart="SKR04", defaults=False)
 		with self.assertRaisesRegex(
