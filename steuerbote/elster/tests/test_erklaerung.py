@@ -3,7 +3,6 @@ ERiC documentation 44.3.6.0, which has KSt and GewSt up to 2025."""
 
 import csv
 import re
-import zipfile
 from datetime import date
 from decimal import Decimal
 from functools import cache
@@ -25,6 +24,8 @@ from steuerbote.elster.erklaerung import (
 from steuerbote.elster.tests import eric_schema
 from steuerbote.elster.ustva_xml import XmlError
 from steuerbote.eric.datenart import Datenart, bilanz, gewst, kst, ust, ustva
+from steuerbote.jahresmeldung import documentation
+from steuerbote.ustva.documentation import Row
 
 TRANSLATIONS = Path(__file__).resolve().parents[2] / "translations" / "de.csv"
 LABEL = "Zeile 9"
@@ -366,28 +367,12 @@ class TranslationsTest(TestCase):
 
 
 @cache
-def fields_of(path: Path) -> tuple[dict[str, str], ...]:
+def fields_of(path: Path) -> tuple[Row, ...]:
 	"""The current fields of every Vordruck of a Jahresdokumentation, which is read once."""
-	with zipfile.ZipFile(path) as archive:
-		content = etree.fromstring(archive.read("content.xml"))
-	tables = {
-		table.get(f"{{{eric_schema.ODS_TABLE}}}name"): table
-		for table in content.iter(f"{{{eric_schema.ODS_TABLE}}}table")
-	}
-	forms = [
-		line.split(" - ")[0]
-		for line in eric_schema.lines(path, "Allg. Information")
-		if " - max. lfd. Nr. Vordruck" in line
-	]
-	found = []
-	for form in forms:
-		head, *body = [
-			eric_schema._cells(row)
-			for row in tables[f"{form} - Felder"].iter(f"{{{eric_schema.ODS_TABLE}}}table-row")
-		]
-		rows = [dict(zip(head, cells, strict=False)) for cells in body if any(cells)]
-		found.extend(row for row in rows if row["Änderungsinformation"] != "GEAENDERT_ALTE_VERSION")
-	return tuple(found)
+	jahresdokumentation = documentation.read(path)
+	return tuple(
+		row for form in jahresdokumentation.forms for row in jahresdokumentation.vordruck(form.name).fields
+	)
 
 
 class ErklaerungDocumentationTest(TestCase):
@@ -396,10 +381,9 @@ class ErklaerungDocumentationTest(TestCase):
 	KINDS = (ust(2026), kst(2025), gewst(2025))
 
 	def jahresdokumentation(self, kind: Datenart) -> Path:
-		directory = eric_schema.erklaerung_directory(kind.name) / "Jahresdokumentation"
-		return directory / f"Jahresdokumentation_{kind.root}_{kind.year}.ods"
+		return documentation.jahresdokumentation_path(eric_schema.documentation(), kind)
 
-	def fields(self, kind: Datenart) -> tuple[dict[str, str], ...]:
+	def fields(self, kind: Datenart) -> tuple[Row, ...]:
 		return fields_of(self.jahresdokumentation(kind))
 
 	def test_the_legend_of_the_jahresdokumentation_names_each_format_as_steuerbote_writes_it(self):
@@ -408,7 +392,7 @@ class ErklaerungDocumentationTest(TestCase):
 			with self.subTest(datenart=kind.version):
 				legend = dict(
 					" ".join(line.split()).split(": ", 1)
-					for line in eric_schema.lines(self.jahresdokumentation(kind), "Allg. Information")
+					for line in documentation.read(self.jahresdokumentation(kind)).information
 					if re.fullmatch(r"[A-Z%]: .*", line, re.DOTALL)
 				)
 				self.assertEqual({key: legend[key] for key in FORMATS}, dict(FORMATS))
