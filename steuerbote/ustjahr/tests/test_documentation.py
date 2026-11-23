@@ -8,6 +8,7 @@ import re
 from unittest import TestCase
 
 from steuerbote.ustjahr.form import CATALOGUES, Format
+from steuerbote.ustjahr.rules import DIGITS_BEFORE_THE_COMMA, LOCAL_RULES, MORE_DIGITS_BEFORE_THE_COMMA
 from steuerbote.ustjahr.tests import jahresdokumentation as jd
 from steuerbote.ustva.documentation import Row
 
@@ -24,10 +25,30 @@ _SUM = re.compile(r"\[(E\d{7})\]!=Summe\(([E\d,]+)\)")
 _DIFFERENCE = re.compile(r"\[(E\d{7})\](?:!=|UngleichMitToleranz10)((?:\[E\d{7}\]-?)+)$")
 _TOGETHER = re.compile(r"FelderNichtGemeinsamAngegeben\((E\d{7}),(E\d{7})\)$")
 _RATE = re.compile(r"\[(E\d{7})\]UngleichMitToleranz1\{0\.(\d\d)\*\[(E\d{7})\]\}$")
+_FIELD_LIST = re.compile(r"\(((?:e\d{7},)+e\d{7})\)")
+_DIGITS = re.compile(r"\\d\{1,(\d+)\}")
 
 
 def condition(row: Row) -> str:
 	return re.sub(r"\s+", "", row["Prüfbedingung"])
+
+
+def conjuncts(text: str) -> set[str]:
+	"""The parts of a condition that „Und“ joins outside brackets, without blanks, in lower case and with each list of
+	fields sorted: the JD writes „Und“ and „und“, spaces at will and the fields of a list in any order."""
+	text = re.sub(r"\s+", "", text).lower()
+	text = _FIELD_LIST.sub(lambda match: "(" + ",".join(sorted(match[1].split(","))) + ")", text)
+	parts, depth, start = [], 0, 0
+	for match in re.finditer(r"[()]|und", text):
+		if match[0] == "(":
+			depth += 1
+		elif match[0] == ")":
+			depth -= 1
+		elif depth == 0:
+			parts.append(text[start : match.start()])
+			start = match.end()
+	parts.append(text[start:])
+	return set(parts)
 
 
 class FieldsTest(TestCase):
@@ -80,6 +101,14 @@ class FieldsTest(TestCase):
 		}
 		self.assertEqual(ours, documented)
 
+	def test_each_amount_takes_the_digits_before_the_comma_of_the_jd(self):
+		for field in CATALOGUE.fields:
+			if field.format.amount:
+				with self.subTest(element=field.element):
+					(digits,) = _DIGITS.findall(self.rows[field.element]["Format als regulärer Ausdruck"])
+					expected = MORE_DIGITS_BEFORE_THE_COMMA.get(field.element, DIGITS_BEFORE_THE_COMMA)
+					self.assertEqual(int(digits), expected)
+
 	def test_the_fields_are_the_leaves_of_ust2a_in_the_schema(self):
 		self.assertEqual(tuple((field.context, field.element) for field in CATALOGUE.fields), jd.leaves(YEAR))
 
@@ -95,6 +124,13 @@ class RulesTest(TestCase):
 			[(rule.code, rule.name, rule.context, rule.severity.value) for rule in CATALOGUE.rules],
 			[(row["Fehlercode"], row["Name"], row["Kontext"], row["Regelart"]) for row in self.rules],
 		)
+
+	def test_the_local_rules_state_the_conditions_of_the_jd(self):
+		"""The conditions of steuerbote/ustjahr/rules.py, up to blanks, case and the order of parts and lists."""
+		documented = {row["Fehlercode"]: row["Prüfbedingung"] for row in self.rules}
+		for rule in LOCAL_RULES[YEAR]:
+			with self.subTest(code=rule.code):
+				self.assertEqual(conjuncts(rule.condition), conjuncts(documented[rule.code]))
 
 	def test_the_sums_are_those_the_rules_check(self):
 		elements = {field.element for field in CATALOGUE.fields}
