@@ -11,14 +11,19 @@ import hashlib
 from collections import Counter
 from collections.abc import Iterable
 from datetime import date
+from pathlib import Path
 from unittest import TestCase
 
 from lxml import etree
 
 from steuerbote.elster.tests.eric_schema import documentation
+from steuerbote.hgb import notes, schemes
+from steuerbote.hgb.size import SizeClass
 from steuerbote.xbrl import taxonomy
+from steuerbote.xbrl.checks import Code
+from steuerbote.xbrl.profiles import FISCAL
 from steuerbote.xbrl.taxonomy import IncomeStatementFormat, LegalForm, Requirement, View
-from steuerbote.xbrl.tests import real
+from steuerbote.xbrl.tests import instances, real
 
 BEGIN = date(2026, 1, 1)
 END = date(2026, 12, 31)
@@ -189,17 +194,54 @@ class LabelsAndParentsTest(TestCase):
 				self.assertNotIn("bs.ass", parents)
 
 
+def examples() -> Path:
+	return documentation() / "Datenarten" / "ElsterBilanz" / "Bilanz" / "Beispiele" / "Taxonomie_6_9"
+
+
 class EricExamplesTest(TestCase):
 	"""The examples of Datenarten/ElsterBilanz/Bilanz/Beispiele/Taxonomie_6_9 that reference the fiscal entry point
 	report concepts of the fiscal view only, each in one of its presentation networks (Leitfaden B.11), and members of
 	its dimensions; the domain of a typed dimension inside a typedMember is no concept."""
 
+	VALID = (
+		"SteuerbilanzAutoverkaeufer_PersG.xml",
+		"SteuerbilanzAutoverkaeufer-Eroeffnung_PersG.xml",
+		"HandelsbilanzGastronom_PersG.xml",
+		"Anlagenspiegel_brutto_mitUeberleitung.xml",
+		"Anlagenspiegel_brutto_ohneUeberleitung.xml",
+	)
+	"""The examples on the Kerntaxonomie the documentation calls valid, „Beispiel für ein gültiges, auf der
+	Kerntaxonomie basierendes ... E-Bilanz-Dokument“ (ERiC E-Bilanz-Dokumentation für HGB-Taxonomie 6.9, Kap. 5), but
+	SteuerbilanzKoerperschaftMitGeschaeftsbetrieb.xml, whose Kontensalden are given per Betrieb gewerblicher Art in a
+	typed dimension that the facts of Steuerbote do not model."""
+
+	def test_the_valid_examples_pass_the_checks_of_the_e_bilanz(self):
+		"""Read into the facts of Steuerbote and written again, none of them has a finding that blocks: the checks are
+		no stricter than ERiC where its examples show what it takes."""
+		for name in self.VALID:
+			with self.subTest(example=name):
+				report = instances.read(examples() / name, real.view())
+				findings = FISCAL.check(report, real.view())
+				self.assertEqual([finding for finding in findings if finding.blocking], [])
+
+	def test_the_example_with_a_structural_error_fails_them(self):
+		"""SteuerbilanzAutoverkaeufer-StrukturellerFehler.xml, „Beispiel für einen ... ungültigen Datensatz ..., dessen
+		Zurückweisung aufgrund eines „strukturellen Fehlers“ erfolgt“ (Kap. 5), reports the Ergebnisverwendung without
+		announcing it (Leitfaden B.9.2)."""
+		report = instances.read(
+			examples() / "SteuerbilanzAutoverkaeufer-StrukturellerFehler.xml", real.view()
+		)
+		findings = FISCAL.check(report, real.view())
+		self.assertEqual(
+			[(finding.code, finding.concept) for finding in findings if finding.blocking],
+			[(Code.COMPONENT, "de-gaap-ci:incomeUse.gainLoss")],
+		)
+
 	def test_report_concepts_of_the_fiscal_view(self):
-		examples = documentation() / "Datenarten" / "ElsterBilanz" / "Bilanz" / "Beispiele" / "Taxonomie_6_9"
 		loaded = real.view()
 		prefixes = {namespace: prefix for prefix, namespace in loaded.namespaces.items()}
 		checked = []
-		for path in sorted(examples.glob("*.xml")):
+		for path in sorted(examples().glob("*.xml")):
 			instance = etree.parse(str(path)).getroot().find(f".//{XBRLI}xbrl")
 			references = [element.get(f"{XLINK}href", "") for element in instance.iter(f"{LINK}schemaRef")]
 			if not any(reference.endswith(real.VERSION.fiscal_shell) for reference in references):
@@ -217,3 +259,66 @@ class EricExamplesTest(TestCase):
 				self.assertEqual(sorted(member for member in members if not loaded.has(member)), [])
 		self.assertIn("Anlagenspiegel_brutto_ohneUeberleitung.xml", checked)
 		self.assertEqual(len(checked), 8)
+
+
+class JahresabschlussTest(TestCase):
+	"""What steuerbote/hgb names of the taxonomy 6.9 for the Jahresabschluss and its Offenlegung: the positions and
+	Vermerke of the balance sheet of § 266 HGB and of the income statement of § 275 HGB by both methods, the Angaben of
+	the catalogue of Kleinst and klein, the Haftungsverhältnisse of § 251 HGB and the data of § 264 Abs. 1a HGB."""
+
+	@staticmethod
+	def concepts() -> set[str]:
+		balance_sheet = schemes.balance_sheet_scheme(2026)
+		positions = [
+			*balance_sheet.positions(),
+			*(
+				position
+				for method in schemes.Method
+				for position in schemes.income_statement_scheme(2026, method).positions()
+			),
+		]
+		names = {position.concept for position in positions}
+		names |= {name for position in positions for name in position.terms}
+		for position in positions:
+			for vermerk in position.vermerke:
+				names |= {vermerk.concept, *vermerk.members}
+		names |= {
+			entry.item.concept
+			for size_class in (SizeClass.KLEINST, SizeClass.KLEIN)
+			for entry in notes.catalogue(size_class)
+			if entry.item.concept
+		}
+		for contingency in notes.Contingency:
+			names |= {contingency.concept, contingency.pensions_concept, contingency.group_concept}
+		return names | set(notes.RegisterData.concepts().values())
+
+	def test_each_concept_is_a_presented_concept_of_the_views_of_the_offenlegung(self):
+		"""„Every concept needs a label and a presentation position“ for the register (research note on the
+		Offenlegung, 3.1, after the „Arbeitshilfe für die Einreichung von Jahresabschlüssen/Finanzberichten im
+		XBRL-Format“, Stand September 2025): each concept steuerbote/hgb names is presented in both commercial views and
+		in the fiscal one, which takes the same balances."""
+		concepts = self.concepts()
+		self.assertGreater(len(concepts), 150)
+		for view in View:
+			with self.subTest(view=view):
+				loaded = real.view(view)
+				self.assertEqual(sorted(name for name in concepts if not loaded.presented(name)), [])
+
+	def test_the_schemes_follow_the_calculation_linkbase(self):
+		"""Each position of the schemes adds up, through parents(), to the position the scheme puts it under, as
+		steuerbote/hgb/statement.py sums the balances along them."""
+		parents = real.view(View.COMMERCIAL).parents((taxonomy.BALANCE_SHEET, taxonomy.INCOME_STATEMENT))
+		for scheme in (
+			schemes.balance_sheet_scheme(2026),
+			*(schemes.income_statement_scheme(2026, method) for method in schemes.Method),
+		):
+			with self.subTest(scheme=str(scheme)):
+				for position in scheme.positions():
+					above = scheme.parent(position.concept)
+					ancestors = []
+					current = position.concept
+					while current in parents:
+						current = parents[current]
+						ancestors.append(current)
+					if above is not None:
+						self.assertIn(above.concept, ancestors, position.concept)
