@@ -1,24 +1,67 @@
-"""What the browser tests find on the site: the invented records that seed.py makes, and the workspace Steuern.
+"""What the browser tests find on the site: the invented records that seed.py makes, the workspace Steuern and the
+sidebar Steuerbote.
 
 The module imports neither Frappe nor Playwright, so that both sides read it: the seed runs inside the bench,
 the tests run outside of it against the site.
 """
 
-# The workspace Steuern (steuerbote/steuerbote/workspace/steuern) and its shortcuts, as the German desk shows them.
+# The workspace Steuern (steuerbote/steuerbote/workspace/steuern), its sections and their shortcuts, as the German
+# desk shows them.
 WORKSPACE_ROUTE = "/desk/steuerbote/steuern"
-SHORTCUTS = (
-	"Offene Fristen",
-	"Neue Voranmeldung",
-	"Voranmeldungen",
-	"Kennzahlen (Bericht)",
-	"Dauerfristanträge",
-	"Neue ZM",
-	"Zusammenf. Meldungen",
-	"USt-IdNr.-Prüfungen",
-	"Einrichten",
-	"Einstellungen",
-	"Kontenzuordnung",
-)
+WORKSPACE_SECTIONS = {
+	"Fristen": ("Offene Fristen",),
+	"Umsatzsteuer-Voranmeldung": (
+		"Neue Voranmeldung",
+		"Voranmeldungen",
+		"Kennzahlen (Bericht)",
+		"Dauerfristanträge",
+	),
+	"Zusammenfassende Meldung": ("Neue ZM", "Zusammenf. Meldungen", "USt-IdNr.-Prüfungen"),
+	"Jahresmeldungen": (
+		"Neue USt-Erklärung",
+		"Neue E-Bilanz",
+		"Neue KSt-Erklärung",
+		"Neue GewSt-Erklärung",
+		"USt-Erklärungen",
+		"E-Bilanzen",
+		"KSt-Erklärungen",
+		"GewSt-Erklärungen",
+		"Jahresabschlüsse",
+		"Jahres-Einstellungen",
+		"Bilanzzuordnung",
+		"Zuord. Ertragsteuern",
+	),
+	"Einrichtung": ("Einrichten", "Einstellungen", "Kontenzuordnung"),
+}
+SHORTCUTS = tuple(label for labels in WORKSPACE_SECTIONS.values() for label in labels)
+# The sidebar Steuerbote (steuerbote/steuerbote/sidebar/steuerbote) as the German desk shows it to the Administrator:
+# its entries in their order, each group with the entries it holds.
+SIDEBAR = {
+	"Steuern": (),
+	"Voranmeldungen": (),
+	"Dauerfristanträge": (),
+	"Zusammenf. Meldungen": (),
+	"USt-IdNr.-Prüfungen": (),
+	"Jahresmeldungen": (
+		"USt-Erklärungen",
+		"E-Bilanzen",
+		"KSt-Erklärungen",
+		"GewSt-Erklärungen",
+		"Jahresabschlüsse",
+		"Jahres-Einstellungen",
+		"Bilanzzuordnung",
+		"Zuord. Ertragsteuern",
+	),
+	"Übermittlung": ("ELSTER-Übermittlung", "ERiC-Einstellungen"),
+	"Berichte": (
+		"Offene Fristen",
+		"UStVA Kennzahlen",
+		"E-Bilanz Positionen",
+		"KSt/GewSt-Nachweis",
+		"Fristerinnerungen",
+	),
+	"Einrichtung": ("Einrichten", "Einstellungen", "Kontenzuordnung"),
+}
 # The shortcut to the page Steuerbote einrichten, which only a System Manager or an Accounts Manager opens.
 SETUP_SHORTCUT = "Einrichten"
 

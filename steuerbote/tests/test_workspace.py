@@ -15,13 +15,31 @@ SIDEBAR_LINKS = [
 	("DocType", "VAT Return Extension", "VAT Return Extensions"),
 	("DocType", "Recapitulative Statement", "Recapitulative Statements"),
 	("DocType", "VAT ID Confirmation", "VAT ID Confirmations"),
-	("DocType", "VAT Return Mapping", "Account Mapping"),
-	("DocType", "VAT Return Settings", "Settings"),
-	("DocType", "ERiC Settings", "ERiC Settings"),
+	("DocType", "Annual VAT Return", "Annual VAT Returns"),
+	("DocType", "Electronic Balance Sheet", "Electronic Balance Sheets"),
+	("DocType", "Corporate Income Tax Return", "Corporate Income Tax Returns"),
+	("DocType", "Trade Tax Return", "Trade Tax Returns"),
+	("DocType", "Annual Accounts", "Annual Financial Statements"),
+	("DocType", "Annual Filing Settings", "Annual Settings"),
+	("DocType", "Balance Sheet Mapping", "Balance Sheet Mapping"),
+	("DocType", "Income Tax Mapping", "Income Tax Account Mapping"),
 	("DocType", "ELSTER Transmission", "ELSTER Transmission"),
-	("DocType", "Deadline Reminder", "Deadline Reminders"),
-	("Report", "UStVA Kennzahlen", "UStVA Kennzahlen"),
+	("DocType", "ERiC Settings", "ERiC Settings"),
 	("Report", "Offene Fristen", "Offene Fristen"),
+	("Report", "UStVA Kennzahlen", "UStVA Kennzahlen"),
+	("Report", "E-Bilanz Positionen", "E-Bilanz Positionen"),
+	("Report", "Ertragsteuer-Kontennachweis", "Income Tax Breakdown"),
+	("DocType", "Deadline Reminder", "Deadline Reminders"),
+	("Page", "steuerbote-setup", "Set Up"),
+	("DocType", "VAT Return Settings", "Settings"),
+	("DocType", "VAT Return Mapping", "Account Mapping"),
+]
+# The groups of the sidebar, each with its icon.
+SIDEBAR_GROUPS = [
+	("Annual Filings", "file-stack"),
+	("Transmission", "send"),
+	("Reports", "sheet"),
+	("Setup", "database"),
 ]
 
 
@@ -54,8 +72,20 @@ class WorkspaceTest(IntegrationTestCase):
 		self.assertEqual(
 			sorted((shortcut.type, shortcut.link_to) for shortcut in workspace.shortcuts),
 			[
+				("DocType", "Annual Accounts"),
+				("DocType", "Annual Filing Settings"),
+				("DocType", "Annual VAT Return"),
+				("DocType", "Annual VAT Return"),
+				("DocType", "Balance Sheet Mapping"),
+				("DocType", "Corporate Income Tax Return"),
+				("DocType", "Corporate Income Tax Return"),
+				("DocType", "Electronic Balance Sheet"),
+				("DocType", "Electronic Balance Sheet"),
+				("DocType", "Income Tax Mapping"),
 				("DocType", "Recapitulative Statement"),
 				("DocType", "Recapitulative Statement"),
+				("DocType", "Trade Tax Return"),
+				("DocType", "Trade Tax Return"),
 				("DocType", "VAT ID Confirmation"),
 				("DocType", "VAT Return"),
 				("DocType", "VAT Return"),
@@ -98,4 +128,31 @@ class WorkspaceTest(IntegrationTestCase):
 				if item["type"] == "Link"
 			],
 			[(link_type, link_to, _(label)) for link_type, link_to, label in SIDEBAR_LINKS],
+		)
+
+	def test_the_desk_shows_the_groups_and_icons_the_app_ships(self):
+		"""Each group with its icon, closed until it is opened, and its entries as children without an icon."""
+		sidebar = resolve_sidebar(MODULE, frappe.session.user)
+		shipped = frappe.get_doc("Sidebar", MODULE)
+		self.assertEqual(sidebar.header_icon, "steuerbote-soft")
+		self.assertEqual(
+			[(item["label"], item["icon"]) for item in sidebar.items if item["type"] == "Section Break"],
+			[(_(label), icon) for label, icon in SIDEBAR_GROUPS],
+		)
+		self.assertEqual(
+			[
+				(
+					item["type"],
+					item["label"],
+					item["icon"] or None,
+					item["child"],
+					item["indent"],
+					item["keep_closed"],
+				)
+				for item in sidebar.items
+			],
+			[
+				(item.type, _(item.label), item.icon or None, item.child, item.indent, item.keep_closed)
+				for item in shipped.items
+			],
 		)
