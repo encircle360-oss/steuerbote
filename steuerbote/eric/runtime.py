@@ -14,6 +14,9 @@ Each version gets a directory of its own, because libraries of different package
 its UStVA plugins, whether it is a beta and the product version of each library as EricVersion() reports it
 when the probe loads the runtime. Those versions can differ from the version of the release (Kap. 4.3, the
 example of ERiC-37.1.3.0), and the Mindestversion is set per library (Kap. 5.4.2, steuerbote.eric.releases).
+EricVersion of ERiC 44.3.6.0 names every library but gives the product version only of those ERiC loaded, so
+the manifest also records the product version of every library as the Versionsinformationen of the package list
+it (Kap. 4.3, footnote 21), once steuerbote.eric.releases has read them; that rewrites the manifest in one step.
 A version directory appears only complete, by renaming it into place, and a run takes it only while its files
 are those of the manifest. The plugin commonData is
 always required (Kap. 3.1.6.1), and EricInitialisiere searches the library directory for plugins
@@ -45,7 +48,7 @@ import sys
 import tempfile
 import zipfile
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -152,6 +155,12 @@ class Installation:
 	library_versions: Mapping[str, str]
 	"""The product version of each library by its file name, as EricVersion reported it to the probe of the
 	installation (EricVersion.xsd, element Produktversion); empty where nothing was reported."""
+	listed_versions: Mapping[str, str] = MappingProxyType({})
+	"""The product version of each library by its file name, as the Versionsinformationen of the package list it;
+	empty until they are read (record_listed_versions)."""
+	listed_versions_source: str = ""
+	"""Where the Versionsinformationen came from: their address on the download server or the copy the operator
+	named."""
 
 	@property
 	def lib_dir(self) -> Path:
@@ -307,6 +316,31 @@ def verify(installation: Installation) -> tuple[str, ...]:
 		*(f"unbekannt: {name}" for name in unknown),
 		*(f"Link: {name}" for name in sorted(links)),
 	)
+
+
+def record_listed_versions(
+	installation: Installation, versions: Mapping[str, str], source: str
+) -> Installation:
+	"""Record in the manifest of the installation the product version of each library, by its file name, as the
+	Versionsinformationen of its package from ``source`` list it, and return the installation with them.
+
+	The manifest is replaced in one step and keeps its permissions, so a run that reads it meanwhile sees it whole.
+	OSError when it cannot be read or written; it then stays as it was.
+	"""
+	path = installation.path / MANIFEST
+	manifest = json.loads(path.read_text(encoding="utf-8"))
+	listed = dict(versions)
+	manifest |= {"listed_versions": listed, "listed_versions_source": source}
+	descriptor, partial = tempfile.mkstemp(prefix=f".{MANIFEST}-", dir=installation.path)
+	try:
+		with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+			file.write(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+		os.chmod(partial, stat.S_IMODE(path.stat().st_mode))
+		os.replace(partial, path)
+	except BaseException:
+		Path(partial).unlink(missing_ok=True)
+		raise
+	return replace(installation, listed_versions=MappingProxyType(listed), listed_versions_source=source)
 
 
 def platform_check(system: str, machine: str, libc: str | None) -> Check:
@@ -500,6 +534,8 @@ def _read_manifest(path: Path) -> Installation | None:
 			installed_at=data["installed_at"],
 			installed_by=data["installed_by"],
 			library_versions=MappingProxyType(_library_versions(data.get("library_versions"))),
+			listed_versions=MappingProxyType(_library_versions(data.get("listed_versions"))),
+			listed_versions_source=_text(data.get("listed_versions_source")),
 		)
 	except OSError, ValueError, KeyError, TypeError:
 		return None
@@ -507,7 +543,8 @@ def _read_manifest(path: Path) -> Installation | None:
 
 
 def _library_versions(reported: object) -> dict[str, str]:
-	"""The product versions a probe reported, by file name; anything else it reported is left out."""
+	"""Product versions by file name, as a probe reported them or the manifest keeps them; anything else is left
+	out."""
 	if not isinstance(reported, Mapping):
 		return {}
 	return {
@@ -515,6 +552,10 @@ def _library_versions(reported: object) -> dict[str, str]:
 		for name, version in reported.items()
 		if isinstance(name, str) and isinstance(version, str)
 	}
+
+
+def _text(value: object) -> str:
+	return value if isinstance(value, str) else ""
 
 
 def year_check(installed: tuple[Installation, ...], year: int) -> Check:

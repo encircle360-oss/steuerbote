@@ -1,4 +1,7 @@
+import csv
 import hashlib
+import json
+import re
 import shutil
 import tempfile
 import urllib.error
@@ -9,15 +12,18 @@ from unittest.mock import patch
 
 import frappe
 from frappe.desk.form.meta import get_meta as get_form_meta
+from frappe.email.doctype.email_account.email_account import EmailAccount
 from frappe.tests import IntegrationTestCase
 from frappe.utils import convert_utc_to_system_timezone, get_bench_path, get_datetime
 
 import steuerbote
 from steuerbote.eric import releases, runtime, service
+from steuerbote.eric.datenart import ZMDO
 from steuerbote.eric.proxy import Proxy
 from steuerbote.eric.releases import FetchedList, MinimumList
 from steuerbote.eric.result import Operation
 from steuerbote.eric.runtime import RuntimeInfo, RuntimeInstallError
+from steuerbote.steuerbote.doctype.elster_transmission import transmission
 from steuerbote.steuerbote.doctype.eric_settings import eric_settings
 from steuerbote.steuerbote.doctype.eric_settings.eric_settings import (
 	check_versions,
@@ -67,11 +73,31 @@ VERSION_CHECK_FIELDS = (
 	"versions_checked_on",
 	"versions_check_failed",
 	"version_notices",
+	"version_notice_status",
+	"version_notified_on",
 )
+# Where the Versionsinformationen of the package ERiC 44.3.6.0 for Linux x86_64 lie (ERiC-Entwicklerhandbuch, Kap. 4.3,
+# footnote 21; download server of ELSTER as of 23 November 2026).
+VERSIONS_44 = "https://download.elster.de/download/eric/eric_44/ERiC-44.3.6.0-Linux-x86_64.version.txt"
+# The files of the runtime the tests of the versions install, below lib.
+RUNTIME_FILES = {
+	"libericapi.so": "libericapi.so",
+	"libcommonData.so": "plugins2/libcommonData.so",
+	"libcheckUStVA_2026.so": "plugins2/libcheckUStVA_2026.so",
+}
 # The password of the proxy, invented.
 PROXY_GEHEIM = "Proxy-Geheim-2026"
 # A copyright notice of the manufacturer of the software, invented.
 COPYRIGHT = "(c) 2026 Beispiel Software GmbH, München"
+
+
+def versionsinformationen(versions: dict[str, str]) -> str:
+	"""The Versionsinformationen of the runtime of the tests in the published form: per file its path, product version
+	and file version, separated by tabs."""
+	return "".join(
+		f"Linux-x86_64/lib/{RUNTIME_FILES[name]}\t{version}\t2026, 44, 3, 6\n"
+		for name, version in versions.items()
+	)
 
 
 def make_user(email: str, role: str) -> str:
@@ -170,6 +196,39 @@ class TestERiCSettings(IntegrationTestCase):
 			(settings.simulation, settings.produkt_name, settings.produkt_version),
 			(1, "steuerbote", steuerbote.__version__),
 		)
+
+	def outdated_produkt_version(self) -> None:
+		"""ERiC Settings last saved under an older version of the app."""
+		self.settings()
+		frappe.db.set_single_value(SETTINGS, "produkt_version", "0.4.0", update_modified=False)
+
+	def test_every_migration_brings_the_version_of_the_app_into_the_settings(self):
+		"""bench migrate runs after every update of the app, the hook after_migrate with it."""
+		self.outdated_produkt_version()
+		self.assertIn(
+			"steuerbote.steuerbote.doctype.eric_settings.eric_settings.refresh_produkt_version",
+			frappe.get_hooks("after_migrate", app_name="steuerbote"),
+		)
+		eric_settings.refresh_produkt_version()
+		self.assertEqual(
+			frappe.db.get_single_value(SETTINGS, "produkt_version", cache=False), steuerbote.__version__
+		)
+
+	def test_the_form_shows_the_version_of_the_app_and_keeps_it(self):
+		self.outdated_produkt_version()
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual(settings.produkt_version, "0.4.0")
+		settings.run_method("onload")
+		self.assertEqual(settings.produkt_version, steuerbote.__version__)
+		self.assertEqual(
+			frappe.db.get_single_value(SETTINGS, "produkt_version", cache=False), steuerbote.__version__
+		)
+
+	def test_the_header_of_a_delivery_names_the_version_of_the_app_and_never_the_stored_one(self):
+		self.outdated_produkt_version()
+		document = frappe._dict(company="Steuerbote Test GmbH", datenart=lambda: ZMDO)
+		header = transmission.envelope_header(document, frappe.get_single(SETTINGS), Operation.VALIDATE, True)
+		self.assertEqual(header.produkt_version, steuerbote.__version__)
 
 	def test_leaves_the_simulation_only_with_a_runtime_and_a_hersteller_id(self):
 		self.assertEqual(self.settings(hersteller_id="12345").simulation, 1)
@@ -404,6 +463,71 @@ class TestERiCSettings(IntegrationTestCase):
 		)
 		self.assertEqual(publish.call_args.kwargs["user"], frappe.session.user)
 
+	def test_the_installation_reads_the_versionsinformationen_of_its_runtime(self):
+		"""EricVersion gives the product version of the libraries ERiC loaded; the Versionsinformationen of the package
+		give that of every library, and the manifest keeps both."""
+		self.settings()
+		directory = Path(tempfile.mkdtemp(prefix="steuerbote-eric-installation-"))
+		self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+		archive = directory / "ERiC-44.3.6.0-Linux-x86_64.jar"
+		with zipfile.ZipFile(archive, "w") as jar:
+			for name in RUNTIME_FILES.values():
+				jar.writestr(f"ERiC-44.3.6.0/Linux-x86_64/lib/{name}", name.encode())
+		checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
+		root = directory / "eric"
+
+		probed = {"libericapi.so": "44, 3, 6, 0", "libcommonData.so": ""}
+
+		def install() -> RuntimeInfo:
+			return runtime.install_from_archive(archive, checksum, root, probe=lambda info: dict(probed))
+
+		listed = dict.fromkeys(RUNTIME_FILES, "44, 3, 6, 0")
+		with (
+			self.configured(),
+			patch.object(transmission_adapter, "install_configured_archive", side_effect=install),
+			patch.object(transmission_adapter, "runtime_root", return_value=root),
+			patch.object(releases, "fetch_versions", return_value=versionsinformationen(listed)) as fetch,
+			patch("frappe.publish_realtime") as publish,
+		):
+			run_installation()
+		fetch.assert_called_once_with("44.3.6.0", opener=None)
+		(installation,) = runtime.installations(root)
+		self.assertEqual(
+			(dict(installation.listed_versions), dict(installation.library_versions)),
+			(listed, probed),
+		)
+		self.assertEqual(publish.call_args.args[1]["ok"], True)
+
+	def test_an_installation_whose_versionsinformationen_cannot_be_read_still_succeeds(self):
+		"""The weekly check reads them later; meanwhile the Error Log says why they are missing."""
+		self.settings()
+		root = Path(tempfile.mkdtemp(prefix="steuerbote-eric-installation-")) / "eric"
+		self.addCleanup(shutil.rmtree, root.parent, ignore_errors=True)
+		archive = root.parent / "ERiC-44.3.6.0-Linux-x86_64.jar"
+		with zipfile.ZipFile(archive, "w") as jar:
+			for name in RUNTIME_FILES.values():
+				jar.writestr(f"ERiC-44.3.6.0/Linux-x86_64/lib/{name}", name.encode())
+		checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
+		logged = frappe.db.count("Error Log")
+		with (
+			self.configured(),
+			patch.object(
+				transmission_adapter,
+				"install_configured_archive",
+				side_effect=lambda: runtime.install_from_archive(archive, checksum, root),
+			),
+			patch.object(transmission_adapter, "runtime_root", return_value=root),
+			patch.object(releases, "fetch_versions", side_effect=TimeoutError("timed out")),
+			patch("frappe.publish_realtime") as publish,
+		):
+			run_installation()
+		self.assertEqual(
+			publish.call_args.args,
+			("steuerbote_eric_installation", {"ok": True, "version": "44.3.6.0", "error": None}),
+		)
+		self.assertEqual(frappe.get_single(SETTINGS).installed_version, "44.3.6.0")
+		self.assertEqual(frappe.db.count("Error Log"), logged + 1)
+
 	def test_a_failed_installation_keeps_the_settings_and_says_why(self):
 		self.settings()
 		with (
@@ -495,6 +619,27 @@ class TestERiCSettings(IntegrationTestCase):
 		script = get_form_meta(SETTINGS, cached=False).get("__js")
 		self.assertIn('frm.call("check_runtime")', script)
 
+	def test_every_text_of_the_settings_reads_in_german(self):
+		"""Labels, descriptions and options of the fields and the texts of controller and form, in
+		translations/de.csv, apart from the German terms every language shows as they are."""
+		folder = Path(__file__).parent
+		literal = re.compile(r'\b_{1,2}\(\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
+		texts = set()
+		for name in ("eric_settings.py", "eric_settings.js"):
+			texts.update(literal.findall((folder / name).read_text(encoding="utf-8")))
+		definition = json.loads((folder / "eric_settings.json").read_text(encoding="utf-8"))
+		for field in definition["fields"]:
+			texts.update(field[key] for key in ("label", "description") if field.get(key))
+			if field["fieldtype"] == "Select":
+				texts.update(option for option in field["options"].split("\n") if option)
+		with Path(frappe.get_app_path("steuerbote", "translations", "de.csv")).open(
+			encoding="utf-8", newline=""
+		) as file:
+			german = dict(csv.reader(file))
+		self.assertEqual(
+			sorted(texts - german.keys() - {"Datenschutzhinweise", "Hersteller-ID", "Proxy"}), []
+		)
+
 
 class TestERiCVersions(IntegrationTestCase):
 	"""The weekly check of the ERiC versions: the Mindestversionsliste of ELSTER, kept in the ERiC Settings, compared
@@ -526,18 +671,46 @@ class TestERiCVersions(IntegrationTestCase):
 		return directory / "eric"
 
 	def check_versions(
-		self, root: Path, fetched=PUBLISHED, error=None, day="2026-11-23 04:00:00", mail_error=None
+		self,
+		root: Path,
+		fetched=PUBLISHED,
+		error=None,
+		day="2026-11-23 04:00:00",
+		mail_error=None,
+		versions=None,
+		versions_error=None,
+		email_account=True,
 	):
 		"""One run of the weekly job on the day, with the list the fetch returns or the error it raises; returns the
-		e-mails it would send."""
+		e-mails it would send.
+
+		Without versions, the Versionsinformationen of a runtime without them list the product versions its probe read,
+		as for a package whose EricVersion named them all; the mock of their fetch stays in fetched_versions."""
+		listed = versions if versions is not None else self.probed(root)
 		with (
 			self.freeze_time(day),
 			patch.object(releases, "fetch_list", return_value=fetched, side_effect=error),
+			patch.object(
+				releases, "fetch_versions", return_value=listed, side_effect=versions_error
+			) as fetch,
 			patch.object(transmission_adapter, "runtime_root", return_value=root),
+			patch.object(eric_settings, "has_outgoing_email_account", return_value=email_account),
 			patch.object(frappe, "sendmail", side_effect=mail_error) as sendmail,
 		):
 			check_versions()
+		self.fetched_versions = fetch
 		return sendmail
+
+	def probed(self, root: Path) -> str:
+		"""Versionsinformationen with the product versions the probe read of the runtime under root."""
+		installed = runtime.installations(root)
+		return versionsinformationen(dict(installed[0].library_versions)) if installed else ""
+
+	def checked(self, root: Path, day: str = "2026-11-23 10:00:00") -> dict[str, dict]:
+		"""What Laufzeitumgebung prüfen shows on the day, by check."""
+		settings = frappe.get_single(SETTINGS)
+		with self.freeze_time(day), patch.object(transmission_adapter, "runtime_root", return_value=root):
+			return {check["name"]: check for check in settings.check_runtime()}
 
 	def notifications(self) -> list[frappe._dict]:
 		return frappe.get_all(
@@ -698,15 +871,207 @@ class TestERiCVersions(IntegrationTestCase):
 		self.assertNotIn("Mindestversionsliste", notification.email_content)
 
 	def test_a_notice_that_cannot_be_sent_is_sent_with_the_next_check(self):
+		"""The check itself succeeded, so only the notice says that it failed."""
 		root = self.runtime_root(OUTDATED)
 		logged = self.error_logs()
 		self.check_versions(root, mail_error=frappe.OutgoingEmailError("SMTP nicht erreichbar"))
 		self.assertEqual(len(self.error_logs() - logged), 1)
 		settings = frappe.get_single(SETTINGS)
-		self.assertEqual((settings.versions_check_failed, settings.version_notices or ""), (1, ""))
+		self.assertEqual(
+			(settings.versions_check_failed, settings.version_notice_status, settings.version_notices or ""),
+			(0, "Not Delivered", ""),
+		)
+		self.assertEqual(get_datetime(settings.version_notified_on), get_datetime("2026-11-23 04:00:00"))
 		self.assertEqual(self.notifications(), [])
 		self.check_versions(root, day="2026-11-30 04:00:00").assert_called_once()
 		self.assertEqual(len(self.notifications()), 1)
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual(
+			(settings.version_notice_status, get_datetime(settings.version_notified_on)),
+			("E-Mail and Notification", get_datetime("2026-11-30 04:00:00")),
+		)
+
+	def test_without_an_outgoing_email_account_the_notice_is_a_notification_and_one_hint(self):
+		"""A site without an outgoing e-mail account still checks; its System Managers find the notice among their
+		notifications, and the Error Log says once, without a traceback, why no e-mail went out."""
+		root = self.runtime_root(OUTDATED)
+		logged = self.error_logs()
+		self.check_versions(root, email_account=False).assert_not_called()
+		(notification,) = self.notifications()
+		self.assertIn("libericapi.so 43.1.2.0 statt mindestens 43.2.6.0", notification.email_content)
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual(
+			(
+				settings.versions_check_failed,
+				settings.version_notice_status,
+				settings.version_notices.splitlines(),
+			),
+			(0, "Notification Only", ["minimum 2.26.4.1 44.3.6.0", "next-year 2027"]),
+		)
+		self.assertEqual(get_datetime(settings.version_notified_on), get_datetime("2026-11-23 04:00:00"))
+		(hint,) = self.error_logs() - logged
+		self.assertEqual(
+			frappe.db.get_value("Error Log", hint, "error"),
+			"No outgoing e-mail account is set up, so the System Managers got the notice of the ERiC versions as a "
+			"notification only, without an e-mail.",
+		)
+		self.check_versions(root, day="2026-11-30 04:00:00", email_account=False).assert_not_called()
+		self.assertEqual(self.error_logs() - logged, {hint})
+
+	def test_the_notice_asks_frappe_for_the_outgoing_email_account_as_sendmail_does(self):
+		with patch.object(EmailAccount, "find_outgoing", return_value=None) as find:
+			self.assertFalse(eric_settings.has_outgoing_email_account())
+		find.assert_called_once_with(match_by_doctype=SETTINGS)
+		with patch.object(EmailAccount, "find_outgoing", return_value=frappe._dict(name="Steuerbote")):
+			self.assertTrue(eric_settings.has_outgoing_email_account())
+
+	def test_without_a_system_manager_besides_administrator_the_form_says_that_nobody_heard(self):
+		with patch.object(eric_settings, "system_manager_addresses", return_value=[]):
+			self.check_versions(self.runtime_root(OUTDATED)).assert_not_called()
+		self.assertEqual(self.notifications(), [])
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual(
+			(settings.versions_check_failed, settings.version_notice_status), (0, "No Recipients")
+		)
+
+	def test_the_check_and_its_notice_are_recorded_apart(self):
+		"""The notice of new findings keeps its state while they last, and goes once nothing fails."""
+		outdated = self.runtime_root(OUTDATED)
+		self.check_versions(outdated, day="2026-06-01 04:00:00")
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual(
+			(
+				settings.versions_check_failed,
+				settings.version_notice_status,
+				get_datetime(settings.version_notified_on),
+			),
+			(0, "E-Mail and Notification", get_datetime("2026-06-01 04:00:00")),
+		)
+		self.check_versions(outdated, day="2026-06-08 04:00:00").assert_not_called()
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual(
+			(
+				get_datetime(settings.versions_checked_on),
+				settings.version_notice_status,
+				get_datetime(settings.version_notified_on),
+			),
+			(
+				get_datetime("2026-06-08 04:00:00"),
+				"E-Mail and Notification",
+				get_datetime("2026-06-01 04:00:00"),
+			),
+		)
+		self.check_versions(self.runtime_root(CURRENT), day="2026-06-15 04:00:00").assert_not_called()
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual(
+			(
+				settings.version_notices or "",
+				settings.version_notice_status or "",
+				settings.version_notified_on,
+			),
+			("", "", None),
+		)
+
+	def test_a_failed_notice_is_no_longer_shown_once_its_findings_are_gone_while_older_ones_last(self):
+		"""What was told before stays told; the notice that failed has nothing left to deliver."""
+		root = self.runtime_root(CURRENT)
+		self.check_versions(root, day="2026-11-23 04:00:00").assert_called_once()
+		self.assertEqual(frappe.get_single(SETTINGS).version_notices, "next-year 2027")
+		newer = FetchedList(MINIMUM_LIST.replace("version: 2.26.4.1", "version: 2.27.4.1", 1), LIST_CHANGED)
+		self.check_versions(
+			self.runtime_root(OUTDATED),
+			fetched=newer,
+			day="2026-11-30 04:00:00",
+			mail_error=RuntimeError("kaputt"),
+		)
+		self.assertEqual(frappe.get_single(SETTINGS).version_notice_status, "Not Delivered")
+		self.check_versions(root, fetched=newer, day="2026-12-07 04:00:00").assert_not_called()
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual(
+			(settings.version_notices, settings.version_notice_status or ""), ("next-year 2027", "")
+		)
+
+	def test_libraries_without_a_read_version_are_a_hint_of_laufzeitumgebung_pruefen(self):
+		"""EricVersion of ERiC 44.3.6.0 gave the product version of a few libraries only. Until the
+		Versionsinformationen of the package are read, the others are not compared, and the check does not fail."""
+		root = self.runtime_root(
+			{"libericapi.so": "44, 3, 6, 0", "libcommonData.so": "", "libcheckUStVA_2026.so": ""}
+		)
+		logged = self.error_logs()
+		self.check_versions(
+			root, versions_error=urllib.error.URLError("Name or service not known"), day="2026-06-01 04:00:00"
+		).assert_not_called()
+		(log,) = self.error_logs() - logged
+		self.assertEqual(
+			frappe.db.get_value("Error Log", log, "error"),
+			f"ERiC 44.3.6.0: Die Versionsinformationen von {VERSIONS_44} ließen sich nicht laden: <urlopen error Name "
+			"or service not known>.",
+		)
+		settings = frappe.get_single(SETTINGS)
+		self.assertEqual((settings.versions_check_failed, settings.version_notices or ""), (0, ""))
+		minimum = self.checked(root, "2026-06-01 10:00:00")["minimum"]
+		self.assertTrue(minimum["ok"])
+		self.assertIn(
+			"Ohne gelesene Version und deshalb nicht verglichen: ERiC 44.3.6.0: libcheckUStVA_2026.so, "
+			"libcommonData.so.",
+			minimum["detail"],
+		)
+
+		read = versionsinformationen(dict.fromkeys(RUNTIME_FILES, "44, 3, 6, 0"))
+		self.check_versions(root, versions=read, day="2026-06-08 04:00:00")
+		self.fetched_versions.assert_called_once_with("44.3.6.0", opener=None)
+		(installation,) = runtime.installations(root)
+		self.assertEqual(installation.listed_versions_source, VERSIONS_44)
+		self.assertEqual(
+			self.checked(root, "2026-06-08 10:00:00")["minimum"]["detail"],
+			"ERiC 44.3.6.0 erreicht die Mindestversionen der Mindestversionsliste 2.26.4.1 (libericapi.so ab "
+			"43.2.6.0).",
+		)
+		self.check_versions(root, day="2026-06-15 04:00:00")
+		self.fetched_versions.assert_not_called()
+
+	def test_a_site_without_access_to_the_download_server_takes_the_copy_the_operator_names(self):
+		root = self.runtime_root(CURRENT)
+		copy = root.parent / "ERiC-44.3.6.0-Linux-x86_64.version.txt"
+		copy.write_text(versionsinformationen(CURRENT), encoding="utf-8")
+		with patch.object(
+			transmission_adapter,
+			"common_site_config",
+			return_value=frappe._dict(steuerbote_eric_versions=f" {copy} "),
+		):
+			self.check_versions(root, versions_error=urllib.error.URLError("Network is unreachable"))
+		self.fetched_versions.assert_not_called()
+		(installation,) = runtime.installations(root)
+		self.assertEqual(
+			(dict(installation.listed_versions), installation.listed_versions_source), (CURRENT, str(copy))
+		)
+
+	def test_the_copy_is_an_absolute_path_on_the_server(self):
+		root = self.runtime_root(CURRENT)
+		logged = self.error_logs()
+		with patch.object(
+			transmission_adapter,
+			"common_site_config",
+			return_value=frappe._dict(steuerbote_eric_versions="ERiC-44.3.6.0-Linux-x86_64.version.txt"),
+		):
+			self.check_versions(root)
+		(log,) = self.error_logs() - logged
+		self.assertEqual(
+			frappe.db.get_value("Error Log", log, "error"),
+			"steuerbote_eric_versions in common_site_config.json is no absolute path on the server.",
+		)
+		self.fetched_versions.assert_called_once_with("44.3.6.0", opener=None)
+		(installation,) = runtime.installations(root)
+		self.assertEqual(installation.listed_versions_source, VERSIONS_44)
+
+	def test_an_unexpected_failure_of_reading_the_versionsinformationen_never_stops_the_check(self):
+		root = self.runtime_root(OUTDATED)
+		logged = self.error_logs()
+		with patch.object(releases, "complete_versions", side_effect=RuntimeError("unerwartet")):
+			self.check_versions(root).assert_called_once()
+		(log,) = self.error_logs() - logged
+		self.assertIn("RuntimeError: unerwartet", frappe.db.get_value("Error Log", log, "error"))
+		self.assertEqual(frappe.get_single(SETTINGS).minimum_list_version, "2.26.4.1")
 
 	def test_the_status_of_the_runtime_compares_the_list_and_the_coming_year(self):
 		settings = frappe.get_single(SETTINGS)
@@ -760,6 +1125,8 @@ class TestERiCVersions(IntegrationTestCase):
 				"versions_checked_on": "2020-01-01 00:00:00",
 				"versions_check_failed": 1,
 				"version_notices": "",
+				"version_notice_status": "Not Delivered",
+				"version_notified_on": "2020-01-01 00:00:00",
 			}
 		)
 		settings.save()
@@ -775,6 +1142,15 @@ class TestERiCVersions(IntegrationTestCase):
 	def test_the_form_says_when_the_check_failed(self):
 		script = get_form_meta(SETTINGS, cached=False).get("__js")
 		self.assertIn("versions_check_failed", script)
+
+	def test_the_form_says_how_the_notice_went_apart_from_the_check(self):
+		script = get_form_meta(SETTINGS, cached=False).get("__js")
+		self.assertIn("version_notice_status", script)
+		self.assertIn("version_notified_on", script)
+		self.assertEqual(
+			frappe.get_meta(SETTINGS).get_field("version_notice_status").options.split("\n"),
+			["", "E-Mail and Notification", "Notification Only", "No Recipients", "Not Delivered"],
+		)
 
 
 class TestAnnualFilings(IntegrationTestCase):

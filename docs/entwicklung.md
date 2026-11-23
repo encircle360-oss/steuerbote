@@ -49,7 +49,7 @@ steuerbote/                    Repository
 │   ├── deadlines/             Fristen von Voranmeldung, ZM und Sondervorauszahlung mit Status, reines Python ohne Frappe-Import; Bericht „Offene Fristen“, tägliche Erinnerung und Fristerinnerung im Frappe-Modul, siehe Fristen
 │   ├── mappings/              Vergleich einer Kontenzuordnung mit ihren Vorgaben oder einer Datei in drei Seiten und die Datei einer Kontenzuordnung mit Prüfsumme, reines Python ohne Frappe-Import
 │   ├── setup/                 Steuerbote einrichten: Schritte und ihre Reihenfolge, Erkennung von SKR03 und SKR04, Vorschlag des Voranmeldungszeitraums, reines Python ohne Frappe-Import; Seite und Schritte im Frappe-Modul, siehe Einrichtung
-│   ├── eric/                  ERiC: Datenarten, Einrichtung, Mindestversionsliste, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
+│   ├── eric/                  ERiC: Datenarten, Einrichtung, Versionsinformationen der Pakete, Mindestversionsliste, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
 │   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
 │   ├── invoices.py            liest die Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise
 │   ├── registers.py           führt die Berichte Sales Register und Purchase Register eines Zeitraums aus

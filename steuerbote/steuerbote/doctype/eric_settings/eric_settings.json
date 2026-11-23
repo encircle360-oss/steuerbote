@@ -35,6 +35,8 @@
   "versions_check_failed",
   "minimum_versions",
   "version_notices",
+  "version_notice_status",
+  "version_notified_on",
   "proxy_section",
   "proxy_url",
   "column_break_proxy",
@@ -257,11 +259,27 @@
    "fieldname": "proxy_password",
    "fieldtype": "Password",
    "label": "Proxy Password"
+  },
+  {
+   "depends_on": "eval:doc.version_notice_status",
+   "description": "How the System Managers heard of the latest new findings of the weekly check. Notification Only: no outgoing e-mail account is set up. No Recipients: there is no enabled System Manager besides Administrator. Not Delivered: the Error Log names the reason, and the next weekly check sends the notice.",
+   "fieldname": "version_notice_status",
+   "fieldtype": "Select",
+   "label": "Notice of New Findings",
+   "options": "\nE-Mail and Notification\nNotification Only\nNo Recipients\nNot Delivered",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.version_notice_status",
+   "fieldname": "version_notified_on",
+   "fieldtype": "Datetime",
+   "label": "Notified On",
+   "read_only": 1
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-23 18:00:00.000000",
+ "modified": "2026-11-23 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "ERiC Settings",

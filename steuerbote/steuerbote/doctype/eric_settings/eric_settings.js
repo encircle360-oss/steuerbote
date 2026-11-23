@@ -47,20 +47,60 @@ frappe.ui.form.on("ERiC Settings", {
 	},
 });
 
-// A failed weekly check of the versions in the head of the form; the next refresh replaces the message.
+// The weekly check of the versions and the notice of its findings in the head of the form, each with its own
+// state; the next refresh replaces the message.
 function show_version_check(frm) {
 	if (frm.$version_check) {
 		frm.$version_check.remove();
 		frm.$version_check = null;
 	}
-	if (frm.doc.versions_check_failed && frm.doc.versions_checked_on) {
-		frm.$version_check = frm.dashboard.set_headline_alert(
-			__("Last checked: {0} (failed). The Error Log names the reason.", [
-				frappe.datetime.str_to_user(frm.doc.versions_checked_on),
-			]),
-			"red"
-		);
+	const doc = frm.doc;
+	if (!doc.versions_checked_on) {
+		return;
 	}
+	const checked_on = frappe.datetime.str_to_user(doc.versions_checked_on);
+	const lines = [
+		doc.versions_check_failed
+			? __("Last checked: {0} (failed). The Error Log names the reason.", [checked_on])
+			: __("Last checked: {0} (succeeded).", [checked_on]),
+	];
+	const notice = notice_line(doc);
+	if (notice) {
+		lines.push(notice);
+	}
+	const failed = doc.versions_check_failed || doc.version_notice_status === "Not Delivered";
+	const partly = ["Notification Only", "No Recipients"].includes(doc.version_notice_status);
+	frm.$version_check = frm.dashboard.set_headline_alert(
+		lines.map((line) => `<div>${frappe.utils.escape_html(line)}</div>`).join(""),
+		failed ? "red" : partly ? "orange" : "green"
+	);
+}
+
+// How the System Managers heard of the latest new findings, as the weekly check records it.
+function notice_line(doc) {
+	if (!doc.version_notice_status || !doc.version_notified_on) {
+		return "";
+	}
+	const on = frappe.datetime.str_to_user(doc.version_notified_on);
+	const lines = {
+		"E-Mail and Notification": __(
+			"Notice: the System Managers got an e-mail and a notification on {0}.",
+			[on]
+		),
+		"Notification Only": __(
+			"Notice: the System Managers got a notification only on {0}, as no outgoing e-mail account is set up.",
+			[on]
+		),
+		"No Recipients": __(
+			"Notice: nobody heard of the findings on {0}, as there is no enabled System Manager besides Administrator.",
+			[on]
+		),
+		"Not Delivered": __(
+			"Notice: not delivered on {0}. The Error Log names the reason; the next weekly check sends it.",
+			[on]
+		),
+	};
+	return lines[doc.version_notice_status] || "";
 }
 
 // The checks of steuerbote.eric.runtime.status, the plugin of the year and that of the Zusammenfassende Meldung
