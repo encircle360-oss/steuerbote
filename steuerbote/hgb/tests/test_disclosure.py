@@ -5,18 +5,24 @@ from unittest import TestCase
 
 from steuerbote.hgb.disclosure import (
 	DeadlineKind,
+	Director,
+	DisclosureCode,
 	DisclosureError,
 	Mode,
 	Part,
+	Signature,
 	adoption_deadline,
+	adoption_problems,
 	deadline_kept,
 	default_mode,
 	disclosure_deadline,
 	modes,
 	preparation_deadline,
 	publication,
+	transmission_problems,
 )
 from steuerbote.hgb.size import SizeClass
+from steuerbote.hgb.statement import Severity
 
 END_2026 = date(2026, 12, 31)
 
@@ -179,3 +185,90 @@ class DeadlineKeptTest(TestCase):
 	def test_a_transmission_before_the_feststellung_keeps_nothing(self):
 		self.assertFalse(deadline_kept(END_2026, date(2027, 6, 1), date(2027, 7, 1)))
 		self.assertFalse(deadline_kept(END_2026, date(2027, 6, 1), None))
+
+
+ADOPTED = date(2027, 5, 10)
+DIRECTORS = (
+	Director("Erika Beispiel"),
+	Director("Max Muster", start=date(2025, 3, 1)),
+	Director("Paul Vorgänger", end=date(2026, 6, 30)),
+)
+SIGNATURES = (
+	Signature("Erika Beispiel", "Geschäftsführerin", "Musterstadt", ADOPTED),
+	Signature("  max muster ", "Geschäftsführer", "Musterstadt", ADOPTED),
+)
+
+
+def coded(findings) -> list[tuple[str, str]]:
+	return [(finding.code, finding.concept) for finding in findings]
+
+
+class AdoptionProblemsTest(TestCase):
+	"""What has to be there before the disclosure: the Feststellung and the signature of every Geschäftsführer."""
+
+	def test_a_festgestellter_jahresabschluss_signed_by_every_geschaeftsfuehrer_raises_nothing(self):
+		self.assertEqual(adoption_problems(END_2026, ADOPTED, DIRECTORS, SIGNATURES), ())
+
+	def test_without_its_feststellung_it_cannot_be_disclosed(self):
+		(finding,) = adoption_problems(END_2026, None, DIRECTORS, SIGNATURES)
+		self.assertEqual(
+			(finding.code, finding.severity, finding.reference),
+			(
+				DisclosureCode.NOT_ADOPTED,
+				Severity.ERROR,
+				"§ 325 Abs. 1 Satz 1 Nr. 1, § 328 Abs. 1a Satz 1 HGB",
+			),
+		)
+
+	def test_a_feststellung_before_the_end_of_the_fiscal_year_is_refused(self):
+		self.assertEqual(
+			coded(adoption_problems(END_2026, END_2026, DIRECTORS, SIGNATURES)),
+			[(DisclosureCode.ADOPTED_EARLY, "")],
+		)
+
+	def test_every_geschaeftsfuehrer_in_office_signs_with_a_date(self):
+		findings = adoption_problems(END_2026, ADOPTED, DIRECTORS, SIGNATURES[:1])
+		self.assertEqual(coded(findings), [(DisclosureCode.UNSIGNED, "Max Muster")])
+		self.assertEqual(
+			findings[0].reference, "§ 245 Satz 1 HGB; Bundesamt für Justiz, FAQ zu Inhalts- und Formverstößen"
+		)
+		undated = (SIGNATURES[0], Signature("Max Muster", "Geschäftsführer", "Musterstadt", None))
+		self.assertEqual(
+			coded(adoption_problems(END_2026, ADOPTED, DIRECTORS, undated)),
+			[(DisclosureCode.UNDATED, "Max Muster")],
+		)
+
+	def test_a_signature_cannot_date_from_the_fiscal_year_itself(self):
+		early = (SIGNATURES[0], Signature("Max Muster", "Geschäftsführer", "Musterstadt", END_2026))
+		self.assertEqual(
+			coded(adoption_problems(END_2026, ADOPTED, DIRECTORS, early)),
+			[(DisclosureCode.SIGNED_EARLY, "Max Muster")],
+		)
+
+	def test_a_geschaeftsfuehrer_out_of_office_on_the_day_of_the_feststellung_need_not_sign(self):
+		self.assertTrue(DIRECTORS[2].in_office(date(2026, 6, 30)))
+		self.assertFalse(DIRECTORS[2].in_office(ADOPTED))
+		self.assertFalse(DIRECTORS[1].in_office(date(2025, 2, 28)))
+
+
+class TransmissionProblemsTest(TestCase):
+	def test_a_transmission_after_the_feststellung_with_a_dated_signature_raises_nothing(self):
+		self.assertEqual(transmission_problems(ADOPTED, date(2027, 6, 1), SIGNATURES), ())
+
+	def test_a_transmission_before_the_feststellung_is_refused(self):
+		(finding,) = transmission_problems(ADOPTED, date(2027, 5, 9), SIGNATURES)
+		self.assertEqual(
+			(finding.code, finding.reference),
+			(DisclosureCode.BEFORE_ADOPTION, "§ 325 Abs. 1 Satz 1 Nr. 1, Abs. 4 Satz 2 HGB"),
+		)
+		self.assertEqual(
+			coded(transmission_problems(None, date(2027, 5, 9), SIGNATURES)),
+			[(DisclosureCode.BEFORE_ADOPTION, "")],
+		)
+
+	def test_a_transmission_needs_a_dated_signature(self):
+		undated = (Signature("Erika Beispiel", "Geschäftsführerin", "Musterstadt", None),)
+		self.assertEqual(
+			coded(transmission_problems(ADOPTED, date(2027, 6, 1), undated)),
+			[(DisclosureCode.NO_SIGNATURE, "")],
+		)
