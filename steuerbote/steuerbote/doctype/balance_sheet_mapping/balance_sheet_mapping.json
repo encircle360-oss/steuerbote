@@ -13,7 +13,9 @@
   "defaults_rows",
   "rules",
   "watched",
-  "excluded"
+  "excluded",
+  "previous_taxonomy_version",
+  "previous_rows"
  ],
  "fields": [
   {
@@ -81,10 +83,26 @@
    "fieldtype": "Table",
    "label": "Accounts outside the Bilanz and the GuV",
    "options": "Balance Sheet Mapping Excluded Account"
+  },
+  {
+   "depends_on": "previous_taxonomy_version",
+   "description": "The version of the HGB-Taxonomie whose positions the rules named before Auf neue Taxonomie heben; Export Mapping before the Lift gives them as a file.",
+   "fieldname": "previous_taxonomy_version",
+   "fieldtype": "Data",
+   "label": "Previous HGB Taxonomy",
+   "read_only": 1
+  },
+  {
+   "description": "The rows of this mapping before Auf neue Taxonomie heben, on the positions of the previous version of the HGB-Taxonomie.",
+   "fieldname": "previous_rows",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Rows before the Lift",
+   "read_only": 1
   }
  ],
  "links": [],
- "modified": "2026-11-23 20:00:00.000000",
+ "modified": "2026-11-23 23:30:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Balance Sheet Mapping",

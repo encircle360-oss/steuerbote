@@ -19,6 +19,13 @@ mapping, and watch_accounts_without_place watches those with a number at the lev
 
 The E-Bilanz and the Jahresabschluss read the mapping through to_mapping() and place(), which puts the books of
 steuerbote/balances.py on the positions of the fiscal view of the taxonomy (steuerbote.xbrl.mapping.place).
+
+„Auf neue Taxonomie heben“ (lift_taxonomy) takes the rows to the positions of a later version through its changes
+(steuerbote/xbrl/changes.py), against its fiscal view, which has to be installed: a rule the lift cannot carry is
+watched at the level Sperrt, a row to decide. The mapping keeps the version and the rows before
+(previous_taxonomy_version, previous_rows), which export_previous_mapping gives as the file of that version, and the
+defaults it took over, so that Vorgaben aktualisieren proposes what the defaults of the later version change. A file
+of an earlier version comes in lifted the same way; one of a later version stays out.
 """
 
 import re
@@ -45,6 +52,7 @@ from steuerbote.balance_mapping_sync import (
 	file_body,
 	items_of_file_body,
 	items_of_rows,
+	lifted_items,
 	load_items,
 	rows_of_items,
 	rows_to_mapping,
@@ -70,7 +78,7 @@ from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl import taxonomy
 from steuerbote.xbrl.mapping import Books, Mapping, MappingError, Part, Placement, Purpose, check, place
 from steuerbote.xbrl.taxonomy import Taxonomy, View
-from steuerbote.xbrl.versions import TAXONOMIES
+from steuerbote.xbrl.versions import LATEST, TAXONOMIES
 
 INVALID = "Invalid Balance Sheet Mapping"
 NOT_CHECKED = (
@@ -81,6 +89,13 @@ OTHER_TAXONOMY = (
 	"The file holds a mapping to the positions of the HGB-Taxonomie {0}, this mapping names those of {1}."
 )
 NOTHING_TO_WATCH = "No account of the company with an account number lacks a place in the mapping."
+NOT_INSTALLED = (
+	"The HGB-Taxonomie {0} is not installed: Install Taxonomy in the ERiC Settings before the mapping takes its "
+	"positions."
+)
+NOT_LATER = "The mapping names the positions of the HGB-Taxonomie {0} and rises to a later version only."
+NOT_LIFTED = "The mapping was never lifted to a new taxonomy, so it holds no rows of a previous version."
+NO_DEFAULTS = "There are no defaults of {0} for the HGB-Taxonomie {1}."
 FILE_MESSAGES = (
 	NO_FILE,
 	NO_SUCH_FILE,
@@ -128,6 +143,8 @@ class BalanceSheetMapping(Document):
 		defaults_rows: DF.LongText | None
 		defaults_version: DF.Data | None
 		excluded: DF.Table[BalanceSheetMappingExcludedAccount]
+		previous_rows: DF.LongText | None
+		previous_taxonomy_version: DF.Data | None
 		rules: DF.Table[BalanceSheetMappingRule]
 		taxonomy_version: DF.Literal["6.9", "6.10"]
 		watched: DF.Table[BalanceSheetMappingWatchedAccount]
@@ -308,8 +325,8 @@ class BalanceSheetMapping(Document):
 	@frappe.whitelist(methods=["POST"])
 	def compare_with_file(self, file_url: str | None = None, content: str | None = None) -> dict:
 		"""Zuordnung importieren: what the file of a mapping, uploaded privately to this mapping or pasted, would change
-		here, each difference proposed, and what its header says."""
-		header, items, _defaults = self._read_file(file_url, content)
+		here, each difference proposed, and what its header says, with the earlier version it was lifted from."""
+		header, items, _defaults, version = self._read_file(file_url, content)
 		comparison = diff.compare(self.current_items(), items, None)
 		return {
 			"company": header.company,
@@ -317,6 +334,7 @@ class BalanceSheetMapping(Document):
 			"defaults_version": header.defaults_version,
 			"exported_on": formatdate(header.exported_on),
 			"app_version": header.app_version,
+			"lifted_from": "" if version == self.taxonomy_version else version,
 			"differences": [
 				{**presented(difference), "proposes": True} for difference in comparison.differences
 			],
@@ -329,7 +347,7 @@ class BalanceSheetMapping(Document):
 	) -> int:
 		"""Take over the chosen differences of compare_with_file, by their id, keep every other row, note the defaults
 		the file names as taken over, and save. Returns how many differences it took over."""
-		header, items, defaults = self._read_file(file_url, content)
+		header, items, defaults, _version = self._read_file(file_url, content)
 		current = self.current_items()
 		keys = chosen_keys(diff.compare(current, items, None), chosen or [])
 		self._set_items(diff.apply(current, items, keys))
@@ -380,11 +398,81 @@ class BalanceSheetMapping(Document):
 		self.save()
 		return [account["account"] for account in added]
 
+	@frappe.whitelist(methods=["POST"])
+	def lift_taxonomy(self, target: str | None = None) -> dict:
+		"""Auf neue Taxonomie heben: the rows on the positions of a later version of the HGB-Taxonomie, by default the
+		latest, through its changes (steuerbote.balance_mapping_sync.lifted_items), against its fiscal view, which
+		Taxonomie einrichten has to have installed; a rule the lift cannot carry is watched at the level Sperrt. Keeps
+		the version and the rows before, saves, and returns what the lift renamed, the rows left to decide and the new
+		Mussfelder with their labels, for the dialog of the form."""
+		target = target or LATEST.version
+		order = list(TAXONOMIES)
+		if target not in order or order.index(target) <= order.index(self.taxonomy_version):
+			frappe.throw(_(NOT_LATER).format(self.taxonomy_version))
+		view = position_taxonomy(target)
+		if view is None:
+			frappe.throw(_(NOT_INSTALLED).format(target))
+		before = self.current_items()
+		with mapping_errors():
+			items, lifted = lifted_items(
+				self.chart, before, self.taxonomy_version, target, taxonomy=view, parts=self._parts()
+			)
+		previous = self.taxonomy_version
+		self.previous_taxonomy_version = previous
+		self.previous_rows = dump_items(before)
+		self.taxonomy_version = target
+		self._set_items(items)
+		self.save()
+		return {
+			"version": target,
+			"previous": previous,
+			"renamed": [{"account": account, "old": old, "new": new} for account, old, new in lifted.renamed],
+			"to_decide": [
+				{
+					"account": decision.rule.account_number,
+					"position": decision.position,
+					"text": decision.text,
+				}
+				for decision in lifted.to_decide
+			],
+			"mussfelder": [{"position": name, "label": view.label(name)} for name in lifted.mussfelder],
+		}
+
+	@frappe.whitelist(methods=["POST"])
+	def export_previous_mapping(self) -> dict:
+		"""The rows before Auf neue Taxonomie heben as the file of Zuordnung exportieren on the positions of the
+		previous version, attached privately as export_mapping attaches its file."""
+		saved = frappe.get_doc(self.doctype, self.name)
+		if not saved.previous_rows:
+			frappe.throw(_(NOT_LIFTED))
+		with mapping_errors():
+			items = load_items(saved.previous_rows)
+		today = getdate()
+		text = transfer.write(
+			FILE_FORMAT,
+			file_body(saved.previous_taxonomy_version, items, saved.defaults_taken_over()),
+			app_version=steuerbote.__version__,
+			company=saved.company,
+			chart=saved.chart,
+			defaults_version=saved.defaults_version or "",
+			exported_on=today,
+		)
+		file_name = (
+			export_file_name(saved.company, today).removesuffix(".json")
+			+ f"-Taxonomie-{saved.previous_taxonomy_version}.json"
+		)
+		return {
+			"file_name": file_name,
+			"file_url": saved._attach(file_name, text.encode("utf-8")),
+			"content": text,
+		}
+
 	def _read_file(
 		self, file_url: str | None, content: str | None
-	) -> tuple[transfer.Header, dict[diff.Key, dict], dict[diff.Key, dict] | None]:
-		"""The header, the rows and the defaults of a file this mapping can take: of its kind, unchanged since the
-		export, of the chart and the taxonomy of the mapping, with accounts the company has and rows the core takes."""
+	) -> tuple[transfer.Header, dict[diff.Key, dict], dict[diff.Key, dict] | None, str]:
+		"""The header, the rows, the defaults and the version of the taxonomy of a file this mapping can take: of its
+		kind, unchanged since the export, of the chart and the taxonomy of the mapping or an earlier one, whose rows
+		come lifted to the version of the mapping, with accounts the company has and rows the core takes."""
 		title = _("Import Mapping")
 		try:
 			found = transfer.read(self._file_text(file_url, content), FILE_FORMAT)
@@ -400,10 +488,22 @@ class BalanceSheetMapping(Document):
 				title=title,
 			)
 		if version != self.taxonomy_version:
-			frappe.throw(_(OTHER_TAXONOMY).format(escape_html(version), self.taxonomy_version), title=title)
+			order = list(TAXONOMIES)
+			if version not in order or order.index(version) > order.index(self.taxonomy_version):
+				frappe.throw(
+					_(OTHER_TAXONOMY).format(escape_html(version), self.taxonomy_version), title=title
+				)
+			with mapping_errors():
+				items, _lifted = lifted_items(
+					self.chart,
+					items,
+					version,
+					self.taxonomy_version,
+					taxonomy=position_taxonomy(self.taxonomy_version),
+				)
 		if missing := sorted({number for _kind, number in items} - self._account_names().keys()):
 			frappe.throw(_(MISSING_ACCOUNTS).format(escape_html(", ".join(missing))), title=title)
-		return found.header, items, defaults
+		return found.header, items, defaults, version
 
 	def _file_text(self, file_url: str | None, content: str | None) -> str:
 		"""The pasted content, or else the text of the private file at the address, attached to this mapping."""
@@ -461,6 +561,10 @@ class BalanceSheetMapping(Document):
 			frappe.throw(_("Select the company first."))
 		if self.chart not in CHARTS:
 			frappe.throw(_("There are no defaults for {0}.").format(self.chart))
+		try:
+			defaults_version(self.chart, self.taxonomy_version)
+		except KeyError:
+			frappe.throw(_(NO_DEFAULTS).format(self.chart, self.taxonomy_version))
 
 	def _account_names(self) -> dict[str, str]:
 		"""The ledger accounts of the company with a number, the name of each by its number."""

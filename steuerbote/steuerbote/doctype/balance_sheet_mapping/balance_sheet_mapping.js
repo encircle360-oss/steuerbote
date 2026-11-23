@@ -30,6 +30,18 @@ frappe.ui.form.on("Balance Sheet Mapping", {
 			frm.add_custom_button(__("Check Accounts"), () => check_accounts(frm));
 			frm.add_custom_button(__("Export Mapping"), () => export_mapping(frm), __("Mapping File"));
 			frm.add_custom_button(__("Import Mapping"), () => import_mapping(frm), __("Mapping File"));
+			const versions = frm.get_docfield("taxonomy_version").options.split("\n");
+			const latest = versions[versions.length - 1];
+			if (frm.doc.taxonomy_version !== latest) {
+				frm.add_custom_button(__("Lift to New Taxonomy"), () => lift_taxonomy(frm, latest));
+			}
+			if (frm.doc.previous_rows) {
+				frm.add_custom_button(
+					__("Export Mapping before the Lift"),
+					() => export_previous_mapping(frm),
+					__("Mapping File")
+				);
+			}
 		}
 	},
 });
@@ -203,10 +215,18 @@ function compare_with_file(frm, source, import_dialog) {
 		import_dialog.hide();
 		show_mapping_differences({
 			title: __("Import Mapping"),
-			intro: __(
-				"The file of {0}, exported on {1} with the defaults {2}, would change these rows. Each difference is checked; what stays unchecked, stays as it is. Importing notes the defaults of the file as taken over.",
-				[comparison.company, comparison.exported_on, comparison.defaults_version || "–"]
-			),
+			intro:
+				__(
+					"The file of {0}, exported on {1} with the defaults {2}, would change these rows. Each difference is checked; what stays unchecked, stays as it is. Importing notes the defaults of the file as taken over.",
+					[comparison.company, comparison.exported_on, comparison.defaults_version || "–"]
+				) +
+				(comparison.lifted_from
+					? " " +
+					  __("The file names the positions of the HGB-Taxonomie {0}; Steuerbote has lifted its rows to {1}.", [
+							comparison.lifted_from,
+							frm.doc.taxonomy_version,
+					  ])
+					: ""),
 			differences: comparison.differences,
 			unchanged: comparison.unchanged,
 			subject_label: __("Account"),
@@ -295,4 +315,81 @@ function show_accounts_without_place(frm, accounts) {
 		dialog.get_primary_btn().hide();
 	}
 	dialog.show();
+}
+
+// Auf neue Taxonomie heben: the rows on the positions of the latest version, a rule the lift cannot carry watched at
+// the level Blocking; the rows before stay with the mapping as a file of their version.
+function lift_taxonomy(frm, latest) {
+	if (frm.is_dirty()) {
+		frappe.msgprint(__("Save the mapping before lifting it to a new taxonomy."));
+		return;
+	}
+	frappe.confirm(
+		__(
+			"Lift the mapping from the positions of the HGB-Taxonomie {0} to those of {1}? The rows of {0} stay available as a file.",
+			[frm.doc.taxonomy_version, latest]
+		),
+		() =>
+			frm.call("lift_taxonomy", { target: latest }).then((response) => {
+				frm.reload_doc();
+				show_lifted(response.message);
+			})
+	);
+}
+
+function show_lifted(lifted) {
+	const escape = frappe.utils.escape_html;
+	const parts = [
+		`<p>${escape(__("The mapping names the positions of the HGB-Taxonomie {0} now.", [lifted.version]))}</p>`,
+	];
+	if (lifted.renamed.length) {
+		const items = lifted.renamed.map(
+			(renamed) => `<li>${escape(renamed.account)}: ${escape(renamed.old)} → ${escape(renamed.new)}</li>`
+		);
+		parts.push(`<p>${escape(__("Renamed positions:"))}</p><ul>${items.join("")}</ul>`);
+	}
+	if (lifted.to_decide.length) {
+		const items = lifted.to_decide.map(
+			(decision) =>
+				`<li>${escape(decision.account)}, ${escape(decision.position)}: ${escape(decision.text)}</li>`
+		);
+		parts.push(
+			`<p>${escape(
+				__("Rows to decide, watched at the level Blocking until each has a position again:")
+			)}</p><ul>${items.join("")}</ul>`
+		);
+	}
+	if (lifted.mussfelder.length) {
+		const items = lifted.mussfelder.map(
+			(mussfeld) => `<li>${escape(mussfeld.label)} (${escape(mussfeld.position)})</li>`
+		);
+		parts.push(
+			`<p>${escape(
+				__(
+					"New Mussfelder of {0}, on which accounts of the books may belong; Update Defaults shows what the defaults of {0} map otherwise:",
+					[lifted.version]
+				)
+			)}</p><ul>${items.join("")}</ul>`
+		);
+	}
+	frappe.msgprint({
+		title: __("Lift to New Taxonomy"),
+		indicator: lifted.to_decide.length ? "orange" : "green",
+		message: parts.join(""),
+	});
+}
+
+// The rows before Auf neue Taxonomie heben, as the file of Zuordnung exportieren of their version.
+function export_previous_mapping(frm) {
+	frm.call("export_previous_mapping").then((response) => {
+		const file = response.message;
+		const link = document.createElement("a");
+		link.href = URL.createObjectURL(new Blob([file.content], { type: "application/json" }));
+		link.download = file.file_name;
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+		frm.reload_doc();
+	});
 }
