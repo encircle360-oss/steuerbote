@@ -113,10 +113,10 @@ def apportion_full_euros(amounts: Sequence[Decimal], total: Decimal | None = Non
 
 	Each part is rounded half up; the euros the rounded parts miss or exceed go one by one to the parts with cents
 	nearest the next euro, so a part stays within a euro of itself and a whole part or zero stays as it is. The
-	Jahresabschluss in full euros is the default of the Offenlegung research; that the register requires it is
-	unverified, and § 244 HGB asks only for euros. Rounding position by position, however, would let a total part
-	from its positions and the Aktiva from the Passiva, so the positions of steuerbote.hgb.statement are apportioned
-	this way from the totals down.
+	Jahresabschluss in full euros is an assumption: that the register requires it is unverified, and § 244 HGB
+	asks only for euros. Rounding position by position, however, would let a total part from its positions and
+	the Aktiva from the Passiva, so the positions of steuerbote.hgb.statement are apportioned this way from the
+	totals down.
 	"""
 	parts = tuple(require_decimal(amount) for amount in amounts)
 	target = half_up_euro(sum(parts, ZERO)) if total is None else require_decimal(total)

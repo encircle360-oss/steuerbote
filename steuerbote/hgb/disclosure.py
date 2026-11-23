@@ -7,11 +7,11 @@ Anhang braucht die die Gewinn- und Verlustrechnung betreffenden Angaben nicht zu
 Those of a Kleinst „nur die Bilanz zu übermitteln haben und dabei die Einstellung in das Unternehmensregister durch
 dauerhafte Hinterlegung verlangen können“ if they notify the operator „dass sie zwei der drei in § 267a Absatz 1
 genannten Merkmale für die nach § 267 Absatz 4 maßgeblichen Abschlussstichtage nicht überschreiten“ (§ 326 Abs. 2
-HGB). A deposited balance sheet is open „nur auf Antrag durch Übermittlung einer
-Kopie“ (§ 9 Abs. 6 Satz 3 HGB). Steuerbote deposits a Kleinst unless told otherwise, the default of the
-Offenlegung research. Kleinst and klein draw up no Lagebericht (§ 264 Abs. 1 Satz 4 HGB) and are not audited
-(§ 316 Abs. 1 Satz 1 HGB). Steuerbote prepares the disclosure of Kleinst and klein; for mittelgroß, which § 327 HGB
-spares part of it, and groß it names the parts only.
+HGB). A deposited balance sheet is open „nur auf Antrag durch Übermittlung einer Kopie“ (§ 9 Abs. 6 Satz 3 HGB).
+Steuerbote deposits a Kleinst unless told otherwise, since that publishes the least. Kleinst and klein draw up no
+Lagebericht (§ 264 Abs. 1 Satz 4 HGB) and are not audited (§ 316 Abs. 1 Satz 1 HGB). Steuerbote prepares the
+disclosure of Kleinst and klein; for mittelgroß, which § 327 HGB spares part of it, and groß it names the parts
+only.
 
 The Ergebnisverwendung. The Anhang states „der Vorschlag für die Verwendung des Ergebnisses oder der Beschluss über
 seine Verwendung“ (§ 285 Nr. 34 HGB), which small companies need not state (§ 288 Abs. 1 Nr. 1 HGB); a Kleinst has no
@@ -59,14 +59,15 @@ fünfundzwanzigtausend Euro.“ (§ 335 Abs. 1 Satz 4 HGB) Filed after the six w
 haben“, to 1 000 Euro for a small company and to 2 500 Euro otherwise (§ 335 Abs. 4 Satz 2 Nr. 1 to 3 HGB); Nr. 4
 lowers it further for a short delay, at the discretion of the Bundesamt. A procedure costs 100,00 Euro (Nr. 1210 of
 the Kostenverzeichnis of the JVKostG), and against several persons „entstehen die Gebühren für jede Person
-gesondert“ (Vorbemerkung 1.2.1). The register charges 18,50 Euro for the
-Einstellung of a Kleinst and 25,00 Euro for klein (Nr. 1420 and 1421 KV JVKostG), 3,00 Euro a year for a company with
-the reliefs of § 326 HGB (Nr. 1410), half more for documents changed before the Einstellung and half less for a
-withdrawal (Vorbemerkung 1.4.2 Abs. 2 und 3), read on gesetze-im-internet.de on 23 November 2026.
+gesondert“ (Vorbemerkung 1.2.1). The register charges 18,50 Euro for the Einstellung of a Kleinst and 25,00 Euro
+for klein (Nr. 1420 and 1421 KV JVKostG), 3,00 Euro a year for a company with the reliefs of § 326 HGB
+(Nr. 1410), half more for documents changed before the Einstellung and half less for a withdrawal
+(Vorbemerkung 1.4.2 Abs. 2 und 3), read on gesetze-im-internet.de on 23 November 2026.
 
-The Annual Accounts read the class of the fiscal year from steuerbote.hgb.size, the form of the balance sheet from
-steuerbote.hgb.schemes and the Angaben from steuerbote.hgb.notes. Text of §§ 9, 245, 264, 285, 288, 316, 325, 326, 327, 328 HGB, § 42a GmbHG
-and §§ 187, 188, 193 BGB as read on gesetze-im-internet.de on 23 November 2026.
+The Annual Accounts read the class of the fiscal year from steuerbote.hgb.size, the form of the balance sheet
+from steuerbote.hgb.schemes and the Angaben from steuerbote.hgb.notes. Text of §§ 9, 245, 264, 285, 288, 316,
+325, 326, 327, 328 HGB, § 42a GmbHG and §§ 187, 188, 193 BGB as read on gesetze-im-internet.de on
+23 November 2026.
 """
 
 import calendar

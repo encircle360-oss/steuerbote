@@ -34,8 +34,9 @@ Haftungsverhältnisse“ (§ 285 Nr. 9 Buchst. c HGB): advances() adds them up g
 concept of the taxonomy 6.9 under „bs.contingLiab“.
 
 An item is required, or required only where its fact exists (a Haftungsverhältnis, a Vorschuss); the Annual
-Accounts answer each with ja, nein or entfällt, and a ja with a text or an amount (answer_problems()). Mittelgroß and groß have a fuller Anhang, which Steuerbote does not
-prepare. Every item awaits the review of a Steuerberatung, and REVIEW_ITEMS names what is open. Text of §§ 264, 265, 268, 277, 284, 285, 288, 326 HGB as
+Accounts answer each with ja, nein or entfällt, and a ja with a text or an amount (answer_problems()). Mittelgroß
+and groß have a fuller Anhang, which Steuerbote does not prepare. Every item awaits the review of a
+Steuerberatung, and REVIEW_ITEMS names what is open. Text of §§ 264, 265, 268, 277, 284, 285, 288, 326 HGB as
 read on gesetze-im-internet.de on 23 November 2026.
 """
 

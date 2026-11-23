@@ -66,8 +66,8 @@ wurde.“ (§ 265 Abs. 8 HGB) A line without an amount in either year is therefo
 Eigenkapital and the Gezeichnetes Kapital, which § 42 Abs. 1 GmbHG wants in every balance sheet of a GmbH, and the
 results of the income statement.
 
-Full euros. in_full_euros() gives the statement in full euros, the default of the Offenlegung research; that the
-register requires it is unverified. Each total is rounded half up and apportioned to the lines under it
+Full euros. in_full_euros() gives the statement in full euros, an assumption: that the register requires it is
+unverified. Each total is rounded half up and apportioned to the lines under it
 (steuerbote.ustva.rounding.apportion_full_euros), so every total stays the sum of its lines, Aktiva and Passiva
 stay alike, the Fehlbetrag shows the same on both sides and the Jahresüberschuss of the income statement is that
 of the balance sheet; a „davon“ amount stays within its line.
