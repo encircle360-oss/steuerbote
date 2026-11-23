@@ -79,12 +79,18 @@ scheduler_events = {
 after_migrate = ["steuerbote.steuerbote.doctype.eric_settings.eric_settings.refresh_produkt_version"]
 
 # The steps Steuerbote einrichten runs besides its own (steuerbote/steuerbote/setup.py): the Kontenzuordnung
-# Ertragsteuern with the defaults of SKR03 or SKR04.
+# Ertragsteuern and the Bilanzzuordnung, each with the defaults of SKR03 or SKR04.
 steuerbote_setup_steps = [
 	{
 		"key": "income_tax_mapping",
 		"label": "Income Tax Mapping",
 		"order": 40,
 		"run": "steuerbote.steuerbote.doctype.income_tax_mapping.setup.run",
+	},
+	{
+		"key": "balance_sheet_mapping",
+		"label": "Balance Sheet Mapping",
+		"order": 50,
+		"run": "steuerbote.steuerbote.doctype.balance_sheet_mapping.setup.run",
 	},
 ]

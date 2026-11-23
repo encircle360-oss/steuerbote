@@ -168,12 +168,13 @@ class BalanceSheetMapping(Document):
 
 	def check_positions(self, mapping: Mapping) -> None:
 		"""Every position the rules may not name, against the fiscal view of the taxonomy of the mapping, with the label
-		of each position; without the taxonomy installed, a note that the positions wait for it."""
+		of each position; without the taxonomy installed, a note that the positions wait for it, unless the caller notes
+		that itself (flags.taxonomy_noted), as Steuerbote einrichten does."""
 		view = position_taxonomy(self.taxonomy_version)
 		if view is None:
 			for row in self.rules:
 				row.concept_label = None
-			if mapping.rules:
+			if mapping.rules and not self.flags.taxonomy_noted:
 				frappe.msgprint(_(NOT_CHECKED).format(self.taxonomy_version), alert=True, indicator="orange")
 			return
 		for row in self.rules:
