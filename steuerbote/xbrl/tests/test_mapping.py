@@ -1,12 +1,18 @@
 """The Bilanzzuordnung of a company (steuerbote/xbrl/mapping.py): its rows, the positions they name in the
 HGB-Taxonomie, and the balances of the books placed on those positions."""
 
+from dataclasses import replace
+from datetime import date
+from decimal import Decimal
+from types import MappingProxyType
 from unittest import TestCase
 
 from steuerbote.hgb.statement import RemainingTerm
 from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl import mapping
 from steuerbote.xbrl.mapping import (
+	AccountBalance,
+	Books,
 	Excluded,
 	Mapping,
 	MappingError,
@@ -15,6 +21,7 @@ from steuerbote.xbrl.mapping import (
 	Rule,
 	Watched,
 )
+from steuerbote.xbrl.taxonomy import LABEL
 from steuerbote.xbrl.tests import positions
 from steuerbote.xbrl.versions import LATEST
 
@@ -413,3 +420,314 @@ class PositionTest(TestCase):
 				self.assertTrue(refusal.sentence.startswith("Konto {0}"))
 				self.assertTrue(refusal.source)
 		self.assertEqual(len({refusal.template for refusal in mapping.REFUSALS}), len(mapping.REFUSALS))
+
+
+RETAINED = "bs.eqLiab.equity.retainedEarnings"
+TRADE_ABOVE_ONE_YEAR = "bs.ass.currAss.receiv.trade.above1year"
+OTHER_ASSETS = "bs.ass.currAss.receiv.other.misc"
+WJ_2026 = (date(2026, 1, 1), date(2026, 12, 31))
+
+
+def balance(number: str, debit: str = "0", credit: str = "0", part: Part = Part.BALANCE_SHEET, **values):
+	return AccountBalance(
+		account=values.pop("account", f"{number} - Konto - MG"),
+		number=number,
+		label=values.pop("label", f"Konto {number}"),
+		part=part,
+		debit=Decimal(debit),
+		credit=Decimal(credit),
+	)
+
+
+def placed(*rules: Rule, balances, purpose=Purpose.BOTH, **values):
+	return mapping.place(
+		Mapping("SKR04", rules=rules, **values.pop("places", {})),
+		Books(tuple(balances), values.pop("earlier_result", Decimal(0))),
+		values.pop("taxonomy", positions.view()),
+		purpose,
+		**values,
+	)
+
+
+def codes(placement) -> list[tuple[str, str, str]]:
+	return [(finding.code.value, finding.severity.value, finding.account) for finding in placement.findings]
+
+
+class AccountBalanceTest(TestCase):
+	def test_an_account_balance_is_debit_minus_credit_in_decimal(self):
+		self.assertEqual(balance("1800", "1500.25", "300.05").amount, Decimal("1200.20"))
+		with self.assertRaises(TypeError):
+			AccountBalance("1800 - Bank - MG", "1800", "Bank", Part.BALANCE_SHEET, 1500.25)
+
+	def test_the_books_hold_their_balances_as_a_tuple(self):
+		books = Books([balance("1800", "10")])
+		self.assertEqual((books.balances, books.earlier_result), ((balance("1800", "10"),), Decimal(0)))
+
+
+class SignTest(TestCase):
+	"""„Entspricht die Soll/Haben-Auszeichnung eines Kontos der Soll/Haben-Auszeichnung der Position, dann ist der
+	Kontensaldo unverändert zu weiteren zugeordneten Konten zu addieren ... Bei abweichenden Soll/Haben-Auszeichnungen
+	eines Kontos, ist der Kontosaldo mit „-1“ zu multiplizieren“ (Technischer Leitfaden zur HGB-Taxonomie 6.9, A.13)."""
+
+	def test_a_balance_on_the_side_of_its_position_counts_as_it_is(self):
+		placement = placed(
+			Rule("1800", BANK),
+			Rule("4400", SALES),
+			balances=[balance("1800", "1000"), balance("4400", credit="500", part=Part.INCOME_STATEMENT)],
+		)
+		self.assertEqual(
+			[(item.concept, item.position, item.amount, item.value) for item in placement.placed],
+			[(BANK, BANK, Decimal("1000"), Decimal("1000")), (SALES, SALES, Decimal("-500"), Decimal("500"))],
+		)
+		self.assertEqual((placement.findings, placement.left_out, placement.ready), ((), (), True))
+
+	def test_a_balance_on_the_other_side_counts_negative(self):
+		"""Erlösschmälerungen booked on an account of the Umsatzerlöse lower them."""
+		(item,) = placed(
+			Rule("4400", SALES), balances=[balance("4400", debit="50", part=Part.INCOME_STATEMENT)]
+		).placed
+		self.assertEqual((item.concept, item.value), (SALES, Decimal("-50")))
+
+	def test_a_balance_on_the_other_side_goes_to_the_position_for_the_opposite_balance(self):
+		"""„Ist der Saldo jedoch im „Haben“ (d.h. das Konto wurde „überzogen“) so erfolgt der Ausweis auf der
+		Passivseite unter den Verbindlichkeiten“ (A.13)."""
+		rule = Rule("1800", BANK, opposite=BANK_LIABILITY)
+		(debit,) = placed(rule, balances=[balance("1800", "100")]).placed
+		(credit,) = placed(rule, balances=[balance("1800", "100", "300")]).placed
+		self.assertEqual((debit.concept, debit.value), (BANK, Decimal("100")))
+		self.assertEqual(
+			(credit.concept, credit.position, credit.value), (BANK_LIABILITY, BANK_LIABILITY, Decimal(200))
+		)
+		(without,) = placed(Rule("1800", BANK), balances=[balance("1800", "100", "300")]).placed
+		self.assertEqual((without.concept, without.value), (BANK, Decimal("-200")))
+
+	def test_an_account_without_a_balance_places_nothing(self):
+		placement = placed(Rule("1800", BANK), balances=[balance("1800", "70", "70"), balance("9999")])
+		self.assertEqual((placement.placed, placement.left_out, placement.findings), ((), (), ()))
+
+	def test_a_davon_position_counts_in_the_position_above_it_in_a_calculation(self):
+		"""A „davon“ position is in no calculation (Leitfaden B.14.11), and „Zu rechnerisch nicht verknüpften
+		Positionen darf das Tupel „Kontensalden zu einer Position“ nicht übermittelt werden“ (Technischer Leitfaden 6.10,
+		B.12.1): its balance counts in the position the presentation puts it under."""
+		placement = placed(
+			Rule("1210", TRADE_ABOVE_ONE_YEAR),
+			Rule("7100", "is.netIncome.interestIncome.assoc"),
+			balances=[balance("1210", "80"), balance("7100", credit="12", part=Part.INCOME_STATEMENT)],
+		)
+		self.assertEqual(
+			[(item.concept, item.position, item.value) for item in placement.placed],
+			[
+				(TRADE_ABOVE_ONE_YEAR, RECEIVABLES, Decimal("80")),
+				("is.netIncome.interestIncome.assoc", "is.netIncome.interestIncome", Decimal("12")),
+			],
+		)
+
+
+class PurposeTest(TestCase):
+	def test_a_balance_counts_in_the_balance_sheets_its_rule_is_for(self):
+		rules = (
+			Rule("2981", "bs.eqLiab.liab.other", purpose=Purpose.TAX),
+			Rule("6241", "is.netIncome.staff", purpose=Purpose.COMMERCIAL),
+			Rule("1800", BANK),
+		)
+		books = [
+			balance("2981", credit="40"),
+			balance("6241", "40", part=Part.INCOME_STATEMENT),
+			balance("1800", "10"),
+		]
+		counted = {
+			purpose: [item.balance.number for item in placed(*rules, balances=books, purpose=purpose).placed]
+			for purpose in Purpose
+		}
+		self.assertEqual(
+			counted,
+			{Purpose.BOTH: ["1800"], Purpose.COMMERCIAL: ["6241", "1800"], Purpose.TAX: ["2981", "1800"]},
+		)
+
+	def test_a_balance_left_out_for_its_purpose_is_a_hint(self):
+		"""„Abschlusszweck: HB Diese Konten sollten ausschließlich für die Handelsbilanz gebucht werden. SB Diese Konten
+		sollten ausschließlich für die Steuerbilanz gebucht werden.“ (DATEV SKR 04, Art.-Nr. 11175, Fußnote 4)"""
+		books = [balance("2981", credit="40")]
+		placement = placed(
+			Rule("2981", "bs.eqLiab.liab.other", purpose=Purpose.TAX),
+			balances=books,
+			purpose=Purpose.COMMERCIAL,
+		)
+		self.assertEqual(codes(placement), [("BILANZ-ABSCHLUSSZWECK", "Hinweis", "2981")])
+		(finding,) = placement.findings
+		self.assertIn("nur für die Steuerbilanz", finding.text)
+		self.assertEqual(
+			(finding.amount, finding.concept, finding.source),
+			(Decimal("-40"), "bs.eqLiab.liab.other", "DATEV-Kontenrahmen SKR 03 und SKR 04, Fußnote 4"),
+		)
+		self.assertEqual((placement.left_out, placement.ready), (tuple(books), True))
+		(einheitsbilanz,) = placed(
+			Rule("2981", "bs.eqLiab.liab.other", purpose=Purpose.COMMERCIAL), balances=books
+		).findings
+		self.assertIn("nur für die Handelsbilanz", einheitsbilanz.text)
+
+
+class PlacesOfBalancesTest(TestCase):
+	"""„Der Jahresabschluß hat sämtliche Vermögensgegenstände, Schulden, Rechnungsabgrenzungsposten sowie Aufwendungen
+	und Erträge zu enthalten“ (§ 246 Abs. 1 Satz 1 HGB): a balance without a position holds the documents back."""
+
+	def test_a_balance_on_an_account_without_a_place_is_an_error(self):
+		books = [balance("1800", "10"), balance("1360", "5", label="Geldtransit")]
+		placement = placed(Rule("1800", BANK), balances=books)
+		self.assertEqual(codes(placement), [("BILANZ-OHNE-PLATZ", "Fehler", "1360")])
+		(finding,) = placement.findings
+		self.assertEqual(
+			finding.text,
+			"Konto 1360 Geldtransit hat einen Saldo, aber keinen Platz in der Bilanzzuordnung: Ordnen Sie es einer "
+			"Position zu, oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt.",
+		)
+		self.assertEqual((finding.amount, finding.source), (Decimal("5"), "§ 246 Abs. 1 Satz 1 HGB"))
+		self.assertEqual((placement.left_out, placement.ready), ((books[1],), False))
+
+	def test_a_balance_on_an_account_without_a_number_is_an_error(self):
+		"""Every row of the mapping names its account by its number."""
+		books = [balance("", "5", account="Kasse - MG", label="Kasse")]
+		placement = placed(balances=books)
+		self.assertEqual(codes(placement), [("BILANZ-OHNE-KONTONUMMER", "Fehler", "Kasse - MG")])
+		self.assertIn("keine Kontonummer", placement.findings[0].text)
+
+	def test_a_balance_on_a_watched_account_holds_the_documents_back_or_adds_a_hint(self):
+		books = [balance("1360", "5"), balance("1370", credit="5")]
+		placement = placed(
+			balances=books, places={"watched": [Watched("1360"), Watched("1370", WatchLevel.HINT)]}
+		)
+		self.assertEqual(
+			codes(placement),
+			[("BILANZ-BEOBACHTET", "Fehler", "1360"), ("BILANZ-BEOBACHTET", "Hinweis", "1370")],
+		)
+		self.assertEqual((placement.left_out, placement.ready), (tuple(books), False))
+		self.assertIn("ohne Position", placement.findings[1].text)
+
+	def test_a_balance_outside_the_bilanz_and_the_guv_is_a_hint_with_its_reason(self):
+		books = [balance("9000", credit="5")]
+		placement = placed(
+			balances=books, places={"excluded": [Excluded("9000", "Saldenvortrag Sachkonten")]}
+		)
+		self.assertEqual(codes(placement), [("BILANZ-AUSSERHALB", "Hinweis", "9000")])
+		self.assertIn("Saldenvortrag Sachkonten", placement.findings[0].text)
+		self.assertEqual((placement.left_out, placement.ready), (tuple(books), True))
+
+	def test_a_balance_on_a_refused_position_is_an_error_of_the_problem(self):
+		books = [balance("1800", "10", part=Part.INCOME_STATEMENT), balance("0600", "7")]
+		placement = placed(
+			Rule("1800", BANK),
+			Rule("0600", "bs.ass.fixAss.tan.lostEquipment"),
+			Rule("0700", "nt"),
+			balances=books,
+		)
+		self.assertEqual(
+			codes(placement), [("BILANZ-POSITION", "Fehler", "1800"), ("BILANZ-POSITION", "Fehler", "0600")]
+		)
+		first, second = placement.findings
+		self.assertEqual(
+			(first.text, first.source, first.concept),
+			(
+				mapping.INCOME_STATEMENT_ACCOUNT.sentence.format("1800", BANK),
+				mapping.INCOME_STATEMENT_ACCOUNT.source,
+				BANK,
+			),
+		)
+		self.assertEqual(second.concept, "bs.ass.fixAss.tan.lostEquipment")
+		self.assertEqual((placement.left_out, placement.ready), (tuple(books), False))
+
+	def test_a_balance_on_an_auffangposition_is_a_hint(self):
+		"""Auffangpositionen are „erkennbar durch die Formulierungen im beschreibenden Text „nicht zuordenbar“ oder
+		„ohne Zuordnung““ and serve where „eine durch Mussfelder vorgegebene Differenzierung ... nicht aus der Buchhaltung
+		ableitbar“ is (Leitfaden A.10.4)."""
+		placement = placed(Rule("1500", OTHER_ASSETS), balances=[balance("1500", "9")])
+		self.assertEqual(codes(placement), [("BILANZ-AUFFANGPOSITION", "Hinweis", "1500")])
+		self.assertEqual(len(placement.placed), 1)
+		self.assertTrue(mapping.catch_all(positions.view(), OTHER_ASSETS))
+		self.assertTrue(mapping.catch_all(positions.view(), "bs.ass.currAss.receiv.other.misc"))
+		self.assertFalse(mapping.catch_all(positions.view(), BANK))
+		labelled = replace(
+			positions.view(),
+			labels=MappingProxyType(
+				{
+					**positions.view().labels,
+					f"de-gaap-ci:{SALES}": {LABEL: "Umsatzerlöse ohne Zuordnung nach USt"},
+				}
+			),
+		)
+		self.assertTrue(mapping.catch_all(labelled, SALES))
+
+	def test_a_position_not_valid_in_the_fiscal_year_is_an_error(self):
+		"""„Die Übermittelbarkeit kann zeitlich eingeschränkt sein“ (Leitfaden B.11, B.14.4.1)."""
+		books = [balance("0400", "10"), balance("1700", "3")]
+		rules = (
+			Rule("0400", "bs.ass.fixAss.tan.oldEquipment"),
+			Rule("1700", "bs.ass.currAss.cashEquiv.cryptoAssets"),
+		)
+		self.assertEqual(
+			codes(placed(*rules, balances=books, fiscal_year=WJ_2026)),
+			[("BILANZ-NICHT-GUELTIG", "Fehler", "0400"), ("BILANZ-NICHT-GUELTIG", "Fehler", "1700")],
+		)
+		self.assertEqual(codes(placed(*rules, balances=books)), [])
+		self.assertEqual(
+			codes(placed(*rules[1:], balances=books[1:], fiscal_year=(date(2027, 1, 1), date(2027, 12, 31)))),
+			[],
+		)
+
+
+class EarlierResultTest(TestCase):
+	"""The result of earlier fiscal years that no Period Closing Voucher closed goes to the closing account, as a
+	Period Closing Voucher would book it there (closing_account_head in erpnext/accounts/doctype/
+	period_closing_voucher/period_closing_voucher.py): the Gewinnvortrag or Verlustvortrag (§ 266 Abs. 3 A. IV. HGB)."""
+
+	def test_the_earlier_result_goes_to_the_closing_account_with_a_hint(self):
+		placement = placed(
+			Rule("1800", BANK),
+			Rule("2970", RETAINED),
+			balances=[balance("1800", "1300"), balance("2970", credit="1000")],
+			earlier_result=Decimal("-300"),
+			closing_account="2970",
+		)
+		self.assertEqual(
+			[(item.balance.number, item.amount, item.value) for item in placement.placed],
+			[("1800", Decimal("1300"), Decimal("1300")), ("2970", Decimal("-1300"), Decimal("1300"))],
+		)
+		self.assertEqual(codes(placement), [("BILANZ-ERGEBNISVORTRAG", "Hinweis", "2970")])
+		self.assertEqual(placement.findings[0].amount, Decimal("-300"))
+		self.assertIn("Gewinn früherer Geschäftsjahre", placement.findings[0].text)
+
+	def test_a_closing_account_without_entries_takes_it_all(self):
+		placement = placed(
+			Rule("2970", RETAINED), balances=[], earlier_result=Decimal("250"), closing_account="2970"
+		)
+		((item, part),) = [(item, item.balance.part) for item in placement.placed]
+		self.assertEqual(
+			(item.balance.number, item.value, part), ("2970", Decimal("-250"), Part.BALANCE_SHEET)
+		)
+		self.assertIn("Verlust früherer Geschäftsjahre", placement.findings[0].text)
+
+	def test_without_a_closing_account_the_earlier_result_is_an_error(self):
+		placement = placed(balances=[], earlier_result=Decimal("-300"))
+		self.assertEqual(codes(placement), [("BILANZ-ABSCHLUSSKONTO", "Fehler", "")])
+		self.assertFalse(placement.ready)
+
+	def test_without_an_earlier_result_the_closing_account_is_as_booked(self):
+		placement = placed(
+			Rule("2970", RETAINED), balances=[balance("2970", credit="5")], closing_account="2970"
+		)
+		self.assertEqual(
+			([item.amount for item in placement.placed], placement.findings), ([Decimal("-5")], ())
+		)
+
+
+class TaxonomyVersionTest(TestCase):
+	def test_a_view_of_another_version_than_the_mapping_names_is_an_error(self):
+		"""The positions of one version are not those of another; the mapping has to be moved to the new one first."""
+		placement = placed(
+			Rule("1800", BANK),
+			balances=[balance("1800", "1")],
+			taxonomy=replace(positions.view(), version="6.10"),
+		)
+		self.assertEqual(codes(placement), [("BILANZ-TAXONOMIE", "Fehler", "")])
+		self.assertIn("6.9", placement.findings[0].text)
+		self.assertIn("6.10", placement.findings[0].text)
+		self.assertEqual(len(placement.placed), 1)
