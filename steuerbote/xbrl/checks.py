@@ -45,13 +45,20 @@ calculation (Kap. 5.2.5.2). The rows of a table add up along the Bilanz as well:
 
 Oberpositionen. In the components of B.14.10, „zu jeder angegebenen Position [müssen] auch sämtliche Oberpositionen
 aufgeführt werden ... Ist eine Unterposition werthaltig angegeben, so sind auch ihre Oberpositionen werthaltig zu
-berichten“, for the current year in each scenario; in the Anhang only the positions of a hypercube (ERiC Kap. 3.9),
-whose rows follow the Bilanz too (B.14.12.1 b). Abstract titles are no positions to report.
+berichten“, for the current year in each scenario; in the Anhang only the positions of a hypercube, „entscheidend für
+die Kategorisierung als Anlagespiegel-Position ist dabei die Zuordnung des zugrundeliegenden Konzepts zu einem
+XBRL-Hypercube“ (ERiC Kap. 3.9), whose rows follow the Bilanz too (B.14.12.1 b). The Oberpositionen of a position of a
+table are those of its hypercube, not the text positions of the Anhang around it. Abstract titles are no positions to
+report.
 
 Summenmussfelder. „Wird eine als Summenmussfeld ausgezeichnete Position ... werthaltig und ungleich 0 berichtet, so ist
 mindestens eine ihrer rechnerisch verknüpften Unterpositionen werthaltig zu übermitteln.“, except „Nicht durch
 Eigenkapital gedeckter Fehlbetrag“ and „Eigenkapital“ with the positions below them, but for the „steuerlicher
-Ausgleichsposten“ (B.14.14).
+Ausgleichsposten“ (B.14.14). In the Anlagenspiegel, where B.14.14 checks along the positions of the Anlagevermögen and
+the value development, a finding is a hint: the examples of the ERiC documentation 44.3.6.0 that it calls valid send
+such values without one below them, „Abschreibungen der Periode“ [accDepr.DeprPeriod] in
+Anlagenspiegel_brutto_ohneUeberleitung.xml and „Buchwert zum Ende der Periode“ [all] in
+SteuerbilanzAutoverkaeufer_PersG.xml (Kap. 5).
 
 Contexts. On the written instance: „Jeder der im eingereichten Datensatz spezifizierten Kontexte muss von mindestens
 einem Fakt referenziert werden.“, and one entity in all of them (B.14.7).
@@ -558,18 +565,16 @@ def oberpositionen(report: Report, taxonomy: Taxonomy) -> tuple[Finding, ...]:
 		if ancestors or item.period.prior:
 			continue
 		expected: list[tuple[str, tuple[tuple[str, str], ...]]] = []
+		cubes = _hypercubes(taxonomy, item.concept)
 		for role in OBERPOSITION_ROLES:
 			network = taxonomy.presentation.get(role)
-			if (
-				network is None
-				or item.concept not in network
-				or (role == NOTES and not taxonomy.tables_of(item.concept))
-			):
+			if network is None or item.concept not in network or (role == NOTES and not cubes):
 				continue
 			expected += [
 				(parent, item.dimensions)
 				for parent in _ancestors(network, item.concept)
 				if not taxonomy.concepts[parent].abstract
+				and (not cubes or cubes & _hypercubes(taxonomy, parent))
 			]
 		for dimension, member in item.dimensions if balance_sheet is not None else ():
 			members = _members(taxonomy, item.concept, dimension)
@@ -605,38 +610,53 @@ def summenmussfelder(report: Report, taxonomy: Taxonomy) -> tuple[Finding, ...]:
 	}
 	networks = [taxonomy.calculation[role] for role in SUMMENMUSSFELD_ROLES if role in taxonomy.calculation]
 	balance_sheet = taxonomy.calculation.get(BALANCE_SHEET)
-	findings: dict[tuple, Finding] = {}
+	findings = []
 	for (concept, period, dimensions), value in values.items():
 		if period.prior or value == 0:
 			continue
-		alternatives: list[list[tuple]] = []
+		label = taxonomy.label(concept)
+		alternatives: list[tuple[list[tuple], str]] = []
 		if taxonomy.concepts[concept].fiscal.requirement is Requirement.SUMMENMUSSFELD and not _exempt(
 			taxonomy, concept
 		):
 			alternatives.append(
-				[(arc.child, period, dimensions) for network in networks for arc in network.children(concept)]
+				(
+					[
+						(arc.child, period, dimensions)
+						for network in networks
+						for arc in network.children(concept)
+					],
+					f"Das Summenmussfeld „{label}“ hat einen Wert, aber keine der Positionen darunter.",
+				)
 			)
 		for dimension, member in dimensions if balance_sheet is not None else ():
 			if taxonomy.concepts[member].fiscal.requirement is Requirement.SUMMENMUSSFELD:
 				members = _members(taxonomy, concept, dimension)
 				alternatives.append(
-					[
-						(concept, period, _with(dimensions, dimension, arc.child))
-						for arc in balance_sheet.children(member)
-						if arc.child in members
-					]
+					(
+						[
+							(concept, period, _with(dimensions, dimension, arc.child))
+							for arc in balance_sheet.children(member)
+							if arc.child in members
+						],
+						f"In der Zeile „{taxonomy.label(member)}“, einem Summenmussfeld, hat „{label}“ einen Wert, aber "
+						"in keiner Zeile darunter.",
+					)
 				)
-		for keys in alternatives:
-			if keys and not any(key in values for key in keys):
-				findings[(concept, period, dimensions)] = Finding(
-					Code.SUMMENMUSSFELD,
-					f"Das Summenmussfeld „{taxonomy.label(concept)}“ hat einen Wert, aber keine der Positionen darunter.",
-					_source(taxonomy, "B.14.14"),
-					concept,
-					period,
-					dimensions,
-				)
-	return tuple(findings.values())
+		findings.extend(
+			Finding(
+				Code.SUMMENMUSSFELD,
+				text,
+				_source(taxonomy, "B.14.14"),
+				concept,
+				period,
+				dimensions,
+				Severity.HINT if dimensions else Severity.ERROR,
+			)
+			for keys, text in alternatives
+			if keys and not any(key in values for key in keys)
+		)
+	return tuple(findings)
 
 
 def contexts(instance: etree._Element) -> tuple[Finding, ...]:
@@ -815,6 +835,11 @@ def _members(taxonomy: Taxonomy, concept: str, dimension: str) -> frozenset[str]
 		if candidate.name == dimension
 		for member in candidate.members
 	)
+
+
+def _hypercubes(taxonomy: Taxonomy, concept: str) -> frozenset[str]:
+	"""The hypercubes of the tables whose primary items include the concept."""
+	return frozenset(table.hypercube for table in taxonomy.tables_of(concept))
 
 
 def _with(
