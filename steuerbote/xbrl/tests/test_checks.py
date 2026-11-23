@@ -1,7 +1,8 @@
 """The checks of a report, against the mini taxonomy (steuerbote/xbrl/tests/mini.py).
 
 The report of these tests is the E-Bilanz of an invented GmbH for 2026 with the Gesamtkostenverfahren, which announces
-Bilanz, GuV and Betriebsvermögensvergleich and adds up: Aktiva of 100 €, a Jahresüberschuss of 45 €.
+Bilanz, GuV and Betriebsvermögensvergleich and adds up: Aktiva of 100 €, a Jahresüberschuss of 45 €. The Offenlegung of
+the same GmbH as a Kleinstkapitalgesellschaft shows the letters of its Bilanz for 2026 and 2025.
 """
 
 from dataclasses import replace
@@ -25,7 +26,7 @@ from steuerbote.xbrl.facts import (
 	choice,
 	nil,
 )
-from steuerbote.xbrl.taxonomy import BALANCE_SHEET, LegalForm
+from steuerbote.xbrl.taxonomy import BALANCE_SHEET, LegalForm, View
 from steuerbote.xbrl.tests import mini
 
 WJ = Period.WIRTSCHAFTSJAHR
@@ -823,3 +824,144 @@ class ContextsTest(TestCase):
 		identifier = root.find(".//{http://www.xbrl.org/2003/instance}identifier")
 		identifier.text = "9198011310011"
 		self.assertEqual([finding.code for finding in checks.contexts(root)], [Code.ENTITY])
+
+
+KLEINST = (
+	"bs.ass",
+	"bs.ass.fixAss",
+	"bs.ass.currAss",
+	"bs.eqLiab",
+	"bs.eqLiab.equity",
+	"bs.eqLiab.liab",
+)
+"""What the Offenlegung of a Kleinstkapitalgesellschaft shows of the mini taxonomy: the totals and the positions with
+letters (§ 266 Abs. 1 Satz 4 HGB), named as steuerbote/hgb/schemes.py names them, without the prefix."""
+DISCLOSED = {
+	"bs.ass": ("100", "90"),
+	"bs.ass.fixAss": ("60", "50"),
+	"bs.ass.currAss": ("40", "40"),
+	"bs.eqLiab": ("100", "90"),
+	"bs.eqLiab.equity": ("70", "60"),
+	"bs.eqLiab.liab": ("30", "30"),
+}
+
+
+def disclosure(*facts: Fact, periods: Periods = PRIOR, view: View = View.COMMERCIAL_MICROBILG) -> Report:
+	"""The Offenlegung of the GmbH as a Kleinstkapitalgesellschaft for 2026 and 2025, with further facts."""
+	balance_sheet = [
+		euros(concept, value, period)
+		for concept, values in DISCLOSED.items()
+		for value, period in zip(values, (ST, Period.VORJAHR_STICHTAG), strict=True)
+	]
+	return Report(ENTITY, periods, writer.entry_points(mini.view(view)), (*balance_sheet, *facts))
+
+
+class PublishedTest(TestCase):
+	"""„Auf Kleinstkapitalgesellschaften (§ 267a) ist § 325 Absatz 1 mit der Maßgabe anzuwenden, dass die Mitglieder
+	des vertretungsberechtigten Organs nur die Bilanz zu übermitteln haben“ (§ 326 Abs. 2 Satz 1 HGB), at the levels
+	of § 266 Abs. 1 Satz 4 HGB, and the register shows every position reported: „lediglich die Positionen, zu denen Werte
+	berichtet werden, sowie deren übergeordnete Positionen“ („Arbeitshilfe für die Einreichung von
+	Jahresabschlüssen/Finanzberichten im XBRL-Format“, Stand September 2025)."""
+
+	def test_the_offenlegung_of_the_kleinst_publishes_its_bilanz(self):
+		report_ = disclosure(Item(f"{G}company.id.name", WJ, "Beispiel GmbH"))
+		self.assertEqual(checks.published(report_, mini.view(View.COMMERCIAL_MICROBILG), KLEINST), ())
+
+	def test_no_position_below_the_levels_of_the_class(self):
+		report_ = disclosure(euros("bs.ass.fixAss.tan", "60"))
+		findings = checks.published(report_, mini.view(View.COMMERCIAL_MICROBILG), KLEINST)
+		self.assertEqual(codes(findings), [(Code.NOT_PUBLISHED, f"{A}bs.ass.fixAss.tan")])
+		self.assertIn("„Sachanlagen“", findings[0].text)
+		self.assertIn("§ 266 Abs. 1", findings[0].source)
+		self.assertEqual(
+			checks.published(
+				report_, mini.view(View.COMMERCIAL_MICROBILG), (*KLEINST, f"{A}bs.ass.fixAss.tan")
+			),
+			(),
+		)
+
+	def test_no_component_a_small_company_withholds(self):
+		"""The GuV (§ 326 Abs. 1 Satz 1 HGB), and the Kontensalden and the Betriebsvermögensvergleich, which are no
+		part of the Jahresabschluss to disclose (§ 325 Abs. 1 Satz 1 HGB): the Kontensalden would publish the balance of
+		each account. A component is withheld even where the concepts name its positions."""
+		account = Tuple(
+			f"{A}detailedInformation.accountBalances",
+			(
+				Item(f"{A}detailedInformation.accountbalances.positionName", WJ, f"{A}bs.ass.currAss"),
+				Item(f"{A}detailedInformation.accountbalances.accountNumber", WJ, "1200"),
+				Item(f"{A}detailedInformation.accountbalances.accountDescription", WJ, "Bank"),
+				euros("detailedInformation.accountbalances.amount", "40", WJ),
+			),
+		)
+		report_ = disclosure(
+			euros("is.netIncome", "10", WJ), euros("BVV.profitLoss", "10", WJ), account, view=View.COMMERCIAL
+		)
+		findings = checks.published(
+			report_, mini.view(View.COMMERCIAL), (*KLEINST, "is.netIncome", "BVV.profitLoss")
+		)
+		self.assertEqual(
+			codes(findings),
+			[
+				(Code.NOT_PUBLISHED, f"{A}is.netIncome"),
+				(Code.NOT_PUBLISHED, f"{A}BVV.profitLoss"),
+				(Code.NOT_PUBLISHED, f"{A}detailedInformation.accountBalances"),
+			],
+		)
+		self.assertIn("„GuV“", findings[0].text)
+		self.assertIn("§ 326", findings[0].source)
+		self.assertIn("„Kontensalden zu einer oder mehrerer Positionen“", findings[2].text)
+
+	def test_the_parts_of_a_tuple_of_the_gcd(self):
+		"""The master data of the GCD are no positions of the Jahresabschluss and are not restricted."""
+		report_ = disclosure(
+			Tuple(
+				f"{G}company.id.idNo", (Item(f"{G}company.id.idNo.type.companyId.ST13", WJ, "9198011310010"),)
+			)
+		)
+		self.assertEqual(checks.published(report_, mini.view(View.COMMERCIAL_MICROBILG), KLEINST), ())
+
+
+class ClosingDatesTest(TestCase):
+	"""„In der Bilanz sowie in der Gewinn- und Verlustrechnung ist zu jedem Posten der entsprechende Betrag des
+	vorhergehenden Geschäftsjahrs anzugeben.“ (§ 265 Abs. 2 Satz 1 HGB) „Ein Posten der Bilanz ..., der keinen Betrag
+	ausweist, braucht nicht aufgeführt zu werden, es sei denn, daß im vorhergehenden Geschäftsjahr unter diesem Posten
+	ein Betrag ausgewiesen wurde.“ (§ 265 Abs. 8 HGB)"""
+
+	def test_each_posten_for_both_closing_dates(self):
+		report_ = disclosure()
+		self.assertEqual(checks.closing_dates(report_, mini.view(View.COMMERCIAL_MICROBILG)), ())
+		report_ = replace(
+			report_,
+			facts=tuple(
+				fact
+				for fact in report_.facts
+				if (fact.concept, fact.period)
+				not in ((f"{A}bs.ass.fixAss", Period.VORJAHR_STICHTAG), (f"{A}bs.ass.currAss", ST))
+			),
+		)
+		findings = checks.closing_dates(report_, mini.view(View.COMMERCIAL_MICROBILG))
+		self.assertEqual(
+			[(finding.code, finding.concept, finding.period) for finding in findings],
+			[
+				(Code.PRIOR_YEAR_AMOUNT, f"{A}bs.ass.fixAss", ST),
+				(Code.PRIOR_YEAR_AMOUNT, f"{A}bs.ass.currAss", Period.VORJAHR_STICHTAG),
+			],
+		)
+		self.assertIn("Vorjahres", findings[0].text)
+		self.assertEqual(findings[0].source, "§ 265 Abs. 2 Satz 1 HGB")
+		self.assertEqual(findings[1].source, "§ 265 Abs. 8 HGB")
+
+	def test_not_a_davon_vermerk(self):
+		"""A „davon“ position is no Posten: the calculation linkbase does not add it up."""
+		report_ = disclosure(euros("bs.eqLiab.liab.bank.upTo1year", "10"))
+		self.assertEqual(checks.closing_dates(report_, mini.view(View.COMMERCIAL_MICROBILG)), ())
+
+	def test_not_in_the_first_fiscal_year(self):
+		"""A company in its first fiscal year has no previous year to give."""
+		report_ = Report(
+			ENTITY,
+			PERIODS,
+			writer.entry_points(mini.view(View.COMMERCIAL_MICROBILG)),
+			(euros("bs.ass", "100"), euros("bs.ass.fixAss", "100")),
+		)
+		self.assertEqual(checks.closing_dates(report_, mini.view(View.COMMERCIAL_MICROBILG)), ())
