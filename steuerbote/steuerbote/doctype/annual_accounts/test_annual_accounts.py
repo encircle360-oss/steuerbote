@@ -237,14 +237,14 @@ class TestAnnualAccounts(IntegrationTestCase):
 		self.assertEqual(doc.status, "Festgestellt")
 		self.assertEqual(adopted_in_settings(KLEINST), date(2027, 5, 12))
 
-	def test_cancel_and_amend_festellt_the_changed_jahresabschluss_again(self):
+	def test_a_changed_jahresabschluss_is_cancelled_amended_and_festgestellt_again(self):
 		doc = data.ready_for_the_feststellung(KLEINST)
 		with self.freeze_time(data.AFTER_ADOPTION):
 			doc.submit()
 			doc.cancel()
 		self.assertIsNone(adopted_in_settings(KLEINST))
 		amended = frappe.copy_doc(doc)
-		amended.amended_from = doc.name
+		amended.update({"docstatus": 0, "amended_from": doc.name})
 		amended.insert()
 		self.assertEqual((amended.adopted_on, amended.status), (None, "Entwurf"))
 		self.assertEqual([row.signed_on for row in amended.signatories], [None])
