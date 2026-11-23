@@ -203,6 +203,10 @@ Das Druckformat druckt die Bilanz in Kontoform (§ 266 Abs. 1 Satz 1 HGB), Aktiv
 
 Die E-Bilanz des Jahres nennt den Jahresabschluss im Feld „Jahresabschluss“, den festgestellten oder sonst seinen Entwurf, und „Berechnen“ an der E-Bilanz vergleicht ihre Handelsbilanz mit dem, was er offenlegt, in vollen Euro: bei HGBM jeden Posten der Bilanz, Summe Aktiva, Summe Passiva und den Jahresüberschuss/Jahresfehlbetrag, bei HAOE Summe Aktiva und Jahresüberschuss/Jahresfehlbetrag, siehe [Vergleich mit dem Jahresabschluss](ebilanz.md#vergleich-mit-dem-jahresabschluss). Weicht ein festgestellter Jahresabschluss ab, hält das die E-Bilanz von „Bereit“ ab; der übliche Grund ist eine Buchung nach der Feststellung, nach der er storniert, berichtigt und neu festgestellt wird. Der Jahresabschluss zeigt die E-Bilanzen, die ihn nennen, unter seinen Verbindungen. Stornieren lässt er sich auch, wenn eine abgegebene E-Bilanz ihn nennt: Sie bleibt, wie sie abgegeben ist, und ihre Berichtigung nennt die Berichtigung des Jahresabschlusses.
 
+## Für die Umsatzsteuererklärung
+
+Die Umsatzerlöse des festgestellten Jahresabschlusses (`umsatzerloese`) stellt „Berechnen“ an der Umsatzsteuererklärung des Jahres neben die Bemessungsgrundlagen ihrer Lieferungen und sonstigen Leistungen; eine Differenz über die Rundung und die Toleranz hinaus ist der Hinweis `SB-UMSATZERLOESE`, siehe [Abgleich mit den Umsatzerlösen](umsatzsteuererklaerung.md#abgleich-mit-den-umsatzerlösen). Ein Entwurf zählt dafür nicht; ohne festgestellten Jahresabschluss nimmt die Umsatzsteuererklärung die Umsatzerlöse der abgegebenen E-Bilanz.
+
 ## Grenzen
 
 - **Haftungsverhältnisse und Organkredite:** keine eigenen Tabellen; Text und Betrag der Angabe tragen sie, die XBRL-Datei schreibt sie so.

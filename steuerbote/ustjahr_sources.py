@@ -16,6 +16,8 @@
 - The day of the switch to the Regelbesteuerung, Kz 70 of the filed Voranmeldungen, for Kz 136 of the return.
 - What section A of the form says of the company (company), and the Steuerberatung of a year it takes part in
   (advisor), from the Company, the VAT Return Settings and the Annual Filing Settings.
+- The Umsatzerlöse of the year the return is compared with (annual_revenue): those of the festgestellter
+  Jahresabschluss, else those of the filed E-Bilanz.
 """
 
 from collections.abc import Collection, Iterable
@@ -27,12 +29,15 @@ from frappe import _
 from frappe.query_builder.functions import Sum
 from frappe.utils import cint, getdate
 
+from steuerbote import ebilanz_sources
+from steuerbote.jahresmeldung.lifecycle import Status
 from steuerbote.jahresmeldung.overrides import to_amount
 from steuerbote.ledger import load_lines
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
-from steuerbote.steuerbote.doctype.annual_vat_return import bridge
+from steuerbote.steuerbote.doctype.annual_vat_return import bridge, revenue
 from steuerbote.steuerbote.doctype.vat_return.vat_return import DOCTYPE as VAT_RETURN
 from steuerbote.steuerbote.doctype.vat_return.vat_return import FILED
+from steuerbote.steuerbote.report.e_bilanz_positionen.rows import REVENUE
 from steuerbote.ustjahr.soll import Filed
 from steuerbote.ustjahr.split import Split
 from steuerbote.ustva import LedgerLine, Mapping, Period, Rhythm, UstvaResult, calculate
@@ -41,6 +46,8 @@ from steuerbote.ustva.rounding import ZERO
 MAPPING_DOCTYPE = "VAT Return Mapping"
 SETTINGS_DOCTYPE = "VAT Return Settings"
 KENNZAHL_DOCTYPE = "VAT Return Kennzahl"
+ANNUAL_ACCOUNTS = "Annual Accounts"
+POSITION = "Electronic Balance Sheet Position"
 DECEMBER = 12
 LAST_OF_DECEMBER = 31
 
@@ -197,3 +204,32 @@ def advisor(name: str, year: int) -> bridge.Advisor | None:
 		client_number=settings.advisor_client_number,
 		clerk=settings.advisor_clerk,
 	)
+
+
+def annual_revenue(company: str, year: int) -> revenue.Revenue | None:
+	"""The Umsatzerlöse of the year: those of the festgestellter Jahresabschluss, the Annual Accounts of the company and
+	year that is submitted and not replaced, else those of the GuV of the E-Bilanz filed for the year, „Umsatzerlöse
+	(GKV)“ as it reports them; None without either."""
+	accounts = frappe.get_all(
+		ANNUAL_ACCOUNTS,
+		filters={
+			"company": company,
+			"year": year,
+			"docstatus": 1,
+			"status": ["!=", Status.REPLACED.value],
+		},
+		fields=["name", "umsatzerloese"],
+		order_by="creation desc",
+		limit=1,
+	)
+	if accounts:
+		return revenue.Revenue(
+			to_amount(accounts[0].umsatzerloese), revenue.Source.ACCOUNTS, accounts[0].name
+		)
+	name = ebilanz_sources.filed_ebilanz(company, year)
+	if name is None:
+		return None
+	reported = frappe.db.get_value(
+		POSITION, {"parent": name, "parenttype": ebilanz_sources.DOCTYPE, "concept": REVENUE}, "reported"
+	)
+	return revenue.Revenue(to_amount(reported), revenue.Source.EBILANZ, name)

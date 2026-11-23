@@ -173,6 +173,7 @@ source = [
     "steuerbote/xbrl",
     "steuerbote.steuerbote.doctype.annual_vat_return.bridge",
     "steuerbote.steuerbote.doctype.annual_vat_return.layout",
+    "steuerbote.steuerbote.doctype.annual_vat_return.revenue",
     "steuerbote/ebilanz",
     "steuerbote.steuerbote.doctype.corporate_income_tax_return.bridge",
     "steuerbote.steuerbote.doctype.corporate_income_tax_return.layout",

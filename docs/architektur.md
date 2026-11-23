@@ -70,7 +70,7 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen. Anlegen und ändern 
 | `chart` | Kontenrahmen | SKR03, SKR04 oder Eigener Kontenrahmen |
 | `taxation_type` | Besteuerung | nur Soll; die Ist-Versteuerung wird noch nicht unterstützt |
 | `tolerance` | Toleranz je Beleg | wie weit die gebuchte Steuer eines Belegs in der Verprobung abweichen darf, Vorgabe 0,01 EUR |
-| `comparison_threshold_percent`, `comparison_threshold_amount` | Schwelle Vorperiodenvergleich (%), Schwelle Vorperiodenvergleich (EUR) | ab wann eine Kennzahl gegenüber der Vorperiode auffällig ist, Vorgabe 50 % und 100 EUR; gelten für die Meldung und den Bericht „UStVA Kennzahlen“ |
+| `comparison_threshold_percent`, `comparison_threshold_amount` | Schwelle Vorperiodenvergleich (%), Schwelle Vorperiodenvergleich (EUR) | ab wann eine Kennzahl gegenüber der Vorperiode auffällig ist, Vorgabe 50 % und 100 EUR; gelten für die Meldung und den Bericht „UStVA Kennzahlen“, die Schwelle in EUR auch als Toleranz des Abgleichs der Umsatzsteuererklärung mit den Umsatzerlösen |
 | `state` | Bundesland | Pflicht |
 | `tax_number` | Steuernummer | Pflicht, wie vom Finanzamt vergeben; das Format wird gegen das Bundesland geprüft |
 | `elster_tax_number` | Steuernummer im ELSTER-Format | 13 Stellen, berechnet |
