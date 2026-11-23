@@ -17,7 +17,9 @@ of its own for it. The accounts of the DATEV charts „Gültig für 2026“ (Art
 | Solidaritätszuschlag | 2208, 0963, 1549 | 7608, 3040, 1450 |
 | Gewerbesteuer | 4320, 0956 „Gewerbesteuerrückstellung nach § 4 Abs. 5b EStG“, 1540 „Forderungen aus Gewerbesteuerüberzahlungen“ | 7610, 3035, 1435 |
 
-A company with a chart of its own passes its ProvisionAccounts.
+A company with a chart of its own passes its ProvisionAccounts. The rows are for the whole balance of the year, and
+posting them does not change it: once the provisions of the year are in the books, the caller proposes only what
+they do not hold yet.
 """
 
 from dataclasses import dataclass
