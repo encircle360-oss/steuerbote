@@ -132,6 +132,7 @@ testpaths = [
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_electronic_balance_sheet_site_files.py",
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_layout.py",
     "steuerbote/steuerbote/report/e_bilanz_positionen/test_rows.py",
+    "steuerbote/tests/test_menu.py",
 ]
 # The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
 addopts = "--strict-markers --ignore=steuerbote/eric/tests/test_secrets.py"

@@ -176,6 +176,8 @@ Die Texte, die den Beleg nennen, gibt das Formular in `texts` mit: für `elster_
 
 ## Für die Module
 
+Im Desk steht jeder Beleg mit seiner Liste in der Gruppe „Jahresmeldungen“ der Seitenleiste, neben den Einstellungen Jahresmeldungen und den Zuordnungen, die Berichte der Module in der Gruppe „Berichte“; der Arbeitsbereich „Steuern“ führt in seinem Abschnitt „Jahresmeldungen“ zur Liste jedes Belegs und zu einem neuen Beleg jeder Erklärung und der E-Bilanz, siehe [Architektur](architektur.md#arbeitsbereich-steuern-und-seitenleiste). Ein neues Modul gibt seinem Beleg eine Zeile in der Gruppe, ohne Symbol, mit seiner Bezeichnung in `de.csv`, und seine Liste im Abschnitt; `steuerbote/tests/test_menu.py` verlangt beides.
+
 Ein Modul baut seinen Controller so:
 
 ```python

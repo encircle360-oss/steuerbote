@@ -13,9 +13,8 @@ so the caller decides from the ledger of the Meldezeitraum whether it is due.
 
 With Annual Filing Settings a company also has the annual deadlines of steuerbote.deadlines.annual, from the
 Umsatzsteuererklärung to the Offenlegung des Jahresabschlusses, which the annual documents file as
-steuerbote.deadlines.annual.filing_day says (annual_filings). The caller names the DocType of each kind its site has;
-a kind without one is left out, since no document could file it, as long as a site may lack the DocTypes of the
-annual filings (steuerbote.deadlines.annual.AWAITING_DOCTYPES).
+steuerbote.deadlines.annual.filing_day says (annual_filings). Each kind is filed by the DocType DOCUMENT_TYPES names,
+unless the caller names another; a kind it names none for is left out, since no document could file it.
 
 This module is pure Python and never imports Frappe.
 """

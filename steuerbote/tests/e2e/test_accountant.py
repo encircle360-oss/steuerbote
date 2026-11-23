@@ -12,7 +12,14 @@ from steuerbote.tests.e2e import data
 
 # The ERiC Settings are the only page of the sidebar Steuerbote for the System Manager alone.
 SYSTEM_MANAGER_ONLY = "ERiC-Einstellungen"
-SIDEBAR = ("Steuern", "Voranmeldungen", "Zusammenf. Meldungen", "Einstellungen", "UStVA Kennzahlen")
+SIDEBAR = (
+	"Steuern",
+	"Voranmeldungen",
+	"Zusammenf. Meldungen",
+	"USt-Erklärungen",
+	"Einstellungen",
+	"UStVA Kennzahlen",
+)
 
 
 def test_an_accountant_opens_steuern_from_the_rail_of_erpnext(accountant, expect):
@@ -22,6 +29,7 @@ def test_an_accountant_opens_steuern_from_the_rail_of_erpnext(accountant, expect
 	expect(page).to_have_url(re.compile(f"{re.escape(data.WORKSPACE_ROUTE)}$"))
 	expect(page.locator(".shortcut-widget-box")).to_have_count(len(data.SHORTCUTS) - 1)
 	expect(page.locator(f'.shortcut-widget-box[aria-label="{data.SETUP_SHORTCUT}"]')).to_have_count(0)
+	accountant.open_sidebar_groups()
 	sidebar = page.locator(".body-sidebar")
 	for label in SIDEBAR:
 		expect(sidebar.get_by_text(label, exact=True)).to_be_visible()

@@ -66,7 +66,7 @@ Je Unternehmen und Jahr ein Beleg jeder Erklärung, benannt nach dem Jahr, für 
 | `donations` | Zuwendungsbestätigungen | die Zuwendungsbestätigungen der Körperschaftsteuererklärung, GewSt 1 A Zeilen 92a bis 92c |
 | `supplement_key`, `supplement_text` | Ergänzende Angaben zur Steuererklärung (GewSt 1 A Zeile 21), Ergänzende Angaben | wie KSt 1 Zeile 13, das eine nur mit dem anderen (Regel 40128) |
 
-Rechte wie bei der Voranmeldung: System Manager und Accounts Manager legen an, berechnen, ändern und geben ab; ein Accounts User legt an, berechnet und ändert, gibt aber nicht ab. Die Listen kommen mit dem Abschnitt „Jahresmeldungen“ in Seitenleiste und Arbeitsbereich, siehe [Roadmap](roadmap.md#stufe-3-jahresmeldungen); bis dahin findet die Suche des Desks sie als „Körperschaftsteuererklärung“ und „Gewerbesteuererklärung“.
+Rechte wie bei der Voranmeldung: System Manager und Accounts Manager legen an, berechnen, ändern und geben ab; ein Accounts User legt an, berechnet und ändert, gibt aber nicht ab. Die Listen stehen als „KSt-Erklärungen“ und „GewSt-Erklärungen“ in der Seitenleiste in der Gruppe „Jahresmeldungen“ und im gleichnamigen Abschnitt des Arbeitsbereichs „Steuern“, dort neben „Neue KSt-Erklärung“ und „Neue GewSt-Erklärung“; der Bericht „Ertragsteuer-Kontennachweis“ steht in der Gruppe „Berichte“ als „KSt/GewSt-Nachweis“.
 
 ## Berechnen
 

@@ -1,17 +1,13 @@
 """The report Offene Fristen on a site: the deadlines of a company from its settings, its documents, its holidays
 and its ledger, by due date, with links to the documents, and without the filter those of every company the user
-may read; and the annual deadlines of a company with Annual Filing Settings, read from the annual documents the site
-has."""
+may read; and the annual deadlines of a company with Annual Filing Settings, read from its annual documents."""
 
 from datetime import date
-from types import MappingProxyType
-from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
 
 from steuerbote.deadlines import annual
-from steuerbote.deadlines.annual import AnnualDocType
 from steuerbote.deadlines.obligations import Kind
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.report.offene_fristen.offene_fristen import execute
@@ -491,21 +487,6 @@ class TestOffeneFristenAnnual(IntegrationTestCase):
 		)
 		self.assertEqual(self.state(EBILANZ), ("Abgegeben", link(BALANCE_SHEET, balance_sheet), "Abgegeben"))
 		self.assertEqual([row["period_label"] for row in self.rows() if row["kind"] == EBILANZ], ["2026"])
-
-	def test_a_kind_whose_doctype_the_site_lacks_stays_out(self):
-		missing = "Steuerbote Test Missing Annual Return"
-		doctypes = MappingProxyType(
-			{
-				missing: AnnualDocType((Kind.UMSATZSTEUERERKLAERUNG,)),
-				FILING_DOCTYPE: AnnualDocType((Kind.KOERPERSCHAFTSTEUERERKLAERUNG,)),
-			}
-		)
-		self.assertFalse(frappe.db.exists("DocType", missing))
-		with (
-			patch.object(annual, "DOCTYPES", doctypes),
-			patch.object(annual, "AWAITING_DOCTYPES", (missing,)),
-		):
-			self.assertEqual([row["kind"] for row in self.rows()], [KST])
 
 	def test_an_overdue_deadline_from_before_the_annual_filing_settings_is_left_out(self):
 		autumn = "2027-09-01 09:00:00"
