@@ -42,7 +42,7 @@ from frappe.utils import cint, cstr, escape_html, getdate
 
 from steuerbote.elster import vorsatz as elster_vorsatz
 from steuerbote.eric import header as eric_header
-from steuerbote.jahresmeldung import findings, lifecycle, overrides
+from steuerbote.jahresmeldung import corrections, findings, lifecycle, overrides
 from steuerbote.jahresmeldung.findings import Finding, Severity
 from steuerbote.jahresmeldung.lifecycle import (
 	FILING,
@@ -74,6 +74,7 @@ FINDINGS_TABLE = "findings"
 FILING_FIELDS = ("filed_via", "filed_on", "transferticket", "filing_note", "filed_by")
 # Set when the document is made, by Berichtigung anlegen or the API; every later save keeps them.
 INSERT_ONLY_FIELDS = ("is_correction", "corrects")
+REVISION_STATUS_FIELD = "revision_status"
 FILED_THROUGH_ERIC = "eric"
 SETTINGS_DOCTYPE = "VAT Return Settings"
 # The Steuernummer of the Körperschaft- and the Gewerbesteuererklärung and of the E-Bilanz may differ from the one of
@@ -193,6 +194,7 @@ class AnnualFiling:
 		self._keep_the_calculation()
 		self._set_reported()
 		self.set_amounts()
+		self._check_revision_status(filing=False)
 
 	def before_submit(self) -> None:
 		"""An Erklärung and the E-Bilanz are filed by a Senden that ELSTER accepted, with what came back, or by the note of
@@ -391,6 +393,7 @@ class AnnualFiling:
 			lifecycle.fit_for_filing(self.LIFECYCLE, self.status, bool(cint(self.ready)), self.remarks)
 		except LifecycleError as error:
 			self._refuse(error)
+		self._check_revision_status(filing=True)
 		self.check_filing()
 
 	def require_amounts_as_stored(self, stored: Document) -> None:
@@ -432,6 +435,10 @@ class AnnualFiling:
 					"{0} was transmitted already with Transferticket {1}. A change goes to the Finanzamt as a Berichtigung."
 				).format(self.name, sent[0].transferticket)
 			)
+
+	def berichtigung(self) -> corrections.Berichtigung:
+		"""How the Datenart of the document marks a Berichtigung (jahresmeldung.corrections)."""
+		return corrections.berichtigung_of(self.datenart().name if self.transmits else "Offenlegung")
 
 	def tax_numbers(self) -> tuple[str | None, str | None]:
 		"""The Steuernummer of the document as the Finanzamt gave it and in the 13 digits of ELSTER."""
@@ -627,6 +634,35 @@ class AnnualFiling:
 		columns = self.LINE_COLUMNS
 		for row in self.get(self.LINES):
 			row.set(columns.reported, self._lines(overrides.reported, row.as_dict(), columns))
+
+	def _check_revision_status(self, *, filing: bool) -> None:
+		"""The Status des Berichts of a document of the Datenart Bilanz, in its field revision_status: erstmalig for the
+		first filing of its key; a Berichtigung names how it corrects, by the time it is filed."""
+		if (
+			not self.meta.has_field(REVISION_STATUS_FIELD)
+			or self.berichtigung().method is not corrections.Method.REVISION_STATUS
+		):
+			return
+		value = self.get(REVISION_STATUS_FIELD)
+		is_correction = bool(cint(self.is_correction))
+		if is_correction and not value and not filing:
+			return
+		try:
+			self.set(REVISION_STATUS_FIELD, corrections.revision_status(is_correction, value).value)
+		except corrections.CorrectionError as error:
+			messages = {
+				corrections.Problem.FIRST_WITH_STATUS: _(
+					"The first E-Bilanz is erstmalig; a Status des Berichts {0} belongs to a Berichtigung."
+				),
+				corrections.Problem.CORRECTION_WITHOUT_STATUS: _(
+					"A Berichtigung of the E-Bilanz names its Status des Berichts: berichtigt, geändert, berichtigt und geändert, sonstige Korrektur or identischer Abschluss mit differenzierteren Informationen."
+				),
+				corrections.Problem.NOT_FOR_FILING: _(
+					"The Status des Berichts {0}, Korrektur durch Finanzverwaltung, is not for a filing."
+				),
+				corrections.Problem.UNKNOWN_STATUS: _("The GCD has no Status des Berichts {0}."),
+			}
+			frappe.throw(messages[error.problem].format(escape_html(error.value)))
 
 	# Helpers.
 
