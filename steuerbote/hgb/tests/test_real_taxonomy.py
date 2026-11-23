@@ -1,7 +1,9 @@
 """The Offenlegung against the HGB-Taxonomie 6.9 of esteuer.de (steuerbote/xbrl/tests/real.py), in both of its views:
 the mini taxonomy of the Offenlegung is an extract of them, every place an Angabe takes stands in them, and the
-invented companies pass the checks of the profile DISCLOSURE and are written as against the mini taxonomy."""
+invented companies pass the checks of the profile DISCLOSURE and are written as against the mini taxonomy. The places
+and the invented companies stand against the package 6.10 as well, which a fiscal year from 2027 on takes."""
 
+from dataclasses import replace
 from unittest import TestCase
 
 from steuerbote.hgb import instance
@@ -11,6 +13,7 @@ from steuerbote.hgb.tests import taxonomy as mini
 from steuerbote.hgb.tests.companies import GOLDEN, canonical, golden
 from steuerbote.xbrl.taxonomy import BALANCE_SHEET, Concept, View
 from steuerbote.xbrl.tests import real
+from steuerbote.xbrl.versions import TAXONOMIES
 
 VIEWS = (View.COMMERCIAL, View.COMMERCIAL_MICROBILG)
 
@@ -159,3 +162,67 @@ class InstancesTest(TestCase):
 					instance.write(offenlegung, real.view(offenlegung.view)),
 					instance.write(offenlegung, mini.view(offenlegung.view)),
 				)
+
+
+def on_6_10(offenlegung: instance.Instance) -> instance.Instance:
+	"""The instance of a fiscal year from 2027 on, which takes the taxonomy 6.10 (steuerbote/xbrl/versions.py)."""
+	return replace(offenlegung, version=TAXONOMIES["6.10"])
+
+
+class Places610Test(TestCase):
+	"""The places of the Angaben in both views of the package 6.10, whose names they are: a name 6.10 renamed or
+	removed fails here (steuerbote/xbrl/changes.py)."""
+
+	def test_each_place_of_an_angabe_and_of_the_signatures(self):
+		names = {
+			f"de-gaap-ci:{concept}"
+			for slots in SLOTS.values()
+			for slot in slots
+			for concept in (slot.text, slot.amount)
+			if concept
+		}
+		names |= {
+			f"de-gaap-ci:{SIGNATURE}.{part}"
+			for part in (
+				"place",
+				"date",
+				"type",
+				"type.name",
+				"person",
+				"person.name",
+				"person.otherattributes",
+			)
+		}
+		names |= {
+			f"de-gaap-ci:{concept}"
+			for concept in (instance.CONTINGENCIES, instance.OTHER_BELOW, instance.NENNBETRAG, SIGNATURE)
+		}
+		for view in VIEWS:
+			loaded = real.view_6_10(view)
+			with self.subTest(view=view):
+				self.assertEqual(sorted(name for name in names if not loaded.presented(name)), [])
+
+	def test_every_concept_a_class_publishes(self):
+		for name, offenlegung in companies.instances().items():
+			loaded = real.view_6_10(offenlegung.view)
+			with self.subTest(name=name):
+				self.assertEqual(
+					[concept for concept in offenlegung.published if not loaded.presented(concept)], []
+				)
+
+
+class Instances610Test(TestCase):
+	def test_the_invented_companies_pass_every_check_on_the_package_6_10(self):
+		for name, offenlegung in companies.instances().items():
+			lifted = on_6_10(offenlegung)
+			with self.subTest(name=name):
+				self.assertEqual(instance.check(lifted, real.view_6_10(lifted.view)), ())
+				self.assertIn(
+					b"http://www.xbrl.de/taxonomies/de-gaap-ci-2026-04-01",
+					instance.write(lifted, real.view_6_10(lifted.view)),
+				)
+
+	def test_an_instance_of_6_9_takes_no_package_of_6_10(self):
+		offenlegung = companies.instances()["klein"]
+		with self.assertRaisesRegex(instance.InstanceError, "takes the HGB-Taxonomie 6.9"):
+			instance.check(offenlegung, real.view_6_10(offenlegung.view))
