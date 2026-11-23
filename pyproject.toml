@@ -126,6 +126,7 @@ source = [
     "steuerbote.steuerbote.doctype.vat_return_settings.rules",
     "steuerbote.steuerbote.report.ustva_kennzahlen.attribution",
     "steuerbote.steuerbote.report.ustva_kennzahlen.comparison",
+    "steuerbote.income_tax_mapping_sync",
     "steuerbote.mapping_sync",
     "steuerbote/dauerfrist",
     "steuerbote/vatid",
