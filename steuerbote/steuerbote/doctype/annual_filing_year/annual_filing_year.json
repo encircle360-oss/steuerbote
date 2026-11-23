@@ -1,0 +1,94 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 12:00:00.000000",
+ "description": "One year of the annual filings: the VZ, the EZ or the year the fiscal year ends in.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "year",
+  "advisor_prepares",
+  "kleinunternehmer",
+  "early_request_ust",
+  "early_request_kst",
+  "early_request_gewst",
+  "adopted_on",
+  "exempt_264_3",
+  "exempt_264_3_reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "The Erklärungen of the year are due on the last day of February of the second year after it (§ 149 Abs. 3 AO); USt 2 A line 127, KSt 1 line 100.",
+   "fieldname": "advisor_prepares",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Prepared by a Steuerberatung"
+  },
+  {
+   "default": "0",
+   "description": "No Umsatzsteuererklärung for the year (§ 19 Abs. 1 UStG).",
+   "fieldname": "kleinunternehmer",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Kleinunternehmer"
+  },
+  {
+   "description": "The day the Finanzamt set for the Erklärung under § 149 Abs. 4 AO, instead of the deadline.",
+   "fieldname": "early_request_ust",
+   "fieldtype": "Date",
+   "label": "Asked Early: Umsatzsteuererklärung"
+  },
+  {
+   "fieldname": "early_request_kst",
+   "fieldtype": "Date",
+   "label": "Asked Early: Körperschaftsteuererklärung"
+  },
+  {
+   "fieldname": "early_request_gewst",
+   "fieldtype": "Date",
+   "label": "Asked Early: Gewerbesteuererklärung"
+  },
+  {
+   "description": "The day the shareholders adopted the Jahresabschluss of the fiscal year ending in this year (§ 42a Abs. 2 GmbHG). The Jahresabschluss writes it.",
+   "fieldname": "adopted_on",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Jahresabschluss Adopted on",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "A subsidiary in the Konzernabschluss of its parent that meets § 264 Abs. 3 HGB discloses no Jahresabschluss of its own.",
+   "fieldname": "exempt_264_3",
+   "fieldtype": "Check",
+   "label": "Exempt under § 264 Abs. 3 HGB"
+  },
+  {
+   "depends_on": "eval:doc.exempt_264_3",
+   "fieldname": "exempt_264_3_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for the Exemption",
+   "mandatory_depends_on": "eval:doc.exempt_264_3"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual Filing Year",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

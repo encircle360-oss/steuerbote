@@ -80,6 +80,9 @@ LONGEST_LABEL = 20
 # The DocType of the Dauerfristverlängerung, which comes with its own package of the module; the workspace and
 # the sidebar lead to it.
 DAUERFRIST_DOCTYPE = "VAT Return Extension"
+# The lists of the year-end filings, which the section „Jahresmeldungen“ of the sidebar and the workspace will lead
+# to once their documents exist; until then the sidebar leaves them out.
+AWAITING_THE_SECTION_JAHRESMELDUNGEN = frozenset({"Annual Filing Settings"})
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
 CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')
@@ -356,8 +359,18 @@ class SidebarFilesTest(TestCase):
 				("Report", read_json(REPORT / "ustva_kennzahlen.json")["name"]),
 				("Report", "Offene Fristen"),
 			}
-			| {("DocType", name) for name in doctypes_with_a_list() | {DAUERFRIST_DOCTYPE}},
+			| {
+				("DocType", name)
+				for name in (doctypes_with_a_list() - AWAITING_THE_SECTION_JAHRESMELDUNGEN)
+				| {DAUERFRIST_DOCTYPE}
+			},
 		)
+
+	def test_the_lists_of_the_year_end_filings_wait_for_their_section_of_the_sidebar(self):
+		"""Once the section „Jahresmeldungen“ leads to a list, it leaves AWAITING_THE_SECTION_JAHRESMELDUNGEN."""
+		links = {item["link_to"] for item in self.items if item["type"] == "Link"}
+		self.assertLessEqual(AWAITING_THE_SECTION_JAHRESMELDUNGEN, doctypes_with_a_list())
+		self.assertEqual(sorted(AWAITING_THE_SECTION_JAHRESMELDUNGEN & links), [])
 
 	def test_the_sidebar_reads_short_in_german(self):
 		labels = [item["label"] for item in self.items]

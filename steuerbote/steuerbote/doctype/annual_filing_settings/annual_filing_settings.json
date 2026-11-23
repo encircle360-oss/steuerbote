@@ -1,0 +1,544 @@
+{
+ "actions": [],
+ "autoname": "field:company",
+ "creation": "2026-11-23 12:00:00.000000",
+ "description": "What the Umsatzsteuererklärung, the Körperschaft- and Gewerbesteuererklärung, the E-Bilanz and the Jahresabschluss of a company read beyond its ledger.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "legal_form",
+  "column_break_company",
+  "business_purpose",
+  "management_seat",
+  "registered_seat",
+  "register_section",
+  "register_court",
+  "column_break_register",
+  "register_type",
+  "register_number",
+  "income_tax_section",
+  "income_tax_number",
+  "column_break_income_tax",
+  "elster_income_tax_number",
+  "address_section",
+  "street",
+  "house_number",
+  "house_number_suffix",
+  "address_supplement",
+  "column_break_address",
+  "postal_code",
+  "city",
+  "country",
+  "advisor_section",
+  "advisor_name",
+  "advisor_first_name",
+  "advisor_street",
+  "advisor_town",
+  "column_break_advisor",
+  "advisor_phone",
+  "advisor_details",
+  "advisor_client_number",
+  "advisor_clerk",
+  "years_section",
+  "years",
+  "shareholders_section",
+  "shareholders",
+  "directors_section",
+  "directors",
+  "trade_tax_section",
+  "establishments",
+  "trade_tax_rates",
+  "holdings_section",
+  "holdings",
+  "prepayments_section",
+  "prepayments",
+  "carry_forwards_section",
+  "carry_forwards",
+  "ebilanz_section",
+  "closing_account",
+  "accounting_standard",
+  "column_break_ebilanz",
+  "commercial_finance_book",
+  "tax_finance_book",
+  "review_section",
+  "section_8b_7",
+  "section_8b_7_confirmed_on",
+  "section_8b_7_note",
+  "column_break_review",
+  "income_tax_review_on",
+  "income_tax_review_note",
+  "annual_accounts_section",
+  "kleinst_mode",
+  "holding_267a_3",
+  "column_break_annual_accounts",
+  "excluded_employment_types",
+  "size_section",
+  "size_history"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "description": "GmbH or UG (haftungsbeschränkt) (§ 5a GmbHG). The Erklärungen write it as Rechtsform 350 or 370, the E-Bilanz as GMBH or UG.",
+   "fieldname": "legal_form",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Legal Form",
+   "options": "\nGmbH\nUG",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_company",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Gegenstand des Unternehmens as the Gewerbesteuererklärung asks for it, at most 25 characters (GewSt 1 A line 4); also the Art des Unternehmens of USt 2 A line 7.",
+   "fieldname": "business_purpose",
+   "fieldtype": "Data",
+   "label": "Business Purpose",
+   "length": 25
+  },
+  {
+   "description": "Ort der Geschäftsleitung, the centre of the business management (§ 10 AO), at most 24 characters (KSt 1 line 6).",
+   "fieldname": "management_seat",
+   "fieldtype": "Data",
+   "label": "Place of Management",
+   "length": 24
+  },
+  {
+   "description": "Ort des Sitzes as the Gesellschaftsvertrag sets it (§ 11 AO), at most 24 characters (KSt 1 line 7).",
+   "fieldname": "registered_seat",
+   "fieldtype": "Data",
+   "label": "Registered Seat",
+   "length": 24
+  },
+  {
+   "description": "Firma, Sitz, Registergericht and the number of the entry belong into the Jahresabschluss (§ 264 Abs. 1a HGB). Saving fills an empty field from the register information of the company where the app erpnext_germany adds it.",
+   "fieldname": "register_section",
+   "fieldtype": "Section Break",
+   "label": "Handelsregister"
+  },
+  {
+   "fieldname": "register_court",
+   "fieldtype": "Data",
+   "label": "Register Court"
+  },
+  {
+   "fieldname": "column_break_register",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "register_type",
+   "fieldtype": "Select",
+   "label": "Register Type",
+   "options": "\nHRA\nHRB\nGnR\nPR\nVR"
+  },
+  {
+   "fieldname": "register_number",
+   "fieldtype": "Data",
+   "label": "Register Number"
+  },
+  {
+   "fieldname": "income_tax_section",
+   "fieldtype": "Section Break",
+   "label": "Steuernummer for KSt and GewSt"
+  },
+  {
+   "description": "Only when the Finanzamt issued another Steuernummer for the Körperschaftsteuer, the Gewerbesteuer and the E-Bilanz than for the Umsatzsteuer: as issued, in the format of the Bundesland of the VAT Return Settings. Empty: the Steuernummer of the VAT Return Settings.",
+   "fieldname": "income_tax_number",
+   "fieldtype": "Data",
+   "label": "Steuernummer for KSt and GewSt"
+  },
+  {
+   "fieldname": "column_break_income_tax",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "13 digits, derived from the Steuernummer and the Bundesland.",
+   "fieldname": "elster_income_tax_number",
+   "fieldtype": "Data",
+   "label": "ELSTER Steuernummer for KSt and GewSt",
+   "read_only": 1
+  },
+  {
+   "description": "The address of the company as the Erklärungen, the E-Bilanz and the Jahresabschluss write it, the house number apart from the street. Take Address proposes the address of the VAT Return Settings with its street split at the last digits; check it before saving.",
+   "fieldname": "address_section",
+   "fieldtype": "Section Break",
+   "label": "Address"
+  },
+  {
+   "description": "Without the house number. Street, house number and suffix take at most 30 characters together, as the Vorsatz of an Erklärung writes them.",
+   "fieldname": "street",
+   "fieldtype": "Data",
+   "label": "Street",
+   "length": 30
+  },
+  {
+   "description": "Digits only, at most four (USt 2 A line 9).",
+   "fieldname": "house_number",
+   "fieldtype": "Data",
+   "label": "House Number",
+   "length": 4
+  },
+  {
+   "description": "Such as a or -14, at most six characters.",
+   "fieldname": "house_number_suffix",
+   "fieldtype": "Data",
+   "label": "House Number Suffix",
+   "length": 6
+  },
+  {
+   "description": "Such as Hinterhaus, at most 25 characters.",
+   "fieldname": "address_supplement",
+   "fieldtype": "Data",
+   "label": "Address Supplement",
+   "length": 25
+  },
+  {
+   "fieldname": "column_break_address",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "postal_code",
+   "fieldtype": "Data",
+   "label": "Postal Code",
+   "length": 12
+  },
+  {
+   "description": "At most 29 characters, as the Vorsatz of an Erklärung takes it.",
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "Town",
+   "length": 29
+  },
+  {
+   "default": "Germany",
+   "fieldname": "country",
+   "fieldtype": "Link",
+   "label": "Country",
+   "options": "Country"
+  },
+  {
+   "description": "Who prepares the Erklärungen, as USt 2 A lines 128 and 129 and KSt 1 lines 101 and 102 name it, each line at most 55 characters. Whether a Steuerberatung prepares the Erklärungen of a year is set per year below.",
+   "fieldname": "advisor_section",
+   "fieldtype": "Section Break",
+   "label": "Steuerberatung"
+  },
+  {
+   "description": "The firm of the Steuerberatung, or the surname of the Steuerberater.",
+   "fieldname": "advisor_name",
+   "fieldtype": "Data",
+   "label": "Name or Firm",
+   "length": 55
+  },
+  {
+   "description": "Only for a Steuerberater who is a person.",
+   "fieldname": "advisor_first_name",
+   "fieldtype": "Data",
+   "label": "First Name",
+   "length": 55
+  },
+  {
+   "fieldname": "advisor_street",
+   "fieldtype": "Data",
+   "label": "Street and House Number",
+   "length": 55
+  },
+  {
+   "fieldname": "advisor_town",
+   "fieldtype": "Data",
+   "label": "Postal Code and Town",
+   "length": 55
+  },
+  {
+   "fieldname": "column_break_advisor",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "advisor_phone",
+   "fieldtype": "Data",
+   "label": "Phone",
+   "length": 55
+  },
+  {
+   "fieldname": "advisor_details",
+   "fieldtype": "Data",
+   "label": "Further Details",
+   "length": 55
+  },
+  {
+   "description": "The Mandantennummer of the company at the Steuerberatung.",
+   "fieldname": "advisor_client_number",
+   "fieldtype": "Data",
+   "label": "Client Number",
+   "length": 60
+  },
+  {
+   "description": "The Bearbeiterkennzeichen of the Steuerberatung.",
+   "fieldname": "advisor_clerk",
+   "fieldtype": "Data",
+   "label": "Clerk",
+   "length": 55
+  },
+  {
+   "fieldname": "years_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "One row per year: the Steuerberatung (§ 149 Abs. 3 AO), the Kleinunternehmer, the days the Finanzamt asked for an Erklärung early (§ 149 Abs. 4 AO), the Feststellung of the Jahresabschluss and the exemption under § 264 Abs. 3 HGB.",
+   "fieldname": "years",
+   "fieldtype": "Table",
+   "label": "Years",
+   "options": "Annual Filing Year"
+  },
+  {
+   "fieldname": "shareholders_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "KSt 1 lines 21 to 27: one row per shareholder and holding period. On every day someone holds shares they add up to 99 to 100 % (rule 8931029). Only Accounts Managers and System Managers see the Steuernummern and Identifikationsnummern.",
+   "fieldname": "shareholders",
+   "fieldtype": "Table",
+   "label": "Shareholders",
+   "options": "Annual Filing Shareholder"
+  },
+  {
+   "fieldname": "directors_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "Every Geschäftsführer signs the Jahresabschluss with the date (§ 245 HGB).",
+   "fieldname": "directors",
+   "fieldtype": "Table",
+   "label": "Managing Directors",
+   "options": "Annual Filing Director"
+  },
+  {
+   "fieldname": "trade_tax_section",
+   "fieldtype": "Section Break",
+   "label": "Gewerbesteuer"
+  },
+  {
+   "description": "GewSt 1 A lines 26 to 33. Steuerbote files the Gewerbesteuererklärung for one Betriebsstätte in one Gemeinde.",
+   "fieldname": "establishments",
+   "fieldtype": "Table",
+   "label": "Betriebsstätten",
+   "options": "Annual Filing Establishment"
+  },
+  {
+   "description": "The Hebesatz of each Gemeinde per Erhebungszeitraum as the Gemeinde set it, with its source: at least 200 %, from 2027 at least 280 % (§ 16 Abs. 4 Satz 2 GewStG).",
+   "fieldname": "trade_tax_rates",
+   "fieldtype": "Table",
+   "label": "Hebesätze",
+   "options": "Annual Filing Trade Tax Rate"
+  },
+  {
+   "fieldname": "holdings_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "One row per holding in another company and year, with the share at the start of the calendar year (§ 8b Abs. 4 KStG) and of the Erhebungszeitraum (§ 9 Nr. 2a and 7 GewStG).",
+   "fieldname": "holdings",
+   "fieldtype": "Table",
+   "label": "Holdings",
+   "options": "Annual Filing Holding"
+  },
+  {
+   "fieldname": "prepayments_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "The Vorauszahlungen of the notices: KSt and SolZ to the Finanzamt on 10 March, June, September and December (§ 37 Abs. 1 EStG), GewSt to the Gemeinde on 15 February, May, August and November (§ 19 Abs. 1 GewStG).",
+   "fieldname": "prepayments",
+   "fieldtype": "Table",
+   "label": "Vorauszahlungen",
+   "options": "Annual Filing Prepayment"
+  },
+  {
+   "fieldname": "carry_forwards_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "The amounts the Finanzamt last stated, as of the end of a year, with the day of its notice. The Körperschaft- and Gewerbesteuererklärung take only confirmed amounts.",
+   "fieldname": "carry_forwards",
+   "fieldtype": "Table",
+   "label": "Carry-Forwards",
+   "options": "Annual Filing Carry Forward"
+  },
+  {
+   "fieldname": "ebilanz_section",
+   "fieldtype": "Section Break",
+   "label": "E-Bilanz"
+  },
+  {
+   "description": "The Liability or Equity account into which the Period Closing Voucher closes the result.",
+   "fieldname": "closing_account",
+   "fieldtype": "Link",
+   "label": "Closing Account",
+   "options": "Account"
+  },
+  {
+   "default": "HAOE",
+   "description": "HAOE: Einheitsbilanz, treated as a Steuerbilanz. HGBM: Handelsbilanz with an Überleitungsrechnung. AO: Steuerbilanz.",
+   "fieldname": "accounting_standard",
+   "fieldtype": "Select",
+   "label": "Accounting Standard",
+   "options": "HAOE\nHGBM\nAO"
+  },
+  {
+   "fieldname": "column_break_ebilanz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The finance book of the Handelsbilanz. Empty: the entries without a finance book.",
+   "fieldname": "commercial_finance_book",
+   "fieldtype": "Link",
+   "label": "Commercial Finance Book",
+   "options": "Finance Book"
+  },
+  {
+   "description": "The finance book of the Steuerbilanz, if the company keeps one.",
+   "fieldname": "tax_finance_book",
+   "fieldtype": "Link",
+   "label": "Tax Finance Book",
+   "options": "Finance Book"
+  },
+  {
+   "fieldname": "review_section",
+   "fieldtype": "Section Break",
+   "label": "Review by the Steuerberatung"
+  },
+  {
+   "default": "0",
+   "description": "The company holds shares to which § 8b Abs. 7 KStG applies (KSt 1 line 16), as a Steuerberatung confirmed.",
+   "fieldname": "section_8b_7",
+   "fieldtype": "Check",
+   "label": "Shares under § 8b Abs. 7 KStG"
+  },
+  {
+   "fieldname": "section_8b_7_confirmed_on",
+   "fieldtype": "Date",
+   "label": "§ 8b Abs. 7 KStG Confirmed on"
+  },
+  {
+   "fieldname": "section_8b_7_note",
+   "fieldtype": "Small Text",
+   "label": "Note on § 8b Abs. 7 KStG"
+  },
+  {
+   "fieldname": "column_break_review",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The day a Steuerberatung confirmed the classes of the trading accounts, the § 8b Abs. 7 status and the review list. The Körperschaft- and Gewerbesteuererklärung wait for it.",
+   "fieldname": "income_tax_review_on",
+   "fieldtype": "Date",
+   "label": "KSt and GewSt Reviewed on"
+  },
+  {
+   "fieldname": "income_tax_review_note",
+   "fieldtype": "Small Text",
+   "label": "Note on the Review"
+  },
+  {
+   "fieldname": "annual_accounts_section",
+   "fieldtype": "Section Break",
+   "label": "Jahresabschluss"
+  },
+  {
+   "default": "Hinterlegung",
+   "description": "A Kleinstkapitalgesellschaft may deposit its Bilanz instead of publishing it, once it told the Unternehmensregister that it is one (§ 326 Abs. 2 HGB).",
+   "fieldname": "kleinst_mode",
+   "fieldtype": "Select",
+   "label": "Disclosure as Kleinstkapitalgesellschaft",
+   "options": "Hinterlegung\nVeröffentlichung"
+  },
+  {
+   "default": "0",
+   "description": "An Investmentgesellschaft, a Unternehmensbeteiligungsgesellschaft or a company that only acquires, holds and uses Beteiligungen without managing those companies is never a Kleinstkapitalgesellschaft.",
+   "fieldname": "holding_267a_3",
+   "fieldtype": "Check",
+   "label": "No Kleinstkapitalgesellschaft (§ 267a Abs. 3 HGB)"
+  },
+  {
+   "fieldname": "column_break_annual_accounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "§ 267 Abs. 5 HGB counts the Arbeitnehmer without those employed for their vocational training: the Employment Types listed here, such as Apprentice, stay out of the headcount.",
+   "fieldname": "excluded_employment_types",
+   "fieldtype": "Table",
+   "label": "Employment Types Not Counted",
+   "options": "Annual Filing Employment Type"
+  },
+  {
+   "fieldname": "size_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "The criteria of § 267 and § 267a HGB on each Abschlussstichtag and the size class applied, which follows two consecutive Abschlussstichtage (§ 267 Abs. 4 HGB).",
+   "fieldname": "size_history",
+   "fieldtype": "Table",
+   "label": "Size per Fiscal Year",
+   "options": "Annual Filing Size Class"
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual Filing Settings",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Accounts User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

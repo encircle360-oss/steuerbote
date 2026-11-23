@@ -1,0 +1,152 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 12:00:00.000000",
+ "description": "A shareholder for one holding period, as KSt 1 lines 21 to 23b name it.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "shareholder_name",
+  "kind",
+  "percent",
+  "from_date",
+  "to_date",
+  "column_break_shareholder",
+  "nominal_amount",
+  "street",
+  "postal_code_and_town",
+  "identifiers_section",
+  "tax_number_state",
+  "tax_number",
+  "column_break_identifiers",
+  "idnr",
+  "wid_nr",
+  "foreign_id"
+ ],
+ "fields": [
+  {
+   "description": "For a natural person first name and surname.",
+   "fieldname": "shareholder_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Name",
+   "reqd": 1
+  },
+  {
+   "default": "Natural Person",
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Kind",
+   "options": "Natural Person\nCorporation\nBusiness Partnership",
+   "reqd": 1
+  },
+  {
+   "description": "At most four decimals (KSt 1 line 23a).",
+   "fieldname": "percent",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Share (%)",
+   "precision": "4",
+   "reqd": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Held From",
+   "reqd": 1
+  },
+  {
+   "description": "Empty while the shareholder holds the shares.",
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Held Until"
+  },
+  {
+   "fieldname": "column_break_shareholder",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The Nennbeträge of the Geschäftsanteile held, in full euros (§ 5 Abs. 2 GmbHG).",
+   "fieldname": "nominal_amount",
+   "fieldtype": "Currency",
+   "label": "Nominal Amount",
+   "options": "Company:company:default_currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "street",
+   "fieldtype": "Data",
+   "label": "Street and House Number",
+   "reqd": 1
+  },
+  {
+   "fieldname": "postal_code_and_town",
+   "fieldtype": "Data",
+   "label": "Postal Code and Town",
+   "reqd": 1
+  },
+  {
+   "description": "Only for the Körperschaftsteuererklärung (§ 139b Abs. 2 AO); only Accounts Managers and System Managers see them.",
+   "fieldname": "identifiers_section",
+   "fieldtype": "Section Break",
+   "label": "Tax Numbers",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "tax_number_state",
+   "fieldtype": "Select",
+   "label": "Bundesland of the Steuernummer",
+   "options": "\nBaden-Württemberg\nBayern\nBerlin\nBrandenburg\nBremen\nHamburg\nHessen\nMecklenburg-Vorpommern\nNiedersachsen\nNordrhein-Westfalen\nRheinland-Pfalz\nSaarland\nSachsen\nSachsen-Anhalt\nSchleswig-Holstein\nThüringen",
+   "permlevel": 1
+  },
+  {
+   "description": "As issued, with its Bundesland, or the 13 digits for ELSTER.",
+   "fieldname": "tax_number",
+   "fieldtype": "Data",
+   "label": "Steuernummer",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "column_break_identifiers",
+   "fieldtype": "Column Break",
+   "permlevel": 1
+  },
+  {
+   "description": "Eleven digits, only of a natural person.",
+   "fieldname": "idnr",
+   "fieldtype": "Data",
+   "label": "Identifikationsnummer",
+   "length": 11,
+   "permlevel": 1
+  },
+  {
+   "description": "DE and nine digits, without the five-digit suffix.",
+   "fieldname": "wid_nr",
+   "fieldtype": "Data",
+   "label": "Wirtschafts-Identifikationsnummer",
+   "length": 11,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "foreign_id",
+   "fieldtype": "Data",
+   "label": "Foreign Tax Identifier",
+   "permlevel": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual Filing Shareholder",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

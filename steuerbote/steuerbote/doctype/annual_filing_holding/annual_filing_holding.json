@@ -1,0 +1,81 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 12:00:00.000000",
+ "description": "A holding of the company in another company for one year.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "holding_name",
+  "identifier",
+  "country",
+  "year",
+  "percent_on_1_january",
+  "percent_at_start_of_ez",
+  "bought_on",
+  "sold_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "holding_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Holding in",
+   "reqd": 1
+  },
+  {
+   "fieldname": "identifier",
+   "fieldtype": "Data",
+   "label": "ISIN or Steuernummer"
+  },
+  {
+   "fieldname": "country",
+   "fieldtype": "Link",
+   "label": "Country",
+   "options": "Country"
+  },
+  {
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "description": "At the start of the calendar year (§ 8b Abs. 4 KStG).",
+   "fieldname": "percent_on_1_january",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Share on 1 January (%)"
+  },
+  {
+   "description": "At the start of the Erhebungszeitraum (§ 9 Nr. 2a and 7 GewStG).",
+   "fieldname": "percent_at_start_of_ez",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Share at the Start of the EZ (%)"
+  },
+  {
+   "fieldname": "bought_on",
+   "fieldtype": "Date",
+   "label": "Bought on"
+  },
+  {
+   "fieldname": "sold_on",
+   "fieldtype": "Date",
+   "label": "Sold on"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual Filing Holding",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
