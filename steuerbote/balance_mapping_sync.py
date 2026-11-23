@@ -16,6 +16,8 @@ items_of_rows and rows_of_items turn rows into items and back, default_items giv
 company as items, and body_of_items and items_of_body turn items into the plain data of the stored defaults and of the
 file and back, with the flag as true or false; file_body and items_of_file_body make the body of the file, the
 version of the taxonomy whose positions the rows name, the rows and the defaults the mapping took over.
+lifted_items lifts the items to a later version of the taxonomy through its changes (steuerbote/xbrl/changes.py),
+for „Auf neue Taxonomie heben“ and for the file of an earlier version, which a mapping takes only lifted so.
 
 A row holds what Frappe stores: an empty Check field is 0, an empty Data or Select field is "" or None, and an
 account number is the one fetched from its account. The validate of the DocType runs before Frappe checks the
@@ -51,7 +53,9 @@ from steuerbote.ebilanz.defaults import defaults_for
 from steuerbote.hgb.statement import Balance
 from steuerbote.mappings.transfer import canonical_json
 from steuerbote.ustva.mapping import WatchLevel
-from steuerbote.xbrl.mapping import Excluded, Mapping, MappingError, Placement, Purpose, Rule, Watched
+from steuerbote.xbrl import changes
+from steuerbote.xbrl.changes import Changes, Lifted
+from steuerbote.xbrl.mapping import Excluded, Mapping, MappingError, Part, Placement, Purpose, Rule, Watched
 from steuerbote.xbrl.taxonomy import Balance as Side
 from steuerbote.xbrl.taxonomy import Taxonomy
 from steuerbote.xbrl.versions import LATEST
@@ -265,6 +269,25 @@ def load_items(text: str) -> dict[Key, Fields]:
 	except ValueError:
 		raise MappingError(NOT_JSON) from None
 	return items_of_body(body)
+
+
+def lifted_items(
+	chart: str,
+	items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]],
+	source: str,
+	target: str,
+	*,
+	taxonomy: Taxonomy | None = None,
+	parts: ReadOnlyMapping[str, Part] | None = None,
+	steps: Iterable[Changes] | None = None,
+) -> tuple[dict[Key, Fields], Lifted]:
+	"""The items of a mapping of the chart on the positions of the version ``source``, lifted to those of the later
+	version ``target`` through the changes ``steps``, by default those of steuerbote.xbrl.changes.CHANGES, against the
+	fiscal view ``taxonomy`` of the target with the part of each account in ``parts``, and what the lift found; raises
+	LiftError for a target that is not later and MappingError for rows the core cannot read."""
+	mapping = rows_to_mapping(chart, *rows_of_items(items), source)
+	lifted = changes.lift(mapping, target, taxonomy=taxonomy, parts=parts, changes=steps)
+	return items_of_mapping(lifted.mapping), lifted
 
 
 def statement_balances(placement: Placement) -> tuple[Balance, ...]:
