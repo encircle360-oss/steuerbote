@@ -1,0 +1,103 @@
+{
+ "actions": [],
+ "autoname": "field:company",
+ "creation": "2026-11-23 18:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "chart",
+  "defaults_version",
+  "defaults_rows",
+  "rules",
+  "watched"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "set_only_once": 1,
+   "unique": 1
+  },
+  {
+   "default": "SKR03",
+   "fieldname": "chart",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Standard Chart of Accounts",
+   "options": "SKR03\nSKR04\nEigener Kontenrahmen",
+   "reqd": 1
+  },
+  {
+   "description": "The defaults Vorgaben laden or Vorgaben aktualisieren took over last: the chart, the edition of the DATEV chart and the revision of the defaults of Steuerbote.",
+   "fieldname": "defaults_version",
+   "fieldtype": "Data",
+   "label": "Defaults Version",
+   "read_only": 1
+  },
+  {
+   "description": "The rows the defaults gave this mapping when they were taken over last, against which Vorgaben aktualisieren tells the changes of the defaults from your own.",
+   "fieldname": "defaults_rows",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Defaults as Taken Over",
+   "read_only": 1
+  },
+  {
+   "description": "What the balance of an account of the profit and loss account is for the Körperschaftsteuer and the Gewerbesteuer. An account without a rule counts in the Jahresüberschuss only.",
+   "fieldname": "rules",
+   "fieldtype": "Table",
+   "label": "Account Rules",
+   "options": "Income Tax Mapping Rule"
+  },
+  {
+   "description": "Accounts of the Körperschaftsteuer or the Gewerbesteuer without a category. A balance on one watched at the level Blocking holds the declaration back; on one watched at the level Hint, it adds a hint.",
+   "fieldname": "watched",
+   "fieldtype": "Table",
+   "label": "Watched Accounts",
+   "options": "Income Tax Watched Account"
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-23 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Income Tax Mapping",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Accounts Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Accounts User",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
