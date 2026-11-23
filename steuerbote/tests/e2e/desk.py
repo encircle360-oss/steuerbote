@@ -93,9 +93,17 @@ class Desk:
 		self.dialog().locator(".btn-modal-primary" if yes else ".btn-modal-secondary").click()
 
 	def close_dialog(self) -> None:
-		"""Cancel the dialog on top with its close button, and wait until it is gone."""
+		"""Cancel the dialog on top with its close button once it is shown, and wait until it is gone."""
+		self.wait_for_dialog()
 		self.dialog().locator(".btn-modal-close").click()
 		expect(self.dialog()).to_have_count(0)
+
+	def wait_for_dialog(self) -> None:
+		"""Wait until the dialog on top has faded in: a click while it fades in does not reach it. Frappe notes a
+		dialog as shown on shown.bs.modal, which Bootstrap fires at the end of the fade (frappe/ui/dialog.js)."""
+		self.page.wait_for_function(
+			"() => Boolean(window.cur_dialog && cur_dialog.display && cur_dialog.$wrapper.hasClass('show'))"
+		)
 
 	def list_rows(self) -> Locator:
 		"""The rows of the list view, without its head."""
