@@ -4,7 +4,7 @@ Steuerbote übermittelt die Umsatzsteuer-Voranmeldung, die Dauerfristverlängeru
 
 Diese Seite beschreibt die Vorgänge an der Voranmeldung. An der Dauerfristverlängerung und an der Zusammenfassenden Meldung laufen sie genauso, mit demselben Dialog, derselben Sperre, denselben Ergebnissen und derselben ELSTER-Übermittlung; was dort anders ist, steht unter [Dauerfristverlängerung](#dauerfristverlängerung) und [Zusammenfassende Meldung](#zusammenfassende-meldung).
 
-Die Belege der Jahresmeldungen, Umsatzsteuererklärung, E-Bilanz, Körperschaft- und Gewerbesteuererklärung, gehen auf demselben Weg an das Finanzamt, sobald ihre Module sie mitbringen; was an ihnen anders ist, steht unter [Jahresmeldungen](jahresmeldungen.md#übermittlung-an-elster).
+Die Belege der Jahresmeldungen, die Umsatzsteuer-, die Körperschaftsteuer- und die Gewerbesteuererklärung und, sobald es sie als Beleg gibt, die E-Bilanz, gehen auf demselben Weg an das Finanzamt; was an ihnen anders ist, steht unter [Jahresmeldungen](jahresmeldungen.md#übermittlung-an-elster).
 
 Ohne eigene Hersteller-ID oder ohne installierte ERiC-Laufzeitumgebung läuft Steuerbote im [Simulationsmodus](#simulationsmodus). Dann geht nichts an das Finanzamt.
 
