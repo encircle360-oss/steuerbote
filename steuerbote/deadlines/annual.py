@@ -1,7 +1,7 @@
 """The annual deadlines of a company: which annual filings it owes for a year and when each is due.
 
 Erklärungen. The Umsatzsteuererklärung „für das Kalenderjahr“ (§ 18 Abs. 3 Satz 1 UStG), the
-Körperschaftsteuererklärung (§ 31 Abs. 1a KStG) with the Feststellungserklärung of the steuerliches Einlagekonto,
+Körperschaftsteuererklärung (§ 31 Abs. 1 and 1a KStG) with the Feststellungserklärung of the steuerliches Einlagekonto,
 KSt 1 F (§ 27 Abs. 2 Satz 4 KStG), and the Erklärung zur Festsetzung des Gewerbesteuermessbetrags (§ 14a Satz 1
 GewStG) refer to a calendar year, so they are due „spätestens sieben Monate nach Ablauf des Kalenderjahres“ (§ 149
 Abs. 2 Satz 1 AO). Prepared by a Steuerberatung, all three are due „spätestens bis zum letzten Tag des Monats Februar
