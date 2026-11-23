@@ -236,3 +236,91 @@ class BusinessIncomeTest(TestCase):
 	def test_refuses_a_year_without_data(self):
 		with self.assertRaises(ValueError):
 			compute(KstInputs(2099, (), MAPPING), FIGURES)
+
+
+class ZveTest(TestCase):
+	"""Anlage ZVE: lines 2, 32, 34, 53, 56, 70 and 71 (rules 8900549, 8900207, 8900413, 8900114, 8900431, 8900331)."""
+
+	def test_from_the_einkuenfte_to_the_koerperschaftsteuer(self):
+		result = compute(inputs(credit("8400", "112200.00"), debit("2383", "1000.00")), FIGURES)
+		declared = {
+			key: result.lines[key].declared
+			for key in (
+				"business_income",
+				"business_income_zve",
+				"foreign_tax_deduction",
+				"sum_of_income",
+				"donation_deduction",
+				"total_income",
+				"loss_deduction",
+				"zve",
+				"corporate_income_tax",
+			)
+		}
+		self.assertEqual(
+			declared,
+			{
+				"business_income": Decimal("112200"),
+				"business_income_zve": Decimal("112200"),
+				"foreign_tax_deduction": ZERO,
+				"sum_of_income": Decimal("112200"),
+				"donation_deduction": Decimal("1000"),
+				"total_income": Decimal("111200"),
+				"loss_deduction": ZERO,
+				"zve": Decimal("111200"),
+				"corporate_income_tax": Decimal("16680"),
+			},
+		)
+		self.assertEqual(
+			(result.sum_of_income, result.total_income, result.zve, result.kst),
+			(Decimal("112200"), Decimal("111200"), Decimal("111200"), Decimal("16680")),
+		)
+
+	def test_takes_15_percent_of_the_zve_rounded_down_to_full_euros(self):
+		result = compute(inputs(credit("8400", "1006.00")), FIGURES)
+		line = result.lines["corporate_income_tax"]
+		self.assertEqual((line.exact, line.declared), (Decimal("150.90"), Decimal("150")))
+
+	def test_a_zve_below_zero_takes_no_tax(self):
+		result = compute(inputs(debit("4120", "5000.00"), loss_carry_back=ZERO), FIGURES)
+		self.assertEqual(result.zve, Decimal("-5000"))
+		self.assertEqual(result.kst, ZERO)
+		self.assertEqual(result.lines["corporate_income_tax"].exact, ZERO)
+
+	def test_deducts_the_zuwendungen_of_the_receipts_within_the_limits(self):
+		result = compute(
+			inputs(
+				credit("8400", "10000.00"),
+				debit("2383", "5000.00"),
+				eligible_donations=Decimal("4000.00"),
+				donation_carry_forward=Decimal("500"),
+				turnover_and_wages=Decimal("100000"),
+			),
+			FIGURES,
+		)
+		self.assertEqual(result.donations.donations.declared, Decimal("4000"))
+		self.assertEqual(result.lines["donation_deduction"].declared, Decimal("2000"))
+		self.assertEqual(result.donations.remaining, Decimal("2500"))
+		self.assertEqual(result.total_income, Decimal("8000"))
+		self.assertEqual(
+			[c.account_number for c in result.lines["donation_deduction"].contributions], ["2383"]
+		)
+
+	def test_deducts_the_verlustvortrag_of_10d(self):
+		result = compute(inputs(credit("8400", "111200.00"), loss_carry_forward=Decimal("50000")), FIGURES)
+		self.assertEqual(result.lines["loss_deduction"].declared, Decimal("50000"))
+		self.assertEqual(result.losses.remaining, ZERO)
+		self.assertEqual(result.zve, Decimal("61200"))
+
+	def test_carries_a_loss_forward_with_the_verlustruecktrag(self):
+		result = compute(
+			inputs(
+				debit("4120", "30000.00"),
+				loss_carry_forward=Decimal("1000"),
+				loss_carry_back=Decimal("10000"),
+			),
+			FIGURES,
+		)
+		self.assertEqual(result.losses.loss, Decimal("30000"))
+		self.assertEqual(result.losses.remaining, Decimal("21000"))
+		self.assertEqual(result.lines["loss_deduction"].declared, ZERO)
