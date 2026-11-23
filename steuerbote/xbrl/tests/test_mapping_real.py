@@ -110,3 +110,34 @@ class SamplePositionsTest(TestCase):
 			with self.subTest(concept=concept):
 				(problem,) = mapping.check(Mapping("SKR04", rules=[Rule("9999", concept)]), real.view())
 				self.assertEqual(problem.refusal, refusal)
+
+
+class PlacementTest(TestCase):
+	def test_a_davon_position_counts_in_the_position_above_it(self):
+		"""The Restlaufzeiten of the Verbindlichkeiten gegenüber Kreditinstituten and the interest from affiliated
+		companies are „davon“ positions outside the calculation of the taxonomy 6.9."""
+		taxonomy = real.view()
+		self.assertEqual(
+			mapping.position_of(taxonomy, "bs.eqLiab.liab.bank.upTo1year"), "bs.eqLiab.liab.bank"
+		)
+		self.assertEqual(
+			mapping.position_of(taxonomy, "is.netIncome.regular.fin.netInterest.income.assoc"),
+			"is.netIncome.regular.fin.netInterest.income",
+		)
+		self.assertEqual(
+			mapping.position_of(taxonomy, "bs.eqLiab.liab.bank.other"), "bs.eqLiab.liab.bank.other"
+		)
+
+	def test_the_auffangpositionen_are_those_the_label_marks(self):
+		"""„erkennbar durch die Formulierungen im beschreibenden Text „nicht zuordenbar“ oder „ohne Zuordnung““
+		(Leitfaden A.10.4); a definitionGuidance that names them marks no position."""
+		taxonomy = real.view()
+		for concept, expected in (
+			("bs.ass.currAss.receiv.other.misc", True),
+			("bs.eqLiab.liab.trade.misc", True),
+			(f"{GROSS_SALES}.unknownVAT", True),
+			("bs.ass.fixAss.tan.other", False),
+			("bs.ass.currAss.cashEquiv.bank", False),
+		):
+			with self.subTest(concept=concept):
+				self.assertEqual(mapping.catch_all(taxonomy, concept), expected)

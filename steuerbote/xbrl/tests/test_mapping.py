@@ -12,7 +12,12 @@ from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl import mapping
 from steuerbote.xbrl.mapping import (
 	AccountBalance,
+	Accounts,
 	Books,
+	DefaultExcluded,
+	DefaultRule,
+	Defaults,
+	DefaultWatched,
 	Excluded,
 	Mapping,
 	MappingError,
@@ -731,3 +736,117 @@ class TaxonomyVersionTest(TestCase):
 		self.assertIn("6.9", placement.findings[0].text)
 		self.assertIn("6.10", placement.findings[0].text)
 		self.assertEqual(len(placement.placed), 1)
+
+
+class AccountsTest(TestCase):
+	"""An entry of the defaults names one account or a range, as the DATEV charts list „Kontenbereiche“."""
+
+	def test_names_one_account_or_a_range_of_accounts(self):
+		self.assertEqual((Accounts.of("1800").first, Accounts.of("1800").last), ("1800", "1800"))
+		self.assertEqual(Accounts.of("1800-1849"), Accounts("1800", "1849"))
+		self.assertEqual(str(Accounts.of("1800-1849")), "1800-1849")
+		self.assertEqual(str(Accounts.of("1800")), "1800")
+
+	def test_a_range_holds_its_accounts_of_the_same_length(self):
+		accounts = Accounts.of("1800-1849")
+		self.assertEqual(
+			[number in accounts for number in ("1800", "1825", "1849", "1850", "1799", "18001", "180")],
+			[True, True, True, False, False, False, False],
+		)
+
+	def test_refuses_what_is_no_account_or_range(self):
+		for text in ("", "18a0", "1849-1800", "180-1849", "1800 - 1849", "1800-", "-1849", "1800-1849-1899"):
+			with self.subTest(text=text), self.assertRaises(ValueError):
+				Accounts.of(text)
+
+
+class DefaultsTest(TestCase):
+	def setUp(self):
+		self.defaults = Defaults(
+			"SKR04",
+			"6.9",
+			rules=(
+				DefaultRule("1800-1849", BANK, opposite=BANK_LIABILITY),
+				DefaultRule("1200", RECEIVABLES, remaining_term=RemainingTerm.UP_TO_ONE_YEAR),
+				DefaultRule("3150", BANK_LIABILITY, remaining_term="up to one year", shareholder=False),
+			),
+			watched=(DefaultWatched("1460", WatchLevel.HINT),),
+			excluded=(DefaultExcluded("9000-9009", "Saldenvorträge der Klasse 9"),),
+		)
+
+	def test_gives_each_account_of_a_company_the_place_of_the_entry_that_holds_it(self):
+		self.assertEqual(
+			self.defaults.for_accounts(["9001", "1810", "1200", "3150", "1460", "4400"]),
+			Mapping(
+				"SKR04",
+				rules=(
+					Rule("1200", RECEIVABLES, remaining_term=RemainingTerm.UP_TO_ONE_YEAR),
+					Rule("1810", BANK, opposite=BANK_LIABILITY),
+					Rule("3150", BANK_LIABILITY, remaining_term=RemainingTerm.UP_TO_ONE_YEAR),
+				),
+				watched=(Watched("1460", WatchLevel.HINT),),
+				excluded=(Excluded("9001", "Saldenvorträge der Klasse 9"),),
+				taxonomy_version="6.9",
+			),
+		)
+
+	def test_a_watched_account_keeps_the_level_the_company_gave_it(self):
+		"""As Vorgaben laden of the VAT Return Mapping keeps it (steuerbote/mapping_sync.py)."""
+		(watched,) = self.defaults.for_accounts(["1460"], levels={"1460": WatchLevel.BLOCKING}).watched
+		self.assertEqual(watched.level, WatchLevel.BLOCKING)
+
+	def test_names_the_accounts_of_a_company_no_entry_holds(self):
+		self.assertEqual(self.defaults.uncovered(["4400", "1810", "0027", "9009"]), ("0027", "4400"))
+		self.assertEqual(self.defaults.covers("1849"), True)
+		self.assertEqual(self.defaults.covers("1850"), False)
+
+	def test_entries_do_not_overlap(self):
+		with self.assertRaisesRegex(ValueError, "1800-1849 and 1810"):
+			Defaults(
+				"SKR04", "6.9", rules=(DefaultRule("1800-1849", BANK),), watched=(DefaultWatched("1810"),)
+			)
+
+	def test_every_entry_holds_a_valid_place(self):
+		with self.assertRaises(MappingError):
+			DefaultRule("1800", "")
+		with self.assertRaises(MappingError):
+			DefaultExcluded("9000", "")
+		with self.assertRaises(MappingError):
+			DefaultWatched("1460", "sperrt")
+		with self.assertRaises(MappingError):
+			Defaults("SKR04", "6.8")
+
+	def test_the_rows_of_the_defaults_read_as_plain_data(self):
+		self.assertEqual(
+			self.defaults.rows(),
+			{
+				"rules": [
+					{
+						"accounts": "1800-1849",
+						"concept": BANK,
+						"opposite": BANK_LIABILITY,
+						"purpose": "both",
+						"shareholder": False,
+						"remaining_term": None,
+					},
+					{
+						"accounts": "1200",
+						"concept": RECEIVABLES,
+						"opposite": None,
+						"purpose": "both",
+						"shareholder": False,
+						"remaining_term": "up to one year",
+					},
+					{
+						"accounts": "3150",
+						"concept": BANK_LIABILITY,
+						"opposite": None,
+						"purpose": "both",
+						"shareholder": False,
+						"remaining_term": "up to one year",
+					},
+				],
+				"watched": [{"accounts": "1460", "level": "hint"}],
+				"excluded": [{"accounts": "9000-9009", "reason": "Saldenvorträge der Klasse 9"}],
+			},
+		)
