@@ -18,9 +18,10 @@ the same way, so AnnualFiling generalises the rules of the VAT Return and the Zu
 - Before a document is transmitted, made into a file or submitted, the amounts of its lines are computed again from
   what they hold (require_amounts_as_stored).
 - An Erklärung and the E-Bilanz are filed through an accepted Senden or the note of their filing, never by Buchen
-  alone, and nothing filed is cancelled. A Jahresabschluss is submitted by hand, which is its Feststellung, and
-  cancelled and amended when it changes. A Berichtigung that is filed, and the amendment of a cancelled
-  Jahresabschluss, replace the filings of their key.
+  alone, and nothing filed is cancelled. A Jahresabschluss is submitted by hand, which is its Feststellung, moves on
+  to Übermittelt and Eingestellt (move_on), and is cancelled and amended when it changes, never corrected by a
+  Berichtigung of its own. A Berichtigung that is filed, and the amendment of a cancelled Jahresabschluss, replace the
+  filings of their key.
 - A document that goes to ELSTER keeps all but its remarks after an accepted Senden or one whose outcome is unknown
   (Transmittable.refuse_changes_after_sending). Its envelope takes the Steuernummer of elster_tax_number, that of the
   Annual Filing Settings for the KSt, the GewSt and the E-Bilanz where they have one, and the DatenLieferant of
@@ -161,7 +162,9 @@ class AnnualFiling:
 			"filings": list(self.LIFECYCLE.filings),
 			"filed_outside": list(self.FILED_OUTSIDE) if self.transmits else [],
 			"submitted_by_hand": self.LIFECYCLE.submitted_by_hand,
-			"can_correct": self.docstatus == 1 and self.status in self.LIFECYCLE.filings,
+			"can_correct": self.docstatus == 1
+			and self.status in self.LIFECYCLE.filings
+			and not self.LIFECYCLE.cancellable,
 		}
 
 	def before_insert(self) -> None:
@@ -279,6 +282,8 @@ class AnnualFiling:
 		"""Berichtigung anlegen: a new document of the key that corrects this filed one, with its corrections and lines by
 		hand, calculated at once. Returns its name."""
 		frappe.has_permission(self.doctype, "create", throw=True)
+		if self.LIFECYCLE.cancellable:
+			self._refuse_berichtigung()
 		if self.docstatus != 1 or self.status not in self.LIFECYCLE.filings:
 			frappe.throw(_("A Berichtigung is made from a filed document."))
 		drafts = self._others(docstatus=0)
@@ -373,6 +378,40 @@ class AnnualFiling:
 		).name
 
 	# What a module calls.
+
+	def move_on(
+		self,
+		event: Event,
+		*,
+		filed_via: str | None = None,
+		filed_on: str | date | None = None,
+		note: str | None = None,
+	) -> Status:
+		"""The moves of a submitted document by its lifecycle: the Jahresabschluss goes to Übermittelt once it is
+		uploaded to the Unternehmensregister, and to Eingestellt once the register has published it. With
+		``filed_via``, upload for the Übermittlung, the filing is noted as well: on ``filed_on`` or today, with the note
+		and the user. A submitted document keeps its fields, so the status and the filing are stored past the save.
+		Returns the new status."""
+		self.check_permission("submit")
+		if self.docstatus != 1:
+			frappe.throw(_("{0} is not submitted, so its status stays.").format(self.name))
+		values: dict[str, Any] = {"status": self._move(event)}
+		if filed_via:
+			if filed_via not in lifecycle.FILED_VIA:
+				frappe.throw(_("Steuerbote knows no way of filing {0}.").format(escape_html(str(filed_via))))
+			filed_date = getdate(filed_on) if filed_on else getdate()
+			if filed_date > getdate():
+				frappe.throw(_("A return cannot be filed in the future."))
+			values.update(
+				{
+					"filed_via": filed_via,
+					"filed_on": filed_date,
+					"filing_note": (note or "").strip() or None,
+					"filed_by": frappe.session.user,
+				}
+			)
+		self.db_set(values)
+		return values["status"]
 
 	def set_period(self) -> None:
 		"""Geschäftsjahr, Von-Datum and Bis-Datum: the Fiscal Year of the company that ends in the year of the document,
@@ -598,6 +637,8 @@ class AnnualFiling:
 		if not cint(self.is_correction):
 			self.corrects = None
 			return
+		if self.LIFECYCLE.cancellable:
+			self._refuse_berichtigung()
 		corrected = (
 			frappe.db.get_value(
 				self.doctype, self.corrects, ["name", "docstatus", *self.KEY_FIELDS], as_dict=True
@@ -758,6 +799,16 @@ class AnnualFiling:
 			return self.LIFECYCLE.move(status or self.status, event, ready=ready)
 		except LifecycleError as error:
 			self._refuse(error)
+
+	def _refuse_berichtigung(self) -> None:
+		"""A document whose lifecycle cancels and amends it, the Jahresabschluss, changes that way only: „Wird der
+		Jahresabschluss [...] geändert, so ist auch die Änderung nach Absatz 1 Satz 1 offenzulegen“ (§ 325 Abs. 1b
+		Satz 1 HGB), and the amendment replaces it."""
+		frappe.throw(
+			_("{0} changes by Stornieren and Berichtigen, not by a Berichtigung of its own.").format(
+				self.name
+			)
+		)
 
 	def _refuse(self, error: LifecycleError) -> None:
 		messages = {
