@@ -1,5 +1,6 @@
 """The setup of Steuerbote: Steuerbote einrichten for the third company of the seed, the VAT Return Settings and the
-mapping of the company of the seed with its check of the tax templates, and the ERiC Settings, which simulate.
+mapping of the company of the seed with its check of the tax templates, Vorgaben aktualisieren for the mapping of the
+fourth company, and the ERiC Settings, which simulate.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -119,3 +120,52 @@ def remove_what_a_run_set_up(desk, company: str) -> None:
 		company,
 	)
 	desk.settle()
+
+
+def test_vorgaben_aktualisieren_proposes_the_changes_of_the_defaults_and_keeps_your_own(desk, expect):
+	"""Vorgaben laden sets the mapping of the fourth company back; then it looks as if older defaults had mapped 8400
+	to Kz 86 and the user had set 1548 to the level Hinweis. The dialog checks the change of the defaults and leaves
+	the user's own unchecked, and taking over the checked one changes 8400 alone."""
+	desk.open(f"/desk/vat-return-mapping/{quote(data.MAPPING_COMPANY)}")
+	expect(desk.grid_rows("rules").first).to_be_visible()
+	desk.button("Vorgaben laden").click()
+	assert desk.run_doc_method("load_defaults", lambda: desk.answer_dialog(yes=True)).ok
+	expect(desk.dialog()).to_contain_text("Vorgaben geladen")
+	desk.close_dialog()
+	save(desk)
+	desk.page.evaluate(
+		"""() => {
+			const rows = JSON.parse(cur_frm.doc.defaults_rows);
+			rows.rules.find((rule) => rule.account_number === "8400").kennzahl = "86";
+			cur_frm.doc.defaults_rows = JSON.stringify(rows);
+			cur_frm.doc.rules.find((rule) => rule.account_number === "8400").kennzahl = "86";
+			cur_frm.doc.watched.find((row) => row.account_number === "1548").level = "hint";
+			cur_frm.dirty();
+		}"""
+	)
+	save(desk)
+	response = desk.run_doc_method("compare_with_defaults", desk.button("Vorgaben aktualisieren").click)
+	assert response.ok
+	dialog = desk.dialog()
+	expect(dialog.locator("tbody tr")).to_have_count(2)
+	expect(dialog.locator('input.steuerbote-difference[value="account:8400"]')).to_be_checked()
+	expect(dialog.locator('input.steuerbote-difference[value="account:1548"]')).not_to_be_checked()
+	expect(dialog).to_contain_text("Vorgabe geändert")
+	expect(dialog).to_contain_text("Eigene Änderung")
+	assert desk.run_doc_method("update_from_defaults", lambda: desk.answer_dialog(yes=True)).ok
+	expect(dialog).to_have_count(0)
+	desk.settle()
+	assert desk.page.evaluate(
+		"""() => [
+			cur_frm.doc.rules.find((rule) => rule.account_number === "8400").kennzahl,
+			cur_frm.doc.watched.find((row) => row.account_number === "1548").level,
+			cur_frm.doc.defaults_version,
+		]"""
+	) == ["81", "hint", "SKR03 2026.1"]
+
+
+def save(desk) -> None:
+	"""Save the form as Strg+S does, and wait until the desk has the answer."""
+	desk.page.evaluate("() => cur_frm.save()")
+	desk.settle()
+	assert not desk.page.evaluate("() => cur_frm.is_dirty()")

@@ -1,10 +1,25 @@
 """Tests for steuerbote.mapping_sync, plain unittest without Frappe so that every test runner collects them."""
 
+import json
 from decimal import Decimal
 from typing import Any
 from unittest import TestCase
 
-from steuerbote.mapping_sync import defaults_for_accounts, rows_to_mapping
+from steuerbote.mapping_sync import (
+	ACCOUNT,
+	CHECK,
+	body_of_items,
+	canonical_json,
+	default_items,
+	defaults_for_accounts,
+	dump_items,
+	items_of_body,
+	items_of_mapping,
+	items_of_rows,
+	load_items,
+	rows_of_items,
+	rows_to_mapping,
+)
 from steuerbote.ustva import (
 	DEFAULTS,
 	LATEST_YEAR,
@@ -474,3 +489,236 @@ class RealDefaultsTest(TestCase):
 			["Umsatzsteuer 19 %", "Umsatzsteuer nach § 13b UStG 19 %"],
 		)
 		self.assertTrue(reduced.ready)
+
+
+RULE_8400 = {
+	"place": "rule",
+	"kennzahl": "81",
+	"side": "credit",
+	"tax_rate": None,
+	"also_kennzahl": None,
+	"also_side": None,
+}
+
+
+class ItemsOfRowsTest(TestCase):
+	"""The rows as items of steuerbote.mappings.diff: one per account with its place, one per Verprobung."""
+
+	def test_an_account_carries_its_rule_and_a_check_its_accounts(self):
+		items = items_of_rows(
+			[rule_row("8400"), rule_row("3123", "46", "debit", tax_rate=19.0)],
+			[check_row(base="8400", tax="1776")],
+			[{"account_number": "1548", "level": "hint"}],
+		)
+		self.assertEqual(
+			items,
+			{
+				(ACCOUNT, "8400"): RULE_8400,
+				(ACCOUNT, "3123"): {**RULE_8400, "kennzahl": "46", "side": "debit", "tax_rate": "19"},
+				(ACCOUNT, "1548"): {"place": "watched", "level": "hint"},
+				(CHECK, "Umsatzsteuer 19 %"): {
+					"base_accounts": "8400",
+					"tax_accounts": "1776",
+					"side": "credit",
+				},
+			},
+		)
+		self.assertEqual(
+			list(items),
+			[(ACCOUNT, "8400"), (ACCOUNT, "3123"), (ACCOUNT, "1548"), (CHECK, "Umsatzsteuer 19 %")],
+		)
+
+	def test_a_rate_reads_the_same_however_it_was_stored(self):
+		for stored in (19.0, "19", "19.00", Decimal("19"), Decimal("1.9E+1")):
+			with self.subTest(stored=stored):
+				(fields,) = items_of_rows([rule_row("3123", "46", "debit", tax_rate=stored)], [], []).values()
+				self.assertEqual(fields["tax_rate"], "19")
+		(fields,) = items_of_rows([rule_row("3123", "46", "debit", tax_rate=5.50)], [], []).values()
+		self.assertEqual(fields["tax_rate"], "5.5")
+		for empty in (0, 0.0, None, ""):
+			with self.subTest(empty=empty):
+				(fields,) = items_of_rows([rule_row("8400", tax_rate=empty)], [], []).values()
+				self.assertIsNone(fields["tax_rate"])
+
+	def test_the_accounts_of_a_check_read_sorted(self):
+		(fields,) = items_of_rows([], [check_row(base="8401,\n8400  8338", tax="1776, 1775")], []).values()
+		self.assertEqual(
+			(fields["base_accounts"], fields["tax_accounts"]), ("8338, 8400, 8401", "1775, 1776")
+		)
+
+	def test_an_additional_kennzahl_is_part_of_the_rule(self):
+		(fields,) = items_of_rows([rule_row("2400", also_kennzahl="50", also_side="debit")], [], []).values()
+		self.assertEqual((fields["also_kennzahl"], fields["also_side"]), ("50", "debit"))
+
+	def test_an_account_has_one_place(self):
+		for rules, watched, refusal in (
+			([rule_row("8400"), rule_row("8400", "86")], [], "account 8400 is mapped twice"),
+			([], [{"account_number": "1548"}, {"account_number": "1548"}], "account 1548 is watched twice"),
+			(
+				[rule_row("8400")],
+				[{"account_number": "8400"}],
+				"account 8400 is watched but also mapped or checked",
+			),
+		):
+			with self.subTest(refusal=refusal), self.assertRaisesRegex(MappingError, refusal):
+				items_of_rows(rules, [], watched)
+
+	def test_a_label_names_one_check(self):
+		with self.assertRaisesRegex(MappingError, "two tax checks have the label 'Umsatzsteuer 19 %'"):
+			items_of_rows([], [check_row(), check_row(base="8401")], [])
+
+	def test_a_row_the_core_cannot_read_is_refused(self):
+		with self.assertRaisesRegex(MappingError, "side must be credit or debit"):
+			items_of_rows([rule_row("8400", side="left")], [], [])
+
+
+class DefaultItemsTest(TestCase):
+	def test_the_defaults_for_some_accounts_are_what_vorgaben_laden_takes_over(self):
+		items = default_items("SKR03", LATEST_YEAR, {"8400", "1776", "1548", "8603"})
+		self.assertEqual(
+			items,
+			{
+				(ACCOUNT, "8400"): RULE_8400,
+				(ACCOUNT, "1548"): {"place": "watched", "level": "blocking"},
+				(ACCOUNT, "8603"): {"place": "watched", "level": "hint"},
+				(CHECK, "Umsatzsteuer 19 %"): {
+					"base_accounts": "8400",
+					"tax_accounts": "1776",
+					"side": "credit",
+				},
+			},
+		)
+
+	def test_the_defaults_for_every_account_are_the_items_of_the_default_mapping(self):
+		for chart, mapping in DEFAULTS.items():
+			with self.subTest(chart=chart):
+				self.assertEqual(
+					default_items(chart, LATEST_YEAR, accounts_of(mapping)),
+					items_of_mapping(default_mapping(chart, LATEST_YEAR)),
+				)
+
+
+class RowsOfItemsTest(TestCase):
+	def test_items_give_back_the_rows_they_came_from(self):
+		for chart, mapping in DEFAULTS.items():
+			with self.subTest(chart=chart):
+				items = items_of_mapping(mapping)
+				self.assertEqual(items_of_rows(*rows_of_items(items)), items)
+				self.assertEqual(items_of_mapping(mapping_of(*rows_of_items(items), chart=chart)), items)
+
+	def test_the_rows_are_those_of_the_doctype_by_account_number(self):
+		rows = rows_of_items(
+			{
+				(ACCOUNT, "3123"): {**RULE_8400, "kennzahl": "46", "side": "debit", "tax_rate": "19"},
+				(CHECK, "Umsatzsteuer 19 %"): {
+					"base_accounts": "8400",
+					"tax_accounts": "1776",
+					"side": "credit",
+				},
+				(ACCOUNT, "1548"): {"place": "watched", "level": "hint"},
+				(ACCOUNT, "8400"): RULE_8400,
+			}
+		)
+		self.assertEqual(
+			rows.rule_rows,
+			[
+				rule_row("3123", "46", "debit", tax_rate=Decimal("19"), also_kennzahl=None, also_side=None),
+				rule_row("8400", tax_rate=None, also_kennzahl=None, also_side=None),
+			],
+		)
+		self.assertEqual(rows.check_rows, [{**check_row(), "side": "credit"}])
+		self.assertEqual(rows.watched_rows, [{"account_number": "1548", "level": "hint"}])
+
+
+class BodyTest(TestCase):
+	"""The plain data of the stored defaults and of the file of a mapping."""
+
+	def setUp(self):
+		self.items = items_of_mapping(DEFAULTS["SKR03"])
+
+	def test_the_body_holds_rules_checks_and_watched_accounts_as_texts(self):
+		body = body_of_items(
+			{
+				(ACCOUNT, "3123"): {**RULE_8400, "kennzahl": "46", "side": "debit", "tax_rate": "19"},
+				(ACCOUNT, "1548"): {"place": "watched", "level": "hint"},
+				(CHECK, "Umsatzsteuer 19 %"): {
+					"base_accounts": "8400, 8401",
+					"tax_accounts": "1776",
+					"side": "credit",
+				},
+			}
+		)
+		self.assertEqual(
+			body,
+			{
+				"rules": [
+					{
+						"account_number": "3123",
+						"kennzahl": "46",
+						"side": "debit",
+						"tax_rate": "19",
+						"also_kennzahl": None,
+						"also_side": None,
+					}
+				],
+				"checks": [
+					{
+						"label": "Umsatzsteuer 19 %",
+						"base_accounts": ["8400", "8401"],
+						"tax_accounts": ["1776"],
+						"side": "credit",
+					}
+				],
+				"watched": [{"account_number": "1548", "level": "hint"}],
+			},
+		)
+
+	def test_the_body_gives_back_its_items(self):
+		self.assertEqual(items_of_body(body_of_items(self.items)), self.items)
+		self.assertEqual(items_of_body(json.loads(json.dumps(body_of_items(self.items)))), self.items)
+
+	def test_dump_and_load_give_back_the_items(self):
+		text = dump_items(self.items)
+		self.assertEqual(load_items(text), self.items)
+		self.assertEqual(text, dump_items(load_items(text)))
+
+	def test_the_dump_is_canonical_json(self):
+		self.assertEqual(canonical_json({"b": [1, "ä"], "a": None}), '{"a":null,"b":[1,"ä"]}')
+		self.assertEqual(
+			dump_items({(ACCOUNT, "1548"): {"place": "watched", "level": "hint"}}),
+			'{"checks":[],"rules":[],"watched":[{"account_number":"1548","level":"hint"}]}',
+		)
+
+	def test_load_refuses_a_text_that_is_no_json(self):
+		with self.assertRaisesRegex(MappingError, "no JSON"):
+			load_items("{rules: []")
+
+	def test_a_body_of_another_shape_is_refused(self):
+		good = body_of_items(self.items)
+		rule = good["rules"][0]
+		check = good["checks"][0]
+		for body, refusal in (
+			([], "a mapping holds rules, checks, watched"),
+			({"rules": [], "checks": []}, "a mapping holds"),
+			({**good, "levels": []}, "a mapping holds"),
+			({**good, "rules": {}}, "rules must be a list"),
+			({**good, "rules": ["8400"]}, "each of the rules holds account_number, kennzahl"),
+			({**good, "rules": [{**rule, "note": "x"}]}, "each of the rules holds"),
+			(
+				{**good, "watched": [{"account_number": "1548"}]},
+				"each of the watched holds account_number, level",
+			),
+			({**good, "rules": [{**rule, "kennzahl": 81}]}, "rules: kennzahl cannot be 81"),
+			({**good, "rules": [{**rule, "tax_rate": 19.0}]}, "rules: tax_rate cannot be 19.0"),
+			(
+				{**good, "checks": [{**check, "base_accounts": "8400"}]},
+				"checks: base_accounts cannot be '8400'",
+			),
+			(
+				{**good, "checks": [{**check, "tax_accounts": [1776]}]},
+				r"checks: tax_accounts cannot be \[1776\]",
+			),
+			({**good, "checks": [{**check, "label": ["x"]}]}, r"checks: label cannot be \['x'\]"),
+		):
+			with self.subTest(refusal=refusal), self.assertRaisesRegex(MappingError, refusal):
+				items_of_body(body)

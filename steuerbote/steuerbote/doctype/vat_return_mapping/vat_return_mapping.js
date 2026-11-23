@@ -1,3 +1,5 @@
+{% include "steuerbote/public/js/mapping_differences.js" %}
+
 frappe.ui.form.on("VAT Return Mapping", {
 	setup(frm) {
 		for (const table of ["rules", "watched"]) {
@@ -26,10 +28,15 @@ frappe.ui.form.on("VAT Return Mapping", {
 			}
 		});
 		if (!frm.is_new()) {
+			if (frm.doc.chart !== OWN_CHART) {
+				frm.add_custom_button(__("Update Defaults"), () => update_defaults(frm));
+			}
 			frm.add_custom_button(__("Check Tax Templates"), () => check_tax_templates(frm));
 		}
 	},
 });
+
+const OWN_CHART = "Eigener Kontenrahmen";
 
 function load_defaults(frm) {
 	frm.call("load_defaults").then((r) => {
@@ -47,6 +54,63 @@ function load_defaults(frm) {
 		} else {
 			frappe.show_alert({ message: __("Defaults Loaded"), indicator: "green" });
 		}
+	});
+}
+
+// Vorgaben aktualisieren: the differences to the defaults of today, those the defaults made checked, the user's own not.
+function update_defaults(frm) {
+	if (frm.is_dirty()) {
+		frappe.msgprint(__("Save the mapping before updating it from the defaults."));
+		return;
+	}
+	frm.call("compare_with_defaults").then((response) => {
+		const comparison = response.message;
+		if (!comparison.differences.length) {
+			if (comparison.taken_over === comparison.version) {
+				frappe.msgprint({
+					title: __("Update Defaults"),
+					indicator: "green",
+					message: __("The mapping holds the defaults {0}.", [comparison.version]),
+				});
+			} else {
+				frappe.confirm(
+					__("The mapping holds the defaults {0}, row by row. Note them as taken over?", [comparison.version]),
+					() => take_over_defaults(frm, [])
+				);
+			}
+			return;
+		}
+		show_mapping_differences({
+			title: __("Update Defaults"),
+			intro: comparison.base_known
+				? __(
+						"These rows differ from the defaults {0}. Checked are the changes of the defaults since {1}, in rows the mapping kept as the defaults gave them; unchecked are your own changes, which taking over would undo. What stays unchecked, stays as it is.",
+						[comparison.version, comparison.taken_over]
+				  )
+				: __(
+						"These rows differ from the defaults {0}. The mapping does not know the defaults it was made from, so each difference counts as your own and none is checked. What stays unchecked, stays as it is.",
+						[comparison.version]
+				  ),
+			differences: comparison.differences,
+			unchanged: comparison.unchanged,
+			proposed_label: __("Defaults {0}", [comparison.version]),
+			show_origin: true,
+			apply_label: __("Take Over the Checked"),
+			apply: (chosen, dialog) => take_over_defaults(frm, chosen, dialog),
+		});
+	});
+}
+
+function take_over_defaults(frm, chosen, dialog) {
+	frm.call("update_from_defaults", { chosen }).then((response) => {
+		if (dialog) {
+			dialog.hide();
+		}
+		frm.reload_doc();
+		frappe.show_alert({
+			message: __("Differences taken over: {0}.", [response.message]),
+			indicator: "green",
+		});
 	});
 }
 

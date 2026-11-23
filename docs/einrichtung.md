@@ -81,6 +81,26 @@ steuerbote_setup_steps = [
 
 `steuerbote/setup/steps.py` prüft die Einträge (`Step.from_hook`) und bringt die Schritte in ihre Reihenfolge (`plan`): jeden nach denen, die er braucht, sonst nach `order` und Schlüssel. Ein Eintrag, der dem nicht folgt, etwa ein unbekannter Schlüssel in `needs` oder Schritte, die einander im Kreis brauchen, hält die Einrichtung mit dem Grund an.
 
+## Vorgaben aktualisieren
+
+„Vorgaben laden“ ersetzt alle Zeilen der Kontenzuordnung durch die Vorgaben des Kontenrahmens, nach einer Rückfrage, wenn die Zuordnung schon Zeilen hat. „Vorgaben aktualisieren“ übernimmt dagegen nur, was sich an den Vorgaben geändert hat, und lässt eigene Änderungen stehen. Die Schaltfläche steht an jeder gespeicherten Zuordnung für SKR03 oder SKR04.
+
+- **Stand der Vorgaben.** Jeder Stand der Vorgaben hat einen Namen aus Kontenrahmen, Ausgabe des DATEV-Kontenrahmens und Revision, etwa „SKR03 2026.1“ (`defaults_version` in `defaults.py`). Jede Änderung der Vorgaben erhöht die Revision, eine neue Ausgabe des DATEV-Kontenrahmens beginnt wieder bei 1, und `test_defaults.py` hält den Inhalt jedes Stands mit seiner SHA-256-Summe fest: Ein Name steht immer für denselben Inhalt. „Vorgaben laden“, „Vorgaben aktualisieren“ und „Steuerbote einrichten“ schreiben ihn in das Feld „Stand der Vorgaben“ der Zuordnung.
+- **Übernommene Vorgaben.** Dazu hält die Zuordnung die Zeilen fest, die ihr die Vorgaben dabei gaben, gekürzt auf die Konten des Unternehmens und mit den Stufen der Vorgaben (verstecktes Feld „Übernommene Vorgaben“, `defaults_rows`). Steuerbote braucht deshalb keine Liste aller früheren Stände: Jede Zuordnung trägt die Zeilen ihres Stands selbst, und der Vergleich bleibt genau, auch wenn zwischen zwei Aktualisierungen mehrere Stände liegen.
+- **Vergleich.** Je Konto, mit seiner Regel oder als beobachtetes Konto, und je Verprobung, nach ihrer Bezeichnung, stellt „Vorgaben aktualisieren“ drei Seiten gegeneinander: die Zeile der Zuordnung, die Vorgabe von heute für die Konten, die das Unternehmen heute hat, und die übernommene Vorgabe (`steuerbote/mappings/diff.py`). Ein Konto, das vom beobachteten Konto zu einer Regel wird, ist ein Unterschied, nicht zwei.
+
+| Zeile der Zuordnung | Ergebnis | Angehakt |
+|---|---|---|
+| gleich der Vorgabe von heute | unverändert, nicht im Dialog | – |
+| gleich der übernommenen Vorgabe, die Vorgabe von heute ist anders | Änderung der Vorgaben: kommt hinzu, entfällt oder ändert sich | ja |
+| anders als die übernommene Vorgabe | eigene Änderung; sie zu übernehmen machte sie rückgängig | nein |
+| ohne übernommene Vorgaben | Herkunft unbekannt | nein |
+
+- **Übernehmen.** Der Dialog zeigt je Unterschied das Konto oder die Verprobung, was sich ändert und in welchen Feldern, die Zeile der Zuordnung, die Vorgabe und die Herkunft. „Angehakte übernehmen“ übernimmt nur die angehakten Unterschiede, alles andere bleibt, wie es ist; neue Zeilen kommen ans Ende ihrer Tabelle. Danach gelten die Vorgaben von heute als übernommen: Ein Unterschied, den man nicht übernommen hat, ist beim nächsten Mal eine eigene Änderung. Passt die Auswahl nicht zusammen, etwa eine neue Verprobung ohne die Regel ihres Grundlagenkontos, lehnt das Speichern sie mit dem Grund ab, und die Zuordnung bleibt, wie sie war. Ohne Unterschiede bietet die Schaltfläche an, den Stand von heute als übernommen zu vermerken.
+- **Stufen.** „Vorgaben laden“ behält die Stufe eines beobachteten Kontos, die übernommenen Vorgaben halten aber die Stufe der Vorgaben. So erkennt „Vorgaben aktualisieren“ die behaltene Stufe als eigene Änderung.
+- **Ältere Zuordnungen.** Eine Zuordnung von vor diesem Stand kennt ihre Vorgaben nicht: Jeder Unterschied gilt als eigene Änderung und ist nicht angehakt. Nach dem ersten „Vorgaben laden“ oder „Vorgaben aktualisieren“ kennt sie sie.
+- **Bezeichnungen.** Eine Verprobung ist über ihre Bezeichnung zu erkennen, deshalb lehnt das Speichern zwei Verprobungen mit derselben Bezeichnung ab.
+
 ## Quellen
 
 - § 18 Abs. 2 und 2a UStG, https://www.gesetze-im-internet.de/ustg_1980/__18.html, abgerufen am 23.11.2026.

@@ -100,6 +100,7 @@ testpaths = [
     "steuerbote/gewst",
     "steuerbote/hgb",
     "steuerbote/setup",
+    "steuerbote/mappings",
 ]
 # The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
 addopts = "--strict-markers --ignore=steuerbote/eric/tests/test_secrets.py"
@@ -130,6 +131,7 @@ source = [
     "steuerbote/gewst",
     "steuerbote/hgb",
     "steuerbote/setup",
+    "steuerbote/mappings",
 ]
 omit = ["*/tests/*", "*/steuerbote/eric/secrets.py"]
 branch = true

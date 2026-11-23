@@ -65,6 +65,11 @@ SETUP_ABBR = "STE2S"
 # Its rules, tax checks and watched accounts with the defaults of SKR03: 8400 and 1576, 8400 against 1776, and 1548.
 SETUP_MAPPING = {"rules": 2, "checks": 1, "watched": 1}
 
+# A fourth company with SKR03 accounts and the mapping of "Vorgaben laden", which the browser tests of Vorgaben
+# aktualisieren and of the file of a mapping change and set back.
+MAPPING_COMPANY = "Steuerbote E2E Zuordnung GmbH"
+MAPPING_ABBR = "STE2Z"
+
 # The Transferticket of the accepted Senden, invented in the form of TransferTicketSType of the ELSTER Basisschema.
 TRANSFERTICKET = "e2026e2etransferticketerfunden01"
 # What the form of such a draft says above its fields after ELSTER accepted its Senden.

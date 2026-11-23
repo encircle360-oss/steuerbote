@@ -127,11 +127,13 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 |---|---|---|
 | `company` | Unternehmen | Pflicht |
 | `chart` | Kontenrahmen | bestimmt die Vorgabe für „Vorgaben laden“ |
+| `defaults_version` | Stand der Vorgaben | der Stand, den „Vorgaben laden“ oder „Vorgaben aktualisieren“ zuletzt übernommen hat, etwa „SKR03 2026.1“, siehe [Vorgaben aktualisieren](einrichtung.md#vorgaben-aktualisieren) |
+| `defaults_rows` | Übernommene Vorgaben | versteckt: die Zeilen, die die Vorgaben dabei gaben, als JSON, gegen die „Vorgaben aktualisieren“ eigene Änderungen erkennt |
 | `rules` | Zuordnungen | Tabelle „Regel der Kontenzuordnung Umsatzsteuer“: Konto, Kontonummer (aus dem Konto), Kennzahl, Seite (Haben oder Soll), Steuersatz (%; leer oder 0 heißt kein Satz, die Tabelle zeigt ihn dann leer), Zusätzliche Kennzahl und Seite der zusätzlichen Kennzahl |
 | `checks` | Verprobungen | Tabelle „Verprobung der Kontenzuordnung Umsatzsteuer“: Bezeichnung, Grundlagenkonten und Steuerkonten (Kontonummern, durch Kommas getrennt), Seite |
 | `watched` | Beobachtete Konten | Tabelle „Beobachtetes Konto der Kontenzuordnung Umsatzsteuer“: Konto, Kontonummer und Stufe: „Sperrt“ (Vorgabe) hält die Meldung bei einem Saldo an, „Hinweis“ ergibt dann nur einen Hinweis |
 
-Die Schaltflächen „Vorgaben laden“ und „Steuervorlagen prüfen“ beschreibt [Kontenzuordnung je Unternehmen](#kontenzuordnung-je-unternehmen).
+Die Schaltflächen „Vorgaben laden“, „Vorgaben aktualisieren“ und „Steuervorlagen prüfen“ beschreibt [Kontenzuordnung je Unternehmen](#kontenzuordnung-je-unternehmen).
 
 ### Umsatzsteuer-Voranmeldung (`VAT Return`)
 
@@ -275,8 +277,9 @@ Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cen
 
 ## Kontenzuordnung je Unternehmen
 
-- **Vorgaben laden.** Die Schaltfläche füllt die Tabellen aus der Vorgabe für SKR03 oder SKR04, gekürzt auf die Konten des Unternehmens mit Kontonummer, die Buchungen aufnehmen. Regeln und beobachtete Konten bleiben, wenn es ihr Konto gibt. Ein beobachtetes Konto behält die Stufe, die seine Zeile vorher hatte; eines, das neu dazukommt, bekommt die Stufe der Vorgabe. Eine Verprobung behält ihre vorhandenen Grundlagen und Steuerkonten und entfällt, wenn auf einer Seite keines bleibt. Ein Hinweis nennt die Konten der Vorgabe, die dem Unternehmen fehlen. Für einen eigenen Kontenrahmen gibt es keine Vorgabe.
-- **Prüfung beim Speichern.** Jedes Konto gehört zum Unternehmen und ist keine Kontengruppe. Der Kern prüft die Zuordnung gegen den neuesten Vordruck: jedes Konto nur einmal, nur Kennzahlen mit Betrag, ein Steuersatz nur dort, wo der Vordruck eine eigene Steuer-Kennzahl hat, Verprobungen und beobachtete Konten ohne Widerspruch, jedes beobachtete Konto nur einmal.
+- **Vorgaben laden.** Die Schaltfläche füllt die Tabellen aus der Vorgabe für SKR03 oder SKR04, gekürzt auf die Konten des Unternehmens mit Kontonummer, die Buchungen aufnehmen. Regeln und beobachtete Konten bleiben, wenn es ihr Konto gibt. Ein beobachtetes Konto behält die Stufe, die seine Zeile vorher hatte; eines, das neu dazukommt, bekommt die Stufe der Vorgabe. Eine Verprobung behält ihre vorhandenen Grundlagen und Steuerkonten und entfällt, wenn auf einer Seite keines bleibt. Ein Hinweis nennt die Konten der Vorgabe, die dem Unternehmen fehlen. Für einen eigenen Kontenrahmen gibt es keine Vorgabe. Die Zuordnung merkt sich den Stand der Vorgaben und die Zeilen, die sie gaben.
+- **Vorgaben aktualisieren.** Die Schaltfläche an einer gespeicherten Zuordnung für SKR03 oder SKR04 zeigt die Unterschiede zu den Vorgaben von heute, Änderungen der Vorgaben angehakt, eigene Änderungen nicht, und übernimmt nur die angehakten, siehe [Vorgaben aktualisieren](einrichtung.md#vorgaben-aktualisieren).
+- **Prüfung beim Speichern.** Jedes Konto gehört zum Unternehmen und ist keine Kontengruppe. Der Kern prüft die Zuordnung gegen den neuesten Vordruck: jedes Konto nur einmal, jede Bezeichnung einer Verprobung nur einmal, nur Kennzahlen mit Betrag, ein Steuersatz nur dort, wo der Vordruck eine eigene Steuer-Kennzahl hat, Verprobungen und beobachtete Konten ohne Widerspruch, jedes beobachtete Konto nur einmal.
 - „Berechnen“ prüft dieselbe Zuordnung noch einmal gegen den Vordruck des Jahres der Meldung.
 - **Steuervorlagen prüfen.** Die Schaltfläche an einer gespeicherten Kontenzuordnung nennt die Konten der Steuervorlagen des Unternehmens, die in der Zuordnung keinen Platz haben, mit Kontonummer, Kontoname und Vorlagen. „Auf der Stufe „Sperrt“ beobachten“ nimmt jedes dieser Konten mit Kontonummer in einem Schritt in die beobachteten Konten auf und speichert die Zuordnung; ein Konto ohne Kontonummer braucht zuerst eine Nummer. Was geprüft wird, steht unter [Prüfung der Steuervorlagen](#prüfung-der-steuervorlagen).
 

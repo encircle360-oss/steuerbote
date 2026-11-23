@@ -1,9 +1,13 @@
+import hashlib
 from decimal import Decimal
 from unittest import TestCase
 
+from steuerbote.mapping_sync import dump_items, items_of_mapping
 from steuerbote.ustva.calculation import LedgerLine, calculate
 from steuerbote.ustva.defaults import (
+	DATEV_EDITION,
 	DEFAULTS,
+	REVISION,
 	SKR03,
 	SKR03_ACCOUNTS,
 	SKR03_IGNORED,
@@ -17,6 +21,7 @@ from steuerbote.ustva.defaults import (
 	SKR04_WATCHED,
 	SKR04_WATCHED_FOR_HINTS,
 	default_mapping,
+	defaults_version,
 	deliberately_without_kennzahl,
 	with_ranges,
 )
@@ -822,3 +827,33 @@ class DeliberatelyWithoutKennzahlTest(TestCase):
 
 	def test_a_chart_without_defaults_leaves_no_account_without_kennzahl(self):
 		self.assertEqual(deliberately_without_kennzahl("Eigener Kontenrahmen"), frozenset())
+
+
+# The SHA-256 of the defaults of each version, as their items in canonical JSON (steuerbote/mapping_sync.py). A
+# version names exactly one content, so a change of defaults.py needs a new REVISION and its digests here.
+DIGESTS = {
+	"SKR03 2026.1": "d965a9649c5aba217699d01ee5e3e05f088346a9a9f67d6e99606887e73a9bf4",
+	"SKR04 2026.1": "67ca14cab3a3ca95c488815e4fd960aeb607be54d1a7ee8f00413e007cc1bbf5",
+}
+
+
+class DefaultsVersionTest(TestCase):
+	def test_the_version_names_the_chart_the_datev_edition_and_the_revision(self):
+		self.assertEqual((DATEV_EDITION, REVISION), (2026, 1))
+		self.assertEqual([defaults_version(chart) for chart in DEFAULTS], ["SKR03 2026.1", "SKR04 2026.1"])
+
+	def test_a_chart_without_defaults_has_no_version(self):
+		with self.assertRaisesRegex(KeyError, "no default mapping for chart 'Eigener Kontenrahmen'"):
+			defaults_version("Eigener Kontenrahmen")
+
+	def test_a_version_always_means_the_same_defaults(self):
+		for chart in DEFAULTS:
+			with self.subTest(chart=chart):
+				items = items_of_mapping(default_mapping(chart, LATEST_YEAR))
+				digest = hashlib.sha256(dump_items(items).encode("utf-8")).hexdigest()
+				self.assertEqual(
+					digest,
+					DIGESTS.get(defaults_version(chart)),
+					f"The defaults of {chart} changed: raise REVISION in defaults.py and pin the digest of the new "
+					"version in DIGESTS.",
+				)
