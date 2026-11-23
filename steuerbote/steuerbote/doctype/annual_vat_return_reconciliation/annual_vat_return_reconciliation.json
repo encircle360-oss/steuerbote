@@ -1,0 +1,154 @@
+{
+ "actions": [],
+ "creation": "2026-11-23 20:00:00.000000",
+ "description": "A Kennzahl of the Voranmeldung over the year, or Kz 820: the return against the filed Voranmeldungen.",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "kennzahl",
+  "label",
+  "filed",
+  "filed_ledger",
+  "ledger_now",
+  "annual",
+  "column_break_parts",
+  "late",
+  "corrections",
+  "unfiled",
+  "sondervorauszahlung",
+  "soll",
+  "rounding",
+  "annual_only",
+  "rest"
+ ],
+ "fields": [
+  {
+   "columns": 1,
+   "fieldname": "kennzahl",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kennzahl",
+   "read_only": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Small Text",
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "filed",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Filed Voranmeldungen",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filed_ledger",
+   "fieldtype": "Currency",
+   "label": "Ledger at Filing",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ledger_now",
+   "fieldtype": "Currency",
+   "label": "Ledger Today",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "fieldname": "annual",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Per Return",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_parts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "columns": 1,
+   "fieldname": "late",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Late Postings",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "corrections",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Corrections without Posting",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unfiled",
+   "fieldtype": "Currency",
+   "label": "Periods Not Filed",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sondervorauszahlung",
+   "fieldtype": "Currency",
+   "label": "Kz 39 against the Sondervorauszahlung",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "soll",
+   "fieldtype": "Currency",
+   "label": "Vorauszahlungssoll Set Otherwise",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "rounding",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Rounding",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "annual_only",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Return Only",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "rest",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Unexplained Rest",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-23 20:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "Annual VAT Return Reconciliation",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

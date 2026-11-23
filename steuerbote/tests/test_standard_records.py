@@ -83,7 +83,9 @@ LONGEST_LABEL = 20
 DAUERFRIST_DOCTYPE = "VAT Return Extension"
 # The lists of the year-end filings, which the section „Jahresmeldungen“ of the sidebar and the workspace will lead
 # to once their documents exist; until then the sidebar leaves them out.
-AWAITING_THE_SECTION_JAHRESMELDUNGEN = frozenset({"Annual Filing Settings", "Income Tax Mapping"})
+AWAITING_THE_SECTION_JAHRESMELDUNGEN = frozenset(
+	{"Annual Filing Settings", "Income Tax Mapping", "Annual VAT Return"}
+)
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
 CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')
@@ -533,7 +535,10 @@ class DefaultPrintFormatFilesTest(TestCase):
 			{setter["doc_type"]: setter["value"] for setter in self.setters},
 			formats,
 		)
-		self.assertEqual(set(formats), {"VAT Return", "Recapitulative Statement", "VAT Return Extension"})
+		self.assertEqual(
+			set(formats),
+			{"VAT Return", "Recapitulative Statement", "VAT Return Extension", "Annual VAT Return"},
+		)
 
 	def test_each_property_setter_is_named_and_shaped_as_frappe_makes_it(self):
 		for setter in self.setters:
@@ -563,6 +568,7 @@ class NamingFilesTest(TestCase):
 			("vat_return", "UStVA"),
 			("recapitulative_statement", "ZM"),
 			("vat_return_extension", "DFV"),
+			("annual_vat_return", "UStE"),
 		):
 			definition = read_json(MODULE / "doctype" / name / f"{name}.json")
 			fields = {field["fieldname"]: field for field in definition["fields"]}

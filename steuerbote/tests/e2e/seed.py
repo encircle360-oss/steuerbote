@@ -12,6 +12,8 @@ so the seed runs again on the same site without a change; a second run only calc
 company again. It also marks the setup wizard complete and sets the language of the Administrator and the user to
 German, so that the desk opens as a German accountant sees it. Take a site of its own for it, never one with real
 data.
+
+Of the annual filings, the seed makes the Umsatzsteuererklärung of the first company for 2026 and calculates it.
 """
 
 import frappe
@@ -79,6 +81,7 @@ def run() -> None:
 	calculate_vat_return()
 	calculate_recapitulative_statement()
 	make_extension()
+	calculate_annual_vat_return()
 	make_sent_drafts()
 	make_setup_company()
 	make_mapping_company()
@@ -316,3 +319,10 @@ def make_desk_users() -> None:
 	for user in ("Administrator", data.ACCOUNTANT):
 		frappe.db.set_value("User", user, "language", DESK_LANGUAGE)
 		frappe.defaults.set_user_default("company", data.COMPANY, user)
+
+
+def calculate_annual_vat_return() -> None:
+	"""The Umsatzsteuererklärung of the year, calculated: of its Voranmeldungen only that of FILED_MONTH is filed, so
+	Berechnen finds every other month without its Voranmeldung and leaves the return Berechnet, not Bereit."""
+	doc = draft("Annual VAT Return", {"company": data.COMPANY, "year": data.YEAR})
+	doc.calculate()

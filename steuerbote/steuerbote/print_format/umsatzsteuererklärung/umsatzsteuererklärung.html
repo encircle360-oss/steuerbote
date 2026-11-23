@@ -1,0 +1,167 @@
+{#-
+	Umsatzsteuererklärung in the order and wording of form USt 2 A (for 2026 the Vordruckmuster of the BMF letter of
+	29 December 2025, GZ III C 3 - S 7344/00040/008/034): sections A to K with the values the return files, as
+	layout.print_sections() of the module gives them through annual_vat_print(), bases in whole euros and taxes in
+	euros and cents; then the Vorauszahlungssoll, the reconciliation with the filed Voranmeldungen, the corrections, the
+	findings and the remarks. Mein ELSTER imports no Umsatzsteuererklärung, so this print is what is typed in there.
+	The print computes nothing; text fields print as Frappe formats them.
+-#}
+{%- set annual = doc.annual_print() -%}
+{%- set form = doc.annual_vat_print() -%}
+{%- set tax_office = frappe.db.get_value("VAT Return Settings", doc.company, "tax_office") -%}
+{%- set causes = {"No Difference": "kein Unterschied", "Late Postings": "spätere Buchungen", "Corrections without Posting": "Korrekturen ohne Buchung", "Late Postings and Corrections": "spätere Buchungen und Korrekturen", "Not Filed": "nicht abgegeben"} -%}
+{%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
+{%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
+{% include "steuerbote/templates/includes/annual_filing/style.html" %}
+<div class="sb-annual">
+	<h1>Umsatzsteuererklärung {{ doc.year }}</h1>
+	{%- if doc.is_correction %}
+	<p class="sb-subtitle">Berichtigte Steuererklärung (Kz 110)</p>
+	{%- endif %}
+	{%- set head_rows = [] -%}
+	{%- if tax_office %}{%- set head_rows = head_rows + [("Finanzamt", tax_office)] -%}{%- endif %}
+	{%- if doc.payment_due %}{%- set head_rows = head_rows + [("Abschlusszahlung fällig am", day(doc.payment_due))] -%}{%- endif %}
+	{% include "steuerbote/templates/includes/annual_filing/head.html" %}
+
+	<table class="sb-lines">
+		<colgroup>
+			<col class="sb-line">
+			<col>
+			<col class="sb-kz">
+			<col class="sb-num">
+			<col class="sb-kz">
+			<col class="sb-num">
+		</colgroup>
+		<thead>
+			<tr>
+				<th class="sb-line">Zeile</th>
+				<th></th>
+				<th class="sb-kz">Kz</th>
+				<th class="sb-num"></th>
+				<th class="sb-kz">Kz</th>
+				<th class="sb-num"></th>
+			</tr>
+		</thead>
+		{%- for section in form.sections %}
+		<tbody class="sb-group">
+			<tr class="sb-section"><td colspan="6">{{ section.letter }} {{ section.title | e }}</td></tr>
+			{%- if section.rows and (section.left or section.right) %}
+			<tr class="sb-columns">
+				<td></td>
+				<td></td>
+				<td></td>
+				<td class="sb-num">{{ section.left | e }}</td>
+				<td></td>
+				<td class="sb-num">{{ section.right | e }}</td>
+			</tr>
+			{%- endif %}
+			{%- for row in section.rows %}
+			{%- if row.heading %}
+			<tr class="sb-subheading"><td></td><td colspan="5">{{ row.heading | e }}</td></tr>
+			{%- elif row.text is defined %}
+			<tr>
+				<td class="sb-line">{{ row.line }}</td>
+				<td>{{ row.label | e }}</td>
+				<td class="sb-kz">{{ row.right_kz | e }}</td>
+				<td class="sb-text" colspan="3">{{ row.text | e }}</td>
+			</tr>
+			{%- else %}
+			<tr{% if row.sum %} class="sb-sum"{% endif %}>
+				<td class="sb-line">{{ row.line }}</td>
+				<td>{{ row.label | e }}</td>
+				<td class="sb-kz">{{ (row.left_kz or "") | e }}</td>
+				<td class="sb-num">{{ (row.left or "") | e }}</td>
+				<td class="sb-kz">{{ (row.right_kz or "") | e }}</td>
+				<td class="sb-num">{{ (row.right or "") | e }}</td>
+			</tr>
+			{%- endif %}
+			{%- endfor %}
+			{%- if not section.rows %}
+			<tr class="sb-empty"><td></td><td colspan="5">Keine Eintragungen</td></tr>
+			{%- endif %}
+		</tbody>
+		{%- endfor %}
+	</table>
+
+	<h2>Vorauszahlungssoll und Abschlusszahlung</h2>
+	<table class="sb-head">
+		<tr><td class="sb-label">Kz 83 der abgegebenen Voranmeldungen</td><td class="sb-value">{{ money(doc.soll_voranmeldungen) }}</td></tr>
+		<tr><td class="sb-label">Kz 39 der abgegebenen Voranmeldungen</td><td class="sb-value">{{ money(doc.soll_credited) }}</td></tr>
+		<tr><td class="sb-label">Sondervorauszahlung laut Einstellungen</td><td class="sb-value">{{ money(doc.sondervorauszahlung) }}</td></tr>
+		<tr><td class="sb-label">{{ "Kz 816 der berichtigten Erklärung" if doc.is_correction else "Vorauszahlungssoll berechnet" }}</td><td class="sb-value">{{ money(doc.soll_computed) }}</td></tr>
+		{%- if doc.soll_override_reason %}
+		<tr><td class="sb-label">Vorauszahlungssoll laut Finanzamt</td><td class="sb-value">{{ money(doc.soll_override) }}, {{ doc.get_formatted("soll_override_reason") }}</td></tr>
+		{%- endif %}
+		<tr><td class="sb-label">Vorauszahlungssoll (Zeile 125)</td><td class="sb-value">{{ money(doc.vorauszahlungssoll) }}</td></tr>
+		<tr><td class="sb-label">Abschlusszahlung oder Erstattung (Kz 820)</td><td class="sb-value">{{ money(doc.kz820) }}</td></tr>
+	</table>
+
+	{%- if doc.periods %}
+	<h2>Abgleich je Voranmeldungszeitraum</h2>
+	<table class="sb-lines sb-wide">
+		<thead>
+			<tr>
+				<th>Voranmeldungszeitraum</th>
+				<th>Voranmeldung</th>
+				<th class="sb-num">Kz 83</th>
+				<th class="sb-num">Kz 39</th>
+				<th class="sb-num">Kz 83 laut Hauptbuch heute</th>
+				<th class="sb-num">Unterschied</th>
+				<th>Ursache</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in doc.periods %}
+			<tr>
+				<td>{{ (row.period_label or "") | e }}</td>
+				<td>{{ (row.vat_return or "") | e }}</td>
+				<td class="sb-num">{{ money(row.kz83) }}</td>
+				<td class="sb-num">{{ money(row.kz39) }}</td>
+				<td class="sb-num">{{ money(row.kz83_now) }}</td>
+				<td class="sb-num">{{ money(row.difference) }}</td>
+				<td>{{ causes.get(row.cause, row.cause or "") | e }}{% if row.waiver_reason %}; ohne Voranmeldung: {{ row.get_formatted("waiver_reason") }}{% endif %}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+	{%- endif %}
+
+	{%- if doc.reconciliation %}
+	<h2>Abgleich je Kennzahl</h2>
+	<table class="sb-lines sb-wide">
+		<thead>
+			<tr>
+				<th class="sb-kz">Kz</th>
+				<th class="sb-num">Laut Voranmeldungen</th>
+				<th class="sb-num">Laut Erklärung</th>
+				<th class="sb-num">Spätere Buchungen</th>
+				<th class="sb-num">Korrekturen</th>
+				<th class="sb-num">Nicht abgegeben</th>
+				<th class="sb-num">Rundung</th>
+				<th class="sb-num">Nur Erklärung</th>
+				<th class="sb-num">Rest</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in doc.reconciliation %}
+			<tr>
+				<td class="sb-kz">{{ (row.kennzahl or "") | e }}</td>
+				<td class="sb-num">{{ money(row.filed) }}</td>
+				<td class="sb-num">{{ money(row.annual) }}</td>
+				<td class="sb-num">{{ money(row.late) }}</td>
+				<td class="sb-num">{{ money(row.corrections) }}</td>
+				<td class="sb-num">{{ money(row.unfiled) }}</td>
+				<td class="sb-num">{{ money(row.rounding) }}</td>
+				<td class="sb-num">{{ money(row.annual_only) }}</td>
+				<td class="sb-num">{{ money(row.rest) }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+	{%- endif %}
+
+	{% include "steuerbote/templates/includes/annual_filing/corrections.html" %}
+	{% include "steuerbote/templates/includes/annual_filing/findings.html" %}
+	{% include "steuerbote/templates/includes/annual_filing/remarks.html" %}
+	{% include "steuerbote/templates/includes/annual_filing/footer.html" %}
+</div>
