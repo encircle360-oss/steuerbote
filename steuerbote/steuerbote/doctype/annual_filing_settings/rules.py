@@ -50,6 +50,21 @@ so these numbers never appear in a message.
 Managing directors. Every Geschäftsführer signs the Jahresabschluss with the date (§ 245 HGB); whether one is a
 shareholder decides the Gesellschafter-Geschäftsführer positions of the E-Bilanz.
 
+Gewerbesteuer. The Amtlicher Gemeindeschlüssel has the Länderschlüssel 01 to 16 and six more digits (GewSt 1 D,
+E4101103 of Jahresdokumentation E21 2025), the Hebenummer of the Gemeinde at most 28 characters (GewSt 1 A line 33,
+E4001803). The Hebesatz is the Gemeinde's, set for one or more calendar years (§ 16 Abs. 2 GewStG), and at least
+200 %: „Er beträgt 200 Prozent, wenn die Gemeinde nicht einen höheren Hebesatz bestimmt hat“ (§ 16 Abs. 4 Satz 2
+GewStG up to the Erhebungszeitraum 2026). Art. 8 Nr. 1 of the Neuntes Gesetz zur Änderung von Vorschriften im
+Steuerberatungsrecht sowie im Steuerrecht of 29 June 2026 (BGBl. 2026 I Nr. 197) replaces 200 by 280, first for the
+Erhebungszeitraum 2027 (§ 36 Abs. 5b GewStG).
+
+Holdings. § 8b Abs. 4 Satz 1 KStG reads the share „zu Beginn des Kalenderjahres“, § 9 Nr. 2a and 7 GewStG the share
+„zu Beginn des Erhebungszeitraums“, so a holding has a row per year.
+
+Vorauszahlungen. The Körperschaftsteuer is paid ahead on 10 March, June, September and December (§ 31 Abs. 1 KStG,
+§ 37 Abs. 1 EStG), the Solidaritätszuschlag with it (§ 3 Abs. 1 Nr. 2 SolZG), the Gewerbesteuer to the Gemeinde on
+15 February, May, August and November (§ 19 Abs. 1 GewStG). Each row is an amount in cents of a notice.
+
 Messages are English templates with positional placeholders. SettingsError keeps the template and its values
 apart, so that the Frappe layer translates the template before formatting it. This module is pure Python and never
 imports Frappe.
@@ -67,7 +82,7 @@ from typing import Protocol
 from steuerbote.elster.charset import CharsetError, describe, transliterate
 from steuerbote.elster.steuernummer import SCHEMES, STATE_CODES, SteuernummerError, to_elster
 from steuerbote.ustva.period import day_label
-from steuerbote.ustva.rounding import EURO, HUNDRED, ZERO, require_decimal
+from steuerbote.ustva.rounding import CENT, EURO, HUNDRED, ZERO, require_decimal
 
 
 class SettingsError(ValueError):
@@ -558,6 +573,219 @@ def check_directors(directors: Sequence[Director]) -> None:
 		raise SettingsError(DIRECTOR_TWICE, first.row, second.row, first.name)
 
 
+# Gewerbesteuer
+
+NOT_AN_AGS = "{0} is not an Amtlicher Gemeindeschlüssel: the Länderschlüssel 01 to 16 and six more digits."
+ESTABLISHMENT_ENDS_BEFORE_START = "Row {0} of the Betriebsstätten ends on {1}, before its start on {2}."
+ESTABLISHMENT_TWICE = (
+	"Rows {0} and {1} of the Betriebsstätten name the same Betriebsstätte in {2} for the same days."
+)
+HEBESATZ_BELOW_MINIMUM = (
+	"The Hebesatz of {0} for {1} is {2} %; § 16 Abs. 4 Satz 2 GewStG sets at least {3} % for that year."
+)
+HEBESATZ_WITHOUT_SOURCE = (
+	"The Hebesatz of {0} for {1} needs its source, such as the Haushaltssatzung of the Gemeinde."
+)
+HEBESATZ_TWICE = "The Hebesatz of {0} for {1} is entered twice."
+
+AGS = re.compile("(0[1-9]|1[0-6])[0-9]{6}")
+MINIMUM_HEBESATZ = Decimal(200)
+MINIMUM_HEBESATZ_FROM_2027 = Decimal(280)
+
+
+def normalized_ags(value: str | None) -> str:
+	"""The Amtlicher Gemeindeschlüssel of eight digits, without blanks."""
+	compact = "".join((value or "").split())
+	if not AGS.fullmatch(compact):
+		raise SettingsError(NOT_AN_AGS, value)
+	return compact
+
+
+def minimum_hebesatz(year: int) -> Decimal:
+	"""The Hebesatz in percent that § 16 Abs. 4 Satz 2 GewStG sets when the Gemeinde sets no higher one."""
+	_require_year(year)
+	return MINIMUM_HEBESATZ_FROM_2027 if year >= 2027 else MINIMUM_HEBESATZ
+
+
+@dataclass(frozen=True, slots=True)
+class Establishment:
+	"""A Betriebsstätte of the company in a Gemeinde for the days it existed."""
+
+	row: int
+	municipality: str
+	postal_code: str
+	ags: str
+	from_date: date
+	to_date: date | None = None
+	hebenummer: str | None = None
+
+	def __post_init__(self) -> None:
+		object.__setattr__(self, "ags", normalized_ags(self.ags))
+		german_postal_code(self.postal_code)
+		_period(self.from_date, self.to_date, ESTABLISHMENT_ENDS_BEFORE_START, self.row)
+
+	@property
+	def period(self) -> Period:
+		return Period(self.from_date, self.to_date)
+
+
+def establishments_in(
+	establishments: Iterable[Establishment], first: date, last: date
+) -> list[Establishment]:
+	"""The Betriebsstätten that existed on a day of the period, such as an Erhebungszeitraum."""
+	period = Period(first, last)
+	return [establishment for establishment in establishments if establishment.period.overlaps(period)]
+
+
+def check_establishments(establishments: Sequence[Establishment]) -> None:
+	twice = _first_overlap(
+		establishments,
+		lambda establishment: (
+			establishment.ags,
+			establishment.postal_code,
+			_person(establishment.municipality),
+		),
+	)
+	if twice is not None:
+		first, second = twice
+		raise SettingsError(ESTABLISHMENT_TWICE, first.row, second.row, first.municipality)
+
+
+@dataclass(frozen=True, slots=True)
+class TradeTaxRate:
+	"""The Hebesatz in percent of a Gemeinde for one Erhebungszeitraum, with where it is set."""
+
+	ags: str
+	year: int
+	hebesatz: Decimal
+	source: str
+	source_date: date | None = None
+
+	def __post_init__(self) -> None:
+		object.__setattr__(self, "ags", normalized_ags(self.ags))
+		minimum = minimum_hebesatz(self.year)
+		hebesatz = require_decimal(self.hebesatz)
+		if not hebesatz.is_finite() or hebesatz < minimum:
+			raise SettingsError(
+				HEBESATZ_BELOW_MINIMUM, self.ags, self.year, _number(hebesatz), _number(minimum)
+			)
+		if not (self.source or "").strip():
+			raise SettingsError(HEBESATZ_WITHOUT_SOURCE, self.ags, self.year)
+
+
+def check_trade_tax_rates(rates: Iterable[TradeTaxRate]) -> None:
+	duplicate = _first_duplicate((rate.ags, rate.year) for rate in rates)
+	if duplicate is not None:
+		raise SettingsError(HEBESATZ_TWICE, *duplicate)
+
+
+def hebesatz_of(rates: Iterable[TradeTaxRate], ags: str, year: int) -> TradeTaxRate | None:
+	return next((rate for rate in rates if rate.ags == ags and rate.year == year), None)
+
+
+# Holdings
+
+NOT_A_HOLDING_SHARE = "The holding in {0}: a share in percent lies from 0 to 100, not {1}."
+HOLDING_SOLD_BEFORE_BOUGHT = "The holding in {0} is sold on {1}, before it was bought on {2}."
+HOLDING_TWICE = "The holding in {0} for {1} is entered twice."
+
+
+@dataclass(frozen=True, slots=True)
+class Holding:
+	"""A holding of the company in another company for one year, with the shares that § 8b Abs. 4 KStG and § 9
+	Nr. 2a and 7 GewStG read."""
+
+	name: str
+	year: int
+	percent_on_1_january: Decimal | None = None
+	percent_at_start_of_ez: Decimal | None = None
+	bought_on: date | None = None
+	sold_on: date | None = None
+	identifier: str | None = None
+	country: str | None = None
+
+	def __post_init__(self) -> None:
+		_require_year(self.year)
+		for percent in (self.percent_on_1_january, self.percent_at_start_of_ez):
+			if percent is not None and (
+				not require_decimal(percent).is_finite() or not ZERO <= percent <= HUNDRED
+			):
+				raise SettingsError(NOT_A_HOLDING_SHARE, self.name, _number(percent))
+		if self.bought_on and self.sold_on and self.sold_on < self.bought_on:
+			raise SettingsError(
+				HOLDING_SOLD_BEFORE_BOUGHT, self.name, day_label(self.sold_on), day_label(self.bought_on)
+			)
+
+
+def check_holdings(holdings: Iterable[Holding]) -> None:
+	seen = set()
+	for holding in holdings:
+		key = (_person(holding.name), holding.year)
+		if key in seen:
+			raise SettingsError(HOLDING_TWICE, holding.name, holding.year)
+		seen.add(key)
+
+
+def holdings_of(holdings: Iterable[Holding], year: int) -> list[Holding]:
+	return [holding for holding in holdings if holding.year == year]
+
+
+# Vorauszahlungen
+
+NOT_A_TAX = "{0} is not a tax of the Vorauszahlungen: KSt, SolZ or GewSt."
+PREPAYMENT_NOT_IN_CENTS = (
+	"The Vorauszahlung {0} of {1} due on {2} is an amount in cents of at least 0, not {3}."
+)
+AGS_ONLY_FOR_GEWERBESTEUER = (
+	"The Vorauszahlung {0} of {1} due on {2} goes to the Finanzamt, not to a Gemeinde: leave its Amtlicher "
+	"Gemeindeschlüssel empty."
+)
+PREPAYMENT_TWICE = "The Vorauszahlung {0} of {1} due on {2} is entered twice."
+
+
+class Tax(StrEnum):
+	KST = "KSt"
+	SOLZ = "SolZ"
+	GEWST = "GewSt"
+
+
+@dataclass(frozen=True, slots=True)
+class Prepayment:
+	"""A Vorauszahlung as a notice sets it."""
+
+	tax: Tax
+	year: int
+	due_date: date
+	amount: Decimal
+	notice_date: date | None = None
+	ags: str | None = None
+
+	def __post_init__(self) -> None:
+		object.__setattr__(self, "tax", _member(Tax, self.tax, NOT_A_TAX))
+		_require_year(self.year)
+		if not _in_cents(self.amount):
+			raise SettingsError(
+				PREPAYMENT_NOT_IN_CENTS, self.tax, self.year, day_label(self.due_date), _number(self.amount)
+			)
+		if self.ags:
+			if self.tax is not Tax.GEWST:
+				raise SettingsError(AGS_ONLY_FOR_GEWERBESTEUER, self.tax, self.year, day_label(self.due_date))
+			object.__setattr__(self, "ags", normalized_ags(self.ags))
+
+
+def check_prepayments(prepayments: Iterable[Prepayment]) -> None:
+	duplicate = _first_duplicate(
+		(prepayment.tax, prepayment.year, prepayment.due_date) for prepayment in prepayments
+	)
+	if duplicate is not None:
+		tax, year, due_date = duplicate
+		raise SettingsError(PREPAYMENT_TWICE, tax, year, day_label(due_date))
+
+
+def prepayments_of(prepayments: Iterable[Prepayment], tax: Tax, year: int) -> list[Prepayment]:
+	return [prepayment for prepayment in prepayments if prepayment.tax is tax and prepayment.year == year]
+
+
 MESSAGES = (
 	NOT_A_LEGAL_FORM,
 	TEXT_TOO_LONG,
@@ -587,6 +815,19 @@ MESSAGES = (
 	SHARES_NOT_COMPLETE,
 	DIRECTOR_ENDS_BEFORE_START,
 	DIRECTOR_TWICE,
+	NOT_AN_AGS,
+	ESTABLISHMENT_ENDS_BEFORE_START,
+	ESTABLISHMENT_TWICE,
+	HEBESATZ_BELOW_MINIMUM,
+	HEBESATZ_WITHOUT_SOURCE,
+	HEBESATZ_TWICE,
+	NOT_A_HOLDING_SHARE,
+	HOLDING_SOLD_BEFORE_BOUGHT,
+	HOLDING_TWICE,
+	NOT_A_TAX,
+	PREPAYMENT_NOT_IN_CENTS,
+	AGS_ONLY_FOR_GEWERBESTEUER,
+	PREPAYMENT_TWICE,
 )
 
 
@@ -600,6 +841,11 @@ def _member[E: StrEnum](enum: type[E], value: object, template: str) -> E:
 def _number(value: Decimal) -> str:
 	"""A number as a message shows it, without trailing zeros: 400 for 400.0, 33.3333 for 33.33330."""
 	return f"{value.normalize():f}"
+
+
+def _in_cents(amount: object) -> bool:
+	value = require_decimal(amount)
+	return value.is_finite() and value >= ZERO and value == value.quantize(CENT)
 
 
 def _require_year(year: object) -> None:
