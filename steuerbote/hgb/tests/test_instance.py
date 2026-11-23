@@ -31,7 +31,8 @@ from steuerbote.hgb.tests.companies import (
 	klein_statement,
 	kleinst_statement,
 )
-from steuerbote.xbrl.facts import Item, Period
+from steuerbote.jahresmeldung.corrections import RevisionStatus
+from steuerbote.xbrl.facts import Item, Period, Tuple
 from steuerbote.xbrl.taxonomy import View
 from steuerbote.xbrl.versions import TAXONOMIES
 
@@ -426,3 +427,219 @@ class InputTest(TestCase):
 		register = RegisterData("Beispiel Werkstatt GmbH", "Musterstadt", " ", "")
 		with self.assertRaisesRegex(InstanceError, "Registergericht"):
 			kleinst(notes=Notes(register))
+
+
+G = "de-gcd:genInfo."
+
+
+def gcd_items(instance) -> dict[str, object]:
+	"""The items of the GCD outside tuples by concept."""
+	return {
+		fact.concept.removeprefix(G): fact.value
+		for fact in instance.facts
+		if isinstance(fact, Item) and fact.concept.startswith(G)
+	}
+
+
+def chosen(instance, concept: str) -> tuple[str, ...]:
+	"""The values a choice of the GCD holds, without the name of the choice."""
+	(found,) = (
+		fact for fact in instance.facts if isinstance(fact, Tuple) and fact.concept == f"{G}{concept}"
+	)
+	return tuple(child.concept.removeprefix(f"{G}{concept}.") for child in found.children)
+
+
+def tuples(instance) -> set[str]:
+	return {fact.concept.removeprefix(G) for fact in instance.facts if isinstance(fact, Tuple)}
+
+
+class ReportTest(TestCase):
+	"""The GCD, the master data of the report („Stammdatenmodul“, Arbeitshilfe): which of its fields the register
+	needs is unverified, so the instance states every field a festgestellter Jahresabschluss of a small GmbH fills."""
+
+	def test_a_final_jahresabschluss_of_the_first_disclosure(self):
+		"""Art des Berichts „Jahresabschluss“, Fertigstellungsstatus „endgültig“, Status „erstmalig“, Bilanzart
+		„Jahresabschluss“ (de-gcd-2025-04-01)."""
+		instance = kleinst()
+		self.assertEqual(chosen(instance, "report.id.reportType"), ("reportType.JA",))
+		self.assertEqual(chosen(instance, "report.id.reportStatus"), ("reportStatus.E",))
+		self.assertEqual(chosen(instance, "report.id.revisionStatus"), ("revisionStatus.E",))
+		self.assertEqual(chosen(instance, "report.id.statementType"), ("statementType.E",))
+
+	def test_the_day_of_the_feststellung(self):
+		"""„Das Datum der Feststellung oder der Billigung ... ist anzugeben.“ (§ 328 Abs. 1a Satz 1 HGB)"""
+		self.assertEqual(
+			gcd_items(kleinst())["report.id.reportStatus.reportStatus.dateofapproval"], date(2027, 5, 12)
+		)
+
+	def test_a_changed_jahresabschluss_names_its_status(self):
+		"""„Wird der Jahresabschluss ... geändert, so ist auch die Änderung ... offenzulegen.“ (§ 325 Abs. 1b Satz 1
+		HGB) Which status the register expects of it is unverified; the Annual Accounts name it."""
+		instance = kleinst(gcd=replace(KLEINST_GCD, revision=RevisionStatus.CHANGED))
+		self.assertEqual(chosen(instance, "report.id.revisionStatus"), ("revisionStatus.G",))
+
+	def test_the_parts_a_kleinst_and_klein_transmit(self):
+		"""„Berichtsbestandteile“: the Bilanz and the „Angaben unterhalb der Bilanz“, and for klein the Anhang,
+		„andere Anhangangaben“ (§ 326 Abs. 1 Satz 1 und Abs. 2 Satz 1 HGB)."""
+		self.assertEqual(
+			chosen(kleinst(), "report.id.reportElement"), ("reportElements.B", "reportElements.H")
+		)
+		self.assertEqual(
+			chosen(klein(), "report.id.reportElement"),
+			("reportElements.B", "reportElements.H", "reportElements.SA"),
+		)
+
+	def test_the_angaben_of_section_264_1a_stand_under_the_balance_sheet(self):
+		for instance in (kleinst(), klein()):
+			self.assertEqual(chosen(instance, "report.id.reportElement.allocation.genInfo"), ("toBalance",))
+
+	def test_a_kleinst_states_its_angaben_under_the_balance_sheet(self):
+		"""„wenn sie ... unter der Bilanz angeben“ (§ 264 Abs. 1 Satz 5 HGB): „Allokation der Angaben nach MicroBilG“."""
+		self.assertEqual(
+			chosen(kleinst(), "report.id.reportElement.allocation.notesMicroBilG"), ("toBalance",)
+		)
+		self.assertNotIn("report.id.reportElement.allocation.notesMicroBilG", tuples(klein()))
+
+	def test_a_jahresabschluss_of_the_kerntaxonomie_under_commercial_law(self):
+		"""„deutsches Handelsrecht“ (HGBM), Branche „Kerntaxonomie“ (K), „nicht konsolidiert/ Einzelabschluss“ (EA)."""
+		instance = klein()
+		self.assertEqual(chosen(instance, "report.id.accountingStandard"), ("accountingStandard.HGBM",))
+		self.assertEqual(chosen(instance, "report.id.specialAccountingStandard"), ("K",))
+		self.assertEqual(chosen(instance, "report.id.consolidationRange"), ("consolidationRange.EA",))
+
+	def test_the_format_of_the_income_statement_it_withholds(self):
+		"""The Annual Accounts prepare the Gesamtkostenverfahren (steuerbote/hgb/schemes.py)."""
+		self.assertEqual(chosen(kleinst(), "report.id.incomeStatementFormat"), ("incomeStatementFormat.GKV",))
+
+	def test_whether_the_balance_sheet_shows_a_bilanzgewinn(self):
+		"""„Bilanz enthält Ausweis des Bilanzgewinns/Bilanzverlustes“ (§ 268 Abs. 1 Satz 2 HGB)."""
+		self.assertIs(gcd_items(klein())["report.id.incomeStatementendswithBalProfit"], False)
+		after = statement(
+			2026,
+			KLEIN,
+			KLEIN_2026,
+			parents=PARENTS,
+			prior=companies.KLEIN_2025,
+			presentation=ProfitPresentation.AFTER_PARTIAL_APPROPRIATION,
+		)
+		self.assertIs(gcd_items(klein(statement=after))["report.id.incomeStatementendswithBalProfit"], True)
+		self.assertIs(gcd_items(kleinst())["report.id.incomeStatementendswithBalProfit"], False)
+
+	def test_the_fiscal_year_and_the_previous_one(self):
+		found = gcd_items(kleinst())
+		self.assertEqual(
+			(
+				found["report.period.fiscalYearBegin"],
+				found["report.period.fiscalYearEnd"],
+				found["report.period.balSheetClosingDate"],
+				found["report.period.fiscalPreviousYearBegin"],
+				found["report.period.fiscalPreviousYearEnd"],
+				found["report.period.balSheetClosingDatePreviousYear"],
+			),
+			(
+				date(2026, 1, 1),
+				date(2026, 12, 31),
+				date(2026, 12, 31),
+				date(2025, 1, 1),
+				date(2025, 12, 31),
+				date(2025, 12, 31),
+			),
+		)
+
+	def test_the_first_fiscal_year_names_no_previous_one(self):
+		instance = kleinst(
+			statement=statement(2026, KLEINST, KLEINST_2026, parents=PARENTS),
+			gcd=replace(KLEINST_GCD, periods=FIRST_YEAR),
+		)
+		found = gcd_items(instance)
+		self.assertEqual(found["report.period.fiscalYearBegin"], date(2026, 1, 1))
+		self.assertFalse([concept for concept in found if "PreviousYear" in concept])
+
+	def test_no_audit_for_a_small_company(self):
+		"""„Der Jahresabschluß und der Lagebericht von Kapitalgesellschaften, die nicht kleine im Sinne des § 267
+		Abs. 1 sind, sind durch einen Abschlußprüfer zu prüfen.“ (§ 316 Abs. 1 Satz 1 HGB)"""
+		for instance in (kleinst(), klein()):
+			self.assertEqual(chosen(instance, "report.audit.noAudit"), ("noAuditRequi",))
+
+	def test_the_day_the_file_is_written(self):
+		self.assertEqual(gcd_items(kleinst())["doc.id.generationDate"], date(2027, 7, 1))
+		unwritten = gcd_items(kleinst(gcd=replace(KLEINST_GCD, generated_on=None)))
+		self.assertNotIn("doc.id.generationDate", unwritten)
+
+	def test_every_item_of_the_gcd_refers_to_the_fiscal_year(self):
+		found = [fact for fact in klein().facts if isinstance(fact, Item) and fact.concept.startswith(G)]
+		self.assertTrue(found)
+		for fact in found:
+			with self.subTest(concept=fact.concept):
+				self.assertIs(fact.period, Period.WIRTSCHAFTSJAHR)
+
+
+class CompanyTest(TestCase):
+	"""What the GCD states of the company: firm, legal form, register, class, seat and address."""
+
+	def test_the_firm(self):
+		self.assertEqual(gcd_items(kleinst())["company.id.name"], "Beispiel Werkstatt GmbH")
+
+	def test_a_gmbh_also_for_an_ug(self):
+		"""Of legalStatus.UG the taxonomy says „Nicht vorgesehen für Bundesanzeiger, Erfassung unter "Gesellschaft mit
+		beschränkter Haftung"“ (documentation label of de-gcd-2025-04-01-label-de.xml)."""
+		self.assertEqual(chosen(kleinst(), "company.id.legalStatus"), ("legalStatus.GMBH",))
+
+	def test_the_register_entry(self):
+		"""„Registerart“ Handelsregister, „Amtsgericht, HR-Eintrag“ and the „Handelsregisternummer“ (§ 264 Abs. 1a
+		HGB)."""
+		instance = kleinst()
+		self.assertEqual(chosen(instance, "company.id.Incorporation.Type"), ("Type.HR",))
+		self.assertEqual(gcd_items(instance)["company.id.Incorporation.court"], "Amtsgericht Musterstadt")
+		(numbers,) = (fact for fact in instance.facts if fact.concept == f"{G}company.id.idNo")
+		self.assertEqual(
+			tuple((child.concept, child.value) for child in numbers.children),
+			((f"{G}company.id.idNo.type.companyId.HRN", "HRB 12345"),),
+		)
+
+	def test_the_size_class_and_the_scheme_of_the_balance_sheet(self):
+		"""The class of § 267a or § 267 HGB (SizeClass.gcd) and „Berichtsumfang entspricht für die Bilanz mindestens
+		(Größenklassenschema)“."""
+		self.assertEqual(chosen(kleinst(), "company.id.sizeClass"), ("sizeClass.KstK",))
+		self.assertEqual(chosen(kleinst(), "company.id.reportedSizeClassBs"), ("Kst",))
+		self.assertEqual(chosen(klein(), "company.id.sizeClass"), ("sizeClass.KK",))
+		self.assertEqual(chosen(klein(), "company.id.reportedSizeClassBs"), ("K",))
+
+	def test_the_seat_and_the_address(self):
+		found = gcd_items(kleinst())
+		self.assertEqual(
+			(
+				found["company.id.location"],
+				found["company.id.location.street"],
+				found["company.id.location.houseNo"],
+				found["company.id.location.zipCode"],
+				found["company.id.location.city"],
+				found["company.id.location.country"],
+			),
+			("Musterstadt", "Musterweg", "12", "12345", "Musterstadt", "Deutschland"),
+		)
+
+	def test_without_an_address_only_the_seat(self):
+		found = gcd_items(kleinst(gcd=replace(KLEINST_GCD, address=None)))
+		self.assertEqual(found["company.id.location"], "Musterstadt")
+		self.assertFalse([concept for concept in found if concept.startswith("company.id.location.")])
+
+	def test_the_day_of_the_founding(self):
+		self.assertEqual(gcd_items(kleinst())["company.id.FoundationDate"], date(2024, 3, 1))
+		self.assertNotIn(
+			"company.id.FoundationDate", gcd_items(kleinst(gcd=replace(KLEINST_GCD, founded_on=None)))
+		)
+
+	def test_a_company_in_liquidation_says_so(self):
+		"""„Befindet sich die Gesellschaft in Liquidation oder Abwicklung, ist auch diese Tatsache anzugeben.“ (§ 264
+		Abs. 1a Satz 2 HGB): „Unternehmensstatus“ „in Liquidation“."""
+		register = replace(KLEINST_NOTES.register, in_liquidation=True)
+		instance = kleinst(notes=replace(KLEINST_NOTES, register=register))
+		self.assertEqual(chosen(instance, "company.id.CompanyStatus"), ("companyStatus.L",))
+		self.assertNotIn("company.id.CompanyStatus", tuples(kleinst()))
+
+	def test_no_kapitalmarktorientierte_company(self):
+		"""„Eine Kapitalgesellschaft im Sinn des § 264d gilt stets als große.“ (§ 267 Abs. 3 Satz 2 HGB), so neither a
+		Kleinst nor klein is one."""
+		found = gcd_items(klein())
+		self.assertIs(found["company.disclosureCriterion.scope.CapitalMarketOrientationHGBs264d"], False)
