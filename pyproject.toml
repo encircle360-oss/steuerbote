@@ -127,6 +127,7 @@ testpaths = [
     "steuerbote/steuerbote/doctype/annual_accounts/test_docs.py",
     "steuerbote/steuerbote/doctype/annual_accounts/test_layout.py",
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_bridge.py",
+    "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_comparison.py",
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_docs.py",
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_electronic_balance_sheet_files.py",
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_electronic_balance_sheet_site_files.py",
