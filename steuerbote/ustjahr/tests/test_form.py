@@ -10,6 +10,7 @@ from steuerbote.ustjahr.form import (
 	SOLL,
 	Catalogue,
 	Field,
+	Finding,
 	Format,
 	Rule,
 	Scope,
@@ -682,6 +683,19 @@ class RulesTest(TestCase):
 	def test_an_unknown_rule_is_a_key_error(self):
 		with self.assertRaises(KeyError):
 			CATALOGUE.rule("99999")
+
+
+class FindingTest(TestCase):
+	def test_a_finding_reads_as_its_template_with_its_values(self):
+		finding = Finding(
+			"30639", Severity.ERROR, "The tax of Kz {0} is off by {1}.", ("177", "2.09"), ("E3003304",)
+		)
+		self.assertEqual(finding.text, "The tax of Kz 177 is off by 2.09.")
+		self.assertEqual(Finding("X", Severity.HINT, "No values.").text, "No values.")
+
+	def test_an_error_blocks_and_a_hint_does_not(self):
+		self.assertTrue(Finding("30639", Severity.ERROR, "").blocking)
+		self.assertFalse(Finding("30002", Severity.HINT, "").blocking)
 
 
 class CatalogueTableTest(TestCase):
