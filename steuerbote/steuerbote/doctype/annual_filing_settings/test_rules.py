@@ -10,6 +10,8 @@ from steuerbote.steuerbote.doctype.annual_filing_settings.rules import (
 	ROW_TEXT_LENGTHS,
 	TEXT_LENGTHS,
 	Address,
+	CarryForward,
+	CarryForwardKind,
 	Director,
 	Establishment,
 	Holding,
@@ -19,15 +21,20 @@ from steuerbote.steuerbote.doctype.annual_filing_settings.rules import (
 	SettingsError,
 	Shareholder,
 	ShareholderKind,
+	SizeClass,
+	SizeRecord,
 	StreetSplit,
 	Tax,
 	TradeTaxRate,
 	YearSettings,
+	check_carry_forwards,
 	check_directors,
+	check_employment_types,
 	check_establishments,
 	check_holdings,
 	check_prepayments,
 	check_shareholders,
+	check_size_history,
 	check_trade_tax_rates,
 	check_years,
 	directors_on,
@@ -38,6 +45,7 @@ from steuerbote.steuerbote.doctype.annual_filing_settings.rules import (
 	german_postal_code,
 	hebesatz_of,
 	holdings_of,
+	latest_carry_forward,
 	legal_form,
 	legal_status,
 	minimum_hebesatz,
@@ -48,6 +56,7 @@ from steuerbote.steuerbote.doctype.annual_filing_settings.rules import (
 	rechtsform,
 	share_total,
 	shareholders_on,
+	size_class_on,
 	split_street,
 	year_settings,
 )
@@ -771,6 +780,126 @@ class PrepaymentTest(TestCase):
 			SettingsError, "The Vorauszahlung KSt of 2026 due on 10. Juni 2026 is entered twice."
 		):
 			check_prepayments([*payments, Prepayment(Tax.KST, 2026, date(2026, 6, 10), Decimal(50))])
+
+
+class CarryForwardTest(TestCase):
+	def test_the_kinds_of_carry_forwards(self):
+		self.assertEqual(
+			[kind.value for kind in CarryForwardKind],
+			[
+				"Loss Carried Forward (§ 10d EStG)",
+				"Loss from Termingeschäfte (§ 15 Abs. 4 EStG)",
+				"Donations Carried Forward (KSt)",
+				"Fehlbetrag (§ 10a GewStG)",
+				"Donations Carried Forward (GewSt)",
+				"Einlagekonto (§ 27 KStG)",
+				"Sonderausweis (§ 28 KStG)",
+			],
+		)
+		with self.assertRaisesRegex(SettingsError, "Zinsvortrag is not a kind of carry-forward."):
+			CarryForward("Zinsvortrag", date(2025, 12, 31), Decimal(0))
+
+	def test_an_amount_in_cents_of_at_least_0(self):
+		stated = CarryForward(
+			"Einlagekonto (§ 27 KStG)", date(2025, 12, 31), Decimal(0), date(2026, 8, 1), True
+		)
+		self.assertIs(stated.kind, CarryForwardKind.EINLAGEKONTO)
+		self.assertTrue(stated.confirmed)
+		with self.assertRaisesRegex(
+			SettingsError,
+			r"Loss Carried Forward \(§ 10d EStG\) as of 31. Dezember 2025 is an amount in cents of at least 0, not -1.",
+		):
+			CarryForward(CarryForwardKind.LOSS, date(2025, 12, 31), Decimal("-1.00"))
+
+	def test_a_kind_is_stated_once_per_day(self):
+		stated = [
+			CarryForward(CarryForwardKind.LOSS, date(2024, 12, 31), Decimal(5000)),
+			CarryForward(CarryForwardKind.LOSS, date(2025, 12, 31), Decimal(3000)),
+			CarryForward(CarryForwardKind.FEHLBETRAG, date(2025, 12, 31), Decimal(2000)),
+		]
+		check_carry_forwards(stated)
+		with self.assertRaisesRegex(SettingsError, "as of 31. Dezember 2025 is entered twice."):
+			check_carry_forwards(
+				[*stated, CarryForward(CarryForwardKind.FEHLBETRAG, date(2025, 12, 31), Decimal(1))]
+			)
+
+	def test_the_latest_amount_stated_up_to_a_day(self):
+		stated = [
+			CarryForward(CarryForwardKind.LOSS, date(2025, 12, 31), Decimal(3000)),
+			CarryForward(CarryForwardKind.LOSS, date(2024, 12, 31), Decimal(5000)),
+			CarryForward(CarryForwardKind.FEHLBETRAG, date(2025, 12, 31), Decimal(2000)),
+		]
+		self.assertEqual(
+			latest_carry_forward(stated, CarryForwardKind.LOSS, date(2025, 12, 31)).amount, Decimal(3000)
+		)
+		self.assertEqual(
+			latest_carry_forward(stated, CarryForwardKind.LOSS, date(2025, 6, 30)).amount, Decimal(5000)
+		)
+		self.assertIsNone(latest_carry_forward(stated, CarryForwardKind.LOSS, date(2024, 1, 1)))
+		self.assertIsNone(latest_carry_forward(stated, CarryForwardKind.SONDERAUSWEIS, date(2026, 1, 1)))
+
+
+class SizeRecordTest(TestCase):
+	def test_the_size_classes(self):
+		self.assertEqual([size.value for size in SizeClass], ["Kleinst", "Klein", "Mittelgroß", "Groß"])
+		with self.assertRaisesRegex(SettingsError, "Winzig is not a size class"):
+			SizeRecord(date(2025, 12, 31), "Winzig", "Jahresabschluss 2025")
+
+	def test_the_criteria_and_the_class_applied_with_its_source(self):
+		record = SizeRecord(
+			date(2025, 12, 31),
+			"Kleinst",
+			"Jahresabschluss 2025",
+			Decimal("350000.00"),
+			Decimal("800000.00"),
+			Decimal("2.25"),
+		)
+		self.assertIs(record.size_class, SizeClass.KLEINST)
+		SizeRecord(date(2025, 12, 31), SizeClass.KLEIN, "von Hand", Decimal(0), Decimal(0), Decimal(0))
+		for source in ("", " ", None):
+			with (
+				self.subTest(source=source),
+				self.assertRaisesRegex(
+					SettingsError, "The size of the fiscal year ending on 31. Dezember 2025 needs its source."
+				),
+			):
+				SizeRecord(date(2025, 12, 31), SizeClass.KLEIN, source)
+
+	def test_no_criterion_is_negative(self):
+		for criterion, values in (
+			("Bilanzsumme", {"balance_sheet_total": Decimal(-1)}),
+			("Umsatzerlöse", {"revenue": Decimal("-0.01")}),
+			("Arbeitnehmer", {"employees": Decimal("NaN")}),
+		):
+			with (
+				self.subTest(criterion=criterion),
+				self.assertRaisesRegex(SettingsError, f"the {criterion} cannot be negative"),
+			):
+				SizeRecord(date(2025, 12, 31), SizeClass.KLEIN, "von Hand", **values)
+
+	def test_a_fiscal_year_has_one_size(self):
+		history = [
+			SizeRecord(date(2024, 12, 31), SizeClass.KLEINST, "von Hand"),
+			SizeRecord(date(2025, 12, 31), SizeClass.KLEIN, "Jahresabschluss 2025"),
+		]
+		check_size_history(history)
+		self.assertIs(size_class_on(history, date(2025, 12, 31)), SizeClass.KLEIN)
+		self.assertIsNone(size_class_on(history, date(2026, 12, 31)))
+		with self.assertRaisesRegex(SettingsError, "The size of the fiscal year ending on 24. Dezember 2025"):
+			check_size_history(
+				[
+					*history,
+					SizeRecord(date(2025, 12, 24), SizeClass.KLEIN, "a"),
+					SizeRecord(date(2025, 12, 24), SizeClass.KLEIN, "b"),
+				]
+			)
+
+
+class EmploymentTypeTest(TestCase):
+	def test_an_employment_type_is_listed_once(self):
+		check_employment_types(["Apprentice", "Intern"])
+		with self.assertRaisesRegex(SettingsError, "The Employment Type Apprentice is listed twice."):
+			check_employment_types(["Apprentice", "Intern", "Apprentice"])
 
 
 class SettingsErrorTest(TestCase):
