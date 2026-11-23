@@ -2,14 +2,24 @@
 the books of 2026 and 2025, its Angaben, signatures and master data.
 
 The companies, their register entries, persons, addresses and amounts are invented. Each year of books balances,
-as double entry does: its cash is the balance of every other account, so Aktiva and Passiva agree.
+as double entry does: its cash is the balance of every other account, so Aktiva and Passiva agree. instances() gives
+the instances of the Offenlegung the tests write from them, and steuerbote/hgb/tests/fixtures holds the files of the
+two companies.
 """
 
+from collections.abc import Mapping
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
+from functools import cache
+from pathlib import Path
+from types import MappingProxyType
 
+from lxml import etree
+
+from steuerbote.hgb import instance
 from steuerbote.hgb.disclosure import Mode, Signature, publication
-from steuerbote.hgb.instance import Address, MasterData, Notes
+from steuerbote.hgb.instance import Address, Instance, MasterData, Notes
 from steuerbote.hgb.notes import (
 	AdvanceKind,
 	Answer,
@@ -21,7 +31,7 @@ from steuerbote.hgb.notes import (
 	RegisterData,
 )
 from steuerbote.hgb.size import SizeClass
-from steuerbote.hgb.statement import Balance, RemainingTerm, build
+from steuerbote.hgb.statement import Balance, ProfitPresentation, RemainingTerm, build
 from steuerbote.xbrl.facts import Periods
 
 SHORT = RemainingTerm.UP_TO_ONE_YEAR
@@ -56,6 +66,9 @@ PARENTS = {
 }
 """An extract of the calculation linkbase of the HGB-Taxonomie 6.9: each concept with the one it adds up to."""
 
+FIXTURES = Path(__file__).parent / "fixtures"
+GOLDEN = ("kleinst", "klein")
+"""The instances whose files the fixtures hold, as offenlegung-<name>.xbrl."""
 FISCAL_YEAR = Periods(date(2026, 1, 1), date(2026, 12, 31), None, date(2025, 1, 1), date(2025, 12, 31))
 FIRST_YEAR = Periods(date(2026, 1, 1), date(2026, 12, 31))
 ADDRESS = Address("Musterweg", "12", "12345", "Musterstadt")
@@ -301,3 +314,74 @@ KLEIN_GCD = MasterData(
 )
 KLEINST_DISCLOSURE = publication(SizeClass.KLEINST, Mode.HINTERLEGUNG)
 KLEIN_DISCLOSURE = publication(SizeClass.KLEIN)
+
+
+@cache
+def instances() -> Mapping[str, Instance]:
+	"""The instances the tests write, by the names of their files: the two companies, the small one with own shares,
+	with a Fehlbetrag and with a Bilanzgewinn, and the Kleinstkapitalgesellschaft in liquidation and in its first
+	fiscal year."""
+	kleinst, klein = SizeClass.KLEINST, SizeClass.KLEIN
+	klein_first_year = replace(KLEIN_GCD, periods=FIRST_YEAR)
+	own_shares = (*KLEIN_2026, Balance(OWN_SHARES, euros("5000.00")), Balance(BANK, euros("-5000.00")))
+	deficit = (
+		Balance(BANK, euros("1000.00")),
+		Balance(SUBSCRIBED, euros("-25000.00")),
+		Balance("bs.eqLiab.equity.retainedEarnings", euros("30000.00")),
+		Balance("bs.eqLiab.liab.trade", euros("-6000.00"), remaining_term=SHORT),
+	)
+	bilanzgewinn = build(
+		2026,
+		klein,
+		KLEIN_2026,
+		parents=PARENTS,
+		prior=KLEIN_2025,
+		presentation=ProfitPresentation.AFTER_PARTIAL_APPROPRIATION,
+	)
+	liquidation = replace(KLEINST_NOTES, register=replace(KLEINST_REGISTER, in_liquidation=True))
+	first_year = build(2026, kleinst, KLEINST_2026, parents=PARENTS)
+	return MappingProxyType(
+		{
+			"kleinst": instance.build(
+				kleinst_statement(), kleinst, KLEINST_NOTES, KLEINST_DISCLOSURE, KLEINST_GCD
+			),
+			"klein": instance.build(klein_statement(), klein, KLEIN_NOTES, KLEIN_DISCLOSURE, KLEIN_GCD),
+			"klein-eigene-anteile": instance.build(
+				build(2026, klein, own_shares, parents=PARENTS),
+				klein,
+				KLEIN_NOTES,
+				KLEIN_DISCLOSURE,
+				klein_first_year,
+			),
+			"klein-fehlbetrag": instance.build(
+				build(2026, klein, deficit, parents=PARENTS),
+				klein,
+				KLEIN_NOTES,
+				KLEIN_DISCLOSURE,
+				klein_first_year,
+			),
+			"klein-bilanzgewinn": instance.build(
+				bilanzgewinn, klein, KLEIN_NOTES, KLEIN_DISCLOSURE, KLEIN_GCD
+			),
+			"kleinst-liquidation": instance.build(
+				kleinst_statement(), kleinst, liquidation, KLEINST_DISCLOSURE, KLEINST_GCD
+			),
+			"kleinst-erstes-geschaeftsjahr": instance.build(
+				first_year,
+				kleinst,
+				KLEINST_NOTES,
+				KLEINST_DISCLOSURE,
+				replace(KLEINST_GCD, periods=FIRST_YEAR),
+			),
+		}
+	)
+
+
+def golden(name: str) -> bytes:
+	"""The file of an instance of GOLDEN as the fixtures hold it."""
+	return (FIXTURES / f"offenlegung-{name}.xbrl").read_bytes()
+
+
+def canonical(document: bytes) -> bytes:
+	"""The document in the canonical form of XML (Canonical XML 2.0), without the whitespace around its elements."""
+	return etree.tostring(etree.fromstring(document), method="c14n2", strip_text=True)
