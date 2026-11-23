@@ -13,10 +13,11 @@ Jahresdokumentation_E20_2025.ods (ERiC documentation 44.3.6.0), provisionally fo
   Zuwendungen are still in it, which Anlage GK line 92 added back and Anlage ZVE line 34 deducts only after line 32,
   so § 8 Nummer 9 GewStG adds nothing.
 - Lines 50 to 56, the financing parts of § 8 Nummer 1 GewStG, „in voller Höhe“: the Finanzamt computes the
-  Hinzurechnung from them, Steuerbote computes it for the provision (``financing_addback``): a quarter of the
-  interest, annuities and shares of silent partners, a fifth of the rents of movable goods (half of that for electric
-  vehicles and bicycles), half of the rents of immovable goods and a quarter of the licences, as far as their sum
-  exceeds 200 000 Euro. A part is never below 0.
+  Hinzurechnung from them, Steuerbote computes it for the provision (``financing_addback``): „Ein Viertel der
+  Summe“ of the interest, the annuities and the shares of silent partners in full, a fifth of the rents of
+  movable goods (half of that fifth for electric vehicles and bicycles), half of the rents of immovable goods
+  and a quarter of the licences (``financing_parts``), as far as the sum exceeds 200 000 Euro. A part is never
+  below 0.
 - Anlage BEG per holding, with the shares of the holdings register: line 6 the dividends of the Wirtschaftsjahr,
   line 7 the paragraph of the Kürzung for a holding of at least 15 % at the start of the Erhebungszeitraum (1 for
   § 9 Nummer 2a, 2 for § 9 Nummer 7 GewStG), line 12 the dividends § 8b Absatz 1 KStG exempts, line 14 the others.
