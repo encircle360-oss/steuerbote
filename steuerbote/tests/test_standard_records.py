@@ -84,7 +84,14 @@ DAUERFRIST_DOCTYPE = "VAT Return Extension"
 # The lists of the year-end filings, which the section „Jahresmeldungen“ of the sidebar and the workspace will lead
 # to once their documents exist; until then the sidebar leaves them out.
 AWAITING_THE_SECTION_JAHRESMELDUNGEN = frozenset(
-	{"Annual Filing Settings", "Income Tax Mapping", "Annual VAT Return", "Balance Sheet Mapping"}
+	{
+		"Annual Filing Settings",
+		"Income Tax Mapping",
+		"Annual VAT Return",
+		"Balance Sheet Mapping",
+		"Corporate Income Tax Return",
+		"Trade Tax Return",
+	}
 )
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
@@ -569,6 +576,8 @@ class NamingFilesTest(TestCase):
 			("recapitulative_statement", "ZM"),
 			("vat_return_extension", "DFV"),
 			("annual_vat_return", "UStE"),
+			("corporate_income_tax_return", "KSt"),
+			("trade_tax_return", "GewSt"),
 		):
 			definition = read_json(MODULE / "doctype" / name / f"{name}.json")
 			fields = {field["fieldname"]: field for field in definition["fields"]}
