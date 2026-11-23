@@ -472,12 +472,12 @@ class IntegrationTestAnnualFilingSettings(IntegrationTestCase):
 		settings = self.make(closing_account=self.retained_earnings).insert()
 		self.assertEqual(settings.closing_account, self.retained_earnings)
 		for account in (self.bank, self.other_equity):
-			with (
-				self.subTest(account=account),
-				self.assertRaisesRegex(frappe.ValidationError, "must be a Liability or Equity account"),
-			):
+			with self.subTest(account=account):
+				# A refused save leaves the document with the timestamp of the attempt, which the next save refuses.
+				settings.reload()
 				settings.closing_account = account
-				settings.save()
+				with self.assertRaisesRegex(frappe.ValidationError, "must be a Liability or Equity account"):
+					settings.save()
 
 	def test_lists_the_employment_types_left_out_of_the_headcount(self):
 		settings = self.make(excluded_employment_types=[{"employment_type": " Apprentice "}]).insert()
