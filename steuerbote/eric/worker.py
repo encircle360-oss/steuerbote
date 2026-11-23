@@ -192,6 +192,8 @@ BEFORE_TRANSFER = frozenset(
 
 ERIC_CODE = "SB-ERIC"
 TICKET_CODE = "SB-TICKET"
+OPTIONAL_HEADER_FIELDS = frozenset({"testmerker", "nutzdaten_datenlieferant"})
+"""The fields of EnvelopeHeader that are text or null; every other one is text."""
 
 
 class RequestError(ValueError):
@@ -505,7 +507,7 @@ def _header(data: object) -> EnvelopeHeader:
 	values = {}
 	for field in fields(EnvelopeHeader):
 		value = data.get(field.name)
-		if not isinstance(value, str) and not (field.name == "testmerker" and value is None):
+		if not isinstance(value, str) and not (field.name in OPTIONAL_HEADER_FIELDS and value is None):
 			raise RequestError(f"header.{field.name}")
 		values[field.name] = value
 	return EnvelopeHeader(**values)
