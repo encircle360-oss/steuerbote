@@ -74,6 +74,7 @@ testpaths = [
     "steuerbote/steuerbote/doctype/recapitulative_statement/test_translations.py",
     "steuerbote/steuerbote/doctype/vat_id_confirmation/test_records.py",
     "steuerbote/steuerbote/doctype/vat_return/test_bridge.py",
+    "steuerbote/steuerbote/doctype/vat_return/test_confirmation_files.py",
     "steuerbote/steuerbote/doctype/vat_return/test_plausibility_records.py",
     "steuerbote/steuerbote/doctype/vat_return_extension/test_bridge.py",
     "steuerbote/steuerbote/doctype/vat_return_extension/test_extension_files.py",

@@ -1,5 +1,6 @@
 """What the Zusammenfassende Meldung reads from ERPNext: the ledger of Kz 41, 42 and 21, the customers of the
-vouchers, the filed Voranmeldungen and the customers' names and addresses for the confirmation.
+vouchers, the filed Voranmeldungen and the customers' names and addresses for the confirmation. The Voranmeldung
+reads the vouchers and customers of its period the same way for the confirmation of their USt-IdNrn.
 
 The lines come from the ledger, voucher by voucher (decision of the maintainer, docs/zm.md): steuerbote.ledger
 reads the GL Entries with the exclusions of the Voranmeldung, only on the accounts that the VAT Return Mapping
@@ -68,6 +69,12 @@ def services_shares(company: str, coverage: Coverage, mapping: Mapping) -> list[
 	if coverage.services_span is None:
 		return []
 	return _shares(company, coverage.services_span, mapping, SERVICES)
+
+
+def span_shares(company: str, span: tuple[date, date], mapping: Mapping) -> list[Contribution]:
+	"""What each voucher adds to Kz 41, 42 and 21 from the first to the last day of ``span``, such as a
+	Voranmeldungszeitraum."""
+	return _shares(company, span, mapping, (*GOODS, *SERVICES))
 
 
 def _shares(

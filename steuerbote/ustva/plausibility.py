@@ -20,8 +20,9 @@ The rules behind the hints on single invoices:
 - Kz 81 and 86 hold taxable turnover at 19 % and 7 %, and the form derives their tax from the base (lines
   13 and 14), so an invoice on their accounts charges that rate.
 
-A VAT id is only checked for being there, not for being valid; the party's country is that of the address
-on the invoice. The Gemeinschaftsgebiet follows § 1 Absatz 2a UStG: the member states of the European
+The hints on single invoices check a VAT id only for being there; the party's country is that of the address
+on the invoice. Whether the BZSt confirmed the USt-IdNr. of a customer behind Kz 41, 42 or 21, how long ago, and
+whether it found it valid, vat_id_hints() says from the latest confirmation of each number (§ 18e UStG). The Gemeinschaftsgebiet follows § 1 Absatz 2a UStG: the member states of the European
 Union, with Monaco as part of France („Das Fürstentum Monaco gilt als Gebiet der Französischen
 Republik“).
 """
@@ -38,8 +39,10 @@ from typing import Protocol
 from steuerbote.ustva.calculation import AccountBalance, require_cents
 from steuerbote.ustva.kennzahlen import Kennzahl
 from steuerbote.ustva.mapping import AccountRule, Mapping, is_account_number
-from steuerbote.ustva.period import Period
+from steuerbote.ustva.period import Period, day_label
 from steuerbote.ustva.rounding import CENT, EURO, HUNDRED, ZERO, tax_from_base, to_cents
+from steuerbote.vatid.result import Outcome, valid_through
+from steuerbote.vatid.ustid import is_plausible, normalize, problem
 
 
 class Severity(Enum):
@@ -57,6 +60,9 @@ class Code(StrEnum):
 	PREVIOUS_PERIOD = "ABWEICHUNG-VORPERIODE"
 	NO_CATALOGUE = "KEIN-KATALOG"
 	MAPPING_UNFIT = "ZUORDNUNG-JAHRGANG"
+	VAT_ID_UNCONFIRMED = "USTIDNR-UNGEPRUEFT"
+	VAT_ID_STALE = "USTIDNR-VERALTET"
+	VAT_ID_INVALID = "USTIDNR-UNGUELTIG"
 
 
 # A wrong invoice is a warning; a difference that may well be explained, such as a journal entry on a
@@ -72,6 +78,9 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.PREVIOUS_PERIOD: Severity.HINT,
 		Code.NO_CATALOGUE: Severity.HINT,
 		Code.MAPPING_UNFIT: Severity.HINT,
+		Code.VAT_ID_UNCONFIRMED: Severity.HINT,
+		Code.VAT_ID_STALE: Severity.HINT,
+		Code.VAT_ID_INVALID: Severity.WARNING,
 	}
 )
 
@@ -483,3 +492,138 @@ def hints(
 		*comparison_hints(comparison, figures),
 	]
 	return tuple(sorted(found, key=lambda hint: hint.severity is not Severity.WARNING))
+
+
+# The Kennzahlen whose turnover a customer takes under a USt-IdNr. another member state issued, in the order of the
+# form USt 1 A 2026: Kz 41 (line 19), Kz 42 (line 33) and Kz 21 (line 35). The Zusammenfassende Meldung names the
+# number behind each of them (§ 18a Absatz 7 Satz 1 Nummer 1, 4 and 3, each Buchstabe a, UStG).
+VAT_ID_KENNZAHLEN = ("41", "42", "21")
+VAT_ID_CODES: frozenset[Code] = frozenset({Code.VAT_ID_UNCONFIRMED, Code.VAT_ID_STALE, Code.VAT_ID_INVALID})
+# No source names an age: the BZSt confirms for the moment of the query, and a confirmation later than the supply
+# does not show the Sorgfalt of § 6a Absatz 4 UStG (UStAE 6a.8 Abs. 6 Satz 1). The default is about a
+# Kalendervierteljahr, the Voranmeldungszeitraum of § 18 Absatz 2 Satz 1 UStG; the VAT Return Settings change it.
+DEFAULT_CONFIRMATION_AGE = 90
+CONFIRM_ACTION = "„USt-IdNrn. prüfen“"
+
+
+class VatIdUse(Protocol):
+	"""A voucher behind Kz 41, 42 or 21 as the hints on USt-IdNrn. read it, such as a VoucherAmount of
+	steuerbote.zm.lines: the USt-IdNr. under which its customer takes the turnover, as ERPNext keeps it, the name of
+	the customer and the Kennzahl."""
+
+	@property
+	def vat_id(self) -> str | None: ...
+
+	@property
+	def party(self) -> str | None: ...
+
+	@property
+	def kennzahl(self) -> str: ...
+
+
+@dataclass(frozen=True, slots=True)
+class LatestConfirmation:
+	"""The latest confirmation of a USt-IdNr. in the Bestätigungsverfahren (§ 18e UStG): the day of its query, what
+	the service found and, for a number it found not valid then, the validity the BZSt named (gueltigAb,
+	gueltigBis)."""
+
+	asked_on: date
+	outcome: Outcome
+	valid_from: date | None = None
+	valid_until: date | None = None
+
+
+def confirmable(uses: Iterable[VatIdUse]) -> list[str]:
+	"""The USt-IdNrn. of the vouchers that the BZSt can confirm, written as a confirmation keeps them, each once and
+	in order."""
+	return sorted({normalize(use.vat_id) for use in _with_vat_ids(uses) if is_plausible(use.vat_id)})
+
+
+def _with_vat_ids(uses: Iterable[VatIdUse]) -> list[VatIdUse]:
+	return [use for use in uses if use.kennzahl in VAT_ID_KENNZAHLEN and (use.vat_id or "").strip()]
+
+
+def vat_id_hints(
+	uses: Iterable[VatIdUse],
+	latest: ReadOnlyMapping[str, LatestConfirmation],
+	period: Period,
+	max_age: int,
+) -> list[Hint]:
+	"""A hint per USt-IdNr. behind Kz 41, 42 and 21 of the period whose confirmation is missing, out of date or found
+	it invalid, in the order of the numbers; a number confirmed lately gets none.
+
+	``latest`` holds the latest confirmation by the number as a confirmation keeps it. The BZSt confirms a number
+	for the moment of the query („Bestätigungen für zurückliegende Zeitpunkte oder Zeiträume sind nicht möglich.“,
+	BZSt, Fragen und Antworten zur USt-IdNr.), so a confirmation is out of date when it lies more than ``max_age``
+	days before the end of the period; one after the end is current. A number the BZSt found not valid counts as
+	confirmed when the answer shows it valid all through the period (valid_through). A number without any answer
+	has no confirmation, and one the BZSt cannot confirm at all is invalid as it stands.
+	"""
+	if max_age < 0:
+		raise ValueError(f"the age of a confirmation is a number of days from 0 on, not {max_age} days")
+	written: dict[str, str] = {}
+	parties: dict[str, str] = {}
+	kennzahlen: dict[str, set[str]] = {}
+	for use in _with_vat_ids(uses):
+		number = normalize(use.vat_id)
+		written.setdefault(number, use.vat_id.strip())
+		kennzahlen.setdefault(number, set()).add(use.kennzahl)
+		if not parties.get(number):
+			parties[number] = (use.party or "").strip()
+	found = []
+	for number in sorted(written):
+		finding = _finding(number, latest.get(number), period, max_age)
+		if finding is not None:
+			code, predicate = finding
+			subject = _subject(number, written[number], parties[number], kennzahlen[number])
+			found.append(Hint(code, f"{subject} {predicate}", party=parties[number]))
+	return found
+
+
+def _subject(number: str, written: str, party: str, kennzahlen: set[str]) -> str:
+	shown = number if is_plausible(written) else f"„{written}“"
+	customer = f" des Kunden {party}" if party else ""
+	numbers = [kennzahl for kennzahl in VAT_ID_KENNZAHLEN if kennzahl in kennzahlen]
+	listed = numbers[0] if len(numbers) == 1 else f"{', '.join(numbers[:-1])} und {numbers[-1]}"
+	return f"Die USt-IdNr. {shown}{customer} (Kz {listed})"
+
+
+def _finding(
+	number: str, confirmation: LatestConfirmation | None, period: Period, max_age: int
+) -> tuple[Code, str] | None:
+	"""The code and the rest of the sentence of the hint on a number, None for a number confirmed lately."""
+	reason = problem(number)
+	if reason is not None:
+		return Code.VAT_ID_INVALID, f"lässt sich nicht bestätigen: {reason}"
+	if confirmation is None:
+		return (
+			Code.VAT_ID_UNCONFIRMED,
+			f"ist nicht bestätigt. {CONFIRM_ACTION} lässt sie beim BZSt bestätigen.",
+		)
+	day = day_label(confirmation.asked_on)
+	if confirmation.outcome is Outcome.UNKNOWN:
+		unanswered = f"ist nicht bestätigt: Die Bestätigungsabfrage vom {day} ergab kein Ergebnis."
+		return Code.VAT_ID_UNCONFIRMED, f"{unanswered} {CONFIRM_ACTION} fragt erneut."
+	if confirmation.outcome is Outcome.INVALID and not valid_through(
+		confirmation.valid_from, confirmation.valid_until, period.start, period.end
+	):
+		return Code.VAT_ID_INVALID, f"ist laut Bestätigungsabfrage vom {day} ungültig."
+	age = (period.end - confirmation.asked_on).days
+	if age <= max_age:
+		return None
+	stale = (
+		f"ist zuletzt am {day} bestätigt worden, {age} Tage vor dem Ende des Voranmeldungszeitraums {period.label}; "
+		f"die Einstellungen lassen höchstens {max_age} Tage zu."
+	)
+	return Code.VAT_ID_STALE, f"{stale} {CONFIRM_ACTION} fragt erneut."
+
+
+def merged(*groups: Iterable[Hint]) -> tuple[Hint, ...]:
+	"""The hints of several sources as one list, as hints() orders its own: the warnings first, then the hints, each
+	kind in the order of the sources and within each source in its order."""
+	return tuple(
+		sorted(
+			(hint for group in groups for hint in group),
+			key=lambda hint: hint.severity is not Severity.WARNING,
+		)
+	)

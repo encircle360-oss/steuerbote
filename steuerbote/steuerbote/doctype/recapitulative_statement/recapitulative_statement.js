@@ -1,10 +1,9 @@
 {% include "steuerbote/public/js/elster_transmission.js" %}
-
-const CONFIRMATION_EVENT = "steuerbote_vat_id_confirmation";
+{% include "steuerbote/public/js/vat_id_confirmation.js" %}
 
 frappe.ui.form.on("Recapitulative Statement", {
 	setup(frm) {
-		frappe.realtime.on(CONFIRMATION_EVENT, (data) => on_confirmation_finished(frm, data));
+		listen_for_confirmations(frm);
 		listen_for_transmissions(frm);
 		// Frappe asks to submit a draft, but Buchen alone files nothing: Senden and the filing marks submit it.
 		frm.show_submit_message = () => {};
@@ -12,9 +11,7 @@ frappe.ui.form.on("Recapitulative Statement", {
 	},
 
 	refresh(frm) {
-		if (confirmation_state(frm).stale && frm.perm[0] && frm.perm[0].write) {
-			frm.call("release_stale_confirmation").then(() => frm.reload_doc());
-		}
+		release_stale_confirmation(frm);
 		release_stale_transmission(frm);
 		offer_buchen_only_for_an_accepted_send(frm);
 		remove_discard_when_locked_as_sent(frm);
@@ -26,7 +23,15 @@ frappe.ui.form.on("Recapitulative Statement", {
 			frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
 		}
 		if (changeable && calculated) {
-			frm.add_custom_button(__("Confirm VAT IDs"), () => confirm_vat_ids(frm));
+			frm.add_custom_button(__("Confirm VAT IDs"), () =>
+				confirm_vat_ids(
+					frm,
+					__(
+						"Steuerbote asks the BZSt about each USt-IdNr. of the lines, with the name and town of the customer where they are known, one after the other; VIES answers only when the BZSt cannot. Every answer is kept as a USt-IdNr.-Bestätigung."
+					),
+					statement_texts()
+				)
+			);
 		}
 		if (can_make_csv_file(frm.doc)) {
 			frm.add_custom_button(__("CSV for Mein ELSTER"), () => make_csv_file(frm));
@@ -73,10 +78,6 @@ function statement_texts() {
 	};
 }
 
-function confirmation_state(frm) {
-	return (frm.doc.__onload && frm.doc.__onload.confirmation) || {};
-}
-
 // The conditions of make_csv_file in recapitulative_statement.py: a statement that could be filed, or one filed.
 function can_make_csv_file(doc) {
 	if (doc.docstatus === 1) {
@@ -94,31 +95,6 @@ function leave_the_share_without_previous_amount_blank() {
 		null,
 		(value, df, options, doc) =>
 			!doc || !flt(doc.previous) ? "" : frappe.form.formatters.Percent(value, df, options, doc)
-	);
-}
-
-function confirm_vat_ids(frm) {
-	if (!saved(frm, statement_texts())) {
-		return;
-	}
-	frappe.confirm(
-		__(
-			"Steuerbote asks the BZSt about each USt-IdNr. of the lines, with the name and town of the customer where they are known, one after the other; VIES answers only when the BZSt cannot. Every answer is kept as a USt-IdNr.-Bestätigung."
-		),
-		() =>
-			frm.call("confirm_vat_ids").then((response) => {
-				frappe.show_alert(
-					{
-						message: __(
-							"The confirmation of {0} USt-IdNrn. runs in the background. A notice follows when it has finished.",
-							[response.message]
-						),
-						indicator: "blue",
-					},
-					10
-				);
-				frm.reload_doc();
-			})
 	);
 }
 
@@ -252,24 +228,4 @@ function show_intro(frm) {
 	}
 	const transmission = elster_notes(frm, statement_texts());
 	frm.set_intro([...notes, ...transmission].join("<br>"), transmission.length ? "orange" : "blue");
-}
-
-function on_confirmation_finished(frm, data) {
-	const link = frappe.utils.get_form_link("Recapitulative Statement", data.statement, true);
-	let message = __("The confirmation of the USt-IdNrn. of {0} has finished: {1} numbers asked.", [link, data.confirmed]);
-	let indicator = "green";
-	if (data.error) {
-		message = __("The confirmation of the USt-IdNrn. of {0} stopped: {1}", [link, data.error]);
-		indicator = "red";
-	} else if ((data.failed || []).length) {
-		message = __("The confirmation of {0} failed for {1}; the Error Log has the details.", [
-			link,
-			data.failed.join(", "),
-		]);
-		indicator = "orange";
-	}
-	frappe.show_alert({ message, indicator }, 15);
-	if (frm.doc && frm.doc.name === data.statement) {
-		frm.reload_doc();
-	}
 }

@@ -14,7 +14,8 @@ wait for Berechnen when it books other vouchers by then; they and every transmis
 the stored vouchers and overrides and refuse lines that differ from them.
 
 "USt-IdNrn. prüfen" (confirm_vat_ids) asks the BZSt about each USt-IdNr. the lines report, in a background job,
-one query after the other and none repeated (steuerbote.vatid), and keeps every query as a VAT ID Confirmation.
+one query after the other and none repeated (steuerbote.vatid), and keeps every query as a VAT ID Confirmation
+(vat_id_confirmation/confirming.py).
 A number holds the statement back until its latest confirmation says it is valid, or its line is overridden
 with a Begründung (decision of the maintainer). "CSV für Mein ELSTER" (make_csv_file) writes the lines into the
 file that the form of Mein ELSTER imports (steuerbote.zm.csv_file). "Berichtigung anlegen" (make_correction)
@@ -44,8 +45,7 @@ import frappe
 from frappe import _
 from frappe.core.doctype.file.utils import get_content_hash
 from frappe.model.document import Document
-from frappe.utils import cint, escape_html, getdate, strip_html
-from frappe.utils.background_jobs import is_job_enqueued
+from frappe.utils import cint, escape_html, getdate
 
 from steuerbote import holiday_list, vatid, zm_sources
 from steuerbote.elster import zm_xml
@@ -63,7 +63,8 @@ from steuerbote.steuerbote.doctype.elster_transmission.transmission import (
 	filings,
 )
 from steuerbote.steuerbote.doctype.recapitulative_statement import bridge
-from steuerbote.steuerbote.doctype.vat_id_confirmation import vat_id_confirmation
+from steuerbote.steuerbote.doctype.vat_id_confirmation import confirming, vat_id_confirmation
+from steuerbote.steuerbote.doctype.vat_id_confirmation.confirming import Confirming
 from steuerbote.steuerbote.doctype.vat_return.vat_return import (
 	TRANSFERTICKET,
 	SiteFigures,
@@ -72,7 +73,7 @@ from steuerbote.steuerbote.doctype.vat_return.vat_return import (
 )
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
-from steuerbote.vatid import UrllibFetch
+from steuerbote.vatid import Details, UrllibFetch
 from steuerbote.zm.comparison import compare, comparison_hints, earlier
 from steuerbote.zm.correction import as_filed
 from steuerbote.zm.csv_file import csv_file
@@ -107,20 +108,14 @@ TOTALS = ("total_l", "total_d", "total_s")
 LINE_INPUT = ("vat_id", "art", "override", "override_reason")
 FILING_FIELDS = ("filed_via", "filed_on", "transferticket", "filing_note", "filed_by")
 
-LOCK_FIELD = "confirmation_in_progress"
 CONFIRMATION_JOB = (
 	"steuerbote.steuerbote.doctype.recapitulative_statement.recapitulative_statement.run_confirmation"
 )
-CONFIRMATION_EVENT = "steuerbote_vat_id_confirmation"
-# A confirmation asks at most three times, the simple and the qualified query and VIES, and UrllibFetch waits
-# up to a minute for each answer.
-SECONDS_PER_NUMBER = 200
-MINIMUM_TIMEOUT = 300
 # How the statement went to the BZSt when ELSTER accepted its Senden.
 FILED_THROUGH_ERIC = "eric"
 
 
-class RecapitulativeStatement(Transmittable, Document):
+class RecapitulativeStatement(Confirming, Transmittable, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -187,8 +182,7 @@ class RecapitulativeStatement(Transmittable, Document):
 	def onload(self) -> None:
 		"""Tell the form whether the lock of a confirmation or of a transmission is stale, so that it releases it,
 		whether ERiC runs as a simulation and what the latest run of ERiC found."""
-		draft = self.docstatus == 0 and not self.is_new()
-		self.set_onload("confirmation", {"stale": draft and self._has_stale_confirmation()})
+		self.set_onload("confirmation", self.confirmation_state())
 		self.set_onload("elster", self.elster_state())
 		self.set_onload("elster_run", self.latest_run())
 
@@ -202,7 +196,7 @@ class RecapitulativeStatement(Transmittable, Document):
 
 	def validate(self) -> None:
 		self.refuse_changes_while_transmitting()
-		self._refuse_changes_while_confirming()
+		self.refuse_changes_while_confirming()
 		self.refuse_changes_after_sending(FILING_FIELDS if self.flags.filed_outside else ())
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
@@ -263,7 +257,7 @@ class RecapitulativeStatement(Transmittable, Document):
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft Zusammenfassende Meldung can be calculated."))
 		self.refuse_changes_while_transmitting()
-		self._refuse_changes_while_confirming()
+		self.refuse_changes_while_confirming()
 		self.refuse_if_sent()
 		covered = self._set_period()
 		period = covered.period
@@ -316,7 +310,7 @@ class RecapitulativeStatement(Transmittable, Document):
 		"""USt-IdNrn. prüfen: ask about each USt-IdNr. the lines report, in a background job; returns how many
 		numbers the job asks about."""
 		self.check_permission("write")
-		self._lock()
+		self.lock_for_confirmation()
 		if self.docstatus != 0:
 			frappe.throw(_("Only the USt-IdNrn. of a draft Zusammenfassende Meldung are confirmed."))
 		if self.status not in (CALCULATED, READY):
@@ -324,29 +318,22 @@ class RecapitulativeStatement(Transmittable, Document):
 		if cint(self.transmission_in_progress):
 			frappe.throw(_("A transmission of {0} is running. Wait for its result.").format(self.name))
 		self.refuse_if_sent()
-		self._close_stale_confirmation()
-		requester(self.company)
-		numbers = bridge.numbers_to_confirm(self.lines)
-		if not numbers:
-			frappe.throw(_("The statement reports no USt-IdNr. to confirm."))
-		self.db_set(LOCK_FIELD, 1)
-		frappe.enqueue(
-			CONFIRMATION_JOB,
-			queue="long",
-			timeout=max(MINIMUM_TIMEOUT, SECONDS_PER_NUMBER * len(numbers)),
-			job_id=confirmation_job_id(self.name),
-			enqueue_after_commit=True,
-			name=self.name,
+		return self.start_confirmation(
+			self.numbers_to_confirm(), CONFIRMATION_JOB, _("The statement reports no USt-IdNr. to confirm.")
 		)
-		return len(numbers)
 
-	@frappe.whitelist(methods=["POST"])
-	def release_stale_confirmation(self) -> None:
-		"""Lift the lock of a confirmation whose background job is gone; the form calls this when it finds one.
-		What the job stored before it stopped stays, and Berechnen or another confirmation shows it."""
-		self.check_permission("write")
-		self._lock()
-		self._close_stale_confirmation()
+	def numbers_to_confirm(self) -> list[str]:
+		"""The USt-IdNrn. the lines report, each once."""
+		return bridge.numbers_to_confirm(self.lines)
+
+	def details_for(self, vat_id: str) -> Details | None:
+		"""Name and address of the customer of the first voucher of the lines of the number that names one."""
+		return zm_sources.customer_details(bridge.customer_of(self.vouchers, vat_id))
+
+	def take_in_confirmations(self) -> None:
+		"""Every save builds the lines with the latest confirmation of their numbers, so the job saves the statement."""
+		self.flags.confirming = True
+		self.save()
 
 	@frappe.whitelist(methods=["POST"])
 	def make_csv_file(self) -> str:
@@ -914,29 +901,6 @@ class RecapitulativeStatement(Transmittable, Document):
 		frappe.db.get_value(DOCTYPE, self.name, "name", for_update=True)
 		self.reload()
 
-	def _refuse_changes_while_confirming(self) -> None:
-		"""The job writes the confirmations onto the lines, so the statement stays as it is while it runs."""
-		if self.is_new() or self.flags.confirming:
-			return
-		if cint(frappe.db.get_value(DOCTYPE, self.name, LOCK_FIELD)):
-			frappe.throw(
-				_(
-					"The USt-IdNrn. of this statement are being confirmed. Wait for the result before changing it."
-				)
-			)
-
-	def _close_stale_confirmation(self) -> None:
-		if not cint(self.confirmation_in_progress):
-			return
-		if is_job_enqueued(confirmation_job_id(self.name)):
-			frappe.throw(_("The USt-IdNrn. of this statement are being confirmed. Wait for the result."))
-		self.db_set(LOCK_FIELD, 0)
-
-	def _has_stale_confirmation(self) -> bool:
-		return bool(cint(self.confirmation_in_progress)) and not is_job_enqueued(
-			confirmation_job_id(self.name)
-		)
-
 
 def _rows(rows: Iterable[Document]) -> list[dict]:
 	"""Rows of a table as they were stored, for a save to keep them."""
@@ -952,75 +916,14 @@ def zm_errors() -> Iterator[None]:
 		frappe.throw(_(error.template).format(*error.values), title=_("Recapitulative Statement"))
 
 
-def requester(company: str) -> str:
-	"""The company's own German USt-IdNr., with which it asks the BZSt about the numbers of its customers."""
-	ust_idnr = settings_for(company).ust_idnr
-	if not vatid.is_german(ust_idnr):
-		frappe.throw(
-			_(
-				"Enter the USt-IdNr. of {0} in the VAT Return Settings, DE and nine digits, before confirming USt-IdNrn."
-			).format(company)
-		)
-	return vatid.normalize(ust_idnr)
-
-
-def confirmation_job_id(name: str) -> str:
-	return f"steuerbote:ustid:{name}"
-
-
 def run_confirmation(name: str) -> None:
-	"""Background job of RecapitulativeStatement.confirm_vat_ids: one confirmation per USt-IdNr. of the lines,
-	one query after the other and none repeated.
-
-	Each confirmation is committed as soon as it is stored: it is the proof of queries the service received,
-	which nothing that fails later may take back. Then the lines show the latest confirmation of their numbers,
-	the lock is released, and the user who started the job gets a realtime notice.
-	"""
-	user = frappe.session.user
-	confirmed: list[str] = []
-	failed: list[str] = []
-	error_text = None
-	try:
-		doc = frappe.get_doc(DOCTYPE, name)
-		asking = requester(doc.company)
-		for vat_id in bridge.numbers_to_confirm(doc.lines):
-			frappe.db.savepoint("vat_id_confirmation")
-			try:
-				details = zm_sources.customer_details(bridge.customer_of(doc.vouchers, vat_id))
-				answer = vatid.confirm(vat_id, asking, details, UrllibFetch(), _clock)
-				vat_id_confirmation.store(answer, doc.company, doc.name)
-				frappe.db.commit()
-				confirmed.append(vat_id)
-			except Exception:
-				frappe.db.rollback(save_point="vat_id_confirmation")
-				frappe.log_error(title=_("Confirmation of a USt-IdNr. failed"))
-				failed.append(vat_id)
-		doc.reload()
-		doc.flags.confirming = True
-		doc.save()
-	except Exception as error:
-		frappe.db.rollback()
-		error_text = _failure_text(error)
-	finally:
-		frappe.db.set_value(DOCTYPE, name, LOCK_FIELD, 0)
-	frappe.publish_realtime(
-		CONFIRMATION_EVENT,
-		{"statement": name, "confirmed": len(confirmed), "failed": failed, "error": error_text},
-		user=user,
-		after_commit=True,
-	)
+	"""Background job of RecapitulativeStatement.confirm_vat_ids, see confirming.run: then the lines show the
+	latest confirmation of their numbers."""
+	confirming.run(DOCTYPE, name, UrllibFetch, _clock)
 
 
 def _clock() -> datetime:
 	return datetime.now(UTC)
-
-
-def _failure_text(error: Exception) -> str:
-	"""What the user reads about a failure: the message of an expected error, else a pointer to the Error Log."""
-	if isinstance(error, frappe.ValidationError | ValueError):
-		return strip_html(str(error)).strip()
-	frappe.log_error(title=_("Confirmation of the USt-IdNrn. failed"))
-	return _("An unexpected error stopped the confirmation. The Error Log has the details.")
 
 
 def _thresholds(settings: Document) -> Thresholds:

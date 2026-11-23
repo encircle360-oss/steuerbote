@@ -1,8 +1,10 @@
 {% include "steuerbote/public/js/elster_transmission.js" %}
+{% include "steuerbote/public/js/vat_id_confirmation.js" %}
 
 frappe.ui.form.on("VAT Return", {
 	setup(frm) {
 		listen_for_transmissions(frm);
+		listen_for_confirmations(frm);
 		// Frappe asks to submit a draft, but Buchen alone files nothing: show_ready_note says how to file.
 		frm.show_submit_message = () => {};
 		leave_unknown_comparison_values_blank();
@@ -10,10 +12,22 @@ frappe.ui.form.on("VAT Return", {
 
 	refresh(frm) {
 		release_stale_transmission(frm);
+		release_stale_confirmation(frm);
 		offer_buchen_only_for_an_accepted_send(frm);
 		remove_discard_when_locked_as_sent(frm);
 		if (frm.doc.docstatus === 0 && !frm.is_new() && !locked_as_sent(frm)) {
 			frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
+		}
+		if (can_confirm_vat_ids(frm)) {
+			frm.add_custom_button(__("Confirm VAT IDs"), () =>
+				confirm_vat_ids(
+					frm,
+					__(
+						"Steuerbote asks the BZSt about the USt-IdNr. of each customer behind Kz 41, 42 and 21 of the period, with the name and town of the customer where they are known, one after the other; VIES answers only when the BZSt cannot. Every answer is kept as a USt-IdNr.-Bestätigung."
+					),
+					{ unsaved: __("Save the return first.") }
+				)
+			);
 		}
 		if (can_make_import_file(frm.doc)) {
 			frm.add_custom_button(__("XML for Mein ELSTER"), () => make_import_file(frm));
@@ -33,7 +47,7 @@ frappe.ui.form.on("VAT Return", {
 		}
 		show_ready_note(frm);
 		show_latest_run(frm);
-		frm.set_intro(elster_notes(frm, return_texts()).join("<br>"), "orange");
+		show_intro(frm);
 		add_elster_buttons(frm);
 	},
 });
@@ -53,6 +67,20 @@ function return_texts() {
 		),
 		running: __("A transmission of this return is running. The form reloads when it has finished."),
 	};
+}
+
+// The conditions of confirm_vat_ids in vat_return.py: a calculated draft whose USt-IdNrn. are not being confirmed,
+// which is not being transmitted and which no Senden of its own keeps as it was sent.
+function can_confirm_vat_ids(frm) {
+	const calculated = ["Berechnet", "Bereit"].includes(frm.doc.status);
+	return (
+		!frm.is_new() &&
+		frm.doc.docstatus === 0 &&
+		calculated &&
+		!frm.doc.confirmation_in_progress &&
+		!transmission_blocked(frm) &&
+		!locked_as_sent(frm)
+	);
 }
 
 // The conditions of make_import_file in vat_return.py: a return that could be filed, or the return filed.
@@ -110,6 +138,7 @@ function ready_to_file(frm) {
 		!frm.is_new() &&
 		frm.doc.docstatus === 0 &&
 		frm.doc.status === "Bereit" &&
+		!frm.doc.confirmation_in_progress &&
 		!transmission_blocked(frm)
 	);
 }
@@ -129,7 +158,8 @@ function show_ready_note(frm) {
 
 function add_elster_buttons(frm) {
 	const calculated = ["Berechnet", "Bereit"].includes(frm.doc.status);
-	if (frm.is_new() || frm.doc.docstatus !== 0 || transmission_blocked(frm) || !calculated) {
+	const locked = transmission_blocked(frm) || frm.doc.confirmation_in_progress;
+	if (frm.is_new() || frm.doc.docstatus !== 0 || locked || !calculated) {
 		return;
 	}
 	const group = __("ELSTER");
@@ -179,4 +209,12 @@ function ask_for_filing_note(frm, filed_via) {
 		in_mein_elster ? __("Filed in Mein ELSTER") : __("Mark as Filed Outside"),
 		__("Mark as Filed")
 	);
+}
+
+function show_intro(frm) {
+	const notes = elster_notes(frm, return_texts());
+	if (!frm.is_new() && frm.doc.docstatus === 0 && frm.doc.confirmation_in_progress) {
+		notes.unshift(__("The USt-IdNrn. are being confirmed. The form reloads when the confirmation has finished."));
+	}
+	frm.set_intro(notes.join("<br>"), "orange");
 }

@@ -142,6 +142,11 @@ def deadline_holidays(days: Iterable[tuple[date, bool | int]]) -> frozenset[date
 	return frozenset(day for day, weekly_off in days if not weekly_off)
 
 
+def day_label(day: date) -> str:
+	"""A day as the sentences of Steuerbote name it, such as 20. November 2026."""
+	return f"{day.day}. {MONTH_NAMES[day.month - 1]} {day.year}"
+
+
 def _is_int(value: object) -> bool:
 	"""True is an int to Python, but neither a year nor a month."""
 	return isinstance(value, int) and not isinstance(value, bool)

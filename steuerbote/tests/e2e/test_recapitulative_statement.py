@@ -1,5 +1,5 @@
-"""The Zusammenfassende Meldung of the seed for October 2026: Berechnen and the file for Mein ELSTER; and the form
-of the statement of the second company, whose Senden has an unknown outcome.
+"""The Zusammenfassende Meldung of the seed for October 2026: Berechnen, USt-IdNrn. prüfen and the file for Mein
+ELSTER; and the form of the statement of the second company, whose Senden has an unknown outcome.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -18,6 +18,16 @@ def test_berechnen_reports_the_service_to_the_eu_customer_in_one_line(desk, expe
 	lines = desk.grid_rows("lines")
 	expect(lines).to_have_count(1)
 	expect(lines).to_contain_text([data.EU_VAT_ID])
+
+
+def test_ust_idnrn_pruefen_asks_first_and_nein_asks_nobody(desk, expect, records):
+	open_statement(desk, records)
+	desk.button("USt-IdNrn. prüfen").click()
+	expect(desk.dialog()).to_contain_text("nach jeder USt-IdNr. der Zeilen")
+	desk.answer_dialog(yes=False)
+	expect(desk.dialog()).to_have_count(0)
+	desk.settle()
+	assert not desk.called("confirm_vat_ids")
 
 
 def test_csv_fuer_mein_elster_downloads_the_file_and_attaches_it(desk, expect, records):

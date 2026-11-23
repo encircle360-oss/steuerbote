@@ -25,9 +25,11 @@ DOCTYPES = (
 )
 SETTINGS_FIELDS = ("ust_idnr", "teilnehmernummer", "zm_rules")
 SOURCES = (
-	"doctype/recapitulative_statement/recapitulative_statement.py",
-	"doctype/recapitulative_statement/recapitulative_statement.js",
-	"doctype/vat_id_confirmation/vat_id_confirmation.py",
+	MODULE / "doctype/recapitulative_statement/recapitulative_statement.py",
+	MODULE / "doctype/recapitulative_statement/recapitulative_statement.js",
+	MODULE / "doctype/vat_id_confirmation/vat_id_confirmation.py",
+	MODULE / "doctype/vat_id_confirmation/confirming.py",
+	APP / "public/js/vat_id_confirmation.js",
 )
 # The status, the kinds of a statement and of a finding, the Arten and the results of a qualified query read
 # the same in every language, like the status of a VAT Return.
@@ -114,7 +116,7 @@ def texts_of_the_doctypes() -> set[str]:
 def texts_of_the_sources() -> set[str]:
 	texts = set()
 	for source in SOURCES:
-		texts.update(TRANSLATED_LITERAL.findall((MODULE / source).read_text(encoding="utf-8")))
+		texts.update(TRANSLATED_LITERAL.findall(source.read_text(encoding="utf-8")))
 	return texts
 
 
@@ -133,6 +135,11 @@ class ZmTranslationsTest(TestCase):
 		for text, found in (
 			("Recapitulative Statement", texts_of_the_doctypes()),
 			("Confirm VAT IDs", texts_of_the_sources()),
+			("The USt-IdNrn. of {0} are being confirmed. Wait for the result.", texts_of_the_sources()),
+			(
+				"The confirmation of {0} failed for {1}; the Error Log has the details.",
+				texts_of_the_sources(),
+			),
 			("Transmit to the BZSt", texts_of_the_sources()),
 			("Calculate the statement before transmitting it.", texts_of_the_sources()),
 			("Teilnehmernummer of the BZSt", texts_of_the_doctypes()),

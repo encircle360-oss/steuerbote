@@ -553,17 +553,29 @@ class TestTransmission(TransmissionTestCase):
 		)
 		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "docstatus"), 0)
 
-	def test_the_return_lists_its_transmissions_under_its_connections(self):
+	def test_the_return_lists_its_transmissions_and_confirmations_under_its_connections(self):
 		doc = self.calculated(2)
 		first, _, _ = self.transmitted(doc, "validate")
 		second, _, _ = self.transmitted(doc, "test_send")
 		data = frappe.get_meta("VAT Return").get_dashboard_data()
 		self.assertEqual(
-			(data.fieldname, data.dynamic_links, [group["items"] for group in data.transactions]),
-			("document", {"document": ["VAT Return", "document_type"]}, [["ELSTER Transmission"]]),
+			(data.fieldname, data.dynamic_links, data.non_standard_fieldnames),
+			(
+				"document",
+				{"document": ["VAT Return", "document_type"]},
+				{"VAT ID Confirmation": "vat_return"},
+			),
 		)
-		(links,) = get_open_count("VAT Return", doc.name)["count"]["external_links_found"]
-		self.assertEqual((links["doctype"], links["count"]), (TRANSMISSION, 2))
+		self.assertEqual(
+			[group["items"] for group in data.transactions],
+			[["ELSTER Transmission"], ["VAT ID Confirmation"]],
+		)
+		(links,) = (
+			links
+			for links in get_open_count("VAT Return", doc.name)["count"]["external_links_found"]
+			if links["doctype"] == TRANSMISSION
+		)
+		self.assertEqual(links["count"], 2)
 		self.assertEqual(
 			sorted(frappe.get_all(TRANSMISSION, filters={"document": doc.name}, pluck="name")),
 			sorted([first.name, second.name]),

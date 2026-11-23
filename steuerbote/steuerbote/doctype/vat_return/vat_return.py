@@ -26,9 +26,16 @@ ELSTER accepted while its submission failed. A period counts as filed once a ret
 another return of it was filed through Steuerbote, cancelled or not, and a return with a record of its filing
 cannot be cancelled. A draft that ELSTER accepted, or whose Senden has an unknown outcome, keeps all but its
 remarks, since the Finanzamt has it, or may have it, as it was sent.
+
+"USt-IdNrn. prüfen" (confirm_vat_ids) asks the BZSt about the USt-IdNr. of each customer behind Kz 41, 42 and 21 of
+the period, in a background job as at the Zusammenfassende Meldung (vat_id_confirmation/confirming.py), and the
+hints name each number whose latest confirmation is missing, out of date or found it invalid (vat_id_hints). The job
+gives these hints anew when it has finished; the return does not change while it runs.
 """
 
 import re
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import frappe
@@ -37,7 +44,7 @@ from frappe.core.doctype.file.utils import get_content_hash
 from frappe.model.document import Document
 from frappe.utils import cint, escape_html, fmt_money, getdate
 
-from steuerbote import invoices, ustva
+from steuerbote import invoices, ustva, zm_sources
 from steuerbote.elster import ustva_xml
 from steuerbote.eric import datenart as eric_datenart
 from steuerbote.ledger import account_labels, account_names, accounts_without_number, load_lines
@@ -49,10 +56,15 @@ from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission impor
 	UNKNOWN,
 )
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import Transmittable, filings
+from steuerbote.steuerbote.doctype.recapitulative_statement import bridge as zm_bridge
+from steuerbote.steuerbote.doctype.vat_id_confirmation import confirming, vat_id_confirmation
+from steuerbote.steuerbote.doctype.vat_id_confirmation.confirming import Confirming
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
 from steuerbote.ustva import plausibility
+from steuerbote.vatid import Details, UrllibFetch
+from steuerbote.zm.lines import VoucherAmount
 
 DOCTYPE = "VAT Return"
 SETTINGS_DOCTYPE = "VAT Return Settings"
@@ -72,9 +84,10 @@ CALCULATED_FIELDS = ("status", "ready", "accounts_without_number")
 
 # TransferTicketSType in headerbasis_datentypen.xsd of the ELSTER Basisschema.
 TRANSFERTICKET = re.compile(r"[0-9a-km-z]{2}[0-9]{3}[0-9a-km-z]{27}")
+CONFIRMATION_JOB = "steuerbote.steuerbote.doctype.vat_return.vat_return.run_confirmation"
 
 
-class VATReturn(Transmittable, Document):
+class VATReturn(Confirming, Transmittable, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -100,6 +113,7 @@ class VATReturn(Transmittable, Document):
 		checks: DF.Table[VATReturnCheck]
 		company: DF.Link
 		comparison: DF.Table[VATReturnComparison]
+		confirmation_in_progress: DF.Check
 		deadline: DF.Date | None
 		deviations: DF.Table[VATReturnDeviation]
 		from_date: DF.Date | None
@@ -133,6 +147,7 @@ class VATReturn(Transmittable, Document):
 	def onload(self) -> None:
 		self.set_onload("elster", self.elster_state())
 		self.set_onload("elster_run", self.latest_run())
+		self.set_onload("confirmation", self.confirmation_state())
 
 	def before_insert(self) -> None:
 		"""A new return starts as a draft that Berechnen has not read, whatever it was made with: its Kennzahlen keep
@@ -145,6 +160,7 @@ class VATReturn(Transmittable, Document):
 
 	def validate(self):
 		self.refuse_changes_while_transmitting()
+		self.refuse_changes_while_confirming()
 		self.refuse_changes_after_sending()
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
@@ -191,6 +207,7 @@ class VATReturn(Transmittable, Document):
 		if self.docstatus != 0:
 			frappe.throw(_("Only a draft return can be calculated."))
 		self.refuse_if_sent()
+		self.refuse_changes_while_confirming()
 		self._require_catalogue()
 		year = cint(self.year)
 		period, settings = self._set_period()
@@ -216,6 +233,51 @@ class VATReturn(Transmittable, Document):
 			self.save()
 		finally:
 			self.flags.calculating = False
+
+	@frappe.whitelist(methods=["POST"])
+	def confirm_vat_ids(self) -> int:
+		"""USt-IdNrn. prüfen: ask about the USt-IdNr. of each customer behind Kz 41, 42 and 21 of the period, in a
+		background job; returns how many numbers the job asks about."""
+		self.check_permission("write")
+		self.lock_for_confirmation()
+		if self.docstatus != 0:
+			frappe.throw(_("Only the USt-IdNrn. of a draft return are confirmed."))
+		if self.status not in (CALCULATED, READY):
+			frappe.throw(_("Calculate the return before confirming its USt-IdNrn."))
+		if cint(self.transmission_in_progress):
+			frappe.throw(_("A transmission of {0} is running. Wait for its result.").format(self.name))
+		self.refuse_if_sent()
+		return self.start_confirmation(
+			self.numbers_to_confirm(),
+			CONFIRMATION_JOB,
+			_("No customer behind Kz 41, 42 or 21 of the period has a USt-IdNr. to confirm."),
+		)
+
+	def numbers_to_confirm(self) -> list[str]:
+		"""The USt-IdNrn. of the customers behind Kz 41, 42 and 21 of the period that the BZSt can confirm, each once."""
+		return plausibility.confirmable(self._vat_ids().amounts)
+
+	def details_for(self, vat_id: str) -> Details | None:
+		"""Name and address of the customer of the first voucher of the number that names one, as the ZM reads them."""
+		return zm_sources.customer_details(zm_bridge.customer_of(self._vat_ids().vouchers, vat_id))
+
+	def take_in_confirmations(self) -> None:
+		"""The hints on the USt-IdNrn. follow the confirmations the job stored; every other hint stays as Berechnen
+		found it."""
+		period = self._chosen_period(cint(self.year))
+		hints = vat_id_hints(self.company, period, self._vat_ids().amounts)
+		self.set("hints", bridge.replaced_hints(self.hints, hints, plausibility.VAT_ID_CODES))
+		self.flags.confirming = True
+		self.save()
+
+	def _vat_ids(self) -> PeriodVatIds:
+		"""The vouchers behind Kz 41, 42 and 21 of the period with their customers, read once for the document."""
+		if getattr(self, "_period_vat_ids", None) is None:
+			year = cint(self.year)
+			self._period_vat_ids = period_vat_ids(
+				self.company, self._chosen_period(year), mapping_for(self.company, year)
+			)
+		return self._period_vat_ids
 
 	@frappe.whitelist(methods=["POST"])
 	def make_import_file(self) -> str:
@@ -302,6 +364,7 @@ class VATReturn(Transmittable, Document):
 			)
 		if self.status not in (CALCULATED, READY):
 			frappe.throw(_("Calculate the return before transmitting it."))
+		self.refuse_while_confirming()
 		self._require_amounts_as_stored(self)
 
 	def check_can_be_sent(self) -> None:
@@ -443,7 +506,8 @@ class VATReturn(Transmittable, Document):
 		"""Frappe keeps no read-only field from a save through its API, so a save keeps what Berechnen stored and
 		takes only what the form lets the user change: the overrides with their reasons, the further details and the
 		remarks. Another company or period discards the calculation instead. A new return is a draft (before_insert),
-		so a calculated one was saved before."""
+		so a calculated one was saved before. The job of USt-IdNrn. prüfen alone gives the hints anew
+		(take_in_confirmations)."""
 		before = self.get_doc_before_save()
 		if before is None or self.flags.calculating:
 			return
@@ -456,7 +520,8 @@ class VATReturn(Transmittable, Document):
 		for row, values in zip(self.kennzahlen, computed, strict=True):
 			row.update(values)
 		for table in FINDINGS:
-			self.set(table, [row.as_dict() for row in before.get(table)])
+			if not (table == "hints" and self.flags.confirming):
+				self.set(table, [row.as_dict() for row in before.get(table)])
 		self.update({field: before.get(field) for field in CALCULATED_FIELDS})
 
 	def _set_final_amounts(self) -> None:
@@ -652,7 +717,7 @@ def build_hints(
 	comparison: plausibility.Comparison,
 ) -> tuple[plausibility.Hint, ...]:
 	"""Hinweise: the invoices of the period, their reconciliation with the ledger, the balances on the accounts
-	watched for a hint and the Vorperiodenvergleich.
+	watched for a hint, the Vorperiodenvergleich and the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21.
 
 	A hint informs and never holds the return; whether it is ready follows the Verprobung and the accounts
 	watched at the blocking level alone.
@@ -667,7 +732,11 @@ def build_hints(
 	ledger = {number: value.amount for number, value in result.values.items()}
 	currency = frappe.get_cached_value("Company", doc.company, "default_currency")
 	names = account_labels(doc.company, (balance.account_number for balance in result.hinted))
-	return plausibility.hints(comparison, lines, ledger, mapping, SiteFigures(currency), result.hinted, names)
+	found = plausibility.hints(
+		comparison, lines, ledger, mapping, SiteFigures(currency), result.hinted, names
+	)
+	vat_ids = period_vat_ids(doc.company, period, mapping)
+	return plausibility.merged(found, vat_id_hints(doc.company, period, vat_ids.amounts))
 
 
 class SiteFigures:
@@ -681,3 +750,40 @@ class SiteFigures:
 
 	def percent(self, value: Decimal) -> str:
 		return f"{fmt_money(value, precision=1)} %"
+
+
+@dataclass(frozen=True)
+class PeriodVatIds:
+	"""What the vouchers behind Kz 41, 42 and 21 of a period say of their customers: each voucher's amount with the
+	customer's name and USt-IdNr., and the rows of steuerbote.zm that name the Customer behind each voucher."""
+
+	amounts: list[VoucherAmount]
+	vouchers: list[dict]
+
+
+def period_vat_ids(company: str, period: ustva.Period, mapping: ustva.Mapping) -> PeriodVatIds:
+	"""The vouchers behind Kz 41, 42 and 21 of the period from the ledger, and the customers they name, read as the
+	Zusammenfassende Meldung reads them (steuerbote.zm_sources): a Sales Invoice with the USt-IdNr. it was made
+	with, a Payment Entry or a Journal Entry with that of the Sales Invoice it refers to."""
+	shares = zm_sources.span_shares(company, (period.start, period.end), mapping)
+	parties = zm_sources.parties(item.voucher for item in shares)
+	amounts = zm_bridge.voucher_amounts_of(shares, parties)
+	return PeriodVatIds(amounts, zm_bridge.voucher_rows(amounts, parties))
+
+
+def vat_id_hints(company: str, period: ustva.Period, amounts: list[VoucherAmount]) -> list[plausibility.Hint]:
+	"""The hints on the USt-IdNrn. of the vouchers: the latest VAT ID Confirmation of each number of the company,
+	from a Zusammenfassende Meldung or a Voranmeldung, and the age the VAT Return Settings allow."""
+	latest = vat_id_confirmation.latest(company, plausibility.confirmable(amounts))
+	age = bridge.max_confirmation_age(frappe.db.get_value(SETTINGS_DOCTYPE, company, "max_confirmation_age"))
+	return plausibility.vat_id_hints(amounts, bridge.latest_confirmations(latest), period, age)
+
+
+def run_confirmation(name: str) -> None:
+	"""Background job of VATReturn.confirm_vat_ids, see confirming.run: then the hints on the USt-IdNrn. show the
+	latest confirmations."""
+	confirming.run(DOCTYPE, name, UrllibFetch, _clock)
+
+
+def _clock() -> datetime:
+	return datetime.now(UTC)

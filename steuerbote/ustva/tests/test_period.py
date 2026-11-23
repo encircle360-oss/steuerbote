@@ -1,7 +1,7 @@
 from datetime import date
 from unittest import TestCase
 
-from steuerbote.ustva.period import Period, Rhythm, deadline_holidays
+from steuerbote.ustva.period import Period, Rhythm, day_label, deadline_holidays
 
 
 class PeriodTest(TestCase):
@@ -28,6 +28,10 @@ class PeriodTest(TestCase):
 	def test_labels_follow_the_form(self):
 		self.assertEqual(Period.month(2026, 3).label, "März 2026")
 		self.assertEqual(Period.quarter(2026, 3).label, "III. Kalendervierteljahr 2026")
+
+	def test_a_day_reads_with_the_name_of_its_month(self):
+		self.assertEqual(day_label(date(2026, 11, 20)), "20. November 2026")
+		self.assertEqual(day_label(date(2026, 3, 1)), "1. März 2026")
 
 	def test_index_must_fit_the_rhythm(self):
 		with self.assertRaisesRegex(ValueError, "between 1 and 12"):

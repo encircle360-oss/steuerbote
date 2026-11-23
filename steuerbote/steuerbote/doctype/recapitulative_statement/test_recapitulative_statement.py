@@ -19,6 +19,7 @@ from frappe.utils.data import convert_utc_to_system_timezone
 from steuerbote import zm_sources
 from steuerbote.steuerbote.doctype.recapitulative_statement import recapitulative_statement as controller
 from steuerbote.steuerbote.doctype.recapitulative_statement.recapitulative_statement import run_confirmation
+from steuerbote.steuerbote.doctype.vat_id_confirmation import confirming
 from steuerbote.tests.helpers import (
 	cancel_voucher,
 	make_account,
@@ -30,7 +31,7 @@ from steuerbote.tests.helpers import (
 	post_payment_entry,
 	post_sales_invoice,
 )
-from steuerbote.vatid.tests.fakes import BZST_ID, START, FakeClock, bzst
+from steuerbote.vatid.tests.fakes import BZST_ID, START, FakeBzst, FakeClock, bzst
 
 # The companies, their accounts, customers and vouchers are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = [
@@ -85,20 +86,6 @@ def contents(url: str) -> bytes:
 
 def answer(status: str = "evatr-0000", http: int = 200, **fields):
 	return bzst(status, http, **fields)
-
-
-class FakeBzst:
-	"""Stands in for the transport of a confirmation: answers each query with the next answer for its number,
-	as the eVatR API would, and keeps the queries."""
-
-	def __init__(self, answers: dict[str, list]):
-		self.answers = {number: list(queue) for number, queue in answers.items()}
-		self.requests: list[dict] = []
-
-	def __call__(self, request):
-		query = json.loads(request.body)
-		self.requests.append(query)
-		return self.answers[query["angefragteUstid"]].pop(0)
 
 
 class TestRecapitulativeStatement(IntegrationTestCase):
@@ -516,9 +503,12 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		)
 		self.assertEqual((answer_file.is_private, answer_file.file_name), (1, f"{records[0].name}-bzst.json"))
 		self.assertEqual(json.loads(contents(answer_file.file_url))["status"], "evatr-0000")
-		(event,) = (call for call in publish.call_args_list if call.args[0] == controller.CONFIRMATION_EVENT)
-		self.assertEqual(event.args[0], controller.CONFIRMATION_EVENT)
-		self.assertEqual(event.args[1], {"statement": doc.name, "confirmed": 2, "failed": [], "error": None})
+		(event,) = (call for call in publish.call_args_list if call.args[0] == confirming.CONFIRMATION_EVENT)
+		self.assertEqual(event.args[0], confirming.CONFIRMATION_EVENT)
+		self.assertEqual(
+			event.args[1],
+			{"document_type": DOCTYPE, "document": doc.name, "confirmed": 2, "failed": [], "error": None},
+		)
 
 	def test_an_invalid_number_holds_the_statement_until_its_line_is_overridden_with_a_reason(self):
 		doc = self.calculated(6, company=CONFIRMING_COMPANY)
@@ -1119,14 +1109,14 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "are being confirmed"):
 			doc.save()
 		with (
-			patch.object(controller, "is_job_enqueued", return_value=True),
+			patch.object(confirming, "is_job_enqueued", return_value=True),
 			patch("frappe.enqueue") as enqueue,
 			self.assertRaisesRegex(frappe.ValidationError, "Wait for the result"),
 		):
 			doc.confirm_vat_ids()
 		enqueue.assert_not_called()
 		doc.reload()
-		with patch.object(controller, "is_job_enqueued", return_value=False):
+		with patch.object(confirming, "is_job_enqueued", return_value=False):
 			doc.run_method("onload")
 			self.assertTrue(doc.get_onload()["confirmation"]["stale"])
 			doc.release_stale_confirmation()

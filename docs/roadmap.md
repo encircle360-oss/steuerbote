@@ -68,7 +68,7 @@ Jede Jahresmeldung wird ein eigenes Modul mit eigener Planung:
 - **Bestätigung der Kontenzuordnung.** Die Vorgaben für SKR03 und SKR04 sind noch nicht von einer Steuerberatung bestätigt. Lass deine Einrichtung in jedem Fall von deiner Steuerberatung bestätigen.
 - **ELSTER-Konto mit Zertifikatsdatei.** Für die Übermittlung über ERiC braucht die Firma ein ELSTER-Konto mit Anmeldung per Zertifikatsdatei (.pfx). ELSTER Secure funktioniert mit ERiC nicht.
 - **Hersteller-ID.** Registrierung im ELSTER-Entwicklerbereich und Antrag auf die Hersteller-ID, siehe Paket 0a. Abgeben lässt sich auch ohne sie: von Hand oder per XML-Import in Mein ELSTER.
-- **Gültigkeit der USt-IdNr. in der Voranmeldung.** Die Zusammenfassende Meldung lässt die USt-IdNrn. ihrer Zeilen beim Bundeszentralamt für Steuern bestätigen (§ 18e UStG), siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md). Die Hinweise der Voranmeldung prüfen weiter nur, ob ein Kunde eine USt-IdNr. hat und wo seine Anschrift liegt.
+- **Gültigkeit der USt-IdNr. in der Voranmeldung.** „USt-IdNrn. prüfen“ lässt auch an der Voranmeldung die USt-IdNrn. der Kunden hinter Kz 41, 42 und 21 beim Bundeszentralamt für Steuern bestätigen (§ 18e UStG), und „Berechnen“ nennt jede Nummer ohne Bestätigung, mit einer Bestätigung, die mehr Tage vor dem Ende des Zeitraums liegt, als die Einstellungen zulassen, oder mit einer, die sie ungültig fand, siehe [In der Umsatzsteuer-Voranmeldung](ust-idnr-pruefung.md#in-der-umsatzsteuer-voranmeldung). Offen bleibt, ob eine Nummer zur Zeit jedes einzelnen Umsatzes bestätigt war: Steuerbote liest nur die letzte Bestätigung jeder Nummer.
 
 Offene Punkte zu einzelnen Kennzahlen und Konten stehen in [Kennzahlen und Kontenzuordnung](ustva-kennzahlen.md).
 
