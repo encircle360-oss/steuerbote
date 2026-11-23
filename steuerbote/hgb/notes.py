@@ -16,6 +16,10 @@ do not spare a small company (EXEMPT_FOR_KLEIN), in the order of the law. „Der
 Verlustrechnung betreffenden Angaben nicht zu enthalten.“ (§ 326 Abs. 1 Satz 2 HGB) Those items are prepared for
 the Feststellung but not published; whether § 285 Nr. 31 counts among them is unverified.
 
+Every class. „In dem Jahresabschluss sind die Firma, der Sitz, das Registergericht und die Nummer, unter der die
+Gesellschaft in das Handelsregister eingetragen ist, anzugeben. Befindet sich die Gesellschaft in Liquidation oder
+Abwicklung, ist auch diese Tatsache anzugeben.“ (§ 264 Abs. 1a HGB, RegisterData)
+
 Entries. The Haftungsverhältnisse are those „aus der Begebung und Übertragung von Wechseln, aus Bürgschaften,
 Wechsel- und Scheckbürgschaften und aus Gewährleistungsverträgen sowie Haftungsverhältnisse aus der Bestellung von
 Sicherheiten für fremde Verbindlichkeiten“ (§ 251 Satz 1 HGB), stated „jeweils gesondert unter Angabe der
@@ -31,7 +35,7 @@ concept of the taxonomy 6.9 under „bs.contingLiab“.
 
 An item is required, or required only where its fact exists (a Haftungsverhältnis, a Vorschuss); the Annual
 Accounts answer each with ja, nein or entfällt, and a ja with a text or an amount (answer_problems()). Mittelgroß and groß have a fuller Anhang, which Steuerbote does not
-prepare. Every item awaits the review of a Steuerberatung. Text of §§ 264, 265, 268, 277, 284, 285, 288, 326 HGB as
+prepare. Every item awaits the review of a Steuerberatung, and REVIEW_ITEMS names what is open. Text of §§ 264, 265, 268, 277, 284, 285, 288, 326 HGB as
 read on gesetze-im-internet.de on 23 November 2026.
 """
 
@@ -334,6 +338,7 @@ class NoteCode(StrEnum):
 	NEGATIVE = "JA-ANGABE-NEGATIV"
 	NO_RATE = "JA-ORGANKREDIT-ZINSSATZ"
 	NO_CONDITIONS = "JA-ORGANKREDIT-BEDINGUNGEN"
+	REGISTER = "JA-REGISTERANGABEN"
 
 
 def answer_problems(entries: Iterable[CatalogueEntry], answers: Iterable[NoteAnswer]) -> tuple[Finding, ...]:
@@ -593,3 +598,82 @@ def _entry_finding(code: NoteCode, text: str, reference: str) -> Finding:
 def _require_decimal(name: str, value: object) -> None:
 	if not isinstance(value, Decimal):
 		raise TypeError(f"{name} must be Decimal, not {type(value).__name__}")
+
+
+_REGISTER_FIELDS = MappingProxyType(
+	{
+		"firma": ("Firma", "notesBelowBalanceSheet.geninfo.company"),
+		"sitz": ("Sitz", "notesBelowBalanceSheet.geninfo.location"),
+		"registergericht": ("Registergericht", "notesBelowBalanceSheet.geninfo.court"),
+		"registernummer": ("Registernummer", "notesBelowBalanceSheet.geninfo.number"),
+		"in_liquidation": (
+			"in Liquidation oder Abwicklung",
+			"notesBelowBalanceSheet.geninfo.liquidationOrWindingUp",
+		),
+	}
+)
+
+
+@dataclass(frozen=True, slots=True)
+class RegisterData:
+	"""What § 264 Abs. 1a HGB wants named in the Jahresabschluss; the Annual Filing Settings hold it."""
+
+	firma: str
+	sitz: str
+	registergericht: str
+	registernummer: str
+	in_liquidation: bool = False
+
+	@staticmethod
+	def concepts() -> dict[str, str]:
+		"""The concept of the taxonomy 6.9 of each field."""
+		return {field: concept for field, (_, concept) in _REGISTER_FIELDS.items()}
+
+
+def register_problems(data: RegisterData) -> tuple[Finding, ...]:
+	"""One error naming each field of § 264 Abs. 1a HGB that is empty."""
+	missing = [
+		label
+		for field, (label, _) in _REGISTER_FIELDS.items()
+		if field != "in_liquidation" and not getattr(data, field).strip()
+	]
+	if not missing:
+		return ()
+	return (
+		Finding(
+			NoteCode.REGISTER,
+			Severity.ERROR,
+			f"Im Jahresabschluss fehlen {', '.join(missing)} der Gesellschaft.",
+			"§ 264 Abs. 1a HGB",
+		),
+	)
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewItem:
+	code: str
+	text: str
+	reference: str
+
+
+REVIEW_ITEMS: tuple[ReviewItem, ...] = (
+	ReviewItem(
+		"KLEINST-EIGENKAPITAL",
+		"Die Bilanz einer Kleinstkapitalgesellschaft zeigt das Eigenkapital nur als „A. Eigenkapital“. Ob § 42 Abs. 1 "
+		"GmbHG, nach dem das Stammkapital als gezeichnetes Kapital auszuweisen ist, den Ausweis auch hier verlangt, "
+		"klärt die Steuerberatung.",
+		"§ 266 Abs. 1 Satz 4 HGB, § 42 Abs. 1 GmbHG",
+	),
+	ReviewItem(
+		"AUSSERGEWOEHNLICHES",
+		"Ob die Angabe nach § 285 Nr. 31 HGB die Gewinn- und Verlustrechnung betrifft und eine kleine "
+		"Kapitalgesellschaft sie deshalb nicht offenlegt, ist ungeprüft; die Steuerberatung klärt es.",
+		"§ 285 Nr. 31, § 326 Abs. 1 Satz 2 HGB",
+	),
+	ReviewItem(
+		"KATALOG",
+		"Der Katalog der Angaben folgt dem Gesetzestext; die Steuerberatung prüft ihn vor dem ersten "
+		"Jahresabschluss.",
+		"§ 264 Abs. 1 Satz 5, §§ 284 bis 288 HGB",
+	),
+)
