@@ -12,5 +12,6 @@ This package is pure Python. It never imports Frappe, so it can be tested withou
   the Termingeschäfte of § 15 Absatz 4 Satz 3 EStG (derivatives, Anlage GK lines 51 and 52) and the Zuwendungen of
   § 9 Absatz 1 Nummer 2 KStG (donations, Anlage Z); minimum_taxation() is the rule of § 10d Absatz 2.
 - chain.py: the steps of the computation as data (STEPS, Step, step), from the Jahresüberschuss to the
-  Abschlusszahlung.
+  Abschlusszahlung, and compute(KstInputs, figures) -> KstResult with a Line per step and the findings (Finding).
+- einlagekonto.py: roll_forward(), the steuerliches Einlagekonto of § 27 KStG in KSt 1 F.
 """
