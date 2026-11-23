@@ -67,6 +67,7 @@ testpaths = [
     "steuerbote/ustva",
     "steuerbote/elster",
     "steuerbote/eric",
+    "steuerbote/steuerbote/doctype/annual_filing_settings/test_rules.py",
     "steuerbote/steuerbote/doctype/elster_transmission/test_messages.py",
     "steuerbote/steuerbote/doctype/elster_transmission/test_transmission_files.py",
     "steuerbote/steuerbote/doctype/elster_transmission/test_transmission_translations.py",
