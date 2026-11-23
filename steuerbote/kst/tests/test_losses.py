@@ -3,7 +3,7 @@
 from decimal import Decimal
 from unittest import TestCase
 
-from steuerbote.kst.losses import loss_deduction, minimum_taxation
+from steuerbote.kst.losses import derivatives, loss_deduction, minimum_taxation
 from steuerbote.kst.years import YEARS
 
 YEAR = YEARS[2026]
@@ -129,3 +129,54 @@ class InputTest(TestCase):
 			loss_deduction(YEAR, Decimal("100"), Decimal("-1"))
 		with self.assertRaisesRegex(ValueError, "the Verlustrücktrag must be whole euros of at least 0"):
 			loss_deduction(YEAR, Decimal("-100"), ZERO, Decimal("0.5"))
+
+
+class DerivativesTest(TestCase):
+	"""§ 15 Absatz 4 Satz 3 EStG: Termingeschäfte form a pool of their own, Anlage GK lines 51 and 52."""
+
+	def test_adds_back_a_net_loss_and_carries_it_forward_on_its_own(self):
+		found = derivatives(YEAR, Decimal("40000.00"), Decimal("55000.00"), ZERO)
+		self.assertEqual(found.net, Decimal("-15000.00"))
+		self.assertEqual(
+			(found.added_back.exact, found.added_back.declared), (Decimal("15000.00"), Decimal("15000"))
+		)
+		self.assertEqual(found.offset.declared, ZERO)
+		self.assertEqual(found.remaining, Decimal("15000"))
+
+	def test_nets_the_gains_and_losses_of_the_year(self):
+		found = derivatives(YEAR, Decimal("55000.00"), Decimal("40000.00"), ZERO)
+		self.assertEqual(found.added_back.declared, ZERO)
+		self.assertEqual(found.offset.declared, ZERO)
+		self.assertEqual(found.remaining, ZERO)
+
+	def test_sets_a_net_gain_against_the_carry_forward(self):
+		found = derivatives(YEAR, Decimal("20000.00"), Decimal("5000.00"), Decimal("10000"))
+		self.assertEqual(found.offset.declared, Decimal("10000"))
+		self.assertEqual(found.remaining, ZERO)
+		found = derivatives(YEAR, Decimal("20000.00"), Decimal("5000.00"), Decimal("40000"))
+		self.assertEqual((found.offset.declared, found.remaining), (Decimal("15000"), Decimal("25000")))
+
+	def test_the_offset_follows_the_minimum_taxation_of_10d(self):
+		found = derivatives(YEAR, Decimal("2000000.00"), ZERO, Decimal("5000000"))
+		self.assertEqual(found.offset.declared, Decimal("1700000"))
+		self.assertEqual(found.remaining, Decimal("3300000"))
+
+	def test_rounds_the_declared_amounts_half_up(self):
+		self.assertEqual(
+			derivatives(YEAR, ZERO, Decimal("15000.50"), ZERO).added_back.declared, Decimal("15001")
+		)
+		self.assertEqual(
+			derivatives(YEAR, Decimal("100.49"), ZERO, Decimal("1000")).offset.declared, Decimal("100")
+		)
+
+	def test_takes_amounts_in_cents_and_a_carry_forward_in_whole_euros(self):
+		with self.assertRaisesRegex(
+			ValueError, "the gains from Termingeschäfte must be an amount in cents of at least 0"
+		):
+			derivatives(YEAR, Decimal("-1.00"), ZERO, ZERO)
+		with self.assertRaisesRegex(ValueError, "the losses from Termingeschäfte must be an amount in cents"):
+			derivatives(YEAR, ZERO, Decimal("0.001"), ZERO)
+		with self.assertRaisesRegex(
+			ValueError, "the Verlustvortrag of § 15 Absatz 4 EStG must be whole euros"
+		):
+			derivatives(YEAR, ZERO, ZERO, Decimal("0.50"))
