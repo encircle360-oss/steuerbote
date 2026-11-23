@@ -165,3 +165,57 @@ class XbrlJobTest(TestCase):
 				"${{ runner.temp }}/xbrl/*.log",
 			],
 		)
+
+
+class Taxonomy610Test(TestCase):
+	"""The HGB-Taxonomie 6.10 comes as 6.9 does, into each job whose tests or validation read the package: from a cache
+	keyed by its SHA-256 or from esteuer.de, checked before its use."""
+
+	CACHED_AS = "hgb-taxonomie-6.10-${{ env.TAXONOMY_6_10_SHA256 }}"
+	CHECKED = 'echo "$TAXONOMY_6_10_SHA256  $RUNNER_TEMP/taxonomy-6.10.zip" | sha256sum --check --strict'
+
+	def setUp(self):
+		workflow = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
+		self.jobs = jobs(workflow)
+		self.env = workflow_env(workflow)
+
+	def test_downloads_the_package_the_version_table_names(self):
+		self.assertEqual(
+			(self.env["TAXONOMY_6_10"], self.env["TAXONOMY_6_10_SHA256"]),
+			(TAXONOMIES["6.10"].archive_url, TAXONOMIES["6.10"].archive_sha256),
+		)
+
+	def test_comes_from_a_cache_keyed_by_its_sha256_and_is_checked_before_its_use(self):
+		for name, used in (
+			("core", "STEUERBOTE_TAXONOMY_6_10: ${{ runner.temp }}/taxonomy-6.10.zip"),
+			("frappe", "STEUERBOTE_TAXONOMY_6_10: ${{ runner.temp }}/taxonomy-6.10.zip"),
+			("xbrl", '"$RUNNER_TEMP/taxonomy-6.10.zip" --version 6.10'),
+		):
+			job = self.jobs[name]
+			with self.subTest(job=name):
+				self.assertEqual(job.count(self.CACHED_AS), 2)
+				self.assertEqual(job.count("if: steps.taxonomy-6-10.outputs.cache-hit != 'true'"), 2)
+				download = job[job.index("- name: Download the HGB-Taxonomie 6.10") :]
+				self.assertIn(
+					'echo "$INTERMEDIATE_SHA256  $RUNNER_TEMP/intermediate.crt" | sha256sum --check --strict',
+					download,
+				)
+				self.assertLess(job.index("id: taxonomy-6-10"), job.rindex(self.CHECKED))
+				self.assertLess(job.rindex(self.CHECKED), job.index(used))
+
+	def test_the_xbrl_job_validates_the_instances_of_6_10_and_keeps_those_of_a_failure(self):
+		job = self.jobs["xbrl"]
+		self.assertIn(
+			'python -m steuerbote.xbrl.tests.arelle_validation "$RUNNER_TEMP/taxonomy-6.10.zip" --version 6.10 '
+			'--keep "$RUNNER_TEMP/xbrl-6.10"',
+			job,
+		)
+		upload = job[job.index("uses: actions/upload-artifact@") :]
+		self.assertEqual(
+			[line.strip() for line in upload.splitlines() if "/xbrl-6.10/" in line],
+			[
+				"${{ runner.temp }}/xbrl-6.10/*.xml",
+				"${{ runner.temp }}/xbrl-6.10/*.xbrl",
+				"${{ runner.temp }}/xbrl-6.10/*.log",
+			],
+		)
