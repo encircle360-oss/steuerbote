@@ -4,6 +4,8 @@ Steuerbote übermittelt die Umsatzsteuer-Voranmeldung, die Dauerfristverlängeru
 
 Diese Seite beschreibt die Vorgänge an der Voranmeldung. An der Dauerfristverlängerung und an der Zusammenfassenden Meldung laufen sie genauso, mit demselben Dialog, derselben Sperre, denselben Ergebnissen und derselben ELSTER-Übermittlung; was dort anders ist, steht unter [Dauerfristverlängerung](#dauerfristverlängerung) und [Zusammenfassende Meldung](#zusammenfassende-meldung).
 
+Die Belege der Jahresmeldungen, Umsatzsteuererklärung, E-Bilanz, Körperschaft- und Gewerbesteuererklärung, gehen auf demselben Weg an das Finanzamt, sobald ihre Module sie mitbringen; was an ihnen anders ist, steht unter [Jahresmeldungen](jahresmeldungen.md#übermittlung-an-elster).
+
 Ohne eigene Hersteller-ID oder ohne installierte ERiC-Laufzeitumgebung läuft Steuerbote im [Simulationsmodus](#simulationsmodus). Dann geht nichts an das Finanzamt.
 
 ## Die Vorgänge
@@ -130,7 +132,7 @@ Jeder Vorgang und jeder Vermerk ist eine ELSTER-Übermittlung. Die Liste steht u
 
 | Feld | Inhalt |
 |---|---|
-| Dokumententyp, Dokument, Unternehmen | der Beleg, eine Umsatzsteuer-Voranmeldung, eine Dauerfristverlängerung oder eine Zusammenfassende Meldung, und sein Unternehmen |
+| Dokumententyp, Dokument, Unternehmen | der Beleg, eine Umsatzsteuer-Voranmeldung, eine Dauerfristverlängerung, eine Zusammenfassende Meldung oder der Beleg einer Jahresmeldung, und sein Unternehmen |
 | Vorgang | Prüfen, Testsenden, Senden oder Außerhalb abgegeben |
 | Status | Läuft, Erfolgreich, Fehlgeschlagen oder Unbekannt |
 | Ergebnis laut ERiC | Gültig oder Ungültig nach Prüfen, Angenommen oder Abgelehnt nach einem Senden, Fehlgeschlagen, wenn nichts gesendet wurde, Unbekannt, wenn offen ist, ob ein Senden angekommen ist |
@@ -142,7 +144,7 @@ Jeder Vorgang und jeder Vermerk ist eine ELSTER-Übermittlung. Die Liste steht u
 | Abgegeben über, Abgegeben am | bei einem Vermerk: Mein ELSTER oder auf anderem Weg, und der Tag der Abgabe |
 | Anmerkungen | der Vermerk einer Abgabe außerhalb von Steuerbote |
 | Nachrichten | Fehler und Hinweise von ERiC, von der Simulation oder von Steuerbote mit Code, Nachricht und Feld; über dem Formular steht, wie viele Fehler und Hinweise es sind |
-| Nutzdaten (XML), Protokoll (PDF), Antwort des ELSTER-Servers (XML) | die Dateien des Laufs, siehe unten |
+| Nutzdaten (XML), Protokoll oder Freizeichnungsdokument (PDF), Antwort des ELSTER-Servers (XML) | die Dateien des Laufs, siehe unten |
 
 Eine ELSTER-Übermittlung schreibt nur der Server, danach lässt sie sich nicht mehr ändern. Eine Übermittlung, die eine Abgabe festhält (ein erfolgreiches Senden außerhalb der Simulation oder ein Vermerk), lässt sich nicht löschen. Andere darf nur der System Manager löschen. Eine Meldung mit ELSTER-Übermittlungen lässt sich nicht löschen. „Transaktionen löschen“ am Unternehmen in ERPNext lässt Meldungen und Übermittlungen aus, solange niemand sie von Hand in die Liste der zu löschenden DocTypes einträgt, siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
 
@@ -151,7 +153,7 @@ Eine ELSTER-Übermittlung schreibt nur der Server, danach lässt sie sich nicht 
 Jeder Lauf legt seine Dateien als private Dateien an seiner ELSTER-Übermittlung ab:
 
 - **Nutzdaten (XML):** die geprüften oder übermittelten Daten der Meldung oder des Vordrucks in UTF-8, wie ERiC sie erhält.
-- **Protokoll (PDF):** bei Prüfen mit ERiC die Vorschau, bei Senden das Übermittlungsprotokoll mit Transferticket, beim simulierten Testsenden ein Platzhalter. Ein simuliertes Prüfen legt kein PDF ab.
+- **Protokoll oder Freizeichnungsdokument (PDF):** bei Prüfen mit ERiC die Vorschau, bei Senden das Übermittlungsprotokoll mit Transferticket, beim simulierten Testsenden ein Platzhalter. Nach dem Senden einer Erklärung der Jahresmeldungen hält es das Freizeichnungsdokument, denn „Für Erklärungssteuern wird kein Übertragungsprotokoll erstellt“ (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.4.3 und 5.1.4.4); der Name der Datei endet dann auf `freizeichnungsdokument.pdf`. Ein simuliertes Prüfen legt kein PDF ab, das Prüfen einer E-Bilanz ebenso wenig.
 - **Antwort des ELSTER-Servers (XML):** die Antwort von ELSTER, wenn es eine gibt.
 
 Lässt sich eine Datei nicht speichern, nennt eine Nachricht der ELSTER-Übermittlung sie und den Grund; Ergebnis und Transferticket bleiben trotzdem festgehalten.
