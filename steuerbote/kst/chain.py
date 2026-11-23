@@ -959,7 +959,7 @@ def compute(inputs: KstInputs, figures: Figures) -> KstResult:
 
 	return KstResult(
 		year,
-		MappingProxyType({item.key: lines[item.key] for item in STEPS if item.key in lines}),
+		MappingProxyType({item.key: lines[item.key] for item in STEPS}),
 		classification,
 		shares,
 		pool,

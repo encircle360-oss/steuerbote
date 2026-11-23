@@ -479,7 +479,7 @@ def compute(kst: KstResult, inputs: GewstInputs, figures: Figures) -> GewstResul
 
 	return GewstResult(
 		year,
-		MappingProxyType({item.key: lines[item.key] for item in STEPS if item.key in lines}),
+		MappingProxyType({item.key: lines[item.key] for item in STEPS}),
 		beg,
 		available - lines["donation_cut"].declared,
 		remaining_loss,
