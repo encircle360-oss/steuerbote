@@ -64,5 +64,13 @@ def floor_hundred(amount: Decimal) -> Decimal:
 	return _without_negative_zero(hundreds * HUNDRED)
 
 
+def truncate_cents(amount: Decimal) -> Decimal:
+	"""Drop the fractions of a cent, towards zero: the Solidaritätszuschlag.
+
+	„Bruchteile eines Cents bleiben außer Ansatz.“ (§ 4 Satz 3 SolZG)
+	"""
+	return _without_negative_zero(require_decimal(amount).quantize(CENT, rounding=ROUND_DOWN))
+
+
 def _without_negative_zero(amount: Decimal) -> Decimal:
 	return amount + ZERO
