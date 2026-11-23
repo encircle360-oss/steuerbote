@@ -11,8 +11,11 @@ signature before naming the archive and its SHA-256.
 
 Each version gets a directory of its own, because libraries of different packages must not be mixed
 (Kap. 3.1.6.2), with its manifest steuerbote-runtime.json: the hashes of archive and files, the years of
-its UStVA plugins and whether it is a beta. A version directory appears only complete, by renaming it
-into place, and a run takes it only while its files are those of the manifest. The plugin commonData is
+its UStVA plugins, whether it is a beta and the product version of each library as EricVersion() reports it
+when the probe loads the runtime. Those versions can differ from the version of the release (Kap. 4.3, the
+example of ERiC-37.1.3.0), and the Mindestversion is set per library (Kap. 5.4.2, steuerbote.eric.releases).
+A version directory appears only complete, by renaming it into place, and a run takes it only while its files
+are those of the manifest. The plugin commonData is
 always required (Kap. 3.1.6.1), and EricInitialisiere searches the library directory for plugins
 recursively (Kap. 4.1.1). Each Datenart has its plugin (steuerbote.eric.datenart,
 from Datenartversionmatrix.ods): the UStVA of a year checkUStVA_<Jahr>, as the year table
@@ -145,6 +148,9 @@ class Installation:
 	beta: bool
 	installed_at: str
 	installed_by: str
+	library_versions: Mapping[str, str]
+	"""The product version of each library by its file name, as EricVersion reported it to the probe of the
+	installation (EricVersion.xsd, element Produktversion); empty where nothing was reported."""
 
 	@property
 	def lib_dir(self) -> Path:
@@ -167,6 +173,9 @@ class Check:
 	name: str
 	ok: bool
 	detail: str
+	notice: str = ""
+	"""While the check fails, what the weekly check of the versions tells the System Managers once
+	(steuerbote.eric.releases.due); empty for a check that sends no notice."""
 
 
 def is_beta(version: str) -> bool:
@@ -336,8 +345,8 @@ def status(target_root: Path, *, year: int | None = None, hersteller_id: str = "
 			)
 		)
 	if year is not None:
-		checks.append(_plugin_check(installed, ustva(year), "plugin", f"das Jahr {year}"))
-	checks.append(_plugin_check(installed, ZMDO, "zmdo", "die Zusammenfassende Meldung (ZMDO)"))
+		checks.append(year_check(installed, year))
+	checks.append(plugin_check(installed, ZMDO, "zmdo", "die Zusammenfassende Meldung (ZMDO)"))
 	checks.append(_hersteller_id_check(hersteller_id))
 	return tuple(checks)
 
@@ -381,9 +390,10 @@ def _install(
 		files = {
 			path.as_posix(): _extract(archive, info, partial / "lib" / path) for info, path in members.items()
 		}
+		reported = None
 		if probe is not None:
 			with tempfile.TemporaryDirectory(prefix="steuerbote-eric-probe-") as log_dir:
-				probe(RuntimeInfo(version, partial / "lib", partial / "lib", Path(log_dir), ""))
+				reported = probe(RuntimeInfo(version, partial / "lib", partial / "lib", Path(log_dir), ""))
 		manifest = {
 			"version": version,
 			"archive": archive_name,
@@ -395,6 +405,7 @@ def _install(
 			"files": files,
 			"installed_at": datetime.now(UTC).isoformat(timespec="seconds"),
 			"installed_by": installed_by,
+			"library_versions": _library_versions(reported),
 		}
 		(partial / MANIFEST).write_text(
 			json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -487,14 +498,34 @@ def _read_manifest(path: Path) -> Installation | None:
 			beta=data["beta"],
 			installed_at=data["installed_at"],
 			installed_by=data["installed_by"],
+			library_versions=MappingProxyType(_library_versions(data.get("library_versions"))),
 		)
 	except OSError, ValueError, KeyError, TypeError:
 		return None
 	return installation if installation.version == path.name else None
 
 
-def _plugin_check(installed: tuple[Installation, ...], datenart: Datenart, name: str, subject: str) -> Check:
-	"""Whether a runtime serves the Datenart; ``subject`` names what it serves, in the accusative."""
+def _library_versions(reported: object) -> dict[str, str]:
+	"""The product versions a probe reported, by file name; anything else it reported is left out."""
+	if not isinstance(reported, Mapping):
+		return {}
+	return {
+		PurePosixPath(name).name: version
+		for name, version in reported.items()
+		if isinstance(name, str) and isinstance(version, str)
+	}
+
+
+def year_check(installed: tuple[Installation, ...], year: int) -> Check:
+	"""Whether a released runtime has the plugin of the UStVA of the year, noticed once a year while it fails."""
+	return plugin_check(installed, ustva(year), "plugin", f"das Jahr {year}", notice=f"year {year}")
+
+
+def plugin_check(
+	installed: tuple[Installation, ...], datenart: Datenart, name: str, subject: str, *, notice: str = ""
+) -> Check:
+	"""Whether a runtime serves the Datenart; ``subject`` names what it serves, in the accusative, and ``notice``
+	is the notice of the check while it fails."""
 	plugin = datenart.plugin_library
 	with_plugin = [installation for installation in installed if installation.has_plugin(plugin)]
 	released = next((installation for installation in with_plugin if not installation.beta), None)
@@ -504,9 +535,12 @@ def _plugin_check(installed: tuple[Installation, ...], datenart: Datenart, name:
 		beta = with_plugin[0].version
 		capitalised = subject[:1].upper() + subject[1:]
 		return Check(
-			name, False, f"{capitalised} kennt nur die Beta ERiC {beta}: Prüfen und Testsenden, kein Senden."
+			name,
+			False,
+			f"{capitalised} kennt nur die Beta ERiC {beta}: Prüfen und Testsenden, kein Senden.",
+			notice,
 		)
-	return Check(name, False, f"Für {subject} fehlt ERiC mit dem Plugin {plugin}.")
+	return Check(name, False, f"Für {subject} fehlt ERiC mit dem Plugin {plugin}.", notice)
 
 
 def _hersteller_id_check(hersteller_id: str) -> Check:

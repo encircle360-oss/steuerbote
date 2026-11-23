@@ -1,0 +1,70 @@
+version: 2.26.4.1
+betriebssystemListe:
+  - betriebssystem: AIX
+    bibliothekListe:
+      - name: libericapi.aix-so
+        version: 43,2,6,0
+        verpflichtend: true
+      - name: libericxerces.aix-so
+        version: 25,9,11,0
+    datenartversionListe:
+      - name: ElsterFSE_PersG_202401
+        version: 43,4,4,0
+  - betriebssystem: Linux Intel
+    bibliothekListe:
+      - name: libericapi.linux-so
+        version: 43,2,6,0
+        verpflichtend: true
+      - name: libericxerces.linux-so
+        version: 25,9,11,0
+      - name: libeSigner.linux-so
+        version: 63,0,0,1
+      - name: libotto.linux-so
+        version: 43,2,6,0
+      - name: libcheckUStVA_2016.linux-so
+        version: 43,2,4,0
+      - name: libcheckUStVA_2025.linux-so
+        version: 43,2,4,0
+      - name: libcheckUStVA_2026.linux-so
+        version: 43,2,6,0
+      - name: libcheckZMDO.linux-so
+        version: 43,2,4,0
+      - name: libcommonData.linux-so
+        version: 43,2,6,0
+      - name: libcheckUStVA_2015.linux-so
+        version: 43,2,6,0
+    datenartversionListe:
+      - name: ElsterFSE_PersG_202401
+        version: 43,4,4,0
+      - name: ElsterFSE_KapG_202401
+        version: 43,4,4,0
+  - betriebssystem: Linux Power
+    bibliothekListe:
+      - name: libericapi.linuxpower-so
+        version: 43,2,6,0
+        verpflichtend: true
+      - name: libericxerces.linuxpower-so
+        version: 25,9,11,0
+    datenartversionListe:
+      - name: ElsterFSE_PersG_202401
+        version: 43,4,4,0
+  - betriebssystem: macOS
+    bibliothekListe:
+      - name: libericapi.dylib
+        version: 43,2,6,0
+        verpflichtend: true
+      - name: libericxerces.dylib
+        version: 25,9,11,0
+    datenartversionListe:
+      - name: ElsterFSE_PersG_202401
+        version: 43,4,4,0
+  - betriebssystem: Windows
+    bibliothekListe:
+      - name: ericapi.dll
+        version: 43,2,6,0
+        verpflichtend: true
+      - name: ericxerces.dll
+        version: 25,9,11,0
+    datenartversionListe:
+      - name: ElsterFSE_PersG_202401
+        version: 43,4,4,0

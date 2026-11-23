@@ -91,7 +91,7 @@ In der Leiste links, bei den Bereichen von ERPNext wie Rechnungswesen und Vertri
 - [Dauerfristverlängerung und Sondervorauszahlung](docs/dauerfristverlaengerung.md): Regeln, Fristen, Vordruck USt 1 H mit XML und Übermittlung über ERiC, der Beleg in ERPNext und der Eintrag in Mein ELSTER
 - [Architektur](docs/architektur.md): Rechenkern und Frappe-Schicht, DocTypes, Bericht, Arbeitsbereich, Platz im Desk und Druckformat
 - [Übermittlung an ELSTER](docs/uebermittlung.md): Prüfen, Testsenden, Senden, Simulationsmodus, ERiC-Einstellungen und Übermittlungsprotokoll
-- [ERiC](docs/eric.md): Lizenz, Einrichtung durch den Betreiber, Versionen, Simulation, Sicherheit und Grenzen der Anbindung
+- [ERiC](docs/eric.md): Lizenz, Einrichtung durch den Betreiber, Versionen, Betrieb und Updates mit der wöchentlichen Prüfung gegen die Mindestversionsliste, Simulation, Sicherheit und Grenzen der Anbindung
 - [Entwicklung](docs/entwicklung.md): Einrichtung, Tests, Stil
 - [Mitwirken](CONTRIBUTING.md), [Hinweise für Coding-Agenten](AGENTS.md), [Sicherheit](SECURITY.md)
 

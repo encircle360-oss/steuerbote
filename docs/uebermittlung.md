@@ -105,7 +105,7 @@ Die Laufzeitumgebungen liegen außerhalb jeder Site im Verzeichnis `sites/eric` 
 
 ### Laufzeitumgebung prüfen
 
-„Laufzeitumgebung prüfen“ zeigt dem System Manager die Statusprüfungen von ERiC: Plattform, eingerichtete Laufzeitumgebung, ob ihre Bibliotheken unverändert sind, ob eine freigegebene Laufzeitumgebung das Plugin des laufenden Jahres für die Voranmeldung und das Plugin `checkZMDO` für die Zusammenfassende Meldung hat, und die Hersteller-ID, siehe [ERiC](eric.md#statusprüfung). Die Prüfung ändert nichts.
+„Laufzeitumgebung prüfen“ zeigt dem System Manager die Statusprüfungen von ERiC: Plattform, eingerichtete Laufzeitumgebung, ob ihre Bibliotheken unverändert sind, ob eine freigegebene Laufzeitumgebung das Plugin des laufenden Jahres für die Voranmeldung und das Plugin `checkZMDO` für die Zusammenfassende Meldung hat, die Hersteller-ID, ob jede eingerichtete Laufzeitumgebung die Mindestversionsliste von ELSTER erreicht und ab Mitte November, ob eine das Plugin des kommenden Jahres hat, siehe [ERiC](eric.md#statusprüfung) und [Betrieb und Updates](eric.md#betrieb-und-updates). Die Prüfung ändert nichts.
 
 ## Ablauf eines Vorgangs
 
