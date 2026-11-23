@@ -26,11 +26,15 @@ from steuerbote.steuerbote.doctype.eric_settings.eric_settings import (
 	vorsatz_copyright,
 )
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
+from steuerbote.tests.helpers import make_company
 
 # The users of the tests are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = ["User"]
 
 SETTINGS = "ERiC Settings"
+ANNUAL_FILING_SETTINGS = "Annual Filing Settings"
+# The company whose Annual Filing Settings make a site keep annual filings.
+ANNUAL_FILINGS_COMPANY = "Steuerbote Test ERiC Jahresmeldungen GmbH"
 INSTALLATION_JOB = "steuerbote.steuerbote.doctype.eric_settings.eric_settings.run_installation"
 ARCHIVE = "/srv/eric/ERiC-44.3.6.0-Linux-x86_64.jar"
 CHECKSUM = "ab" * 32
@@ -629,19 +633,6 @@ class TestERiCVersions(IntegrationTestCase):
 			self.notifications()[-1].email_content,
 		)
 
-	def test_only_a_site_with_annual_filing_settings_keeps_annual_filings(self):
-		"""The Annual Filing Settings come with the annual filings; a site without their table has none."""
-		with patch.object(frappe.db, "table_exists", return_value=False):
-			self.assertFalse(eric_settings.has_annual_filings())
-		with (
-			patch.object(frappe.db, "table_exists", return_value=True),
-			patch.object(frappe.db, "count", side_effect=[0, 2]) as count,
-		):
-			self.assertEqual(
-				(eric_settings.has_annual_filings(), eric_settings.has_annual_filings()), (False, True)
-			)
-		count.assert_called_with("Annual Filing Settings")
-
 	def test_laufzeitumgebung_pruefen_lists_from_1_january_the_plugins_of_the_annual_filings(self):
 		settings = frappe.get_single(SETTINGS)
 		root = self.runtime_root(CURRENT)
@@ -784,3 +775,30 @@ class TestERiCVersions(IntegrationTestCase):
 	def test_the_form_says_when_the_check_failed(self):
 		script = get_form_meta(SETTINGS, cached=False).get("__js")
 		self.assertIn("versions_check_failed", script)
+
+
+class TestAnnualFilings(IntegrationTestCase):
+	"""Whether the site keeps annual filings, which decides whether the weekly check of the versions tells of the
+	plugins of the annual filings. TestERiCVersions says it in each of its tests; this class asks the site."""
+
+	@classmethod
+	def setUpClass(cls) -> None:
+		super().setUpClass()
+		make_company(ANNUAL_FILINGS_COMPANY, "STEJ")
+
+	def setUp(self) -> None:
+		super().setUp()
+		frappe.db.savepoint("annual_filings_test")
+		self.addCleanup(frappe.db.rollback, save_point="annual_filings_test")
+
+	def test_only_a_site_with_annual_filing_settings_keeps_annual_filings(self):
+		"""The Annual Filing Settings come with the annual filings: a site keeps them once a company has its settings,
+		and none while their table is missing, as before the migration that brings it."""
+		frappe.db.delete(ANNUAL_FILING_SETTINGS)
+		self.assertFalse(eric_settings.has_annual_filings())
+		frappe.get_doc(
+			{"doctype": ANNUAL_FILING_SETTINGS, "company": ANNUAL_FILINGS_COMPANY, "legal_form": "GmbH"}
+		).insert()
+		self.assertTrue(eric_settings.has_annual_filings())
+		with patch.object(frappe.db, "table_exists", return_value=False):
+			self.assertFalse(eric_settings.has_annual_filings())
