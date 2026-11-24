@@ -1,5 +1,5 @@
-"""The tables of the annual documents as the form shows them, read from the files without a bench: every amount up to
-99.999.999,99 € fits into its column at a desk 1440 pixels wide.
+"""The tables of the periodic and the annual documents as the form shows them, read from the files without a bench:
+every amount up to 99.999.999,99 € fits into its column at a desk 1440 pixels wide.
 
 Frappe 16 gives a column of the grid the width that its `columns` names (frappe/public/js/frappe/form/grid.js,
 LEGACY_COLSIZE_TO_PX: 1 is 60 px, 2 is 100 px, 3 is 140 px, 4 is 200 px) and shares what the grid has left equally
@@ -14,7 +14,10 @@ from unittest import TestCase
 
 MODULE = Path(__file__).resolve().parents[1] / "steuerbote"
 DOCTYPES = MODULE / "doctype"
-ANNUAL_DOCUMENTS = (
+DOCUMENTS = (
+	"recapitulative_statement",
+	"vat_return",
+	"vat_return_extension",
 	"annual_accounts",
 	"annual_vat_return",
 	"corporate_income_tax_return",
@@ -35,10 +38,10 @@ def file_name(doctype: str) -> str:
 
 
 def children() -> list[str]:
-	"""The child DocTypes of the tables of the annual documents, each once."""
+	"""The child DocTypes of the tables of the documents, each once."""
 	names = {
 		file_name(field["options"])
-		for parent in ANNUAL_DOCUMENTS
+		for parent in DOCUMENTS
 		for field in definition(parent)["fields"]
 		if field["fieldtype"] == "Table"
 	}
@@ -49,8 +52,10 @@ def listed(name: str) -> list[dict]:
 	return [field for field in definition(name)["fields"] if field.get("in_list_view")]
 
 
-class TestAnnualGrids(TestCase):
-	def test_the_annual_documents_have_their_tables(self):
+class TestGrids(TestCase):
+	def test_the_documents_have_their_tables(self):
+		self.assertIn("vat_return_kennzahl", children())
+		self.assertIn("recapitulative_statement_line", children())
 		self.assertIn("electronic_balance_sheet_position", children())
 		self.assertIn("annual_accounts_line", children())
 		self.assertIn("corporate_income_tax_return_donation", children())
