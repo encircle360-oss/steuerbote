@@ -46,10 +46,8 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "hebesatz",
    "fieldtype": "Percent",
-   "in_list_view": 1,
    "label": "Hebesatz",
    "read_only": 1
   },
@@ -89,7 +87,7 @@
    "read_only": 1
   },
   {
-   "columns": 2,
+   "columns": 4,
    "fieldname": "balance",
    "fieldtype": "Currency",
    "in_list_view": 1,
