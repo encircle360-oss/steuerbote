@@ -105,6 +105,7 @@ Ein anderer Betrag, etwa der eines Bescheids, geht mit Begründung in „Betrieb
 „Bereit“ heißt, wie an jeder Jahresmeldung: kein Fehler der Befunde. An der E-Bilanz verlangt das:
 
 - die Taxonomie der E-Bilanz eingerichtet und unverändert;
+- die Bilanzzuordnung auf derselben Version der Taxonomie;
 - kein Saldo ohne Platz in der Bilanzzuordnung und kein Fehler der Prüfungen des Kerns: Mussfelder, Summen, Oberpositionen, Anlagenspiegel, Überleitung, Kontensalden und Instanz;
 - jede Anpassung in ERPNext auf einem Anlagenkonto in einer Spalte des Anlagenspiegels;
 - die Abschreibungen bis zum Bilanzstichtag gebucht, mit einem Abschreibungsplan je Anlage und Finanzbuch;
@@ -125,6 +126,7 @@ Ein fehlender Periodenabschlussbeleg ist nur ein Hinweis: Die E-Bilanz nimmt den
 | `SB-NEU-BERECHNEN` | Fehler | seit dem Berechnen hat sich etwas geändert, das „Berechnen“ liest |
 | `SB-JA-ABWEICHUNG` | Fehler, Hinweis | ein Posten der Handelsbilanz liegt einen Euro oder mehr neben dem des Jahresabschlusses: ein Fehler, wenn der Jahresabschluss festgestellt ist, sonst ein Hinweis |
 | `SB-JA-FEHLT` | Hinweis | der Jahresabschluss des Jahres ist nicht berechnet, verglichen ist nichts |
+| `SB-ZUORDNUNG-VERSION` | Fehler | die Bilanzzuordnung nennt eine andere Version der Taxonomie als die E-Bilanz, an der Stelle von `BILANZ-TAXONOMIE`: Eine ältere Zuordnung kommt mit „Auf neue Taxonomie heben“ auf die Version der E-Bilanz; eine gehobene lässt sich nicht zurücknehmen, dann nimmt die E-Bilanz ihre Version, wo das Wirtschaftsjahr sie nehmen darf, siehe [Versionen](taxonomie.md#versionen). Bis dahin setzt „Berechnen“ die Bücher auf die Positionen der Version der E-Bilanz |
 | `BILANZ-OHNE-PLATZ`, `BILANZ-OHNE-KONTONUMMER`, `BILANZ-BEOBACHTET`, `BILANZ-POSITION`, `BILANZ-NICHT-GUELTIG`, `BILANZ-ABSCHLUSSKONTO`, `BILANZ-TAXONOMIE` | Fehler | die Bilanzzuordnung: ein Saldo ohne Platz oder ohne Kontonummer, ein beobachtetes Konto, eine Position, die es nicht gibt oder die im Wirtschaftsjahr nicht gilt, das Ergebnis früherer Jahre ohne Abschlusskonto, eine andere Taxonomie |
 | `BILANZ-AUSSERHALB`, `BILANZ-ABSCHLUSSZWECK`, `BILANZ-AUFFANGPOSITION`, `BILANZ-ERGEBNISVORTRAG` | Hinweis | ein Saldo außerhalb von Bilanz und GuV oder nur für eine andere Bilanz, eine Auffangposition, das Ergebnis früherer Jahre auf dem Abschlusskonto |
 | `EB-NICHT-ZUGEORDNET`, `EB-POSITION`, `EB-BERECHNET`, `EB-DAVON` | Fehler | eine Position, die die E-Bilanz nicht nimmt: kein Platz, für die Finanzverwaltung nicht zulässig, eine Position des Betriebsvermögensvergleichs oder eine „davon“-Position |
