@@ -20,19 +20,15 @@
  ],
  "fields": [
   {
-   "columns": 1,
    "fieldname": "form",
    "fieldtype": "Select",
-   "in_list_view": 1,
    "label": "Tax Form",
    "options": "GewSt1A",
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "line",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Form Line",
    "read_only": 1
   },
@@ -65,7 +61,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 3,
    "fieldname": "form_amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -89,7 +85,7 @@
    "read_only": 1
   },
   {
-   "columns": 2,
+   "columns": 3,
    "fieldname": "reported",
    "fieldtype": "Currency",
    "in_list_view": 1,

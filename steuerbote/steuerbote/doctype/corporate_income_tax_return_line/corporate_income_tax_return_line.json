@@ -20,19 +20,15 @@
  ],
  "fields": [
   {
-   "columns": 1,
    "fieldname": "form",
    "fieldtype": "Select",
-   "in_list_view": 1,
    "label": "Tax Form",
    "options": "KSt1\nGK\nZVE\nWA\nVerluste\nZ\nKSt1F",
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "line",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Form Line",
    "read_only": 1
   },
@@ -47,7 +43,7 @@
    "reqd": 1
   },
   {
-   "columns": 3,
+   "columns": 2,
    "fieldname": "label",
    "fieldtype": "Small Text",
    "in_list_view": 1,
@@ -66,7 +62,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 3,
    "fieldname": "form_amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -75,7 +71,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "correction",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -88,7 +84,7 @@
    "label": "Reason for the Override"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "reported",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -97,11 +93,9 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "default": "0",
    "fieldname": "manual",
    "fieldtype": "Check",
-   "in_list_view": 1,
    "label": "Line by Hand",
    "read_only": 1
   }

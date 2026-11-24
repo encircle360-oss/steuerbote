@@ -209,7 +209,7 @@
    "label": "End of the Period"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "cost_end",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -225,7 +225,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "book_value_end",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -238,11 +238,9 @@
    "fieldtype": "Column Break"
   },
   {
-   "columns": 1,
    "description": "Required for a row by hand and for the columns by hand of a row.",
    "fieldname": "reason",
    "fieldtype": "Small Text",
-   "in_list_view": 1,
    "label": "Reason"
   }
  ],

@@ -50,7 +50,7 @@
    "read_only_depends_on": "eval:doc.derived"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "description": "Only for a position of the Bilanz.",
    "fieldname": "previous",
    "fieldtype": "Currency",
@@ -68,12 +68,10 @@
    "read_only_depends_on": "eval:doc.derived"
   },
   {
-   "columns": 1,
    "default": "0",
    "description": "Given by the finance book of the Steuerbilanz.",
    "fieldname": "derived",
    "fieldtype": "Check",
-   "in_list_view": 1,
    "label": "From the Finance Book",
    "read_only": 1
   }

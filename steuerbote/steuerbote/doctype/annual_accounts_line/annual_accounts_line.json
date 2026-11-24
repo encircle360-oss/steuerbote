@@ -25,24 +25,20 @@
  ],
  "fields": [
   {
-   "columns": 1,
    "fieldname": "statement",
    "fieldtype": "Select",
-   "in_list_view": 1,
    "label": "Part of the Statement",
    "options": "Aktiva\nPassiva\nGuV",
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "marker",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Outline Marker",
    "read_only": 1
   },
   {
-   "columns": 3,
+   "columns": 4,
    "fieldname": "label",
    "fieldtype": "Small Text",
    "in_list_view": 1,
@@ -75,7 +71,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -84,7 +80,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "prior",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -93,10 +89,8 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "correction",
    "fieldtype": "Currency",
-   "in_list_view": 1,
    "label": "Override Amount",
    "options": "Company:company:default_currency",
    "read_only_depends_on": "eval:!doc.takes_correction"

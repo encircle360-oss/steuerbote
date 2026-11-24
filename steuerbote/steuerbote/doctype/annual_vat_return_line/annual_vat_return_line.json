@@ -33,7 +33,7 @@
    "reqd": 1
   },
   {
-   "columns": 3,
+   "columns": 2,
    "fieldname": "label",
    "fieldtype": "Small Text",
    "in_list_view": 1,
@@ -41,10 +41,8 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "kennzahl",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Kennzahl",
    "read_only": 1
   },
@@ -85,7 +83,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 3,
    "fieldname": "form_amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -94,7 +92,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "correction",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -116,11 +114,9 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "default": "0",
    "fieldname": "manual",
    "fieldtype": "Check",
-   "in_list_view": 1,
    "label": "Line by Hand",
    "read_only": 1
   }

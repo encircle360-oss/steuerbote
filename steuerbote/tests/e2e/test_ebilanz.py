@@ -8,6 +8,7 @@ The module imports neither pytest nor Playwright, see conftest.py.
 """
 
 import json
+import re
 from urllib.parse import urlencode
 
 from steuerbote.tests.e2e import data
@@ -15,7 +16,8 @@ from steuerbote.tests.e2e import data
 DOCTYPE = "Electronic Balance Sheet"
 ROUTE = "/desk/electronic-balance-sheet"
 REPORT = "/desk/query-report/E-Bilanz Positionen"
-BANK = "bs.ass.currAss.cashEquiv.bank"
+# The label of bs.ass.currAss.cashEquiv.bank in the mini taxonomy; the grid shows labels, the row form the position.
+BANK = re.compile(r"^\s*Guthaben bei Kreditinstituten\s*$")
 # What the form says when Berechnen finds no taxonomy: the button of the ERiC Settings that installs it.
 INSTALL = "Taxonomie einrichten"
 
@@ -43,7 +45,10 @@ def test_the_calculated_e_bilanz_shows_its_positions_and_that_the_taxonomy_is_mi
 	desk.open(f"{ROUTE}/{seeded(desk, base_url)}")
 	expect(desk.field("status")).to_contain_text("Berechnet")
 	expect(desk.grid_cells("findings", "code").filter(has_text="SB-TAXONOMIE")).to_have_count(1)
-	expect(desk.grid_rows("positions").filter(has_text=BANK)).to_have_count(1)
+	label = desk.page.locator('.grid-static-col[data-fieldname="label"] > .static-area', has_text=BANK)
+	bank = desk.grid_rows("positions").filter(has=label)
+	expect(bank).to_have_count(1)
+	expect(bank).to_contain_text(data.EBILANZ_BANK)
 	desk.picture(screenshots / "ebilanz.png", "positions")
 
 

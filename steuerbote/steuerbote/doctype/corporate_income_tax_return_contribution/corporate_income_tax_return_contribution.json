@@ -31,7 +31,7 @@
    "reqd": 1
   },
   {
-   "columns": 3,
+   "columns": 2,
    "description": "Booked to profit and paid: Anlage GK line 93 and KSt 1 F line 91; booked, not paid: line 94; not booked to profit: line 78 and KSt 1 F line 92; other, such as a payment into the Kapitalrücklage: KSt 1 F line 95.",
    "fieldname": "treatment",
    "fieldtype": "Select",
@@ -57,7 +57,7 @@
    "mandatory_depends_on": "eval:doc.kind == 'Contribution in Kind'"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "amount",
    "fieldtype": "Currency",
    "in_list_view": 1,

@@ -34,10 +34,8 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "ags",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Amtlicher Gemeindeschlüssel",
    "read_only": 1
   },
