@@ -5,7 +5,7 @@ Die Bilanzzuordnung sagt für jedes Konto eines Unternehmens, in welche Position
 ## Umfang
 
 - **Kontenrahmen:** SKR03 und SKR04 in der Ausgabe „Gültig für 2026“, jedes Konto und jeder Kontenbereich, den DATEV beschriftet, auch die der Klasse 9, dazu jedes Konto der Vorlagen von ERPNext 16, das die DATEV-Ausgabe nicht hat. Ein Konto, das DATEV nicht beschriftet, bekommt keine Vorgabe, auch wenn es zwischen zwei beschrifteten liegt: Was ein Unternehmen dort anlegt, ordnet es selbst zu, „Konten prüfen“ nennt es.
-- **Taxonomie:** HGB-Taxonomie 6.9, steuerliche Ansicht, für eine GmbH oder UG mit Gesamtkostenverfahren.
+- **Taxonomie:** HGB-Taxonomie 6.9, steuerliche Ansicht, für eine GmbH oder UG mit Gesamtkostenverfahren; für 6.10 dieselben Vorgaben bis auf die sonstigen Steuern, siehe [Taxonomie 6.10](#taxonomie-610).
 - **Stand:** „SKR03 Taxonomie 6.9 2026.1“ und „SKR04 Taxonomie 6.9 2026.1“. Revision 0 war die leere Tabelle vor den Vorgaben der DATEV-Kontenrahmen.
 
 | Kontenrahmen | Einträge mit Position | beobachtet | außerhalb von Bilanz und GuV |

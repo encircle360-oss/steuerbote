@@ -434,7 +434,10 @@ Die Schritte für die Taxonomie 6.10, aus der Dokumentation 45.1.5.0 und den Pak
 8. **Bilanzzuordnung.** Eine neue Zuordnung nennt die Positionen von `FIRST`, 6.9; „Auf neue Taxonomie heben“ hebt sie mit `CHANGES` auf die neue Version und ein Import eine Datei der früheren.
 9. **Pakete in Tests und CI.** `real.view_6_10()` mit `STEUERBOTE_TAXONOMY_6_10`, die Schritte des Pakets in den drei Jobs von `tests.yml` und der Lauf von Arelle mit `--version 6.10`, siehe [Tests gegen die HGB-Taxonomie](#tests-gegen-die-hgb-taxonomie) und [XBRL mit Arelle](#xbrl-mit-arelle).
 
-Was noch kommt: die Vorgaben der Bilanzzuordnung für 6.10 in `ebilanz/defaults.py`, die 6.9 bis auf die Gruppe der sonstigen Steuern übernehmen (die Grundsteuer auf ihr Mussfeld, die übrigen auf die Positionen unter „sonstige Steuern“); mit ERiC 45 die gepinnte Dokumentation heben, dann prüft die Jahresprüfung ohne Version auch 6.10; und mit ERiC 46 die Echtfälle von 6.10 ab Mai 2027.
+10. **Vorgaben.** `GROUPS["6.10"]` in `ebilanz/defaults.py` trägt die Gruppen von 6.9 durch `CHANGES`, mit der Gruppe der sonstigen Steuern zerlegt, denn 6.10 macht „sonstige Steuern“ zum Summenmussfeld über dem Mussfeld der Grundsteuer; Revision 1 mit ihrer SHA-256 in `DIGESTS`. Test: `steuerbote/ebilanz/tests/test_defaults.py`, siehe [Vorgaben der Bilanzzuordnung, Taxonomie 6.10](ebilanz-zuordnung.md#taxonomie-610).
+11. **Beleg.** Das Feld „HGB-Taxonomie“ der E-Bilanz bietet die Version an, und `bridge.taxonomy_for` gibt sie den Wirtschaftsjahren, die sie grundsätzlich nehmen. Test: `electronic_balance_sheet/test_bridge.py`, `test_electronic_balance_sheet.py`.
+
+Was noch kommt: mit ERiC 45 die gepinnte Dokumentation heben, dann prüft die Jahresprüfung ohne Version auch 6.10; und mit ERiC 46 die Echtfälle von 6.10 ab Mai 2027.
 
 ## Commits
 
