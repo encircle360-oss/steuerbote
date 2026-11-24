@@ -112,6 +112,23 @@ Jeder Stand der Vorgaben hat einen Namen aus Kontenrahmen, Version der Taxonomie
 - Restlaufzeiten nur aus der Bezeichnung des Kontos.
 - Ein Konto ohne Beschriftung durch DATEV bekommt keine Vorgabe, auch in einem Bereich zwischen zwei beschrifteten Konten.
 
+## Taxonomie 6.10
+
+Die Vorgaben für die HGB-Taxonomie 6.10 sind die von 6.9, durch die Änderungen der Taxonomie gehoben (`steuerbote/xbrl/changes.py`): 6.10 benennt keine Position der Vorgaben um und entfernt keine. Anders ist nur die Gruppe der sonstigen Steuern, denn 6.10 macht „sonstige Steuern“ zum Summenmussfeld über dem neuen Mussfeld „sonstige Steuern, Grundsteuer“, und ein Saldo auf der Summe neben einem auf der Grundsteuer ergäbe nicht ihre Summe:
+
+| SKR03 | SKR04 | 6.9 | 6.10 |
+|---|---|---|---|
+| 2375 | 7680 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.GrSt` |
+| 4340, 4350, 4355, 4510, 2285, 2287 | 7650, 7675, 7678, 7685, 7690, 7692 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.other` |
+| 2289 | 7694 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.releaseTaxProvision` |
+
+Stand: „SKR03 Taxonomie 6.10 2026.1“ und „SKR04 Taxonomie 6.10 2026.1“. Eine Bilanzzuordnung, die „Auf neue Taxonomie heben“ von 6.9 auf 6.10 hebt, behält die übernommenen Vorgaben von 6.9; „Vorgaben aktualisieren“ schlägt ihr diese Zeilen dann als Änderungen der Vorgaben vor.
+
+Für die Steuerberatung zu prüfen:
+
+1. **Grundsteuer.** Die Konten der Grundsteuer gehen in das neue Mussfeld; Grundsteuer, die ein Unternehmen auf einem anderen Konto bucht, gehört ebenfalls dorthin.
+2. **Steuern früherer Jahre.** Nachzahlungen und Erstattungen sonstiger Steuern für Vorjahre gehen in „übrige sonstige Steuern“, weil ihre eigenen Positionen „Steuernachzahlungen für Vorjahre“ und „Steuererstattungen für Vorjahre“ steuerlich nicht zulässig sind. Handelsrechtlich gibt es sie; die Vorgaben trennen den Abschlusszweck dafür nicht.
+
 ## Quellen
 
 - DATEV-Kontenrahmen nach dem Bilanzrichtlinie-Umsetzungsgesetz, Standardkontenrahmen SKR 03 (Art.-Nr. 11174) und SKR 04 (Art.-Nr. 11175), „Gültig für 2026“: die Bezeichnungen der Konten und Bereiche, Bilanzposten (Fußnote 2), Abschlusszweck (Fußnote 4).
