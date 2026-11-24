@@ -1,6 +1,7 @@
 """The Umsatzsteuererklärung of the seed for 2026: Berechnen, the note that Mein ELSTER imports no
 Umsatzsteuererklärung, the simulated Testsenden and the print preview in the order of form USt 2 A; and a new return,
-which opens as a draft of the default company.
+which opens as a draft of the default company. Berechnen leaves the picture of the README, umsatzsteuererklaerung.png,
+under --output.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -41,7 +42,7 @@ def open_return(desk, base_url) -> str:
 
 
 def test_berechnen_takes_the_lines_of_the_invoices_and_holds_the_return_for_the_missing_voranmeldungen(
-	desk, expect, base_url
+	desk, expect, base_url, screenshots
 ):
 	open_return(desk, base_url)
 	desk.calculate()
@@ -53,6 +54,7 @@ def test_berechnen_takes_the_lines_of_the_invoices_and_holds_the_return_for_the_
 	expect(desk.grid_rows("periods")).to_have_count(PERIODS)
 	missing = desk.grid_cells("findings", "code").filter(has_text=MISSING_PERIOD)
 	expect(missing).to_have_count(MISSING_PERIODS)
+	desk.picture(screenshots / "umsatzsteuererklaerung.png", "lines")
 
 
 def test_the_form_says_that_mein_elster_imports_no_umsatzsteuererklaerung(desk, expect, base_url):

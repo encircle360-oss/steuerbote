@@ -1,7 +1,8 @@
 """The E-Bilanz of the seed's company of the E-Bilanz for 2026: the calculated draft with its positions and the
 finding that the site has no HGB-Taxonomie, Berechnen saying how to install it, the print preview with the Bilanz in
 Kontoform, the report E-Bilanz Positionen opening a position to its accounts, and a new E-Bilanz, which opens as a
-Jahresabschluss of the default company. Nothing goes to ELSTER.
+Jahresabschluss of the default company. Nothing goes to ELSTER. The calculated E-Bilanz is the picture of the README,
+ebilanz.png, under --output.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -36,11 +37,14 @@ def report_row(desk, text: str):
 	return desk.page.locator(".dt-scrollable .dt-row").filter(has_text=text)
 
 
-def test_the_calculated_e_bilanz_shows_its_positions_and_that_the_taxonomy_is_missing(desk, expect, base_url):
+def test_the_calculated_e_bilanz_shows_its_positions_and_that_the_taxonomy_is_missing(
+	desk, expect, base_url, screenshots
+):
 	desk.open(f"{ROUTE}/{seeded(desk, base_url)}")
 	expect(desk.field("status")).to_contain_text("Berechnet")
 	expect(desk.grid_cells("findings", "code").filter(has_text="SB-TAXONOMIE")).to_have_count(1)
 	expect(desk.grid_rows("positions").filter(has_text=BANK)).to_have_count(1)
+	desk.picture(screenshots / "ebilanz.png", "positions")
 
 
 def test_berechnen_without_the_taxonomy_says_how_to_install_it(desk, expect, base_url):

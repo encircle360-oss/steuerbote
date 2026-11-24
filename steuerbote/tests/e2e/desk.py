@@ -5,10 +5,14 @@ status of 500 or more, and an asset the page asks for that is missing. Any other
 server refusing a request, such as a page the user may not open or a document method that throws a message; the
 tests that provoke one check what the desk shows. The browser logs such a response on the console, and the desk
 logs the traceback the server sends with it; both lines are judged by the status of the response instead.
+
+A page also takes the pictures of the README (picture()), always in the same window and without the pointer or the
+focus on anything.
 """
 
 import re
 from collections.abc import Callable
+from pathlib import Path
 from urllib.parse import parse_qs
 
 from playwright.sync_api import ConsoleMessage, Download, Locator, Page, Request, Response, Route, expect
@@ -59,6 +63,35 @@ WORKSPACE_SCRIPT = """() => {
 	}
 	return sections;
 }"""
+# The window of the pictures of the README, the size of the pictures in docs/bilder.
+PICTURE = {"width": 1440, "height": 900}
+# No dialog left on the page, nor the backdrop that stays while a closed one fades out.
+NO_DIALOG_SCRIPT = "() => !document.querySelector('.modal.show, .modal-backdrop')"
+# Nothing in focus: neither a field nor the cell of a report that a click marked (frappe-datatable).
+NO_FOCUS_SCRIPT = """() => {
+	document.activeElement?.blur();
+	for (const cell of document.querySelectorAll(".dt-cell--focus")) {
+		cell.classList.remove("dt-cell--focus");
+	}
+}"""
+# Back to the top of the page, whatever element of the desk scrolls it.
+TO_THE_TOP_SCRIPT = """() => {
+	for (const element of document.querySelectorAll("*")) {
+		if (element.scrollTop > 0) {
+			element.scrollTo({ top: 0, behavior: "instant" });
+		}
+	}
+}"""
+# The section of a field of the form scrolled up to just below the head of the page, which stays on top.
+TO_THE_SECTION_SCRIPT = """(field) => {
+	const section = field.closest(".form-section") ?? field;
+	const head = document.querySelector(".page-head");
+	section.style.scrollMarginTop = `${head ? Math.max(head.getBoundingClientRect().bottom, 0) : 0}px`;
+	section.scrollIntoView({ block: "start", behavior: "instant" });
+}"""
+NEXT_FRAME_SCRIPT = (
+	"() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+)
 
 
 class Desk:
@@ -101,6 +134,22 @@ class Desk:
 		frappe.request counts these requests."""
 		self.page.wait_for_load_state("networkidle")
 		self.page.wait_for_function("() => !window.frappe?.request || frappe.request.ajax_count === 0")
+
+	def picture(self, path: Path, section: str | None = None) -> None:
+		"""Save the window of PICTURE as the README shows the page: once the desk has nothing open, at the top of the
+		page or, given a field of the form, with its section just below the head of the page, the pointer in the
+		corner of the window and nothing in focus."""
+		self.page.set_viewport_size(PICTURE)
+		self.settle()
+		self.page.wait_for_function(NO_DIALOG_SCRIPT)
+		self.page.evaluate(NO_FOCUS_SCRIPT)
+		if section:
+			self.field(section).evaluate(TO_THE_SECTION_SCRIPT)
+		else:
+			self.page.evaluate(TO_THE_TOP_SCRIPT)
+		self.page.mouse.move(PICTURE["width"] - 1, PICTURE["height"] - 1)
+		self.page.evaluate(NEXT_FRAME_SCRIPT)
+		self.page.screenshot(path=path, animations="disabled")
 
 	def open_steuern_from_the_rail(self) -> None:
 		"""From the apps screen into ERPNext, and through the entry Steuern of its rail."""

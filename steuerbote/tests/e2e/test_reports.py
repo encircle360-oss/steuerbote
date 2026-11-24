@@ -1,4 +1,5 @@
-"""The reports UStVA Kennzahlen and Offene Fristen with the data of the seed.
+"""The reports UStVA Kennzahlen and Offene Fristen with the data of the seed; each leaves its picture of the README,
+bericht-kennzahlen.png with the vouchers of every Kennzahl and offene-fristen.png, under --output.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -11,6 +12,8 @@ KENNZAHLEN = "/desk/query-report/UStVA Kennzahlen"
 FILTERS = {"company": data.COMPANY, "year": data.YEAR, "rhythm": "monthly", "period_index": data.MONTH}
 REPORT_RUN = "/api/method/frappe.desk.query_report.run"
 PRINT_LINK = f"/printview?doctype=Sales%20Invoice&name={data.DOMESTIC_INVOICE}"
+# Alle ausklappen below the table of a report with a tree (frappe/public/js/frappe/views/reports/query_report.js).
+EXPAND_ALL = '[data-action="expand_all_rows"]'
 
 
 def report_row(desk, text: str):
@@ -18,7 +21,9 @@ def report_row(desk, text: str):
 	return desk.page.locator(".dt-scrollable .dt-row").filter(has_text=text)
 
 
-def test_ustva_kennzahlen_shows_the_vouchers_behind_a_kennzahl_with_their_print_link(desk, expect):
+def test_ustva_kennzahlen_shows_the_vouchers_behind_a_kennzahl_with_their_print_link(
+	desk, expect, screenshots
+):
 	desk.open(f"{KENNZAHLEN}?{urlencode(FILTERS)}")
 	kz81 = report_row(desk, "Steuerpflichtige Umsätze zum Steuersatz von 19 %")
 	expect(kz81).to_have_count(1)
@@ -28,6 +33,8 @@ def test_ustva_kennzahlen_shows_the_vouchers_behind_a_kennzahl_with_their_print_
 	expect(voucher).to_have_count(1)
 	expect(voucher).to_contain_text(data.DOMESTIC_CUSTOMER)
 	expect(voucher.get_by_role("link", name="Drucken")).to_have_attribute("href", PRINT_LINK)
+	desk.page.locator(EXPAND_ALL).click()
+	desk.picture(screenshots / "bericht-kennzahlen.png")
 
 
 def test_the_filters_of_ustva_kennzahlen_choose_the_period(desk, expect):
@@ -42,8 +49,9 @@ def test_the_filters_of_ustva_kennzahlen_choose_the_period(desk, expect):
 	expect(kz21).to_have_count(0)
 
 
-def test_offene_fristen_lists_the_deadlines_of_the_company(desk, expect):
+def test_offene_fristen_lists_the_deadlines_of_the_company(desk, expect, screenshots):
 	desk.open(f"/desk/query-report/Offene Fristen?{urlencode({'company': data.COMPANY})}")
 	rows = desk.page.locator(".dt-scrollable .dt-row")
 	expect(rows.first).to_be_visible()
 	expect(rows.first).to_contain_text(data.COMPANY)
+	desk.picture(screenshots / "offene-fristen.png")

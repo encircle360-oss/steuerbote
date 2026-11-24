@@ -1,6 +1,6 @@
 """The Dauerfristverlängerung of the seed for 2026: no Voranmeldung of 2025 is filed, so Berechnen asks for the
-base of the Sondervorauszahlung by hand and leaves the form a draft; and the form of the second company, whose
-Senden ELSTER accepted.
+base of the Sondervorauszahlung by hand and leaves the form a draft, which is the picture of the README,
+dauerfristverlaengerung.png, under --output; and the form of the second company, whose Senden ELSTER accepted.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -12,7 +12,7 @@ REFUSED = 417
 
 
 def test_berechnen_asks_for_the_base_by_hand_without_a_filed_voranmeldung_of_the_year_before(
-	desk, expect, records
+	desk, expect, records, screenshots
 ):
 	desk.open(f"/desk/vat-return-extension/{records['extension']}")
 	response = desk.run_doc_method("calculate", desk.button("Berechnen").click)
@@ -22,6 +22,7 @@ def test_berechnen_asks_for_the_base_by_hand_without_a_filed_voranmeldung_of_the
 	)
 	desk.close_dialog()
 	expect(desk.field("status")).to_contain_text("Entwurf")
+	desk.picture(screenshots / "dauerfristverlaengerung.png")
 
 
 def test_a_form_elster_accepted_offers_neither_berechnen_nor_verwerfen(desk, expect, records):

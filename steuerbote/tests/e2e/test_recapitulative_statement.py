@@ -1,8 +1,12 @@
 """The Zusammenfassende Meldung of the seed for October 2026: Berechnen, USt-IdNrn. prüfen and the file for Mein
-ELSTER; and the form of the statement of the second company, whose Senden has an unknown outcome.
+ELSTER; the form of the statement of the second company, whose Senden has an unknown outcome; and the USt-IdNr.-
+Bestätigung the seed stored for the USt-IdNr. of its line. Berechnen and the Bestätigung leave their pictures of the
+README, zusammenfassende-meldung.png and ust-idnr-bestaetigung.png, under --output.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
+
+import json
 
 from steuerbote.tests.e2e import data
 
@@ -11,13 +15,41 @@ def open_statement(desk, records) -> None:
 	desk.open(f"/desk/recapitulative-statement/{records['statement']}")
 
 
-def test_berechnen_reports_the_service_to_the_eu_customer_in_one_line(desk, expect, records):
+def test_berechnen_reports_the_service_to_the_eu_customer_in_one_line(desk, expect, records, screenshots):
 	open_statement(desk, records)
 	desk.calculate()
 	expect(desk.field("status")).to_contain_text("Bereit")
 	lines = desk.grid_rows("lines")
 	expect(lines).to_have_count(1)
 	expect(lines).to_contain_text([data.EU_VAT_ID])
+	desk.picture(screenshots / "zusammenfassende-meldung.png", "lines")
+
+
+def test_the_ust_idnr_bestaetigung_of_the_line_shows_the_answer_of_the_bzst(
+	desk, expect, base_url, screenshots
+):
+	"""The answer the seed stored for the USt-IdNr. of the EU customer, from the fake transport of the tests of
+	steuerbote.vatid."""
+	desk.open(f"/desk/vat-id-confirmation/{newest_confirmation(desk, base_url)}")
+	expect(desk.field("requested")).to_contain_text(data.EU_VAT_ID)
+	desk.picture(screenshots / "ust-idnr-bestaetigung.png")
+
+
+def newest_confirmation(desk, base_url) -> str:
+	"""The name of the newest USt-IdNr.-Bestätigung of the company for the USt-IdNr. of the EU customer."""
+	filters = {"company": data.COMPANY, "requested": data.EU_VAT_ID}
+	response = desk.page.request.get(
+		f"{base_url}/api/resource/VAT ID Confirmation",
+		params={
+			"filters": json.dumps(filters),
+			"fields": '["name"]',
+			"order_by": "creation desc",
+			"limit_page_length": 1,
+		},
+	)
+	assert response.ok, f"{response.url} answered {response.status}: {response.text()[:2000]}"
+	(row,) = response.json()["data"]
+	return row["name"]
 
 
 def test_ust_idnrn_pruefen_asks_first_and_nein_asks_nobody(desk, expect, records):
