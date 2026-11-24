@@ -1,13 +1,15 @@
 """The pages that give the overview keep up with the app, read without a bench: the README links every page under
 docs/ and the page of each annual document the app brings and shows only pictures that are there; every relative
-link of the README and the pages leads to a page and a heading that exist; the pages that introduce the annual
-documents, those on ERiC and the transmission to ELSTER and the architecture name each document the app brings; the
-roadmap calls a package done once the app brings what it promised; and SECURITY.md names how to report a
+link of the README, AGENTS.md and the pages leads to a page and a heading that exist; the pages that introduce the
+annual documents, those on ERiC and the transmission to ELSTER and the architecture name each document the app brings;
+the roadmap calls a package done once the app brings what it promised; AGENTS.md names every core of the app and, for
+the year change, each year check and the year table of each module; and SECURITY.md names how to report a
 vulnerability privately."""
 
 import ast
 import json
 import re
+import tomllib
 from pathlib import Path
 from unittest import TestCase
 
@@ -19,13 +21,17 @@ ROOT = APP.parent
 DOCS = ROOT / "docs"
 README = ROOT / "README.md"
 SECURITY = ROOT / "SECURITY.md"
+AGENTS = ROOT / "AGENTS.md"
+PYPROJECT = ROOT / "pyproject.toml"
 ROADMAP = DOCS / "roadmap.md"
+DEVELOPMENT = DOCS / "entwicklung.md"
 DOCTYPES = APP / "steuerbote" / "doctype"
 TRANSMISSION = DOCTYPES / "elster_transmission" / "elster_transmission.py"
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^#{1,6} (.+)$", re.MULTILINE)
 CODE_BLOCK = re.compile(r"^```.*?^```$", re.DOTALL | re.MULTILINE)
 PICTURE = re.compile(r'(?:src|href)="(docs/bilder/[^"]+)"')
+CODE = re.compile(r"`([^`]+)`")
 EXTERNAL = ("http://", "https://", "mailto:")
 IN_PROGRESS = "in Arbeit"
 # The annual documents, each with the page that describes it.
@@ -62,6 +68,16 @@ def section(text: str, heading: str) -> str:
 def introduction(text: str) -> str:
 	"""The title of a page and the paragraphs before its first section."""
 	return text.split("\n## ", 1)[0]
+
+
+def item(text: str, lead: str) -> str:
+	"""The item of a list that begins with the lead in bold, with the items nested in it."""
+	lines = text.splitlines()
+	(start,) = (index for index, line in enumerate(lines) if line.startswith(f"- **{lead}"))
+	end = next(
+		(index for index in range(start + 1, len(lines)) if not lines[index].startswith(" ")), len(lines)
+	)
+	return "\n".join(lines[start:end])
 
 
 def anchors(text: str) -> set[str]:
@@ -102,6 +118,25 @@ def transmitted() -> list[str]:
 	return [element.value for element in assignment.value.elts]
 
 
+def cores() -> list[str]:
+	"""The packages pytest collects whole, the cores of the app (testpaths in pyproject.toml)."""
+	testpaths = tomllib.loads(read(PYPROJECT))["tool"]["pytest"]["ini_options"]["testpaths"]
+	return [Path(path).name for path in testpaths if (ROOT / path).is_dir()]
+
+
+def year_tables() -> list[str]:
+	"""The modules that hold the years of each module, as the table of docs/entwicklung.md, „Jahreswechsel“, names
+	them in its column Jahrestabelle, each without the package of the app in front."""
+	table = section(read(DEVELOPMENT), "## Jahreswechsel").split("\n### ", 1)[0]
+	rows = [line.strip().strip("|").split(" | ") for line in table.splitlines() if line.startswith("| ")]
+	return [
+		name.removeprefix("steuerbote/")
+		for row in rows[1:]
+		for name in CODE.findall(row[1])
+		if name.endswith(".py")
+	]
+
+
 def roadmap_stand() -> dict[str, str]:
 	"""The state of each package of the table of the Stufe 3."""
 	rows = [
@@ -137,7 +172,7 @@ class ReadmeTest(TestCase):
 
 class LinksTest(TestCase):
 	def test_each_relative_link_leads_to_a_page_and_a_heading_that_exist(self):
-		for page in (README, SECURITY, ROOT / "CONTRIBUTING.md", *sorted(DOCS.glob("*.md"))):
+		for page in (README, SECURITY, ROOT / "CONTRIBUTING.md", AGENTS, *sorted(DOCS.glob("*.md"))):
 			for target in LINK.findall(CODE_BLOCK.sub("", read(page))):
 				if target.startswith(EXTERNAL):
 					continue
@@ -210,6 +245,35 @@ class RoadmapTest(TestCase):
 			and all(path.is_file() for path in INTERPLAY)
 		)
 		self.assertEqual(self.stand["Integration"] == DONE, brings)
+
+
+class AgentsTest(TestCase):
+	"""AGENTS.md is the first page a coding agent reads: where the code is and what a new year changes."""
+
+	def setUp(self):
+		self.text = read(AGENTS)
+
+	def test_the_structure_names_every_core_of_the_app(self):
+		structure = item(self.text, "Struktur")
+		self.assertTrue(cores())
+		for core in cores():
+			with self.subTest(core=core):
+				self.assertRegex(structure, rf"`(steuerbote/)?{core}`")
+
+	def test_the_year_change_names_the_year_check_of_each_core_that_has_one(self):
+		year_change = item(self.text, "Jahreswechsel")
+		checks = sorted(path.parent.name for path in APP.glob("*/yearcheck.py"))
+		self.assertTrue(checks)
+		for core in checks:
+			with self.subTest(core=core):
+				self.assertIn(f"python -m steuerbote.{core}.yearcheck", year_change)
+
+	def test_the_year_change_names_the_year_table_of_each_module(self):
+		year_change = item(self.text, "Jahreswechsel")
+		self.assertTrue(year_tables())
+		for table in year_tables():
+			with self.subTest(table=table):
+				self.assertIn(f"{table}`", year_change)
 
 
 class SecurityTest(TestCase):
