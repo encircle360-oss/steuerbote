@@ -12,10 +12,12 @@ year the Wirtschaftsjahr ends in and the Bilanzart, Jahresabschluss or the Eröf
   Depreciations and Balances with the columns by hand of the document, the Überleitung of a Handelsbilanz from the
   finance book of the Steuerbilanz or by hand, the Betriebsvermögensvergleich and the GCD, and builds the E-Bilanz
   (steuerbote.ebilanz.instance.build). bridge.py moves the results into the tables and fields of the document.
-- „Bereit“ follows from the findings: the taxonomy is installed and unchanged, no balance is without its place and no
-  check of the E-Bilanz finds an error, every adjustment of ERPNext on a fixed asset account is in a column of the
-  Anlagenspiegel, the depreciation is posted up to the Bilanzstichtag and the GCD is complete. A missing Period
-  Closing Voucher is a hint only, since the balances neither need it nor count the result twice.
+- „Bereit“ follows from the findings: the taxonomy is installed and unchanged, the Bilanzzuordnung names its version,
+  no balance is without its place and no check of the E-Bilanz finds an error, every adjustment of ERPNext on a fixed
+  asset account is in a column of the Anlagenspiegel, the depreciation is posted up to the Bilanzstichtag and the GCD
+  is complete. A missing Period Closing Voucher is a hint only, since the balances neither need it nor count the
+  result twice. A Bilanzzuordnung on another version (SB-ZUORDNUNG-VERSION) has its books placed on the positions of
+  the taxonomy of the E-Bilanz, as far as that version has them, so that Berechnen shows the other findings as well.
 - Berechnen compares the Handelsbilanz with that of the Jahresabschluss of the company and year (comparison.py), which
   the E-Bilanz names (annual_accounts): a festgestellter Jahresabschluss that differs holds it back from „Bereit“, one
   that is not festgestellt yet gives a hint. A new E-Bilanz names it, and it is filed only while it names none that
@@ -69,7 +71,7 @@ from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission impor
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import Transmittable
 from steuerbote.steuerbote.doctype.eric_settings import eric_settings
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
-from steuerbote.xbrl.mapping import Placement, Purpose, part_of, position_of
+from steuerbote.xbrl.mapping import Books, Placement, Purpose, part_of, place, position_of
 from steuerbote.xbrl.taxonomy import Taxonomy, View
 
 DOCTYPE = "Electronic Balance Sheet"
@@ -205,6 +207,12 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		accounts = self._annual_accounts()
 		found = (
 			*bridge.taxonomy_finding(self.taxonomy_version, unchanged, detail),
+			*bridge.mapping_version_finding(
+				self.taxonomy_version,
+				mapping.taxonomy_version,
+				getdate(self.from_date),
+				getdate(self.to_date),
+			),
 			*bridge.placement_findings(placement),
 			*ebilanz.annual_findings(),
 			*bridge.asset_findings(structure, assets),
@@ -428,21 +436,35 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 			finance_book=book,
 			closing_account=closing[0] if closing else None,
 		)
-		placement = mapping.place(
-			books,
-			purpose,
-			closing_account=closing[1] if closing else None,
-			fiscal_year=(getdate(self.from_date), getdate(self.to_date)),
-		)
-		return placement, closed_by
+		return self._place(mapping, books, purpose, closing[1] if closing else None), closed_by
 
 	def _opening_placement(self, mapping: Document, purpose: Purpose, book: str | None) -> Placement:
 		closing = balances.closing_account(self.company)
-		return mapping.place(
+		return self._place(
+			mapping,
 			ebilanz_sources.opening_books(self.company, getdate(self.from_date), book),
 			purpose,
-			closing_account=closing[1] if closing else None,
-			fiscal_year=(getdate(self.from_date), getdate(self.to_date)),
+			closing[1] if closing else None,
+		)
+
+	def _place(
+		self, mapping: Document, books: Books, purpose: Purpose, closing_account: str | None
+	) -> Placement:
+		"""The books on the positions of the Bilanzzuordnung (Balance Sheet Mapping.place). A mapping on another version
+		of the HGB-Taxonomie (SB-ZUORDNUNG-VERSION) has them placed against the fiscal view of the version of the
+		E-Bilanz, which Berechnen has read already and which its positions, its „davon“ lines and its Anlagenspiegel
+		take, so that the version of the mapping need not be installed; a balance on a position the version of the
+		E-Bilanz does not have goes to none, with the finding BILANZ-POSITION."""
+		fiscal_year = (getdate(self.from_date), getdate(self.to_date))
+		if mapping.taxonomy_version == self.taxonomy_version:
+			return mapping.place(books, purpose, closing_account=closing_account, fiscal_year=fiscal_year)
+		return place(
+			mapping.to_mapping(),
+			books,
+			eric_settings.taxonomy_view(self.taxonomy_version, View.FISCAL),
+			purpose,
+			closing_account=closing_account,
+			fiscal_year=fiscal_year,
 		)
 
 	def _asset_rows(self, mapping: Document, view: Taxonomy) -> list[dict[str, Any]]:

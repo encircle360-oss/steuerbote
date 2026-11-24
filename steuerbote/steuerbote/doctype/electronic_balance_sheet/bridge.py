@@ -24,9 +24,9 @@ is tested without a bench:
 - position_rows, account_rows, fixed_asset_rows, transfer_rows and totals: what Berechnen writes.
 - sources_of and differences: the E-Bilanz of the document as it is stored, for the Nutzdaten, the XBRL file and the
   checks before them, and the positions whose stored amount it no longer gives.
-- placement_findings and the findings of Steuerbote (CODES): the taxonomy, the depreciation not posted up to the
-  Bilanzstichtag and the Period Closing Voucher; those of the comparison with the Jahresabschluss of the year come
-  from comparison.py.
+- placement_findings and the findings of Steuerbote (CODES): the taxonomy, the version of the taxonomy the
+  Bilanzzuordnung names, the depreciation not posted up to the Bilanzstichtag and the Period Closing Voucher; those of
+  the comparison with the Jahresabschluss of the year come from comparison.py.
 - taxonomy_for: the version of the HGB-Taxonomie of the Wirtschaftsjahr, the one chosen while the Wirtschaftsjahr may
   take it, else the one it takes „grundsätzlich“ (steuerbote/xbrl/versions.py), 6.10 from 2027 on.
 
@@ -74,7 +74,7 @@ from steuerbote.steuerbote.doctype.electronic_balance_sheet import comparison
 from steuerbote.ustva.rounding import ZERO
 from steuerbote.xbrl import versions
 from steuerbote.xbrl.facts import Period, Periods
-from steuerbote.xbrl.mapping import Placement, Purpose
+from steuerbote.xbrl.mapping import Code, Placement, Purpose
 from steuerbote.xbrl.taxonomy import Balance
 
 LINE_COLUMNS = Columns(
@@ -157,6 +157,7 @@ DEPRECIATION_OPEN = "SB-AFA-OFFEN"
 NO_SCHEDULE = "SB-ANLAGE-PLAN"
 TWO_SCHEDULES = "SB-ANLAGE-DOPPELT"
 NO_CLOSING = "SB-PERIODENABSCHLUSS"
+MAPPING_VERSION = "SB-ZUORDNUNG-VERSION"
 CODES = (
 	TAXONOMY_CODE,
 	ASSET_POSITION,
@@ -166,6 +167,7 @@ CODES = (
 	TWO_SCHEDULES,
 	NO_CLOSING,
 	*comparison.CODES,
+	MAPPING_VERSION,
 )
 """The codes of the findings of Steuerbote beside those of steuerbote.ebilanz and of the Bilanzzuordnung, the
 comparison with the Jahresabschluss of the year among them (comparison.py)."""
@@ -912,7 +914,8 @@ def differences(ebilanz: EBilanz, positions: Iterable[Record]) -> list[tuple[str
 
 def placement_findings(placement: Placement) -> tuple[Finding, ...]:
 	"""The findings of the Bilanzzuordnung for the table Befunde, each text with its source and the account or the
-	position it is about as its reference."""
+	position it is about as its reference. That the mapping names another version of the taxonomy (BILANZ-TAXONOMIE)
+	the E-Bilanz says itself, with the way to the same version (mapping_version_finding)."""
 	return tuple(
 		Finding(
 			finding.code.value,
@@ -921,7 +924,43 @@ def placement_findings(placement: Placement) -> tuple[Finding, ...]:
 			_shortened(finding.account or finding.concept),
 		)
 		for finding in placement.findings
+		if finding.code is not Code.TAXONOMY
 	)
+
+
+def mapping_version_finding(
+	version: str, mapping_version: str, begin: date, end: date
+) -> tuple[Finding, ...]:
+	"""An error where the Bilanzzuordnung names the positions of another version of the HGB-Taxonomie than the E-Bilanz
+	of the Wirtschaftsjahr from begin to end reports, the „amtlich vorgeschriebener Datensatz“ (§ 5b Abs. 1 Satz 1
+	EStG). An older mapping comes to the version with „Auf neue Taxonomie heben“. A lifted one does not go back, so the
+	E-Bilanz takes its version, where the letter that publishes it lets the Wirtschaftsjahr take it
+	(steuerbote/xbrl/versions.py)."""
+	if mapping_version == version:
+		return ()
+	names = (
+		f"Die Bilanzzuordnung nennt die Positionen der HGB-Taxonomie {mapping_version}, die E-Bilanz meldet die der "
+		f"Taxonomie {version}"
+	)
+	order = list(versions.TAXONOMIES)
+	if order.index(mapping_version) < order.index(version):
+		text = (
+			f"{names}: Führen Sie in der Bilanzzuordnung „Auf neue Taxonomie heben“ aus, dann berechnen Sie die "
+			"E-Bilanz neu. (Quelle: § 5b Abs. 1 Satz 1 EStG)"
+		)
+	else:
+		lifted = versions.TAXONOMIES[mapping_version]
+		way = (
+			f": Wählen Sie in der E-Bilanz die HGB-Taxonomie {mapping_version}, dann berechnen Sie die E-Bilanz neu."
+			if lifted.allows(begin, end)
+			else f", und das Wirtschaftsjahr vom {begin:%d.%m.%Y} bis zum {end:%d.%m.%Y} darf die HGB-Taxonomie "
+			f"{mapping_version} nicht nehmen."
+		)
+		text = (
+			f"{names}. Das Heben der Bilanzzuordnung lässt sich nicht zurücknehmen{way} (Quelle: § 5b Abs. 1 Satz 1 "
+			f"EStG; BMF-Schreiben vom {lifted.letter_date:%d.%m.%Y}, {lifted.reference})"
+		)
+	return (Finding(MAPPING_VERSION, Severity.ERROR, text, "Bilanzzuordnung"),)
 
 
 def taxonomy_finding(version: str, unchanged: bool, detail: str) -> tuple[Finding, ...]:
