@@ -93,6 +93,12 @@ def make_accounts(company: str, accounts: dict[str, tuple[str, str]] = ACCOUNTS)
 	}
 
 
+def defaults_to_load(mapping) -> str | None:
+	"""The defaults the form of the mapping names above its fields, as Vorgaben laden would fetch them."""
+	mapping.run_method("onload")
+	return mapping.get_onload("defaults_to_load")
+
+
 def rows(mapping) -> dict[str, list]:
 	"""The tables of a mapping as their rows by account number, in their order."""
 	return {
@@ -428,6 +434,25 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 			],
 			[(f"account:{number}", False) for number in ("1800", "1810", "2900", "4400", "1460", "9000")],
 		)
+
+	def test_the_form_names_the_defaults_a_mapping_of_revision_0_waits_for(self):
+		"""A mapping without rows that took over the empty table of revision 0 names the defaults of today; one with
+		rows, one of a chart of its own and one of a taxonomy without defaults name none."""
+		mapping = self.new_mapping()
+		with self.at_revision_0():
+			mapping.load_defaults()
+			mapping.insert()
+		self.assertEqual(defaults_to_load(frappe.get_doc(MAPPING, COMPANY)), "SKR04 Taxonomie 6.9 2026.1")
+		own = frappe.get_doc(MAPPING, COMPANY)
+		own.chart = "Eigener Kontenrahmen"
+		self.assertIsNone(defaults_to_load(own))
+		with patch.object(ebilanz_defaults, "DEFAULTS", MappingProxyType({})):
+			self.assertIsNone(defaults_to_load(frappe.get_doc(MAPPING, COMPANY)))
+		self.with_defaults()
+		filled = frappe.get_doc(MAPPING, COMPANY)
+		filled.load_defaults()
+		filled.save()
+		self.assertIsNone(defaults_to_load(frappe.get_doc(MAPPING, COMPANY)))
 
 	def test_a_chart_of_its_own_has_no_defaults(self):
 		mapping = self.new_mapping(chart="Eigener Kontenrahmen")

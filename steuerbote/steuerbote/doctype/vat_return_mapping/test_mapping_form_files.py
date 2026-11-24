@@ -160,6 +160,37 @@ class DifferencesFilesTest(TestCase):
 				self.assertIn("apply_label: take_over_label(comparison.version),", script)
 				self.assertIn('frm.call("update_from_defaults", { chosen, acknowledge: 1 })', script)
 
+	def test_a_mapping_that_waits_for_the_defaults_names_them_above_its_fields(self):
+		"""The controller of each mapping names the defaults of today when the mapping waits for them (onload), and its
+		form shows them in its intro, escaped, after loading the form and after Vorgaben laden, which takes them
+		over."""
+		hint = re.search(
+			r"\nfunction show_defaults_to_load\(frm\) \{\n(?P<body>.*?)\n\}\n", self.dialog, re.DOTALL
+		)
+		self.assertIsNotNone(hint)
+		self.assertIn("frm.doc.__onload && frm.doc.__onload.defaults_to_load", hint["body"])
+		self.assertIn("frappe.utils.escape_html(", hint["body"])
+		self.assertIn("frm.set_intro(", hint["body"])
+		text = "This mapping has no rows. Load Defaults fetches the defaults {0}."
+		self.assertEqual(TRANSLATED_LITERAL.findall(hint["body"]), [text])
+		self.assertEqual(
+			translations()[text], "Diese Zuordnung hat keine Zeilen. „Vorgaben laden“ holt die Vorgaben {0}."
+		)
+		for form in FORMS:
+			script = form.read_text(encoding="utf-8")
+			controller = form.with_suffix(".py").read_text(encoding="utf-8")
+			with self.subTest(form=form.name):
+				self.assertEqual(script.count("show_defaults_to_load(frm);"), 2)
+				self.assertRegex(script, r"\n\trefresh\(frm\) \{\n\t\tshow_defaults_to_load\(frm\);\n")
+				self.assertRegex(
+					script,
+					r'frm\.call\("load_defaults"\)\.then\(\(r\) => \{\n\t\tfrm\.dirty\(\);\n\t\tshow_defaults_to_load\(frm\);\n',
+				)
+				self.assertIn(
+					'self.set_onload("defaults_to_load", self.defaults_of_today() if self.waits_for_defaults() else None)',
+					controller,
+				)
+
 
 class MappingFileFilesTest(TestCase):
 	"""Zuordnung exportieren and Zuordnung importieren: the browser saves the file, an upload stays private, and every
