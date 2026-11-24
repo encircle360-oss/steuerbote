@@ -142,3 +142,15 @@ EBILANZ_ABBR = "STE2B"
 # What the print shows of the bank and of the Jahresüberschuss.
 EBILANZ_BANK = "106.000,00"
 EBILANZ_NET_INCOME = "38.000,00"
+
+# The links between the annual documents of the seventh company: a Jahresabschluss of YEAR as a draft that Berechnen
+# has not calculated, which the E-Bilanz names, and a Körperschaftsteuererklärung of YEAR that names the E-Bilanz.
+INTERPLAY_HINT = "SB-JA-FEHLT"
+# An eighth company with SKR04 accounts, VAT Return Settings, the VAT Return Mapping of SKR04 and Annual Filing
+# Settings: a sale of 120,000 euros at 19 % in YEAR, its E-Bilanz of YEAR as filed outside Steuerbote with Umsatzerlöse
+# of 125,000 euros, and its Umsatzsteuererklärung, calculated, with the hint that the two differ.
+REVENUE_COMPANY = "Steuerbote E2E Umsatzerlöse GmbH"
+REVENUE_ABBR = "STE2U"
+REVENUE_SALES = 120000
+REVENUE_EBILANZ = 125000
+REVENUE_HINT = "SB-UMSATZERLOESE"

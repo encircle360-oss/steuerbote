@@ -10,6 +10,9 @@ transmission through ERiC are those of AnnualFiling and Transmittable. This cont
   reconciliation.reconcile() against the Voranmeldungen and their runs on today's ledger, journal_entries() for the
   hints on Journal Entries, and, on the lines as filed, rules.check() (check_reported). bridge.py moves the results
   into the lines and tables of the document.
+- Berechnen sets the sales of the return against the Umsatzerlöse of the festgestellter Jahresabschluss of the year,
+  else of its filed E-Bilanz (revenue.py), with the threshold in euros of the Vorperiodenvergleich of the VAT Return
+  Settings as the tolerance: a difference beyond it is a hint, never an error.
 - „Bereit“ follows from the findings and the checks of the core together: the Verprobung passes and no account
   watched at the blocking level has a balance (AnnualResult.ready), every Voranmeldungszeitraum is filed or waived with
   a reason (Soll.ready), the reconciliation leaves no rest (Reconciliation.ready), and no rule of the Jahresdokumentation
@@ -54,11 +57,12 @@ from steuerbote.ledger import account_names
 from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, AnnualFiling, Calculation
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
-from steuerbote.steuerbote.doctype.annual_vat_return import bridge, layout
+from steuerbote.steuerbote.doctype.annual_vat_return import bridge, layout, revenue
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import Transmittable
 from steuerbote.steuerbote.doctype.vat_return import bridge as vat_return_bridge
 from steuerbote.steuerbote.doctype.vat_return.vat_return import settings_for
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
+from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
 from steuerbote.ustjahr import calculation, form, reconciliation, rules, soll, split
 from steuerbote.ustva.years import UnknownYearError
 
@@ -162,11 +166,19 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 
 	def check_reported(self, lines) -> list[Finding]:
 		"""The checks of Steuerbote and the rules of the Jahresdokumentation that it checks itself, on the values the
-		return files with the lines as Berechnen keeps them."""
+		return files with the lines as Berechnen keeps them, and the hint where its sales are not the Umsatzerlöse of
+		the year."""
 		year = self._year()
+		settings = settings_for(self.company)
 		with core_errors():
 			found = rules.check(year, self._filed_values(lines), getdate())
-		return bridge.findings(found, _)
+			hint = revenue.findings(
+				form.catalogue_for(year),
+				bridge.filed_amounts(lines),
+				ustjahr_sources.annual_revenue(self.company, year),
+				Thresholds.of(None, settings.get("comparison_threshold_amount")).amount,
+			)
+		return bridge.findings((*found, *hint), _)
 
 	def compute_deadline(self) -> date | None:
 		"""The day the return is due, as Offene Fristen lists it: seven months after the year, the last day of February of

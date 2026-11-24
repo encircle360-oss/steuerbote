@@ -25,7 +25,8 @@ is tested without a bench:
 - sources_of and differences: the E-Bilanz of the document as it is stored, for the Nutzdaten, the XBRL file and the
   checks before them, and the positions whose stored amount it no longer gives.
 - placement_findings and the findings of Steuerbote (CODES): the taxonomy, the depreciation not posted up to the
-  Bilanzstichtag and the Period Closing Voucher.
+  Bilanzstichtag and the Period Closing Voucher; those of the comparison with the Jahresabschluss of the year come
+  from comparison.py.
 
 The findings of Steuerbote are German sentences with their source, as those of steuerbote.ebilanz are; their codes
 begin with SB-. Errors are BridgeError with an English template and its values, which the Frappe layer translates;
@@ -67,6 +68,7 @@ from steuerbote.ebilanz.positions import (
 from steuerbote.ebilanz.ueberleitung import PREVIOUS_DIFFERENCE, Kind, Transfer, Ueberleitung
 from steuerbote.jahresmeldung.findings import DATA_LENGTH, Finding, Severity
 from steuerbote.jahresmeldung.overrides import Columns, correction_of, manual_lines, to_amount
+from steuerbote.steuerbote.doctype.electronic_balance_sheet import comparison
 from steuerbote.ustva.rounding import ZERO
 from steuerbote.xbrl.facts import Period, Periods
 from steuerbote.xbrl.mapping import Placement, Purpose
@@ -160,8 +162,10 @@ CODES = (
 	NO_SCHEDULE,
 	TWO_SCHEDULES,
 	NO_CLOSING,
+	*comparison.CODES,
 )
-"""The codes of the findings of Steuerbote beside those of steuerbote.ebilanz and of the Bilanzzuordnung."""
+"""The codes of the findings of Steuerbote beside those of steuerbote.ebilanz and of the Bilanzzuordnung, the
+comparison with the Jahresabschluss of the year among them (comparison.py)."""
 TEXT_INPUTS = (
 	"accounting_standard",
 	"taxonomy_version",

@@ -849,15 +849,24 @@ class AnnualFiling:
 
 
 def fiscal_year_ending_in(company: str, year: int) -> frappe._dict:
-	"""The Fiscal Year of the company that ends in the year: one that names the company, or one that names none and so
-	serves every company, as ERPNext reads them (Fiscal Year Company)."""
+	"""The Fiscal Year of the company that ends in the year: of those that are not disabled, one that names the company
+	before one that names none and so serves every company, as ERPNext orders them (Fiscal Year Company,
+	_get_fiscal_years in erpnext/accounts/utils.py), so that the short first Wirtschaftsjahr of a company founded in
+	the year stands beside a calendar year for every company. There has to be exactly one."""
 	ending = frappe.get_all(
 		"Fiscal Year",
 		filters={"disabled": 0, "year_end_date": ["between", (date(year, 1, 1), date(year, 12, 31))]},
 		fields=["name", "year_start_date", "year_end_date"],
 		order_by="year_end_date desc",
 	)
-	serving = [fiscal_year for fiscal_year in ending if _serves(fiscal_year.name, company)]
+	own, shared = [], []
+	for fiscal_year in ending:
+		companies = [row.company for row in frappe.get_cached_doc("Fiscal Year", fiscal_year.name).companies]
+		if company in companies:
+			own.append(fiscal_year)
+		elif not companies:
+			shared.append(fiscal_year)
+	serving = own or shared
 	if len(serving) != 1:
 		frappe.throw(
 			_("{0} needs exactly one Fiscal Year that ends in {1}, not {2}.").format(
@@ -865,11 +874,6 @@ def fiscal_year_ending_in(company: str, year: int) -> frappe._dict:
 			)
 		)
 	return serving[0]
-
-
-def _serves(fiscal_year: str, company: str) -> bool:
-	companies = [row.company for row in frappe.get_cached_doc("Fiscal Year", fiscal_year).companies]
-	return not companies or company in companies
 
 
 def _rows(rows) -> list[dict[str, Any]]:

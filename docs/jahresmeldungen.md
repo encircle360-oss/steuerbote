@@ -30,7 +30,7 @@ Jeder Beleg einer Jahresmeldung hat diese Felder mit diesen Feldnamen, Typen und
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
 | `company`, `year` | Unternehmen, Jahr | Pflicht. Das Jahr ist der Veranlagungszeitraum (VZ) von Umsatzsteuer und Körperschaftsteuer, der Erhebungszeitraum (EZ) der Gewerbesteuer und bei E-Bilanz und Jahresabschluss das Jahr, in dem das Wirtschaftsjahr endet |
-| `fiscal_year`, `from_date`, `to_date` | Geschäftsjahr, Von-Datum, Bis-Datum | setzt jedes Speichern: das Geschäftsjahr, das im Jahr endet, eines des Unternehmens oder eines ohne Unternehmen, das allen dient, wie ERPNext sie liest (Fiscal Year Company). Es muss genau eines geben |
+| `fiscal_year`, `from_date`, `to_date` | Geschäftsjahr, Von-Datum, Bis-Datum | setzt jedes Speichern: das Geschäftsjahr, das im Jahr endet, eines des Unternehmens vor einem ohne Unternehmen, das allen dient, wie ERPNext sie ordnet (Fiscal Year Company, `_get_fiscal_years`), damit ein kurzes erstes Wirtschaftsjahr neben dem Kalenderjahr der übrigen Unternehmen steht. Es muss genau eines geben |
 | `status` | Status | setzt nur Steuerbote, siehe [Status](#status) |
 | `ready`, `remarks` | Bereit zur Abgabe, Anmerkungen | „Bereit zur Abgabe“ setzt „Berechnen“. Die Anmerkungen begründen, warum ein Beleg, der nicht bereit ist, trotzdem abgegeben wird; nach einem Senden ändern sich nur noch sie |
 | `deadline` | Fälligkeitsdatum | was `compute_deadline` des Moduls nennt, gesetzt mit dem Geschäftsjahr |
@@ -173,6 +173,35 @@ Die Teile lesen, was `annual_print()` des Belegs gibt: `accounts` (ein Jahresabs
 - Über dem Formular: ob der Beleg bereit ist oder wie viele Fehler ihn anhalten, wann und wie er abgegeben wurde, die Hinweise der Übermittlung und die Fehler und Hinweise des letzten Laufs.
 
 Die Texte, die den Beleg nennen, gibt das Formular in `texts` mit: für `elster_transmission.js` `unsaved`, `send`, `test_send`, `sent`, `running` und nach Bedarf `simulation` (eine Funktion des Links auf die ERiC-Einstellungen), `send_label` und `simulated_test_send`; für `annual_filing.js` nach Bedarf `berichtigung` (die Rückfrage vor „Berichtigung anlegen“), `ready` (der Hinweis an einem bereiten Beleg) und `filed_outside_example` (ein Beispiel für „Wie und wann abgegeben“).
+
+## Zusammenspiel der Jahresmeldungen
+
+Die Jahresmeldungen eines Jahres bauen aufeinander auf: Die E-Bilanz übermittelt den Inhalt der Bilanz und der Gewinn- und Verlustrechnung (§ 5b Abs. 1 Satz 1 EStG), also die des festgestellten Jahresabschlusses, und aus ihr kommt der Jahresüberschuss der Körperschaftsteuererklärung, auf der die Gewerbesteuererklärung aufbaut. Jeder Beleg nennt den, aus dem er nimmt, in einem Feld, das „Berechnen“ setzt, und vergleicht, wo zwei dasselbe zeigen:
+
+| Beleg | nimmt | aus | Feld, Befund |
+|---|---|---|---|
+| E-Bilanz | die Handelsbilanz zum Vergleich | dem Jahresabschluss des Jahres, dem festgestellten oder sonst seinem Entwurf | `annual_accounts`; `SB-JA-ABWEICHUNG`, `SB-JA-FEHLT`, siehe [Vergleich mit dem Jahresabschluss](ebilanz.md#vergleich-mit-dem-jahresabschluss) |
+| E-Bilanz | das Betriebsvermögen zum Ende des Vorjahres | der abgegebenen E-Bilanz des Vorjahres | `bvv_previous_equity`, siehe [Betriebsvermögensvergleich](ebilanz.md#betriebsvermögensvergleich) |
+| Körperschaftsteuererklärung | Anlage GK Zeile 11, bei einer Handelsbilanz mit Überleitungsrechnung mit der Überleitung | der E-Bilanz des Jahresabschlusses des Jahres | `electronic_balance_sheet`; `KST-EBILANZ-ABWEICHUNG`, `KST-UEBERLEITUNG-DOPPELT`, siehe [Aus der E-Bilanz](ertragsteuern.md#aus-der-e-bilanz) |
+| Körperschaftsteuererklärung | KSt 1 F Zeilen 17 und 18 | der abgegebenen E-Bilanz des Vorjahres | `KST-EIGENKAPITAL-QUELLE` |
+| Gewerbesteuererklärung | die Körperschaftsteuer, auf der sie rechnet | der Körperschaftsteuererklärung des Jahres | `corporate_income_tax_return`, siehe [Körperschaftsteuer- und Gewerbesteuererklärung](ertragsteuern.md) |
+| Umsatzsteuererklärung | die Umsatzerlöse zum Abgleich | dem festgestellten Jahresabschluss, sonst der abgegebenen E-Bilanz | `SB-UMSATZERLOESE`, siehe [Abgleich mit den Umsatzerlösen](umsatzsteuererklaerung.md#abgleich-mit-den-umsatzerlösen) |
+| Umsatzsteuererklärung | Kennzahlen und Vorauszahlungssoll | den abgegebenen Voranmeldungen | siehe [Abgleich mit den Voranmeldungen](umsatzsteuererklaerung.md#abgleich-mit-den-voranmeldungen) |
+
+Ein Unterschied hält nur dort an, wo dieselbe Zahl zweimal verschieden abgegeben würde: die E-Bilanz neben einem festgestellten Jahresabschluss, der anders ist, und die Körperschaftsteuererklärung neben einer E-Bilanz, die nicht mehr die Bücher zeigt. Die Umsatzerlöse neben den Umsätzen der Umsatzsteuererklärung sind nur ein Hinweis, denn beide zählen nicht genau dasselbe.
+
+Daraus folgt die Reihenfolge der Arbeit eines Jahres:
+
+1. **Bücher:** alle Buchungen des Geschäftsjahres, die Abschreibungen bis zum Bilanzstichtag eingeschlossen.
+2. **Rückstellungen:** die Körperschaftsteuererklärung berechnen, solange es keine E-Bilanz gibt aus den Büchern, und „Rückstellungen vorschlagen“; die Journalbuchung prüfen und buchen. Die Rückstellungen gehören in den Jahresabschluss.
+3. **Jahresabschluss:** berechnen, die Angaben beantworten und feststellen. Wer danach noch bucht, ändert die Bücher, nicht ihn: Er wird storniert, berichtigt und neu festgestellt.
+4. **E-Bilanz:** berechnen; sie nennt den Jahresabschluss und vergleicht ihre Handelsbilanz mit ihm.
+5. **Körperschaftsteuererklärung:** neu berechnen; sie nennt die E-Bilanz und nimmt aus ihr Zeile 11. Das zu versteuernde Einkommen bleibt das aus Schritt 2, denn die Zeilen 81 bis 84 rechnen die Steuern wieder hinzu, bis auf die Rundung der Zeilen (siehe [Grenzen](ertragsteuern.md#grenzen)).
+6. **Gewerbesteuererklärung:** auf der Körperschaftsteuererklärung berechnen.
+7. **Umsatzsteuererklärung:** berechnen; sie stellt ihre Umsätze neben die Umsatzerlöse des Jahresabschlusses.
+8. **Abgabe:** die Erklärungen und die E-Bilanz über ERiC oder mit dem Vermerk ihrer Abgabe, den Jahresabschluss beim Unternehmensregister. „Offene Fristen“ zeigt für jede Jahresmeldung des Jahres, was abgegeben und was offen ist, siehe [Fristen](fristen.md#jahresmeldungen).
+
+Die Frappe-Tests gehen diese Reihenfolge an einer erfundenen GmbH mit SKR04 durch (`steuerbote/tests/test_annual_year.py` auf `steuerbote/tests/annual_integration.py`), dazu das Jahr, dessen Jahresabschluss vor den Rückstellungen festgestellt ist.
 
 ## Für die Module
 

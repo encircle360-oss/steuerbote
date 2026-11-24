@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import TestCase
 
 from steuerbote.jahresmeldung.lifecycle import FILING, field_problems
-from steuerbote.steuerbote.doctype.annual_vat_return import bridge
+from steuerbote.steuerbote.doctype.annual_vat_return import bridge, revenue
 from steuerbote.steuerbote.doctype.vat_return_settings.rules import FilingRhythm, PeriodRule
 from steuerbote.ustjahr import calculation, reconciliation, rules, soll
 from steuerbote.ustjahr.calculation import calculate
@@ -406,13 +406,15 @@ def texts_of_the_sources() -> set[str]:
 
 
 def messages_of_the_core() -> set[str]:
-	"""What the core of the annual return and the bridge report, which the Frappe layer translates."""
+	"""What the core of the annual return, the bridge and the comparison with the Umsatzerlöse report, which the
+	Frappe layer translates."""
 	return {
 		*bridge.MESSAGES,
 		*calculation.MESSAGES,
 		*soll.MESSAGES,
 		*reconciliation.MESSAGES,
 		*rules.MESSAGES,
+		*revenue.MESSAGES,
 	}
 
 

@@ -65,6 +65,7 @@ NOTES = "notes"
 SIGNATORIES = "signatories"
 PRIOR_ENTRIES = "prior_entries"
 JOURNAL_ENTRY = "Journal Entry"
+ELECTRONIC_BALANCE_SHEET = "Electronic Balance Sheet"
 FINDING_DOCTYPE = "Annual Filing Finding"
 SETTINGS = "Annual Filing Settings"
 UG = "UG"
@@ -372,7 +373,10 @@ class AnnualAccounts(AnnualFiling, Document):
 		record_adoption(self.company, cint(self.year), getdate(self.adopted_on))
 
 	def on_cancel(self) -> None:
-		"""A cancelled Jahresabschluss is no longer festgestellt; its amendment records its own day."""
+		"""A cancelled Jahresabschluss is no longer festgestellt; its amendment records its own day. An E-Bilanz filed
+		with it keeps naming it as the Jahresabschluss Berechnen compared it with and holds no cancellation back: the
+		Berichtigung of the E-Bilanz is compared with the amendment."""
+		self.ignore_linked_doctypes = (ELECTRONIC_BALANCE_SHEET,)
 		record_adoption(self.company, cint(self.year), None)
 
 	# The steps after Berechnen.

@@ -100,8 +100,22 @@ class ControllerFilesTest(TestCase):
 				"bvv_previous_equity",
 				"bvv_founding_contribution",
 				"first_fiscal_year",
+				"annual_accounts",
 			},
 		)
+
+	def test_names_the_jahresabschluss_whose_handelsbilanz_berechnen_compares_it_with(self):
+		field = fields_of(NAME)["annual_accounts"]
+		self.assertEqual(
+			(field["fieldtype"], field["options"], field.get("read_only")), ("Link", "Annual Accounts", 1)
+		)
+		self.assertEqual(field["depends_on"], "eval:doc.statement_type!=='Eröffnungsbilanz'")
+		self.assertIn("comparison.findings(", CONTROLLER.read_text(encoding="utf-8"))
+
+	def test_the_jahresabschluss_lists_the_e_bilanzen_that_name_it(self):
+		source = (DOCTYPES / "annual_accounts" / "annual_accounts_dashboard.py").read_text(encoding="utf-8")
+		self.assertIn('"fieldname": "annual_accounts"', source)
+		self.assertIn('"items": ["Electronic Balance Sheet"]', source)
 
 	def test_the_key_is_the_company_the_year_and_the_bilanzart(self):
 		self.assertEqual(constant(CONTROLLER, "KEY_FIELDS", CLASS), ("company", "year", "statement_type"))

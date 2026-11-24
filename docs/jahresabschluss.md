@@ -9,7 +9,7 @@ Der Beleg lebt auf der Grundlage der Jahresmeldungen mit dem Lebenslauf `ACCOUNT
 - **Unternehmen:** eine GmbH oder UG (haftungsbeschränkt) mit den Einstellungen Jahresmeldungen und einer Bilanzzuordnung. Für eine Kleinstkapitalgesellschaft (§ 267a HGB) und eine kleine Gesellschaft (§ 267 Abs. 1 HGB) bereitet Steuerbote alles vor, was die Offenlegung braucht; für eine mittelgroße oder große Gesellschaft berechnet und druckt der Beleg Bilanz und Gewinn- und Verlustrechnung, Anhang und Offenlegung übernimmt die Steuerberatung oder der Abschlussprüfer.
 - **Geschäftsjahre:** das Geschäftsjahr von ERPNext, das im Jahr des Belegs endet, für die Offenlegung eines der HGB-Taxonomie 6.9, siehe [Umfang der Offenlegung](offenlegung.md#umfang).
 - **Gliederung:** die Bilanz nach § 266 HGB in der Kontoform der Größenklasse und die Gewinn- und Verlustrechnung nach dem Gesamtkostenverfahren (§ 275 Abs. 2 HGB), denn das Hauptbuch kennt die Art eines Aufwands, nicht seine Funktion (`steuerbote/hgb/schemes.py`).
-- **Nicht darin:** Lagebericht, Konzernabschluss, Umsatzkostenverfahren, Tabellen der Haftungsverhältnisse und der Vorschüsse und Kredite an Organmitglieder (sie stehen im Text und Betrag ihrer Angabe), der Vergleich mit der E-Bilanz und die Übermittlung selbst, siehe [Grenzen](#grenzen).
+- **Nicht darin:** Lagebericht, Konzernabschluss, Umsatzkostenverfahren, Tabellen der Haftungsverhältnisse und der Vorschüsse und Kredite an Organmitglieder (sie stehen im Text und Betrag ihrer Angabe), die Steuerbilanz und die Übermittlung selbst, siehe [Grenzen](#grenzen).
 
 ## Ablauf
 
@@ -199,13 +199,21 @@ Nach teilweiser Verwendung des Ergebnisses hält die Bilanz die Rücklage des Ja
 
 Das Druckformat druckt die Bilanz in Kontoform (§ 266 Abs. 1 Satz 1 HGB), Aktiva links und Passiva rechts, jeden Posten mit einem Betrag in einem der beiden Jahre (§ 265 Abs. 8 HGB) mit dem Betrag des Vorjahres, die Gewinn- und Verlustrechnung nach dem Gesamtkostenverfahren, die Angaben nach § 264 Abs. 1a HGB mit den Angaben unter der Bilanz oder dem Anhang, den Tag der Feststellung und jede Unterschrift mit Ort, Datum und „gez.“, die Ergebnisverwendung, das Hochladen zum Unternehmensregister, die Korrekturen, die Befunde und die Anmerkungen. Es rechnet nichts. Die Vorschau der Offenlegung ist dasselbe Druckformat mit dem Teil `templates/includes/annual_accounts/offenlegung.html`.
 
+## Für die E-Bilanz
+
+Die E-Bilanz des Jahres nennt den Jahresabschluss im Feld „Jahresabschluss“, den festgestellten oder sonst seinen Entwurf, und „Berechnen“ an der E-Bilanz vergleicht ihre Handelsbilanz mit dem, was er offenlegt, in vollen Euro: bei HGBM jeden Posten der Bilanz, Summe Aktiva, Summe Passiva und den Jahresüberschuss/Jahresfehlbetrag, bei HAOE Summe Aktiva und Jahresüberschuss/Jahresfehlbetrag, siehe [Vergleich mit dem Jahresabschluss](ebilanz.md#vergleich-mit-dem-jahresabschluss). Weicht ein festgestellter Jahresabschluss ab, hält das die E-Bilanz von „Bereit“ ab; der übliche Grund ist eine Buchung nach der Feststellung, nach der er storniert, berichtigt und neu festgestellt wird. Der Jahresabschluss zeigt die E-Bilanzen, die ihn nennen, unter seinen Verbindungen. Stornieren lässt er sich auch, wenn eine abgegebene E-Bilanz ihn nennt: Sie bleibt, wie sie abgegeben ist, und ihre Berichtigung nennt die Berichtigung des Jahresabschlusses.
+
+## Für die Umsatzsteuererklärung
+
+Die Umsatzerlöse des festgestellten Jahresabschlusses (`umsatzerloese`) stellt „Berechnen“ an der Umsatzsteuererklärung des Jahres neben die Bemessungsgrundlagen ihrer Lieferungen und sonstigen Leistungen; eine Differenz über die Rundung und die Toleranz hinaus ist der Hinweis `SB-UMSATZERLOESE`, siehe [Abgleich mit den Umsatzerlösen](umsatzsteuererklaerung.md#abgleich-mit-den-umsatzerlösen). Ein Entwurf zählt dafür nicht; ohne festgestellten Jahresabschluss nimmt die Umsatzsteuererklärung die Umsatzerlöse der abgegebenen E-Bilanz. Warum der Jahresabschluss nach den Rückstellungen und vor der E-Bilanz festgestellt wird, sagt [Zusammenspiel der Jahresmeldungen](jahresmeldungen.md#zusammenspiel-der-jahresmeldungen).
+
 ## Grenzen
 
 - **Haftungsverhältnisse und Organkredite:** keine eigenen Tabellen; Text und Betrag der Angabe tragen sie, die XBRL-Datei schreibt sie so.
 - **Größenmerkmale:** „Berechnen“ schreibt die Merkmale und die Klasse nicht in die Einstellungen Jahresmeldungen; der Hinweis `JA-GROESSE-EINSTELLUNGEN` sagt, wann sie dort fehlen.
 - **Gesetzliche Rücklage der UG:** ob die Rücklage im Abschluss des Jahres oder erst mit der Ergebnisverwendung entsteht, prüft die Steuerberatung.
 - **Status des Berichts:** dass eine Berichtigung nach dem Upload als „geändert“ gemeldet wird, ist nicht mit dem Unternehmensregister geprüft.
-- **E-Bilanz:** Der Vergleich von Handels- und Steuerbilanz mit der E-Bilanz kommt mit ihr.
+- **E-Bilanz:** Der Jahresabschluss rechnet keine Steuerbilanz und prüft nichts gegen die E-Bilanz; den Vergleich macht „Berechnen“ an der E-Bilanz, siehe [Für die E-Bilanz](#für-die-e-bilanz).
 - **Dateien:** Steuerbote schützt die Dateien am Beleg nicht gegen Löschen.
 
 ## Quellen

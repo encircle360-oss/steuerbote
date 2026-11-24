@@ -27,6 +27,7 @@ Je Unternehmen, Jahr und Bilanzart ein Beleg, benannt nach dem Jahr, für das er
 | `accounting_standard` | Bilanzierungsstandard | HAOE (Vorgabe), HGBM oder AO; das Formular einer neuen E-Bilanz übernimmt den der Einstellungen Jahresmeldungen |
 | `taxonomy_version` | HGB-Taxonomie | die Version, deren Positionen die E-Bilanz meldet, heute 6.9; die Bilanzzuordnung nennt dieselbe |
 | `first_fiscal_year` | Gründungsjahr | setzt „Berechnen“: Das Gründungsdatum des Unternehmens liegt im Wirtschaftsjahr. Vor ihm gab es kein Betriebsvermögen und kein Anlagevermögen |
+| `annual_accounts` | Jahresabschluss | setzen eine neue E-Bilanz und jedes „Berechnen“: der Jahresabschluss des Unternehmens und Jahres, der festgestellte oder sonst sein Entwurf, mit dem „Berechnen“ die Handelsbilanz vergleicht, siehe [Vergleich mit dem Jahresabschluss](#vergleich-mit-dem-jahresabschluss); eine Eröffnungsbilanz nennt keinen |
 | `commercial_finance_book` | Finanzbuch der Handelsbilanz | das Finanzbuch der Handelsbilanz und der Einheitsbilanz; leer die Buchungen ohne Finanzbuch. Eine neue E-Bilanz übernimmt das der Einstellungen Jahresmeldungen |
 | `tax_finance_book` | Finanzbuch der Steuerbilanz | das Finanzbuch der Steuerbilanz: bei AO die Bücher der E-Bilanz, bei HGBM die Quelle der Überleitungsrechnung; ebenso aus den Einstellungen |
 | `positions` | Positionen | Tabelle „Position der E-Bilanz“, siehe [Positionen](#positionen-korrekturen-und-zeilen-von-hand) |
@@ -55,6 +56,7 @@ Rechte wie bei der Voranmeldung: System Manager und Accounts Manager legen an, b
 5. **Überleitungsrechnung:** bei HGBM aus dem Finanzbuch der Steuerbilanz und von Hand, siehe [Überleitungsrechnung](#überleitungsrechnung).
 6. **Betriebsvermögensvergleich und GCD:** das Betriebsvermögen des Vorjahres und die Angaben des Belegs, siehe [Betriebsvermögensvergleich](#betriebsvermögensvergleich), und die Stammdaten der GCD aus den Einstellungen Jahresmeldungen: Name, Anschrift mit Hausnummer, die Steuernummer für Körperschaftsteuer und E-Bilanz im ELSTER-Format, der Gegenstand des Unternehmens, der Status des Berichts und das vorangegangene Geschäftsjahr, im Gründungsjahr keines (Leitfaden B.18).
 7. **Kern:** `steuerbote.ebilanz.instance.build()` rechnet Positionen und Summen, Überleitung, Betriebsvermögensvergleich, Anlagenspiegel und Kontensalden und schreibt die Instanz. `bridge.py` bringt das Ergebnis in die Tabellen und Felder des Belegs.
+8. **Jahresabschluss:** die Handelsbilanz neben der des Jahresabschlusses des Jahres, siehe [Vergleich mit dem Jahresabschluss](#vergleich-mit-dem-jahresabschluss).
 
 Eine Änderung an dem, was „Berechnen“ liest, an einer berechneten E-Bilanz, also am Bilanzierungsstandard, an der Taxonomie, an einem Finanzbuch, an den Angaben des Betriebsvermögensvergleichs, an einer Spalte oder Zeile von Hand des Anlagenspiegels oder an einem Eintrag von Hand der Überleitung, setzt sie auf „Berechnet“ mit dem Befund `SB-NEU-BERECHNEN`. Abgeben lässt sie sich erst nach einem neuen „Berechnen“, denn Summen, Steuerbilanz und Betriebsvermögensvergleich folgen über die Taxonomie aus diesen Angaben.
 
@@ -106,7 +108,8 @@ Ein anderer Betrag, etwa der eines Bescheids, geht mit Begründung in „Betrieb
 - kein Saldo ohne Platz in der Bilanzzuordnung und kein Fehler der Prüfungen des Kerns: Mussfelder, Summen, Oberpositionen, Anlagenspiegel, Überleitung, Kontensalden und Instanz;
 - jede Anpassung in ERPNext auf einem Anlagenkonto in einer Spalte des Anlagenspiegels;
 - die Abschreibungen bis zum Bilanzstichtag gebucht, mit einem Abschreibungsplan je Anlage und Finanzbuch;
-- eine vollständige GCD: Name, Anschrift und die Steuernummer im ELSTER-Format.
+- eine vollständige GCD: Name, Anschrift und die Steuernummer im ELSTER-Format;
+- ist der Jahresabschluss des Jahres festgestellt, dieselbe Handelsbilanz wie er.
 
 Ein fehlender Periodenabschlussbeleg ist nur ein Hinweis: Die E-Bilanz nimmt den Jahresüberschuss aus der GuV und braucht ihn nicht.
 
@@ -120,6 +123,8 @@ Ein fehlender Periodenabschlussbeleg ist nur ein Hinweis: Die E-Bilanz nimmt den
 | `SB-ANLAGE-DOPPELT` | Fehler | eine Anlage hat einen Plan in einem Finanzbuch der E-Bilanz und einen ohne Finanzbuch |
 | `SB-PERIODENABSCHLUSS` | Hinweis | für das Geschäftsjahr ist kein Periodenabschlussbeleg gebucht |
 | `SB-NEU-BERECHNEN` | Fehler | seit dem Berechnen hat sich etwas geändert, das „Berechnen“ liest |
+| `SB-JA-ABWEICHUNG` | Fehler, Hinweis | ein Posten der Handelsbilanz liegt einen Euro oder mehr neben dem des Jahresabschlusses: ein Fehler, wenn der Jahresabschluss festgestellt ist, sonst ein Hinweis |
+| `SB-JA-FEHLT` | Hinweis | der Jahresabschluss des Jahres ist nicht berechnet, verglichen ist nichts |
 | `BILANZ-OHNE-PLATZ`, `BILANZ-OHNE-KONTONUMMER`, `BILANZ-BEOBACHTET`, `BILANZ-POSITION`, `BILANZ-NICHT-GUELTIG`, `BILANZ-ABSCHLUSSKONTO`, `BILANZ-TAXONOMIE` | Fehler | die Bilanzzuordnung: ein Saldo ohne Platz oder ohne Kontonummer, ein beobachtetes Konto, eine Position, die es nicht gibt oder die im Wirtschaftsjahr nicht gilt, das Ergebnis früherer Jahre ohne Abschlusskonto, eine andere Taxonomie |
 | `BILANZ-AUSSERHALB`, `BILANZ-ABSCHLUSSZWECK`, `BILANZ-AUFFANGPOSITION`, `BILANZ-ERGEBNISVORTRAG` | Hinweis | ein Saldo außerhalb von Bilanz und GuV oder nur für eine andere Bilanz, eine Auffangposition, das Ergebnis früherer Jahre auf dem Abschlusskonto |
 | `EB-NICHT-ZUGEORDNET`, `EB-POSITION`, `EB-BERECHNET`, `EB-DAVON` | Fehler | eine Position, die die E-Bilanz nicht nimmt: kein Platz, für die Finanzverwaltung nicht zulässig, eine Position des Betriebsvermögensvergleichs oder eine „davon“-Position |
@@ -166,13 +171,25 @@ Darüber stellt er die Umsatzerlöse der E-Bilanz, „Umsatzerlöse (GKV)“, ne
 
 Rollen wie bei dem Beleg: Accounts Manager, Accounts User und System Manager. Bezeichnungen zeigt der Bericht als Text, nie als HTML.
 
+## Vergleich mit dem Jahresabschluss
+
+Die Bilanz der E-Bilanz ist die des Jahresabschlusses: „Wird der Gewinn nach § 4 Absatz 1, § 5 oder § 5a ermittelt, so ist der Inhalt der Bilanz, der Gewinn- und Verlustrechnung [...] nach amtlich vorgeschriebenem Datensatz durch Datenfernübertragung zu übermitteln“ (§ 5b Abs. 1 Satz 1 EStG), und „Enthält die Bilanz Ansätze oder Beträge, die den steuerlichen Vorschriften nicht entsprechen, so sind diese Ansätze oder Beträge durch Zusätze oder Anmerkungen den steuerlichen Vorschriften anzupassen“ (§ 5b Abs. 1 Satz 2 EStG): Das ist die Überleitungsrechnung. Beide Belege lesen dieselben Bücher über dieselbe Bilanzzuordnung, der Jahresabschluss in der handelsrechtlichen Ansicht mit den Posten des § 266 HGB seiner Größenklasse, die E-Bilanz in der steuerlichen mit ihren tieferen Positionen. Eine neue E-Bilanz nennt im Feld „Jahresabschluss“ den Jahresabschluss ihres Unternehmens und Jahres, den festgestellten oder, solange keiner festgestellt ist, seinen Entwurf, und jedes „Berechnen“ nennt ihn neu. „Berechnen“ vergleicht dann mit dem, was der Jahresabschluss offenlegt, in vollen Euro (`electronic_balance_sheet/comparison.py`):
+
+- **HGBM:** jeden Posten seiner Bilanz, Summe Aktiva, Summe Passiva und den Jahresüberschuss/Jahresfehlbetrag mit den Beträgen der Handelsbilanz der E-Bilanz vor der Überleitung, wo die E-Bilanz die Position führt;
+- **HAOE:** Summe Aktiva und Jahresüberschuss/Jahresfehlbetrag als Plausibilität, denn eine Einheitsbilanz kann schon an das Steuerrecht angepasst sein (Leitfaden B.13);
+- **AO:** nichts, denn eine Steuerbilanz ist keine Handelsbilanz.
+
+Weniger als ein Euro ist Rundung. Liegt ein Posten einen Euro oder mehr daneben, nennt `SB-JA-ABWEICHUNG` ihn mit beiden Beträgen und dem Unterschied: als Fehler, der die E-Bilanz von „Bereit“ abhält, wenn der Jahresabschluss festgestellt ist (§ 42a Abs. 2 Satz 1 GmbHG), sonst als Hinweis, denn er kann sich noch ändern. Der übliche Grund ist eine Buchung nach der Feststellung; dann wird der Jahresabschluss storniert, berichtigt und neu festgestellt, siehe [Feststellung](jahresabschluss.md#feststellung). Ist der Jahresabschluss nicht berechnet, sagt `SB-JA-FEHLT`, dass nichts verglichen ist. Ohne Jahresabschluss in Steuerbote, etwa wenn die Steuerberatung ihn aufstellt, vergleicht „Berechnen“ nichts, und das Feld bleibt leer.
+
+Wird der Jahresabschluss storniert, nachdem „Berechnen“ die E-Bilanz mit ihm verglichen hat, lässt sie sich erst nach einem neuen „Berechnen“ abgeben, das sie mit seiner Berichtigung vergleicht. Eine abgegebene E-Bilanz hält das Stornieren nicht auf: Sie nennt weiter den Jahresabschluss, mit dem sie verglichen ist, und ihre Berichtigung nennt den neuen. Der Jahresabschluss zeigt die E-Bilanzen, die ihn nennen, unter seinen Verbindungen. Wo der Vergleich in der Arbeit eines Jahres steht, sagt [Zusammenspiel der Jahresmeldungen](jahresmeldungen.md#zusammenspiel-der-jahresmeldungen).
+
 ## Für die Körperschaftsteuererklärung
 
-Die Körperschaftsteuererklärung nimmt heute den Jahresüberschuss aus dem Hauptbuch und die Überleitung von Hand ([Körperschaftsteuer- und Gewerbesteuererklärung](ertragsteuern.md#zeilen-korrekturen-und-zeilen-von-hand)). Die E-Bilanz hält, was sie dafür braucht: den Jahresüberschuss der Handelsbilanz (`net_income`) mit den Einträgen der Überleitungsrechnung und dem Jahresüberschuss der Steuerbilanz (`tax_net_income`) für Anlage GK Zeile 11, und das Betriebsvermögen der Steuerbilanz (`tax_equity`) und die Beträge der Steuerbilanz der Positionen, etwa des gezeichneten Kapitals (`bs.eqLiab.equity.subscribed`), für KSt 1 F Zeilen 17 und 18 des Folgejahres. Die Verknüpfung beider Belege folgt.
+Die Körperschaftsteuererklärung nennt die E-Bilanz ihres Jahres im Feld „E-Bilanz“ und nimmt aus ihr Anlage GK Zeile 11, siehe [Aus der E-Bilanz](ertragsteuern.md#aus-der-e-bilanz): den Jahresüberschuss der GuV, bei HGBM der Handelsbilanz (`net_income`), und den Unterschied zum Jahresüberschuss der Steuerbilanz nach der Überleitungsrechnung (`tax_net_income`). „Berechnen“ an der Körperschaftsteuererklärung nimmt die E-Bilanz des Jahresabschlusses, die berechnet, bereit oder abgegeben und nicht ersetzt ist; wer nach der E-Bilanz noch bucht, etwa die vorgeschlagenen Rückstellungen, berechnet sie neu, bevor die Erklärung ihren Jahresüberschuss nimmt. Für KSt 1 F Zeilen 17 und 18 des Folgejahres nimmt die Körperschaftsteuererklärung von der abgegebenen E-Bilanz, die keine Berichtigung ersetzt hat, das Betriebsvermögen der Steuerbilanz (`tax_equity`) und den Betrag der Steuerbilanz des gezeichneten Kapitals (`bs.eqLiab.equity.subscribed`).
 
 ## Grenzen
 
-- Die Handelsbilanz kommt aus dem Hauptbuch; die Verknüpfung mit dem Beleg „Jahresabschluss“ (`Annual Accounts`) als ihrer Quelle folgt.
+- Die Handelsbilanz kommt aus dem Hauptbuch, nicht aus dem Beleg „Jahresabschluss“ (`Annual Accounts`); „Berechnen“ vergleicht sie mit ihm, siehe [Vergleich mit dem Jahresabschluss](#vergleich-mit-dem-jahresabschluss).
 - Keine Vorjahreswerte, keine Ergänzungs- und Sonderbilanzen, keine Kapitalkontenentwicklung, keine GuV im Umsatzkostenverfahren.
 - Ein Wirtschaftsjahr je Jahr und Bilanzart; zwei Geschäftsjahre, die im selben Jahr enden und dasselbe Unternehmen nennen, lehnt der Beleg ab.
 - Der Anlagenspiegel liest je Anlage und Kategorie, was das Anlagenmodul bucht; Umbuchungen, Zuschreibungen und die übrigen Arten der Abschreibung kommen von Hand.
@@ -182,7 +199,7 @@ Die Körperschaftsteuererklärung nimmt heute den Jahresüberschuss aus dem Haup
 
 ## Quellen
 
-- EStG § 5b, § 7 Abs. 1; HGB §§ 253 Abs. 3, 284 Abs. 3, gelesen am 23.11.2026 auf gesetze-im-internet.de.
+- EStG § 5b, § 7 Abs. 1; HGB §§ 253 Abs. 3, 284 Abs. 3, gelesen am 23.11.2026 auf gesetze-im-internet.de; EStG § 5 Abs. 1 Satz 1, GmbHG § 42a Abs. 2 Satz 1 und EStDV § 60 Abs. 2 Satz 1, gelesen am 24.11.2026 ebenda.
 - BMF-Schreiben vom 10.06.2025, IV C 6 - S 2133-b/00064/002/006, BStBl I S. 1450; Technischer Leitfaden zur HGB-Taxonomie 6.9, Stand 10.06.2025, A.11, A.14.2.2, B.13, B.14.3.2.12, B.14.12.1, B.15.1, B.18; FAQ zur E-Bilanz, Version 2026-01, Tz. 4 d, 5 und 9; alle auf <https://www.esteuer.de/>.
 - HGB-Taxonomie 6.9: die steuerliche Ansicht `de-gaap-ci-2025-04-01-shell-fiscal.xsd`, die Regeln und strukturellen Fehler ihrer Jahresdokumentation in der ERiC-Dokumentation 44.3.6.0.
 - ERPNext 16: Bericht „Asset Depreciations and Balances“, Asset Depreciation Schedule, Asset Value Adjustment, Finance Book, Period Closing Voucher.

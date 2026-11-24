@@ -23,6 +23,7 @@
   "transmission_in_progress",
   "amended_from",
   "computation_section",
+  "electronic_balance_sheet",
   "net_income",
   "business_income",
   "sum_of_income",
@@ -206,6 +207,13 @@
    "fieldname": "computation_section",
    "fieldtype": "Section Break",
    "label": "Computation"
+  },
+  {
+   "description": "The E-Bilanz of the year whose Jahresüberschuss Anlage GK line 11 takes, under HGBM with the Überleitung to the Steuerbilanz. Berechnen takes the one named while it is calculated or filed and not replaced, else the newest such E-Bilanz of the company and year; without one, line 11 is the Jahresüberschuss of the books.",
+   "fieldname": "electronic_balance_sheet",
+   "fieldtype": "Link",
+   "label": "Electronic Balance Sheet",
+   "options": "Electronic Balance Sheet"
   },
   {
    "fieldname": "net_income",
@@ -527,7 +535,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-23 22:00:00.000000",
+ "modified": "2026-11-24 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Corporate Income Tax Return",
