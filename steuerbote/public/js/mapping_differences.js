@@ -1,10 +1,10 @@
 // The differences between a mapping and its defaults or a file, each with a box to take it over: Vorgaben
 // aktualisieren and Zuordnung importieren of the VAT Return Mapping, the Income Tax Mapping and the Balance Sheet
-// Mapping include this file. The server gives every difference in the words of the user (presented in the controller
-// of each mapping); the dialog only escapes them, and apply gets the ids of the differences checked. subject_label
-// heads the column of what a difference concerns, for a mapping without tax checks. apply_label is the label of the
-// button, or a function that words it for the number of differences checked, which the dialog asks again whenever a box
-// changes.
+// Mapping include this file, which also names the defaults a mapping waits for above its fields. The server gives
+// every difference in the words of the user (presented in the controller of each mapping); the dialog only escapes
+// them, and apply gets the ids of the differences checked. subject_label heads the column of what a difference
+// concerns, for a mapping without tax checks. apply_label is the label of the button, or a function that words it for
+// the number of differences checked, which the dialog asks again whenever a box changes.
 
 function show_mapping_differences({ title, intro, differences, unchanged, subject_label, proposed_label, show_origin, apply_label, apply }) {
 	const escape = frappe.utils.escape_html;
@@ -71,4 +71,18 @@ function take_over_label(version) {
 		}
 		return checked === 1 ? __("Take Over 1 Difference") : __("Take Over {0} Differences", [checked]);
 	};
+}
+
+// A mapping without rows that has not taken over the defaults of today, as one made while they were empty, waits for
+// them; the server names their version (onload of the controller) until the mapping has taken them over.
+function show_defaults_to_load(frm) {
+	const version = frm.doc.__onload && frm.doc.__onload.defaults_to_load;
+	frm.set_intro(
+		version && frm.doc.defaults_version !== version
+			? frappe.utils.escape_html(
+					__("This mapping has no rows. Load Defaults fetches the defaults {0}.", [version])
+			  )
+			: "",
+		"orange"
+	);
 }

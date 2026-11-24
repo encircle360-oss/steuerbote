@@ -15,7 +15,9 @@ those kept (steuerbote.mappings.diff), and „Zuordnung exportieren“ and „Zu
 compare_with_file, import_file) write and read the file of the mapping (steuerbote.mappings.transfer), all as in the
 VAT Return Mapping. The file names the version of the taxonomy whose positions its rows name; an import refuses
 another. „Konten prüfen“ (accounts_without_place) lists the ledger accounts of the company without a place in the
-mapping, and watch_accounts_without_place watches those with a number at the level Sperrt.
+mapping, and watch_accounts_without_place watches those with a number at the level Sperrt. A mapping without rows that
+has not taken over the defaults of today waits for them (waits_for_defaults), as one made while they were the empty
+table of revision 0: Steuerbote einrichten loads them into it, and its form names them above its fields.
 
 The E-Bilanz and the Jahresabschluss read the mapping through to_mapping() and place(), which puts the books of
 steuerbote/balances.py on the positions of the fiscal view of the taxonomy (steuerbote.xbrl.mapping.place).
@@ -149,6 +151,10 @@ class BalanceSheetMapping(Document):
 		taxonomy_version: DF.Literal["6.9", "6.10"]
 		watched: DF.Table[BalanceSheetMappingWatchedAccount]
 	# end: auto-generated types
+
+	def onload(self) -> None:
+		"""The defaults the form names above its fields while the mapping waits for them."""
+		self.set_onload("defaults_to_load", self.defaults_of_today() if self.waits_for_defaults() else None)
 
 	def validate(self):
 		self.validate_accounts()

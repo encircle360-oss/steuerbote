@@ -10,6 +10,7 @@ frappe.ui.form.on("Balance Sheet Mapping", {
 	},
 
 	refresh(frm) {
+		show_defaults_to_load(frm);
 		frm.add_custom_button(__("Load Defaults"), () => {
 			const has_rows = ["rules", "watched", "excluded"].some((table) => (frm.doc[table] || []).length);
 			if (has_rows) {
@@ -51,6 +52,7 @@ const OWN_CHART = "Eigener Kontenrahmen";
 function load_defaults(frm) {
 	frm.call("load_defaults").then((r) => {
 		frm.dirty();
+		show_defaults_to_load(frm);
 		const without_place = r.message || [];
 		if (without_place.length) {
 			frappe.msgprint({

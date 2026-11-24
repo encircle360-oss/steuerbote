@@ -9,7 +9,9 @@ the ledger accounts of the company, keeps the version of those defaults (default
 (defaults_rows), and names the DATEV accounts of the defaults the company lacks with their labels. „Vorgaben
 aktualisieren“ compares the rows with the defaults of today and with those kept (compare_with_defaults,
 steuerbote.mappings.diff), so that it can tell a change of the defaults from a change the user made, and takes over
-the differences chosen (update_from_defaults).
+the differences chosen (update_from_defaults). A mapping without rows that has not taken over the defaults of today
+waits for them (waits_for_defaults): Steuerbote einrichten loads them into it, and its form names them above its
+fields.
 
 „Zuordnung exportieren“ (export_mapping) writes the saved mapping into a file of the format
 steuerbote/income-tax-mapping (steuerbote.mappings.transfer) and attaches it privately. „Zuordnung importieren“ reads
@@ -93,6 +95,10 @@ class IncomeTaxMapping(Document):
 		rules: DF.Table[IncomeTaxMappingRule]
 		watched: DF.Table[IncomeTaxWatchedAccount]
 	# end: auto-generated types
+
+	def onload(self) -> None:
+		"""The defaults the form names above its fields while the mapping waits for them."""
+		self.set_onload("defaults_to_load", self.defaults_of_today() if self.waits_for_defaults() else None)
 
 	def validate(self):
 		self.validate_accounts()

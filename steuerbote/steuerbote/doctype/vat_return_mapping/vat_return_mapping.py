@@ -7,7 +7,9 @@ prüfen“ (check_tax_templates) lists the accounts of the company's tax templat
 „Vorgaben laden“ (load_defaults) replaces the rows by the defaults of the chart and keeps, besides the version of
 those defaults (defaults_version), the rows they gave (defaults_rows). „Vorgaben aktualisieren“ compares the rows
 with the defaults of today and with those kept (compare_with_defaults, steuerbote.mappings.diff), so that it can tell
-a change of the defaults from a change the user made, and takes over the differences chosen (update_from_defaults).
+a change of the defaults from a change the user made, and takes over the differences chosen (update_from_defaults). A
+mapping without rows that has not taken over the defaults of today waits for them (waits_for_defaults): Steuerbote
+einrichten loads them into it, and its form names them above its fields.
 
 „Zuordnung exportieren“ (export_mapping) writes the saved mapping into a file (steuerbote.mappings.transfer) and
 attaches it privately. „Zuordnung importieren“ reads such a file, uploaded privately to the mapping or pasted, checks
@@ -139,6 +141,10 @@ class VATReturnMapping(Document):
 		rules: DF.Table[VATReturnMappingRule]
 		watched: DF.Table[VATReturnWatchedAccount]
 	# end: auto-generated types
+
+	def onload(self) -> None:
+		"""The defaults the form names above its fields while the mapping waits for them."""
+		self.set_onload("defaults_to_load", self.defaults_of_today() if self.waits_for_defaults() else None)
 
 	def validate(self):
 		self.validate_accounts()
