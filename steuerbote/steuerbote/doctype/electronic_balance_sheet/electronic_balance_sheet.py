@@ -137,7 +137,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		tax_equity: DF.Currency
 		tax_finance_book: DF.Link | None
 		tax_net_income: DF.Currency
-		taxonomy_version: DF.Literal["6.9"]
+		taxonomy_version: DF.Literal["6.9", "6.10"]
 		to_date: DF.Date | None
 		total_assets: DF.Currency
 		total_equity_and_liabilities: DF.Currency
@@ -271,6 +271,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 				"to_date": end,
 				"stichtag": start if self._opening else end,
 				"deadline": self.compute_deadline(),
+				"taxonomy_version": bridge.taxonomy_for(start, end, self.taxonomy_version),
 			}
 		)
 

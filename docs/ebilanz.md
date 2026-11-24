@@ -25,7 +25,7 @@ Je Unternehmen, Jahr und Bilanzart ein Beleg, benannt nach dem Jahr, für das er
 | `revision_status` | Status des Berichts | setzt Steuerbote für die erste E-Bilanz auf E (erstmalig); eine Berichtigung nennt B (berichtigt), G (geändert), BG (berichtigt und geändert), sK (sonstige Korrektur) oder I (identischer Abschluss mit differenzierteren Informationen), siehe [Berichtigung](#berichtigung) |
 | `stichtag` | Bilanzstichtag | setzt jedes Speichern: das Ende des Wirtschaftsjahres, bei einer Eröffnungsbilanz sein erster Tag |
 | `accounting_standard` | Bilanzierungsstandard | HAOE (Vorgabe), HGBM oder AO; das Formular einer neuen E-Bilanz übernimmt den der Einstellungen Jahresmeldungen |
-| `taxonomy_version` | HGB-Taxonomie | die Version, deren Positionen die E-Bilanz meldet, heute 6.9; die Bilanzzuordnung nennt dieselbe |
+| `taxonomy_version` | HGB-Taxonomie | die Version, deren Positionen die E-Bilanz meldet: die gewählte, solange das Wirtschaftsjahr sie nehmen darf, sonst die, die es grundsätzlich nimmt, 6.9 für 2026 und 6.10 von 2027 an; die Bilanzzuordnung nennt dieselbe |
 | `first_fiscal_year` | Gründungsjahr | setzt „Berechnen“: Das Gründungsdatum des Unternehmens liegt im Wirtschaftsjahr. Vor ihm gab es kein Betriebsvermögen und kein Anlagevermögen |
 | `commercial_finance_book` | Finanzbuch der Handelsbilanz | das Finanzbuch der Handelsbilanz und der Einheitsbilanz; leer die Buchungen ohne Finanzbuch. Eine neue E-Bilanz übernimmt das der Einstellungen Jahresmeldungen |
 | `tax_finance_book` | Finanzbuch der Steuerbilanz | das Finanzbuch der Steuerbilanz: bei AO die Bücher der E-Bilanz, bei HGBM die Quelle der Überleitungsrechnung; ebenso aus den Einstellungen |
@@ -128,6 +128,7 @@ Ein fehlender Periodenabschlussbeleg ist nur ein Hinweis: Die E-Bilanz nimmt den
 | `EB-UEBERLEITUNG-BERECHNET`, `EB-UEBERLEITUNG-SUMME`, `EB-UEBERLEITUNG-VORPERIODE`, `EB-UEBERLEITUNG-BEGRUENDUNG`, `EB-UEBERLEITUNG-STEUERLICH` | Fehler | ein Eintrag der Überleitung, den Steuerbote selbst ableitet, auf einer Summe, mit Vorperiode auf einem Posten der GuV oder ohne Begründung, oder eine steuerlich nicht zulässige Position, die nicht auf null geht |
 | `EB-UMGLIEDERUNG` | Hinweis | die Umgliederungen ändern Eigenkapital oder Ergebnis |
 | `EB-KONTENSALDEN`, `EB-KONTENSALDEN-FEHLEN`, `EB-KONTENSALDEN-SUMME` | Fehler, Hinweis | ohne Kontensalden; ab der Taxonomie 6.10 braucht jede Position einen Kontensaldo, der ihren Betrag ergibt |
+| `EB-KONTENSALDEN-OHNE-KONTO` | Hinweis | ab der Taxonomie 6.10 eine Position von Hand ohne Konto der Bücher, die die E-Bilanz als Kontensaldo ohne Konteninformationen meldet; `EB-KONTENSALDEN-SUMME` ist dort ein Fehler |
 | `EB-STEUERNUMMER`, `EB-FINANZAMT`, `EB-KENNUNG`, `EB-GCD-ZEICHEN`, `EB-TAXONOMIE` | Fehler | die GCD: die Steuernummer, das Finanzamt, die Kennung einer Eröffnungsbilanz ohne Steuernummer, Zeichen, die ELSTER nicht nimmt, eine unbekannte Taxonomie |
 | `EB-INSTANZ` | Fehler | die XBRL-Instanz lässt sich nicht schreiben |
 | Regelnummer der Taxonomie, etwa `170185136` | Fehler | eine Regel oder ein struktureller Fehler der Jahresdokumentation der Taxonomie, die der Kern selbst prüft |
