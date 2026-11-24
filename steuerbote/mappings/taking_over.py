@@ -7,7 +7,9 @@ today only because they moved, and Vorgaben aktualisieren proposes the change; a
 user's own. Noting the defaults of today makes them the base, so from then on every difference left counts as the
 user's own and is no longer proposed.
 
-waits_for_defaults() tells the mapping that Steuerbote einrichten loads the defaults of today into, as into a new one.
+waits_for_defaults() tells the mapping that Steuerbote einrichten loads the defaults of today into, as into a new one,
+and notes_defaults() whether Vorgaben aktualisieren notes them: once it takes over a difference, or when the user
+declined them all.
 
 This module is pure Python and never imports Frappe.
 """
@@ -23,3 +25,11 @@ def waits_for_defaults(tables: Iterable[Sized], taken_over: str | None, today: s
 	A mapping without rows that took over the defaults of today stays as it is: they are its base, so every row of
 	them it lacks is one the user removed or one of an account the company does not have."""
 	return today is not None and taken_over != today and not any(tables)
+
+
+def notes_defaults(taken: int, acknowledged: bool) -> bool:
+	"""Whether Vorgaben aktualisieren notes the defaults of today as taken over after taking over ``taken`` differences:
+	once it takes over one, or when the user acknowledged the differences and declined them, as the dialog of the form
+	does for a choice of none. Without either, the mapping and its base stay as they are, and the differences stay
+	proposed."""
+	return taken > 0 or bool(acknowledged)

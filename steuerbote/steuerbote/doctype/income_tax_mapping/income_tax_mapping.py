@@ -188,12 +188,16 @@ class IncomeTaxMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
-	def update_from_defaults(self, chosen: list[str] | None = None) -> int:
+	def update_from_defaults(self, chosen: list[str] | None = None, acknowledge: bool = False) -> int:
 		"""Take over the chosen differences of compare_with_defaults, by their id, keep every other row, note the
-		defaults of today as taken over, and save. Returns how many differences it took over."""
+		defaults of today as taken over, and save. Taking over none notes them only with ``acknowledge``, the word of
+		the user that the differences are declined, which the dialog of the form gives; without it the mapping stays as
+		it is (steuerbote.mappings.taking_over.notes_defaults). Returns how many differences it took over."""
 		self._require_defaults()
 		current, proposed = self.current_items(), self._defaults_now()
 		keys = chosen_keys(diff.compare(current, proposed, self.defaults_taken_over()), chosen or [])
+		if not taking_over.notes_defaults(len(keys), acknowledge):
+			return 0
 		self._set_items(diff.apply(current, proposed, keys))
 		self._note_defaults(self._account_names().keys())
 		self.save()
