@@ -10,6 +10,7 @@ frappe.ui.form.on("Income Tax Mapping", {
 	},
 
 	refresh(frm) {
+		show_defaults_to_load(frm);
 		frm.add_custom_button(__("Load Defaults"), () => {
 			const has_rows = ["rules", "watched"].some((table) => (frm.doc[table] || []).length);
 			if (has_rows) {
@@ -47,6 +48,7 @@ const TRADING_CATEGORY = "trading_unclassified";
 function load_defaults(frm) {
 	frm.call("load_defaults").then((r) => {
 		frm.dirty();
+		show_defaults_to_load(frm);
 		const missing = r.message || [];
 		if (missing.length) {
 			show_missing_accounts(missing);
@@ -118,14 +120,14 @@ function update_defaults(frm) {
 			unchanged: comparison.unchanged,
 			proposed_label: __("Defaults {0}", [comparison.version]),
 			show_origin: true,
-			apply_label: __("Take Over the Checked"),
+			apply_label: take_over_label(comparison.version),
 			apply: (chosen, dialog) => take_over_defaults(frm, chosen, dialog),
 		});
 	});
 }
 
 function take_over_defaults(frm, chosen, dialog) {
-	frm.call("update_from_defaults", { chosen }).then((response) => {
+	frm.call("update_from_defaults", { chosen, acknowledge: 1 }).then((response) => {
 		if (dialog) {
 			dialog.hide();
 		}

@@ -2,11 +2,14 @@
 
 hooks.py names it in steuerbote_setup_steps, so that steuerbote.steuerbote.setup runs it after its own steps: it makes
 the Income Tax Mapping with the defaults of SKR03 or SKR04 for the accounts the company has (load_defaults), or one
-without rules for a chart of its own or an ambiguous one, and leaves a mapping the company has as it is. The trading
-accounts of the defaults get no class, and the defaults wait for the Steuerberatung, so the step leaves both open.
+without rules for a chart of its own or an ambiguous one, and leaves a mapping the company has as it is, unless that
+one waits for the defaults of today (waits_for_defaults): it has no rows and took over others or none, and gets them as
+a new one does. The trading accounts of the defaults get no class, and the defaults wait for the Steuerberatung, so the
+step leaves both open.
 """
 
 import frappe
+from frappe.model.document import Document
 
 from steuerbote.kst.categories import Category
 from steuerbote.kst.defaults import DEFAULTS
@@ -20,6 +23,7 @@ OWN_CHART = "Eigener Kontenrahmen"
 MAPPING_EXISTS = (
 	"The Income Tax Mapping of {0} exists already with the chart {1}; the setup leaves it as it is."
 )
+MAPPING_FILLED = "The Income Tax Mapping of {0} had no rows and now holds the defaults {1}: account rules {2}, watched accounts {3}."
 MAPPING_WITH_DEFAULTS = (
 	"Made the Income Tax Mapping with the defaults of {0}: account rules {1}, watched accounts {2}."
 )
@@ -45,6 +49,7 @@ AMBIGUOUS_CHART = (
 )
 MESSAGES = (
 	MAPPING_EXISTS,
+	MAPPING_FILLED,
 	MAPPING_WITH_DEFAULTS,
 	DEFAULTS_MISSING,
 	TRADING_WITHOUT_CLASS,
@@ -55,11 +60,20 @@ MESSAGES = (
 
 
 def run(context: SetupContext) -> StepResult:
-	"""The Income Tax Mapping, if the company has none."""
+	"""The Income Tax Mapping, if the company has none, or the defaults of today for one that waits for them."""
 	company = context.company
 	if frappe.db.exists(MAPPING, company):
-		chart = frappe.db.get_value(MAPPING, company, "chart")
-		return StepResult(Outcome.SKIPPED, (Note(MAPPING_EXISTS, (company, chart)),), (MAPPING, company))
+		mapping = frappe.get_doc(MAPPING, company)
+		if not mapping.waits_for_defaults():
+			return StepResult(
+				Outcome.SKIPPED, (Note(MAPPING_EXISTS, (company, mapping.chart)),), (MAPPING, company)
+			)
+		missing = mapping.load_defaults()
+		mapping.save()
+		filled = Note(
+			MAPPING_FILLED, (company, mapping.defaults_version, len(mapping.rules), len(mapping.watched))
+		)
+		return StepResult(Outcome.CREATED, (filled, *_open_points(mapping, missing)), (MAPPING, company))
 	detection = context.chart
 	mapping = frappe.new_doc(MAPPING)
 	mapping.company = company
@@ -71,7 +85,14 @@ def run(context: SetupContext) -> StepResult:
 	mapping.chart = detection.chart
 	missing = mapping.load_defaults()
 	mapping.insert()
-	notes = [Note(MAPPING_WITH_DEFAULTS, (mapping.chart, len(mapping.rules), len(mapping.watched)))]
+	made = Note(MAPPING_WITH_DEFAULTS, (mapping.chart, len(mapping.rules), len(mapping.watched)))
+	return StepResult(Outcome.CREATED, (made, *_open_points(mapping, missing)), (MAPPING, mapping.name))
+
+
+def _open_points(mapping: Document, missing: list[dict]) -> list[Note]:
+	"""What follows the defaults: the accounts of the defaults the company lacks, the trading accounts without a class
+	and the check by the Steuerberatung."""
+	notes = []
 	if missing:
 		notes.append(Note(DEFAULTS_MISSING, (len(missing),)))
 	if unclassified := [
@@ -81,4 +102,4 @@ def run(context: SetupContext) -> StepResult:
 	]:
 		notes.append(Note(TRADING_WITHOUT_CLASS, (", ".join(unclassified),), open=True))
 	notes.append(Note(CHECK_WITH_ADVISER, open=True))
-	return StepResult(Outcome.CREATED, tuple(notes), (MAPPING, mapping.name))
+	return notes

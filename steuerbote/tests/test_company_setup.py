@@ -276,6 +276,45 @@ class CompanySetupTest(IntegrationTestCase):
 			modified,
 		)
 
+	def test_gives_a_mapping_without_rows_the_defaults_as_it_gives_a_new_one(self):
+		"""A mapping made by hand without rows took over no defaults: the setup loads those of today into it and says
+		so, and a second run leaves it."""
+		frappe.get_doc({"doctype": MAPPING, "company": SET_UP_COMPANY, "chart": "SKR03"}).insert()
+		done = setup.run(SET_UP_COMPANY, TODAY)
+		result = result_of(done, "vat_return_mapping")
+		self.assertEqual((result.outcome, result.document), (Outcome.CREATED, (MAPPING, SET_UP_COMPANY)))
+		mapping = frappe.get_doc(MAPPING, SET_UP_COMPANY)
+		self.assertEqual(mapping.defaults_version, "SKR03 2026.1")
+		self.assertEqual(
+			[(row.account_number, row.kennzahl) for row in mapping.rules], [("8400", "81"), ("1576", "66")]
+		)
+		self.assertEqual([row.tax_accounts for row in mapping.checks], ["1776"])
+		self.assertEqual([(row.account_number, row.level) for row in mapping.watched], [("1548", "blocking")])
+		self.assertEqual(
+			texts_of(done, "vat_return_mapping"),
+			[
+				f"The VAT Return Mapping of {SET_UP_COMPANY} had no rows and now holds the defaults SKR03 2026.1: "
+				"account rules 2, tax checks 1, watched accounts 1.",
+				f"{len(mapping.load_defaults())} accounts of the defaults do not exist in the company and were left "
+				"out.",
+			],
+		)
+		self.assertEqual(outcomes(setup.run(SET_UP_COMPANY, TODAY))["vat_return_mapping"], Outcome.SKIPPED)
+
+	def test_leaves_a_mapping_with_rows_as_it_is_whatever_defaults_it_took_over(self):
+		"""Newer defaults reach a mapping with rows through Vorgaben aktualisieren only."""
+		make_mapping(SET_UP_COMPANY).db_set("defaults_version", "SKR03 2025.4")
+		modified = frappe.db.get_value(MAPPING, SET_UP_COMPANY, "modified")
+		result = result_of(setup.run(SET_UP_COMPANY, TODAY), "vat_return_mapping")
+		self.assertEqual(
+			(result.outcome, result.notes),
+			(Outcome.SKIPPED, (Note(setup.MAPPING_EXISTS, (SET_UP_COMPANY, "SKR03")),)),
+		)
+		self.assertEqual(
+			frappe.db.get_value(MAPPING, SET_UP_COMPANY, ["defaults_version", "modified"]),
+			("SKR03 2025.4", modified),
+		)
+
 	def test_takes_the_chart_from_the_template_of_the_company(self):
 		done = setup.run(SKR04_COMPANY, TODAY)
 		mapping = frappe.get_doc(MAPPING, SKR04_COMPANY)

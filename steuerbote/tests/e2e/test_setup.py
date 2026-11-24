@@ -132,7 +132,8 @@ def remove_what_a_run_set_up(desk, company: str) -> None:
 def test_vorgaben_aktualisieren_proposes_the_changes_of_the_defaults_and_keeps_your_own(desk, expect):
 	"""Vorgaben laden sets the mapping of the fourth company back; then it looks as if older defaults had mapped 8400
 	to Kz 86 and the user had set 1548 to the level Hinweis. The dialog checks the change of the defaults and leaves
-	the user's own unchecked, and taking over the checked one changes 8400 alone."""
+	the user's own unchecked, its button says how many differences a click takes over, or with none checked that it
+	notes the defaults as seen, and taking over the checked one changes 8400 alone."""
 	desk.open(f"/desk/vat-return-mapping/{quote(data.MAPPING_COMPANY)}")
 	expect(desk.grid_rows("rules").first).to_be_visible()
 	desk.button("Vorgaben laden").click()
@@ -159,6 +160,14 @@ def test_vorgaben_aktualisieren_proposes_the_changes_of_the_defaults_and_keeps_y
 	expect(dialog.locator('input.steuerbote-difference[value="account:1548"]')).not_to_be_checked()
 	expect(dialog).to_contain_text("Vorgabe geändert")
 	expect(dialog).to_contain_text("Eigene Änderung")
+	button = dialog.locator(".btn-modal-primary")
+	expect(button).to_have_text("1 Unterschied übernehmen")
+	dialog.locator('input.steuerbote-difference[value="account:8400"]').uncheck()
+	expect(button).to_have_text("Keinen übernehmen und die Vorgaben SKR03 2026.1 als gesehen vermerken")
+	dialog.locator("input.steuerbote-all-differences").check()
+	expect(button).to_have_text("2 Unterschiede übernehmen")
+	dialog.locator('input.steuerbote-difference[value="account:1548"]').uncheck()
+	expect(button).to_have_text("1 Unterschied übernehmen")
 	assert desk.run_doc_method("update_from_defaults", lambda: desk.answer_dialog(yes=True)).ok
 	expect(dialog).to_have_count(0)
 	desk.settle()

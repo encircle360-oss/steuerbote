@@ -1,5 +1,6 @@
 """Vorgaben aktualisieren for the Income Tax Mapping on a site: the differences to the defaults of today with their
-origin, and taking over some of them while the rest stays."""
+origin, taking over some of them while the rest stays, a call without a choice, which notes the defaults of today only
+when the user declined the differences, and the defaults a mapping without rows waits for, which its form names."""
 
 import frappe
 from frappe.tests import IntegrationTestCase
@@ -36,6 +37,12 @@ def make_accounts(company: str) -> dict[str, str]:
 
 def ids(comparison: dict) -> list[tuple[str, bool]]:
 	return [(difference["id"], difference["proposes"]) for difference in comparison["differences"]]
+
+
+def defaults_to_load(mapping) -> str | None:
+	"""The defaults the form of the mapping names above its fields, as Vorgaben laden would fetch them."""
+	mapping.run_method("onload")
+	return mapping.get_onload("defaults_to_load")
 
 
 class IntegrationTestIncomeTaxDefaultsUpdate(IntegrationTestCase):
@@ -158,8 +165,54 @@ class IntegrationTestIncomeTaxDefaultsUpdate(IntegrationTestCase):
 	def test_update_with_nothing_chosen_only_notes_the_defaults_of_today(self):
 		self.as_if_built_from(self.defaults())
 		self.assertEqual(self.mapping.compare_with_defaults()["differences"], [])
-		self.assertEqual(self.mapping.update_from_defaults([]), 0)
+		self.assertEqual(self.mapping.update_from_defaults([], acknowledge=True), 0)
 		self.assertEqual(frappe.db.get_value(MAPPING, COMPANY, "defaults_version"), VERSION)
+
+	def test_update_without_a_choice_and_without_the_word_of_the_user_changes_nothing(self):
+		"""As a client of the API calls it, without the dialog: neither the rows nor the defaults taken over change, so
+		the change of the defaults stays proposed."""
+		old = dict(self.defaults())
+		old[(ACCOUNT, "2200")] = {**old[(ACCOUNT, "2200")], "category": "solz"}
+		self.as_if_built_from(old)
+		before = frappe.get_doc(MAPPING, COMPANY)
+		for chosen in (None, [], ["account:2654-not-a-difference"]):
+			with self.subTest(chosen=chosen):
+				self.assertEqual(frappe.get_doc(MAPPING, COMPANY).update_from_defaults(chosen), 0)
+				stored = frappe.get_doc(MAPPING, COMPANY)
+				self.assertEqual(
+					(stored.defaults_version, stored.defaults_rows, stored.modified),
+					(before.defaults_version, before.defaults_rows, before.modified),
+				)
+				self.assertEqual(stored.current_items(), old)
+		self.assertEqual(
+			ids(frappe.get_doc(MAPPING, COMPANY).compare_with_defaults()), [("account:2200", True)]
+		)
+
+	def test_update_with_nothing_chosen_and_the_word_of_the_user_declines_the_differences(self):
+		"""The dialog says so when the user takes over none: the defaults of today become the base, and the change of
+		the defaults left counts as the user's own from then on."""
+		old = dict(self.defaults())
+		old[(ACCOUNT, "2200")] = {**old[(ACCOUNT, "2200")], "category": "solz"}
+		self.as_if_built_from(old)
+		self.assertEqual(self.mapping.update_from_defaults([], acknowledge=True), 0)
+		stored = frappe.get_doc(MAPPING, COMPANY)
+		self.assertEqual(stored.defaults_version, VERSION)
+		self.assertEqual(load_items(stored.defaults_rows), self.defaults())
+		self.assertEqual(stored.current_items(), old)
+		self.assertEqual(ids(stored.compare_with_defaults()), [("account:2200", False)])
+
+	def test_the_form_names_the_defaults_a_mapping_without_rows_waits_for(self):
+		"""A mapping without rows that has not taken over the defaults of today names them; one with rows, one that
+		took them over and one of a chart of its own name none."""
+		self.assertIsNone(defaults_to_load(frappe.get_doc(MAPPING, COMPANY)))
+		frappe.delete_doc(MAPPING, COMPANY, force=True)
+		empty = frappe.get_doc({"doctype": MAPPING, "company": COMPANY, "chart": "SKR03"}).insert()
+		self.assertEqual(defaults_to_load(empty), VERSION)
+		empty.db_set("defaults_version", VERSION)
+		self.assertIsNone(defaults_to_load(frappe.get_doc(MAPPING, COMPANY)))
+		own = frappe.get_doc(MAPPING, COMPANY)
+		own.update({"chart": "Eigener Kontenrahmen", "defaults_version": None})
+		self.assertIsNone(defaults_to_load(own))
 
 	def test_without_the_rows_of_the_defaults_every_difference_is_the_users(self):
 		mapping = frappe.get_doc(MAPPING, COMPANY)

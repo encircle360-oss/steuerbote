@@ -1,7 +1,9 @@
 """Steuerbote einrichten makes the Balance Sheet Mapping of a company through the hook steuerbote_setup_steps: with the
 defaults of its chart for the taxonomy, the accounts they give no place and the taxonomy it waits for, without rows for
-a chart of its own or an ambiguous one, and not again once the company has one."""
+a chart of its own or an ambiguous one, and not again once the company has one, unless that one waits for the defaults
+of today, as a mapping made while they were the empty table of revision 0."""
 
+from contextlib import contextmanager
 from datetime import date
 from types import MappingProxyType
 from unittest.mock import patch
@@ -67,6 +69,16 @@ def company_with(name: str, abbr: str, accounts: dict[str, tuple[str, str]]) -> 
 def result_of(done, key: str):
 	(result,) = (result for found, result in done if found.key == key)
 	return result
+
+
+@contextmanager
+def at_revision_0():
+	"""The empty table of revision 0, before the defaults of the DATEV charts."""
+	with (
+		patch.object(balance_mapping_sync, "defaults_for", return_value=Defaults("SKR04", "6.9")),
+		patch.object(ebilanz_defaults, "REVISIONS", MappingProxyType({"6.9": 0})),
+	):
+		yield
 
 
 class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
@@ -183,6 +195,57 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 			),
 		)
 		self.assertEqual(frappe.db.get_value(MAPPING, SKR04_COMPANY, "modified"), modified)
+
+	def test_gives_a_mapping_of_revision_0_the_defaults_of_today_as_it_gives_a_new_one(self):
+		"""A mapping made while the defaults were the empty table of revision 0 took them over without rows: the next
+		run loads the defaults of today into it with the points they leave open, and the run after leaves it."""
+		with at_revision_0():
+			setup.run(SKR04_COMPANY, TODAY)
+		self.assertEqual(
+			frappe.db.get_value(MAPPING, SKR04_COMPANY, "defaults_version"), "SKR04 Taxonomie 6.9 2026.0"
+		)
+		result = result_of(setup.run(SKR04_COMPANY, TODAY), "balance_sheet_mapping")
+		self.assertEqual((result.outcome, result.document), (Outcome.CREATED, (MAPPING, SKR04_COMPANY)))
+		mapping = frappe.get_doc(MAPPING, SKR04_COMPANY)
+		self.assertEqual(
+			(mapping.defaults_version, [row.account_number for row in mapping.rules]),
+			("SKR04 Taxonomie 6.9 2026.1", ["1406", "1800", "2900", "3806", "4400"]),
+		)
+		self.assertEqual(
+			result.notes,
+			(
+				Note(step.MAPPING_FILLED, (SKR04_COMPANY, "SKR04 Taxonomie 6.9 2026.1", 5, 0, 0)),
+				Note(step.CHECK_WITH_ADVISER, open=True),
+				Note(step.TAXONOMY_MISSING, ("6.9",), open=True),
+			),
+		)
+		self.assertEqual(
+			setup.text_of(result.notes[0]),
+			f"The Balance Sheet Mapping of {SKR04_COMPANY} had no rows and now holds the defaults SKR04 Taxonomie "
+			"6.9 2026.1: account rules 5, watched accounts 0, accounts outside the Bilanz and the GuV 0.",
+		)
+		again = result_of(setup.run(SKR04_COMPANY, TODAY), "balance_sheet_mapping")
+		self.assertEqual(again.outcome, Outcome.SKIPPED)
+
+	def test_leaves_a_mapping_with_rows_as_it_is_whatever_defaults_it_took_over(self):
+		"""A row the company gave its mapping of revision 0 by hand keeps the setup out; the defaults of today reach it
+		through Vorgaben aktualisieren."""
+		with at_revision_0():
+			setup.run(SKR04_COMPANY, TODAY)
+		mapping = frappe.get_doc(MAPPING, SKR04_COMPANY)
+		bank = frappe.db.get_value("Account", {"company": SKR04_COMPANY, "account_number": "1800"})
+		mapping.append("watched", {"account": bank, "level": WatchLevel.HINT.value})
+		mapping.save()
+		modified = frappe.db.get_value(MAPPING, SKR04_COMPANY, "modified")
+		result = result_of(setup.run(SKR04_COMPANY, TODAY), "balance_sheet_mapping")
+		self.assertEqual(
+			(result.outcome, result.notes),
+			(Outcome.SKIPPED, (Note(step.MAPPING_EXISTS, (SKR04_COMPANY, "SKR04")),)),
+		)
+		self.assertEqual(
+			frappe.db.get_value(MAPPING, SKR04_COMPANY, ["defaults_version", "modified"]),
+			("SKR04 Taxonomie 6.9 2026.0", modified),
+		)
 
 	def test_a_chart_of_its_own_gets_an_empty_mapping_and_an_open_point(self):
 		result = result_of(setup.run(OWN_COMPANY, TODAY), "balance_sheet_mapping")

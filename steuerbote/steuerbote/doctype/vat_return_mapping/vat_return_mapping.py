@@ -7,7 +7,9 @@ prüfen“ (check_tax_templates) lists the accounts of the company's tax templat
 „Vorgaben laden“ (load_defaults) replaces the rows by the defaults of the chart and keeps, besides the version of
 those defaults (defaults_version), the rows they gave (defaults_rows). „Vorgaben aktualisieren“ compares the rows
 with the defaults of today and with those kept (compare_with_defaults, steuerbote.mappings.diff), so that it can tell
-a change of the defaults from a change the user made, and takes over the differences chosen (update_from_defaults).
+a change of the defaults from a change the user made, and takes over the differences chosen (update_from_defaults). A
+mapping without rows that has not taken over the defaults of today waits for them (waits_for_defaults): Steuerbote
+einrichten loads them into it, and its form names them above its fields.
 
 „Zuordnung exportieren“ (export_mapping) writes the saved mapping into a file (steuerbote.mappings.transfer) and
 attaches it privately. „Zuordnung importieren“ reads such a file, uploaded privately to the mapping or pasted, checks
@@ -56,7 +58,7 @@ from steuerbote.mapping_sync import (
 	rows_of_items,
 	rows_to_mapping,
 )
-from steuerbote.mappings import diff, transfer
+from steuerbote.mappings import diff, taking_over, transfer
 from steuerbote.tax_templates import template_accounts
 from steuerbote.ustjahr.split import Split, SplitError
 from steuerbote.ustjahr.years import LATEST_YEAR as ANNUAL_YEAR
@@ -140,6 +142,10 @@ class VATReturnMapping(Document):
 		watched: DF.Table[VATReturnWatchedAccount]
 	# end: auto-generated types
 
+	def onload(self) -> None:
+		"""The defaults the form names above its fields while the mapping waits for them."""
+		self.set_onload("defaults_to_load", self.defaults_of_today() if self.waits_for_defaults() else None)
+
 	def validate(self):
 		self.validate_accounts()
 		self.current_items()
@@ -214,6 +220,19 @@ class VATReturnMapping(Document):
 		with mapping_errors():
 			return load_items(self.defaults_rows)
 
+	def defaults_of_today(self) -> str | None:
+		"""The version of the defaults of today for the chart of the mapping, None for a chart without defaults."""
+		return defaults_version(self.chart) if self.chart in DEFAULTS else None
+
+	def waits_for_defaults(self) -> bool:
+		"""Whether the mapping has no rows and has not taken over the defaults of today, which Steuerbote einrichten
+		then loads into it (steuerbote.mappings.taking_over)."""
+		return taking_over.waits_for_defaults(
+			(self.rules, self.checks, self.watched, self.annual_rules),
+			self.defaults_version,
+			self.defaults_of_today(),
+		)
+
 	@frappe.whitelist(methods=["POST"])
 	def load_defaults(self) -> list[str]:
 		"""Replace the rows by the defaults of the chart, reduced to the ledger accounts of the company, and note
@@ -269,12 +288,16 @@ class VATReturnMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
-	def update_from_defaults(self, chosen: list[str] | None = None) -> int:
+	def update_from_defaults(self, chosen: list[str] | None = None, acknowledge: bool = False) -> int:
 		"""Take over the chosen differences of compare_with_defaults, by their id, keep every other row, note the
-		defaults of today as taken over, and save. Returns how many differences it took over."""
+		defaults of today as taken over, and save. Taking over none notes them only with ``acknowledge``, the word of
+		the user that the differences are declined, which the dialog of the form gives; without it the mapping stays as
+		it is (steuerbote.mappings.taking_over.notes_defaults). Returns how many differences it took over."""
 		self._require_defaults()
 		current, proposed = self.current_items(), self._defaults_now()
 		keys = chosen_keys(diff.compare(current, proposed, self.defaults_taken_over()), chosen or [])
+		if not taking_over.notes_defaults(len(keys), acknowledge):
+			return 0
 		self._set_items(diff.apply(current, proposed, keys))
 		self._note_defaults(self._account_names().keys())
 		self.save()

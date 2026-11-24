@@ -15,7 +15,9 @@ those kept (steuerbote.mappings.diff), and „Zuordnung exportieren“ and „Zu
 compare_with_file, import_file) write and read the file of the mapping (steuerbote.mappings.transfer), all as in the
 VAT Return Mapping. The file names the version of the taxonomy whose positions its rows name; an import refuses
 another. „Konten prüfen“ (accounts_without_place) lists the ledger accounts of the company without a place in the
-mapping, and watch_accounts_without_place watches those with a number at the level Sperrt.
+mapping, and watch_accounts_without_place watches those with a number at the level Sperrt. A mapping without rows that
+has not taken over the defaults of today waits for them (waits_for_defaults), as one made while they were the empty
+table of revision 0: Steuerbote einrichten loads them into it, and its form names them above its fields.
 
 The E-Bilanz and the Jahresabschluss read the mapping through to_mapping() and place(), which puts the books of
 steuerbote/balances.py on the positions of the fiscal view of the taxonomy (steuerbote.xbrl.mapping.place).
@@ -59,7 +61,7 @@ from steuerbote.balance_mapping_sync import (
 	without_defaults,
 )
 from steuerbote.ebilanz.defaults import CHARTS, defaults_version
-from steuerbote.mappings import diff, transfer
+from steuerbote.mappings import diff, taking_over, transfer
 from steuerbote.steuerbote.doctype.eric_settings import eric_settings
 from steuerbote.steuerbote.doctype.vat_return_mapping.vat_return_mapping import (
 	CHANGES,
@@ -149,6 +151,10 @@ class BalanceSheetMapping(Document):
 		taxonomy_version: DF.Literal["6.9", "6.10"]
 		watched: DF.Table[BalanceSheetMappingWatchedAccount]
 	# end: auto-generated types
+
+	def onload(self) -> None:
+		"""The defaults the form names above its fields while the mapping waits for them."""
+		self.set_onload("defaults_to_load", self.defaults_of_today() if self.waits_for_defaults() else None)
 
 	def validate(self):
 		self.validate_accounts()
@@ -253,6 +259,21 @@ class BalanceSheetMapping(Document):
 		with mapping_errors():
 			return load_items(self.defaults_rows)
 
+	def defaults_of_today(self) -> str | None:
+		"""The version of the defaults of today for the chart and the taxonomy of the mapping, None where there are
+		none: for a chart of its own or a version of the taxonomy without defaults."""
+		try:
+			return defaults_version(self.chart, self.taxonomy_version)
+		except KeyError:
+			return None
+
+	def waits_for_defaults(self) -> bool:
+		"""Whether the mapping has no rows and has not taken over the defaults of today, which Steuerbote einrichten
+		then loads into it (steuerbote.mappings.taking_over)."""
+		return taking_over.waits_for_defaults(
+			(self.rules, self.watched, self.excluded), self.defaults_version, self.defaults_of_today()
+		)
+
 	@frappe.whitelist(methods=["POST"])
 	def load_defaults(self) -> list[str]:
 		"""Replace the rows by the defaults of the chart, reduced to the ledger accounts of the company, and note the
@@ -288,12 +309,16 @@ class BalanceSheetMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
-	def update_from_defaults(self, chosen: list[str] | None = None) -> int:
+	def update_from_defaults(self, chosen: list[str] | None = None, acknowledge: bool = False) -> int:
 		"""Take over the chosen differences of compare_with_defaults, by their id, keep every other row, note the
-		defaults of today as taken over, and save. Returns how many differences it took over."""
+		defaults of today as taken over, and save. Taking over none notes them only with ``acknowledge``, the word of
+		the user that the differences are declined, which the dialog of the form gives; without it the mapping stays as
+		it is (steuerbote.mappings.taking_over.notes_defaults). Returns how many differences it took over."""
 		self._require_defaults()
 		current, proposed = self.current_items(), self._defaults_now()
 		keys = chosen_keys(diff.compare(current, proposed, self.defaults_taken_over()), chosen or [])
+		if not taking_over.notes_defaults(len(keys), acknowledge):
+			return 0
 		self._set_items(diff.apply(current, proposed, keys))
 		self._note_defaults(self._account_names().keys())
 		self.save()

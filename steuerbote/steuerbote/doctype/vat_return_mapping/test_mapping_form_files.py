@@ -19,6 +19,12 @@ FOLDER = APP / "steuerbote" / "doctype" / "vat_return_mapping"
 DOCTYPES = APP / "steuerbote" / "doctype"
 TRANSLATIONS = APP / "translations" / "de.csv"
 DIFFERENCES_SCRIPT = APP / "public" / "js" / "mapping_differences.js"
+# The forms of the three mappings, which include the dialog of the differences.
+FORMS = (
+	FOLDER / "vat_return_mapping.js",
+	DOCTYPES / "income_tax_mapping" / "income_tax_mapping.js",
+	DOCTYPES / "balance_sheet_mapping" / "balance_sheet_mapping.js",
+)
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 
 
@@ -129,6 +135,61 @@ class DifferencesFilesTest(TestCase):
 				)
 		self.assertIn("${escape(intro)}", self.dialog)
 		self.assertIn("${escape(proposed_label)}", self.dialog)
+
+	def test_the_button_of_vorgaben_aktualisieren_says_what_a_click_does(self):
+		"""With differences checked it takes over that many; with none it notes the defaults of today as seen, after
+		which every difference left counts as the user's own. Each form of a mapping words its button so and tells the
+		server that the user decided, whatever was checked."""
+		label = re.search(
+			r"\nfunction take_over_label\(version\) \{\n(?P<body>.*?)\n\}\n", self.dialog, re.DOTALL
+		)
+		self.assertIsNotNone(label)
+		texts = {
+			"Take Over 1 Difference": "1 Unterschied übernehmen",
+			"Take Over {0} Differences": "{0} Unterschiede übernehmen",
+			"Take Over None and Note the Defaults {0} as Seen": (
+				"Keinen übernehmen und die Vorgaben {0} als gesehen vermerken"
+			),
+		}
+		self.assertEqual(set(TRANSLATED_LITERAL.findall(label["body"])), set(texts))
+		german = translations()
+		self.assertEqual({text: german.get(text) for text in texts}, texts)
+		for form in FORMS:
+			script = form.read_text(encoding="utf-8")
+			with self.subTest(form=form.name):
+				self.assertIn("apply_label: take_over_label(comparison.version),", script)
+				self.assertIn('frm.call("update_from_defaults", { chosen, acknowledge: 1 })', script)
+
+	def test_a_mapping_that_waits_for_the_defaults_names_them_above_its_fields(self):
+		"""The controller of each mapping names the defaults of today when the mapping waits for them (onload), and its
+		form shows them in its intro, escaped, after loading the form and after Vorgaben laden, which takes them
+		over."""
+		hint = re.search(
+			r"\nfunction show_defaults_to_load\(frm\) \{\n(?P<body>.*?)\n\}\n", self.dialog, re.DOTALL
+		)
+		self.assertIsNotNone(hint)
+		self.assertIn("frm.doc.__onload && frm.doc.__onload.defaults_to_load", hint["body"])
+		self.assertIn("frappe.utils.escape_html(", hint["body"])
+		self.assertIn("frm.set_intro(", hint["body"])
+		text = "This mapping has no rows. Load Defaults fetches the defaults {0}."
+		self.assertEqual(TRANSLATED_LITERAL.findall(hint["body"]), [text])
+		self.assertEqual(
+			translations()[text], "Diese Zuordnung hat keine Zeilen. „Vorgaben laden“ holt die Vorgaben {0}."
+		)
+		for form in FORMS:
+			script = form.read_text(encoding="utf-8")
+			controller = form.with_suffix(".py").read_text(encoding="utf-8")
+			with self.subTest(form=form.name):
+				self.assertEqual(script.count("show_defaults_to_load(frm);"), 2)
+				self.assertRegex(script, r"\n\trefresh\(frm\) \{\n\t\tshow_defaults_to_load\(frm\);\n")
+				self.assertRegex(
+					script,
+					r'frm\.call\("load_defaults"\)\.then\(\(r\) => \{\n\t\tfrm\.dirty\(\);\n\t\tshow_defaults_to_load\(frm\);\n',
+				)
+				self.assertIn(
+					'self.set_onload("defaults_to_load", self.defaults_of_today() if self.waits_for_defaults() else None)',
+					controller,
+				)
 
 
 class MappingFileFilesTest(TestCase):

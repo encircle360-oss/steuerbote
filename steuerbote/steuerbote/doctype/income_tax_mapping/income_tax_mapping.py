@@ -9,7 +9,9 @@ the ledger accounts of the company, keeps the version of those defaults (default
 (defaults_rows), and names the DATEV accounts of the defaults the company lacks with their labels. „Vorgaben
 aktualisieren“ compares the rows with the defaults of today and with those kept (compare_with_defaults,
 steuerbote.mappings.diff), so that it can tell a change of the defaults from a change the user made, and takes over
-the differences chosen (update_from_defaults).
+the differences chosen (update_from_defaults). A mapping without rows that has not taken over the defaults of today
+waits for them (waits_for_defaults): Steuerbote einrichten loads them into it, and its form names them above its
+fields.
 
 „Zuordnung exportieren“ (export_mapping) writes the saved mapping into a file of the format
 steuerbote/income-tax-mapping (steuerbote.mappings.transfer) and attaches it privately. „Zuordnung importieren“ reads
@@ -45,7 +47,7 @@ from steuerbote.income_tax_mapping_sync import (
 )
 from steuerbote.kst.categories import Mapping
 from steuerbote.kst.defaults import DEFAULTS, defaults_version
-from steuerbote.mappings import diff, transfer
+from steuerbote.mappings import diff, taking_over, transfer
 from steuerbote.steuerbote.doctype.vat_return_mapping.vat_return_mapping import (
 	CHANGES,
 	INVALID_FILE_MAPPING,
@@ -94,6 +96,10 @@ class IncomeTaxMapping(Document):
 		watched: DF.Table[IncomeTaxWatchedAccount]
 	# end: auto-generated types
 
+	def onload(self) -> None:
+		"""The defaults the form names above its fields while the mapping waits for them."""
+		self.set_onload("defaults_to_load", self.defaults_of_today() if self.waits_for_defaults() else None)
+
 	def validate(self):
 		self.validate_accounts()
 		self.current_items()
@@ -141,6 +147,17 @@ class IncomeTaxMapping(Document):
 		with mapping_errors():
 			return load_items(self.defaults_rows)
 
+	def defaults_of_today(self) -> str | None:
+		"""The version of the defaults of today for the chart of the mapping, None for a chart without defaults."""
+		return defaults_version(self.chart) if self.chart in DEFAULTS else None
+
+	def waits_for_defaults(self) -> bool:
+		"""Whether the mapping has no rows and has not taken over the defaults of today, which Steuerbote einrichten
+		then loads into it (steuerbote.mappings.taking_over)."""
+		return taking_over.waits_for_defaults(
+			(self.rules, self.watched), self.defaults_version, self.defaults_of_today()
+		)
+
 	@frappe.whitelist(methods=["POST"])
 	def load_defaults(self) -> list[dict]:
 		"""Replace the rows by the defaults of the chart, reduced to the ledger accounts of the company, and note the
@@ -177,12 +194,16 @@ class IncomeTaxMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
-	def update_from_defaults(self, chosen: list[str] | None = None) -> int:
+	def update_from_defaults(self, chosen: list[str] | None = None, acknowledge: bool = False) -> int:
 		"""Take over the chosen differences of compare_with_defaults, by their id, keep every other row, note the
-		defaults of today as taken over, and save. Returns how many differences it took over."""
+		defaults of today as taken over, and save. Taking over none notes them only with ``acknowledge``, the word of
+		the user that the differences are declined, which the dialog of the form gives; without it the mapping stays as
+		it is (steuerbote.mappings.taking_over.notes_defaults). Returns how many differences it took over."""
 		self._require_defaults()
 		current, proposed = self.current_items(), self._defaults_now()
 		keys = chosen_keys(diff.compare(current, proposed, self.defaults_taken_over()), chosen or [])
+		if not taking_over.notes_defaults(len(keys), acknowledge):
+			return 0
 		self._set_items(diff.apply(current, proposed, keys))
 		self._note_defaults(self._account_names().keys())
 		self.save()

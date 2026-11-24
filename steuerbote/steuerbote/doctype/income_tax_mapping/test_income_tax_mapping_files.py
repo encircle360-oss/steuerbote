@@ -268,5 +268,5 @@ class SetupStepTest(TestCase):
 		german = translations()
 		values = assignments(FOLDER / "setup.py")
 		messages = {ast.literal_eval(values[name.id]) for name in values["MESSAGES"].elts}
-		self.assertEqual(len(messages), 7)
+		self.assertEqual(len(messages), 8)
 		self.assertEqual(sorted(messages - german.keys()), [])

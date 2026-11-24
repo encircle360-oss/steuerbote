@@ -16,6 +16,7 @@ frappe.ui.form.on("VAT Return Mapping", {
 	},
 
 	refresh(frm) {
+		show_defaults_to_load(frm);
 		frm.add_custom_button(__("Load Defaults"), () => {
 			const has_rows = ["rules", "checks", "watched", "annual_rules"].some(
 				(table) => (frm.doc[table] || []).length
@@ -47,6 +48,7 @@ const OWN_CHART = "Eigener Kontenrahmen";
 function load_defaults(frm) {
 	frm.call("load_defaults").then((r) => {
 		frm.dirty();
+		show_defaults_to_load(frm);
 		const missing = r.message || [];
 		if (missing.length) {
 			frappe.msgprint({
@@ -101,14 +103,14 @@ function update_defaults(frm) {
 			unchanged: comparison.unchanged,
 			proposed_label: __("Defaults {0}", [comparison.version]),
 			show_origin: true,
-			apply_label: __("Take Over the Checked"),
+			apply_label: take_over_label(comparison.version),
 			apply: (chosen, dialog) => take_over_defaults(frm, chosen, dialog),
 		});
 	});
 }
 
 function take_over_defaults(frm, chosen, dialog) {
-	frm.call("update_from_defaults", { chosen }).then((response) => {
+	frm.call("update_from_defaults", { chosen, acknowledge: 1 }).then((response) => {
 		if (dialog) {
 			dialog.hide();
 		}
