@@ -1,6 +1,6 @@
 """The links between the annual documents of the seed in the desk: the E-Bilanz of the company of the E-Bilanz names
 the Jahresabschluss of its year, opens it and hints that it is not calculated, the Jahresabschluss lists the E-Bilanz
-among its connections, and the Körperschaftsteuererklärung names the E-Bilanz and offers it in its field; the
+among its connections, and the Körperschaftsteuererklärung names the E-Bilanz and opens it from its field; the
 Umsatzsteuererklärung of the company of the Umsatzerlöse shows the hint that the Umsatzerlöse of its filed E-Bilanz
 are not its sales.
 
@@ -22,6 +22,12 @@ ROUTES = {
 	CORPORATE: "/desk/corporate-income-tax-return",
 	VAT: "/desk/annual-vat-return",
 }
+
+
+def form_url(doctype: str, name: str) -> re.Pattern[str]:
+	"""The address of the form of a document, which the desk may give the module of the sidebar in front of it."""
+	route = ROUTES[doctype].removeprefix("/desk/")
+	return re.compile(rf"/desk/(steuerbote/)?{route}/{re.escape(name)}$")
 
 
 def seeded(desk, base_url, doctype: str, company: str, docstatus: int = 0) -> str:
@@ -49,7 +55,7 @@ def test_the_e_bilanz_names_its_jahresabschluss_and_opens_it(desk, expect, base_
 	link = desk.field("annual_accounts").get_by_role("link", name=accounts)
 	expect(link).to_be_visible()
 	link.click()
-	expect(desk.page).to_have_url(re.compile(rf"{ROUTES[ACCOUNTS]}/{re.escape(accounts)}$"))
+	expect(desk.page).to_have_url(form_url(ACCOUNTS, accounts))
 	expect(desk.field("company").locator("input")).to_have_value(data.EBILANZ_COMPANY)
 
 
@@ -60,16 +66,16 @@ def test_the_jahresabschluss_lists_the_e_bilanz_among_its_connections(desk, expe
 	expect(connection.locator(".count")).to_have_text("1")
 
 
-def test_the_koerperschaftsteuererklaerung_names_the_e_bilanz_and_offers_it(desk, expect, base_url):
+def test_the_koerperschaftsteuererklaerung_names_the_e_bilanz_and_opens_it(desk, expect, base_url):
+	"""The field shows the button that opens the document it names while the pointer is on it."""
 	ebilanz = seeded(desk, base_url, EBILANZ, data.EBILANZ_COMPANY)
 	opened(desk, base_url, CORPORATE, data.EBILANZ_COMPANY)
-	field = desk.field("electronic_balance_sheet").locator("input")
-	expect(field).to_have_value(ebilanz)
-	field.click()
-	options = desk.field("electronic_balance_sheet").locator("ul li")
-	expect(options.filter(has_text=ebilanz)).to_have_count(1)
-	field.press("Escape")
-	expect(field).to_have_value(ebilanz)
+	field = desk.field("electronic_balance_sheet")
+	expect(field.locator("input")).to_have_value(ebilanz)
+	field.locator("input").hover()
+	field.locator(".btn-open").click()
+	expect(desk.page).to_have_url(form_url(EBILANZ, ebilanz))
+	expect(desk.field("company").locator("input")).to_have_value(data.EBILANZ_COMPANY)
 
 
 def test_the_umsatzsteuererklaerung_hints_that_the_umsatzerloese_are_not_its_sales(desk, expect, base_url):
