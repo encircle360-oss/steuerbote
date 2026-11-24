@@ -1,7 +1,7 @@
 [project]
 name = "steuerbote"
 authors = [{ name = "encircle360 GmbH", email = "oss@encircle360.com" }]
-description = "ELSTER tax filings for ERPNext: Umsatzsteuer-Voranmeldung first, year-end filings later"
+description = "ELSTER tax filings for ERPNext: Umsatzsteuer-Voranmeldung, Dauerfristverlängerung, Zusammenfassende Meldung, Umsatzsteuer-, Körperschaftsteuer- and Gewerbesteuererklärung, E-Bilanz and Jahresabschluss with Offenlegung for the Unternehmensregister"
 requires-python = ">=3.14"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
