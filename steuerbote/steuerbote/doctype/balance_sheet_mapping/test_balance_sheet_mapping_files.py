@@ -462,7 +462,7 @@ class SetupStepTest(TestCase):
 			if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "MESSAGES"
 		)
 		messages = {found[name.id] for name in listed.elts}
-		self.assertEqual(len(messages), 7)
+		self.assertEqual(len(messages), 8)
 		self.assertEqual(sorted(messages - translations().keys()), [])
 
 
