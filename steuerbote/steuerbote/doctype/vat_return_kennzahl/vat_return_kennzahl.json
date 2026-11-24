@@ -32,7 +32,7 @@
    "read_only": 1
   },
   {
-   "columns": 3,
+   "columns": 2,
    "fieldname": "label",
    "fieldtype": "Small Text",
    "in_list_view": 1,
@@ -57,7 +57,7 @@
    "read_only": 1
   },
   {
-   "columns": 2,
+   "columns": 3,
    "fieldname": "reported",
    "fieldtype": "Currency",
    "in_list_view": 1,

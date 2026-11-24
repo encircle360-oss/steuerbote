@@ -46,10 +46,8 @@
    "reqd": 1
   },
   {
-   "columns": 2,
    "fieldname": "party",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Customer",
    "read_only": 1
   },
@@ -65,7 +63,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "description": "In whole euros and with a reason, it replaces the amount filed and lifts the block of the line; 0 drops the line.",
    "fieldname": "override",
    "fieldtype": "Currency",
@@ -89,21 +87,17 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "default": "0",
    "fieldname": "blocked",
    "fieldtype": "Check",
-   "in_list_view": 1,
    "label": "Holds the Statement",
    "read_only": 1
   },
   {
-   "columns": 1,
    "default": "0",
    "description": "A line of its own without a voucher in the ledger: USt-IdNr., Kind of Supply, override amount and reason entered by hand, such as a Verbringen under the company's own USt-IdNr. in another member state.",
    "fieldname": "manual",
    "fieldtype": "Check",
-   "in_list_view": 1,
    "label": "By Hand",
    "read_only": 1
   },
@@ -142,7 +136,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "confirmation_outcome",
    "fieldtype": "Select",
    "in_list_view": 1,
