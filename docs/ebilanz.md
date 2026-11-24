@@ -88,7 +88,7 @@ Die Abschreibungen der Bücher prüft der Beleg dazu: Planen die aktiven Abschre
 
 - **Aus dem Finanzbuch der Steuerbilanz:** Für einen Jahresabschluss vergleicht „Berechnen“ die Salden der Positionen im Finanzbuch der Steuerbilanz mit denen der Handelsbilanz und schreibt je Position von Bilanz und GuV, deren Salden abweichen, eine Wertänderung, bei einer Position der Bilanz geteilt in die Abweichung zu Beginn des Wirtschaftsjahres, die der früheren Wirtschaftsjahre, und die Änderung im laufenden (Leitfaden A.11, B.15.1). Das Eigenkapital lässt es aus: Seine Abweichung ist der steuerliche Ausgleichsposten, den der Kern aus den übrigen Einträgen ableitet. Diese Einträge ändert ein Speichern nicht.
 - **Von Hand:** ohne Finanzbuch der Steuerbilanz oder für eine Abweichung, die es nicht kennt, eine Zeile mit Art, Position, Beträgen und Begründung (`EB-UEBERLEITUNG-BEGRUENDUNG`).
-- **Was folgt:** Der Kern gibt der Handelsbilanz die Steuerbilanz, die ERiC prüft, mit dem steuerlichen Ausgleichsposten und dem Jahresüberschuss der Steuerbilanz (`tax_net_income`); der Ausdruck zeigt beide Beträge nebeneinander.
+- **Steuerbilanz:** Der Kern gibt der Handelsbilanz die Steuerbilanz, die ERiC prüft, mit dem steuerlichen Ausgleichsposten und dem Jahresüberschuss der Steuerbilanz (`tax_net_income`); jede Position hält ihren „Betrag der Steuerbilanz“ (`tax_amount`), und das Druckformat „E-Bilanz“ zeigt ihn neben dem Betrag der Handelsbilanz.
 
 ## Betriebsvermögensvergleich
 
