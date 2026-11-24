@@ -176,7 +176,14 @@ Die Texte, die den Beleg nennen, gibt das Formular in `texts` mit: für `elster_
 
 ## Zusammenspiel der Jahresmeldungen
 
-Die Jahresmeldungen eines Jahres bauen aufeinander auf: Die E-Bilanz übermittelt den Inhalt der Bilanz und der Gewinn- und Verlustrechnung (§ 5b Abs. 1 Satz 1 EStG), also die des festgestellten Jahresabschlusses, und aus ihr kommt der Jahresüberschuss der Körperschaftsteuererklärung, auf der die Gewerbesteuererklärung aufbaut. Jeder Beleg nennt den, aus dem er nimmt, in einem Feld, das „Berechnen“ setzt, und vergleicht, wo zwei dasselbe zeigen:
+Die Jahresmeldungen eines Jahres bauen aufeinander auf: Die E-Bilanz übermittelt den Inhalt der Bilanz und der Gewinn- und Verlustrechnung (§ 5b Abs. 1 Satz 1 EStG), also die des festgestellten Jahresabschlusses, und aus ihr kommt der Jahresüberschuss der Körperschaftsteuererklärung, auf der die Gewerbesteuererklärung aufbaut. Woraus ein Beleg nimmt, steht an verschiedenen Stellen:
+
+- **Im Feld:** Die Körperschaftsteuererklärung nennt ihre E-Bilanz (`electronic_balance_sheet`) und die E-Bilanz ihren Jahresabschluss (`annual_accounts`); ein neuer Beleg und „Berechnen“ setzen beide. Die Gewerbesteuererklärung nennt ihre Körperschaftsteuererklärung (`corporate_income_tax_return`); dieses Feld setzt das Speichern, wo es leer ist.
+- **In der Tabelle „Voranmeldungszeiträume“:** Die Umsatzsteuererklärung nennt je Zeitraum die abgegebene Umsatzsteuer-Voranmeldung, wie „Berechnen“ sie einträgt.
+- **Nur im Hinweis:** Die abgegebene E-Bilanz des Vorjahres hinter KSt 1 F Zeilen 17 und 18 nennt `KST-EIGENKAPITAL-QUELLE`; den Jahresabschluss oder die E-Bilanz hinter den Umsatzerlösen nennt `SB-UMSATZERLOESE`, und diesen Hinweis gibt es nur, wo die Umsätze der Umsatzsteuererklärung nicht zu den Umsatzerlösen passen.
+- **Nirgends:** Die E-Bilanz übernimmt das Betriebsvermögen der abgegebenen E-Bilanz des Vorjahres in `bvv_previous_equity`, ohne diese zu nennen.
+
+Je Beleg, was er woraus nimmt, mit dem Feld oder Befund dazu; wo zwei Belege dasselbe zeigen, vergleicht „Berechnen“ sie:
 
 | Beleg | nimmt | aus | Feld, Befund |
 |---|---|---|---|
