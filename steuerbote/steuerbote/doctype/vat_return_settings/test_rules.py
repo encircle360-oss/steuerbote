@@ -114,7 +114,8 @@ class RhythmForTest(TestCase):
 class PeriodsOfTest(TestCase):
 	def test_are_the_voranmeldungszeitraeume_of_the_year_in_order(self):
 		self.assertEqual(
-			periods_of([PeriodRule(2026, "monthly")], 2026), [Period.month(2026, month) for month in range(1, 13)]
+			periods_of([PeriodRule(2026, "monthly")], 2026),
+			[Period.month(2026, month) for month in range(1, 13)],
 		)
 
 	def test_follow_a_change_of_rhythm(self):

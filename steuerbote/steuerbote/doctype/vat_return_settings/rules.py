@@ -28,10 +28,11 @@ Python and never imports Frappe.
 from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from enum import Enum
 
-from steuerbote.ustva.period import Rhythm
+from steuerbote.ustva.period import Period, Rhythm
 from steuerbote.ustva.rounding import CENT, ZERO, require_decimal
 from steuerbote.vatid.ustid import is_german
 from steuerbote.vatid.ustid import normalize as normalize_vat_id
@@ -141,6 +142,18 @@ def rhythm_for(rules: Iterable[PeriodRule], year: int, month: int) -> Rhythm:
 	if rule.rhythm is FilingRhythm.NONE:
 		raise NoVoranmeldungError(NO_VORANMELDUNG_DUE, year, month)
 	return Rhythm(rule.rhythm.value)
+
+
+def periods_of(rules: Iterable[PeriodRule], year: int) -> list[Period]:
+	"""The Voranmeldungszeiträume of a year in order, without the months that have no rule or no Voranmeldung."""
+	rules = list(rules)
+	periods: list[Period] = []
+	for month in range(1, 13):
+		with suppress(SettingsError):
+			period = Period.containing(date(year, month, 1), rhythm_for(rules, year, month))
+			if period not in periods:
+				periods.append(period)
+	return periods
 
 
 def has_dauerfrist(prepayments: Iterable[Prepayment], year: int) -> bool:
