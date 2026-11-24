@@ -56,7 +56,7 @@ from steuerbote.mapping_sync import (
 	rows_of_items,
 	rows_to_mapping,
 )
-from steuerbote.mappings import diff, transfer
+from steuerbote.mappings import diff, taking_over, transfer
 from steuerbote.tax_templates import template_accounts
 from steuerbote.ustjahr.split import Split, SplitError
 from steuerbote.ustjahr.years import LATEST_YEAR as ANNUAL_YEAR
@@ -213,6 +213,19 @@ class VATReturnMapping(Document):
 			return None
 		with mapping_errors():
 			return load_items(self.defaults_rows)
+
+	def defaults_of_today(self) -> str | None:
+		"""The version of the defaults of today for the chart of the mapping, None for a chart without defaults."""
+		return defaults_version(self.chart) if self.chart in DEFAULTS else None
+
+	def waits_for_defaults(self) -> bool:
+		"""Whether the mapping has no rows and has not taken over the defaults of today, which Steuerbote einrichten
+		then loads into it (steuerbote.mappings.taking_over)."""
+		return taking_over.waits_for_defaults(
+			(self.rules, self.checks, self.watched, self.annual_rules),
+			self.defaults_version,
+			self.defaults_of_today(),
+		)
 
 	@frappe.whitelist(methods=["POST"])
 	def load_defaults(self) -> list[str]:

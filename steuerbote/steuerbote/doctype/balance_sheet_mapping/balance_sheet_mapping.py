@@ -59,7 +59,7 @@ from steuerbote.balance_mapping_sync import (
 	without_defaults,
 )
 from steuerbote.ebilanz.defaults import CHARTS, defaults_version
-from steuerbote.mappings import diff, transfer
+from steuerbote.mappings import diff, taking_over, transfer
 from steuerbote.steuerbote.doctype.eric_settings import eric_settings
 from steuerbote.steuerbote.doctype.vat_return_mapping.vat_return_mapping import (
 	CHANGES,
@@ -252,6 +252,21 @@ class BalanceSheetMapping(Document):
 			return None
 		with mapping_errors():
 			return load_items(self.defaults_rows)
+
+	def defaults_of_today(self) -> str | None:
+		"""The version of the defaults of today for the chart and the taxonomy of the mapping, None where there are
+		none: for a chart of its own or a version of the taxonomy without defaults."""
+		try:
+			return defaults_version(self.chart, self.taxonomy_version)
+		except KeyError:
+			return None
+
+	def waits_for_defaults(self) -> bool:
+		"""Whether the mapping has no rows and has not taken over the defaults of today, which Steuerbote einrichten
+		then loads into it (steuerbote.mappings.taking_over)."""
+		return taking_over.waits_for_defaults(
+			(self.rules, self.watched, self.excluded), self.defaults_version, self.defaults_of_today()
+		)
 
 	@frappe.whitelist(methods=["POST"])
 	def load_defaults(self) -> list[str]:

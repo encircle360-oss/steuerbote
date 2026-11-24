@@ -16,9 +16,10 @@ or app names in the hook steuerbote_setup_steps of its hooks.py:
 
 The function a step names takes the SetupContext of the run and returns a StepResult. A step makes only what is
 missing and skips what exists, so a second run changes nothing; a step that needs another runs only once that one
-created or found its document. Each step runs in a savepoint of its own: a step that fails is rolled back and
-reported, and the others go on. Only a System Manager or an Accounts Manager sets up a company, and every document
-is made with their permissions.
+created or found its document. A mapping that exists without rows and waits for the defaults of today
+(waits_for_defaults of its controller) lacks them: its step loads them into it as into a new one. Each step runs in a
+savepoint of its own: a step that fails is rolled back and reported, and the others go on. Only a System Manager or an
+Accounts Manager sets up a company, and every document is made with their permissions.
 """
 
 from collections.abc import Mapping
@@ -92,6 +93,7 @@ STATE_AND_TAX_NUMBER = "Enter the Bundesland and the Steuernummer the Finanzamt 
 MAPPING_EXISTS = (
 	"The VAT Return Mapping of {0} exists already with the chart {1}; the setup leaves it as it is."
 )
+MAPPING_FILLED = "The VAT Return Mapping of {0} had no rows and now holds the defaults {1}: account rules {2}, tax checks {3}, watched accounts {4}."
 MAPPING_WITH_DEFAULTS = "Made the VAT Return Mapping with the defaults of {0}: account rules {1}, tax checks {2}, watched accounts {3}."
 CHART_FROM_TEMPLATE = (
 	"The chart {0} follows from the template {1} the chart of accounts of the company was made from."
@@ -130,6 +132,7 @@ MESSAGES = (
 	DATENLIEFERANT_TAKEN,
 	STATE_AND_TAX_NUMBER,
 	MAPPING_EXISTS,
+	MAPPING_FILLED,
 	MAPPING_WITH_DEFAULTS,
 	CHART_FROM_TEMPLATE,
 	CHART_FROM_ACCOUNTS,
@@ -304,11 +307,23 @@ def make_vat_return_settings(context: SetupContext) -> StepResult:
 
 def make_vat_return_mapping(context: SetupContext) -> StepResult:
 	"""The VAT Return Mapping, if the company has none: with the defaults of SKR03 or SKR04 for the accounts the
-	company has (load_defaults), or without rules for a chart of its own or an ambiguous one."""
+	company has (load_defaults), or without rules for a chart of its own or an ambiguous one. A mapping the company has
+	stays as it is, unless it waits for the defaults of today (waits_for_defaults): then it gets them as a new one
+	does."""
 	company = context.company
 	if frappe.db.exists(MAPPING, company):
-		chart = frappe.db.get_value(MAPPING, company, "chart")
-		return StepResult(Outcome.SKIPPED, (Note(MAPPING_EXISTS, (company, chart)),), (MAPPING, company))
+		mapping = frappe.get_doc(MAPPING, company)
+		if not mapping.waits_for_defaults():
+			return StepResult(
+				Outcome.SKIPPED, (Note(MAPPING_EXISTS, (company, mapping.chart)),), (MAPPING, company)
+			)
+		missing = mapping.load_defaults()
+		mapping.save()
+		counted = (len(mapping.rules), len(mapping.checks), len(mapping.watched))
+		notes = [Note(MAPPING_FILLED, (company, mapping.defaults_version, *counted))]
+		if missing:
+			notes.append(Note(DEFAULTS_MISSING, (len(missing),)))
+		return StepResult(Outcome.CREATED, tuple(notes), (MAPPING, company))
 	detection = context.chart
 	mapping = frappe.new_doc(MAPPING)
 	mapping.company = company

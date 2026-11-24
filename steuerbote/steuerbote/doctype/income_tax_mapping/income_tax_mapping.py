@@ -45,7 +45,7 @@ from steuerbote.income_tax_mapping_sync import (
 )
 from steuerbote.kst.categories import Mapping
 from steuerbote.kst.defaults import DEFAULTS, defaults_version
-from steuerbote.mappings import diff, transfer
+from steuerbote.mappings import diff, taking_over, transfer
 from steuerbote.steuerbote.doctype.vat_return_mapping.vat_return_mapping import (
 	CHANGES,
 	INVALID_FILE_MAPPING,
@@ -140,6 +140,17 @@ class IncomeTaxMapping(Document):
 			return None
 		with mapping_errors():
 			return load_items(self.defaults_rows)
+
+	def defaults_of_today(self) -> str | None:
+		"""The version of the defaults of today for the chart of the mapping, None for a chart without defaults."""
+		return defaults_version(self.chart) if self.chart in DEFAULTS else None
+
+	def waits_for_defaults(self) -> bool:
+		"""Whether the mapping has no rows and has not taken over the defaults of today, which Steuerbote einrichten
+		then loads into it (steuerbote.mappings.taking_over)."""
+		return taking_over.waits_for_defaults(
+			(self.rules, self.watched), self.defaults_version, self.defaults_of_today()
+		)
 
 	@frappe.whitelist(methods=["POST"])
 	def load_defaults(self) -> list[dict]:

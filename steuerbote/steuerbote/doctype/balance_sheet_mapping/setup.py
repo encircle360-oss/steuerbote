@@ -3,10 +3,12 @@
 hooks.py names it in steuerbote_setup_steps after the step of the Income Tax Mapping, so that
 steuerbote.steuerbote.setup runs it after its own: it makes the Balance Sheet Mapping with the defaults of SKR03 or
 SKR04 for the latest version of the taxonomy (load_defaults, steuerbote/ebilanz/defaults.py), or one without rows for a
-chart of its own or an ambiguous one, and leaves a mapping the company has as it is. It leaves open what it cannot
-decide: the accounts of the company the defaults give no place, a balance on which holds the E-Bilanz and the
-Jahresabschluss back, the check by the Steuerberatung, and the HGB-Taxonomie, against which saving checks the
-positions once it is installed.
+chart of its own or an ambiguous one, and leaves a mapping the company has as it is, unless that one waits for the
+defaults of today (waits_for_defaults): it has no rows and took over others or none, as a mapping made while the
+defaults were the empty table of revision 0, and gets them as a new one does. It leaves open what it cannot decide: the
+accounts of the company the defaults give no place, a balance on which holds the E-Bilanz and the Jahresabschluss back,
+the check by the Steuerberatung, and the HGB-Taxonomie, against which saving checks the positions once it is
+installed.
 """
 
 import frappe
@@ -22,6 +24,10 @@ OWN_CHART = "Eigener Kontenrahmen"
 
 MAPPING_EXISTS = (
 	"The Balance Sheet Mapping of {0} exists already with the chart {1}; the setup leaves it as it is."
+)
+MAPPING_FILLED = (
+	"The Balance Sheet Mapping of {0} had no rows and now holds the defaults {1}: account rules {2}, watched accounts "
+	"{3}, accounts outside the Bilanz and the GuV {4}."
 )
 MAPPING_WITH_DEFAULTS = (
 	"Made the Balance Sheet Mapping with the defaults {0}: account rules {1}, watched accounts {2}, accounts outside "
@@ -47,6 +53,7 @@ AMBIGUOUS_CHART = (
 )
 MESSAGES = (
 	MAPPING_EXISTS,
+	MAPPING_FILLED,
 	MAPPING_WITH_DEFAULTS,
 	WITHOUT_PLACE,
 	CHECK_WITH_ADVISER,
@@ -57,17 +64,26 @@ MESSAGES = (
 
 
 def run(context: SetupContext) -> StepResult:
-	"""The Balance Sheet Mapping, if the company has none."""
+	"""The Balance Sheet Mapping, if the company has none, or the defaults of today for one that waits for them."""
 	company = context.company
-	if frappe.db.exists(MAPPING, company):
-		chart = frappe.db.get_value(MAPPING, company, "chart")
-		return StepResult(Outcome.SKIPPED, (Note(MAPPING_EXISTS, (company, chart)),), (MAPPING, company))
+	exists = frappe.db.exists(MAPPING, company)
+	if exists:
+		mapping = frappe.get_doc(MAPPING, company)
+		if not mapping.waits_for_defaults():
+			return StepResult(
+				Outcome.SKIPPED, (Note(MAPPING_EXISTS, (company, mapping.chart)),), (MAPPING, company)
+			)
+	else:
+		mapping = frappe.new_doc(MAPPING)
+		mapping.company = company
 	detection = context.chart
-	mapping = frappe.new_doc(MAPPING)
-	mapping.company = company
 	# The step names the taxonomy it waits for in its notes, so saving leaves the alert of the form out.
 	mapping.flags.taxonomy_noted = True
-	if detection.chart not in CHARTS:
+	if exists:
+		without_place = mapping.load_defaults()
+		mapping.save()
+		notes = [Note(MAPPING_FILLED, (company, *_counted(mapping))), *_open_points(without_place)]
+	elif detection.chart not in CHARTS:
 		mapping.chart = OWN_CHART
 		mapping.insert()
 		template = AMBIGUOUS_CHART if detection.basis is charts.Basis.AMBIGUOUS else OWN_CHART_EMPTY
@@ -76,15 +92,20 @@ def run(context: SetupContext) -> StepResult:
 		mapping.chart = detection.chart
 		without_place = mapping.load_defaults()
 		mapping.insert()
-		notes = [
-			Note(
-				MAPPING_WITH_DEFAULTS,
-				(mapping.defaults_version, len(mapping.rules), len(mapping.watched), len(mapping.excluded)),
-			)
-		]
-		if without_place:
-			notes.append(Note(WITHOUT_PLACE, (len(without_place),), open=True))
-		notes.append(Note(CHECK_WITH_ADVISER, open=True))
+		notes = [Note(MAPPING_WITH_DEFAULTS, _counted(mapping)), *_open_points(without_place)]
 	if balance_sheet_mapping.position_taxonomy(mapping.taxonomy_version) is None:
 		notes.append(Note(TAXONOMY_MISSING, (mapping.taxonomy_version,), open=True))
 	return StepResult(Outcome.CREATED, tuple(notes), (MAPPING, mapping.name))
+
+
+def _counted(mapping: balance_sheet_mapping.BalanceSheetMapping) -> tuple[object, ...]:
+	"""The defaults the mapping holds, and its rules, watched accounts and accounts outside the Bilanz and the GuV
+	counted."""
+	return (mapping.defaults_version, len(mapping.rules), len(mapping.watched), len(mapping.excluded))
+
+
+def _open_points(without_place: list[str]) -> list[Note]:
+	"""What the defaults leave to the user: the accounts of the company they give no place, and the check by the
+	Steuerberatung."""
+	notes = [Note(WITHOUT_PLACE, (len(without_place),), open=True)] if without_place else []
+	return [*notes, Note(CHECK_WITH_ADVISER, open=True)]
