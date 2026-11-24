@@ -1,6 +1,6 @@
 """The Umsatzsteuer-Voranmeldung of the seed for October 2026: Berechnen, USt-IdNrn. prüfen, the menu ELSTER, the
 file for Mein ELSTER and the print preview; and the form of the return of the second company, whose Senden ELSTER
-accepted.
+accepted. Berechnen leaves the picture of the README with the Kennzahlen, voranmeldung.png, under --output.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -16,13 +16,14 @@ def open_return(desk, records) -> None:
 	desk.open(f"/desk/vat-return/{records['vat_return']}")
 
 
-def test_berechnen_calculates_the_kennzahlen_of_the_invoices(desk, expect, records):
+def test_berechnen_calculates_the_kennzahlen_of_the_invoices(desk, expect, records, screenshots):
 	open_return(desk, records)
 	desk.calculate()
 	expect(desk.field("status")).to_contain_text("Bereit")
 	kennzahlen = desk.grid_rows("kennzahlen")
 	expect(kennzahlen).to_have_count(len(KENNZAHLEN))
 	expect(kennzahlen).to_contain_text(KENNZAHLEN)
+	desk.picture(screenshots / "voranmeldung.png", "kennzahlen")
 
 
 def test_ust_idnrn_pruefen_stands_next_to_berechnen_and_nein_asks_nobody(desk, expect, records):

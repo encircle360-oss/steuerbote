@@ -9,9 +9,9 @@ with the role Accounts User alone. A second company without accounts has the dra
 to ELSTER, each with the record of its Senden. A third company has SKR03 accounts and nothing else, for Steuerbote
 einrichten, and a fourth has SKR03 accounts and the mapping of "Vorgaben laden", for Vorgaben aktualisieren. Every record is invented (steuerbote/tests/e2e/data.py) and made once,
 so the seed runs again on the same site without a change; a second run only calculates the documents of the first
-company again. It also marks the setup wizard complete and sets the language of the Administrator and the user to
-German, so that the desk opens as a German accountant sees it. Take a site of its own for it, never one with real
-data.
+company again. It also marks the setup wizard complete, gives the site the regional settings of Germany and sets the
+language of the Administrator and the user to German, so that the desk opens as a German accountant sees it. Take a
+site of its own for it, never one with real data.
 
 Of the annual filings, the seed makes the Umsatzsteuererklärung of the first company for 2026 and calculates it.
 A fifth company has SKR03 accounts, Annual Filing Settings, the Kontenzuordnung Ertragsteuern of "Vorgaben laden"
@@ -90,12 +90,22 @@ BANK = "1200"
 # The Datenlieferant that the file for Mein ELSTER names.
 DATENLIEFERANT = {"street": "Musterstraße 1", "postal_code": "12345", "city": "Musterstadt"}
 DESK_LANGUAGE = "de"
+# The regional settings the setup wizard gives a site in Germany (update_system_settings in
+# frappe/desk/page/setup_wizard/setup_wizard.py): the date format, the time format and the time zone of the Country
+# Germany and the number format of its country info, as in 31.12.2026 23:59 and 1.234,56.
+GERMAN_REGIONAL_SETTINGS = {
+	"date_format": "dd.mm.yyyy",
+	"time_format": "HH:mm",
+	"number_format": "#.###,##",
+	"time_zone": "Europe/Berlin",
+}
 INVOICE_DATE = f"{data.YEAR}-{data.MONTH:02d}-15"
 FILED_IN_MEIN_ELSTER = "mein_elster"
 
 
 def run() -> None:
 	complete_setup()
+	set_german_regional_settings()
 	make_company(data.COMPANY, data.ABBR)
 	accounts = make_accounts()
 	complete_company(accounts)
@@ -130,6 +140,25 @@ def complete_setup() -> None:
 	)
 	frappe.db.set_single_value("System Settings", "setup_complete", 1)
 	frappe.db.set_default("desktop:home_page", "workspace")
+
+
+def set_german_regional_settings() -> None:
+	"""GERMAN_REGIONAL_SETTINGS and the euro sign after the amount, 1.234,56 €, before the seed makes anything. The
+	desk reads the settings from the defaults as well, which the System Settings set when saved
+	(frappe.core.doctype.system_settings), and the place of the sign from the Currency; the rest of the seed reads them
+	once the caches are cleared. A user keeps the time zone the site had when the user was made, the Administrator that
+	of the install, so the Administrator and, on a site the seed filled before, the user with the role Accounts User get
+	the new one."""
+	for key, value in GERMAN_REGIONAL_SETTINGS.items():
+		frappe.db.set_single_value("System Settings", key, value)
+		frappe.db.set_default(key, value)
+	frappe.db.set_value("Currency", "EUR", "symbol_on_right", 1)
+	time_zone = GERMAN_REGIONAL_SETTINGS["time_zone"]
+	for user in ("Administrator", data.ACCOUNTANT):
+		if frappe.db.exists("User", user):
+			frappe.db.set_value("User", user, "time_zone", time_zone)
+			frappe.defaults.set_default("time_zone", time_zone, user)
+	frappe.clear_cache()
 
 
 def make_accounts() -> dict[str, str]:

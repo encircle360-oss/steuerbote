@@ -1,7 +1,8 @@
 """The Körperschaft- and the Gewerbesteuererklärung of the seed's company of the income taxes for 2026: Berechnen, the
 lines of the forms, the finding that the forms of the year are provisional and the print preview of each; and a new
 Körperschaftsteuererklärung, which opens as a draft of the default company. Nothing goes to ELSTER, so the list of the
-ELSTER Transmissions of the first company keeps its one row.
+ELSTER Transmissions of the first company keeps its one row. Berechnen leaves the picture of the README of each return,
+koerperschaftsteuererklaerung.png and gewerbesteuererklaerung.png, under --output.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -45,17 +46,18 @@ def calculated(desk, expect, base_url, doctype: str) -> str:
 
 
 def test_berechnen_computes_the_koerperschaftsteuer_and_holds_it_for_the_provisional_forms(
-	desk, expect, base_url
+	desk, expect, base_url, screenshots
 ):
 	calculated(desk, expect, base_url, CORPORATE)
 	lines = desk.grid_rows("lines")
 	for feldkennung in CORPORATE_LINES:
 		expect(lines.filter(has_text=feldkennung)).to_have_count(1)
 	expect(desk.grid_cells("findings", "code").filter(has_text=PROVISIONAL[CORPORATE])).to_have_count(1)
+	desk.picture(screenshots / "koerperschaftsteuererklaerung.png", "net_income")
 
 
 def test_berechnen_computes_the_gewerbesteuer_on_the_koerperschaftsteuererklaerung_of_the_year(
-	desk, expect, base_url
+	desk, expect, base_url, screenshots
 ):
 	corporate = seeded(desk, base_url, CORPORATE)
 	calculated(desk, expect, base_url, TRADE)
@@ -65,6 +67,7 @@ def test_berechnen_computes_the_gewerbesteuer_on_the_koerperschaftsteuererklaeru
 		expect(lines.filter(has_text=feldkennung)).to_have_count(1)
 	expect(desk.grid_rows("municipalities")).to_have_count(1)
 	expect(desk.grid_cells("findings", "code").filter(has_text=PROVISIONAL[TRADE])).to_have_count(1)
+	desk.picture(screenshots / "gewerbesteuererklaerung.png", "profit")
 
 
 def test_the_print_preview_shows_each_return_and_that_its_forms_are_provisional(desk, expect, base_url):

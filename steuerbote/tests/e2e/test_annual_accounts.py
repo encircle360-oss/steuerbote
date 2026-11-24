@@ -2,7 +2,7 @@
 class, the Bilanz, the Angaben, the signatories and what holds the Feststellung back; the print preview in Kontoform
 with the upload to the Unternehmensregister; the Vorschau der Offenlegung as a PDF at the document; the XBRL, which
 waits until the Jahresabschluss could be festgestellt; and a new Jahresabschluss, which opens as a draft of the
-default company.
+default company. The calculated Jahresabschluss is the picture of the README, jahresabschluss.png, under --output.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -40,7 +40,7 @@ def opened(desk, base_url) -> str:
 
 
 def test_berechnen_shows_the_size_class_the_bilanz_the_angaben_and_what_holds_the_feststellung(
-	desk, expect, base_url
+	desk, expect, base_url, screenshots
 ):
 	opened(desk, base_url)
 	expect(desk.field("status")).to_contain_text("Berechnet")
@@ -51,6 +51,7 @@ def test_berechnen_shows_the_size_class_the_bilanz_the_angaben_and_what_holds_th
 	expect(desk.grid_rows("notes")).to_have_count(KLEINST_ANGABEN)
 	expect(desk.grid_rows("signatories").filter(has_text=data.ACCOUNTS_DIRECTOR)).to_have_count(1)
 	expect(desk.grid_cells("findings", "code").filter(has_text="JA-NICHT-FESTGESTELLT")).to_have_count(1)
+	desk.picture(screenshots / "jahresabschluss.png", "lines")
 
 
 def test_the_print_preview_shows_the_bilanz_in_kontoform_and_the_upload(desk, expect, base_url):

@@ -1,6 +1,7 @@
 """The setup of Steuerbote: Steuerbote einrichten for the third company of the seed, the VAT Return Settings and the
 mapping of the company of the seed with its check of the tax templates, Vorgaben aktualisieren for the mapping of the
-fourth company, and the ERiC Settings, which simulate.
+fourth company, and the ERiC Settings, which simulate. The first run of Steuerbote einrichten leaves the picture of
+the README, steuerbote-einrichten.png, under --output.
 
 The module imports neither pytest nor Playwright, see conftest.py.
 """
@@ -68,7 +69,7 @@ def test_the_eric_settings_say_that_they_simulate(desk, expect):
 	expect(desk.button("Laufzeitumgebung installieren")).to_be_visible()
 
 
-def test_steuerbote_einrichten_sets_up_a_company_once(desk, expect):
+def test_steuerbote_einrichten_sets_up_a_company_once(desk, expect, screenshots):
 	"""The first run makes the settings and the mappings with the defaults of SKR03 and leaves the
 	Voranmeldungszeitraum open; the second changes nothing and says so."""
 	desk.open(f"/desk/steuerbote-setup?company={quote(data.SETUP_COMPANY)}")
@@ -89,6 +90,7 @@ def test_steuerbote_einrichten_sets_up_a_company_once(desk, expect):
 	):
 		expect(report.locator(f'tr[data-step="{step}"]')).to_contain_text(outcome)
 	expect(report.locator('tr[data-step="vat_return_mapping"]')).to_contain_text("SKR03")
+	desk.picture(screenshots / "steuerbote-einrichten.png")
 	set_up(desk)
 	expect(report.locator(".steuerbote-setup-summary")).to_contain_text(
 		f"Nichts geändert: {data.SETUP_COMPANY} war schon eingerichtet."

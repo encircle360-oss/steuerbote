@@ -7,7 +7,8 @@ The site runs with the data of seed.py. The test modules import neither pytest n
 run-tests imports every test_*.py of the app in the environment of the bench, which has neither; they take
 everything from these fixtures, Playwright's expect included. A test fails when one of its pages saw a JavaScript
 error, an error on the console or a failed response (desk.py), and a failed test leaves a screenshot of each of
-its pages under --output, where the tests of the desk leave those of the sidebar and the workspace.
+its pages under --output, where the tests of the desk leave those of the sidebar and the workspace and the tests of
+the pages the README shows its pictures, named as in docs/bilder.
 """
 
 import json
@@ -53,7 +54,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 	group.addoption(
 		"--output",
 		default="test-results",
-		help="where the tests leave screenshots: of the sidebar, the workspace and the pages of a failed test",
+		help="where the tests leave screenshots: of the sidebar, the workspace, the pictures of the README and the "
+		"pages of a failed test",
 	)
 	group.addoption("--headed", action="store_true", help="show the browser while the tests run")
 

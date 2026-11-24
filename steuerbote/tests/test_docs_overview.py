@@ -1,10 +1,10 @@
 """The pages that give the overview keep up with the app, read without a bench: the README links every page under
-docs/ and the page of each annual document the app brings and shows only pictures that are there; every relative
-link of the README, AGENTS.md and the pages leads to a page and a heading that exist; the pages that introduce the
-annual documents, those on ERiC and the transmission to ELSTER and the architecture name each document the app brings;
-the roadmap calls a package done once the app brings what it promised; AGENTS.md names every core of the app and, for
-the year change, each year check and the year table of each module; and SECURITY.md names how to report a
-vulnerability privately."""
+docs/ and the page of each annual document the app brings and shows only pictures that are there; the README or a page
+under docs/ shows every picture under docs/bilder; every relative link of the README, AGENTS.md and the pages leads to
+a page and a heading that exist; the pages that introduce the annual documents, those on ERiC and the transmission to
+ELSTER and the architecture name each document the app brings; the roadmap calls a package done once the app brings
+what it promised; AGENTS.md names every core of the app and, for the year change, each year check and the year table
+of each module; and SECURITY.md names how to report a vulnerability privately."""
 
 import ast
 import json
@@ -19,6 +19,7 @@ from steuerbote.ustva.years import YEARS
 APP = Path(__file__).resolve().parents[1]
 ROOT = APP.parent
 DOCS = ROOT / "docs"
+PICTURES = DOCS / "bilder"
 README = ROOT / "README.md"
 SECURITY = ROOT / "SECURITY.md"
 AGENTS = ROOT / "AGENTS.md"
@@ -31,6 +32,7 @@ LINK = re.compile(r"\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^#{1,6} (.+)$", re.MULTILINE)
 CODE_BLOCK = re.compile(r"^```.*?^```$", re.DOTALL | re.MULTILINE)
 PICTURE = re.compile(r'(?:src|href)="(docs/bilder/[^"]+)"')
+SOURCE = re.compile(r'(?:src|href)="([^"]+)"')
 CODE = re.compile(r"`([^`]+)`")
 EXTERNAL = ("http://", "https://", "mailto:")
 IN_PROGRESS = "in Arbeit"
@@ -168,6 +170,19 @@ class ReadmeTest(TestCase):
 		for picture in shown:
 			with self.subTest(picture=picture):
 				self.assertTrue((ROOT / picture).is_file())
+
+
+class PicturesTest(TestCase):
+	def test_the_readme_or_a_page_under_docs_shows_every_picture_under_docs_bilder(self):
+		"""A picture that no page shows any more leaves the repository, so that none is left behind."""
+		shown = {
+			(page.parent / target.partition("#")[0]).resolve()
+			for page in (README, *DOCS.glob("*.md"))
+			for target in (*LINK.findall(read(page)), *SOURCE.findall(read(page)))
+		}
+		pictures = sorted(PICTURES.iterdir())
+		self.assertTrue(pictures)
+		self.assertEqual([picture.name for picture in pictures if picture.resolve() not in shown], [])
 
 
 class LinksTest(TestCase):
