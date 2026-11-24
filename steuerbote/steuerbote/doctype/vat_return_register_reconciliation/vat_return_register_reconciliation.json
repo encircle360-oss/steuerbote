@@ -27,7 +27,7 @@
    "read_only": 1
   },
   {
-   "columns": 3,
+   "columns": 2,
    "fieldname": "subject",
    "fieldtype": "Small Text",
    "in_list_view": 1,
@@ -35,7 +35,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "register_amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -44,7 +44,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "ledger_amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -53,7 +53,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "difference",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -62,11 +62,9 @@
    "read_only": 1
   },
   {
-   "columns": 2,
    "description": "Required before the return is filed for a row with a difference, unless the remarks explain it.",
    "fieldname": "explanation",
    "fieldtype": "Small Text",
-   "in_list_view": 1,
    "label": "Explanation"
   },
   {

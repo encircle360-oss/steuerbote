@@ -27,15 +27,13 @@
    "read_only": 1
   },
   {
-   "columns": 3,
    "fieldname": "label",
    "fieldtype": "Small Text",
-   "in_list_view": 1,
    "label": "Description",
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "current",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -44,7 +42,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "previous_period",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -53,7 +51,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "previous_year",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -62,7 +60,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "difference",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -71,10 +69,8 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "difference_percent",
    "fieldtype": "Percent",
-   "in_list_view": 1,
    "label": "Difference (%)",
    "read_only": 1
   },

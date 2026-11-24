@@ -20,10 +20,8 @@
  ],
  "fields": [
   {
-   "columns": 1,
    "fieldname": "art",
    "fieldtype": "Select",
-   "in_list_view": 1,
    "label": "Kind of Supply",
    "options": "L\nD\nS",
    "read_only": 1
@@ -37,7 +35,7 @@
    "read_only": 1
   },
   {
-   "columns": 2,
+   "columns": 3,
    "fieldname": "ledger",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -46,7 +44,7 @@
    "read_only": 1
   },
   {
-   "columns": 2,
+   "columns": 3,
    "fieldname": "statement",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -55,7 +53,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "difference",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -64,19 +62,15 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "reported",
    "fieldtype": "Currency",
-   "in_list_view": 1,
    "label": "Amount Filed",
    "options": "Company:company:default_currency",
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "filed",
    "fieldtype": "Currency",
-   "in_list_view": 1,
    "label": "Filed Voranmeldungen",
    "options": "Company:company:default_currency",
    "read_only": 1
@@ -92,7 +86,6 @@
   {
    "fieldname": "deviating_vouchers",
    "fieldtype": "Int",
-   "in_list_view": 1,
    "label": "Deviating Vouchers",
    "read_only": 1
   },
@@ -106,11 +99,9 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "description": "What the lines entered by hand report: no voucher of the ledger stands behind it, their reason explains it. It is part of the amount filed.",
    "fieldname": "manual",
    "fieldtype": "Currency",
-   "in_list_view": 1,
    "label": "Lines by Hand",
    "options": "Company:company:default_currency",
    "read_only": 1

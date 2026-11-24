@@ -14,7 +14,7 @@
  ],
  "fields": [
   {
-   "columns": 3,
+   "columns": 2,
    "default": "Ordinary Distribution",
    "fieldname": "kind",
    "fieldtype": "Select",
@@ -50,7 +50,7 @@
    "reqd": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "description": "The reduction of the steuerliches Einlagekonto that the Steuerbescheinigung certifies.",
    "fieldname": "certified_reduction",
    "fieldtype": "Currency",

@@ -25,17 +25,15 @@
  ],
  "fields": [
   {
-   "columns": 2,
    "description": "The position of the HGB-Taxonomie without the prefix de-gaap-ci:, such as bs.ass.currAss.cashEquiv.bank; a line by hand names a position the books do not fill.",
    "fieldname": "concept",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Position",
    "read_only_depends_on": "eval:!doc.manual",
    "reqd": 1
   },
   {
-   "columns": 3,
+   "columns": 4,
    "fieldname": "label",
    "fieldtype": "Small Text",
    "in_list_view": 1,
@@ -78,12 +76,10 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "default": "0",
    "description": "Reported without a value: a Mussfeld the books do not fill, or a position above one.",
    "fieldname": "nil",
    "fieldtype": "Check",
-   "in_list_view": 1,
    "label": "NIL",
    "read_only": 1
   },
@@ -99,7 +95,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "description": "What the position reports without a correction of its own: the books, and for a position above others their sum.",
    "fieldname": "computed",
    "fieldtype": "Currency",
@@ -117,7 +113,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "correction",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -132,7 +128,7 @@
    "read_only_depends_on": "eval:doc.component==='BVV'"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "reported",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -141,11 +137,9 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "default": "0",
    "fieldname": "manual",
    "fieldtype": "Check",
-   "in_list_view": 1,
    "label": "Line by Hand",
    "read_only": 1
   }

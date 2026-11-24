@@ -30,10 +30,8 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "paragraph",
    "fieldtype": "Data",
-   "in_list_view": 1,
    "label": "Kürzung (BEG Line 7)",
    "read_only": 1
   },
@@ -65,7 +63,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "exempt",
    "fieldtype": "Currency",
    "in_list_view": 1,

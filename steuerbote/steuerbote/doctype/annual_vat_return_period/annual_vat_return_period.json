@@ -44,10 +44,8 @@
    "read_only": 1
   },
   {
-   "columns": 2,
    "fieldname": "vat_return",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "label": "VAT Return",
    "options": "VAT Return",
    "read_only": 1
@@ -57,7 +55,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "kz83",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -73,7 +71,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "kz83_now",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -82,7 +80,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "difference",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -105,7 +103,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "cause",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -114,11 +112,9 @@
    "read_only": 1
   },
   {
-   "columns": 2,
    "description": "Why the return is filed without the Voranmeldung of the period, such as one filed outside Steuerbote; without it a due period that is not filed holds the return.",
    "fieldname": "waiver_reason",
    "fieldtype": "Small Text",
-   "in_list_view": 1,
    "label": "Reason without a Voranmeldung"
   }
  ],

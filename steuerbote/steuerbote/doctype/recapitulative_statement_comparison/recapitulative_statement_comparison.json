@@ -24,10 +24,8 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "art",
    "fieldtype": "Select",
-   "in_list_view": 1,
    "label": "Kind of Supply",
    "options": "L\nD\nS",
    "read_only": 1
@@ -51,7 +49,7 @@
    "read_only": 1
   },
   {
-   "columns": 1,
+   "columns": 2,
    "fieldname": "difference",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -60,10 +58,8 @@
    "read_only": 1
   },
   {
-   "columns": 1,
    "fieldname": "difference_percent",
    "fieldtype": "Percent",
-   "in_list_view": 1,
    "label": "Difference (%)",
    "read_only": 1
   },

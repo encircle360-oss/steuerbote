@@ -25,7 +25,7 @@
    "reqd": 1
   },
   {
-   "columns": 4,
+   "columns": 3,
    "fieldname": "label",
    "fieldtype": "Small Text",
    "in_list_view": 1,
@@ -74,7 +74,7 @@
    "label": "Text"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "description": "An amount of zero is no amount. The number of the Arbeitnehmer is that of the document.",
    "fieldname": "amount",
    "fieldtype": "Currency",

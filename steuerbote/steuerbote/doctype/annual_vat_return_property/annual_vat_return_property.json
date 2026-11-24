@@ -29,10 +29,8 @@
    "label": "First Actual Use"
   },
   {
-   "columns": 2,
    "fieldname": "kind_of_use",
    "fieldtype": "Small Text",
-   "in_list_view": 1,
    "label": "Kind of Use in the First Year"
   },
   {
@@ -45,7 +43,7 @@
    "precision": "2"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "description": "In whole euros.",
    "fieldname": "input_tax_total",
    "fieldtype": "Currency",
@@ -54,7 +52,7 @@
    "options": "Company:company:default_currency"
   },
   {
-   "columns": 1,
+   "columns": 2,
    "description": "In whole euros, in the Investitionsphase.",
    "fieldname": "input_tax_deducted",
    "fieldtype": "Currency",
