@@ -4,6 +4,8 @@ Umsatzsteuererklärung, E-Bilanz, Körperschaftsteuererklärung, Gewerbesteuerer
 
 Diese Seite beschreibt, was für alle Jahresmeldungen gilt: Status, Felder, Berechnen, Korrekturen und Zeilen von Hand, Befunde, Abgabe, Berichtigung je Datenart, Übermittlung an ELSTER, Druck und Formular, und die Schnittstelle, auf die die Module bauen. Die Belege selbst bringen die Module der Jahresmeldungen mit, alle fünf: die Umsatzsteuererklärung (`Annual VAT Return`, siehe [Umsatzsteuererklärung](umsatzsteuererklaerung.md)), die Körperschaftsteuererklärung (`Corporate Income Tax Return`), die Gewerbesteuererklärung (`Trade Tax Return`, siehe [Körperschaftsteuer- und Gewerbesteuererklärung](ertragsteuern.md)), die E-Bilanz (`Electronic Balance Sheet`, siehe [E-Bilanz](ebilanz.md)) und der Jahresabschluss (`Annual Accounts`, siehe [Jahresabschluss](jahresabschluss.md)). Die Frappe-Tests der Grundlage selbst laufen an zwei eigenen Test-DocTypes, siehe [Der Kern](#der-kern).
 
+Die offenen fachlichen Punkte aller Jahresmeldungen, die eine Steuerberatung vor der ersten Abgabe bestätigen oder entscheiden sollte, sammelt die [Prüfliste für die Steuerberatung](pruefliste-steuerberatung.md).
+
 ## Status
 
 | Status | Erklärungen und E-Bilanz | Jahresabschluss | Bedeutung |
