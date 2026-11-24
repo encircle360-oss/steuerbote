@@ -875,3 +875,60 @@ class RolesTest(TestCase):
 		self.assertEqual(taxonomy.FIXED_ASSETS_GROSS, mini.FIXED_ASSETS_TABLE)
 		self.assertEqual(taxonomy.APPROPRIATION_PROFITS, f"{mini.ROLE}appropriationProfits")
 		self.assertEqual(taxonomy.GCD, mini.GCD_ROLE)
+
+
+class Taxonomy610Test(TestCase):
+	"""The loader on the mini taxonomy of 6.10 (steuerbote/xbrl/tests/mini.py): the modules of 2026-04-01, the part of
+	the Kontensalden for a position without an account, the new Mussfeld, and the positions it renames and removes."""
+
+	def setUp(self):
+		self.view = mini.view(View.FISCAL, mini.VERSION_6_10)
+
+	def test_reads_each_view_from_the_modules_of_2026(self):
+		for name in View:
+			with self.subTest(view=name):
+				loaded = mini.view(name, mini.VERSION_6_10)
+				self.assertEqual(
+					(loaded.version, loaded.entry_points), ("6.10", name.entry_points(mini.VERSION_6_10))
+				)
+				self.assertEqual(
+					dict(loaded.namespaces),
+					{
+						GAAP: "http://www.xbrl.de/taxonomies/de-gaap-ci-2026-04-01",
+						GCD: "http://www.xbrl.de/taxonomies/de-gcd-2026-04-01",
+					},
+				)
+
+	def test_the_kontensalden_take_the_part_for_a_position_without_an_account(self):
+		"""„Konto nicht vorhanden oder nicht übermittelbar“ [detailedInformation.accountbalances.notPossible], a part
+		of every tuple „Kontensalden zu einer Position“ (Änderungsnachweis zum Taxonomie-Update 2026, 3.)."""
+		content = self.view.concept(f"{GAAP}:detailedInformation.accountBalances").content
+		last = content.particles[-1]
+		self.assertEqual(
+			(last.concept, last.min_occurs, last.max_occurs),
+			(f"{GAAP}:detailedInformation.accountbalances.notPossible", 1, 1),
+		)
+		self.assertEqual(len(content.particles), 5)
+		part = self.view.concept(f"{GAAP}:detailedInformation.accountbalances.notPossible")
+		self.assertEqual(part.item_type, "xbrli:booleanItemType")
+		self.assertEqual(self.view.label(part.name), "Konto nicht vorhanden oder nicht übermittelbar")
+
+	def test_grundsteuer_is_a_mussfeld_of_the_guv(self):
+		grundsteuer = self.view.concept(f"{GAAP}:is.netIncome.otherTaxes.GrSt")
+		self.assertIs(grundsteuer.fiscal.requirement, Requirement.MUSSFELD)
+		self.assertTrue(grundsteuer.applies_to(LegalForm.KST))
+		self.assertEqual(
+			self.view.parents([taxonomy.INCOME_STATEMENT])["is.netIncome.otherTaxes.GrSt"], "is.netIncome"
+		)
+		self.assertFalse(view().has("is.netIncome.otherTaxes.GrSt"))
+
+	def test_renames_and_removes_positions_of_6_9(self):
+		self.assertTrue(view().has("bs.ass.currAss.cashEquiv.cryptoAssets"))
+		self.assertFalse(self.view.has("bs.ass.currAss.cashEquiv.cryptoAssets"))
+		renamed = self.view.concept("bs.ass.currAss.cashEquiv.digitalAssets")
+		self.assertEqual((renamed.balance, renamed.valid_since), (Balance.DEBIT, date(2027, 1, 1)))
+		self.assertTrue(view().has("bs.ass.fixAss.tan.oldEquipment"))
+		self.assertFalse(self.view.has("bs.ass.fixAss.tan.oldEquipment"))
+		self.assertNotIn(
+			f"{GAAP}:bs.ass.fixAss.tan.oldEquipment", self.view.presentation[taxonomy.BALANCE_SHEET]
+		)

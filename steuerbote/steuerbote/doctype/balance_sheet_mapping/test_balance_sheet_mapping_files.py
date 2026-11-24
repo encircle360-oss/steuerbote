@@ -17,7 +17,7 @@ from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl import mapping
 from steuerbote.xbrl.mapping import REMAINING_TERMS, Purpose
 from steuerbote.xbrl.tests import real
-from steuerbote.xbrl.versions import LATEST, TAXONOMIES
+from steuerbote.xbrl.versions import FIRST, TAXONOMIES
 
 APP = Path(__file__).resolve().parents[3]
 DOCTYPES = APP / "steuerbote" / "doctype"
@@ -117,10 +117,13 @@ class MappingDefinitionTest(TestCase):
 		)
 
 	def test_the_positions_belong_to_a_version_of_the_taxonomy_steuerbote_knows(self):
+		"""A new mapping takes the version of the first fiscal year Steuerbote files; „Auf neue Taxonomie heben“ moves
+		it to a later one."""
 		taxonomy = self.fields["taxonomy_version"]
 		self.assertEqual(options(taxonomy), list(TAXONOMIES))
+		self.assertEqual(options(taxonomy), ["6.9", "6.10"])
 		self.assertEqual(
-			(taxonomy["default"], taxonomy["read_only"], taxonomy["reqd"]), (LATEST.version, 1, 1)
+			(taxonomy["default"], taxonomy["read_only"], taxonomy["reqd"]), (FIRST.version, 1, 1)
 		)
 
 	def test_keeps_the_defaults_it_took_over_as_vat_return_mapping_does(self):
@@ -147,6 +150,8 @@ class MappingDefinitionTest(TestCase):
 				"rules",
 				"watched",
 				"excluded",
+				"previous_taxonomy_version",
+				"previous_rows",
 			],
 		)
 		self.assertEqual(
@@ -349,7 +354,9 @@ class FormFilesTest(TestCase):
 				"compare_with_defaults",
 				"compare_with_file",
 				"export_mapping",
+				"export_previous_mapping",
 				"import_file",
+				"lift_taxonomy",
 				"load_defaults",
 				"update_from_defaults",
 				"watch_accounts_without_place",
@@ -457,3 +464,59 @@ class SetupStepTest(TestCase):
 		messages = {found[name.id] for name in listed.elts}
 		self.assertEqual(len(messages), 7)
 		self.assertEqual(sorted(messages - translations().keys()), [])
+
+
+class LiftFilesTest(TestCase):
+	"""Auf neue Taxonomie heben: the fields that keep the rows of the previous version, the button the form offers
+	while a later version exists, the dialog of what the lift found, and every text in German."""
+
+	def setUp(self):
+		self.fields = fields_of("balance_sheet_mapping")
+		self.script = (FOLDER / "balance_sheet_mapping.js").read_text(encoding="utf-8")
+		self.source = (FOLDER / "balance_sheet_mapping.py").read_text(encoding="utf-8")
+
+	def test_keeps_the_previous_version_and_its_rows_as_the_defaults_taken_over(self):
+		"""As defaults_version and defaults_rows keep the defaults: the version shown once there is one, the rows in
+		the dump of steuerbote.balance_mapping_sync.dump_items()."""
+		previous, rows = self.fields["previous_taxonomy_version"], self.fields["previous_rows"]
+		self.assertEqual(
+			(previous["fieldtype"], previous["read_only"], previous.get("depends_on")),
+			("Data", 1, "previous_taxonomy_version"),
+		)
+		self.assertEqual((rows["fieldtype"], rows["read_only"], rows["hidden"]), ("Long Text", 1, 1))
+
+	def test_the_form_offers_the_lift_to_the_latest_version_and_the_export_of_the_rows_before(self):
+		body = function(self.script, "lift_taxonomy")
+		self.assertIn('frm.call("lift_taxonomy", { target: latest })', body)
+		self.assertIn('frm.get_docfield("taxonomy_version").options.split("\\n")', self.script)
+		self.assertIn("if (frm.doc.previous_rows) {", self.script)
+		export = function(self.script, "export_previous_mapping")
+		for part in ("new Blob([file.content]", "link.download = file.file_name;"):
+			with self.subTest(part=part):
+				self.assertIn(part, export)
+
+	def test_the_dialog_of_the_lift_escapes_what_it_shows(self):
+		body = function(self.script, "show_lifted")
+		self.assertIn("const escape = frappe.utils.escape_html;", body)
+		for value in (
+			"renamed.account",
+			"renamed.old",
+			"renamed.new",
+			"decision.account",
+			"decision.position",
+			"decision.text",
+			"mussfeld.label",
+			"mussfeld.position",
+		):
+			with self.subTest(value=value):
+				shown = re.findall(rf"\$\{{[^}}]*{re.escape(value)}[^}}]*\}}", body)
+				self.assertTrue(shown)
+				self.assertTrue(all("escape" in expression for expression in shown), shown)
+
+	def test_every_message_of_the_lift_reads_in_german(self):
+		found = constants(self.source)
+		messages = {found[name] for name in ("NOT_INSTALLED", "NOT_LATER", "NOT_LIFTED", "NO_DEFAULTS")}
+		self.assertEqual(sorted(messages - translations().keys()), [])
+		german = translations()
+		self.assertEqual(german["Lift to New Taxonomy"], "Auf neue Taxonomie heben")
+		self.assertEqual(german["Previous HGB Taxonomy"], "Vorherige HGB-Taxonomie")

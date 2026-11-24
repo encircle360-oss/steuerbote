@@ -11,10 +11,12 @@ from xml.etree import ElementTree
 from lxml import etree
 
 from steuerbote.ebilanz.anlagenspiegel import Row, ValueType
-from steuerbote.ebilanz.instance import Sources
-from steuerbote.ebilanz.tests.taxonomy import view
-from steuerbote.ebilanz.tests.test_gcd import OPENING
-from steuerbote.ebilanz.tests.test_instance import EQUITY, OPENING_BOOKS, built
+from steuerbote.ebilanz.instance import Sources, build
+from steuerbote.ebilanz.positions import structure
+from steuerbote.ebilanz.tests.taxonomy import view, view_6_10
+from steuerbote.ebilanz.tests.test_calculation import case
+from steuerbote.ebilanz.tests.test_gcd import MASTER, OPENING
+from steuerbote.ebilanz.tests.test_instance import EQUITY, OPENING_BOOKS, SOURCES, built
 from steuerbote.ebilanz.tests.test_ueberleitung import ACCRUAL, HANDELSBILANZ, SALES
 from steuerbote.ebilanz.tests.test_ueberleitung import SOFTWARE as SELFMADE
 from steuerbote.elster import ebilanz_xml
@@ -267,7 +269,7 @@ class GcdRulesTest(TestCase):
 			"170205017",
 			codes(changed(EROEFFNUNGSBILANZ, valued("genInfo.report.period.fiscalYearEnd", "2028-12-31"))),
 		)
-		self.assertNotIn("170205007", codes(early, replace(HEADER, datenart_version="Bilanz_6.10")))
+		self.assertNotIn("170205007", codes(early, replace(HEADER, datenart_version="Bilanz_6.11")))
 
 
 def special_balance(root: etree._Element) -> None:
@@ -531,3 +533,107 @@ class ExpectedRulesTest(TestCase):
 			terms["170205017"], ('[gcd:genInfo.report.period.fiscalYearEnd]>Datum("30","12","2028")',)
 		)
 		self.assertEqual(len(set(terms)), len(bilanz.RULES))
+
+
+HEADER_6_10 = replace(HEADER, datenart_version="Bilanz_6.10")
+
+
+class Taxonomy610RulesTest(TestCase):
+	"""The rules of „Kontext - Regeln“ of Jahresdokumentation_Bilanz_Taxonomie_6_10.ods (ERiC documentation 45.1.5.0)
+	that differ from those of 6.9, for an E-Bilanz of the Datenart Bilanz_6.10."""
+
+	def test_the_fiscal_years_of_6_10(self):
+		"""Rules 170205007, 170205018 and 170205017 of 6.10: „Version 6.10 der HGB-Taxonomie darf nur für
+		Wirtschaftsjahre verwendet werden, die nach dem 31.12.2025 beginnen“, „die vor dem 31.12.2028 enden“, and an
+		Eröffnungsbilanz „vor dem 31.12.2029“."""
+		self.assertNotIn("170205007", codes(EINHEITSBILANZ, HEADER_6_10))
+		early = changed(EINHEITSBILANZ, valued("genInfo.report.period.fiscalYearBegin", "2025-12-31"))
+		self.assertIn("170205007", codes(early, HEADER_6_10))
+		self.assertNotIn("170205007", codes(early))
+		late = changed(EINHEITSBILANZ, valued("genInfo.report.period.fiscalYearEnd", "2028-12-31"))
+		self.assertIn("170205018", codes(late, HEADER_6_10))
+		in_time = changed(EINHEITSBILANZ, valued("genInfo.report.period.fiscalYearEnd", "2028-12-30"))
+		self.assertNotIn("170205018", codes(in_time, HEADER_6_10))
+		self.assertIn("170205018", codes(in_time))
+		opening = changed(EROEFFNUNGSBILANZ, valued("genInfo.report.period.fiscalYearEnd", "2029-12-31"))
+		self.assertIn("170205017", codes(opening, HEADER_6_10))
+		opening_in_time = changed(
+			EROEFFNUNGSBILANZ, valued("genInfo.report.period.fiscalYearEnd", "2029-12-30")
+		)
+		self.assertNotIn("170205017", codes(opening_in_time, HEADER_6_10))
+
+	def test_6_10_takes_the_kontensalden_without_a_reason(self):
+		"""Rule 170405002 of 6.10: „Der Berichtsbestandteil "Kontensalden" muss angekündigt werden, wenn der Beginn des
+		Wirtschaftsjahres nach dem 31.12.2024 liegt.“; the reason of 6.9 counts no more."""
+		without = changed(
+			EINHEITSBILANZ,
+			emptied(f"{ELEMENTS}.KS"),
+			valued(f"{ELEMENTS}.transmissionNotYetPossible", "Grund"),
+		)
+		self.assertEqual(codes(without), [])
+		self.assertEqual(codes(without, HEADER_6_10), ["170405002"])
+		earlier = changed(without, valued("genInfo.report.period.fiscalYearBegin", "2024-12-31"))
+		self.assertNotIn("170405002", codes(earlier, HEADER_6_10))
+		self.assertIn("170205007", codes(earlier, HEADER_6_10))
+
+	def test_names_the_terms_of_6_10(self):
+		"""What the year check compares with Jahresdokumentation_Bilanz_Taxonomie_6_10.ods."""
+		expected = {expectation.code: expectation.terms for expectation in bilanz.expected_rules("6.10")}
+		self.assertEqual(list(expected), [rule.code for rule in bilanz.RULES])
+		self.assertEqual(
+			expected["170205007"], ('[gcd:genInfo.report.period.fiscalYearBegin]<Datum("01","01","2026")',)
+		)
+		self.assertEqual(
+			expected["170205018"], ('[gcd:genInfo.report.period.fiscalYearEnd]>Datum("30","12","2028")',)
+		)
+		self.assertEqual(
+			expected["170205017"], ('[gcd:genInfo.report.period.fiscalYearEnd]>Datum("30","12","2029")',)
+		)
+		self.assertEqual(
+			expected["170405002"],
+			(
+				f"FeldNichtAngegeben(gcd:{ELEMENTS}.KS)",
+				"FeldAngegeben(gcd:genInfo.report.period.fiscalYearBegin)",
+				'[gcd:genInfo.report.period.fiscalYearBegin]>Datum("31","12","2024")',
+			),
+		)
+		self.assertEqual(
+			{expectation.code: expectation.terms for expectation in bilanz.expected_rules("6.9")}[
+				"170405002"
+			],
+			(
+				f"FeldNichtAngegeben(gcd:{ELEMENTS}.KS)",
+				f"FeldNichtAngegeben(gcd:{ELEMENTS}.transmissionNotYetPossible)",
+			),
+		)
+
+
+GAAP_6_10 = "{http://www.xbrl.de/taxonomies/de-gaap-ci-2026-04-01}"
+
+
+class Taxonomy610Test(TestCase):
+	"""With the mini taxonomy 6.10 registered for 6.10: the Kontensalden of an E-Bilanz of the Datenart Bilanz_6.10
+	by the structural errors 170195106 to 170195110 of its Jahresdokumentation (steuerbote.xbrl.checks.kontensalden())."""
+
+	@classmethod
+	def setUpClass(cls):
+		cls.nutzdaten = ebilanz_xml.to_nutzdaten(build(structure(view_6_10(), case()), MASTER, SOURCES))
+
+	def setUp(self):
+		bilanz.register_taxonomy("6.10", view_6_10)
+		self.addCleanup(bilanz.unregister_taxonomy, "6.10")
+
+	def test_the_e_bilanz_of_steuerbote_passes(self):
+		self.assertEqual(errors(self.nutzdaten, HEADER_6_10), [])
+
+	def test_170195106_a_valued_position_without_a_kontensaldo(self):
+		"""The Jahresüberschuss of the Bilanz without its Kontensaldo without account information."""
+
+		def without_the_last_kontensaldo(root: etree._Element) -> None:
+			*_rest, last = root.iter(f"{GAAP_6_10}detailedInformation.accountBalances")
+			last.getparent().remove(last)
+
+		self.assertEqual(
+			errors(changed(self.nutzdaten, without_the_last_kontensaldo), HEADER_6_10),
+			[("170195106", "de-gaap-ci:bs.eqLiab.equity.netIncome")],
+		)

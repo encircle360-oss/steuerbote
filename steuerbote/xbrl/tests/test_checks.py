@@ -983,3 +983,122 @@ class ClosingDatesTest(TestCase):
 			(euros("bs.ass", "100"), euros("bs.ass.fixAss", "100")),
 		)
 		self.assertEqual(checks.closing_dates(report_, mini.view(View.COMMERCIAL_MICROBILG)), ())
+
+
+ACCOUNT_BALANCES = f"{A}detailedInformation.accountBalances"
+NOT_POSSIBLE = f"{A}detailedInformation.accountbalances.notPossible"
+LEAVES = (
+	("bs.ass.fixAss.intan.concessionBrands", "20"),
+	("bs.ass.fixAss.tan", "40"),
+	("bs.ass.currAss.cashEquiv.bank", "40"),
+	("bs.eqLiab.equity.subscribed.corp", "25"),
+	("bs.eqLiab.equity.netIncome", "45"),
+	("bs.eqLiab.liab.bank", "30"),
+	("is.netIncome.netSales", "100"),
+	("is.netIncome.materialServices", "40"),
+	("is.netIncome.tax", "15"),
+)
+"""The positions of Bilanz and GuV of the report with a value and none under them in the calculation."""
+
+
+def kontensaldo(position: str, value: str, account: tuple[str, str] | None = ("1200", "Konto"), *, flag=None):
+	"""A tuple „Kontensalden zu einer Position“ of 6.10, with account information or, without, notPossible true."""
+	number, description = account or (None, None)
+	return Tuple(
+		ACCOUNT_BALANCES,
+		(
+			Item(f"{A}detailedInformation.accountbalances.positionName", WJ, f"{A}{position}"),
+			Item(f"{A}detailedInformation.accountbalances.accountNumber", WJ, number),
+			Item(f"{A}detailedInformation.accountbalances.accountDescription", WJ, description),
+			amount(f"{A}detailedInformation.accountbalances.amount", WJ, Decimal(value)),
+			Item(NOT_POSSIBLE, WJ, (account is None) if flag is None else flag),
+		),
+	)
+
+
+def report_6_10(*facts: Fact, elements: tuple[str, ...] = ("B", "GuV", "BVV", "KS")) -> Report:
+	"""The report of the GmbH on the mini taxonomy 6.10 with its Kontensalden and further facts."""
+	return Report(
+		ENTITY,
+		PERIODS,
+		writer.entry_points(mini.view(View.FISCAL, mini.VERSION_6_10)),
+		(*gcd(elements=elements), *BILANZ_FACTS, *GUV_FACTS, *BVV_FACTS, *facts),
+	)
+
+
+def kontensalden(*facts: Fact, leaves=LEAVES, **values) -> tuple[tuple[str, str], ...]:
+	report_ = report_6_10(*(kontensaldo(position, value) for position, value in leaves), *facts, **values)
+	view = mini.view(View.FISCAL, mini.VERSION_6_10)
+	return tuple(
+		(finding.code.value, finding.concept)
+		for finding in checks.kontensalden(report_, view, Facets.of(report_))
+	)
+
+
+class KontensaldenTest(TestCase):
+	"""The Kontensalden of the taxonomy 6.10, Technischer Leitfaden zur HGB-Taxonomie 6.10, B.12.1 and B.12.2, as the
+	structural errors 170195106 to 170195110 of Jahresdokumentation_Bilanz_Taxonomie_6_10.ods check them."""
+
+	def test_a_report_with_a_kontensaldo_for_each_valued_position_without_one_below(self):
+		self.assertEqual(kontensalden(), ())
+
+	def test_170195106_a_valued_position_without_a_valued_one_below_has_a_kontensaldo(self):
+		"""„Ein Kontennachweis ist für eine solche Position genau dann erforderlich, wenn sie selbst werthaltig ist und
+		zu keiner rechnerisch verknüpften Unterposition ein Wert übermittelt wird.“; a total and a NIL position need
+		none."""
+		found = kontensalden(leaves=[leaf for leaf in LEAVES if leaf[0] != "bs.ass.fixAss.tan"])
+		self.assertEqual(found, (("170195106", f"{A}bs.ass.fixAss.tan"),))
+		self.assertEqual(
+			kontensalden(kontensaldo("bs.ass.fixAss.tan", "40", None), leaves=LEAVES[:1] + LEAVES[2:]), ()
+		)
+
+	def test_170195106_asks_nothing_while_the_kontensalden_are_not_announced(self):
+		"""Rule 170405002 says then that the component is missing."""
+		self.assertEqual(kontensalden(leaves=(), elements=("B", "GuV", "BVV")), ())
+
+	def test_170195107_leaves_the_tables_of_a_betrieb_gewerblicher_art_to_eric(self):
+		"""170195107 asks the Kontensalden of the positions of a Betrieb gewerblicher Art or wirtschaftlicher
+		Geschäftsbetrieb in the hypercubes of the steuerliche Gewinnermittlung für besondere Fälle, which a GmbH does
+		not send: a valued fact with members is no position of Bilanz and GuV of its own."""
+		dimensions = (TAX_BALANCE, (f"{A}dim_changes.nt.ass.gross", f"{A}bs.ass.fixAss.tan"))
+		self.assertEqual(kontensalden(euros("all", "40", WJ, dimensions)), ())
+
+	def test_170195108_one_kontensaldo_without_account_information_at_most(self):
+		"""„Das Tupel „Kontensalden zu einer Position“ mit der Variante ohne Konteninformationen darf maximal einmal zu
+		einer Position übermittelt werden.“"""
+		found = kontensalden(
+			kontensaldo("bs.ass.currAss.cashEquiv.bank", "1", None),
+			kontensaldo("bs.ass.currAss.cashEquiv.bank", "2", None),
+		)
+		self.assertEqual(found, (("170195108", f"{A}bs.ass.currAss.cashEquiv.bank"),))
+		self.assertEqual(kontensalden(kontensaldo("bs.ass.currAss.cashEquiv.bank", "1", None)), ())
+
+	def test_170195109_outside_bilanz_and_guv_not_only_one_without_account_information(self):
+		"""„Das Tupel „Kontensalden zu einer Position“ in der Variante ohne Konteninformationen darf nicht als das einzige
+		Tupel zu einer Position übermittelt werden.“ for another component (B.12.2)."""
+		found = kontensalden(kontensaldo("BVV.profitLoss", "45", None))
+		self.assertEqual(found, (("170195109", f"{A}BVV.profitLoss"),))
+		self.assertEqual(
+			kontensalden(kontensaldo("BVV.profitLoss", "40"), kontensaldo("BVV.profitLoss", "5", None)), ()
+		)
+
+	def test_170195110_no_account_information_in_a_kontensaldo_without_an_account(self):
+		"""„In der in Ausnahmefällen anwendbaren Variante ohne Konteninformationen dürfen die Elemente „Kontonummer“ ...
+		und „Kontobeschreibung“ ... nicht werthaltig übermittelt werden“."""
+		found = kontensalden(kontensaldo("bs.eqLiab.liab.bank", "1", ("3150", "Darlehen"), flag=True))
+		self.assertEqual(found, (("170195110", f"{A}bs.eqLiab.liab.bank"),))
+
+	def test_each_finding_names_its_rule_and_holds_the_report_back(self):
+		report_ = report_6_10(*(kontensaldo(position, value) for position, value in LEAVES[1:]))
+		view = mini.view(View.FISCAL, mini.VERSION_6_10)
+		(finding,) = checks.kontensalden(report_, view, Facets.of(report_))
+		self.assertEqual(finding.severity, Severity.ERROR)
+		self.assertIn("Konzessionen", finding.text)
+		self.assertIn("B.12.1", finding.source)
+		self.assertIn("170195106", finding.source)
+
+	def test_the_taxonomy_6_9_has_no_such_rules(self):
+		"""6.9 asks one Kontensaldo for Bilanz and GuV each (structural error 170195104), which the E-Bilanz checks
+		itself (steuerbote/ebilanz/kontennachweis.py)."""
+		report_ = complete(elements=("B", "GuV", "BVV", "KS"))
+		self.assertEqual(checks.kontensalden(report_, mini.view(), Facets.of(report_)), ())

@@ -423,9 +423,9 @@ class CheckTest(TestCase):
 		self.assertEqual(codes(checked(statement_type="EB", periods=too_late)), ["170205017"])
 
 	def test_a_version_steuerbote_does_not_know(self):
-		(finding,) = checked(taxonomy=replace(view(), version="6.10"))
+		(finding,) = checked(taxonomy=replace(view(), version="6.11"))
 		self.assertEqual(finding.code, "EB-TAXONOMIE")
-		self.assertIn("6.10", finding.text)
+		self.assertIn("6.11", finding.text)
 
 	def test_every_finding_holds_the_e_bilanz_back(self):
 		found = checked(

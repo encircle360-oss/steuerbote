@@ -94,6 +94,36 @@ Die Tests vergleichen diese Angaben mit Beispielen, Schemas, Jahresdokumentation
 - Die Jahresmeldungen eines Jahres gehen im Jahr danach ab, die Erklärungen für den abgelaufenen VZ oder EZ, die E-Bilanz für das Wirtschaftsjahr, das Steuerbote als Kalenderjahr nimmt. Deshalb prüft Steuerbote vom 1. Januar eines Jahres an die Plugins der Erklärungen des Vorjahres und das der E-Bilanz seines Wirtschaftsjahres, mit der Taxonomie 6.9 für ein Wirtschaftsjahr, das nach dem 31. Dezember 2025 beginnt (BMF-Schreiben vom 10. Juni 2025, IV C 6 - S 2133-b/00064/002/006, BStBl I S. 1450), erstmals für 2026 (`releases.annual_checks`, `releases.FIRST_ANNUAL_YEAR`). Eine Erklärung wählt wie die Voranmeldung die neueste freigegebene Laufzeit mit dem Plugin ihres Jahres, die E-Bilanz die mit dem Plugin ihrer Taxonomie.
 - Die Dokumentation des Hauptrelease enthält schon mit der Beta Jahresdokumentation und Schema des neuen Jahres, die Dokumentation 45.1.5.0 etwa `Jahresdokumentation_UStVA_2027.ods` und `UStVA-2027.xsd`. Mit ihr beginnt der Jahreswechsel im Code; ein Plugin für ein Jahr, dessen Daten Steuerbote noch nicht hat, bleibt ungenutzt, denn Berechnen und XML brauchen erst Katalog, Schema und Vordruck des Jahres. Für 2027 hat Steuerbote diese Daten vorläufig aus der Dokumentation 45.1.5.0, siehe [Kennzahlen, Jahrgang 2027](ustva-kennzahlen.md#jahrgang-2027-vorläufig): Eine Voranmeldung und ein Vordruck USt 1 H 2027 prüft und testsendet die Beta ERiC 45.1 oder die Simulation, senden kann sie erst eine freigegebene Version von ERiC 45 mit `libcheckUStVA_2027.so`.
 
+### Versionen der HGB-Taxonomie
+
+Die E-Bilanz eines Wirtschaftsjahres nimmt die HGB-Taxonomie, die das BMF für dieses Wirtschaftsjahr als amtlich vorgeschriebenen Datensatz veröffentlicht, und ERiC prüft sie mit dem Plugin dieser Taxonomie. Steuerbote kennt zwei Versionen, jede mit BMF-Schreiben, Wirtschaftsjahren und Paket in [`steuerbote/xbrl/versions.py`](../steuerbote/xbrl/versions.py); „Laufzeitumgebung prüfen“ nennt das Plugin der E-Bilanz eines Wirtschaftsjahres nach `releases.BILANZ_TAXONOMIES`, 6.9 für 2026 und 6.10 für 2027.
+
+| | 6.9 | 6.10 |
+|---|---|---|
+| BMF-Schreiben | 10. Juni 2025, IV C 6 - S 2133-b/00064/002/006, BStBl I S. 1450 | 8. Juni 2026, IV C 6 - S 2133-b/00067/002/023 |
+| Wirtschaftsjahre | Beginn nach dem 31. Dezember 2025, nicht beanstandet auch nach dem 31. Dezember 2024 | Beginn nach dem 31. Dezember 2026, nicht beanstandet auch nach dem 31. Dezember 2025 |
+| zuletzt | Wirtschaftsjahre, die vor dem 31. Dezember 2027 enden | Wirtschaftsjahre, die vor dem 31. Dezember 2028 enden |
+| Echtfälle | seit 26. Mai 2026 | ab Mai 2027 mit ERiC 46; ERiC 45.1.5.0 hat `checkBilanz_6_10` nur mit Testmerker |
+| datenartVersion und Plugin | `Bilanz_6.9`, `checkBilanz_6_9` | `Bilanz_6.10`, `checkBilanz_6_10` |
+| Paket von esteuer.de | `taxonomie_20250618/german-gaap-taxonomy-v6.9-2025-04-01-xbrl.zip` | `taxonomie_20260615/germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip` |
+| SHA-256 des Pakets | `accd62202d73c036910fee118b30730f0392934afc9730617788e30a0480df87` | `de00ceaad0e532d238dea24a48160ec335422a3a71c38dd03c7b2b34b32fff76` |
+| Schlüssel der `common_site_config.json` | `steuerbote_taxonomy_6_9`, `steuerbote_taxonomy_6_9_sha256` | `steuerbote_taxonomy_6_10`, `steuerbote_taxonomy_6_10_sha256` |
+
+Beide Pakete liegen unter `https://www.esteuer.de/download/`. Das Paket 6.10 richtet der Betreiber neben 6.9 ein. Der Server von esteuer.de schickt sein Zwischenzertifikat nicht mit; wie es mit geprüfter Summe von GlobalSign in `/tmp/esteuer.pem` kommt, zeigt [Entwicklung, Tests gegen die HGB-Taxonomie](entwicklung.md#tests-gegen-die-hgb-taxonomie):
+
+```sh
+curl -fL --cacert /tmp/esteuer.pem -o /srv/taxonomie/germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip https://www.esteuer.de/download/taxonomie_20260615/germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip
+echo "de00ceaad0e532d238dea24a48160ec335422a3a71c38dd03c7b2b34b32fff76  /srv/taxonomie/germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip" | sha256sum --check
+bench set-config -g steuerbote_taxonomy_6_10 /srv/taxonomie/germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip
+bench set-config -g steuerbote_taxonomy_6_10_sha256 de00ceaad0e532d238dea24a48160ec335422a3a71c38dd03c7b2b34b32fff76
+```
+
+Danach in den ERiC-Einstellungen „Taxonomie einrichten“ wählen: Es richtet jede Version ein, die die `common_site_config.json` nennt, jede in ihrem eigenen Verzeichnis, und weist ein Paket ab, dessen SHA-256 nicht die von `versions.py` ist.
+
+- **Bilanzzuordnung.** Eine neue Bilanzzuordnung nennt die Positionen von 6.9, der Taxonomie des Wirtschaftsjahres 2026. „Auf neue Taxonomie heben“ hebt sie auf 6.10, sobald diese eingerichtet ist, siehe [Bilanzzuordnung](architektur.md#bilanzzuordnung-balance-sheet-mapping): 6.10 benennt keine Position um, entfernt 43 Begriffe, die keine Vorgabe nennt, und bringt 39 neue, darunter das Mussfeld „sonstige Steuern, Grundsteuer“, unter dem „sonstige Steuern“ zum Summenmussfeld wird.
+- **Kontensalden.** Von 6.10 an hat jeder Kontensaldo den Teil „Konto nicht vorhanden oder nicht übermittelbar“, und eine Position ohne Konto der Bücher, etwa der Jahresüberschuss der Bilanz, bekommt einen Kontensaldo ohne Konteninformationen (Technischer Leitfaden zur HGB-Taxonomie 6.10, B.12.1). Die Begründung, warum die Kontennachweise noch nicht übermittelt werden können, gibt es mit 6.10 nicht mehr.
+- **Dokumentation.** ERiC 44.3.6.0 kennt 6.10 nicht; ERiC 45.1.5.0 bringt `Jahresdokumentation_Bilanz_Taxonomie_6_10.ods` und die Beispiele der Taxonomie 6.10. Die Simulation prüft eine E-Bilanz der Datenart `Bilanz_6.10` mit den Regeln dieser Jahresdokumentation, die sich gegen 6.9 ändern (170205007, 170205017, 170205018, 170405002), und, kennt sie über `bilanz.register_taxonomy()` die Ansicht 6.10, die Kontensalden mit den strukturellen Fehlern 170195106, 170195108, 170195109 und 170195110; 170195107 gilt den Betrieben gewerblicher Art und wirtschaftlichen Geschäftsbetrieben, die Steuerbote nicht meldet.
+
 ## Betrieb und Updates
 
 Der Lizenzvertrag verpflichtet den Softwarehersteller, regelmäßig zu prüfen, ob das Bayerische Landesamt für Steuern eine neue Version oder ein Update von ERiC anbietet (§ 5 Abs. 4), und die Version zu verwenden, die es als „Mindestversion“ kennzeichnet (§ 5 Abs. 6). Unter der Mindestversion ist kein Datenversand möglich (Kap. 5.4.2). Deshalb prüft Steuerbote jede Woche, ob die eingerichteten Laufzeiten noch übermitteln, und sagt es den System Managern.

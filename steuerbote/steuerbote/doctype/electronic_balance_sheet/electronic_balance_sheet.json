@@ -225,7 +225,7 @@
    "fieldname": "taxonomy_version",
    "fieldtype": "Select",
    "label": "HGB Taxonomy",
-   "options": "6.9",
+   "options": "6.9\n6.10",
    "reqd": 1
   },
   {
@@ -480,7 +480,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-24 10:00:00.000000",
+ "modified": "2026-11-24 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Electronic Balance Sheet",

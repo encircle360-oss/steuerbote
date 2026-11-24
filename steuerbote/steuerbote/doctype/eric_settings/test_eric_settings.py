@@ -852,8 +852,8 @@ class TestERiCVersions(IntegrationTestCase):
 		):
 			checks = {check["name"]: check for check in settings.check_runtime()}
 		self.assertEqual(
-			list(checks)[-5:],
-			["ust", "kst", "gewst", "bilanz", "taxonomy_6_9"],
+			list(checks)[-6:],
+			["ust", "kst", "gewst", "bilanz", "taxonomy_6_9", "taxonomy_6_10"],
 		)
 		self.assertEqual(
 			checks["ust"]["detail"],
@@ -1144,6 +1144,7 @@ class TestERiCVersions(IntegrationTestCase):
 				"minimum",
 				"plugin_next",
 				"taxonomy_6_9",
+				"taxonomy_6_10",
 			],
 		)
 		self.assertFalse(checks["minimum"]["ok"])
@@ -1457,3 +1458,86 @@ class TestTaxonomy(IntegrationTestCase):
 		script = get_form_meta(SETTINGS, cached=False).get("__js")
 		self.assertIn('frm.call("install_taxonomy")', script)
 		self.assertIn("steuerbote_taxonomy_installation", script)
+
+
+class TestTaxonomyVersions(IntegrationTestCase):
+	"""Taxonomie einrichten for 6.9 and 6.10 at once: each package common_site_config.json names under the config keys
+	of its version, steuerbote_taxonomy_6_9 and steuerbote_taxonomy_6_10 with their SHA-256. The packages of the mini
+	taxonomy of each version (steuerbote/xbrl/tests/mini.py) stand in for those of esteuer.de."""
+
+	def setUp(self):
+		super().setUp()
+		directory = Path(tempfile.mkdtemp(prefix="steuerbote-taxonomy-versions-"))
+		self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+		self.archives = {
+			version.version: mini.archive(directory / version.version, version=version)
+			for version in (mini.VERSION, mini.VERSION_6_10)
+		}
+		self.root = directory / "taxonomy"
+		published = patch.object(
+			eric_settings,
+			"TAXONOMIES",
+			MappingProxyType(
+				{
+					version: replace(TAXONOMIES[version], archive_sha256=checksum)
+					for version, (_archive, checksum) in self.archives.items()
+				}
+			),
+		)
+		published.start()
+		self.addCleanup(published.stop)
+
+	def bench(self, **values):
+		config = {"steuerbote_taxonomy_root": str(self.root)}
+		for version, (archive, checksum) in self.archives.items():
+			config[TAXONOMIES[version].config_key] = str(archive)
+			config[TAXONOMIES[version].config_sha256_key] = checksum
+		return patch.object(
+			transmission_adapter, "common_site_config", return_value=frappe._dict({**config, **values})
+		)
+
+	def test_the_config_keys_of_6_10(self):
+		self.assertEqual(
+			(TAXONOMIES["6.10"].config_key, TAXONOMIES["6.10"].config_sha256_key),
+			("steuerbote_taxonomy_6_10", "steuerbote_taxonomy_6_10_sha256"),
+		)
+		with self.bench():
+			self.assertEqual(
+				eric_settings.configured_taxonomies(),
+				{version: (archive, checksum) for version, (archive, checksum) in self.archives.items()},
+			)
+		with self.bench(steuerbote_taxonomy_6_10="", steuerbote_taxonomy_6_10_sha256=""):
+			self.assertEqual(list(eric_settings.configured_taxonomies()), ["6.9"])
+		with (
+			self.bench(steuerbote_taxonomy_6_10_sha256=""),
+			self.assertRaisesRegex(frappe.ValidationError, "steuerbote_taxonomy_6_10_sha256"),
+		):
+			eric_settings.configured_taxonomies()
+
+	def test_the_form_shows_the_package_of_each_version(self):
+		settings = frappe.get_single(SETTINGS)
+		with self.bench():
+			settings.run_method("onload")
+		self.assertEqual(
+			settings.taxonomy_archives.splitlines(),
+			[
+				f"{version}: {archive} (SHA-256 {checksum})"
+				for version, (archive, checksum) in self.archives.items()
+			],
+		)
+
+	def test_the_job_installs_both_versions_and_each_has_its_view(self):
+		with self.bench(), patch("frappe.publish_realtime") as publish:
+			run_taxonomy_installation()
+		self.assertEqual(
+			publish.call_args.args,
+			("steuerbote_taxonomy_installation", {"ok": True, "versions": ["6.9", "6.10"], "error": None}),
+		)
+		with self.bench():
+			later = eric_settings.taxonomy_view("6.10", View.FISCAL)
+			checks = {check["name"]: check for check in frappe.get_single(SETTINGS).check_runtime()}
+		self.assertEqual((later.version, later.view), ("6.10", View.FISCAL))
+		self.assertTrue(later.has("de-gaap-ci:detailedInformation.accountbalances.notPossible"))
+		for version in ("6_9", "6_10"):
+			with self.subTest(version=version):
+				self.assertTrue(checks[f"taxonomy_{version}"]["ok"])

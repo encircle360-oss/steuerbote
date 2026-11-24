@@ -7,6 +7,7 @@ from steuerbote.eric import releases
 from steuerbote.eric.datenart import bilanz
 from steuerbote.xbrl.versions import (
 	BASE_URL,
+	FIRST,
 	LATEST,
 	TAXONOMIES,
 	UnknownTaxonomyError,
@@ -17,9 +18,9 @@ from steuerbote.xbrl.versions import (
 
 
 class TableTest(TestCase):
-	def test_writes_6_9(self):
-		self.assertEqual(tuple(TAXONOMIES), ("6.9",))
-		self.assertEqual(LATEST.version, "6.9")
+	def test_writes_6_9_and_6_10(self):
+		self.assertEqual(tuple(TAXONOMIES), ("6.9", "6.10"))
+		self.assertEqual(LATEST.version, "6.10")
 
 	def test_holds_each_version_under_its_own_number(self):
 		self.assertEqual([entry.version for entry in TAXONOMIES.values()], list(TAXONOMIES))
@@ -144,9 +145,10 @@ class FiscalYearTest(TestCase):
 
 	def test_6_9_ends_with_the_fiscal_years_that_end_before_31_december_2027(self):
 		self.assertEqual(for_fiscal_year(date(2026, 12, 31), date(2027, 12, 30)).version, "6.9")
-		self.assertEqual([entry.version for entry in allowed_for(date(2027, 1, 1), date(2027, 12, 31))], [])
-		with self.assertRaisesRegex(UnknownTaxonomyError, "2027-01-01 to 2027-12-31"):
-			for_fiscal_year(date(2027, 1, 1), date(2027, 12, 31))
+		self.assertEqual(
+			[entry.version for entry in allowed_for(date(2027, 1, 1), date(2027, 12, 31))], ["6.10"]
+		)
+		self.assertEqual(for_fiscal_year(date(2027, 1, 1), date(2027, 12, 31)).version, "6.10")
 
 	def test_a_fiscal_year_ends_after_it_begins(self):
 		with self.assertRaises(ValueError):
@@ -160,3 +162,96 @@ class VersionOfTest(TestCase):
 	def test_an_unknown_version_names_the_known_ones(self):
 		with self.assertRaisesRegex(UnknownTaxonomyError, "6.9"):
 			version_of("7.0")
+
+
+class Version610Test(TestCase):
+	"""BMF letter of 8 June 2026, „E-Bilanz; Veröffentlichung der Taxonomien 6.10 vom 1. April 2026“: „Die Taxonomien
+	sind grundsätzlich für die Bilanzen der Wirtschaftsjahre zu verwenden, die nach dem 31. Dezember 2026 beginnen
+	(Wirtschaftsjahr 2027 oder 2027/2028). ... Es wird nicht beanstandet, wenn diese auch für das Wirtschaftsjahr 2026
+	oder 2026/2027 verwendet werden. Die Übermittlungsmöglichkeiten mit diesen neuen Taxonomien wird für Testfälle
+	voraussichtlich ab November 2026 und für Echtfälle ab Mai 2027 gegeben sein.“; „Taxonomie letztmalig zu verwenden
+	für Wirtschaftsjahre, die vor dem 31.12. xxxx enden“: 2028 (Übersicht über die Verwendung der Taxonomie-Versionen,
+	Stand 03.06.2026)."""
+
+	def setUp(self):
+		self.entry = TAXONOMIES["6.10"]
+
+	def test_names_the_bmf_letter_that_publishes_6_10(self):
+		"""The letter is to be printed in the BStBl I, which names no page yet, so its DOK identifies it."""
+		self.assertEqual(self.entry.released, date(2026, 4, 1))
+		self.assertEqual(self.entry.letter_date, date(2026, 6, 8))
+		self.assertEqual(self.entry.reference, "IV C 6 - S 2133-b/00067/002/023")
+		self.assertEqual(
+			self.entry.letter,
+			"BMF letter of 8 June 2026 (GZ IV C 6 - S 2133-b/00067/002/023, DOK COO.7005.100.4.14979781)",
+		)
+
+	def test_names_the_package_esteuer_publishes_with_its_checksum(self):
+		self.assertEqual(
+			self.entry.archive_url,
+			"https://www.esteuer.de/download/taxonomie_20260615/germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip",
+		)
+		self.assertEqual(
+			self.entry.archive_sha256, "de00ceaad0e532d238dea24a48160ec335422a3a71c38dd03c7b2b34b32fff76"
+		)
+		self.assertEqual(self.entry.archive_name, "germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip")
+
+	def test_names_the_modules_entry_points_and_datenart_after_its_version(self):
+		self.assertEqual((self.entry.gcd, self.entry.gaap), ("de-gcd-2026-04-01", "de-gaap-ci-2026-04-01"))
+		self.assertEqual(self.entry.gaap_namespace, "http://www.xbrl.de/taxonomies/de-gaap-ci-2026-04-01")
+		self.assertEqual(
+			self.entry.fiscal_shell, "de-gaap-ci-2026-04-01/de-gaap-ci-2026-04-01-shell-fiscal.xsd"
+		)
+		self.assertEqual(self.entry.gcd_shell, "de-gcd-2026-04-01/de-gcd-2026-04-01-shell.xsd")
+		self.assertEqual(
+			(self.entry.datenart.version, self.entry.datenart.plugin), ("Bilanz_6.10", "checkBilanz_6_10")
+		)
+		self.assertEqual(
+			(self.entry.config_key, self.entry.config_sha256_key),
+			("steuerbote_taxonomy_6_10", "steuerbote_taxonomy_6_10_sha256"),
+		)
+
+	def test_6_10_is_the_taxonomy_of_the_fiscal_year_2027(self):
+		self.assertEqual(for_fiscal_year(date(2027, 1, 1), date(2027, 12, 31)).version, "6.10")
+		self.assertEqual(for_fiscal_year(date(2027, 7, 1), date(2028, 6, 30)).version, "6.10")
+
+	def test_a_fiscal_year_2026_may_take_6_10_but_takes_6_9(self):
+		self.assertEqual(
+			[entry.version for entry in allowed_for(date(2026, 1, 1), date(2026, 12, 31))], ["6.9", "6.10"]
+		)
+		self.assertEqual(for_fiscal_year(date(2026, 1, 1), date(2026, 12, 31)).version, "6.9")
+		self.assertEqual(
+			[entry.version for entry in allowed_for(date(2025, 12, 31), date(2026, 12, 30))], ["6.9"]
+		)
+
+	def test_6_10_ends_with_the_fiscal_years_that_end_before_31_december_2028(self):
+		self.assertEqual(for_fiscal_year(date(2027, 12, 31), date(2028, 12, 30)).version, "6.10")
+		self.assertEqual([entry.version for entry in allowed_for(date(2028, 1, 1), date(2028, 12, 31))], [])
+		with self.assertRaisesRegex(UnknownTaxonomyError, "2028-01-01 to 2028-12-31"):
+			for_fiscal_year(date(2028, 1, 1), date(2028, 12, 31))
+
+	def test_real_cases_from_may_2027_and_no_notice_of_the_register_yet(self):
+		"""„für Echtfälle ab Mai 2027“ names the month, ERiC 46 its day; the Unternehmensregister has announced no
+		Offenlegung on 6.10 (research note on the Offenlegung, 2026-11-23: „no 6.10 notice found“)."""
+		self.assertEqual(self.entry.real_cases_from, date(2027, 5, 1))
+		self.assertIsNone(self.entry.register_since)
+		self.assertEqual(TAXONOMIES["6.9"].register_since, date(2025, 10, 15))
+
+	def test_only_6_9_takes_a_reason_for_an_e_bilanz_without_kontensalden(self):
+		"""„Um Härtefälle zu vermeiden, wird es für die Übermittlung von E-Bilanzen mit der Taxonomie-Version 6.9 nicht
+		beanstandet, wenn ... die Bilanz und GuV ohne Kontennachweise ... übermittelt werden.“ (BMF letter of 10 June
+		2025); 6.10 deletes the position of that reason, „Die Übergangsregelung war ausschließlich auf die
+		Taxonomie-Version 6.9 anwendbar“ (Änderungsnachweis zum Taxonomie-Update 2026, 2.)."""
+		self.assertEqual(
+			{version: entry.kontensalden_reason for version, entry in TAXONOMIES.items()},
+			{"6.9": True, "6.10": False},
+		)
+
+
+class FirstTest(TestCase):
+	def test_a_new_mapping_takes_the_version_of_the_first_fiscal_year_steuerbote_files(self):
+		"""A Bilanzzuordnung begins with the taxonomy of the fiscal year 2026, which every E-Bilanz before May 2027 has
+		to take, and climbs with „Auf neue Taxonomie heben“ (steuerbote/xbrl/changes.py)."""
+		year = releases.FIRST_ANNUAL_YEAR
+		self.assertIs(FIRST, for_fiscal_year(date(year, 1, 1), date(year, 12, 31)))
+		self.assertEqual(FIRST.version, "6.9")

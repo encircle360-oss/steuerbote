@@ -34,6 +34,7 @@ from steuerbote.ebilanz.positions import Case, structure
 from steuerbote.hgb.size import SizeClass
 from steuerbote.hgb.statement import Balance, RemainingTerm, build
 from steuerbote.ustva import WatchLevel
+from steuerbote.xbrl.changes import LiftError
 from steuerbote.xbrl.facts import Periods
 from steuerbote.xbrl.mapping import (
 	AccountBalance,
@@ -53,6 +54,7 @@ from steuerbote.xbrl.mapping import (
 )
 from steuerbote.xbrl.taxonomy import BALANCE_SHEET, GAAP_PREFIX, INCOME_STATEMENT
 from steuerbote.xbrl.tests import positions, real
+from steuerbote.xbrl.tests import test_changes as lift_case
 
 BANK = "bs.ass.currAss.cashEquiv.bank"
 BANK_LIABILITY = "bs.eqLiab.liab.bank.other"
@@ -533,3 +535,38 @@ class JahresabschlussTest(TestCase):
 
 def account(number: str, label: str, part: Part = Part.BALANCE_SHEET, debit: str = "0", credit: str = "0"):
 	return AccountBalance(f"{number} - {label} - SG", number, label, part, Decimal(debit), Decimal(credit))
+
+
+class LiftedItemsTest(TestCase):
+	"""Auf neue Taxonomie heben and the import of a file of an earlier version, on the items of a mapping: the invented
+	SKR04 company of steuerbote/xbrl/tests/test_changes.py through the changes of the mini taxonomies."""
+
+	def test_lifts_the_items_through_the_changes_against_the_view_of_the_later_version(self):
+		items = items_of_mapping(lift_case.SKR04)
+		lifted, found = sync.lifted_items(
+			"SKR04",
+			items,
+			"6.9",
+			"6.10",
+			taxonomy=lift_case.target(),
+			parts=lift_case.PARTS,
+			steps=(lift_case.MINI_CHANGES,),
+		)
+		self.assertEqual(lifted[(ACCOUNT, "1350")]["concept"], lift_case.DIGITAL)
+		self.assertEqual(lifted[(ACCOUNT, "0440")], {"place": WATCHED, "level": WatchLevel.BLOCKING.value})
+		unchanged = {key: fields for key, fields in items.items() if key[1] not in ("0440", "1350")}
+		self.assertEqual({key: lifted[key] for key in unchanged}, unchanged)
+		self.assertEqual(found.renamed, (("1350", lift_case.CRYPTO, lift_case.DIGITAL),))
+		self.assertEqual([decision.rule.account_number for decision in found.to_decide], ["0440"])
+		self.assertEqual(found.mussfelder, (lift_case.GRUNDSTEUER,))
+		self.assertEqual(found.mapping.taxonomy_version, "6.10")
+
+	def test_the_changes_of_6_10_rename_no_position(self):
+		items = items_of_mapping(Mapping("SKR04", rules=(Rule("1800", BANK, opposite=BANK_LIABILITY),)))
+		lifted, found = sync.lifted_items("SKR04", items, "6.9", "6.10")
+		self.assertEqual(lifted, items)
+		self.assertEqual((found.renamed, found.to_decide), ((), ()))
+
+	def test_climbs_to_a_later_version_only(self):
+		with self.assertRaisesRegex(LiftError, "not from 6.10 to 6.9"):
+			sync.lifted_items("SKR04", {}, "6.10", "6.9")

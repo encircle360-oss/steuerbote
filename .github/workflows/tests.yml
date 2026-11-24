@@ -24,6 +24,8 @@ env:
   TAXONOMY_SHA256: accd62202d73c036910fee118b30730f0392934afc9730617788e30a0480df87
   INTERMEDIATE: http://secure.globalsign.com/cacert/gsgccr46dvtlsca2025.crt
   INTERMEDIATE_SHA256: b59410f367b986e98e53a9789a6580553a74be515211d9f6ecb6e8a11e83aeaa
+  TAXONOMY_6_10: https://www.esteuer.de/download/taxonomie_20260615/germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip
+  TAXONOMY_6_10_SHA256: de00ceaad0e532d238dea24a48160ec335422a3a71c38dd03c7b2b34b32fff76
 
 jobs:
   core:
@@ -87,10 +89,37 @@ jobs:
       - name: Check the HGB-Taxonomie 6.9 by its SHA-256
         run: echo "$TAXONOMY_SHA256  $RUNNER_TEMP/taxonomy-6.9.zip" | sha256sum --check --strict
 
+      - name: Restore the HGB-Taxonomie 6.10 from the cache
+        id: taxonomy-6-10
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.10.zip
+          key: hgb-taxonomie-6.10-${{ env.TAXONOMY_6_10_SHA256 }}
+
+      - name: Download the HGB-Taxonomie 6.10
+        if: steps.taxonomy-6-10.outputs.cache-hit != 'true'
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/intermediate.crt" "$INTERMEDIATE"
+          echo "$INTERMEDIATE_SHA256  $RUNNER_TEMP/intermediate.crt" | sha256sum --check --strict
+          { cat /etc/ssl/certs/ca-certificates.crt; openssl x509 -inform DER -in "$RUNNER_TEMP/intermediate.crt"; } > "$RUNNER_TEMP/esteuer.pem"
+          curl --fail --silent --show-error --location --retry 3 --cacert "$RUNNER_TEMP/esteuer.pem" --output "$RUNNER_TEMP/taxonomy-6.10.zip" "$TAXONOMY_6_10"
+          echo "$TAXONOMY_6_10_SHA256  $RUNNER_TEMP/taxonomy-6.10.zip" | sha256sum --check --strict
+
+      - name: Keep the HGB-Taxonomie 6.10 in the cache
+        if: steps.taxonomy-6-10.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.10.zip
+          key: hgb-taxonomie-6.10-${{ env.TAXONOMY_6_10_SHA256 }}
+
+      - name: Check the HGB-Taxonomie 6.10 by its SHA-256
+        run: echo "$TAXONOMY_6_10_SHA256  $RUNNER_TEMP/taxonomy-6.10.zip" | sha256sum --check --strict
+
       - name: Run the core tests with coverage
         env:
           STEUERBOTE_ERIC_DOC_DIR: ${{ runner.temp }}/eric-doc
           STEUERBOTE_TAXONOMY_6_9: ${{ runner.temp }}/taxonomy-6.9.zip
+          STEUERBOTE_TAXONOMY_6_10: ${{ runner.temp }}/taxonomy-6.10.zip
         run: python -m pytest --cov --cov-report=term-missing --cov-report=xml
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -202,12 +231,39 @@ jobs:
       - name: Check the HGB-Taxonomie 6.9 by its SHA-256
         run: echo "$TAXONOMY_SHA256  $RUNNER_TEMP/taxonomy-6.9.zip" | sha256sum --check --strict
 
+      - name: Restore the HGB-Taxonomie 6.10 from the cache
+        id: taxonomy-6-10
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.10.zip
+          key: hgb-taxonomie-6.10-${{ env.TAXONOMY_6_10_SHA256 }}
+
+      - name: Download the HGB-Taxonomie 6.10
+        if: steps.taxonomy-6-10.outputs.cache-hit != 'true'
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/intermediate.crt" "$INTERMEDIATE"
+          echo "$INTERMEDIATE_SHA256  $RUNNER_TEMP/intermediate.crt" | sha256sum --check --strict
+          { cat /etc/ssl/certs/ca-certificates.crt; openssl x509 -inform DER -in "$RUNNER_TEMP/intermediate.crt"; } > "$RUNNER_TEMP/esteuer.pem"
+          curl --fail --silent --show-error --location --retry 3 --cacert "$RUNNER_TEMP/esteuer.pem" --output "$RUNNER_TEMP/taxonomy-6.10.zip" "$TAXONOMY_6_10"
+          echo "$TAXONOMY_6_10_SHA256  $RUNNER_TEMP/taxonomy-6.10.zip" | sha256sum --check --strict
+
+      - name: Keep the HGB-Taxonomie 6.10 in the cache
+        if: steps.taxonomy-6-10.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.10.zip
+          key: hgb-taxonomie-6.10-${{ env.TAXONOMY_6_10_SHA256 }}
+
+      - name: Check the HGB-Taxonomie 6.10 by its SHA-256
+        run: echo "$TAXONOMY_6_10_SHA256  $RUNNER_TEMP/taxonomy-6.10.zip" | sha256sum --check --strict
+
       - name: Run the Frappe tests
         working-directory: /home/runner/frappe-bench
         env:
           TYPE: server
           STEUERBOTE_ERIC_DOC_DIR: ${{ runner.temp }}/eric-doc
           STEUERBOTE_TAXONOMY_6_9: ${{ runner.temp }}/taxonomy-6.9.zip
+          STEUERBOTE_TAXONOMY_6_10: ${{ runner.temp }}/taxonomy-6.10.zip
         run: |
           bench --site test_site set-config allow_tests true
           bench --site test_site run-tests --app steuerbote
@@ -258,7 +314,8 @@ jobs:
   xbrl:
     name: XBRL (Arelle)
     runs-on: ubuntu-latest
-    # Arelle validates eighteen instances against the 279 files of the taxonomy in about four minutes.
+    # Arelle validates eighteen instances against the 279 files of the taxonomy 6.9 in about four minutes, and
+    # thirteen against the 286 files of 6.10 in about three more: the documentation 44.3.6.0 has no examples of 6.10.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -308,10 +365,41 @@ jobs:
       - name: Check the HGB-Taxonomie 6.9 by its SHA-256
         run: echo "$TAXONOMY_SHA256  $RUNNER_TEMP/taxonomy-6.9.zip" | sha256sum --check --strict
 
+      - name: Restore the HGB-Taxonomie 6.10 from the cache
+        id: taxonomy-6-10
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.10.zip
+          key: hgb-taxonomie-6.10-${{ env.TAXONOMY_6_10_SHA256 }}
+
+      - name: Download the HGB-Taxonomie 6.10
+        if: steps.taxonomy-6-10.outputs.cache-hit != 'true'
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/intermediate.crt" "$INTERMEDIATE"
+          echo "$INTERMEDIATE_SHA256  $RUNNER_TEMP/intermediate.crt" | sha256sum --check --strict
+          { cat /etc/ssl/certs/ca-certificates.crt; openssl x509 -inform DER -in "$RUNNER_TEMP/intermediate.crt"; } > "$RUNNER_TEMP/esteuer.pem"
+          curl --fail --silent --show-error --location --retry 3 --cacert "$RUNNER_TEMP/esteuer.pem" --output "$RUNNER_TEMP/taxonomy-6.10.zip" "$TAXONOMY_6_10"
+          echo "$TAXONOMY_6_10_SHA256  $RUNNER_TEMP/taxonomy-6.10.zip" | sha256sum --check --strict
+
+      - name: Keep the HGB-Taxonomie 6.10 in the cache
+        if: steps.taxonomy-6-10.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/taxonomy-6.10.zip
+          key: hgb-taxonomie-6.10-${{ env.TAXONOMY_6_10_SHA256 }}
+
+      - name: Check the HGB-Taxonomie 6.10 by its SHA-256
+        run: echo "$TAXONOMY_6_10_SHA256  $RUNNER_TEMP/taxonomy-6.10.zip" | sha256sum --check --strict
+
       - name: Validate the instances with Arelle
         env:
           STEUERBOTE_ERIC_DOC_DIR: ${{ runner.temp }}/eric-doc
         run: python -m steuerbote.xbrl.tests.arelle_validation "$RUNNER_TEMP/taxonomy-6.9.zip" --keep "$RUNNER_TEMP/xbrl"
+
+      - name: Validate the instances with Arelle against the HGB-Taxonomie 6.10
+        env:
+          STEUERBOTE_ERIC_DOC_DIR: ${{ runner.temp }}/eric-doc
+        run: python -m steuerbote.xbrl.tests.arelle_validation "$RUNNER_TEMP/taxonomy-6.10.zip" --version 6.10 --keep "$RUNNER_TEMP/xbrl-6.10"
 
       # The instances and the logs of Arelle, never a file of the taxonomy, which the directory keeps as well.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -322,5 +410,8 @@ jobs:
             ${{ runner.temp }}/xbrl/*.xml
             ${{ runner.temp }}/xbrl/*.xbrl
             ${{ runner.temp }}/xbrl/*.log
+            ${{ runner.temp }}/xbrl-6.10/*.xml
+            ${{ runner.temp }}/xbrl-6.10/*.xbrl
+            ${{ runner.temp }}/xbrl-6.10/*.log
           if-no-files-found: ignore
           retention-days: 7

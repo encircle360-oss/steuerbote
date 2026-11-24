@@ -142,7 +142,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		tax_equity: DF.Currency
 		tax_finance_book: DF.Link | None
 		tax_net_income: DF.Currency
-		taxonomy_version: DF.Literal["6.9"]
+		taxonomy_version: DF.Literal["6.9", "6.10"]
 		to_date: DF.Date | None
 		total_assets: DF.Currency
 		total_equity_and_liabilities: DF.Currency
@@ -281,10 +281,13 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 
 	def set_period(self) -> None:
 		"""The period of the base, whose Fiscal Year of the company comes before one for every company, so that a short
-		first Wirtschaftsjahr has its E-Bilanz on a site with a calendar year for all; and the Bilanzstichtag, the end of
-		the Wirtschaftsjahr, or its first day for an Eröffnungsbilanz."""
+		first Wirtschaftsjahr has its E-Bilanz on a site with a calendar year for all; the Bilanzstichtag, the end of
+		the Wirtschaftsjahr, or its first day for an Eröffnungsbilanz; and the version of the HGB-Taxonomie of the
+		Wirtschaftsjahr (bridge.taxonomy_for)."""
 		super().set_period()
-		self.stichtag = getdate(self.from_date) if self._opening else getdate(self.to_date)
+		start, end = getdate(self.from_date), getdate(self.to_date)
+		self.stichtag = start if self._opening else end
+		self.taxonomy_version = bridge.taxonomy_for(start, end, self.taxonomy_version)
 
 	# Transmittable.
 

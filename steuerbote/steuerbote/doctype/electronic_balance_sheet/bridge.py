@@ -27,6 +27,8 @@ is tested without a bench:
 - placement_findings and the findings of Steuerbote (CODES): the taxonomy, the depreciation not posted up to the
   Bilanzstichtag and the Period Closing Voucher; those of the comparison with the Jahresabschluss of the year come
   from comparison.py.
+- taxonomy_for: the version of the HGB-Taxonomie of the Wirtschaftsjahr, the one chosen while the Wirtschaftsjahr may
+  take it, else the one it takes „grundsätzlich“ (steuerbote/xbrl/versions.py), 6.10 from 2027 on.
 
 The findings of Steuerbote are German sentences with their source, as those of steuerbote.ebilanz are; their codes
 begin with SB-. Errors are BridgeError with an English template and its values, which the Frappe layer translates;
@@ -70,6 +72,7 @@ from steuerbote.jahresmeldung.findings import DATA_LENGTH, Finding, Severity
 from steuerbote.jahresmeldung.overrides import Columns, correction_of, manual_lines, to_amount
 from steuerbote.steuerbote.doctype.electronic_balance_sheet import comparison
 from steuerbote.ustva.rounding import ZERO
+from steuerbote.xbrl import versions
 from steuerbote.xbrl.facts import Period, Periods
 from steuerbote.xbrl.mapping import Placement, Purpose
 from steuerbote.xbrl.taxonomy import Balance
@@ -1101,3 +1104,15 @@ def _book_value(structure: Structure, row: Record) -> Decimal:
 
 def _shortened(text: str) -> str:
 	return text if len(text) <= DATA_LENGTH else text[: DATA_LENGTH - len(ELLIPSIS)] + ELLIPSIS
+
+
+def taxonomy_for(begin: date, end: date, chosen: str | None) -> str | None:
+	"""The version of the HGB-Taxonomie of an E-Bilanz of the Wirtschaftsjahr from begin to end: the one chosen while
+	the Wirtschaftsjahr may take it, such as 6.10 for 2026, else the one it takes „grundsätzlich“; a Wirtschaftsjahr no
+	version serves keeps the one chosen, which the checks of the E-Bilanz refuse (steuerbote/xbrl/versions.py)."""
+	if chosen in {version.version for version in versions.allowed_for(begin, end)}:
+		return chosen
+	try:
+		return versions.for_fiscal_year(begin, end).version
+	except versions.UnknownTaxonomyError:
+		return chosen

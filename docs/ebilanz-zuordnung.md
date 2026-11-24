@@ -5,7 +5,7 @@ Die Bilanzzuordnung sagt für jedes Konto eines Unternehmens, in welche Position
 ## Umfang
 
 - **Kontenrahmen:** SKR03 und SKR04 in der Ausgabe „Gültig für 2026“, jedes Konto und jeder Kontenbereich, den DATEV beschriftet, auch die der Klasse 9, dazu jedes Konto der Vorlagen von ERPNext 16, das die DATEV-Ausgabe nicht hat. Ein Konto, das DATEV nicht beschriftet, bekommt keine Vorgabe, auch wenn es zwischen zwei beschrifteten liegt: Was ein Unternehmen dort anlegt, ordnet es selbst zu, „Konten prüfen“ nennt es.
-- **Taxonomie:** HGB-Taxonomie 6.9, steuerliche Ansicht, für eine GmbH oder UG mit Gesamtkostenverfahren.
+- **Taxonomie:** HGB-Taxonomie 6.9, steuerliche Ansicht, für eine GmbH oder UG mit Gesamtkostenverfahren; für 6.10 dieselben Vorgaben bis auf die sonstigen Steuern, siehe [Taxonomie 6.10](#taxonomie-610).
 - **Stand:** „SKR03 Taxonomie 6.9 2026.1“ und „SKR04 Taxonomie 6.9 2026.1“. Revision 0 war die leere Tabelle vor den Vorgaben der DATEV-Kontenrahmen.
 
 | Kontenrahmen | Einträge mit Position | beobachtet | außerhalb von Bilanz und GuV |
@@ -111,6 +111,23 @@ Jeder Stand der Vorgaben hat einen Namen aus Kontenrahmen, Version der Taxonomie
 - Keine Ergebnisverwendung: Ihre Konten sind beobachtet.
 - Restlaufzeiten nur aus der Bezeichnung des Kontos.
 - Ein Konto ohne Beschriftung durch DATEV bekommt keine Vorgabe, auch in einem Bereich zwischen zwei beschrifteten Konten.
+
+## Taxonomie 6.10
+
+Die Vorgaben für die HGB-Taxonomie 6.10 sind die von 6.9, durch die Änderungen der Taxonomie gehoben (`steuerbote/xbrl/changes.py`): 6.10 benennt keine Position der Vorgaben um und entfernt keine. Anders ist nur die Gruppe der sonstigen Steuern, denn 6.10 macht „sonstige Steuern“ zum Summenmussfeld über dem neuen Mussfeld „sonstige Steuern, Grundsteuer“, und ein Saldo auf der Summe neben einem auf der Grundsteuer ergäbe nicht ihre Summe:
+
+| SKR03 | SKR04 | 6.9 | 6.10 |
+|---|---|---|---|
+| 2375 | 7680 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.GrSt` |
+| 4340, 4350, 4355, 4510, 2285, 2287 | 7650, 7675, 7678, 7685, 7690, 7692 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.other` |
+| 2289 | 7694 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.releaseTaxProvision` |
+
+Stand: „SKR03 Taxonomie 6.10 2026.1“ und „SKR04 Taxonomie 6.10 2026.1“. Eine Bilanzzuordnung, die „Auf neue Taxonomie heben“ von 6.9 auf 6.10 hebt, behält die übernommenen Vorgaben von 6.9; „Vorgaben aktualisieren“ schlägt ihr diese Zeilen dann als Änderungen der Vorgaben vor.
+
+Für die Steuerberatung zu prüfen:
+
+1. **Grundsteuer.** Die Konten der Grundsteuer gehen in das neue Mussfeld; Grundsteuer, die ein Unternehmen auf einem anderen Konto bucht, gehört ebenfalls dorthin.
+2. **Steuern früherer Jahre.** Nachzahlungen und Erstattungen sonstiger Steuern für Vorjahre gehen in „übrige sonstige Steuern“, weil ihre eigenen Positionen „Steuernachzahlungen für Vorjahre“ und „Steuererstattungen für Vorjahre“ steuerlich nicht zulässig sind. Handelsrechtlich gibt es sie; die Vorgaben trennen den Abschlusszweck dafür nicht.
 
 ## Quellen
 

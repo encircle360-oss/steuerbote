@@ -1,10 +1,13 @@
-"""Validate instances of both profiles with Arelle against the HGB-Taxonomie 6.9, for the XBRL job of the CI.
+"""Validate instances of both profiles with Arelle against the HGB-Taxonomie 6.9 or 6.10, for the XBRL job of the CI.
 
-    python -m steuerbote.xbrl.tests.arelle_validation [ARCHIVE] [--keep DIRECTORY]
+    python -m steuerbote.xbrl.tests.arelle_validation [ARCHIVE] [--version 6.10] [--keep DIRECTORY]
 
-ARCHIVE is the package of esteuer.de (steuerbote/xbrl/versions.py), by default the one the environment variable
-STEUERBOTE_TAXONOMY_6_9 names; STEUERBOTE_ERIC_DOC_DIR names the unzipped ERiC documentation 44.3.6.0, whose examples
-the script writes again. Arelle (arelle-release in requirements-dev.txt) validates, offline:
+ARCHIVE is the package of esteuer.de (steuerbote/xbrl/versions.py) of the version, 6.9 by default, else the one the
+environment variable STEUERBOTE_TAXONOMY_6_9 or STEUERBOTE_TAXONOMY_6_10 names; STEUERBOTE_ERIC_DOC_DIR names the
+unzipped ERiC documentation 44.3.6.0, whose examples the script writes again. That documentation has no examples of
+the taxonomy 6.10, which come with the documentation 45.1.5.0: without them the run of 6.10 says so and validates the
+other instances, each on the package of 6.10, the Offenlegung with the version of a fiscal year from 2027 on. Arelle
+(arelle-release in requirements-dev.txt) validates, offline:
 
 - the examples of the ERiC documentation on the Kerntaxonomie it calls valid, read into the facts of
   steuerbote/xbrl/facts.py (steuerbote/xbrl/tests/instances.py) and written by steuerbote/xbrl/writer.py in the view
@@ -30,6 +33,7 @@ import sys
 import tempfile
 import zipfile
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -46,21 +50,24 @@ from steuerbote.xbrl.facts import Entity, Fact, Item, Period, Periods
 from steuerbote.xbrl.profiles import DISCLOSURE, FISCAL
 from steuerbote.xbrl.taxonomy import Installation, View, install_from_archive
 from steuerbote.xbrl.tests import instances
-from steuerbote.xbrl.tests.real import VARIABLE, VERSION
+from steuerbote.xbrl.tests.real import VARIABLE, VARIABLE_6_10, VERSION, VERSION_6_10
 from steuerbote.xbrl.tests.test_real_taxonomy import EricExamplesTest
+from steuerbote.xbrl.versions import Version
 
 CATALOG = """<?xml version="1.0" encoding="UTF-8"?>
 <catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog">
 	<rewriteURI uriStartString="http://www.xbrl.de/taxonomies/" rewritePrefix="../"/>
 </catalog>
 """
-TAXONOMY_PACKAGE = f"""<?xml version="1.0" encoding="UTF-8"?>
+TAXONOMY_PACKAGE = """<?xml version="1.0" encoding="UTF-8"?>
 <tp:taxonomyPackage xmlns:tp="http://xbrl.org/2016/taxonomy-package" xml:lang="de">
-	<tp:identifier>urn:steuerbote:hgb-taxonomie:{VERSION.version}</tp:identifier>
-	<tp:name>HGB-Taxonomie {VERSION.version}</tp:name>
-	<tp:version>{VERSION.released.isoformat()}</tp:version>
+	<tp:identifier>urn:steuerbote:hgb-taxonomie:{version}</tp:identifier>
+	<tp:name>HGB-Taxonomie {version}</tp:name>
+	<tp:version>{released}</tp:version>
 </tp:taxonomyPackage>
 """
+PACKAGES = {VERSION.version: (VERSION, VARIABLE), VERSION_6_10.version: (VERSION_6_10, VARIABLE_6_10)}
+"""Each version the script validates against, with the environment variable that names its package."""
 # Invented: a Steuernummer of the test Finanzamt 9198 of the ERiC documentation, and the GmbH of the Offenlegung.
 ENTITY = Entity.steuernummer("9198011310010")
 PERIODS = Periods(date(2026, 1, 1), date(2026, 12, 31), None, date(2025, 1, 1), date(2025, 12, 31))
@@ -92,21 +99,26 @@ KLEIN = KLEINST | {
 
 def main(argv: list[str] | None = None) -> int:
 	parser = argparse.ArgumentParser(description=__doc__.partition("\n")[0])
-	parser.add_argument("archive", nargs="?", type=Path, default=os.environ.get(VARIABLE))
+	parser.add_argument("archive", nargs="?", type=Path)
+	parser.add_argument(
+		"--version", choices=tuple(PACKAGES), default=VERSION.version, help="the version of the taxonomy"
+	)
 	parser.add_argument(
 		"--keep", type=Path, help="the directory to keep the package, the instances and the logs in"
 	)
 	options = parser.parse_args(argv)
-	if options.archive is None or not os.environ.get(DOCUMENTATION_VARIABLE):
+	version, variable = PACKAGES[options.version]
+	archive = options.archive or os.environ.get(variable)
+	if archive is None or not os.environ.get(DOCUMENTATION_VARIABLE):
 		sys.stderr.write(f"Name the archive of the taxonomy and set {DOCUMENTATION_VARIABLE}.\n")
 		return 2
 	with tempfile.TemporaryDirectory(prefix="steuerbote-arelle-") as temporary:
 		directory = options.keep or Path(temporary)
 		directory.mkdir(parents=True, exist_ok=True)
-		installation = install_from_archive(Path(options.archive), VERSION.archive_sha256, directory, VERSION)
-		package = taxonomy_package(installation, directory / f"hgb-taxonomie-{VERSION.version}.zip")
+		installation = install_from_archive(Path(archive), version.archive_sha256, directory, version)
+		package = taxonomy_package(installation, directory / f"hgb-taxonomie-{version.version}.zip", version)
 		failed = 0
-		for name, data in documents(installation):
+		for name, data in documents(installation, version):
 			path = directory / name
 			path.write_bytes(data)
 			messages = validate(package, path)
@@ -116,22 +128,34 @@ def main(argv: list[str] | None = None) -> int:
 		return 1 if failed else 0
 
 
-def taxonomy_package(installation: Installation, path: Path) -> Path:
+def taxonomy_package(installation: Installation, path: Path, version: Version = VERSION) -> Path:
 	"""The unpacked package as a taxonomy package, its catalog mapping the URLs of www.xbrl.de to its files."""
 	top = path.stem
 	with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
 		archive.writestr(f"{top}/META-INF/catalog.xml", CATALOG)
-		archive.writestr(f"{top}/META-INF/taxonomyPackage.xml", TAXONOMY_PACKAGE)
+		archive.writestr(
+			f"{top}/META-INF/taxonomyPackage.xml",
+			TAXONOMY_PACKAGE.format(version=version.version, released=version.released.isoformat()),
+		)
 		for name in sorted(installation.files):
 			archive.write(installation.package / name, f"{top}/{name}")
 	return path
 
 
-def documents(installation: Installation) -> Iterator[tuple[str, bytes]]:
+def documents(installation: Installation, version: Version = VERSION) -> Iterator[tuple[str, bytes]]:
 	"""Each instance to validate with its file name."""
 	fiscal = installation.view(View.FISCAL)
-	examples = documentation() / "Datenarten" / "ElsterBilanz" / "Bilanz" / "Beispiele" / "Taxonomie_6_9"
-	for name in EricExamplesTest.VALID:
+	examples = (
+		documentation()
+		/ "Datenarten"
+		/ "ElsterBilanz"
+		/ "Bilanz"
+		/ "Beispiele"
+		/ f"Taxonomie_{version.version.replace('.', '_')}"
+	)
+	if not examples.is_dir():
+		sys.stdout.write(f"{examples.name}: nicht in der ERiC-Dokumentation, die Beispiele fehlen\n")
+	for name in EricExamplesTest.VALID if examples.is_dir() else ():
 		report = instances.read(examples / name, fiscal)
 		yield (
 			f"fiscal-{name}",
@@ -150,7 +174,10 @@ def documents(installation: Installation) -> Iterator[tuple[str, bytes]]:
 			raise SystemExit("\n".join(blocking))
 		yield f"disclosure-{'kleinst' if kleinst else 'klein'}.xbrl", writer.write(report, taxonomy)
 	for name, built in companies.instances().items():
-		yield f"offenlegung-{name}.xbrl", offenlegung.write(built, installation.view(built.view))
+		yield (
+			f"offenlegung-{name}.xbrl",
+			offenlegung.write(replace(built, version=version), installation.view(built.view)),
+		)
 
 
 def disclosure(positions: dict[str, tuple[str, str]]) -> tuple[Fact, ...]:

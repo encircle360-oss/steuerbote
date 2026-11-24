@@ -6,6 +6,7 @@ of esteuer.de with an invented GmbH of each chart."""
 import hashlib
 import re
 from collections import Counter
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from unittest import TestCase
@@ -39,7 +40,7 @@ from steuerbote.ebilanz.tests.datev_charts import (
 from steuerbote.hgb.statement import RemainingTerm
 from steuerbote.mappings.transfer import canonical_json
 from steuerbote.ustva.mapping import WatchLevel
-from steuerbote.xbrl import mapping
+from steuerbote.xbrl import changes, mapping
 from steuerbote.xbrl.facts import Periods
 from steuerbote.xbrl.mapping import (
 	SHAREHOLDER_SCOPES,
@@ -64,6 +65,8 @@ DIGESTS = {
 	"SKR04 Taxonomie 6.9 2026.0": "15628a4764c7c1ca0ae085ab0c50a1b8dce1c7275884704fb5015eb354a6ca95",
 	"SKR03 Taxonomie 6.9 2026.1": "a7f62344e56a114f0eb216934ff9ee3c3a8a3a528f976c9479965e856a1a291b",
 	"SKR04 Taxonomie 6.9 2026.1": "fe84fc7cd49dc4501a08ee102b5521b4a8c6712228ae80ba28a8c7d8da6525a4",
+	"SKR03 Taxonomie 6.10 2026.1": "ba4f6076a3a50cd64445917fd4646cf269ef81afc57bc9044ceabd2b439182ad",
+	"SKR04 Taxonomie 6.10 2026.1": "3deefe2a1ecffd0a3c5de1aefd8ddb652b19020fc0d580c7f946691dd4727154",
 }
 """The SHA-256 of the canonical JSON of the rows of each version of the defaults."""
 
@@ -203,7 +206,7 @@ class DefaultsForTest(TestCase):
 
 class DefaultsVersionTest(TestCase):
 	def test_the_version_names_the_chart_the_taxonomy_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, dict(REVISIONS)), (2026, {"6.9": 1}))
+		self.assertEqual((DATEV_EDITION, dict(REVISIONS)), (2026, {"6.9": 1, "6.10": 1}))
 		self.assertEqual(
 			[defaults_version(chart, "6.9") for chart in sorted(CHARTS)],
 			["SKR03 Taxonomie 6.9 2026.1", "SKR04 Taxonomie 6.9 2026.1"],
@@ -277,7 +280,9 @@ class SourcesTest(TestCase):
 	its source."""
 
 	def test_every_reason_is_used_and_names_its_source(self):
-		self.assertEqual({group.reason for group in GROUPS["6.9"]} - {None}, set(Reason))
+		self.assertEqual(
+			{group.reason for groups in GROUPS.values() for group in groups} - {None}, set(Reason)
+		)
 		self.assertEqual(set(REASONS), set(Reason))
 		for reason, text in REASONS.items():
 			with self.subTest(reason=reason):
@@ -657,3 +662,146 @@ class InventedGmbHTest(TestCase):
 		found, twin = self.e_bilanz("SKR03"), self.e_bilanz("SKR04")
 		self.assertEqual(found.findings, ())
 		self.assertEqual(found.amounts(), twin.amounts())
+
+
+OTHER_TAXES_6_10 = {
+	("4340", "7650"): "is.netIncome.otherTaxes.other",
+	("4350", "7675"): "is.netIncome.otherTaxes.other",
+	("4355", "7678"): "is.netIncome.otherTaxes.other",
+	("2375", "7680"): "is.netIncome.otherTaxes.GrSt",
+	("4510", "7685"): "is.netIncome.otherTaxes.other",
+	("2285", "7690"): "is.netIncome.otherTaxes.other",
+	("2287", "7692"): "is.netIncome.otherTaxes.other",
+	("2289", "7694"): "is.netIncome.otherTaxes.releaseTaxProvision",
+}
+"""The accounts of the sonstige Steuern of SKR03 and SKR04 with their positions on 6.10, all on „sonstige Steuern“
+on 6.9."""
+
+
+class Taxonomy610Test(TestCase):
+	"""The defaults of 6.10: those of 6.9 through the changes of the taxonomy (steuerbote/xbrl/changes.py), with the
+	group of the sonstige Steuern taken apart, whose Summenmussfeld takes no balance of its own beside the new Mussfeld
+	of the Grundsteuer."""
+
+	def test_6_10_renames_and_removes_no_position_of_the_defaults_of_6_9(self):
+		(step,) = changes.between("6.9", "6.10")
+		named = {
+			f"de-gaap-ci:{concept}"
+			for group in GROUPS["6.9"]
+			for concept in (group.concept, group.opposite)
+			if concept is not None
+		}
+		self.assertEqual(sorted(named & (set(step.renamed) | step.removed)), [])
+
+	def test_the_defaults_of_6_10_are_those_of_6_9_but_the_sonstige_steuern(self):
+		for index, chart in enumerate(sorted(CHARTS)):
+			with self.subTest(chart=chart):
+				before, after = (
+					{str(entry.accounts): entry for entry in entries(DEFAULTS[version][chart])}
+					for version in ("6.9", "6.10")
+				)
+				self.assertEqual(set(before), set(after))
+				changed = {
+					number: after[number].concept for number in after if after[number] != before[number]
+				}
+				self.assertEqual(
+					changed, {pair[index]: concept for pair, concept in OTHER_TAXES_6_10.items()}
+				)
+				self.assertEqual({before[number].concept for number in changed}, {"is.netIncome.otherTaxes"})
+
+	def test_the_groups_carry_the_renames_and_refuse_a_removed_position(self):
+		group = next(group for group in GROUPS["6.9"] if group.concept == "bs.ass.currAss.cashEquiv.bank")
+		renamed = changes.Changes(
+			"6.9",
+			"6.10",
+			renamed={"de-gaap-ci:bs.ass.currAss.cashEquiv.bank": "de-gaap-ci:bs.ass.currAss.cashEquiv.banks"},
+			removed=frozenset(),
+			added=frozenset(),
+			mussfelder=(),
+			source="invented",
+		)
+		(carried,) = defaults._carried((group,), (renamed,), {})
+		self.assertEqual(
+			(carried.concept, carried.opposite), ("bs.ass.currAss.cashEquiv.banks", group.opposite)
+		)
+		removed = replace(
+			renamed, renamed={}, removed=frozenset({"de-gaap-ci:bs.ass.currAss.cashEquiv.bank"})
+		)
+		with self.assertRaisesRegex(ValueError, "which the taxonomy 6.10 removes"):
+			defaults._carried((group,), (removed,), {})
+
+	def test_every_position_of_6_10_passes_the_checks_of_the_mapping_and_is_the_deepest(self):
+		"""Against the package 6.10, as PositionsTest against that of 6.9 (Leitfaden A.10.1, A.10.3, A.10.4)."""
+		taxonomy = real.view_6_10()
+		for chart, entry in DEFAULTS["6.10"].items():
+			with self.subTest(chart=chart):
+				numbers = [rule.accounts.first for rule in entry.rules]
+				self.assertEqual(
+					[problem.message for problem in mapping.check(entry.for_accounts(numbers), taxonomy)], []
+				)
+		case = Case("GmbH", Periods(date(2027, 1, 1), date(2027, 12, 31)), AccountingStandard.HANDELSBILANZ)
+		marks = {position.concept: position.mark for position in structure(taxonomy, case).positions}
+		networks = (taxonomy.presentation[BALANCE_SHEET], taxonomy.presentation[INCOME_STATEMENT])
+		for group in GROUPS["6.10"]:
+			for concept in (group.concept, group.opposite):
+				if concept is None:
+					continue
+				name = f"de-gaap-ci:{concept}"
+				(network,) = (network for network in networks if name in network)
+				below = [marks.get(arc.child) for arc in network.children(name)]
+				parent = network.parent(name)
+				beside = [marks.get(arc.child) for arc in network.children(parent)] if parent else []
+				mark = marks.get(name)
+				with self.subTest(concept=concept):
+					self.assertIn(mark, REQUIRED | {Mark.AUFFANG})
+					self.assertFalse(REQUIRED.intersection(below))
+					self.assertTrue(
+						mark in (Mark.MUSSFELD, Mark.SUMMENMUSSFELD) or REQUIRED.intersection(beside)
+					)
+
+	def test_the_invented_gmbh_with_grundsteuer_and_kfz_steuer_makes_an_e_bilanz_of_2027(self):
+		"""The GmbH of InventedGmbHTest on SKR04 with a Grundsteuer and a Kfz-Steuer paid from the bank."""
+		taxonomy = real.view_6_10()
+		rows = [
+			*((row[1], row[2], D(row[3])) for row in GMBH if row[1] != "1800"),
+			("1800", "Bank", D("33550.00")),
+			("7680", "Grundsteuer", D("600.00")),
+			("7685", "Kfz-Steuer", D("300.00")),
+		]
+		self.assertEqual(sum(amount for *_rest, amount in rows), 0)
+		defaults_of = defaults_for("SKR04", "6.10")
+		books = Books(
+			tuple(
+				AccountBalance(
+					f"{number} - {label}",
+					number,
+					label,
+					Part.BALANCE_SHEET
+					if defaults_of.entry_for(number).concept.startswith("bs.")
+					else Part.INCOME_STATEMENT,
+					max(amount, D(0)),
+					max(-amount, D(0)),
+				)
+				for number, label, amount in rows
+			)
+		)
+		year = Periods(date(2027, 1, 1), date(2027, 12, 31))
+		placement = place(
+			defaults_of.for_accounts(number for number, *_rest in rows),
+			books,
+			taxonomy,
+			Purpose.BOTH,
+			fiscal_year=(year.fiscal_year_begin, year.fiscal_year_end),
+		)
+		self.assertEqual((placement.findings, placement.left_out), ((), ()))
+		found = calculate(structure(taxonomy, Case("GmbH", year)), ebilanz_balances(placement))
+		self.assertEqual(found.findings, ())
+		self.assertEqual(
+			(
+				found.amount("is.netIncome.otherTaxes.GrSt"),
+				found.amount("is.netIncome.otherTaxes.other"),
+				found.amount("is.netIncome.otherTaxes"),
+			),
+			(D("600.00"), D("300.00"), D("900.00")),
+		)
+		self.assertEqual(found.amount("is.netIncome"), D("18520.00"))

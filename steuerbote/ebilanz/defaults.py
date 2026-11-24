@@ -64,18 +64,28 @@ starts at 1 again. Revision 0 was the empty table before the defaults of the DAT
 keeps the version and the rows it took over, so that Vorgaben aktualisieren tells a change of the defaults from a
 change of the user (steuerbote/mappings/diff.py).
 
+Taxonomy 6.10. GROUPS["6.10"] carries the groups of 6.9 through the changes of the taxonomy (steuerbote/xbrl/
+changes.py), which rename and remove none of their positions, with one group taken apart: 6.10 makes „sonstige
+Steuern“ a Summenmussfeld over the new Mussfeld „sonstige Steuern, Grundsteuer“, so the Grundsteuer goes to that
+Mussfeld (Reason.LAND_TAX), the release of the provisions for sonstige Steuern to „Erträge aus der Auflösung von
+Steuerrückstellungen“ and every other tax to „übrige sonstige Steuern“ (Reason.OTHER_TAXES_SPLIT). Every other entry
+is that of 6.9; the defaults of 6.10 start at revision 1.
+
 This module is pure Python and never imports Frappe.
 """
 
-from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from types import MappingProxyType
 from typing import NamedTuple
 
 from steuerbote.hgb.statement import RemainingTerm
 from steuerbote.ustva.mapping import WatchLevel
+from steuerbote.xbrl import changes
+from steuerbote.xbrl.changes import Changes
 from steuerbote.xbrl.mapping import DefaultExcluded, DefaultRule, Defaults, DefaultWatched, Purpose
+from steuerbote.xbrl.taxonomy import GAAP_PREFIX
 
 DATEV_EDITION = 2026
 """The edition of the DATEV charts the defaults follow, „Gültig für 2026“."""
@@ -132,6 +142,7 @@ class Reason(StrEnum):
 	IST_CLEARING = "ist_clearing"
 	LAND_LEVIES = "land_levies"
 	LAND_SHARE = "land_share"
+	LAND_TAX = "land_tax"
 	LATE_FEES_DEDUCTIBLE = "late_fees_deductible"
 	LEASE_INCIDENTALS = "lease_incidentals"
 	LEGAL_FORM_SPLIT = "legal_form_split"
@@ -153,6 +164,7 @@ class Reason(StrEnum):
 	OLD_SPECIAL_ITEM = "old_special_item"
 	OTHER_LIMITED = "other_limited"
 	OTHER_SHAREHOLDERS = "other_shareholders"
+	OTHER_TAXES_SPLIT = "other_taxes_split"
 	OVERDRAWN = "overdrawn"
 	OWN_SHARES = "own_shares"
 	PARTNERSHIP = "partnership"
@@ -437,6 +449,12 @@ REASONS: MappingProxyType[Reason, str] = MappingProxyType(
 			"„Der Grund und Boden bei bebauten Grundstücken ist in der Position ... Grund und "
 			"Boden-Anteil auszuweisen“ (definitionGuidance of „unbebaute Grundstücke“)."
 		),
+		Reason.LAND_TAX: (
+			"From the HGB-Taxonomie 6.10 on the Grundsteuer has a Mussfeld of its own, „sonstige Steuern, "
+			"Grundsteuer“: „Hier ist die Grundsteuer für zum Betriebsvermögen gehörenden Grundbesitz zu "
+			"erfassen.“ (definitionGuidance); the taxonomy 6.9 counts it in the Mussfeld „sonstige "
+			"Steuern“."
+		),
 		Reason.LATE_FEES_DEDUCTIBLE: (
 			"Only the steuerlich nicht abzugsfähige Verspätungszuschläge and Zwangsgelder belong to "
 			"the steuerlich beschränkt abziehbare Betriebsausgaben (definitionGuidance); these are "
@@ -545,6 +563,15 @@ REASONS: MappingProxyType[Reason, str] = MappingProxyType(
 			"Every Gesellschafter of a GmbH or UG is a GmbH-Gesellschafter, the „sonstigen“ of the "
 			"DATEV label as well: the Mussfeld „Forderungen gegen GmbH-Gesellschafter“ of the "
 			"taxonomy takes the account (§ 42 Abs. 3 GmbHG)."
+		),
+		Reason.OTHER_TAXES_SPLIT: (
+			"From the HGB-Taxonomie 6.10 on „sonstige Steuern“ is a Summenmussfeld over the Mussfeld of "
+			"the Grundsteuer, and the positions beside it are „Rechnerisch notwendig, soweit vorhanden“ "
+			"(Technischer Leitfaden zur HGB-Taxonomie 6.10, A.10.3): a balance on the sum beside one on "
+			"the Grundsteuer would not add up with it (B.14.11). The release of the provisions goes to "
+			"„Erträge aus der Auflösung von Steuerrückstellungen“, every other tax to „übrige sonstige "
+			"Steuern“, also the Nachzahlungen and Erstattungen for earlier years, whose own positions "
+			"are „steuerlich“ not permitted (notPermittedFor)."
 		),
 		Reason.OVERDRAWN: (
 			"„Ist der Saldo jedoch im „Haben“ (d.h. das Konto wurde „überzogen“) so erfolgt der "
@@ -7296,7 +7323,67 @@ _GROUPS_6_9: tuple[Group, ...] = (
 	),
 )
 
-GROUPS: MappingProxyType[str, tuple[Group, ...]] = MappingProxyType({"6.9": _GROUPS_6_9})
+_OTHER_TAXES_6_10: tuple[Group, ...] = (
+	_position(
+		"is.netIncome.otherTaxes.other",
+		("4340", "7650", "Sonstige Betriebssteuern"),
+		("4350", "7675", "Verbrauchsteuer (sonstige Steuern)"),
+		("4355", "7678", "Ökosteuer"),
+		reason=Reason.OTHER_TAXES_SPLIT,
+	),
+	_position("is.netIncome.otherTaxes.GrSt", ("2375", "7680", "Grundsteuer"), reason=Reason.LAND_TAX),
+	_position(
+		"is.netIncome.otherTaxes.other",
+		("4510", "7685", "Kfz-Steuer"),
+		("2285", "7690", "Steuernachzahlungen Vorjahre für sonstige Steuern"),
+		("2287", "7692", "Steuererstattungen Vorjahre für sonstige Steuern"),
+		reason=Reason.OTHER_TAXES_SPLIT,
+	),
+	_position(
+		"is.netIncome.otherTaxes.releaseTaxProvision",
+		("2289", "7694", "Erträge aus der Auflösung von Rückstellungen für sonstige Steuern"),
+		reason=Reason.OTHER_TAXES_SPLIT,
+	),
+)
+"""The group „sonstige Steuern“ of 6.9 on the taxonomy 6.10, whose Summenmussfeld takes no balance of its own."""
+
+
+def _carried(
+	groups: Iterable[Group], steps: Iterable[Changes], replaced: Mapping[str, tuple[Group, ...]]
+) -> tuple[Group, ...]:
+	"""The groups of a version on a later one through the changes of the taxonomy between them
+	(steuerbote/xbrl/changes.py): each position renamed as they rename it, and the groups of ``replaced`` in place of
+	the group on their position; a position they remove has no place there."""
+	steps = tuple(steps)
+	carried: list[Group] = []
+	for group in groups:
+		if group.concept in replaced:
+			carried.extend(replaced[group.concept])
+			continue
+		concept, opposite = group.concept, group.opposite
+		for step in steps:
+			concept, opposite = _renamed(concept, step), _renamed(opposite, step)
+		carried.append(replace(group, concept=concept, opposite=opposite))
+	return tuple(carried)
+
+
+def _renamed(concept: str | None, step: Changes) -> str | None:
+	if concept is None:
+		return None
+	name = f"{GAAP_PREFIX}:{concept}"
+	if name in step.removed:
+		raise ValueError(f"the defaults name {concept}, which the taxonomy {step.target_version} removes")
+	return step.renamed.get(name, name).removeprefix(f"{GAAP_PREFIX}:")
+
+
+GROUPS: MappingProxyType[str, tuple[Group, ...]] = MappingProxyType(
+	{
+		"6.9": _GROUPS_6_9,
+		"6.10": _carried(
+			_GROUPS_6_9, changes.between("6.9", "6.10"), {"is.netIncome.otherTaxes": _OTHER_TAXES_6_10}
+		),
+	}
+)
 """The groups of the defaults for each version of the taxonomy, whose positions they name."""
 
 
@@ -7317,7 +7404,7 @@ DEFAULTS: MappingProxyType[str, MappingProxyType[str, Defaults]] = MappingProxyT
 		for version in GROUPS
 	}
 )
-REVISIONS: MappingProxyType[str, int] = MappingProxyType({"6.9": 1})
+REVISIONS: MappingProxyType[str, int] = MappingProxyType({"6.9": 1, "6.10": 1})
 
 
 def defaults_for(chart: str, version: str) -> Defaults:

@@ -1113,3 +1113,23 @@ class FindingsTest(TestCase):
 	def test_the_codes_of_steuerbote_begin_with_sb_and_name_one_finding_each(self):
 		self.assertEqual(len(set(bridge.CODES)), len(bridge.CODES))
 		self.assertTrue(all(code.startswith("SB-") for code in bridge.CODES))
+
+
+class TaxonomyTest(TestCase):
+	"""The version of the HGB-Taxonomie an E-Bilanz takes for its Wirtschaftsjahr (steuerbote/xbrl/versions.py)."""
+
+	def test_a_wirtschaftsjahr_keeps_a_version_it_may_take(self):
+		"""6.10 „nicht beanstandet“ for the Wirtschaftsjahr 2026 (BMF letter of 8 June 2026), 6.9 its own."""
+		for chosen in ("6.9", "6.10"):
+			with self.subTest(chosen=chosen):
+				self.assertEqual(bridge.taxonomy_for(date(2026, 1, 1), date(2026, 12, 31), chosen), chosen)
+
+	def test_a_version_the_wirtschaftsjahr_may_not_take_gives_way_to_its_own(self):
+		"""6.9 „letztmalig zu verwenden für Wirtschaftsjahre, die vor dem 31.12.2027 enden“: 2027 takes 6.10."""
+		self.assertEqual(bridge.taxonomy_for(date(2027, 1, 1), date(2027, 12, 31), "6.9"), "6.10")
+		self.assertEqual(bridge.taxonomy_for(date(2026, 3, 1), date(2026, 12, 31), None), "6.9")
+		self.assertEqual(bridge.taxonomy_for(date(2027, 1, 1), date(2027, 12, 31), ""), "6.10")
+
+	def test_a_wirtschaftsjahr_no_version_serves_keeps_the_one_chosen(self):
+		"""The checks of the E-Bilanz refuse it then (rules 170205007, 170205018)."""
+		self.assertEqual(bridge.taxonomy_for(date(2029, 1, 1), date(2029, 12, 31), "6.10"), "6.10")

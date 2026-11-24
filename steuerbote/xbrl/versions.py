@@ -33,9 +33,17 @@ An Eröffnungsbilanz takes „eine der Taxonomieversionen ..., mit der auch die 
 Wirtschaftsjahres übermittelt werden kann“ (Übersicht über die Verwendung der Taxonomie-Versionen), so its version
 is the one of the first fiscal year: for_fiscal_year() of that year.
 
-Taxonomy 6.10 (BMF letter of 8 June 2026) comes as a second entry once ERiC 46 sends real cases with it in May 2027;
-until then 6.9 is the only version of WJ 2026 that can be filed. Every table keyed by the version holds exactly the
-versions of TAXONOMIES (steuerbote/xbrl/tests/test_versions.py).
+Taxonomy 6.10 is published by the BMF letter of 8 June 2026 (GZ IV C 6 - S 2133-b/00067/002/023, DOK
+COO.7005.100.4.14979781): „Die Taxonomien sind grundsätzlich für die Bilanzen der Wirtschaftsjahre zu verwenden, die
+nach dem 31. Dezember 2026 beginnen (Wirtschaftsjahr 2027 oder 2027/2028). ... Es wird nicht beanstandet, wenn diese
+auch für das Wirtschaftsjahr 2026 oder 2026/2027 verwendet werden. Die Übermittlungsmöglichkeiten mit diesen neuen
+Taxonomien wird für Testfälle voraussichtlich ab November 2026 und für Echtfälle ab Mai 2027 gegeben sein.“ The letter is
+to be printed in the BStBl I without a page yet, so its DOK stands for it. The Übersicht über die Verwendung der
+Taxonomie-Versionen (Stand 03.06.2026) gives 6.10 the fiscal years ending before 31.12.2028, ERiC 45 for test cases and
+ERiC 46 for real cases, and ERiC 45.1.5.0 has the plugin checkBilanz_6_10 „mit Testmerkerpflicht“ (ERiC-Releasenotes
+45.1.5.0, Kap. 3.1.8). 6.9 stays the taxonomy of WJ 2026: until May 2027 it is the only one with which an E-Bilanz of
+2026 can be filed. Every table keyed by the version holds exactly the versions of TAXONOMIES
+(steuerbote/xbrl/tests/test_versions.py), and FIRST is the version a new Bilanzzuordnung names.
 """
 
 from dataclasses import dataclass
@@ -66,6 +74,7 @@ class Version:
 	reference: str
 	"""The Geschäftszeichen (GZ) of the letter."""
 	bstbl: str
+	"""Where the letter is printed, BStBl I S. … once the Bundessteuerblatt has it, else its DOK."""
 	begins_after: date
 	"""A fiscal year beginning after this day takes the version."""
 	tolerated_begins_after: date
@@ -74,10 +83,17 @@ class Version:
 	"""The version serves only fiscal years ending before this day."""
 	real_cases_from: date
 	"""From this day ERiC sends real cases of the version."""
-	register_since: date
-	"""From this day the Unternehmensregister takes the version."""
+	register_since: date | None
+	"""From this day the Unternehmensregister takes the version, None while it has announced no day."""
 	archive_url: str
 	archive_sha256: str
+	kontensalden_reason: bool = False
+	"""Whether an E-Bilanz of the version may leave the Kontensalden out with the reason in
+	genInfo.report.id.reportElement.reportElements.transmissionNotYetPossible, which only 6.9 allows: „Um Härtefälle zu
+	vermeiden, wird es für die Übermittlung von E-Bilanzen mit der Taxonomie-Version 6.9 nicht beanstandet, wenn ... die
+	Bilanz und GuV ohne Kontennachweise ... übermittelt werden.“ (BMF letter of 10 June 2025), and 6.10 deletes the
+	position: „Die Übergangsregelung war ausschließlich auf die Taxonomie-Version 6.9 anwendbar“ (Änderungsnachweis zum
+	Taxonomie-Update 2026, Taxonomie 6.10/6.9, 2.)."""
 
 	@property
 	def letter(self) -> str:
@@ -172,10 +188,32 @@ TAXONOMIES: MappingProxyType[str, Version] = MappingProxyType(
 				"https://www.esteuer.de/download/taxonomie_20250618/german-gaap-taxonomy-v6.9-2025-04-01-xbrl.zip"
 			),
 			archive_sha256="accd62202d73c036910fee118b30730f0392934afc9730617788e30a0480df87",
+			kontensalden_reason=True,
+		),
+		"6.10": Version(
+			version="6.10",
+			released=date(2026, 4, 1),
+			letter_date=date(2026, 6, 8),
+			reference="IV C 6 - S 2133-b/00067/002/023",
+			bstbl="DOK COO.7005.100.4.14979781",
+			begins_after=date(2026, 12, 31),
+			tolerated_begins_after=date(2025, 12, 31),
+			last_ends_before=date(2028, 12, 31),
+			# „für Echtfälle ab Mai 2027“ names no day, so the first of the month stands for it.
+			real_cases_from=date(2027, 5, 1),
+			register_since=None,
+			archive_url=(
+				"https://www.esteuer.de/download/taxonomie_20260615/germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip"
+			),
+			archive_sha256="de00ceaad0e532d238dea24a48160ec335422a3a71c38dd03c7b2b34b32fff76",
 		),
 	}
 )
 LATEST = TAXONOMIES[max(TAXONOMIES, key=lambda version: tuple(int(part) for part in version.split(".")))]
+FIRST = TAXONOMIES["6.9"]
+"""The version of the fiscal year 2026, the first Steuerbote files (FIRST_ANNUAL_YEAR of steuerbote/eric/releases.py):
+a new Bilanzzuordnung names its positions, and „Auf neue Taxonomie heben“ lifts it to a later version
+(steuerbote/xbrl/changes.py)."""
 
 
 def version_of(version: str) -> Version:

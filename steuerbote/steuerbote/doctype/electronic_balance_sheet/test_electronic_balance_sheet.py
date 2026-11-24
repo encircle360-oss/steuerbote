@@ -18,6 +18,7 @@ from steuerbote import ebilanz_sources
 from steuerbote.eric.result import Outcome
 from steuerbote.eric.runtime import Check
 from steuerbote.eric.simulation import bilanz as simulated_bilanz
+from steuerbote.steuerbote.annual_filing import fiscal_year_ending_in
 from steuerbote.steuerbote.report.e_bilanz_positionen import e_bilanz_positionen
 from steuerbote.tests.ebilanz import (
 	COMPANY,
@@ -48,6 +49,7 @@ from steuerbote.tests.ebilanz import (
 )
 from steuerbote.tests.helpers import make_user
 from steuerbote.tests.transmitting import Transmitting
+from steuerbote.xbrl.tests import real
 
 # The company, its accounts, Fiscal Years, assets and users are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = [
@@ -562,3 +564,48 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 		filed_voranmeldung(self, 10, {"81": 10000})
 		_columns, rows = e_bilanz_positionen.execute(filters)
 		self.assertEqual([row["label"] for row in rows if row["key"] is None], [notes[0]])
+
+
+FISCAL_YEAR_2027 = "2027 Steuerbote Test E-Bilanz"
+
+
+class TestElectronicBalanceSheetTaxonomy610(IntegrationTestCase):
+	"""The version of the HGB-Taxonomie of an E-Bilanz by its Wirtschaftsjahr, with the taxonomy 6.10 installed from the
+	package of STEUERBOTE_TAXONOMY_6_10 as Taxonomie einrichten installs it: 2027 takes 6.10, 2026 keeps 6.9 or the
+	6.10 it may take."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		make_mapping(make_company_with_books())
+		try:
+			fiscal_year_ending_in(COMPANY, 2027)
+		except frappe.ValidationError:
+			frappe.get_doc(
+				{
+					"doctype": "Fiscal Year",
+					"year": FISCAL_YEAR_2027,
+					"year_start_date": date(2027, 1, 1),
+					"year_end_date": date(2027, 12, 31),
+					"companies": [{"company": COMPANY}],
+				}
+			).insert(ignore_permissions=True)
+
+	def setUp(self):
+		self.enterContext(configured(real.installation_6_10().path.parent))
+		super().setUp()
+		self.addCleanup(discard_documents)
+
+	def test_the_wirtschaftsjahr_2027_takes_6_10(self):
+		doc = new_document(year=2027)
+		self.assertEqual(
+			(getdate(doc.from_date), getdate(doc.to_date), doc.taxonomy_version),
+			(date(2027, 1, 1), date(2027, 12, 31), "6.10"),
+		)
+		self.assertEqual((doc.datenart().version, doc.datenart().plugin), ("Bilanz_6.10", "checkBilanz_6_10"))
+		self.assertTrue(ebilanz_sources.taxonomy_check("6.10")[0])
+
+	def test_the_wirtschaftsjahr_2026_keeps_6_9_or_the_6_10_it_may_take(self):
+		self.assertEqual(new_document().taxonomy_version, "6.9")
+		discard_documents()
+		self.assertEqual(new_document(taxonomy_version="6.10").taxonomy_version, "6.10")

@@ -182,6 +182,14 @@ echo "accd62202d73c036910fee118b30730f0392934afc9730617788e30a0480df87  /tmp/tax
 STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc STEUERBOTE_TAXONOMY_6_9=/tmp/taxonomy-6.9.zip pytest --cov
 ```
 
+Das Paket 6.10 kommt ebenso dazu, mit der Variablen `STEUERBOTE_TAXONOMY_6_10`; gegen es laufen die Tests der Taxonomie 6.10 (`real.view_6_10()` in `steuerbote/xbrl/tests/real.py`), etwa die Änderungen gegen 6.9 in `steuerbote/xbrl/tests/test_changes.py` und die E-Bilanz und die Offenlegung der erfundenen Unternehmen auf 6.10:
+
+```bash
+curl -fL --cacert /tmp/esteuer.pem -o /tmp/taxonomy-6.10.zip https://www.esteuer.de/download/taxonomie_20260615/germany-gaap-taxonomy-v6.10-2026-04-01-xbrl.zip
+echo "de00ceaad0e532d238dea24a48160ec335422a3a71c38dd03c7b2b34b32fff76  /tmp/taxonomy-6.10.zip" | sha256sum --check
+STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc STEUERBOTE_TAXONOMY_6_9=/tmp/taxonomy-6.9.zip STEUERBOTE_TAXONOMY_6_10=/tmp/taxonomy-6.10.zip pytest --cov
+```
+
 ### XBRL mit Arelle
 
 `steuerbote/xbrl/tests/arelle_validation.py` lässt Arelle (`arelle-release` aus `requirements-dev.txt`) 18 Instanzen beider Profile offline gegen das Paket 6.9 prüfen: fünf der gültigen Beispiele der ERiC-Dokumentation auf der Kerntaxonomie, wie der Writer sie schreibt; die E-Bilanz einer erfundenen GmbH als Einheitsbilanz, als Handelsbilanz mit Überleitung, als Eröffnungsbilanz und als UG, wie `steuerbote/ebilanz/instance.py` sie baut; die Offenlegung einer erfundenen GmbH als Kleinstkapitalgesellschaft und als kleine Gesellschaft; und die sieben Instanzen der Offenlegung aus `steuerbote/hgb/tests/companies.py`, wie `steuerbote/hgb/instance.py` sie baut, prüft und schreibt. Jede Meldung ab Warnung lässt den Lauf scheitern. Mit Dokumentation und Paket wie oben läuft das Skript auch lokal; in der CI dauert es etwa vier Minuten:
@@ -191,6 +199,12 @@ STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc python -m steuerbote.xbrl.tests.arelle_val
 ```
 
 `--keep` behält Paket, Instanzen und die Protokolle von Arelle im Verzeichnis. In der CI macht das ein Job für sich, siehe [CI](#ci).
+
+Mit `--version 6.10` prüft das Skript dieselben Instanzen gegen das Paket 6.10, die Offenlegung mit der Version eines Geschäftsjahres ab 2027, und die gültigen Beispiele der Taxonomie 6.10, wenn die Dokumentation sie hat: 44.3.6.0 hat keine, und das Skript sagt das; mit der Dokumentation 45.1.5.0 sind es wieder 18 Instanzen, in der CI 13:
+
+```bash
+STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc python -m steuerbote.xbrl.tests.arelle_validation /tmp/taxonomy-6.10.zip --version 6.10 --keep /tmp/xbrl-6.10
+```
 
 ### Frappe-Tests
 
@@ -272,6 +286,8 @@ Alle drei Workflows laufen bei Pull Requests, bei Pushes auf `main` und von Hand
 | Code Scanning von GitHub | CodeQL | das Ergebnis der Analyse des Jobs CodeQL am Pull Request: ob der geänderte Code neue Befunde hat. |
 
 Adresse und SHA-256-Summe von ERiC-Dokumentation, HGB-Taxonomie und Zwischenzertifikat stehen einmal für alle Jobs im `env` von `tests.yml`. Das Paket der Taxonomie kommt aus einem Cache, dessen Schlüssel seine SHA-256-Summe trägt (`hgb-taxonomie-6.9-<Summe>`); nur ohne Eintrag lädt ein Job es von esteuer.de und legt es danach in den Cache. Geprüft wird die Summe in jedem Fall vor den Tests. Bei Tests bricht ein neuer Lauf für denselben Pull Request oder Branch den laufenden ab. Dependabot schlägt jede Woche Updates für die GitHub Actions und die pip-Abhängigkeiten vor (`.github/dependabot.yml`).
+
+Das Paket 6.10 kommt ebenso in die drei Jobs, mit `TAXONOMY_6_10` und `TAXONOMY_6_10_SHA256` im `env` von `tests.yml` und einem Cache nach seiner Summe (`hgb-taxonomie-6.10-<Summe>`); Core und Frappe geben es den Tests mit `STEUERBOTE_TAXONOMY_6_10`, und der XBRL-Job lässt Arelle ein zweites Mal gegen 6.10 prüfen, dessen Instanzen und Protokolle das Artefakt `xbrl-instances` unter `xbrl-6.10` hält.
 
 ## Versionen
 
@@ -407,6 +423,21 @@ ERiC 44.3.6.0 kennt Körperschaft- und Gewerbesteuer bis 2025, deshalb nimmt 202
 2. **Version.** Ein Eintrag in `TAXONOMIES` von `xbrl/versions.py` mit BMF-Schreiben, Wirtschaftsjahren, Tag der Echtfälle und dem Paket von esteuer.de mit SHA-256, dazu jede Tabelle nach der Version, die `test_versions.py` verlangt, und das Wirtschaftsjahr in `BILANZ_TAXONOMIES` von `eric/releases.py`. Test: `steuerbote/xbrl/tests/test_versions.py`.
 3. **CI.** Adresse und SHA-256 des neuen Pakets kommen in das `env` von `tests.yml`, mit einem Cache nach seiner Summe, und die Tests gegen das Paket bekommen ihre Variable. Test: `steuerbote/tests/test_workflows.py`, der XBRL-Job.
 4. **Jahresprüfung.** `python -m steuerbote.jahresmeldung.yearcheck <Verzeichnis> Bilanz <Version>` laufen lassen, bis sie nichts mehr ausgibt; ein Jahr nimmt sie als Wirtschaftsjahr: `… Bilanz <Jahr>` prüft die Taxonomie des Jahres.
+
+#### 6.10
+
+Die Schritte für die Taxonomie 6.10, aus der Dokumentation 45.1.5.0 und den Paketen von esteuer.de:
+
+5. **Änderungen.** Was eine Version gegen die vorige ändert, steht als Daten in `CHANGES` von `steuerbote/xbrl/changes.py`: umbenannte, entfernte und neue Begriffe und die neuen Mussfelder, aus dem Änderungsnachweis zum Taxonomie-Update und den Versionierungsberichten im Paket. Für 6.10 benennt keine Position um, 43 Begriffe sind entfernt, 39 neu, und das einzige neue Mussfeld ist „sonstige Steuern, Grundsteuer“, unter dem „sonstige Steuern“ zum Summenmussfeld wird. Test: `steuerbote/xbrl/tests/test_changes.py` gegen beide Pakete.
+6. **Mini-Taxonomie.** `steuerbote/xbrl/tests/mini.py` schreibt das Paket jeder Version, das von 6.10 mit den Modulen vom 2026-04-01, dem Teil „Konto nicht vorhanden oder nicht übermittelbar“ der Kontensalden, dem Mussfeld der Grundsteuer, einer erfundenen Umbenennung und einer Entfernung; `view_6_10()` in `steuerbote/ebilanz/tests/taxonomy.py` setzt die Positionen der E-Bilanz darauf.
+7. **Regeln.** Die Regeln der Jahresdokumentation, die sich gegen 6.9 ändern, nach der Version in `eric/simulation/bilanz.py` (`expected_rules("6.10")`), die strukturellen Fehler der Kontensalden 170195106, 170195108, 170195109 und 170195110 in `xbrl/checks.py` und die Kontensalden ohne Konteninformationen in `ebilanz/kontennachweis.py`. Die Jahresprüfung ohne Version lässt eine Version aus, die neuer ist als alles, was die Dokumentation dokumentiert, mit 44.3.6.0 also 6.10; gegen 45.1.5.0 prüft `python -m steuerbote.jahresmeldung.yearcheck <Verzeichnis> Bilanz 6.10` sie und gibt nichts aus.
+8. **Bilanzzuordnung.** Eine neue Zuordnung nennt die Positionen von `FIRST`, 6.9; „Auf neue Taxonomie heben“ hebt sie mit `CHANGES` auf die neue Version und ein Import eine Datei der früheren.
+9. **Pakete in Tests und CI.** `real.view_6_10()` mit `STEUERBOTE_TAXONOMY_6_10`, die Schritte des Pakets in den drei Jobs von `tests.yml` und der Lauf von Arelle mit `--version 6.10`, siehe [Tests gegen die HGB-Taxonomie](#tests-gegen-die-hgb-taxonomie) und [XBRL mit Arelle](#xbrl-mit-arelle).
+
+10. **Vorgaben.** `GROUPS["6.10"]` in `ebilanz/defaults.py` trägt die Gruppen von 6.9 durch `CHANGES`, mit der Gruppe der sonstigen Steuern zerlegt, denn 6.10 macht „sonstige Steuern“ zum Summenmussfeld über dem Mussfeld der Grundsteuer; Revision 1 mit ihrer SHA-256 in `DIGESTS`. Test: `steuerbote/ebilanz/tests/test_defaults.py`, siehe [Vorgaben der Bilanzzuordnung, Taxonomie 6.10](ebilanz-zuordnung.md#taxonomie-610).
+11. **Beleg.** Das Feld „HGB-Taxonomie“ der E-Bilanz bietet die Version an, und `bridge.taxonomy_for` gibt sie den Wirtschaftsjahren, die sie grundsätzlich nehmen. Test: `electronic_balance_sheet/test_bridge.py`, `test_electronic_balance_sheet.py`.
+
+Was noch kommt: mit ERiC 45 die gepinnte Dokumentation heben, dann prüft die Jahresprüfung ohne Version auch 6.10; und mit ERiC 46 die Echtfälle von 6.10 ab Mai 2027.
 
 ## Commits
 

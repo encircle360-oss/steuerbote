@@ -28,7 +28,7 @@ from steuerbote.xbrl.mapping import (
 )
 from steuerbote.xbrl.taxonomy import LABEL
 from steuerbote.xbrl.tests import positions
-from steuerbote.xbrl.versions import LATEST
+from steuerbote.xbrl.versions import FIRST
 
 BANK = "bs.ass.currAss.cashEquiv.bank"
 BANK_LIABILITY = "bs.eqLiab.liab.bank"
@@ -166,9 +166,12 @@ class MappingTest(TestCase):
 			excluded=[Excluded("9000", "Saldenvortrag")],
 		)
 
-	def test_names_the_positions_of_the_latest_taxonomy_unless_told_otherwise(self):
-		self.assertEqual(self.mapping.taxonomy_version, LATEST.version)
+	def test_names_the_positions_of_the_first_taxonomy_unless_told_otherwise(self):
+		"""A new mapping names the positions of the taxonomy of the first fiscal year Steuerbote files, 6.9, and
+		„Auf neue Taxonomie heben“ lifts it to 6.10 (steuerbote/xbrl/changes.py)."""
+		self.assertEqual(self.mapping.taxonomy_version, FIRST.version)
 		self.assertEqual(Mapping("SKR03", taxonomy_version="6.9").taxonomy_version, "6.9")
+		self.assertEqual(Mapping("SKR03", taxonomy_version="6.10").taxonomy_version, "6.10")
 		with self.assertRaises(MappingError) as caught:
 			Mapping("SKR03", taxonomy_version="6.8")
 		self.assertEqual(

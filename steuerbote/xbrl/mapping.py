@@ -127,7 +127,7 @@ from steuerbote.xbrl.taxonomy import (
 	LegalForm,
 	Taxonomy,
 )
-from steuerbote.xbrl.versions import LATEST, TAXONOMIES
+from steuerbote.xbrl.versions import FIRST, TAXONOMIES
 
 NOT_AN_ACCOUNT_NUMBER = "{0} is no account number: it is a text without blanks at either end."
 NO_POSITION = "Account {0} has no position."
@@ -308,7 +308,7 @@ class Mapping:
 	rules: tuple[Rule, ...] = ()
 	watched: tuple[Watched, ...] = ()
 	excluded: tuple[Excluded, ...] = ()
-	taxonomy_version: str = LATEST.version
+	taxonomy_version: str = FIRST.version
 	_by_number: MappingProxyType[str, Place] = field(init=False, repr=False, compare=False)
 
 	def __post_init__(self) -> None:
