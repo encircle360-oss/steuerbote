@@ -16,11 +16,12 @@ from steuerbote.steuerbote.doctype.vat_return_settings.rules import (
 	check_zm_rules,
 	has_dauerfrist,
 	own_vat_id,
+	periods_of,
 	rhythm_for,
 	sondervorauszahlung,
 	zm_rule,
 )
-from steuerbote.ustva import Rhythm
+from steuerbote.ustva import Period, Rhythm
 from steuerbote.zm import rhythm as zm_rhythm
 
 MONTHLY, QUARTERLY = Rhythm.MONTHLY, Rhythm.QUARTERLY
@@ -108,6 +109,32 @@ class RhythmForTest(TestCase):
 				rhythm_for([], 2026, month)  # type: ignore[arg-type]
 		with self.assertRaisesRegex(SettingsError, "is not a four-digit year"):
 			rhythm_for([], "2026", 1)  # type: ignore[arg-type]
+
+
+class PeriodsOfTest(TestCase):
+	def test_are_the_voranmeldungszeitraeume_of_the_year_in_order(self):
+		self.assertEqual(
+			periods_of([PeriodRule(2026, "monthly")], 2026), [Period.month(2026, month) for month in range(1, 13)]
+		)
+
+	def test_follow_a_change_of_rhythm(self):
+		rules = [PeriodRule(2026, "quarterly"), PeriodRule(2026, "monthly", 10)]
+		self.assertEqual(
+			periods_of(rules, 2026),
+			[
+				Period.quarter(2026, 1),
+				Period.quarter(2026, 2),
+				Period.quarter(2026, 3),
+				Period.month(2026, 10),
+				Period.month(2026, 11),
+				Period.month(2026, 12),
+			],
+		)
+
+	def test_leave_out_the_months_without_a_voranmeldung_or_without_a_rule(self):
+		rules = [PeriodRule(2026, "quarterly", 4), PeriodRule(2026, "none", 7)]
+		self.assertEqual(periods_of(rules, 2026), [Period.quarter(2026, 2)])
+		self.assertEqual(periods_of(rules, 2025), [])
 
 
 class PrepaymentTest(TestCase):
