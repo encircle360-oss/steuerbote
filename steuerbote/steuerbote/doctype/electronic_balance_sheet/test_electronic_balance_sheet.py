@@ -28,6 +28,7 @@ from steuerbote.tests.ebilanz import (
 	FISCAL_YEAR,
 	FOUNDED,
 	LAPTOP,
+	MAPPING,
 	PERIOD_CLOSING_VOUCHER,
 	PERIOD_CLOSING_VOUCHER_DOCTYPE,
 	SETTINGS,
@@ -334,6 +335,26 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 		):
 			doc.calculate()
 
+	def test_a_bilanzzuordnung_lifted_to_6_10_holds_an_e_bilanz_of_6_9_back(self):
+		"""§ 5b Abs. 1 Satz 1 EStG: the E-Bilanz reports the positions of its own version, and a lift does not go back,
+		so the E-Bilanz takes the version of the Bilanzzuordnung. Berechnen places the books on the positions of 6.9
+		meanwhile, with no taxonomy 6.10 installed, and names the other version once."""
+		set_for_the_test(self, MAPPING, COMPANY, taxonomy_version="6.10")
+		doc = self.calculated()
+		self.assertEqual(
+			(doc.status, doc.ready, finding_codes(doc)), ("Berechnet", 0, ["SB-ZUORDNUNG-VERSION"])
+		)
+		(finding,) = doc.findings
+		self.assertEqual((finding.blocking, finding.reference), (1, "Bilanzzuordnung"))
+		self.assertIn(
+			"Die Bilanzzuordnung nennt die Positionen der HGB-Taxonomie 6.10, die E-Bilanz meldet die der Taxonomie "
+			"6.9.",
+			finding.text,
+		)
+		self.assertIn("Wählen Sie in der E-Bilanz die HGB-Taxonomie 6.10", finding.text)
+		self.assertEqual({field: money(doc.get(field)) for field in TOTALS}, TOTALS)
+		self.assertEqual(money(self.row(doc, BANK).reported), d("47960.00"))
+
 	def test_the_gcd_takes_the_address_of_the_settings(self):
 		"""Leitfaden B.14.3.1.16; rule 170205051 of the Jahresdokumentation 6.9."""
 		set_for_the_test(self, SETTINGS, COMPANY, city=None)
@@ -572,7 +593,7 @@ FISCAL_YEAR_2027 = "2027 Steuerbote Test E-Bilanz"
 class TestElectronicBalanceSheetTaxonomy610(IntegrationTestCase):
 	"""The version of the HGB-Taxonomie of an E-Bilanz by its Wirtschaftsjahr, with the taxonomy 6.10 installed from the
 	package of STEUERBOTE_TAXONOMY_6_10 as Taxonomie einrichten installs it: 2027 takes 6.10, 2026 keeps 6.9 or the
-	6.10 it may take."""
+	6.10 it may take, and the Bilanzzuordnung names the version of the E-Bilanz."""
 
 	@classmethod
 	def setUpClass(cls):
@@ -609,3 +630,29 @@ class TestElectronicBalanceSheetTaxonomy610(IntegrationTestCase):
 		self.assertEqual(new_document().taxonomy_version, "6.9")
 		discard_documents()
 		self.assertEqual(new_document(taxonomy_version="6.10").taxonomy_version, "6.10")
+
+	def test_a_bilanzzuordnung_on_6_9_holds_an_e_bilanz_of_6_10_back(self):
+		"""§ 5b Abs. 1 Satz 1 EStG: an E-Bilanz on 6.10 from a Bilanzzuordnung still on 6.9 waits for „Auf neue
+		Taxonomie heben“. Berechnen places the books on the positions of 6.10 meanwhile, with no taxonomy 6.9
+		installed: 6.10 renames none of the positions the company names."""
+		doc = new_document(taxonomy_version="6.10")
+		doc.calculate()
+		doc.reload()
+		self.assertEqual(
+			(doc.status, doc.ready, blocking_codes(doc)), ("Berechnet", 0, ["SB-ZUORDNUNG-VERSION"])
+		)
+		(finding,) = (row for row in doc.findings if row.code == "SB-ZUORDNUNG-VERSION")
+		self.assertIn(
+			"Die Bilanzzuordnung nennt die Positionen der HGB-Taxonomie 6.9, die E-Bilanz meldet die der Taxonomie "
+			"6.10: Führen Sie in der Bilanzzuordnung „Auf neue Taxonomie heben“ aus",
+			finding.text,
+		)
+		self.assertEqual((money(doc.total_assets), money(doc.net_income)), (d("61780.00"), d("35280.00")))
+
+	def test_an_e_bilanz_of_6_10_from_a_bilanzzuordnung_on_6_10_is_ready(self):
+		"""The Bilanzzuordnung names the version of the E-Bilanz, as after „Auf neue Taxonomie heben“."""
+		set_for_the_test(self, MAPPING, COMPANY, taxonomy_version="6.10")
+		doc = new_document(taxonomy_version="6.10")
+		doc.calculate()
+		doc.reload()
+		self.assertEqual((doc.status, doc.ready, finding_codes(doc)), ("Bereit", 1, []))

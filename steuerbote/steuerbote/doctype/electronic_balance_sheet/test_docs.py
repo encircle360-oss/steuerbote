@@ -132,6 +132,7 @@ class PageTest(TestCase):
 		self.assertIn("EB-KORREKTUR-SUMME", codes())
 		self.assertIn("BILANZ-OHNE-PLATZ", codes())
 		self.assertIn(bridge.TWO_SCHEDULES, codes())
+		self.assertIn("SB-ZUORDNUNG-VERSION", codes())
 		self.assertEqual(sorted(codes() - self.names), [])
 
 	def test_names_the_options_of_its_selects(self):

@@ -1035,6 +1035,63 @@ class FindingsTest(TestCase):
 		)
 		self.assertTrue(found.text.startswith("Die HGB-Taxonomie 6.9 weicht vom Manifest ab"))
 
+	def test_a_bilanzzuordnung_on_another_taxonomy_holds_the_e_bilanz_back(self):
+		"""§ 5b Abs. 1 Satz 1 EStG: the E-Bilanz reports the positions of its own version. An older Bilanzzuordnung is
+		lifted; a lifted one does not go back, so the E-Bilanz takes its version where the Wirtschaftsjahr may take it
+		(BMF letter of 8 June 2026: 6.10 „nicht beanstandet“ for 2026)."""
+		self.assertEqual(bridge.mapping_version_finding("6.9", "6.9", *YEAR), ())
+		self.assertEqual(bridge.mapping_version_finding("6.10", "6.10", *YEAR), ())
+		(older,) = bridge.mapping_version_finding("6.10", "6.9", *YEAR)
+		self.assertEqual(
+			(older.code, older.severity, older.reference),
+			("SB-ZUORDNUNG-VERSION", Severity.ERROR, "Bilanzzuordnung"),
+		)
+		self.assertEqual(
+			older.text,
+			"Die Bilanzzuordnung nennt die Positionen der HGB-Taxonomie 6.9, die E-Bilanz meldet die der Taxonomie "
+			"6.10: Führen Sie in der Bilanzzuordnung „Auf neue Taxonomie heben“ aus, dann berechnen Sie die E-Bilanz "
+			"neu. (Quelle: § 5b Abs. 1 Satz 1 EStG)",
+		)
+		(newer,) = bridge.mapping_version_finding("6.9", "6.10", *YEAR)
+		self.assertEqual((newer.code, newer.severity), ("SB-ZUORDNUNG-VERSION", Severity.ERROR))
+		self.assertEqual(
+			newer.text,
+			"Die Bilanzzuordnung nennt die Positionen der HGB-Taxonomie 6.10, die E-Bilanz meldet die der Taxonomie "
+			"6.9. Das Heben der Bilanzzuordnung lässt sich nicht zurücknehmen: Wählen Sie in der E-Bilanz die "
+			"HGB-Taxonomie 6.10, dann berechnen Sie die E-Bilanz neu. (Quelle: § 5b Abs. 1 Satz 1 EStG; "
+			"BMF-Schreiben vom 08.06.2026, IV C 6 - S 2133-b/00067/002/023)",
+		)
+
+	def test_a_lifted_bilanzzuordnung_names_no_version_the_wirtschaftsjahr_may_not_take(self):
+		"""6.10 serves the Wirtschaftsjahre beginning after 31.12.2025 (BMF letter of 8 June 2026), so an E-Bilanz of
+		2025 cannot take the version of a lifted Bilanzzuordnung."""
+		(stuck,) = bridge.mapping_version_finding("6.9", "6.10", date(2025, 1, 1), date(2025, 12, 31))
+		self.assertEqual((stuck.code, stuck.severity), ("SB-ZUORDNUNG-VERSION", Severity.ERROR))
+		self.assertEqual(
+			stuck.text,
+			"Die Bilanzzuordnung nennt die Positionen der HGB-Taxonomie 6.10, die E-Bilanz meldet die der Taxonomie "
+			"6.9. Das Heben der Bilanzzuordnung lässt sich nicht zurücknehmen, und das Wirtschaftsjahr vom 01.01.2025 "
+			"bis zum 31.12.2025 darf die HGB-Taxonomie 6.10 nicht nehmen. (Quelle: § 5b Abs. 1 Satz 1 EStG; "
+			"BMF-Schreiben vom 08.06.2026, IV C 6 - S 2133-b/00067/002/023)",
+		)
+
+	def test_the_e_bilanz_names_another_taxonomy_of_the_bilanzzuordnung_itself(self):
+		"""BILANZ-TAXONOMIE of the placement says what SB-ZUORDNUNG-VERSION says with the way out, so the table Befunde
+		takes it once."""
+		other = mapping.Finding(
+			mapping.Code.TAXONOMY,
+			mapping.Severity.ERROR,
+			"Die Bilanzzuordnung nennt die Positionen der HGB-Taxonomie 6.9, der Beleg rechnet mit der Taxonomie 6.10.",
+			"§ 5b Abs. 1 Satz 1 EStG",
+		)
+		unplaced = mapping.Finding(
+			mapping.Code.UNPLACED, mapping.Severity.ERROR, "Kein Platz.", "§ 246 Abs. 1 Satz 1 HGB", "1590"
+		)
+		self.assertEqual(
+			[found.code for found in bridge.placement_findings(Placement((), (), (other, unplaced)))],
+			["BILANZ-OHNE-PLATZ"],
+		)
+
 	def test_depreciation_not_posted_up_to_the_bilanzstichtag_holds_it_back(self):
 		"""§ 253 Abs. 3 Satz 1 HGB: one finding per asset and finance book."""
 		found = bridge.depreciation_findings(
