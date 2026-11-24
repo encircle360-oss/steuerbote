@@ -110,6 +110,7 @@ In der Leiste links, bei den Bereichen von ERPNext wie Rechnungswesen und Vertri
 - [Offenlegung des Jahresabschlusses](docs/offenlegung.md): was jede Größenklasse übermittelt, die XBRL-Datei für das Unternehmensregister und das Hochladen Schritt für Schritt
 - [HGB-Taxonomie](docs/taxonomie.md): der Datensatz von E-Bilanz und Offenlegung, seine Versionen, das Einrichten durch den Betreiber und die Ansichten und Profile
 - [Vorgaben der Bilanzzuordnung](docs/ebilanz-zuordnung.md): wie die Vorgaben für SKR03 und SKR04 entstanden sind, Faustregeln, auffällige Entscheidungen, die Prüfliste für die Steuerberatung und neue Revisionen
+- [Prüfliste für die Steuerberatung](docs/pruefliste-steuerberatung.md): die offenen fachlichen Punkte aller Meldungen an einem Ort, mit dem, was Steuerbote bis zur Antwort tut, und dem Feld, in das die Antwort gehört
 - [Architektur](docs/architektur.md): Rechenkerne und Frappe-Schicht, DocTypes, Berichte, Arbeitsbereich und Seitenleiste, Platz im Desk, Druckformate und die Teile der Jahresmeldungen
 - [Übermittlung an ELSTER](docs/uebermittlung.md): Prüfen, Testsenden, Senden, Simulationsmodus, ERiC-Einstellungen und Übermittlungsprotokoll
 - [ERiC](docs/eric.md): Lizenz, Einrichtung durch den Betreiber, Datenarten auch der Jahresmeldungen, Versionen, Betrieb und Updates mit der wöchentlichen Prüfung gegen die Mindestversionsliste, Simulation, Sicherheit und Grenzen der Anbindung
