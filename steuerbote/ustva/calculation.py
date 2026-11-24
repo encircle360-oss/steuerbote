@@ -20,6 +20,25 @@ rate, and per check.
 The tax of the bases with a statutory rate (Kennzahl 81, 86, 89 and 93) is not summed from the
 ledger at all: the form derives it from the reported base in full euros.
 
+A purchase whose tax the company owes itself, an innergemeinschaftlicher Erwerb or a Leistung under § 13b UStG, is
+often booked without a base account of its own: its net goes to an ordinary expense, asset or goods account, and a
+tax key or the tax template of the invoice books its tax on the tax accounts of the Verprobung. For a Verprobung that
+names a ``derived_base`` (mapping.py), derive_bases() finds the base of every voucher that books tax on its tax
+accounts but nothing on its base accounts:
+
+- from the voucher: the lines on accounts without any place in the mapping, whose balance on the side of the bases
+  times the rate gives the booked tax, closest first and within a cent. A line of another purpose in the same
+  voucher, such as a bank fee, stays out, because with it the tax no longer fits. When two sets of lines fit equally
+  well with different sums, when none fits, or when the voucher has more than MOST_LINES such accounts, the lines do
+  not tell the base;
+- otherwise from the tax: tax / rate, to cents (rounding.base_from_tax), whose tax is the booked tax again. The
+  result names such a voucher, and the return gives a hint for it. Lines without voucher always take this way.
+
+A voucher with a posting on a base account of the Verprobung keeps it as before: it says where its base is, so a tax
+that does not fit stays a deviation and nothing is counted twice. The derived base goes to its Kennzahl and, for a
+base with a tax Kennzahl of its own, its tax is derived per voucher with the bases of the base accounts; the
+Verprobung counts it as computed tax.
+
 A balance on a watched account never enters a Kennzahl. At the blocking level it holds the return
 (``unmapped``); at the hint level the result carries the account's debits and credits (``hinted``) for a
 hint, and the return stays ready.
@@ -29,6 +48,7 @@ from collections.abc import Iterable
 from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass
 from decimal import Decimal
+from itertools import combinations
 from types import MappingProxyType
 
 from steuerbote.ustva.kennzahlen import (
@@ -46,6 +66,7 @@ from steuerbote.ustva.rounding import (
 	CENT,
 	HUNDRED,
 	ZERO,
+	base_from_tax,
 	require_decimal,
 	tax_from_base,
 	to_cents,
@@ -54,6 +75,10 @@ from steuerbote.ustva.rounding import (
 
 # Leaves room for books that round a document's tax differently, half to even or per item.
 TOLERANCE_PER_VOUCHER = CENT
+# How far the tax of the lines that make a derived base may miss the booked tax: a tax rounded per item.
+DERIVATION_TOLERANCE = CENT
+# The most accounts of a voucher whose sets derive_bases() tries, 4095 sets; a larger voucher takes the tax.
+MOST_LINES = 12
 
 
 def require_cents(amount: Decimal) -> Decimal:
@@ -117,6 +142,28 @@ class Deviation:
 
 
 @dataclass(frozen=True, slots=True)
+class DerivedBase:
+	"""The base of a voucher that books the tax of a Verprobung but nothing on its base accounts.
+
+	``label`` names the Verprobung, ``tax`` the tax the voucher books on its tax accounts and ``base`` the exact base
+	that goes to ``kennzahl`` at ``rate``. ``accounts`` are the accounts of the voucher whose balances make up the base;
+	none when the base was taken from the tax. ``voucher`` is None for the lines without voucher.
+	"""
+
+	label: str
+	voucher: str | None
+	kennzahl: str
+	rate: Decimal
+	tax: Decimal
+	base: Decimal
+	accounts: tuple[str, ...]
+
+	@property
+	def from_tax(self) -> bool:
+		return not self.accounts
+
+
+@dataclass(frozen=True, slots=True)
 class CheckResult:
 	"""Verprobung: the tax booked on the tax accounts against the tax that belongs to the base accounts.
 
@@ -125,7 +172,8 @@ class CheckResult:
 	errors in two documents cancel out and would hide a wrong document in a month with many. A voucher
 	passes within ``tolerance``. The lines without a voucher may each have been rounded on their own,
 	so they pass within ``tolerance`` per posting on the base accounts, at least one ``tolerance``.
-	``computed_tax``, ``booked_tax``, ``difference`` and ``postings`` are totals over all vouchers.
+	``computed_tax``, ``booked_tax``, ``difference`` and ``postings`` are totals over all vouchers. ``derived`` holds the
+	bases derived for vouchers without base account, whose tax counts as computed.
 	"""
 
 	label: str
@@ -136,6 +184,12 @@ class CheckResult:
 	postings: int
 	tolerance: Decimal
 	deviations: tuple[Deviation, ...]
+	derived: tuple[DerivedBase, ...] = ()
+
+	@property
+	def derived_base(self) -> Decimal:
+		"""The bases derived for vouchers without base account, together."""
+		return sum((derived.base for derived in self.derived), ZERO)
 
 	@property
 	def difference(self) -> Decimal:
@@ -192,6 +246,19 @@ class UstvaResult:
 		return self.values[BALANCE_KENNZAHL].reported
 
 	@property
+	def derived(self) -> tuple[DerivedBase, ...]:
+		"""The derived bases of every Verprobung, in the order of the checks, each in the order of the ledger."""
+		return tuple(derived for check in self.checks for derived in check.derived)
+
+	@property
+	def derived_bases(self) -> ReadOnlyMapping[str, Decimal]:
+		"""The derived bases by the Kennzahl they go to."""
+		sums: dict[str, Decimal] = {}
+		for derived in self.derived:
+			sums[derived.kennzahl] = sums.get(derived.kennzahl, ZERO) + derived.base
+		return MappingProxyType(sums)
+
+	@property
 	def ready(self) -> bool:
 		"""Every Verprobung passes and no account watched at the blocking level has a balance."""
 		return not self.unmapped and all(check.passed for check in self.checks)
@@ -225,7 +292,8 @@ def calculate(
 	tolerance = _require_tolerance(tolerance)
 	catalogue = mapping.catalogue
 	ledger = _Ledger(lines)
-	amounts = _amounts_by_kennzahl(ledger, mapping)
+	derived = _derive(ledger, mapping)
+	amounts = _amounts_by_kennzahl(ledger, mapping, derived)
 	_add_extra_values(amounts, extra_values or {}, catalogue)
 	values = {number: _value(catalogue[number], amount) for number, amount in amounts.items() if amount}
 
@@ -246,7 +314,10 @@ def calculate(
 
 	return UstvaResult(
 		values=MappingProxyType(values),
-		checks=tuple(_check(check, mapping, ledger, tolerance) for check in mapping.checks),
+		checks=tuple(
+			_check(check, mapping, ledger, tolerance, derived.get(check.label, ()))
+			for check in mapping.checks
+		),
 		unmapped=tuple(sorted(a for a in mapping.watched_at(WatchLevel.BLOCKING) if ledger.has_balance(a))),
 		output_tax=to_cents(output_tax),
 		input_tax=to_cents(input_tax),
@@ -281,17 +352,23 @@ class _Total:
 
 
 class _Ledger:
-	"""The lines summed per account and voucher; vouchers keep the order of their first line."""
+	"""The lines summed per account and voucher; vouchers keep the order of their first line, the accounts of a voucher
+	the order of theirs."""
 
-	__slots__ = ("_by_account", "_first_line")
+	__slots__ = ("_by_account", "_by_voucher", "_first_line")
 
 	def __init__(self, lines: Iterable[LedgerLine]) -> None:
 		self._by_account: dict[str, dict[str | None, _Total]] = {}
+		self._by_voucher: dict[str | None, dict[str, None]] = {}
 		self._first_line: dict[str | None, int] = {}
 		for line in lines:
 			vouchers = self._by_account.setdefault(line.account_number, {})
 			vouchers[line.voucher] = vouchers.get(line.voucher, _Total()).plus(line)
+			self._by_voucher.setdefault(line.voucher, {})[line.account_number] = None
 			self._first_line.setdefault(line.voucher, len(self._first_line))
+
+	def accounts_of(self, voucher: str | None) -> Iterable[str]:
+		return self._by_voucher.get(voucher, {}).keys()
 
 	@property
 	def accounts(self) -> Iterable[str]:
@@ -315,7 +392,84 @@ class _Ledger:
 		return self._first_line[voucher]
 
 
-def _amounts_by_kennzahl(ledger: _Ledger, mapping: Mapping) -> dict[str, Decimal]:
+def derive_bases(lines: Iterable[LedgerLine], mapping: Mapping) -> tuple[DerivedBase, ...]:
+	"""The bases calculate() derives for vouchers that book the tax of a Verprobung but none of its bases, in the order
+	of the checks, each in the order of the ledger."""
+	derived = _derive(_Ledger(lines), mapping)
+	return tuple(base for check in mapping.checks for base in derived.get(check.label, ()))
+
+
+def _derive(ledger: _Ledger, mapping: Mapping) -> dict[str, tuple[DerivedBase, ...]]:
+	"""The derived bases of each Verprobung with a derived_base, by its label."""
+	found: dict[str, tuple[DerivedBase, ...]] = {}
+	for check in mapping.checks:
+		if check.derived_base is None:
+			continue
+		kennzahl, rate, side = check.derived_base, mapping.derived_rate(check), mapping.base_side(check)
+		booked: dict[str | None, Decimal] = {}
+		for account_number in check.tax_accounts:
+			for voucher, total in ledger.vouchers(account_number).items():
+				booked[voucher] = booked.get(voucher, ZERO) + total.balance(check.side)
+		with_bases = {voucher for account in check.base_accounts for voucher in ledger.vouchers(account)}
+		found[check.label] = tuple(
+			_derived(check.label, kennzahl, voucher, tax, rate, side, ledger, mapping)
+			for voucher, tax in sorted(booked.items(), key=lambda item: ledger.first_line(item[0]))
+			if tax and voucher not in with_bases
+		)
+	return found
+
+
+def _derived(
+	label: str,
+	kennzahl: str,
+	voucher: str | None,
+	tax: Decimal,
+	rate: Decimal,
+	side: Side,
+	ledger: _Ledger,
+	mapping: Mapping,
+) -> DerivedBase:
+	accounts = _lines_of_the_base(voucher, tax, rate, side, ledger, mapping)
+	if accounts:
+		base = sum((ledger.vouchers(account)[voucher].balance(side) for account in accounts), ZERO)
+	else:
+		base = base_from_tax(tax, rate)
+	return DerivedBase(label, voucher, kennzahl, rate, tax, base, accounts)
+
+
+def _lines_of_the_base(
+	voucher: str | None, tax: Decimal, rate: Decimal, side: Side, ledger: _Ledger, mapping: Mapping
+) -> tuple[str, ...]:
+	"""The accounts of the voucher whose balances make the base of its tax, or none when the lines do not tell it."""
+	if voucher is None:
+		return ()
+	balances = {
+		account: balance
+		for account in ledger.accounts_of(voucher)
+		if not mapping.has_place(account) and (balance := ledger.vouchers(account)[voucher].balance(side))
+	}
+	if not balances or len(balances) > MOST_LINES:
+		return ()
+	closest: Decimal | None = None
+	fitting: dict[Decimal, tuple[str, ...]] = {}
+	for size in range(1, len(balances) + 1):
+		for accounts in combinations(balances, size):
+			base = sum((balances[account] for account in accounts), ZERO)
+			miss = abs(tax_from_base(base, rate) - tax)
+			if miss > DERIVATION_TOLERANCE or (closest is not None and miss > closest):
+				continue
+			if closest is None or miss < closest:
+				closest, fitting = miss, {}
+			fitting.setdefault(base, accounts)
+	if len(fitting) != 1:
+		return ()
+	(accounts,) = fitting.values()
+	return accounts
+
+
+def _amounts_by_kennzahl(
+	ledger: _Ledger, mapping: Mapping, derived: ReadOnlyMapping[str, tuple[DerivedBase, ...]]
+) -> dict[str, Decimal]:
 	amounts: dict[str, Decimal] = {}
 	derived_bases: dict[tuple[str, Decimal, str | None], Decimal] = {}
 	for account_number in ledger.accounts:
@@ -332,6 +486,13 @@ def _amounts_by_kennzahl(ledger: _Ledger, mapping: Mapping) -> dict[str, Decimal
 			for voucher, total in vouchers.items():
 				key = (tax_kennzahl, rule.tax_rate, voucher)
 				derived_bases[key] = derived_bases.get(key, ZERO) + total.balance(rule.side)
+	for bases in derived.values():
+		for base in bases:
+			_add(amounts, base.kennzahl, base.base)
+			tax_kennzahl = mapping.catalogue[base.kennzahl].tax_kennzahl
+			if tax_kennzahl is not None:
+				key = (tax_kennzahl, base.rate, base.voucher)
+				derived_bases[key] = derived_bases.get(key, ZERO) + base.base
 	for (tax_kennzahl, rate, _voucher), base in derived_bases.items():
 		_add(amounts, tax_kennzahl, tax_from_base(base, rate))
 	return amounts
@@ -373,8 +534,12 @@ class _VoucherSums:
 	postings: int = 0
 
 
-def _check(check: TaxCheck, mapping: Mapping, ledger: _Ledger, tolerance: Decimal) -> CheckResult:
+def _check(
+	check: TaxCheck, mapping: Mapping, ledger: _Ledger, tolerance: Decimal, derived: tuple[DerivedBase, ...]
+) -> CheckResult:
 	sums: dict[str | None, _VoucherSums] = {}
+	for base in derived:
+		sums.setdefault(base.voucher, _VoucherSums()).computed += base.base * base.rate / HUNDRED
 	for account_number in check.base_accounts:
 		rule = mapping.rule_for(account_number)
 		rate = mapping.rate_for(rule)
@@ -404,4 +569,5 @@ def _check(check: TaxCheck, mapping: Mapping, ledger: _Ledger, tolerance: Decima
 		postings=sum(voucher_sums.postings for voucher_sums in sums.values()),
 		tolerance=tolerance,
 		deviations=tuple(deviations),
+		derived=derived,
 	)

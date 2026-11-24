@@ -14,6 +14,11 @@ calculate() leaves the core of the Voranmeldung as it is and runs it in two ways
    Kennzahl with a tax Kennzahl of its own splits, so the vouchers round their taxes as in the Voranmeldung, and the
    lines of every Kennzahl add up to its amount over the year.
 
+A base the Voranmeldung derives for a voucher that books the tax of a Verprobung but none of its bases (derived_base
+of the mapping) has no account the split could assign. The run over the year derives it as each Voranmeldung does,
+and it goes to the default line of its Kennzahl, its tax, rounded per voucher, to the default line of the tax
+Kennzahl.
+
 The accounts only the annual return reads add their balance, and the lines by hand their amount.
 
 The form takes the bases in whole euros and the taxes in cents: „Tragen Sie bei den Bemessungsgrundlagen bitte nur
@@ -228,6 +233,7 @@ def calculate(
 	for line_by_hand in manual:
 		_add(by_hand, _manual_field(catalogue, line_by_hand).element, line_by_hand.amount)
 	year = calculate_ustva(lines, split.mapping, tolerance=tolerance)
+	_add_derived(ledger, split, year)
 	return AnnualResult(
 		year=catalogue.year,
 		values=_values(catalogue, ledger, annual_only, by_hand),
@@ -313,6 +319,22 @@ def _add_run(
 			lines = split.catalogue.children(value.kennzahl)
 			target = next(line for line in lines if line.default or len(lines) == 1)
 		_add(amounts, target.element, target.sign * value.amount)
+
+
+def _add_derived(amounts: dict[str, Decimal], split: Split, year: UstvaResult) -> None:
+	"""The bases the run over the year derives, and their tax, on the default lines of their Kennzahlen."""
+	catalogue = split.catalogue
+	for derived in year.derived:
+		_add_to_line(amounts, catalogue, derived.kennzahl, derived.base)
+		tax_kennzahl = split.mapping.catalogue[derived.kennzahl].tax_kennzahl
+		if tax_kennzahl is not None:
+			_add_to_line(amounts, catalogue, tax_kennzahl, tax_from_base(derived.base, derived.rate))
+
+
+def _add_to_line(amounts: dict[str, Decimal], catalogue: Catalogue, kennzahl: str, amount: Decimal) -> None:
+	lines = catalogue.children(kennzahl)
+	line = next(line for line in lines if line.default or len(lines) == 1)
+	_add(amounts, line.element, line.sign * amount)
 
 
 def _manual_field(catalogue: Catalogue, line: ManualLine) -> Field:

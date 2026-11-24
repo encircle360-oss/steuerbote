@@ -12,6 +12,7 @@ class VATReturnCheck(Document):
 
 		booked_tax: DF.Currency
 		computed_tax: DF.Currency
+		derived_base: DF.Currency
 		deviations: DF.Int
 		difference: DF.Currency
 		label: DF.Data | None

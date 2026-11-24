@@ -10,7 +10,8 @@
   "booked_tax",
   "difference",
   "deviations",
-  "passed"
+  "passed",
+  "derived_base"
  ],
  "fields": [
   {
@@ -61,11 +62,19 @@
    "in_list_view": 1,
    "label": "Check Passed",
    "read_only": 1
+  },
+  {
+   "description": "Bases of vouchers that book the tax of this check without a base account, together.",
+   "fieldname": "derived_base",
+   "fieldtype": "Currency",
+   "label": "Base Without Base Account",
+   "options": "Company:company:default_currency",
+   "read_only": 1
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-18 00:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Check",

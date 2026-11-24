@@ -11,6 +11,7 @@ class VATReturnMappingCheck(Document):
 		from frappe.types import DF
 
 		base_accounts: DF.SmallText
+		derived_base: DF.Data | None
 		label: DF.Data
 		parent: DF.Data
 		parentfield: DF.Data

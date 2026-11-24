@@ -105,6 +105,7 @@ FIELD_LABELS = {
 	"level": "Watch Level",
 	"base_accounts": "Base Accounts",
 	"tax_accounts": "Tax Accounts",
+	"derived_base": "Kz of the Base Without Base Account",
 	"annual_field": "Annual Return Field",
 	"paragraph": "Paragraph of the Exemption",
 }
@@ -599,9 +600,12 @@ def described(kind: str, fields: dict | None) -> str:
 	if kind in (ANNUAL_FIELD, ANNUAL_RULE):
 		return described_for_the_annual_return(fields)
 	if kind == CHECK:
-		return _("Bases {0}; tax accounts {1}; {2}").format(
+		text = _("Bases {0}; tax accounts {1}; {2}").format(
 			fields["base_accounts"], fields["tax_accounts"], _(fields["side"])
 		)
+		if fields.get("derived_base"):
+			text += "; " + _("base without base account in Kz {0}").format(fields["derived_base"])
+		return text
 	if fields["place"] == WATCHED:
 		return _("Watched, level {0}").format(_(fields["level"]))
 	text = _("Kz {0}, {1}").format(fields["kennzahl"], _(fields["side"]))
