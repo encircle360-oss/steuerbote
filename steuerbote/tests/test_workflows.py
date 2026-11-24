@@ -219,3 +219,17 @@ class Taxonomy610Test(TestCase):
 				"${{ runner.temp }}/xbrl-6.10/*.log",
 			],
 		)
+
+
+class BrowserTestsJobTest(TestCase):
+	def setUp(self):
+		self.job = jobs((WORKFLOWS / "tests.yml").read_text(encoding="utf-8"))["frappe"]
+
+	def test_keeps_the_screenshots_of_the_desk_after_every_run(self):
+		"""The browser tests leave the screenshots of the sidebar and the workspace in their directory of --output
+		after every run, and a failed test those of its pages."""
+		self.assertIn('--output "$RUNNER_TEMP/browser-results"', self.job)
+		upload = self.job[self.job.index("uses: actions/upload-artifact@") :]
+		self.assertIn("name: browser-tests", upload)
+		self.assertIn("path: ${{ runner.temp }}/browser-results", upload)
+		self.assertIn("if: always()", upload)

@@ -16,6 +16,49 @@ from playwright.sync_api import ConsoleMessage, Download, Locator, Page, Request
 REFUSED_RESOURCE = re.compile(r"Failed to load resource: the server responded with a status of 4\d\d\b")
 SERVER_TRACEBACK = "Traceback (most recent call last):"
 DOC_METHOD = "/api/method/run_doc_method"
+# The entries of the sidebar of the module, and those of them that are groups (frappe/public/js/frappe/ui/sidebar).
+SIDEBAR_ENTRIES = ".body-sidebar .sidebar-items > .sidebar-item-container"
+CLOSED_GROUPS = f"{SIDEBAR_ENTRIES}.section-item:has(> .nested-container.hidden) > .standard-sidebar-item"
+# Each entry of the sidebar with its label, the symbol of its icon, whether the page draws that symbol, and the
+# entries of its group with whether they carry an icon. The desk fetches its sprites once the page has loaded
+# (include_icons in frappe/utils/jinja_globals.py), so the script waits up to five seconds for every symbol.
+SIDEBAR_SCRIPT = """async (selector) => {
+	const entries = () => Array.from(document.querySelectorAll(selector));
+	const row = (entry) => entry.querySelector(":scope > .standard-sidebar-item");
+	const label = (element) => element.querySelector(".sidebar-item-label")?.textContent.trim() ?? "";
+	const symbol = (entry) => (row(entry).querySelector(".sidebar-item-icon use")?.getAttribute("href") ?? "").slice(1);
+	const drawn = (entry) => {
+		const box = row(entry).querySelector(".sidebar-item-icon svg")?.getBoundingClientRect();
+		const found = symbol(entry) && document.getElementById(symbol(entry));
+		return Boolean(found && found.tagName === "symbol" && box && box.width > 0 && box.height > 0);
+	};
+	for (let wait = 0; wait < 50 && !entries().every(drawn); wait++) {
+		await new Promise((resolve) => setTimeout(resolve, 100));
+	}
+	return entries().map((entry) => ({
+		label: label(row(entry)),
+		symbol: symbol(entry),
+		drawn: drawn(entry),
+		group: Array.from(entry.querySelectorAll(":scope > .nested-container > .sidebar-item-container"), (child) => ({
+			label: label(child),
+			icon: child.querySelector(".sidebar-item-icon") !== null,
+		})),
+	}));
+}"""
+# The sections of the workspace in their order, each with the labels of its shortcuts.
+WORKSPACE_SCRIPT = """() => {
+	const sections = [];
+	for (const block of document.querySelectorAll("#editorjs .ce-block")) {
+		const header = block.querySelector(".ce-header");
+		const shortcut = block.querySelector(".shortcut-widget-box");
+		if (header) {
+			sections.push([header.textContent.trim(), []]);
+		} else if (shortcut && sections.length) {
+			sections[sections.length - 1][1].push(shortcut.getAttribute("aria-label"));
+		}
+	}
+	return sections;
+}"""
 
 
 class Desk:
@@ -64,6 +107,21 @@ class Desk:
 		self.page.get_by_text("ERPNext", exact=True).click()
 		rail = self.page.get_by_role("navigation", name="Apps")
 		rail.get_by_role("button", name="Steuern", exact=True).click()
+
+	def open_sidebar_groups(self) -> None:
+		"""Open each group of the sidebar that is closed, as a click on its heading does."""
+		closed = self.page.locator(CLOSED_GROUPS)
+		for _group in range(closed.count()):
+			closed.first.click()
+		expect(closed).to_have_count(0)
+
+	def sidebar(self) -> list[dict]:
+		"""What the sidebar draws: each entry with its label and its icon, a group with its entries."""
+		return self.page.evaluate(SIDEBAR_SCRIPT, SIDEBAR_ENTRIES)
+
+	def workspace_sections(self) -> list[list]:
+		"""The headers of the workspace in their order, each with the shortcuts below it."""
+		return self.page.evaluate(WORKSPACE_SCRIPT)
 
 	def button(self, label: str) -> Locator:
 		"""A button of the page head, such as Berechnen."""

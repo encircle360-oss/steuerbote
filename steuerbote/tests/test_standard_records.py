@@ -56,9 +56,11 @@ NOT_A_SHAPE = frozenset(
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 # Names of the app that read the same in every language.
-GERMAN_NAMES = frozenset({"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen", "Offene Fristen"})
+GERMAN_NAMES = frozenset(
+	{"Steuern", "Offene Voranmeldungen", "UStVA Kennzahlen", "Offene Fristen", "E-Bilanz Positionen"}
+)
 # The German that Frappe shows for the framework labels of the shortcuts and the sidebar.
-FRAMEWORK_GERMAN = {"Reports": "Berichte", "Settings": "Einstellungen"}
+FRAMEWORK_GERMAN = {"Reports": "Berichte", "Settings": "Einstellungen", "Setup": "Einrichtung"}
 # Labels Frappe and ERPNext translate themselves; the app keeps out of their translations.
 FRAMEWORK_LABELS = frozenset(
 	{
@@ -81,20 +83,6 @@ LONGEST_LABEL = 20
 # The DocType of the Dauerfristverlängerung, which comes with its own package of the module; the workspace and
 # the sidebar lead to it.
 DAUERFRIST_DOCTYPE = "VAT Return Extension"
-# The lists of the year-end filings, which the section „Jahresmeldungen“ of the sidebar and the workspace will lead
-# to once their documents exist; until then the sidebar leaves them out.
-AWAITING_THE_SECTION_JAHRESMELDUNGEN = frozenset(
-	{
-		"Annual Filing Settings",
-		"Income Tax Mapping",
-		"Annual VAT Return",
-		"Balance Sheet Mapping",
-		"Corporate Income Tax Return",
-		"Trade Tax Return",
-		"Annual Accounts",
-		"Electronic Balance Sheet",
-	}
-)
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
 CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')
@@ -131,12 +119,6 @@ def report_names() -> set[str]:
 
 def page_names() -> set[str]:
 	return {read_json(path)["name"] for path in (MODULE / "page").glob("*/*.json")}
-
-
-def doctypes_with_a_list() -> set[str]:
-	"""The DocTypes of the module that are not child tables, the ones Frappe's sidebar links to."""
-	definitions = (read_json(path) for path in (MODULE / "doctype").glob("*/*.json"))
-	return {definition["name"] for definition in definitions if not definition.get("istable")}
 
 
 def untranslated(texts: set[str]) -> list[str]:
@@ -283,6 +265,18 @@ class WorkspaceFilesTest(TestCase):
 				("Report", "UStVA Kennzahlen", ""),
 				("Report", "Offene Fristen", ""),
 				("Page", "steuerbote-setup", ""),
+				("DocType", "Annual VAT Return", "New"),
+				("DocType", "Electronic Balance Sheet", "New"),
+				("DocType", "Corporate Income Tax Return", "New"),
+				("DocType", "Trade Tax Return", "New"),
+				("DocType", "Annual VAT Return", "List"),
+				("DocType", "Electronic Balance Sheet", "List"),
+				("DocType", "Corporate Income Tax Return", "List"),
+				("DocType", "Trade Tax Return", "List"),
+				("DocType", "Annual Accounts", "List"),
+				("DocType", "Annual Filing Settings", "List"),
+				("DocType", "Balance Sheet Mapping", "List"),
+				("DocType", "Income Tax Mapping", "List"),
 			},
 		)
 		doctypes = doctype_names() | {DAUERFRIST_DOCTYPE}
@@ -343,9 +337,60 @@ class WorkspaceFilesTest(TestCase):
 				("VAT Return Mapping", "List"): "Kontenzuordnung",
 				("Offene Fristen", ""): "Offene Fristen",
 				("steuerbote-setup", ""): "Einrichten",
+				("Annual VAT Return", "New"): "Neue USt-Erklärung",
+				("Electronic Balance Sheet", "New"): "Neue E-Bilanz",
+				("Corporate Income Tax Return", "New"): "Neue KSt-Erklärung",
+				("Trade Tax Return", "New"): "Neue GewSt-Erklärung",
+				("Annual VAT Return", "List"): "USt-Erklärungen",
+				("Electronic Balance Sheet", "List"): "E-Bilanzen",
+				("Corporate Income Tax Return", "List"): "KSt-Erklärungen",
+				("Trade Tax Return", "List"): "GewSt-Erklärungen",
+				("Annual Accounts", "List"): "Jahresabschlüsse",
+				("Annual Filing Settings", "List"): "Jahres-Einstellungen",
+				("Balance Sheet Mapping", "List"): "Bilanzzuordnung",
+				("Income Tax Mapping", "List"): "Zuord. Ertragsteuern",
 			},
 		)
 		self.assertEqual([label for label in labels.values() if len(label) > LONGEST_LABEL], [])
+
+	def test_the_sections_follow_the_work(self):
+		"""The deadlines first, then the Voranmeldung, the Zusammenfassende Meldung and the Jahresmeldungen in the
+		order a year brings them, and the setup last."""
+		sections = []
+		for block in self.blocks:
+			if block["type"] == "header":
+				sections.append((german(re.sub(r"<[^>]+>", "", block["data"]["text"])), []))
+			elif block["type"] == "shortcut":
+				sections[-1][1].append(german(block["data"]["shortcut_name"]))
+		self.assertEqual(
+			sections,
+			[
+				("Fristen", ["Offene Fristen"]),
+				(
+					"Umsatzsteuer-Voranmeldung",
+					["Neue Voranmeldung", "Voranmeldungen", "Kennzahlen (Bericht)", "Dauerfristanträge"],
+				),
+				("Zusammenfassende Meldung", ["Neue ZM", "Zusammenf. Meldungen", "USt-IdNr.-Prüfungen"]),
+				(
+					"Jahresmeldungen",
+					[
+						"Neue USt-Erklärung",
+						"Neue E-Bilanz",
+						"Neue KSt-Erklärung",
+						"Neue GewSt-Erklärung",
+						"USt-Erklärungen",
+						"E-Bilanzen",
+						"KSt-Erklärungen",
+						"GewSt-Erklärungen",
+						"Jahresabschlüsse",
+						"Jahres-Einstellungen",
+						"Bilanzzuordnung",
+						"Zuord. Ertragsteuern",
+					],
+				),
+				("Einrichtung", ["Einrichten", "Einstellungen", "Kontenzuordnung"]),
+			],
+		)
 
 
 class SidebarFilesTest(TestCase):
@@ -368,30 +413,6 @@ class SidebarFilesTest(TestCase):
 			},
 		)
 
-	def test_the_sidebar_leads_to_the_workspace_every_list_and_the_report(self):
-		links = [(item["link_type"], item["link_to"]) for item in self.items if item["type"] == "Link"]
-		self.assertEqual(links[0], ("Workspace", read_json(WORKSPACE)["name"]))
-		self.assertEqual(len(links), len(set(links)))
-		self.assertEqual(
-			set(links),
-			{
-				("Workspace", read_json(WORKSPACE)["name"]),
-				("Report", read_json(REPORT / "ustva_kennzahlen.json")["name"]),
-				("Report", "Offene Fristen"),
-			}
-			| {
-				("DocType", name)
-				for name in (doctypes_with_a_list() - AWAITING_THE_SECTION_JAHRESMELDUNGEN)
-				| {DAUERFRIST_DOCTYPE}
-			},
-		)
-
-	def test_the_lists_of_the_year_end_filings_wait_for_their_section_of_the_sidebar(self):
-		"""Once the section „Jahresmeldungen“ leads to a list, it leaves AWAITING_THE_SECTION_JAHRESMELDUNGEN."""
-		links = {item["link_to"] for item in self.items if item["type"] == "Link"}
-		self.assertLessEqual(AWAITING_THE_SECTION_JAHRESMELDUNGEN, doctypes_with_a_list())
-		self.assertEqual(sorted(AWAITING_THE_SECTION_JAHRESMELDUNGEN & links), [])
-
 	def test_the_sidebar_reads_short_in_german(self):
 		labels = [item["label"] for item in self.items]
 		self.assertEqual(untranslated(set(labels)), [])
@@ -404,14 +425,28 @@ class SidebarFilesTest(TestCase):
 				"Dauerfristanträge",
 				"Zusammenf. Meldungen",
 				"USt-IdNr.-Prüfungen",
-				"Kontenzuordnung",
-				"Einstellungen",
-				"ERiC-Einstellungen",
+				"Jahresmeldungen",
+				"USt-Erklärungen",
+				"E-Bilanzen",
+				"KSt-Erklärungen",
+				"GewSt-Erklärungen",
+				"Jahresabschlüsse",
+				"Jahres-Einstellungen",
+				"Bilanzzuordnung",
+				"Zuord. Ertragsteuern",
+				"Übermittlung",
 				"ELSTER-Übermittlung",
-				"Fristerinnerungen",
+				"ERiC-Einstellungen",
 				"Berichte",
-				"UStVA Kennzahlen",
 				"Offene Fristen",
+				"UStVA Kennzahlen",
+				"E-Bilanz Positionen",
+				"KSt/GewSt-Nachweis",
+				"Fristerinnerungen",
+				"Einrichtung",
+				"Einrichten",
+				"Einstellungen",
+				"Kontenzuordnung",
 			],
 		)
 		self.assertEqual([label for label in in_german if len(label) > LONGEST_LABEL], [])

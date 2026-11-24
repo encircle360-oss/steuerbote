@@ -92,6 +92,7 @@ testpaths = [
     "steuerbote/steuerbote/report/ustva_kennzahlen/test_attribution.py",
     "steuerbote/steuerbote/report/ustva_kennzahlen/test_comparison.py",
     "steuerbote/tests/test_annual_filing_files.py",
+    "steuerbote/tests/test_annual_interplay_docs.py",
     "steuerbote/tests/test_balance_mapping_sync.py",
     "steuerbote/tests/test_income_tax_mapping_sync.py",
     "steuerbote/tests/test_mapping_sync.py",
@@ -114,6 +115,7 @@ testpaths = [
     "steuerbote/steuerbote/doctype/annual_vat_return/test_bridge.py",
     "steuerbote/steuerbote/doctype/annual_vat_return/test_docs.py",
     "steuerbote/steuerbote/doctype/annual_vat_return/test_layout.py",
+    "steuerbote/steuerbote/doctype/annual_vat_return/test_revenue.py",
     "steuerbote/ebilanz",
     "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_bridge.py",
     "steuerbote/steuerbote/doctype/corporate_income_tax_return/test_docs.py",
@@ -127,11 +129,14 @@ testpaths = [
     "steuerbote/steuerbote/doctype/annual_accounts/test_docs.py",
     "steuerbote/steuerbote/doctype/annual_accounts/test_layout.py",
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_bridge.py",
+    "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_comparison.py",
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_docs.py",
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_electronic_balance_sheet_files.py",
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_electronic_balance_sheet_site_files.py",
     "steuerbote/steuerbote/doctype/electronic_balance_sheet/test_layout.py",
     "steuerbote/steuerbote/report/e_bilanz_positionen/test_rows.py",
+    "steuerbote/tests/test_menu.py",
+    "steuerbote/tests/test_docs_overview.py",
 ]
 # The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
 addopts = "--strict-markers --ignore=steuerbote/eric/tests/test_secrets.py"
@@ -169,6 +174,7 @@ source = [
     "steuerbote/xbrl",
     "steuerbote.steuerbote.doctype.annual_vat_return.bridge",
     "steuerbote.steuerbote.doctype.annual_vat_return.layout",
+    "steuerbote.steuerbote.doctype.annual_vat_return.revenue",
     "steuerbote/ebilanz",
     "steuerbote.steuerbote.doctype.corporate_income_tax_return.bridge",
     "steuerbote.steuerbote.doctype.corporate_income_tax_return.layout",
@@ -177,6 +183,7 @@ source = [
     "steuerbote.steuerbote.doctype.annual_accounts.bridge",
     "steuerbote.steuerbote.doctype.annual_accounts.layout",
     "steuerbote.steuerbote.doctype.electronic_balance_sheet.bridge",
+    "steuerbote.steuerbote.doctype.electronic_balance_sheet.comparison",
     "steuerbote.steuerbote.doctype.electronic_balance_sheet.layout",
     "steuerbote.steuerbote.report.e_bilanz_positionen.rows",
 ]

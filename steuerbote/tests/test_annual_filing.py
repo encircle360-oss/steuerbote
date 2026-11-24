@@ -100,6 +100,26 @@ class TestDraft(AnnualFilingTestCase):
 			(fiscal_year, date(2026, 1, 1), date(2026, 12, 31), date(2027, 7, 31)),
 		)
 
+	def test_the_fiscal_year_of_the_company_comes_before_the_one_of_every_company(self):
+		"""A short first Wirtschaftsjahr beside the calendar year that serves every company: ERPNext takes the Fiscal
+		Year that names the company first (_get_fiscal_years in erpnext/accounts/utils.py), and so does the document."""
+		own = frappe.get_doc(
+			{
+				"doctype": "Fiscal Year",
+				"year": "2026 Steuerbote Test Jahresmeldung",
+				"year_start_date": "2026-04-01",
+				"year_end_date": "2026-12-31",
+				"is_short_year": 1,
+				"companies": [{"company": COMPANY}],
+			}
+		).insert(ignore_permissions=True)
+		self.addCleanup(frappe.delete_doc, "Fiscal Year", own.name, force=True, ignore_permissions=True)
+		doc = self.document()
+		self.assertEqual(
+			(doc.fiscal_year, getdate(doc.from_date), getdate(doc.to_date)),
+			(own.name, date(2026, 4, 1), date(2026, 12, 31)),
+		)
+
 	def test_a_copy_keeps_its_corrections_and_lines_by_hand_and_nothing_computed(self):
 		doc = self.document(
 			lines=[

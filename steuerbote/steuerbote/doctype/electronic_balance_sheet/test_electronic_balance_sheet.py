@@ -18,6 +18,7 @@ from steuerbote import ebilanz_sources
 from steuerbote.eric.result import Outcome
 from steuerbote.eric.runtime import Check
 from steuerbote.eric.simulation import bilanz as simulated_bilanz
+from steuerbote.steuerbote.annual_filing import fiscal_year_ending_in
 from steuerbote.steuerbote.report.e_bilanz_positionen import e_bilanz_positionen
 from steuerbote.tests.ebilanz import (
 	COMPANY,
@@ -578,7 +579,7 @@ class TestElectronicBalanceSheetTaxonomy610(IntegrationTestCase):
 		super().setUpClass()
 		make_mapping(make_company_with_books())
 		try:
-			ebilanz_sources.fiscal_year_of(COMPANY, 2027)
+			fiscal_year_ending_in(COMPANY, 2027)
 		except frappe.ValidationError:
 			frappe.get_doc(
 				{

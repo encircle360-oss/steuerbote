@@ -1,24 +1,67 @@
-"""What the browser tests find on the site: the invented records that seed.py makes, and the workspace Steuern.
+"""What the browser tests find on the site: the invented records that seed.py makes, the workspace Steuern and the
+sidebar Steuerbote.
 
 The module imports neither Frappe nor Playwright, so that both sides read it: the seed runs inside the bench,
 the tests run outside of it against the site.
 """
 
-# The workspace Steuern (steuerbote/steuerbote/workspace/steuern) and its shortcuts, as the German desk shows them.
+# The workspace Steuern (steuerbote/steuerbote/workspace/steuern), its sections and their shortcuts, as the German
+# desk shows them.
 WORKSPACE_ROUTE = "/desk/steuerbote/steuern"
-SHORTCUTS = (
-	"Offene Fristen",
-	"Neue Voranmeldung",
-	"Voranmeldungen",
-	"Kennzahlen (Bericht)",
-	"Dauerfristanträge",
-	"Neue ZM",
-	"Zusammenf. Meldungen",
-	"USt-IdNr.-Prüfungen",
-	"Einrichten",
-	"Einstellungen",
-	"Kontenzuordnung",
-)
+WORKSPACE_SECTIONS = {
+	"Fristen": ("Offene Fristen",),
+	"Umsatzsteuer-Voranmeldung": (
+		"Neue Voranmeldung",
+		"Voranmeldungen",
+		"Kennzahlen (Bericht)",
+		"Dauerfristanträge",
+	),
+	"Zusammenfassende Meldung": ("Neue ZM", "Zusammenf. Meldungen", "USt-IdNr.-Prüfungen"),
+	"Jahresmeldungen": (
+		"Neue USt-Erklärung",
+		"Neue E-Bilanz",
+		"Neue KSt-Erklärung",
+		"Neue GewSt-Erklärung",
+		"USt-Erklärungen",
+		"E-Bilanzen",
+		"KSt-Erklärungen",
+		"GewSt-Erklärungen",
+		"Jahresabschlüsse",
+		"Jahres-Einstellungen",
+		"Bilanzzuordnung",
+		"Zuord. Ertragsteuern",
+	),
+	"Einrichtung": ("Einrichten", "Einstellungen", "Kontenzuordnung"),
+}
+SHORTCUTS = tuple(label for labels in WORKSPACE_SECTIONS.values() for label in labels)
+# The sidebar Steuerbote (steuerbote/steuerbote/sidebar/steuerbote) as the German desk shows it to the Administrator:
+# its entries in their order, each group with the entries it holds.
+SIDEBAR = {
+	"Steuern": (),
+	"Voranmeldungen": (),
+	"Dauerfristanträge": (),
+	"Zusammenf. Meldungen": (),
+	"USt-IdNr.-Prüfungen": (),
+	"Jahresmeldungen": (
+		"USt-Erklärungen",
+		"E-Bilanzen",
+		"KSt-Erklärungen",
+		"GewSt-Erklärungen",
+		"Jahresabschlüsse",
+		"Jahres-Einstellungen",
+		"Bilanzzuordnung",
+		"Zuord. Ertragsteuern",
+	),
+	"Übermittlung": ("ELSTER-Übermittlung", "ERiC-Einstellungen"),
+	"Berichte": (
+		"Offene Fristen",
+		"UStVA Kennzahlen",
+		"E-Bilanz Positionen",
+		"KSt/GewSt-Nachweis",
+		"Fristerinnerungen",
+	),
+	"Einrichtung": ("Einrichten", "Einstellungen", "Kontenzuordnung"),
+}
 # The shortcut to the page Steuerbote einrichten, which only a System Manager or an Accounts Manager opens.
 SETUP_SHORTCUT = "Einrichten"
 
@@ -99,3 +142,15 @@ EBILANZ_ABBR = "STE2B"
 # What the print shows of the bank and of the Jahresüberschuss.
 EBILANZ_BANK = "106.000,00"
 EBILANZ_NET_INCOME = "38.000,00"
+
+# The links between the annual documents of the seventh company: a Jahresabschluss of YEAR as a draft that Berechnen
+# has not calculated, which the E-Bilanz names, and a Körperschaftsteuererklärung of YEAR that names the E-Bilanz.
+INTERPLAY_HINT = "SB-JA-FEHLT"
+# An eighth company with SKR04 accounts, VAT Return Settings, the VAT Return Mapping of SKR04 and Annual Filing
+# Settings: a sale of 120,000 euros at 19 % in YEAR, its E-Bilanz of YEAR as filed outside Steuerbote with Umsatzerlöse
+# of 125,000 euros, and its Umsatzsteuererklärung, calculated, with the hint that the two differ.
+REVENUE_COMPANY = "Steuerbote E2E Umsatzerlöse GmbH"
+REVENUE_ABBR = "STE2U"
+REVENUE_SALES = 120000
+REVENUE_EBILANZ = 125000
+REVENUE_HINT = "SB-UMSATZERLOESE"

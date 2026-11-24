@@ -17,6 +17,9 @@ steuerbote/gewst, through the bridge steuerbote/steuerbote/doctype/corporate_inc
 - The Income Tax Mapping of the company (mapping) and its Annual Filing Settings (settings), with the W-IdNr of the
   VAT Return Settings, the name and the founding day of the Company, the Steuerberatung of the year and the day a
   Steuerberatung reviewed the returns, which they wait for (decision 6.4 of the contract of stage 3).
+- The E-Bilanz the Körperschaftsteuererklärung names (ebilanz), whose Jahresüberschuss Anlage GK line 11 takes with the
+  Überleitung, and the E-Bilanz filed for the previous year (prior_ebilanz), whose Steuerbilanz gives KSt 1 F lines 17
+  and 18 (steuerbote/ebilanz_sources.py).
 """
 
 from collections.abc import Iterable
@@ -27,15 +30,18 @@ from frappe import _
 from frappe.query_builder.functions import Coalesce, Sum
 from frappe.utils import cint, cstr, getdate
 
+from steuerbote import ebilanz_sources
 from steuerbote.jahresmeldung.overrides import to_amount
 from steuerbote.kst.categories import Mapping
 from steuerbote.kst.provisions import ProvisionAccounts
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.steuerbote.doctype.corporate_income_tax_return import bridge
+from steuerbote.steuerbote.doctype.electronic_balance_sheet import bridge as ebilanz_bridge
 from steuerbote.ustva import LedgerLine
 from steuerbote.ustva.rounding import ZERO
 
 MAPPING_DOCTYPE = "Income Tax Mapping"
+TRANSFER = "Electronic Balance Sheet Transfer"
 PROFIT_AND_LOSS = ("Income", "Expense")
 PERIOD_CLOSING_VOUCHER = "Period Closing Voucher"
 
@@ -185,6 +191,58 @@ def settings(company: str, year: int) -> bridge.Settings | None:
 		establishments=tuple(doc.get_establishments()),
 		trade_tax_rates=tuple(doc.get_trade_tax_rates()),
 		reviewed_on=getdate(doc.income_tax_review_on) if doc.income_tax_review_on else None,
+	)
+
+
+def ebilanz(name: str | None, company: str) -> bridge.EBilanz | None:
+	"""The E-Bilanz the return names, as Anlage GK line 11 takes it: its Bilanzierungsstandard, the Jahresüberschuss of
+	its GuV and of its Steuerbilanz, the number of the entries of its Überleitungsrechnung, and whether it reads the
+	finance book the return reads, that of the Handelsbilanz of the Annual Filing Settings; None without one or for a
+	cancelled one."""
+	if not name:
+		return None
+	found = frappe.db.get_value(
+		ebilanz_sources.DOCTYPE,
+		name,
+		[
+			"name",
+			"docstatus",
+			"accounting_standard",
+			"net_income",
+			"tax_net_income",
+			"commercial_finance_book",
+			"tax_finance_book",
+		],
+		as_dict=True,
+	)
+	if found is None or cint(found.docstatus) == 2:
+		return None
+	book = ebilanz_bridge.balance_book(
+		found.accounting_standard, found.commercial_finance_book, found.tax_finance_book
+	)
+	return bridge.EBilanz(
+		found.name,
+		found.accounting_standard,
+		to_amount(found.net_income),
+		to_amount(found.tax_net_income),
+		frappe.db.count(TRANSFER, {"parent": found.name, "parenttype": ebilanz_sources.DOCTYPE}),
+		(book or None) == commercial_finance_book(company),
+	)
+
+
+def prior_ebilanz(company: str, year: int) -> bridge.PriorEBilanz | None:
+	"""The E-Bilanz filed for the Wirtschaftsjahr before the year that no Berichtigung replaced, with the
+	Betriebsvermögen (ebilanz_sources.filed_tax_equity) and the gezeichnetes Kapital of its Steuerbilanz; None without
+	one."""
+	previous = year - 1
+	name = ebilanz_sources.filed_ebilanz(company, previous)
+	if name is None:
+		return None
+	return bridge.PriorEBilanz(
+		name,
+		previous,
+		ebilanz_sources.filed_tax_equity(company, previous),
+		ebilanz_sources.subscribed_capital(name),
 	)
 
 

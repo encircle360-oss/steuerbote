@@ -4,7 +4,8 @@ books placed on the positions.
 
 The extended mini taxonomy (steuerbote/xbrl/tests/positions.py) stands in for the installed HGB-Taxonomie 6.9, and a
 small table of defaults for the defaults of the DATEV charts (steuerbote/ebilanz/defaults.py); the empty table of
-revision 0 stands in for the defaults before them."""
+revision 0 stands in for the defaults before them. Where the labels of the positions count, the package of esteuer.de
+that STEUERBOTE_TAXONOMY_6_9 names is the installed taxonomy (steuerbote/xbrl/tests/real.py)."""
 
 import json
 from contextlib import contextmanager
@@ -34,7 +35,7 @@ from steuerbote.xbrl.mapping import (
 	Purpose,
 )
 from steuerbote.xbrl.taxonomy import View
-from steuerbote.xbrl.tests import mini, positions
+from steuerbote.xbrl.tests import mini, positions, real
 from steuerbote.xbrl.tests import test_changes as lift_case
 
 # The tests build their own companies and accounts and need none of ERPNext's test records.
@@ -44,6 +45,7 @@ MAPPING = "Balance Sheet Mapping"
 COMPANY = "Steuerbote Test Bilanzzuordnung GmbH"
 TARGET = "Steuerbote Test Bilanzzuordnung Ziel GmbH"
 NEIGHBOUR = "Steuerbote Test Bilanzzuordnung Nachbar GmbH"
+LABELS = "Steuerbote Test Bilanzzuordnung Bezeichnungen GmbH"
 BANK = "bs.ass.currAss.cashEquiv.bank"
 BANK_LIABILITY = "bs.eqLiab.liab.bank"
 SUBSCRIBED = "bs.eqLiab.equity.subscribed.corp"
@@ -59,6 +61,17 @@ ACCOUNTS = {
 	"1460": ("Geldtransit", "Asset"),
 	"9000": ("Saldenvorträge, Sachkonten", "Equity"),
 }
+# SKR04 accounts that the defaults put on positions whose labels in the HGB-Taxonomie 6.9 are longer than 140
+# characters.
+LABEL_ACCOUNTS = {
+	"0240": ("Geschäftsbauten", "Asset"),
+	"3011": (
+		"Rückstellungen für Zuschussverpflichtungen für Pensionskassen und Lebensversicherungen",
+		"Liability",
+	),
+	"6286": ("Forderungsverluste 19 % USt (soweit unüblich hoch)", "Expense"),
+	"6310": ("Miete (unbewegliche Wirtschaftsgüter)", "Expense"),
+}
 TEST_DEFAULTS = Defaults(
 	"SKR04",
 	"6.9",
@@ -72,11 +85,11 @@ TEST_DEFAULTS = Defaults(
 )
 
 
-def make_accounts(company: str) -> dict[str, str]:
+def make_accounts(company: str, accounts: dict[str, tuple[str, str]] = ACCOUNTS) -> dict[str, str]:
 	return {
 		number: frappe.db.get_value("Account", {"company": company, "account_number": number})
 		or make_account(company, number, label, root_type)
-		for number, (label, root_type) in ACCOUNTS.items()
+		for number, (label, root_type) in accounts.items()
 	}
 
 
@@ -306,6 +319,30 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 			},
 		)
 		self.assertEqual(stored.defaults_version, "SKR04 Taxonomie 6.9 2026.1")
+
+	def test_vorgaben_laden_keeps_the_label_of_each_position_of_the_installed_taxonomy_whole(self):
+		"""Saving writes the label of each position into its rule, longer than the 140 characters of a Data field for
+		the Geschäftsbauten, the Rückstellungen for Pensionskassen, the Forderungsverluste and the Miete."""
+		taxonomy = real.view()
+		self.installed(taxonomy)
+		make_company(LABELS, "STBLB")
+		make_accounts(LABELS, LABEL_ACCOUNTS)
+		mapping = self.new_mapping(LABELS)
+		self.assertEqual(mapping.load_defaults(), [])
+		mapping.insert()
+		stored = frappe.get_doc(MAPPING, LABELS)
+		self.assertEqual(
+			[(row.account_number, row.concept, len(row.concept_label or "")) for row in stored.rules],
+			[
+				("0240", "bs.ass.fixAss.tan.landBuildings.buildingsOnOwnLand.buildings", 181),
+				("3011", "bs.eqLiab.accruals.pensions.externalFunds", 181),
+				("6286", "is.netIncome.regular.operatingTC.deprAmort.currAss.receiv.other", 288),
+				("6310", "is.netIncome.regular.operatingTC.otherCost.leaseFix.other", 161),
+			],
+		)
+		self.assertEqual(
+			[row.concept_label for row in stored.rules], [taxonomy.label(row.concept) for row in stored.rules]
+		)
 
 	def test_vorgaben_laden_keeps_the_level_of_a_watched_account(self):
 		self.with_defaults()

@@ -1,8 +1,5 @@
 """What the E-Bilanz reads from ERPNext for its core in steuerbote/ebilanz.
 
-- The Fiscal Year of the Wirtschaftsjahr (fiscal_year_of): one that names the company before one that names none, as
-  ERPNext orders them (_get_fiscal_years in erpnext/accounts/utils.py), so that the short first Wirtschaftsjahr of a
-  company founded in the year stands beside a calendar year for every company.
 - The balances of the books through steuerbote/balances.py (books_of): the Bilanz up to the Stichtag and the GuV of
   the Wirtschaftsjahr, without its Period Closing Voucher, and the Period Closing Vouchers of the year; for an
   Eröffnungsbilanz the books on its day (opening_books). The Balance Sheet Mapping places them.
@@ -18,6 +15,12 @@
   none in the founding year.
 - The Betriebsvermögen of the Steuerbilanz the filed E-Bilanz of the previous year reported (filed_tax_equity), and the
   check of the installed taxonomy (taxonomy_check), as „Laufzeitumgebung prüfen“ reports it.
+- For the Körperschaftsteuererklärung: the E-Bilanz of the year whose Jahresüberschuss Anlage GK line 11 takes
+  (ebilanz_for_income_tax), and the filed E-Bilanz of a year (filed_ebilanz) with the gezeichnetes Kapital of its
+  Steuerbilanz (subscribed_capital) for KSt 1 F lines 17 and 18.
+- The Jahresabschluss of the year whose Handelsbilanz Berechnen compares with that of the E-Bilanz
+  (annual_accounts_for_ebilanz), with the statement it files as the comparison takes it (annual_accounts_comparison),
+  and whether it was cancelled since (cancelled_annual_accounts).
 """
 
 from datetime import date, timedelta
@@ -26,15 +29,17 @@ from decimal import Decimal
 import frappe
 from erpnext.accounts.report.asset_depreciations_and_balances import asset_depreciations_and_balances
 from erpnext.accounts.utils import get_fiscal_year
-from frappe import _
 from frappe.query_builder.functions import IfNull
-from frappe.utils import cstr, escape_html, getdate
+from frappe.utils import cint, cstr, getdate
 
 from steuerbote import balances
 from steuerbote.ebilanz.gcd import MasterData
+from steuerbote.hgb.size import SizeClass
 from steuerbote.jahresmeldung.corrections import RevisionStatus
 from steuerbote.jahresmeldung.lifecycle import Status
 from steuerbote.jahresmeldung.overrides import to_amount
+from steuerbote.steuerbote.doctype.annual_accounts import bridge as accounts_bridge
+from steuerbote.steuerbote.doctype.electronic_balance_sheet import comparison
 from steuerbote.steuerbote.doctype.electronic_balance_sheet.bridge import (
 	EROEFFNUNGSBILANZ,
 	JAHRESABSCHLUSS,
@@ -46,35 +51,14 @@ from steuerbote.xbrl.mapping import Books
 from steuerbote.xbrl.versions import TAXONOMIES
 
 DOCTYPE = "Electronic Balance Sheet"
-FISCAL_YEAR = "Fiscal Year"
+ANNUAL_ACCOUNTS = "Annual Accounts"
+POSITION = "Electronic Balance Sheet Position"
+SUBSCRIBED = "bs.eqLiab.equity.subscribed"
+INCOME_TAX_STATUSES = (Status.CALCULATED, Status.READY, Status.FILED)
+"""What an E-Bilanz has to be for the Körperschaftsteuererklärung to take its Jahresüberschuss: calculated, ready or
+filed; a draft that Berechnen has not read holds no figures, and a replaced one gave way to its Berichtigung."""
 GROUP_BY_ASSET = "Asset"
 DISPOSALS = ("value_of_sold_asset", "value_of_scrapped_asset", "value_of_capitalized_asset")
-
-
-def fiscal_year_of(company: str, year: int) -> frappe._dict:
-	"""The Fiscal Year that ends in the year for the company: of those that are not disabled, the one that names the
-	company, else the one that names none; there has to be exactly one."""
-	ending = frappe.get_all(
-		FISCAL_YEAR,
-		filters={"disabled": 0, "year_end_date": ["between", (date(year, 1, 1), date(year, 12, 31))]},
-		fields=["name", "year_start_date", "year_end_date"],
-		order_by="year_end_date desc",
-	)
-	own, shared = [], []
-	for fiscal_year in ending:
-		companies = [row.company for row in frappe.get_cached_doc(FISCAL_YEAR, fiscal_year.name).companies]
-		if company in companies:
-			own.append(fiscal_year)
-		elif not companies:
-			shared.append(fiscal_year)
-	serving = own or shared
-	if len(serving) != 1:
-		frappe.throw(
-			_("{0} needs exactly one Fiscal Year that ends in {1}, not {2}.").format(
-				escape_html(company), year, len(serving)
-			)
-		)
-	return serving[0]
 
 
 def books_of(
@@ -236,7 +220,14 @@ def previous_fiscal_year(company: str, from_date: date) -> tuple[date, date] | N
 def filed_tax_equity(company: str, year: int) -> Decimal | None:
 	"""The Betriebsvermögen of the Steuerbilanz that the filed E-Bilanz of the Jahresabschluss of the year reported,
 	the latest that no Berichtigung replaced; None without one."""
-	filed = frappe.get_all(
+	name = filed_ebilanz(company, year)
+	return None if name is None else to_amount(frappe.db.get_value(DOCTYPE, name, "tax_equity"))
+
+
+def filed_ebilanz(company: str, year: int) -> str | None:
+	"""The filed E-Bilanz of the Jahresabschluss of the company and year, the latest that no Berichtigung replaced;
+	None without one."""
+	found = frappe.get_all(
 		DOCTYPE,
 		filters={
 			"company": company,
@@ -245,11 +236,84 @@ def filed_tax_equity(company: str, year: int) -> Decimal | None:
 			"docstatus": 1,
 			"status": Status.FILED.value,
 		},
-		fields=["tax_equity"],
 		order_by="creation desc",
 		limit=1,
+		pluck="name",
 	)
-	return to_amount(filed[0].tax_equity) if filed else None
+	return found[0] if found else None
+
+
+def subscribed_capital(name: str) -> Decimal:
+	"""The gezeichnetes Kapital the Steuerbilanz of an E-Bilanz reports, its position „Gezeichnetes Kapital“
+	[bs.eqLiab.equity.subscribed]; 0 without the position."""
+	return to_amount(
+		frappe.db.get_value(
+			POSITION,
+			{"parent": name, "parenttype": DOCTYPE, "concept": SUBSCRIBED, "manual": 0},
+			"tax_amount",
+		)
+	)
+
+
+def ebilanz_for_income_tax(company: str, year: int, named: str | None) -> str | None:
+	"""The E-Bilanz whose Jahresüberschuss the Körperschaftsteuererklärung of the company and year takes for Anlage GK
+	line 11: the one named, while it is the Jahresabschluss of the key, calculated or filed and not replaced, else the
+	newest such E-Bilanz; None without one, so that line 11 is the Jahresüberschuss of the books."""
+	filters = {
+		"company": company,
+		"year": year,
+		"statement_type": JAHRESABSCHLUSS,
+		"docstatus": ["!=", 2],
+		"status": ["in", [status.value for status in INCOME_TAX_STATUSES]],
+	}
+	if named and frappe.db.exists(DOCTYPE, {"name": named, **filters}):
+		return named
+	found = frappe.get_all(DOCTYPE, filters=filters, order_by="creation desc", limit=1, pluck="name")
+	return found[0] if found else None
+
+
+def annual_accounts_for_ebilanz(company: str, year: int, named: str | None) -> str | None:
+	"""The Jahresabschluss whose Handelsbilanz Berechnen compares with the E-Bilanz of the company and year: the one
+	named, while it is of the company and year and neither cancelled nor replaced, else the festgestellte one of the
+	key, else its draft; None without one."""
+	filters = {
+		"company": company,
+		"year": year,
+		"docstatus": ["!=", 2],
+		"status": ["!=", Status.REPLACED.value],
+	}
+	if named and frappe.db.exists(ANNUAL_ACCOUNTS, {"name": named, **filters}):
+		return named
+	found = frappe.get_all(
+		ANNUAL_ACCOUNTS, filters=filters, order_by="docstatus desc, creation desc", limit=1, pluck="name"
+	)
+	return found[0] if found else None
+
+
+def annual_accounts_comparison(name: str | None) -> comparison.Accounts | None:
+	"""The Jahresabschluss as the comparison takes it: the statement it files, built again from what it keeps of it
+	(statement_from_data of steuerbote/steuerbote/doctype/annual_accounts/bridge.py) in the form of its size class, or
+	of klein while it has none, as its Berechnen builds it; None without one."""
+	if not name:
+		return None
+	found = frappe.db.get_value(
+		ANNUAL_ACCOUNTS,
+		name,
+		["name", "year", "docstatus", "status", "size_class", "statement_data"],
+		as_dict=True,
+	)
+	if found is None:
+		return None
+	statement = None
+	if found.statement_data:
+		size_class = accounts_bridge.size_class_of(found.size_class) or SizeClass.KLEIN
+		statement = accounts_bridge.statement_from_data(found.statement_data, cint(found.year), size_class)
+	festgestellt = cint(found.docstatus) == 1 and found.status != Status.REPLACED.value
+	return comparison.Accounts(found.name, statement, festgestellt)
+
+
+def cancelled_annual_accounts(name: str) -> bool:
+	return cint(frappe.db.get_value(ANNUAL_ACCOUNTS, name, "docstatus")) == 2
 
 
 def taxonomy_check(version: str) -> tuple[bool, str]:

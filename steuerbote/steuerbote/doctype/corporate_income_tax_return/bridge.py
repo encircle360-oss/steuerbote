@@ -8,8 +8,17 @@ Jahresdokumentation_E30_2025.ods of the ERiC documentation 44.3.6.0 (steuerbote.
 What the core takes (compute):
 - the ledger of the Wirtschaftsjahr (Ledger): the postings of the accounts of the profit and loss account that have a
   number, which classify() of steuerbote.kst.categories sorts by the Income Tax Mapping, and the Jahresüberschuss of
-  all of them, Anlage GK line 11 before the Überleitung to the Steuerbilanz. Until the E-Bilanz gives the Überleitung,
-  it comes by hand: the ledger with a manual reconciliation, adopted answer Q2 of the research of stage 3;
+  all of them, Anlage GK line 11 before the Überleitung to the Steuerbilanz. Without an E-Bilanz the Überleitung comes
+  by hand: the ledger with a manual reconciliation, adopted answer Q2 of the research of stage 3;
+- the E-Bilanz of the Wirtschaftsjahr the return names (EBilanz), contract of stage 3, 3.3: „GK 11 from the
+  E-Bilanz (is.netIncome ± Überleitung)“. Line 11 is then the Jahresüberschuss of its GuV, under HGBM that of the
+  Handelsbilanz, and the Überleitung to the Jahresüberschuss of its Steuerbilanz a ManualLine of the step net_income
+  (ueberleitung_lines), as the form takes line 11 „bei Handelsbilanz: nach Berücksichtigung der
+  Überleitungsrechnung nach § 5b Absatz 1 Satz 2 EStG beziehungsweise § 60 Absatz 2 EStDV“
+  (Jahresdokumentation_E30_2025.ods, sheet „GK - Felder“, E8002001); an Einheitsbilanz (HAOE) and a Steuerbilanz (AO)
+  have no Überleitung. The filed E-Bilanz of the previous Wirtschaftsjahr (PriorEBilanz) gives KSt 1 F lines 17 and
+  18, the Eigenkapital laut Steuerbilanz and the Nennkapital at its end (§ 27 Absatz 1 Satz 5 KStG), which the return
+  else states by hand (previous_equity);
 - the lines of the return: a line by hand is a ManualLine of its step (steuerbote.kst.chain), such as the Überleitung
   of line 11 or a verdeckte Gewinnausschüttung of line 75 (§ 8 Absatz 3 Satz 2 KStG); a correction of a line files
   another amount, which the core takes as the ManualLine of the difference, so that the sums of the form add it. Only
@@ -38,13 +47,16 @@ Steuerbote checks itself (rule_findings, the rules of steuerbote.eric.simulation
 
 What holds the return back, beside the findings of the core (findings_of): the forms of a provisional VZ, missing or
 incomplete settings, shareholders that do not hold 99 to 100 % on a day of the Wirtschaftsjahr (rule 8931029 of the
-KSt 1), a carry-forward that is not confirmed or not in whole euros, an Überleitung missing where the settings keep a
-Handelsbilanz with Überleitungsrechnung, an account of the books with a balance that the defaults of its chart give a
-place for and the mapping of the company does not, an account of the profit and loss account without a number,
-Zuwendungen without their receipts, § 8b results of the books without their single values, the dividends of a holding
-the register does not name, and a Verlustrücktrag without a loss. A hint names Vorauszahlungen of the settings that
-differ from those booked, Kapitalertragsteuer of the Steuerbescheinigungen that differs from that booked, receipts of
-Zuwendungen that differ from the books, and contracts with shareholders whose single values Steuerbote does not file.
+KSt 1), a carry-forward that is not confirmed or not in whole euros, an Überleitung missing where the settings or the
+E-Bilanz keep a Handelsbilanz with Überleitungsrechnung, an E-Bilanz whose Jahresüberschuss is not that of the books
+the return reads, an Überleitung from the E-Bilanz with another by hand beside it (ebilanz_findings), an account of the
+books with a balance that the defaults of its chart give a place for and the mapping of the company does not, an
+account of the profit and loss account without a number, Zuwendungen without their receipts, § 8b results of the
+books without their single values, the dividends of a holding the register does not name, and a Verlustrücktrag
+without a loss. A hint names Vorauszahlungen of the settings that differ from those booked, Kapitalertragsteuer of
+the Steuerbescheinigungen that differs from that booked, receipts of Zuwendungen that differ from the books, contracts
+with shareholders whose single values Steuerbote does not file, the Jahresüberschuss of an E-Bilanz that reads another
+finance book than the return, and where KSt 1 F lines 17 and 18 come from (equity_findings).
 
 The texts are templates in English with their values apart (MESSAGES, LABELS), which the Frappe layer translates; the
 findings of the core are German already.
@@ -187,6 +199,11 @@ SUPPLEMENT_KEYS = ("1", "2", "3", "4")
 HGB_WITH_RECONCILIATION = "HGBM"
 """The Bilanzierungsstandard of a Handelsbilanz with Überleitungsrechnung (Annual Filing Settings), whose Anlage GK
 line 11 needs the Überleitung to the Steuerbilanz (§ 60 Absatz 2 Satz 1 EStDV)."""
+WHOLE_EURO = Decimal("1")
+"""Anlage GK line 11 files whole euros, so a Jahresüberschuss of the E-Bilanz less than a euro off that of the books
+changes no more than its rounding."""
+NET_INCOME_LINE = "Anlage GK Zeile 11"
+PRIOR_EQUITY_LINES = "KSt 1 F Zeilen 17 und 18"
 SHARES_ON_EACH_DAY = (Decimal(99), Decimal(100))
 """Rule 8931029 of the KSt 1: on each day the shares of the Anteilseigner add up to 99 to 100 %."""
 TAXES = ("KSt", "SolZ")
@@ -285,6 +302,9 @@ CONTRACTS = "KST-WA-VERTRAEGE"
 NUTZDATEN = "KST-NUTZDATEN"
 NOT_REVIEWED = "KST-PRUEFUNG-FEHLT"
 PERIODS = "KST-BESITZDAUER"
+EBILANZ_DIFFERS = "KST-EBILANZ-ABWEICHUNG"
+UEBERLEITUNG_TWICE = "KST-UEBERLEITUNG-DOPPELT"
+EQUITY_SOURCE = "KST-EIGENKAPITAL-QUELLE"
 CODES = (
 	PROVISIONAL,
 	NO_SETTINGS,
@@ -306,6 +326,9 @@ CODES = (
 	NUTZDATEN,
 	NOT_REVIEWED,
 	PERIODS,
+	EBILANZ_DIFFERS,
+	UEBERLEITUNG_TWICE,
+	EQUITY_SOURCE,
 )
 """The codes of the findings of this module, beside those of the core and the Fehlercodes of the rules."""
 
@@ -371,6 +394,38 @@ NOT_REVIEWED_TEXT = (
 PERIODS_TEXT = (
 	"{0} holds shares in {1} periods of the Wirtschaftsjahr, and KSt 1 lines 23 to 23b take three of them."
 )
+UEBERLEITUNG_REASON = "Überleitungsrechnung of the E-Bilanz {0}"
+EBILANZ_DIFFERS_TEXT = (
+	"The Jahresüberschuss of the E-Bilanz {0} is {1}, that of the profit and loss account of the books {2}: a "
+	"difference of {3}. After a posting such as that of the provisions, calculate the E-Bilanz again and then the "
+	"return, so that line 11 of Anlage GK rests on the books its other lines come from."
+)
+EBILANZ_OTHER_BOOKS_TEXT = (
+	"The E-Bilanz {0} reads another finance book than the return: its Jahresüberschuss is {1}, that of the profit and "
+	"loss account the return reads {2}, a difference of {3}."
+)
+NO_UEBERLEITUNG_EBILANZ_TEXT = (
+	"The E-Bilanz {0} is a Handelsbilanz with Überleitungsrechnung and has no entry of the Überleitung, so line 11 of "
+	"Anlage GK takes the Jahresüberschuss of the Handelsbilanz as it is. Enter the Überleitung in the E-Bilanz, then "
+	"calculate it and the return again."
+)
+UEBERLEITUNG_TWICE_TEXT = (
+	"Line 11 of Anlage GK takes the Jahresüberschuss of the E-Bilanz {0} after its Überleitung, and the lines by hand "
+	"and corrections of E8002001 would count beside it. Enter each step of the Überleitung in the E-Bilanz and take "
+	"them out of the return."
+)
+EQUITY_FROM_EBILANZ_TEXT = (
+	"KSt 1 F lines 17 and 18 take the Eigenkapital laut Steuerbilanz of {0} and the Nennkapital of {1} at the end of "
+	"the previous Wirtschaftsjahr from the E-Bilanz {2} filed for {3}."
+)
+EQUITY_OVER_HAND_TEXT = (
+	"KSt 1 F lines 17 and 18 take the Eigenkapital laut Steuerbilanz of {0} and the Nennkapital of {1} at the end of "
+	"the previous Wirtschaftsjahr from the E-Bilanz {2} filed for {3}; the amounts by hand, {4} and {5}, do not count."
+)
+EQUITY_BY_HAND_TEXT = (
+	"KSt 1 F lines 17 and 18 take the amounts by hand, {0} and {1}: no E-Bilanz of {2} is filed whose Steuerbilanz "
+	"would give them."
+)
 NOT_CORRECTABLE = (
 	"The line {0} follows from other lines, the tables of the return or the settings, so it takes no correction and no "
 	"line by hand: correct those instead."
@@ -421,6 +476,14 @@ MESSAGES = (
 	NUTZDATEN_TEXT,
 	NOT_REVIEWED_TEXT,
 	PERIODS_TEXT,
+	UEBERLEITUNG_REASON,
+	EBILANZ_DIFFERS_TEXT,
+	EBILANZ_OTHER_BOOKS_TEXT,
+	NO_UEBERLEITUNG_EBILANZ_TEXT,
+	UEBERLEITUNG_TWICE_TEXT,
+	EQUITY_FROM_EBILANZ_TEXT,
+	EQUITY_OVER_HAND_TEXT,
+	EQUITY_BY_HAND_TEXT,
 	NOT_CORRECTABLE,
 	NOT_A_LINE,
 	NOT_WHOLE,
@@ -565,10 +628,37 @@ class Settings:
 
 
 @dataclass(frozen=True, slots=True)
+class EBilanz:
+	"""The E-Bilanz of the Wirtschaftsjahr as Anlage GK line 11 takes it: its name and Bilanzierungsstandard (HAOE,
+	HGBM or AO), the Jahresüberschuss of its GuV, which under HGBM is that of the Handelsbilanz, the Jahresüberschuss of
+	its Steuerbilanz after the Überleitung, the number of its entries of the Überleitung, and whether it reads the
+	finance book the return reads."""
+
+	name: str
+	accounting_standard: str
+	net_income: Decimal
+	tax_net_income: Decimal
+	transfers: int = 0
+	same_books: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class PriorEBilanz:
+	"""The E-Bilanz filed for the previous Wirtschaftsjahr that no Berichtigung replaced: its name, its year, and the
+	Betriebsvermögen and the gezeichnetes Kapital of its Steuerbilanz at the Bilanzstichtag, in euros and cents."""
+
+	name: str
+	year: int
+	equity: Decimal
+	nominal_capital: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class Return:
 	"""The Körperschaftsteuererklärung as stored: its VZ and Wirtschaftsjahr, the rows of its tables and what it says
 	beside them. The turnover and wages of Anlage Z line 10 count once stated, 0 too; an equity of 0 counts as not
-	given."""
+	given. ``ebilanz`` is the E-Bilanz the return names for Anlage GK line 11, ``prior_ebilanz`` the filed E-Bilanz
+	of the previous Wirtschaftsjahr for KSt 1 F lines 17 and 18, each None without one."""
 
 	year: int
 	from_date: date
@@ -588,6 +678,8 @@ class Return:
 	turnover_and_wages: Decimal = ZERO
 	previous_equity: Decimal = ZERO
 	previous_nominal_capital: Decimal = ZERO
+	ebilanz: EBilanz | None = None
+	prior_ebilanz: PriorEBilanz | None = None
 
 	def __post_init__(self) -> None:
 		for name in ("lines", "holding_results", "credits", "donations", "distributions", "contributions"):
@@ -983,8 +1075,13 @@ def contributions_by_line(rows: Iterable[Row]) -> tuple[Decimal, Decimal, Decima
 
 
 def previous_equity(ret: Return) -> tuple[Decimal | None, Decimal | None]:
-	"""KSt 1 F lines 17 and 18, the equity and the Nennkapital at the end of the previous Wirtschaftsjahr, None while
-	the return gives neither."""
+	"""KSt 1 F lines 17 and 18, the Eigenkapital laut Steuerbilanz and the Nennkapital at the end of the previous
+	Wirtschaftsjahr: the Betriebsvermögen and the gezeichnetes Kapital of the Steuerbilanz of the E-Bilanz filed for
+	it, in the whole euros the lines take, rounded half up as no direction is given (adopted answer Q5 of the research
+	of stage 3); without one those the return gives by hand, None while it gives neither."""
+	prior = ret.prior_ebilanz
+	if prior is not None:
+		return half_up_euro(to_amount(prior.equity)), half_up_euro(to_amount(prior.nominal_capital))
 	equity, nominal = to_amount(ret.previous_equity), to_amount(ret.previous_nominal_capital)
 	if not (equity or nominal):
 		return None, None
@@ -1234,8 +1331,8 @@ def _inputs(
 		ret.year,
 		ledger.lines,
 		mapping,
-		net_income=ledger.net_income,
-		manual=_contribution_lines(ret.contributions),
+		net_income=ledger.net_income if ret.ebilanz is None else to_amount(ret.ebilanz.net_income),
+		manual=(*_contribution_lines(ret.contributions), *ueberleitung_lines(ret.ebilanz, translate)),
 		holdings=tuple(holdings),
 		trading_book=settings is not None and settings.company.section_8b_7,
 		loss_carry_forward=carry_forwards["loss_carry_forward"],
@@ -1298,6 +1395,21 @@ def _contribution_reason(row: Row) -> str:
 	return ", ".join(part for part in parts if part) or str(row.get("treatment"))
 
 
+def ueberleitung_lines(ebilanz: EBilanz | None, translate: Translate) -> tuple[ManualLine, ...]:
+	"""The Überleitung of the E-Bilanz as the ManualLine of the step net_income that takes line 11 of Anlage GK from
+	the Jahresüberschuss of its Handelsbilanz to that of its Steuerbilanz: „bei Handelsbilanz: nach Berücksichtigung
+	der Überleitungsrechnung nach § 5b Absatz 1 Satz 2 EStG beziehungsweise § 60 Absatz 2 EStDV“
+	(Jahresdokumentation_E30_2025.ods, E8002001). The Steuerbilanz is what the core of the E-Bilanz computed of the
+	entries, with the steuerlicher Ausgleichsposten and the Sammelposten of the GuV (steuerbote/ebilanz/ueberleitung.py),
+	so an Einheitsbilanz and a Steuerbilanz give none."""
+	if ebilanz is None:
+		return ()
+	difference = to_amount(ebilanz.tax_net_income) - to_amount(ebilanz.net_income)
+	if not difference:
+		return ()
+	return (ManualLine("net_income", difference, translate(UEBERLEITUNG_REASON).format(ebilanz.name)),)
+
+
 def eligible_donations(ret: Return, ledger: Ledger, mapping: IncomeTaxMapping) -> Decimal:
 	"""The Zuwendungen Anlage Z deducts: those of the receipts once the return lists one, else those of the books
 	without the accounts that are no Zuwendungen of § 9 Absatz 1 Nummer 2 KStG (NON_DEDUCTIBLE_DONATIONS)."""
@@ -1355,6 +1467,8 @@ def _readiness(
 	if ret.shareholder_contracts:
 		found.append(Finding(CONTRACTS, Severity.HINT, translate(CONTRACTS_TEXT), "Anlage WA Zeile 16"))
 	found.extend(_capital_gains_tax(ret, result, figures, translate))
+	found.extend(ebilanz_findings(ret, ledger, figures, translate))
+	found.extend(equity_findings(ret, figures, translate))
 	if settings is None:
 		return found
 	if settings.reviewed_on is None:
@@ -1365,10 +1479,68 @@ def _readiness(
 		if len(periods) > MOST_SHARE_PERIODS:
 			text = translate(PERIODS_TEXT).format(periods[0].name, len(periods))
 			found.append(_error(PERIODS, text, "KSt 1 Zeilen 23 bis 23b"))
-	if settings.company.accounting_standard == HGB_WITH_RECONCILIATION and not _has_ueberleitung(ret.lines):
+	if (
+		ret.ebilanz is None
+		and settings.company.accounting_standard == HGB_WITH_RECONCILIATION
+		and not _has_ueberleitung(ret.lines)
+	):
 		found.append(_error(NO_UEBERLEITUNG, translate(NO_UEBERLEITUNG_TEXT), "§ 60 Absatz 2 EStDV"))
 	found.extend(booked_prepayment_findings(ret.year, ledger, settings, TAXES, figures, translate))
 	return found
+
+
+def ebilanz_findings(ret: Return, ledger: Ledger, figures: Figures, translate: Translate) -> list[Finding]:
+	"""What holds a return back that takes line 11 of Anlage GK from its E-Bilanz: a Jahresüberschuss of the E-Bilanz
+	other than that of the books the other lines of Anlage GK come from, as after a posting the E-Bilanz has not been
+	calculated with, a hint where the E-Bilanz reads another finance book; the Überleitung of a Handelsbilanz with
+	Überleitungsrechnung that the E-Bilanz lacks (§ 60 Absatz 2 Satz 1 EStDV); and lines by hand or corrections of
+	line 11 beside the Überleitung of the E-Bilanz, which would count it twice."""
+	ebilanz = ret.ebilanz
+	if ebilanz is None:
+		return []
+	found = []
+	difference = to_amount(ebilanz.net_income) - to_amount(ledger.net_income)
+	if abs(difference) >= WHOLE_EURO:
+		template = EBILANZ_DIFFERS_TEXT if ebilanz.same_books else EBILANZ_OTHER_BOOKS_TEXT
+		text = translate(template).format(
+			ebilanz.name,
+			figures.money(to_amount(ebilanz.net_income)),
+			figures.money(to_amount(ledger.net_income)),
+			figures.money(difference),
+		)
+		severity = Severity.ERROR if ebilanz.same_books else Severity.HINT
+		found.append(Finding(EBILANZ_DIFFERS, severity, text, NET_INCOME_LINE))
+	if ebilanz.accounting_standard == HGB_WITH_RECONCILIATION and not ebilanz.transfers:
+		text = translate(NO_UEBERLEITUNG_EBILANZ_TEXT).format(ebilanz.name)
+		found.append(_error(NO_UEBERLEITUNG, text, "§ 60 Absatz 2 EStDV"))
+	if _has_ueberleitung(ret.lines):
+		text = translate(UEBERLEITUNG_TWICE_TEXT).format(ebilanz.name)
+		found.append(_error(UEBERLEITUNG_TWICE, text, NET_INCOME_LINE))
+	return found
+
+
+def equity_findings(ret: Return, figures: Figures, translate: Translate) -> list[Finding]:
+	"""A hint that says where KSt 1 F lines 17 and 18 come from: the E-Bilanz filed for the previous Wirtschaftsjahr,
+	whose Steuerbilanz the lines name, „Eigenkapital laut Steuerbilanz“ (Jahresdokumentation_E30_2025.ods, E8201001),
+	or the amounts the return gives by hand; none where the return has neither."""
+	prior = ret.prior_ebilanz
+	by_hand = (to_amount(ret.previous_equity), to_amount(ret.previous_nominal_capital))
+	if prior is not None:
+		equity, nominal = previous_equity(ret)
+		values = (figures.money(equity), figures.money(nominal), prior.name, prior.year)
+		if any(by_hand) and by_hand != (equity, nominal):
+			text = translate(EQUITY_OVER_HAND_TEXT).format(
+				*values, *(figures.money(amount) for amount in by_hand)
+			)
+		else:
+			text = translate(EQUITY_FROM_EBILANZ_TEXT).format(*values)
+	elif any(by_hand):
+		text = translate(EQUITY_BY_HAND_TEXT).format(
+			*(figures.money(amount) for amount in by_hand), ret.year - 1
+		)
+	else:
+		return []
+	return [Finding(EQUITY_SOURCE, Severity.HINT, text, PRIOR_EQUITY_LINES)]
 
 
 def _details(settings: Settings, translate: Translate) -> list[Finding]:

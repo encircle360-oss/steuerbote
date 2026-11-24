@@ -1476,3 +1476,219 @@ class TextsTest(TestCase):
 			(type(ret.lines), type(ret.credits), type(settings.shareholders)), (tuple, tuple, tuple)
 		)
 		self.assertEqual(ret.opening_day, date(2025, 12, 31))
+
+
+def einheitsbilanz(**values) -> bridge.EBilanz:
+	"""The Einheitsbilanz of the worked example, whose Jahresüberschuss is that of the books."""
+	fields = {
+		"name": "EB-2026-00001",
+		"accounting_standard": "HAOE",
+		"net_income": Decimal("88175.00"),
+		"tax_net_income": Decimal("88175.00"),
+	}
+	return bridge.EBilanz(**{**fields, **values})
+
+
+def handelsbilanz(**values) -> bridge.EBilanz:
+	"""A Handelsbilanz whose Steuerbilanz has 2,000 euros more, a Rückstellung für drohende Verluste it does not keep
+	(§ 5 Absatz 4a EStG)."""
+	fields = {
+		"name": "EB-2026-00002",
+		"accounting_standard": "HGBM",
+		"net_income": Decimal("88175.00"),
+		"tax_net_income": Decimal("90175.00"),
+		"transfers": 2,
+	}
+	return bridge.EBilanz(**{**fields, **values})
+
+
+class EBilanzTest(TestCase):
+	"""Anlage GK line 11 from the E-Bilanz of the Wirtschaftsjahr: its Jahresüberschuss, under HGBM that of the
+	Handelsbilanz with the Überleitung to the Steuerbilanz (contract of stage 3, 3.3)."""
+
+	def computed(self, ebilanz, rows=(), books: bridge.Ledger | None = None) -> bridge.Computation:
+		return compute(replace(RETURN, ebilanz=ebilanz, lines=tuple(rows)), books)
+
+	def own_codes(self, computation) -> list[str]:
+		return [code for code in codes(computation) if code != PROVISIONAL]
+
+	def test_an_einheitsbilanz_gives_line_11_its_jahresueberschuss(self):
+		computation = self.computed(einheitsbilanz())
+		self.assertEqual(computation.values, compute().values)
+		self.assertEqual(computation.result.lines["net_income"].manual, ())
+		self.assertEqual(self.own_codes(computation), [])
+
+	def test_a_steuerbilanz_gives_line_11_its_jahresueberschuss_as_it_is(self):
+		computation = self.computed(einheitsbilanz(accounting_standard="AO"))
+		self.assertEqual(computation.values["zve"], Decimal("111200"))
+		self.assertEqual(self.own_codes(computation), [])
+
+	def test_a_handelsbilanz_gives_line_11_the_jahresueberschuss_after_the_ueberleitung(self):
+		computation = self.computed(handelsbilanz())
+		net_income = computation.result.lines["net_income"]
+		self.assertEqual(
+			(net_income.ledger, net_income.exact, net_income.declared),
+			(Decimal("88175.00"), Decimal("90175.00"), Decimal("90175")),
+		)
+		(manual,) = net_income.manual
+		self.assertEqual(
+			(manual.step, manual.amount, manual.reason),
+			("net_income", Decimal("2000.00"), "Überleitungsrechnung of the E-Bilanz EB-2026-00002"),
+		)
+		self.assertEqual(
+			{name: computation.values[name] for name in ("net_income", "zve", "kst", "solz")},
+			{
+				"net_income": Decimal("90175"),
+				"zve": Decimal("113200"),
+				"kst": Decimal("16980"),
+				"solz": Decimal("933.90"),
+			},
+		)
+		row = line(computation.lines, "E8002001")
+		self.assertEqual((row["ledger_amount"], row["form_amount"]), (Decimal("88175.00"), Decimal("90175")))
+		self.assertEqual(self.own_codes(computation), [])
+
+	def test_the_ueberleitung_is_the_difference_of_the_steuerbilanz_to_the_handelsbilanz(self):
+		self.assertEqual(bridge.ueberleitung_lines(None, translate), ())
+		self.assertEqual(bridge.ueberleitung_lines(einheitsbilanz(), translate), ())
+		lower = handelsbilanz(tax_net_income=Decimal("87175.50"))
+		(manual,) = bridge.ueberleitung_lines(lower, translate)
+		self.assertEqual(manual.amount, Decimal("-999.50"))
+
+	def test_a_jahresueberschuss_other_than_that_of_the_books_holds_the_return_back(self):
+		"""The books hold the provisions posted after the E-Bilanz was calculated: line 11 would leave out the taxes
+		that Anlage GK lines 81 to 84 add back from the books."""
+		stale = einheitsbilanz(net_income=Decimal("89175.00"), tax_net_income=Decimal("89175.00"))
+		computation = self.computed(stale)
+		self.assertEqual(computation.values["net_income"], Decimal("89175"))
+		(finding,) = [found for found in computation.findings if found.code == bridge.EBILANZ_DIFFERS]
+		self.assertEqual((finding.severity, finding.reference), (Severity.ERROR, "Anlage GK Zeile 11"))
+		self.assertEqual(
+			finding.text,
+			"The Jahresüberschuss of the E-Bilanz EB-2026-00001 is 89.175,00 €, that of the profit and loss account of "
+			"the books 88.175,00 €: a difference of 1.000,00 €. After a posting such as that of the provisions, "
+			"calculate the E-Bilanz again and then the return, so that line 11 of Anlage GK rests on the books its "
+			"other lines come from.",
+		)
+
+	def test_a_difference_of_less_than_a_euro_is_the_rounding_of_line_11(self):
+		close = einheitsbilanz(net_income=Decimal("88175.99"), tax_net_income=Decimal("88175.99"))
+		self.assertEqual(self.own_codes(self.computed(close)), [])
+		beyond = einheitsbilanz(net_income=Decimal("88174.00"), tax_net_income=Decimal("88174.00"))
+		self.assertEqual(self.own_codes(self.computed(beyond)), [bridge.EBILANZ_DIFFERS])
+
+	def test_an_e_bilanz_of_another_finance_book_differs_with_a_hint(self):
+		other = einheitsbilanz(
+			accounting_standard="AO",
+			net_income=Decimal("90175.00"),
+			tax_net_income=Decimal("90175.00"),
+			same_books=False,
+		)
+		(finding,) = [
+			found for found in self.computed(other).findings if found.code == bridge.EBILANZ_DIFFERS
+		]
+		self.assertEqual(finding.severity, Severity.HINT)
+		self.assertTrue(finding.text.startswith("The E-Bilanz EB-2026-00001 reads another finance book"))
+
+	def test_a_handelsbilanz_without_entries_of_the_ueberleitung_holds_the_return_back(self):
+		without = handelsbilanz(tax_net_income=Decimal("88175.00"), transfers=0)
+		(finding,) = [found for found in self.computed(without).findings if found.code == NO_UEBERLEITUNG]
+		self.assertEqual((finding.severity, finding.reference), (Severity.ERROR, "§ 60 Absatz 2 EStDV"))
+		self.assertTrue(finding.text.startswith("The E-Bilanz EB-2026-00002 is a Handelsbilanz"))
+
+	def test_the_e_bilanz_and_not_the_settings_says_whether_line_11_needs_an_ueberleitung(self):
+		settings = replace(SETTINGS, company=replace(COMPANY, accounting_standard="HGBM"))
+		ret = replace(RETURN, ebilanz=einheitsbilanz())
+		self.assertNotIn(NO_UEBERLEITUNG, codes(compute(ret, settings=settings)))
+
+	def test_lines_by_hand_on_line_11_beside_the_e_bilanz_would_count_the_ueberleitung_twice(self):
+		rows = reported(compute().lines)
+		for case, changed in (
+			("line by hand", [*rows, by_hand("E8002001", "-1000")]),
+			("correction", corrected(rows, "E8002001", "87000")),
+		):
+			with self.subTest(case=case):
+				computation = self.computed(handelsbilanz(), changed)
+				(finding,) = [
+					found for found in computation.findings if found.code == bridge.UEBERLEITUNG_TWICE
+				]
+				self.assertEqual(
+					(finding.severity, finding.reference), (Severity.ERROR, "Anlage GK Zeile 11")
+				)
+		self.assertNotIn(bridge.UEBERLEITUNG_TWICE, codes(self.computed(handelsbilanz(), rows)))
+
+
+class PriorEBilanzTest(TestCase):
+	"""KSt 1 F lines 17 and 18 from the E-Bilanz filed for the previous Wirtschaftsjahr, else by hand."""
+
+	def setUp(self):
+		self.prior = bridge.PriorEBilanz("EB-2025-00001", 2025, Decimal("120000.40"), Decimal("25000.00"))
+
+	def computed(self, **values) -> bridge.Computation:
+		ret = replace(RETURN, distributions=KSt1FTest.DISTRIBUTIONS, **values)
+		return compute(ret, settings=replace(SETTINGS, carry_forwards=KSt1FTest.EINLAGEKONTO))
+
+	def sources(self, computation) -> list:
+		return [found for found in computation.findings if found.code == bridge.EQUITY_SOURCE]
+
+	def test_kst_1_f_takes_the_steuerbilanz_of_the_e_bilanz_filed_for_the_previous_year(self):
+		computation = self.computed(prior_ebilanz=self.prior)
+		filed = entries((computation.kst1f,), "KSt1F")
+		self.assertEqual(
+			(filed[("E8201001", ())], filed[("E8201101", ())]), (Decimal("120000"), Decimal("25000"))
+		)
+		self.assertEqual(computation.einlagekonto.distributable, Decimal("55000"))
+		(finding,) = self.sources(computation)
+		self.assertEqual((finding.severity, finding.reference), (Severity.HINT, "KSt 1 F Zeilen 17 und 18"))
+		self.assertEqual(
+			finding.text,
+			"KSt 1 F lines 17 and 18 take the Eigenkapital laut Steuerbilanz of 120.000,00 € and the Nennkapital of "
+			"25.000,00 € at the end of the previous Wirtschaftsjahr from the E-Bilanz EB-2025-00001 filed for 2025.",
+		)
+
+	def test_the_e_bilanz_comes_before_the_amounts_by_hand(self):
+		computation = self.computed(
+			prior_ebilanz=self.prior,
+			previous_equity=Decimal("110000"),
+			previous_nominal_capital=Decimal("25000"),
+		)
+		self.assertEqual(
+			bridge.previous_equity(replace(RETURN, prior_ebilanz=self.prior)),
+			(Decimal("120000"), Decimal("25000")),
+		)
+		(finding,) = self.sources(computation)
+		self.assertTrue(
+			finding.text.endswith(
+				"filed for 2025; the amounts by hand, 110.000,00 € and 25.000,00 €, do not count."
+			)
+		)
+		same = self.computed(
+			prior_ebilanz=self.prior,
+			previous_equity=Decimal("120000"),
+			previous_nominal_capital=Decimal("25000"),
+		)
+		self.assertTrue(self.sources(same)[0].text.endswith("filed for 2025."))
+
+	def test_the_steuerbilanz_is_rounded_half_up_to_whole_euros(self):
+		for equity, expected in (("120000.50", "120001"), ("-3000.50", "-3001"), ("99.49", "99")):
+			with self.subTest(equity=equity):
+				prior = replace(self.prior, equity=Decimal(equity))
+				self.assertEqual(
+					bridge.previous_equity(replace(RETURN, prior_ebilanz=prior)),
+					(Decimal(expected), Decimal("25000")),
+				)
+
+	def test_without_a_filed_e_bilanz_the_amounts_by_hand_count_and_the_hint_says_so(self):
+		computation = self.computed(
+			previous_equity=Decimal("110000"), previous_nominal_capital=Decimal("25000")
+		)
+		self.assertEqual(entries((computation.kst1f,), "KSt1F")[("E8201001", ())], Decimal("110000"))
+		(finding,) = self.sources(computation)
+		self.assertEqual(
+			finding.text,
+			"KSt 1 F lines 17 and 18 take the amounts by hand, 110.000,00 € and 25.000,00 €: no E-Bilanz of 2025 is "
+			"filed whose Steuerbilanz would give them.",
+		)
+
+	def test_without_either_the_return_says_nothing_of_them(self):
+		self.assertEqual(self.sources(self.computed()), [])

@@ -10,6 +10,11 @@ transmission through ERiC are those of AnnualFiling and Transmittable. This cont
   Tax Mapping and the Annual Filing Settings (steuerbote/income_tax_sources.py) and runs the core in steuerbote/kst
   through bridge.py, with the lines by hand, the corrections and the tables of the return; on the lines as filed it
   checks the rules of the Jahresdokumentation E30 that Steuerbote checks itself (check_reported).
+- Anlage GK line 11 comes from the E-Bilanz of the year the return names (electronic_balance_sheet): its
+  Jahresüberschuss, under HGBM that of the Handelsbilanz with the Überleitung to the Steuerbilanz (contract of stage
+  3, 3.3). Berechnen names the E-Bilanz it takes: the one named while it is calculated or filed and not replaced,
+  else the newest such E-Bilanz of the company and year; without one, line 11 is the Jahresüberschuss of the books.
+  KSt 1 F lines 17 and 18 come from the E-Bilanz filed for the previous year, else from the return by hand.
 - A save takes the corrections and lines by hand of the lines of the books and of those left to hand, the tables of
   the return and its statements, refuses a correction where the computation derives the line, and fills the columns
   of the § 8b results from the holdings register. A change of anything Berechnen reads leaves a calculated return
@@ -38,7 +43,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, flt, getdate
 
-from steuerbote import income_tax_sources
+from steuerbote import ebilanz_sources, income_tax_sources
 from steuerbote.deadlines import Kind
 from steuerbote.elster import kst_xml
 from steuerbote.eric import datenart as eric_datenart
@@ -63,6 +68,7 @@ JOURNAL_ENTRY = "Journal Entry"
 VORGANG = "01"
 INPUT_TABLES = ("holding_results", "credits", "donations", "distributions", "contributions")
 INPUT_FIELDS = (
+	"electronic_balance_sheet",
 	"supplement_key",
 	"supplement_text",
 	"shareholder_contracts",
@@ -101,7 +107,11 @@ class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
 	# The hooks of the base.
 
 	def compute(self) -> Calculation:
-		"""Berechnen: the Körperschaftsteuer of the year from the sources and the return."""
+		"""Berechnen: the Körperschaftsteuer of the year from the sources and the return, Anlage GK line 11 from the
+		E-Bilanz it takes and names."""
+		self.electronic_balance_sheet = ebilanz_sources.ebilanz_for_income_tax(
+			self.company, cint(self.year), self.electronic_balance_sheet
+		)
 		computation = self.computation()
 		return Calculation(lines=computation.lines, values=computation.values, findings=computation.findings)
 
@@ -153,6 +163,7 @@ class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
 			return
 		self._catalogue()
 		self._name_the_lines_by_hand(before)
+		self._name_the_electronic_balance_sheet()
 		super().validate()
 		self.provisional = int(bridge.provisional(cint(self.year))[0])
 		self.vorgang = VORGANG
@@ -289,6 +300,38 @@ class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
 			if stored.get(row.name, 1):
 				row.feldkennung = bridge.normalized(row.feldkennung)
 
+	def _name_the_electronic_balance_sheet(self) -> None:
+		"""A new return names the E-Bilanz of its company and year that Berechnen would take; a return names no E-Bilanz
+		of another company, year or Bilanzart, and no cancelled one."""
+		if self.is_new() and not self.electronic_balance_sheet:
+			self.electronic_balance_sheet = ebilanz_sources.ebilanz_for_income_tax(
+				self.company, cint(self.year), None
+			)
+		if not self.electronic_balance_sheet:
+			return
+		named = frappe.db.get_value(
+			ebilanz_sources.DOCTYPE,
+			self.electronic_balance_sheet,
+			["name", "company", "year", "statement_type", "docstatus"],
+			as_dict=True,
+		)
+		if named is None or cint(named.docstatus) == 2:
+			frappe.throw(
+				_("{0} is no E-Bilanz that is not cancelled.").format(
+					frappe.bold(self.electronic_balance_sheet)
+				)
+			)
+		if (named.company, cint(named.year), named.statement_type) != (
+			self.company,
+			cint(self.year),
+			ebilanz_sources.JAHRESABSCHLUSS,
+		):
+			frappe.throw(
+				_(
+					"The E-Bilanz {0}, {1}, is one of {2} for {3}; the Körperschaftsteuererklärung of {4} for {5} takes the E-Bilanz of the Jahresabschluss of its own company and year."
+				).format(named.name, named.statement_type, named.company, named.year, self.company, self.year)
+			)
+
 	def _describe_the_lines_by_hand(self) -> None:
 		"""A line by hand takes the form, line and Beschreibung of its field, which has to take one."""
 		for row in self.lines:
@@ -365,6 +408,8 @@ class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
 			turnover_and_wages=self.turnover_and_wages,
 			previous_equity=self.previous_equity,
 			previous_nominal_capital=self.previous_nominal_capital,
+			ebilanz=income_tax_sources.ebilanz(self.electronic_balance_sheet, self.company),
+			prior_ebilanz=income_tax_sources.prior_ebilanz(self.company, cint(self.year)),
 		)
 
 

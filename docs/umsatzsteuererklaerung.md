@@ -39,7 +39,7 @@ Ein Beleg je Unternehmen und Jahr, benannt nach dem Jahr, für das er gilt (`USt
 | `reconciliation` | Je Kennzahl | Tabelle „Abgleich je Kennzahl“ (`Annual VAT Return Reconciliation`) |
 | `checks`, `deviations`, `unmapped` | Verprobung, Abweichende Belege, Beobachtete Konten mit Saldo | die Tabellen der Voranmeldung, für das ganze Jahr |
 
-Rechte wie bei der Voranmeldung: System Manager und Accounts Manager legen an, berechnen, ändern und geben ab; ein Accounts User legt an, berechnet und ändert, gibt aber nicht ab. Die Liste kommt mit dem Abschnitt „Jahresmeldungen“ in Seitenleiste und Arbeitsbereich, siehe [Roadmap](roadmap.md#stufe-3-jahresmeldungen); bis dahin findet die Suche des Desks sie als „Umsatzsteuererklärung“.
+Rechte wie bei der Voranmeldung: System Manager und Accounts Manager legen an, berechnen, ändern und geben ab; ein Accounts User legt an, berechnet und ändert, gibt aber nicht ab. Die Liste steht als „USt-Erklärungen“ in der Seitenleiste in der Gruppe „Jahresmeldungen“ und im gleichnamigen Abschnitt des Arbeitsbereichs „Steuern“, dort neben „Neue USt-Erklärung“.
 
 ## Berechnen
 
@@ -50,6 +50,7 @@ Rechte wie bei der Voranmeldung: System Manager und Accounts Manager legen an, b
 3. **Vorauszahlungssoll:** `soll.vorauszahlungssoll()` aus den abgegebenen Voranmeldungen, der Sondervorauszahlung und den Begründungen für Zeiträume ohne Voranmeldung, siehe unten.
 4. **Abgleich:** `reconciliation.reconcile()` stellt die Erklärung den abgegebenen Voranmeldungen und einem Lauf der Voranmeldung auf dem heutigen Hauptbuch je Zeitraum gegenüber; `reconciliation.journal_entries()` nennt Journalbuchungen auf Steuerkonten.
 5. **Regeln:** Auf die Werte, wie die Erklärung sie abgibt, mit den Korrekturen, laufen die eigenen Prüfungen von Steuerbote und die Regeln der Jahresdokumentation, die Steuerbote selbst prüft (`rules.check()`).
+6. **Umsatzerlöse:** Dieselben Werte stellt „Berechnen“ neben die Umsatzerlöse des festgestellten Jahresabschlusses oder der abgegebenen E-Bilanz des Jahres, siehe [Abgleich mit den Umsatzerlösen](#abgleich-mit-den-umsatzerlösen).
 
 `annual_vat_return/bridge.py` bringt die Ergebnisse in die Zeilen und Tabellen des Belegs, ohne Frappe und mit eigenen Tests.
 
@@ -92,6 +93,16 @@ Kz 820 ist Kz 816 abzüglich des Vorauszahlungssolls (Regel 30638): positiv „N
 
 Ob eine Buchung nach der Abgabe eine berichtigte Voranmeldung verlangt (§ 153 Abs. 1 AO), entscheidet das Unternehmen mit seiner Steuerberatung; ob die Jahreserklärung allein eine Voranmeldung berichtigen darf, ist ungeprüft.
 
+## Abgleich mit den Umsatzerlösen
+
+Umsatzerlöse und Umsätze zählen dieselben Verkäufe ohne Umsatzsteuer: Als Umsatzerlöse sind „die Erlöse aus dem Verkauf und der Vermietung oder Verpachtung von Produkten sowie aus der Erbringung von Dienstleistungen der Kapitalgesellschaft nach Abzug von Erlösschmälerungen und der Umsatzsteuer“ auszuweisen (§ 277 Abs. 1 HGB), und „Der Umsatz wird bei Lieferungen und sonstigen Leistungen [...] nach dem Entgelt bemessen“ (§ 10 Abs. 1 Satz 1 UStG). „Berechnen“ stellt deshalb die Bemessungsgrundlagen der Lieferungen und sonstigen Leistungen, wie die Erklärung sie mit den Korrekturen abgibt, neben die Umsatzerlöse des Jahres (`annual_vat_return/revenue.py`):
+
+- **Umsatzerlöse:** die des festgestellten Jahresabschlusses des Jahres, des gebuchten, der nicht ersetzt ist (siehe [Jahresabschluss](jahresabschluss.md#für-die-umsatzsteuererklärung)), sonst „Umsatzerlöse (GKV)“ der für das Jahr abgegebenen E-Bilanz (siehe [E-Bilanz](ebilanz.md)); ohne beide vergleicht „Berechnen“ nichts.
+- **Umsätze der Erklärung:** die Zeilen, die die Kennzahlen der Voranmeldung mit den Bemessungsgrundlagen von Lieferungen und sonstigen Leistungen nehmen (Kz 81, 86, 87, 35, 77, 76, 41, 44, 49, 43, 48, 42, 60, 21 und 45): die steuerpflichtigen Umsätze der Zeilen 24, 27, 30 und 33 bis 35, die steuerfreien der Zeilen 42 bis 49 und 51 bis 54, die Lieferungen des ersten Abnehmers in Zeile 65 und die Umsätze der Zeilen 76, 78, 80 und 81, deren Steuer ein anderer schuldet oder die im Inland nicht steuerbar sind. Die unentgeltlichen Wertabgaben der Zeilen 25, 26, 28, 29, 31 und 32 bleiben draußen: Sie bringen keine Erlöse, und die DATEV-Kontenrahmen führen ihre Konten unter den sonstigen betrieblichen Erträgen.
+- **Toleranz:** Jede Zeile meldet volle Euro ohne Cent, bis zu einem Euro je Zeile ist also Rundung; darüber hinaus gilt die Schwelle in Euro des Vorperiodenvergleichs der Einstellungen Umsatzsteuer-Voranmeldung (`comparison_threshold_amount`, Vorgabe 100 €).
+
+Liegt die Differenz darüber, nennt der Hinweis `SB-UMSATZERLOESE` die Umsatzerlöse mit ihrem Beleg, die Summe und die Zeilen der Erklärung und die Differenz. Er hält die Erklärung nie an: Der Verkauf von Anlagevermögen ist eine Lieferung, aber kein Umsatzerlös, eine Anzahlung wird mit ihrer Vereinnahmung versteuert (§ 13 Abs. 1 Nr. 1 Buchstabe a Satz 4 UStG), und ein Erlös, den keine Zeile der Erklärung nimmt, ist kein Umsatz der Erklärung; ob die Differenz erklärt ist, entscheidet das Unternehmen. Die Umsatzerlöse der E-Bilanz neben den Kz 81, 86, 41 und 45 der Voranmeldungen zeigt der Bericht „E-Bilanz Positionen“, siehe [E-Bilanz](ebilanz.md#bericht-e-bilanz-positionen). Wie die Jahresmeldungen eines Jahres aufeinander aufbauen, beschreibt [Zusammenspiel der Jahresmeldungen](jahresmeldungen.md#zusammenspiel-der-jahresmeldungen).
+
 ## Befunde und „Bereit“
 
 „Bereit“ heißt: kein Fehler der Befunde, und die Prüfungen des Kerns gehen auf. Das verlangt:
@@ -108,6 +119,7 @@ Ob eine Buchung nach der Abgabe eine berichtigte Voranmeldung verlangt (§ 153 A
 | `SB-KONTO-HINWEIS` | Hinweis | ein Konto der Stufe „Hinweis“ hat im Jahr einen Saldo, den keine Zeile liest |
 | `SB-KLEINUNTERNEHMER` | Hinweis | die Einstellungen Jahresmeldungen kennzeichnen das Jahr als Jahr eines Kleinunternehmers |
 | `SB-KZ136` | Hinweis | eine abgegebene Voranmeldung datiert den Wechsel zur Regelbesteuerung in Kz 70 auf einen anderen Tag als Kz 136 der Erklärung |
+| `SB-UMSATZERLOESE` | Hinweis | die Bemessungsgrundlagen der Lieferungen und sonstigen Leistungen liegen über Rundung und Toleranz hinaus neben den Umsatzerlösen des festgestellten Jahresabschlusses oder der abgegebenen E-Bilanz, siehe [Abgleich mit den Umsatzerlösen](#abgleich-mit-den-umsatzerlösen) |
 | `SB-NEU-BERECHNEN` | Fehler | seit dem Berechnen hat sich etwas geändert, das „Berechnen“ liest |
 | `ZEITRAUM-FEHLT` | Fehler | ein fälliger Zeitraum ohne abgegebene Voranmeldung und ohne Begründung |
 | `SONDERVORAUSZAHLUNG-KZ39` | Hinweis | Kz 39 der Voranmeldungen weicht von der Sondervorauszahlung der Einstellungen ab |
@@ -166,7 +178,7 @@ Das Druckformat „Umsatzsteuererklärung“ gibt die Erklärung in Reihenfolge 
 
 ## Quellen
 
-- UStG §§ 15 Abs. 1, 15a, 16 Abs. 1 und 3, 18 Abs. 1 bis 4, 19 Abs. 1; UStDV §§ 44 Abs. 3, 48 Abs. 4; AO §§ 108, 149, 153, 168; BGB § 188, gelesen am 23.11.2026 auf gesetze-im-internet.de.
+- UStG §§ 15 Abs. 1, 15a, 16 Abs. 1 und 3, 18 Abs. 1 bis 4, 19 Abs. 1; UStDV §§ 44 Abs. 3, 48 Abs. 4; AO §§ 108, 149, 153, 168; BGB § 188, gelesen am 23.11.2026 auf gesetze-im-internet.de; UStG § 10 Abs. 1 Satz 1 und § 13 Abs. 1 Nr. 1 Buchstabe a Satz 4, HGB § 277 Abs. 1, gelesen am 24.11.2026 ebenda.
 - BMF-Schreiben vom 29. Dezember 2025, III C 3 - S 7344/00040/008/034: Vordruckmuster USt 2 A und Anleitung USt 2 E 2026, mit den Abschnitten A bis K, den Zeilen 124 bis 126 und der Abgabefrist.
 - ERiC-Dokumentation 44.3.6.0: Jahresdokumentation E50 2026 (Versionslabel 9.0), Blätter „USt2A - Felder“, „USt2A - Kontexte“ und „USt2A - Regeln“; Entwicklerhandbuch Kap. 5.1.4.3 (Freizeichnungsdokument).
 - ELSTER-Hilfe „Benutzeranleitung zum Hochladen von Formulardaten“, Abschnitt „Allgemeines“ (<https://www.elster.de/eportal/helpGlobal?themaGlobal=ustva_upload>).

@@ -9,7 +9,6 @@ from datetime import date
 from unittest import TestCase
 
 from steuerbote.deadlines.annual import (
-	AWAITING_DOCTYPES,
 	DOCTYPES,
 	FIRST_YEAR,
 	KINDS,
@@ -445,10 +444,6 @@ class RegistryTest(TestCase):
 	def test_the_e_bilanz_names_its_eroeffnungsbilanz_by_the_bilanzart(self):
 		self.assertEqual((OPENING_BALANCE_FIELD, OPENING_BALANCE), ("statement_type", "Eröffnungsbilanz"))
 		self.assertEqual(AnnualDocType((KST,)).opening_balance_field, None)
-
-	def test_awaits_only_doctypes_of_the_registry(self):
-		self.assertTrue(AWAITING_DOCTYPES)
-		self.assertLessEqual(set(AWAITING_DOCTYPES), set(DOCTYPES))
 
 	def test_the_upload_to_the_unternehmensregister_is_a_way_of_filing(self):
 		self.assertIn(UPLOAD, FILED_VIA)

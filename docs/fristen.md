@@ -110,7 +110,7 @@ Welcher Beleg welche Art abgibt, hält ein Verzeichnis je DocType fest (`DOCTYPE
 | `Electronic Balance Sheet` | E-Bilanz | ebenso; eine mit der Bilanzart (`statement_type`) „Eröffnungsbilanz“ gibt die Eröffnungsbilanz ab |
 | `Annual Accounts` | Feststellung Jahresabschluss, Offenlegung Jahresabschluss | eingereicht stellt er fest; „Übermittelt“ oder „Eingestellt“ legt er offen, nach dem Upload auch, wenn er für eine Änderung storniert und ersetzt wird, denn „Für die Wahrung der Fristen [...] ist der Zeitpunkt der Übermittlung der Unterlagen maßgebend“ (§ 325 Abs. 4 Satz 2 HGB); ein stornierter stellt nichts mehr fest |
 
-**Bis die Module kommen.** Die DocTypes bringen die Module der Jahresmeldungen mit: Umsatzsteuer-, Körperschaftsteuer- und Gewerbesteuererklärung hat die App, E-Bilanz und Jahresabschluss sind als Belege in Arbeit. Solange eine Site einen von ihnen nicht hat (`AWAITING_DOCTYPES`), liest Steuerbote ihn nicht und lässt seine Fristen aus der Übersicht, denn kein Beleg könnte sie abgeben; sie erscheinen, sobald die Site den DocType hat. Ein Modul, dessen Belege ihre Fristen anders als über diese Felder abgeben, ergänzt seinen Eintrag im Verzeichnis. Sein Fälligkeitsdatum gibt einem Beleg `annual_deadline(company, kind, year)` in `steuerbote/steuerbote/deadlines.py`, für die Eröffnungsbilanz mit `opening_balance=True`: derselbe Tag wie im Bericht.
+**Neue Module.** Die App bringt den DocType jedes dieser Belege mit, deshalb liest Steuerbote sie auf jeder Site. Ein Modul, dessen Belege ihre Fristen anders als über diese Felder abgeben, ergänzt seinen Eintrag im Verzeichnis. Sein Fälligkeitsdatum gibt einem Beleg `annual_deadline(company, kind, year)` in `steuerbote/steuerbote/deadlines.py`, für die Eröffnungsbilanz mit `opening_balance=True`: derselbe Tag wie im Bericht.
 
 ## Abgegeben, offen oder fehlt
 
@@ -142,7 +142,7 @@ Der Bericht und die Erinnerung nennen dieselben Fristen, der Bericht bis zu sein
 - jede Frist, die von heute an bis zum letzten Tag der Vorschau oder des Vorlaufs fällig ist, mit jedem Status;
 - jede Frist, die überschritten und nicht abgegeben ist, bis sie abgegeben ist: mit Beleg immer, ohne Beleg, wenn sie am Tag oder nach dem Tag fällig war, an dem die Einstellungen angelegt wurden, die sie verlangen, die Einstellungen Umsatzsteuer-Voranmeldung oder die Einstellungen Jahresmeldungen. Ob eine Frist davor außerhalb von Steuerbote eingehalten wurde, kann Steuerbote nicht wissen. Eine abgegebene Frist, die vorbei ist, erscheint nicht mehr.
 
-Eine Jahresmeldung, deren DocType die Site noch nicht hat, erscheint nicht, siehe [Bis die Module kommen](#belege-der-jahresmeldungen). Fristen am selben Tag stehen in der Reihenfolge Voranmeldung, Zusammenfassende Meldung, Sondervorauszahlung, Umsatzsteuererklärung, Körperschaftsteuererklärung, Gewerbesteuererklärung, E-Bilanz, Feststellung Jahresabschluss, Offenlegung Jahresabschluss.
+Fristen am selben Tag stehen in der Reihenfolge Voranmeldung, Zusammenfassende Meldung, Sondervorauszahlung, Umsatzsteuererklärung, Körperschaftsteuererklärung, Gewerbesteuererklärung, E-Bilanz, Feststellung Jahresabschluss, Offenlegung Jahresabschluss.
 
 ## Der Bericht „Offene Fristen“
 

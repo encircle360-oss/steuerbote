@@ -1,6 +1,6 @@
 """The records the deadlines come with fit together, read from their files without a bench: the report Offene
-Fristen, the Deadline Reminder, the fields of the VAT Return Settings, the daily job in hooks.py and the DocTypes of the
-annual filings, which come with their modules."""
+Fristen, the Deadline Reminder, the fields of the VAT Return Settings, the daily job in hooks.py and the DocTypes that
+file the deadlines, which the app brings."""
 
 import ast
 import csv
@@ -141,12 +141,11 @@ class ReminderFilesTest(TestCase):
 		(document,) = [node for node in controller if isinstance(node, ast.ClassDef)]
 		self.assertIn("autoname", {node.name for node in document.body if isinstance(node, ast.FunctionDef)})
 
-	def test_each_kind_is_filed_with_a_doctype_of_the_module_or_awaits_it(self):
+	def test_each_kind_is_filed_with_a_doctype_of_the_module(self):
+		"""The app brings the DocType of every kind of deadline, so every site has it."""
 		names = {read_json(path)["name"] for path in (MODULE / "doctype").glob("*/*.json")}
-		self.assertLessEqual(set(DOCUMENT_TYPES.values()) - names, set(annual.AWAITING_DOCTYPES))
-		self.assertLessEqual(
-			{doctype for kind, doctype in DOCUMENT_TYPES.items() if kind not in annual.KINDS}, names
-		)
+		self.assertEqual(sorted(set(DOCUMENT_TYPES.values()) - names), [])
+		self.assertEqual(sorted(set(annual.DOCTYPES) - names), [])
 
 
 class SettingsFilesTest(TestCase):

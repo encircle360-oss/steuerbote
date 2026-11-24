@@ -13,7 +13,7 @@ class BalanceSheetMappingRule(Document):
 		account: DF.Link
 		account_number: DF.Data | None
 		concept: DF.Data
-		concept_label: DF.Data | None
+		concept_label: DF.SmallText | None
 		opposite_concept: DF.Data | None
 		parent: DF.Data
 		parentfield: DF.Data

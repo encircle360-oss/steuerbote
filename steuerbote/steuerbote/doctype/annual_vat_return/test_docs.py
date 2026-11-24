@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from unittest import TestCase
 
-from steuerbote.steuerbote.doctype.annual_vat_return import bridge
+from steuerbote.steuerbote.doctype.annual_vat_return import bridge, revenue
 from steuerbote.ustjahr import years
 
 APP = Path(__file__).resolve().parents[3]
@@ -54,7 +54,7 @@ class PageTest(TestCase):
 		codes = codes_of(DIRECTORY / "bridge.py")
 		for module in ("soll.py", "reconciliation.py"):
 			codes |= codes_of(CORE / module)
-		codes |= {"NACHSTEUER-ZEILE", "SB-NEU-BERECHNEN", *OWN_CHECKS}
+		codes |= {"NACHSTEUER-ZEILE", "SB-NEU-BERECHNEN", revenue.CODE, *OWN_CHECKS}
 		self.assertIn("SB-VERPROBUNG", codes)
 		self.assertIn("ZEITRAUM-FEHLT", codes)
 		self.assertEqual(sorted(codes - self.names), [])
