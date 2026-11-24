@@ -212,6 +212,9 @@ class TaxonomyPageTest(TestCase):
 			with self.subTest(profile=profile.name):
 				self.assertIn(profile.name.upper(), self.names)
 
-	def test_says_that_6_10_comes_later(self):
-		self.assertNotIn("6.10", TAXONOMIES)
+	def test_says_that_6_10_joins_6_9(self):
+		"""The version of the fiscal years from 2027, which the field „HGB-Taxonomie“ offers beside 6.9 and „Auf neue
+		Taxonomie heben“ brings to the Bilanzzuordnung."""
+		self.assertIn("6.10", TAXONOMIES)
 		self.assertIn("Die Version 6.10", self.text)
+		self.assertIn("„Auf neue Taxonomie heben“", self.text)
