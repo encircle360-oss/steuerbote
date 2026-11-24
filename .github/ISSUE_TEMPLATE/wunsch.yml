@@ -19,9 +19,16 @@ body:
       label: Bereich
       options:
         - Umsatzsteuer-Voranmeldung
-        - Dauerfristverlängerung / Sondervorauszahlung
+        - Dauerfristverlängerung und Sondervorauszahlung
         - Zusammenfassende Meldung
-        - Jahresabschluss (E-Bilanz, Steuererklärungen)
-        - Kontenrahmen / Zuordnung
-        - ERiC / Übermittlung
+        - USt-IdNr.-Prüfung
+        - Umsatzsteuererklärung
+        - Körperschaft- und Gewerbesteuererklärung
+        - E-Bilanz
+        - Jahresabschluss und Offenlegung
+        - Kontenrahmen, Kontenzuordnungen und Bilanzzuordnung
+        - ERiC und Übermittlung
+        - Fristen
+        - Einrichtung
+        - Dokumentation
         - Sonstiges

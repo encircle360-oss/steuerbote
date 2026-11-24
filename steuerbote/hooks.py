@@ -3,7 +3,7 @@ from pathlib import Path
 app_name = "steuerbote"
 app_title = "Steuerbote"
 app_publisher = "encircle360 GmbH"
-app_description = "ELSTER tax filings for ERPNext: Umsatzsteuer-Voranmeldung first, year-end filings later"
+app_description = "ELSTER tax filings for ERPNext: Umsatzsteuer-Voranmeldung, Dauerfristverlängerung, Zusammenfassende Meldung, Umsatzsteuer-, Körperschaftsteuer- and Gewerbesteuererklärung, E-Bilanz and Jahresabschluss with Offenlegung for the Unternehmensregister"
 app_email = "oss@encircle360.com"
 app_license = "AGPL-3.0-or-later"
 app_home = "/desk/steuern"
