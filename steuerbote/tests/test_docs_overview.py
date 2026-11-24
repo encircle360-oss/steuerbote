@@ -282,3 +282,44 @@ class SecurityTest(TestCase):
 		self.assertIn(f"]({REPORT_A_VULNERABILITY})", text)
 		self.assertIn("oss@encircle360.com", text)
 		self.assertNotIn("sobald das Repository öffentlich ist", text)
+
+
+CHECKLIST = DOCS / "pruefliste-steuerberatung.md"
+FINDING_CODE = re.compile(r"`([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)`")
+
+
+def code_of_the_app() -> str:
+	"""The Python code of the app without its tests, where each finding code stands as a quoted literal."""
+	return "\n".join(
+		read(path)
+		for path in sorted(APP.rglob("*.py"))
+		if "tests" not in path.parts and not path.name.startswith("test_")
+	)
+
+
+class ChecklistTest(TestCase):
+	"""The checklist for the Steuerberatung gathers the open points of the other pages in one place: what Steuerbote
+	does until the Steuerberatung answers names finding codes the app gives, and each point names the page it comes
+	from."""
+
+	def setUp(self):
+		self.text = read(CHECKLIST)
+
+	def test_every_finding_code_it_names_is_one_the_app_gives(self):
+		codes = sorted(set(FINDING_CODE.findall(self.text)))
+		self.assertTrue(codes)
+		code = code_of_the_app()
+		for name in codes:
+			with self.subTest(code=name):
+				self.assertTrue(f'"{name}"' in code or f"'{name}'" in code)
+
+	def test_every_page_it_links_exists(self):
+		pages = {
+			target.partition("#")[0]
+			for target in LINK.findall(CODE_BLOCK.sub("", self.text))
+			if not target.startswith(EXTERNAL)
+		} - {""}
+		self.assertTrue(pages)
+		for page in sorted(pages):
+			with self.subTest(page=page):
+				self.assertTrue((CHECKLIST.parent / page).is_file())
