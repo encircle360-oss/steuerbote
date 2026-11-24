@@ -92,6 +92,7 @@ testpaths = [
     "steuerbote/steuerbote/report/ustva_kennzahlen/test_attribution.py",
     "steuerbote/steuerbote/report/ustva_kennzahlen/test_comparison.py",
     "steuerbote/tests/test_annual_filing_files.py",
+    "steuerbote/tests/test_annual_grids.py",
     "steuerbote/tests/test_annual_interplay_docs.py",
     "steuerbote/tests/test_balance_mapping_sync.py",
     "steuerbote/tests/test_income_tax_mapping_sync.py",
