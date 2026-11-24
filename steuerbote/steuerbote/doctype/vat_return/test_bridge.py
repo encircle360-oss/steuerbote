@@ -368,6 +368,7 @@ class CheckRowsTest(TestCase):
 				"difference": d("0.00"),
 				"deviations": 0,
 				"passed": 1,
+				"derived_base": d("0"),
 			},
 		)
 		self.assertEqual(
@@ -377,6 +378,18 @@ class CheckRowsTest(TestCase):
 			),
 			(d("57.00"), d("0.00")),
 		)
+
+
+class DerivedBaseRowTest(TestCase):
+	def test_a_check_row_carries_the_base_derived_from_vouchers_without_base_account(self):
+		lines = [
+			line("4980", debit="1000", voucher="Journal Entry:JE-1"),
+			line("1577", debit="190", voucher="Journal Entry:JE-1"),
+			line("1787", credit="190", voucher="Journal Entry:JE-1"),
+		]
+		rows = {row["label"]: row for row in bridge.check_rows(calculate(lines, SKR03))}
+		self.assertEqual(rows["Umsatzsteuer nach § 13b UStG 19 %"]["derived_base"], d("1000.00"))
+		self.assertEqual(rows["Umsatzsteuer nach § 13b UStG 19 %"]["passed"], 1)
 
 
 class DeviationRowsTest(TestCase):

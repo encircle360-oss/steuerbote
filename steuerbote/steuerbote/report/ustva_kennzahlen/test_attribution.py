@@ -189,6 +189,51 @@ class AgreementTest(TestCase):
 	def test_a_bad_debt_with_its_also_kennzahl(self):
 		self.assert_agrees(busy_month(BAD_DEBT_MAPPING), BAD_DEBT_MAPPING)
 
+	def test_bases_derived_from_vouchers_without_base_account(self):
+		self.assert_agrees(derived_purchases(), SKR03)
+
+
+def derived_purchases() -> list[LedgerLine]:
+	"""Purchases on expense accounts with the tax of § 13b UStG and of an acquisition, and one the lines do not
+	explain, so that its base comes from its tax."""
+	return [
+		line("4980", debit="1000", voucher="Journal Entry:JE-1"),
+		line("1577", debit="190", voucher="Journal Entry:JE-1"),
+		line("1787", credit="190", voucher="Journal Entry:JE-1"),
+		line("1600", credit="1000", voucher="Journal Entry:JE-1"),
+		line("4930", debit="300", voucher="Journal Entry:JE-2"),
+		line("1574", debit="57", voucher="Journal Entry:JE-2"),
+		line("1774", credit="57", voucher="Journal Entry:JE-2"),
+		line("4980", debit="100", voucher="Journal Entry:JE-3"),
+		line("4970", debit="0.02", voucher="Journal Entry:JE-3"),
+		line("1577", debit="19", voucher="Journal Entry:JE-3"),
+		line("1787", credit="19", voucher="Journal Entry:JE-3"),
+	]
+
+
+class DerivedBaseContributionsTest(TestCase):
+	"""A base derived from a voucher without base account is a contribution of that voucher like any other."""
+
+	def test_the_lines_of_the_voucher_give_the_base_and_its_tax(self):
+		found = contributions(derived_purchases(), SKR03)
+		self.assertEqual(
+			found["84"][0],
+			Contribution("84", "Journal Entry:JE-1", ("4980",), d("1000"), d("0"), d("1000.00")),
+		)
+		self.assertEqual(
+			found["85"][0],
+			Contribution("85", "Journal Entry:JE-1", ("4980",), d("1000"), d("0"), d("190.00")),
+		)
+		self.assertEqual(
+			found["89"], [Contribution("89", "Journal Entry:JE-2", ("4930",), d("300"), d("0"), d("300.00"))]
+		)
+
+	def test_a_base_from_the_tax_names_the_tax_account(self):
+		found = contributions(derived_purchases(), SKR03)
+		self.assertEqual(
+			found["84"][1], Contribution("84", "Journal Entry:JE-3", ("1787",), d("0"), d("19"), d("100.00"))
+		)
+
 
 POSTING_DATES = {f"Journal Entry:JE-{number}": date(2026, 3, number) for number in range(1, 6)}
 ACCOUNT_NAMES = {

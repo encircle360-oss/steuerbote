@@ -15,7 +15,7 @@ IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Account"]
 
 COMPANY = "Steuerbote Test Vorgaben GmbH"
 MAPPING = "VAT Return Mapping"
-VERSION = "SKR03 2026.1"
+VERSION = "SKR03 2026.2"
 # SKR03 accounts: a sale at 19 % with its tax, a service under § 13b UStG with its taxes, the Vorsteuer, a watched
 # account at each level and a bank, which the defaults leave out.
 ACCOUNTS = {
@@ -103,6 +103,22 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 		self.mapping.save()
 		self.assertEqual({row.level for row in self.mapping.watched}, {"hint"})
 		self.assertEqual(ids(self.mapping.compare_with_defaults()), [("account:1548", False)])
+
+	def test_the_kennzahl_of_the_base_without_base_account_is_proposed_to_a_mapping_of_revision_1(self):
+		old = dict(self.defaults())
+		old[CHECK_13B] = {name: value for name, value in old[CHECK_13B].items() if name != "derived_base"}
+		self.as_if_built_from(old)
+		comparison = self.mapping.compare_with_defaults()
+		self.assertEqual(ids(comparison), [("check:Umsatzsteuer nach § 13b UStG 19 %", True)])
+		(difference,) = comparison["differences"]
+		self.assertEqual(difference["fields"], "Kz of the Base Without Base Account")
+		self.assertTrue(difference["proposed"].endswith("; base without base account in Kz 84"))
+		self.mapping.update_from_defaults(chosen=["check:Umsatzsteuer nach § 13b UStG 19 %"])
+		stored = frappe.get_doc(MAPPING, COMPANY)
+		self.assertEqual(
+			[(row.label, row.derived_base or None) for row in stored.checks],
+			[("Umsatzsteuer 19 %", None), ("Umsatzsteuer nach § 13b UStG 19 %", "84")],
+		)
 
 	def test_a_change_of_the_defaults_is_proposed_and_a_change_of_the_user_is_not(self):
 		old = dict(self.defaults())

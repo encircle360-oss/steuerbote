@@ -660,6 +660,22 @@ class CheckTest(TestCase):
 		for check in SKR03.checks + SKR04.checks:
 			self.assertIs(check.side, Side.CREDIT, check.label)
 
+	def test_the_purchases_with_tax_of_the_recipient_derive_the_base_of_a_voucher_without_base_account(self):
+		"""§ 13b UStG goes to Kz 84, the catch-all of § 13b Abs. 2 Nr. 1 UStG for every service of a business abroad
+		that is not one of Kz 46; the acquisitions go to the Kennzahl of their rate. The acquisitions without
+		Vorsteuerabzug book 7 and 19 % on one tax account, so their rate is open and they derive nothing; the
+		turnover of a company always has a revenue account of its own."""
+		expected = {
+			"Umsatzsteuer aus innergemeinschaftlichem Erwerb 19 %": "89",
+			"Umsatzsteuer aus innergemeinschaftlichem Erwerb 7 %": "93",
+			"Umsatzsteuer aus innergemeinschaftlichem Erwerb von Neufahrzeugen": "94",
+			"Umsatzsteuer nach § 13b UStG 19 %": "84",
+			"Umsatzsteuer nach § 13b UStG 7 %": "84",
+		}
+		for mapping in (SKR03, SKR04):
+			derived = {check.label: check.derived_base for check in mapping.checks if check.derived_base}
+			self.assertEqual(derived, expected, mapping.chart)
+
 
 class MirrorTest(TestCase):
 	def test_both_charts_know_the_same_roles(self):
@@ -834,13 +850,15 @@ class DeliberatelyWithoutKennzahlTest(TestCase):
 DIGESTS = {
 	"SKR03 2026.1": "d965a9649c5aba217699d01ee5e3e05f088346a9a9f67d6e99606887e73a9bf4",
 	"SKR04 2026.1": "67ca14cab3a3ca95c488815e4fd960aeb607be54d1a7ee8f00413e007cc1bbf5",
+	"SKR03 2026.2": "52810e4a93a136b745730cbd3c95e209f451ebe7057f3a1b11942f0fddadf093",
+	"SKR04 2026.2": "21b19ba024c5101eac2087ef84dc72f03409163641b053b6b3e048ee6c3666f1",
 }
 
 
 class DefaultsVersionTest(TestCase):
 	def test_the_version_names_the_chart_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, REVISION), (2026, 1))
-		self.assertEqual([defaults_version(chart) for chart in DEFAULTS], ["SKR03 2026.1", "SKR04 2026.1"])
+		self.assertEqual((DATEV_EDITION, REVISION), (2026, 2))
+		self.assertEqual([defaults_version(chart) for chart in DEFAULTS], ["SKR03 2026.2", "SKR04 2026.2"])
 
 	def test_a_chart_without_defaults_has_no_version(self):
 		with self.assertRaisesRegex(KeyError, "no default mapping for chart 'Eigener Kontenrahmen'"):

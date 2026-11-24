@@ -122,12 +122,12 @@ class IntegrationTestVATReturnMapping(IntegrationTestCase):
 	def test_load_defaults_reduces_the_checks_to_the_accounts_that_exist(self):
 		self.assertEqual(
 			[
-				(row.label, row.base_accounts, row.tax_accounts, row.side)
+				(row.label, row.base_accounts, row.tax_accounts, row.side, row.derived_base or None)
 				for row in self.mapping_with_defaults().checks
 			],
 			[
-				("Umsatzsteuer 19 %", "8400", "1776", "credit"),
-				("Umsatzsteuer nach § 13b UStG 19 %", "3123", "1787", "credit"),
+				("Umsatzsteuer 19 %", "8400", "1776", "credit", None),
+				("Umsatzsteuer nach § 13b UStG 19 %", "3123", "1787", "credit", "84"),
 			],
 		)
 
@@ -158,12 +158,21 @@ class IntegrationTestVATReturnMapping(IntegrationTestCase):
 				),
 				(
 					TaxCheck("Umsatzsteuer 19 %", ("8400",), ("1776",)),
-					TaxCheck("Umsatzsteuer nach § 13b UStG 19 %", ("3123",), ("1787",)),
+					TaxCheck("Umsatzsteuer nach § 13b UStG 19 %", ("3123",), ("1787",), derived_base="84"),
 				),
 				(),
 				LATEST_YEAR,
 			),
 		)
+
+	def test_a_kennzahl_that_takes_no_derived_base_is_refused(self):
+		mapping = self.mapping_with_defaults()
+		mapping.checks[0].derived_base = "84"
+		with self.assertRaisesRegex(
+			frappe.ValidationError,
+			"check 'Umsatzsteuer 19 %': base account 8400 feeds Kennzahl 81, which is no purchase",
+		):
+			self.insert(mapping)
 
 	def test_the_account_number_is_fetched_from_the_account(self):
 		mapping = self.new_mapping("Eigener Kontenrahmen")
