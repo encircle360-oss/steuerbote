@@ -30,37 +30,79 @@ Steuermeldungen aus ERPNext an ELSTER: Umsatzsteuer-Voranmeldung, Dauerfristverl
 
 ## Einblick
 
-Die Bilder zeigen Steuerbote in einer Testumgebung mit ERPNext 16, den Arbeitsbereich Steuern mit Version 0.8.0, die übrigen mit Version 0.2.0. Firma, Anschrift, Steuernummern, USt-IdNrn., Belegnummern und Geschäftspartner sind Beispielwerte. Ein Klick auf ein Bild öffnet es in voller Größe.
+Die Bilder stammen aus den Browsertests der CI und zeigen Steuerbote 0.11.0 mit ERPNext 16 und den Testdaten dieser Tests: Unternehmen, Anschriften, USt-IdNrn., Geschäftspartner, Belegnummern und Beträge sind erfundene Beispielwerte. Ein Klick auf ein Bild öffnet es in voller Größe.
 
 <table>
   <tr>
     <td align="center" valign="top">
       <a href="docs/bilder/workspace-steuern.png"><img src="docs/bilder/workspace-steuern.png" width="280" alt="ERPNext mit „Steuern“ in der Leiste links, der Seitenleiste Steuerbote und dem Arbeitsbereich Steuern mit den Abschnitten Fristen, Umsatzsteuer-Voranmeldung, Zusammenfassende Meldung, Jahresmeldungen und Einrichtung"></a><br>
-      Arbeitsbereich Steuern
+      Der Arbeitsbereich „Steuern“ führt zu den Fristen, den Belegen der Umsatzsteuer und der Jahresmeldungen und zur Einrichtung.
     </td>
     <td align="center" valign="top">
-      <a href="docs/bilder/voranmeldung.png"><img src="docs/bilder/voranmeldung.png" width="280" alt="Umsatzsteuer-Voranmeldung mit Hinweisen zu Rechnungen und Vorperiode und dem Vorperiodenvergleich der Kennzahlen"></a><br>
-      Voranmeldung mit Hinweisen und Vorperiodenvergleich
+      <a href="docs/bilder/steuerbote-einrichten.png"><img src="docs/bilder/steuerbote-einrichten.png" width="280" alt="Seite Steuerbote einrichten nach dem ersten Lauf für ein Unternehmen mit SKR03-Konten: Einstellungen, Kontenzuordnung Umsatzsteuer, Kontenzuordnung Ertragsteuern und Bilanzzuordnung angelegt, der Voranmeldungszeitraum offen, jeder Schritt mit seinen Hinweisen und offenen Punkten"></a><br>
+      „Steuerbote einrichten“ legt für ein Unternehmen Einstellungen, Kontenzuordnungen und Bilanzzuordnung mit den Vorgaben seines Kontenrahmens an und sagt je Schritt, was offen bleibt.
+    </td>
+  </tr>
+  <tr>
+    <th colspan="2">Umsatzsteuer</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <a href="docs/bilder/voranmeldung.png"><img src="docs/bilder/voranmeldung.png" width="280" alt="Umsatzsteuer-Voranmeldung Oktober 2026 nach Berechnen: die Kennzahlen 81, 46, 47, 21, 67 und 83 mit Betrag laut Vordruck, Korrektur und gemeldetem Betrag, darunter die Summen mit Umsatzsteuer, Vorsteuer und Kz 83, bereit zur Abgabe"></a><br>
+      Die Umsatzsteuer-Voranmeldung nach „Berechnen“: die Kennzahlen aus dem Hauptbuch und die Summen bis Kz 83, bereit zur Abgabe.
+    </td>
+    <td align="center" valign="top">
+      <a href="docs/bilder/bericht-kennzahlen.png"><img src="docs/bilder/bericht-kennzahlen.png" width="280" alt="Bericht UStVA Kennzahlen für Oktober 2026, ganz aufgeklappt: unter jeder Kennzahl die Rechnung mit Buchungsdatum, Belegtyp, Belegnummer und Link zum Druck"></a><br>
+      Der Bericht „UStVA Kennzahlen“ zeigt unter jeder Kennzahl die Belege, aus denen sie entsteht, mit Link zum Druck.
     </td>
   </tr>
   <tr>
     <td align="center" valign="top">
-      <a href="docs/bilder/bericht-kennzahlen.png"><img src="docs/bilder/bericht-kennzahlen.png" width="280" alt="Bericht UStVA Kennzahlen mit den Belegen hinter jeder Kennzahl, eine stornierte Eingangsrechnung darunter"></a><br>
-      Bericht mit den Belegen je Kennzahl
+      <a href="docs/bilder/zusammenfassende-meldung.png"><img src="docs/bilder/zusammenfassende-meldung.png" width="280" alt="Zusammenfassende Meldung Oktober 2026 mit einer Meldezeile für eine österreichische USt-IdNr., Art S, 2.000 €, laut Bestätigung gültig, darunter die Summen, ein Hinweis unter den Befunden und der Abgleich mit der Voranmeldung"></a><br>
+      Die Zusammenfassende Meldung mit einer Meldezeile je USt-IdNr. und Art, den Summen, den Befunden und dem Abgleich mit der Voranmeldung.
     </td>
     <td align="center" valign="top">
-      <a href="docs/bilder/zusammenfassende-meldung.png"><img src="docs/bilder/zusammenfassende-meldung.png" width="280" alt="Zusammenfassende Meldung mit Meldezeile, Summen und Befunden; die USt-IdNr. der Zeile ist laut Bestätigungsabfrage ungültig und hält die Meldung an"></a><br>
-      Zusammenfassende Meldung mit Befunden
+      <a href="docs/bilder/ust-idnr-bestaetigung.png"><img src="docs/bilder/ust-idnr-bestaetigung.png" width="280" alt="USt-IdNr.-Bestätigung des BZSt für eine österreichische USt-IdNr.: angefragte und anfragende USt-IdNr., Dienst, Ergebnis gültig, Nachricht und Zeitpunkt der Abfrage, die Antwort als Datei angehängt"></a><br>
+      Jede Abfrage einer USt-IdNr. beim BZSt bleibt als Nachweis gespeichert, mit Ergebnis, Nachricht, Zeitpunkt und der Antwort als Datei.
     </td>
   </tr>
   <tr>
     <td align="center" valign="top">
-      <a href="docs/bilder/ust-idnr-bestaetigung.png"><img src="docs/bilder/ust-idnr-bestaetigung.png" width="280" alt="USt-IdNr.-Bestätigung mit angefragter und anfragender USt-IdNr., Dienst, Ergebnis und Zeitpunkt der Abfrage"></a><br>
-      USt-IdNr.-Bestätigung als Nachweis
+      <a href="docs/bilder/dauerfristverlaengerung.png"><img src="docs/bilder/dauerfristverlaengerung.png" width="280" alt="Dauerfristverlängerung 2026 als Entwurf mit den Hinweisen zur Simulation und zum Eintragen in Mein ELSTER: Unternehmen, Jahr, Art des Vordrucks Anmeldung der Sondervorauszahlung, Abgaberhythmus monatlich, Fälligkeit und Anrechnung in Kz 39 der Voranmeldung Dezember 2026"></a><br>
+      Die Dauerfristverlängerung hält den Vordruck USt 1 H eines Jahres: Antrag oder Anmeldung der Sondervorauszahlung, Fälligkeit und die Voranmeldung, die sie anrechnet.
     </td>
     <td align="center" valign="top">
-      <a href="docs/bilder/dauerfristverlaengerung.png"><img src="docs/bilder/dauerfristverlaengerung.png" width="280" alt="Dauerfristverlängerung für 2027; Berechnen meldet, dass keine Voranmeldung des Vorjahres abgegeben ist und die Grundlage von Hand einzutragen ist"></a><br>
-      Dauerfristverlängerung
+      <a href="docs/bilder/offene-fristen.png"><img src="docs/bilder/offene-fristen.png" width="280" alt="Bericht Offene Fristen eines Unternehmens: Sondervorauszahlung, Zusammenfassende Meldung und Voranmeldungen mit Zeitraum, Fälligkeit, Tagen bis dahin, Status und Beleg"></a><br>
+      Der Bericht „Offene Fristen“ nennt jede Frist mit Fälligkeit, den Tagen bis dahin, ihrem Status und dem Beleg.
+    </td>
+  </tr>
+  <tr>
+    <th colspan="2">Jahresmeldungen</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <a href="docs/bilder/umsatzsteuererklaerung.png"><img src="docs/bilder/umsatzsteuererklaerung.png" width="280" alt="Umsatzsteuererklärung 2026 nach Berechnen: die Zeilen des Vordrucks USt 2 A mit Feldkennung, Kennzahl und Betrag, darunter Vorauszahlungssoll und Abschlusszahlung mit Kz 83 und Kz 39 der Voranmeldungen und der Sondervorauszahlung laut Einstellungen"></a><br>
+      Die Umsatzsteuererklärung füllt den Vordruck USt 2 A aus dem Hauptbuch des Jahres und stellt das Vorauszahlungssoll aus den Voranmeldungen gegenüber.
+    </td>
+    <td align="center" valign="top">
+      <a href="docs/bilder/koerperschaftsteuererklaerung.png"><img src="docs/bilder/koerperschaftsteuererklaerung.png" width="280" alt="Körperschaftsteuererklärung 2026, Berechnung: vom Jahresüberschuss über Einkünfte und Gesamtbetrag der Einkünfte zum zu versteuernden Einkommen, Körperschaftsteuer und Solidaritätszuschlag, Vorauszahlungen und Abschlusszahlung"></a><br>
+      Die Körperschaftsteuererklärung rechnet vom Jahresüberschuss bis zum zu versteuernden Einkommen, zur Körperschaftsteuer mit Solidaritätszuschlag und zur Abschlusszahlung.
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <a href="docs/bilder/gewerbesteuererklaerung.png"><img src="docs/bilder/gewerbesteuererklaerung.png" width="280" alt="Gewerbesteuererklärung 2026, Berechnung: Gewinn aus Gewerbebetrieb, Hinzurechnung, Gewerbeertrag, Steuermessbetrag, Hebesatz 400 %, Gewerbesteuer, Vorauszahlungen und Abschlusszahlung, darunter die Zeilen des Vordrucks GewSt 1 A und die Gemeinde"></a><br>
+      Die Gewerbesteuererklärung baut auf der Körperschaftsteuererklärung desselben Jahres auf: Gewerbeertrag, Messbetrag, Hebesatz der Gemeinde und Abschlusszahlung.
+    </td>
+    <td align="center" valign="top">
+      <a href="docs/bilder/ebilanz.png"><img src="docs/bilder/ebilanz.png" width="280" alt="E-Bilanz 2026 mit ihren Positionen der HGB-Taxonomie, etwa Bilanzsumme, Anlagevermögen, Umlaufvermögen und Eigenkapital, je mit berechnetem, korrigiertem und gemeldetem Betrag"></a><br>
+      Die E-Bilanz meldet die Positionen der HGB-Taxonomie, berechnet aus Hauptbuch, Anlagen und Bilanzzuordnung.
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" colspan="2">
+      <a href="docs/bilder/jahresabschluss.png"><img src="docs/bilder/jahresabschluss.png" width="280" alt="Jahresabschluss 2026 einer Kleinstkapitalgesellschaft: die Posten der Bilanz, Aktiva und Passiva, mit Betrag und Vorjahr"></a><br>
+      Der Jahresabschluss einer GmbH oder UG entsteht über die Bilanzzuordnung aus dem Hauptbuch, hier die Bilanz einer Kleinstkapitalgesellschaft mit dem Vorjahr.
     </td>
   </tr>
 </table>
