@@ -1,9 +1,10 @@
 """When a mapping takes over the defaults of today: Steuerbote einrichten loads them into a mapping that waits for them,
-as into a new one, and leaves every other mapping as it is."""
+as into a new one, and leaves every other mapping as it is; Vorgaben aktualisieren notes them once it takes over a
+difference or the user declined them all."""
 
 from unittest import TestCase
 
-from steuerbote.mappings.taking_over import waits_for_defaults
+from steuerbote.mappings.taking_over import notes_defaults, waits_for_defaults
 
 TODAY = "SKR04 Taxonomie 6.9 2026.1"
 REVISION_0 = "SKR04 Taxonomie 6.9 2026.0"
@@ -35,3 +36,22 @@ class WaitsForDefaultsTest(TestCase):
 
 	def test_a_chart_without_defaults_waits_for_none(self):
 		self.assertFalse(waits_for_defaults(([], []), None, None))
+
+
+class NotesDefaultsTest(TestCase):
+	def test_taking_over_a_difference_notes_the_defaults_of_today(self):
+		for acknowledged in (False, True):
+			with self.subTest(acknowledged=acknowledged):
+				self.assertTrue(notes_defaults(1, acknowledged))
+		self.assertTrue(notes_defaults(6, False))
+
+	def test_taking_over_none_notes_them_only_when_the_user_declined_them(self):
+		"""Noted, the defaults of today are the base, and every difference left counts as the user's own: without the
+		word of the user, the differences stay proposed."""
+		self.assertTrue(notes_defaults(0, True))
+		self.assertFalse(notes_defaults(0, False))
+
+	def test_the_answer_is_a_bool_whatever_the_flag_of_the_request(self):
+		"""A request gives the flag as 1 or 0, which the type check of Frappe leaves a number."""
+		self.assertIs(notes_defaults(0, 1), True)
+		self.assertIs(notes_defaults(0, 0), False)

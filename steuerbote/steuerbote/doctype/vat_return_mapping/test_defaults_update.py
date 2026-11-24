@@ -1,5 +1,6 @@
 """Vorgaben aktualisieren on a site: the version and the rows Vorgaben laden notes, the differences to the defaults of
-today with their origin, and taking over some of them while the rest stays."""
+today with their origin, taking over some of them while the rest stays, and a call without a choice, which notes the
+defaults of today only when the user declined the differences."""
 
 import frappe
 from frappe.tests import IntegrationTestCase
@@ -158,8 +159,41 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 	def test_update_with_nothing_chosen_only_notes_the_defaults_of_today(self):
 		self.as_if_built_from(self.defaults())
 		self.assertEqual(self.mapping.compare_with_defaults()["differences"], [])
-		self.assertEqual(self.mapping.update_from_defaults([]), 0)
+		self.assertEqual(self.mapping.update_from_defaults([], acknowledge=True), 0)
 		self.assertEqual(frappe.db.get_value(MAPPING, COMPANY, "defaults_version"), VERSION)
+
+	def test_update_without_a_choice_and_without_the_word_of_the_user_changes_nothing(self):
+		"""As a client of the API calls it, without the dialog: neither the rows nor the defaults taken over change, so
+		the change of the defaults stays proposed."""
+		old = dict(self.defaults())
+		old[(ACCOUNT, "8400")] = {**old[(ACCOUNT, "8400")], "kennzahl": "86"}
+		self.as_if_built_from(old)
+		before = frappe.get_doc(MAPPING, COMPANY)
+		for chosen in (None, [], ["account:1548-not-a-difference"]):
+			with self.subTest(chosen=chosen):
+				self.assertEqual(frappe.get_doc(MAPPING, COMPANY).update_from_defaults(chosen), 0)
+				stored = frappe.get_doc(MAPPING, COMPANY)
+				self.assertEqual(
+					(stored.defaults_version, stored.defaults_rows, stored.modified),
+					(before.defaults_version, before.defaults_rows, before.modified),
+				)
+				self.assertEqual(stored.current_items(), old)
+		self.assertEqual(
+			ids(frappe.get_doc(MAPPING, COMPANY).compare_with_defaults()), [("account:8400", True)]
+		)
+
+	def test_update_with_nothing_chosen_and_the_word_of_the_user_declines_the_differences(self):
+		"""The dialog says so when the user takes over none: the defaults of today become the base, and the change of
+		the defaults left counts as the user's own from then on."""
+		old = dict(self.defaults())
+		old[(ACCOUNT, "8400")] = {**old[(ACCOUNT, "8400")], "kennzahl": "86"}
+		self.as_if_built_from(old)
+		self.assertEqual(self.mapping.update_from_defaults([], acknowledge=True), 0)
+		stored = frappe.get_doc(MAPPING, COMPANY)
+		self.assertEqual(stored.defaults_version, VERSION)
+		self.assertEqual(load_items(stored.defaults_rows), self.defaults())
+		self.assertEqual(stored.current_items(), old)
+		self.assertEqual(ids(stored.compare_with_defaults()), [("account:8400", False)])
 
 	def test_a_choice_that_breaks_the_mapping_is_refused_and_nothing_changes(self):
 		old = {

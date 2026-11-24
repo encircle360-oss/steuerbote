@@ -19,6 +19,12 @@ FOLDER = APP / "steuerbote" / "doctype" / "vat_return_mapping"
 DOCTYPES = APP / "steuerbote" / "doctype"
 TRANSLATIONS = APP / "translations" / "de.csv"
 DIFFERENCES_SCRIPT = APP / "public" / "js" / "mapping_differences.js"
+# The forms of the three mappings, which include the dialog of the differences.
+FORMS = (
+	FOLDER / "vat_return_mapping.js",
+	DOCTYPES / "income_tax_mapping" / "income_tax_mapping.js",
+	DOCTYPES / "balance_sheet_mapping" / "balance_sheet_mapping.js",
+)
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 
 
@@ -129,6 +135,30 @@ class DifferencesFilesTest(TestCase):
 				)
 		self.assertIn("${escape(intro)}", self.dialog)
 		self.assertIn("${escape(proposed_label)}", self.dialog)
+
+	def test_the_button_of_vorgaben_aktualisieren_says_what_a_click_does(self):
+		"""With differences checked it takes over that many; with none it notes the defaults of today as seen, after
+		which every difference left counts as the user's own. Each form of a mapping words its button so and tells the
+		server that the user decided, whatever was checked."""
+		label = re.search(
+			r"\nfunction take_over_label\(version\) \{\n(?P<body>.*?)\n\}\n", self.dialog, re.DOTALL
+		)
+		self.assertIsNotNone(label)
+		texts = {
+			"Take Over 1 Difference": "1 Unterschied übernehmen",
+			"Take Over {0} Differences": "{0} Unterschiede übernehmen",
+			"Take Over None and Note the Defaults {0} as Seen": (
+				"Keinen übernehmen und die Vorgaben {0} als gesehen vermerken"
+			),
+		}
+		self.assertEqual(set(TRANSLATED_LITERAL.findall(label["body"])), set(texts))
+		german = translations()
+		self.assertEqual({text: german.get(text) for text in texts}, texts)
+		for form in FORMS:
+			script = form.read_text(encoding="utf-8")
+			with self.subTest(form=form.name):
+				self.assertIn("apply_label: take_over_label(comparison.version),", script)
+				self.assertIn('frm.call("update_from_defaults", { chosen, acknowledge: 1 })', script)
 
 
 class MappingFileFilesTest(TestCase):

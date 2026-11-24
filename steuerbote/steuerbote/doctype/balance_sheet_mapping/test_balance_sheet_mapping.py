@@ -399,6 +399,36 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 		self.assertEqual(mapping.update_from_defaults(chosen), 6)
 		self.assertEqual(len(frappe.get_doc(MAPPING, COMPANY).rules), 4)
 
+	def test_vorgaben_aktualisieren_without_a_choice_leaves_a_mapping_of_revision_0_as_it_is(self):
+		"""Without chosen differences and without the word of the user, as a client of the API calls it, nothing is
+		taken over and nothing noted, so the first defaults stay proposed; with acknowledge the user declined them, the
+		defaults of today are noted, and every row of them counts as removed by the user."""
+		mapping = self.new_mapping()
+		with self.at_revision_0():
+			mapping.load_defaults()
+			mapping.insert()
+		self.with_defaults()
+		before = frappe.get_doc(MAPPING, COMPANY)
+		self.assertEqual(before.update_from_defaults(), 0)
+		stored = frappe.get_doc(MAPPING, COMPANY)
+		self.assertEqual(
+			(stored.defaults_version, stored.defaults_rows, stored.modified),
+			(before.defaults_version, before.defaults_rows, before.modified),
+		)
+		self.assertEqual(
+			{difference["proposes"] for difference in stored.compare_with_defaults()["differences"]}, {True}
+		)
+		self.assertEqual(stored.update_from_defaults(acknowledge=True), 0)
+		noted = frappe.get_doc(MAPPING, COMPANY)
+		self.assertEqual((noted.defaults_version, noted.rules), ("SKR04 Taxonomie 6.9 2026.1", []))
+		self.assertEqual(
+			[
+				(difference["id"], difference["proposes"])
+				for difference in noted.compare_with_defaults()["differences"]
+			],
+			[(f"account:{number}", False) for number in ("1800", "1810", "2900", "4400", "1460", "9000")],
+		)
+
 	def test_a_chart_of_its_own_has_no_defaults(self):
 		mapping = self.new_mapping(chart="Eigener Kontenrahmen")
 		with self.assertRaisesRegex(frappe.ValidationError, "There are no defaults for Eigener Kontenrahmen"):
