@@ -6,6 +6,7 @@ roadmap calls a package done once the app brings what it promised; and SECURITY.
 vulnerability privately."""
 
 import ast
+import json
 import re
 from pathlib import Path
 from unittest import TestCase
@@ -36,6 +37,12 @@ ANNUAL_DOCUMENTS = {
 	"Annual Accounts": "jahresabschluss.md",
 }
 DONE, PROVISIONAL = "erledigt", "erledigt, vorläufig"
+INTERPLAY = (
+	DOCTYPES / "electronic_balance_sheet" / "comparison.py",
+	DOCTYPES / "annual_vat_return" / "revenue.py",
+)
+"""The comparisons of the interplay of the annual documents: the E-Bilanz with its Jahresabschluss and the
+Umsatzsteuererklärung with the Umsatzerlöse."""
 REPORT_A_VULNERABILITY = "https://github.com/encircle360-oss/steuerbote/security/advisories/new"
 
 
@@ -68,6 +75,15 @@ def anchors(text: str) -> set[str]:
 
 def brought(doctype: str) -> bool:
 	return (DOCTYPES / doctype.lower().replace(" ", "_")).is_dir()
+
+
+def links(doctype: str) -> dict[str, str]:
+	"""The link fields of a DocType the app brings, each with the DocType it links to."""
+	name = doctype.lower().replace(" ", "_")
+	definition = json.loads(read(DOCTYPES / name / f"{name}.json"))
+	return {
+		field["fieldname"]: field["options"] for field in definition["fields"] if field["fieldtype"] == "Link"
+	}
 
 
 def annual_documents() -> dict[str, str]:
@@ -184,6 +200,16 @@ class RoadmapTest(TestCase):
 
 	def test_the_year_2027_is_provisional_as_long_as_its_forms_are(self):
 		self.assertEqual(self.stand["Jahrgang 2027"], PROVISIONAL if YEARS[2027].provisional else DONE)
+
+	def test_the_integration_is_done_once_the_documents_name_and_compare_each_other(self):
+		"""The Körperschaftsteuererklärung names its E-Bilanz, the E-Bilanz its Jahresabschluss, and both comparisons
+		are there (docs/jahresmeldungen.md, „Zusammenspiel der Jahresmeldungen“)."""
+		brings = (
+			links("Corporate Income Tax Return").get("electronic_balance_sheet") == "Electronic Balance Sheet"
+			and links("Electronic Balance Sheet").get("annual_accounts") == "Annual Accounts"
+			and all(path.is_file() for path in INTERPLAY)
+		)
+		self.assertEqual(self.stand["Integration"] == DONE, brings)
 
 
 class SecurityTest(TestCase):
