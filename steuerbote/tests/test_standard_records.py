@@ -98,6 +98,8 @@ CLASS_SELECTOR = re.compile(r"\.(-?[A-Za-z_][\w-]*)")
 # Frappe's print stylesheet styles bare classes such as .label (inline, 75 %, bold), so the print format
 # names its classes with a prefix of its own.
 PRINT_CLASS_PREFIX = "sb-"
+# The one stylesheet of every print format of the app.
+SHARED_STYLE = "steuerbote/templates/includes/print/style.html"
 
 
 def read_json(path: Path) -> dict:
@@ -694,8 +696,10 @@ class PrintFormatFilesTest(TestCase):
 		)
 
 	def test_prints_on_a4_in_black_and_grey(self):
-		css = self.record["css"] + self.template
-		self.assertIn("size: A4 portrait", self.record["css"])
+		self.assertEqual(self.record["css"], "")
+		self.assertIn(f'{{% include "{SHARED_STYLE}" %}}', self.template)
+		css = (APP / SHARED_STYLE.removeprefix("steuerbote/")).read_text(encoding="utf-8") + self.template
+		self.assertIn("size: A4 portrait", css)
 		colours = HEX_COLOUR.findall(css)
 		self.assertTrue(colours)
 		for colour in colours:
@@ -707,12 +711,11 @@ class PrintFormatFilesTest(TestCase):
 
 	def test_keeps_to_classes_of_its_own(self):
 		used = {name for value in CLASS_ATTRIBUTE.findall(self.template) for name in value.split()}
-		styled = set(CLASS_SELECTOR.findall(self.record["css"]))
-		self.assertNotIn("label", used | styled)
-		self.assertEqual(
-			sorted(name for name in used | styled if not name.startswith(PRINT_CLASS_PREFIX)), []
-		)
-		self.assertEqual(sorted(used), sorted(styled))
+		style = (APP / SHARED_STYLE.removeprefix("steuerbote/")).read_text(encoding="utf-8")
+		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", style)))
+		self.assertNotIn("label", used)
+		self.assertEqual(sorted(name for name in used if not name.startswith(PRINT_CLASS_PREFIX)), [])
+		self.assertEqual(sorted(used - styled), [])
 
 	def test_the_header_pairs_each_label_with_its_value(self):
 		labels = re.findall(r'<tr><td class="sb-label">([^<]+)</td><td class="sb-value">', self.template)
@@ -773,8 +776,10 @@ class ZmPrintFormatFilesTest(TestCase):
 		self.assertIn("Recapitulative Statement", doctype_names())
 
 	def test_prints_on_a4_in_black_and_grey(self):
-		css = self.record["css"] + self.template
-		self.assertIn("size: A4 portrait", self.record["css"])
+		self.assertEqual(self.record["css"], "")
+		self.assertIn(f'{{% include "{SHARED_STYLE}" %}}', self.template)
+		css = (APP / SHARED_STYLE.removeprefix("steuerbote/")).read_text(encoding="utf-8") + self.template
+		self.assertIn("size: A4 portrait", css)
 		colours = HEX_COLOUR.findall(css)
 		self.assertTrue(colours)
 		for colour in colours:
@@ -786,12 +791,11 @@ class ZmPrintFormatFilesTest(TestCase):
 
 	def test_keeps_to_classes_of_its_own(self):
 		used = {name for value in CLASS_ATTRIBUTE.findall(self.template) for name in value.split()}
-		styled = set(CLASS_SELECTOR.findall(self.record["css"]))
-		self.assertNotIn("label", used | styled)
-		self.assertEqual(
-			sorted(name for name in used | styled if not name.startswith(PRINT_CLASS_PREFIX)), []
-		)
-		self.assertEqual(sorted(used), sorted(styled))
+		style = (APP / SHARED_STYLE.removeprefix("steuerbote/")).read_text(encoding="utf-8")
+		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", style)))
+		self.assertNotIn("label", used)
+		self.assertEqual(sorted(name for name in used if not name.startswith(PRINT_CLASS_PREFIX)), [])
+		self.assertEqual(sorted(used - styled), [])
 
 	def test_the_header_pairs_each_label_with_its_value(self):
 		labels = re.findall(r'<tr><td class="sb-label">([^<]+)</td><td class="sb-value">', self.template)

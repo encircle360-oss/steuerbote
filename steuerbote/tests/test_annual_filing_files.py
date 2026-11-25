@@ -179,7 +179,9 @@ class TransmissionScriptFilesTest(TestCase):
 
 
 INCLUDES = APP / "templates" / "includes" / "annual_filing"
-PARTS = ("style", "head", "corrections", "findings", "remarks", "footer")
+PARTS = ("head", "corrections", "findings", "remarks", "footer")
+# The one stylesheet of every print format of the app, which the annual documents share with the others.
+PRINT_STYLE = APP / "templates" / "includes" / "print" / "style.html"
 HEX_COLOUR = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
 CLASS_ATTRIBUTE = re.compile(r'\bclass="([^"]*)"')
 CLASS_SELECTOR = re.compile(r"\.(-?[A-Za-z_][\w-]*)")
@@ -197,7 +199,7 @@ class PrintIncludesFilesTest(TestCase):
 	classes of their own, and the footer for the Steuerberatung and Mein ELSTER."""
 
 	def setUp(self):
-		self.style = include("style")
+		self.style = PRINT_STYLE.read_text(encoding="utf-8")
 		self.parts = {part: include(part) for part in PARTS}
 
 	def test_prints_on_a4_in_black_and_grey(self):
@@ -220,9 +222,7 @@ class PrintIncludesFilesTest(TestCase):
 		}
 		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", self.style)))
 		self.assertNotIn("label", used | styled)
-		self.assertEqual(
-			sorted(name for name in used | styled if not name.startswith(PRINT_CLASS_PREFIX)), []
-		)
+		self.assertEqual(sorted(name for name in used if not name.startswith(PRINT_CLASS_PREFIX)), [])
 		self.assertEqual(sorted(used - styled), [])
 
 	def test_the_head_pairs_each_label_with_its_value(self):

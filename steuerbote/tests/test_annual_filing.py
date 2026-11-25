@@ -489,8 +489,9 @@ INCLUDES = "steuerbote/templates/includes/annual_filing"
 # A print format of a module in short: the shared parts around a line of its own in the head.
 PRINT_FORMAT = (
 	"{% set annual = doc.annual_print() %}"
-	f'{{% include "{INCLUDES}/style.html" %}}'
-	'<div class="sb-annual">'
+	'{% include "steuerbote/templates/includes/print/style.html" %}'
+	'{% set running_title = "Testbeleg" %}'
+	'<div class="sb-print">'
 	'{% set head_rows = [("Finanzamt", "München")] %}'
 	f'{{% include "{INCLUDES}/head.html" %}}'
 	f'{{% include "{INCLUDES}/corrections.html" %}}'

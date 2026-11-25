@@ -24,6 +24,8 @@ TRANSMITTABLE = DOCTYPES / "elster_transmission" / "transmission.py"
 SOURCES = (CONTROLLER, SCRIPT, APP / "dauerfrist_sources.py")
 TABLES = ("vat_return_extension", "vat_return_extension_base")
 PRINT_FORMAT = APP / "steuerbote" / "print_format" / "dauerfristverlängerung"
+# The one stylesheet of every print format of the app.
+SHARED_STYLE = "steuerbote/templates/includes/print/style.html"
 # German terms and values that read the same in every language, the status of a form among them.
 UNTRANSLATED = frozenset(
 	{
@@ -273,8 +275,10 @@ class PrintFormatFilesTest(TestCase):
 		self.assertEqual(PRINT_FORMAT.name, scrubbed)
 
 	def test_prints_on_a4_in_black_and_grey(self):
-		css = self.record["css"] + self.template
-		self.assertIn("size: A4 portrait", self.record["css"])
+		self.assertEqual(self.record["css"], "")
+		self.assertIn(f'{{% include "{SHARED_STYLE}" %}}', self.template)
+		css = (APP / SHARED_STYLE.removeprefix("steuerbote/")).read_text(encoding="utf-8") + self.template
+		self.assertIn("size: A4 portrait", css)
 		colours = HEX_COLOUR.findall(css)
 		self.assertTrue(colours)
 		for colour in colours:
@@ -285,9 +289,10 @@ class PrintFormatFilesTest(TestCase):
 
 	def test_keeps_to_classes_of_its_own(self):
 		used = {name for value in CLASS_ATTRIBUTE.findall(self.template) for name in value.split()}
-		styled = set(CLASS_SELECTOR.findall(self.record["css"]))
-		self.assertEqual(sorted(name for name in used | styled if not name.startswith("sb-")), [])
-		self.assertEqual(sorted(used), sorted(styled))
+		style = (APP / SHARED_STYLE.removeprefix("steuerbote/")).read_text(encoding="utf-8")
+		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", style)))
+		self.assertEqual(sorted(name for name in used if not name.startswith("sb-")), [])
+		self.assertEqual(sorted(used - styled), [])
 
 	def test_the_header_pairs_each_label_with_its_value(self):
 		labels = re.findall(r'<tr><td class="sb-label">([^<]+)</td><td class="sb-value">', self.template)
