@@ -595,6 +595,16 @@ class TestCorporateIncomeTaxReturn(Transmitting, IntegrationTestCase):
 		):
 			frappe.get_doc(DOCTYPE, doc.name).propose_provisions()
 
+	def test_the_draft_of_the_provisions_may_be_deleted_to_propose_them_again(self):
+		"""The refusal to propose again tells the user to delete the draft; deleting it forgets it."""
+		doc = self.calculated()
+		name = doc.propose_provisions()
+		frappe.delete_doc("Journal Entry", name)
+		self.assertIsNone(frappe.db.get_value(DOCTYPE, doc.name, "provisions_entry"))
+		again = frappe.get_doc(DOCTYPE, doc.name).propose_provisions()
+		self.assertNotEqual(again, name)
+		self.assertEqual(frappe.db.get_value(DOCTYPE, doc.name, "provisions_entry"), again)
+
 	def test_the_zve_stays_the_same_once_the_proposed_provisions_are_posted(self):
 		"""Every tax on income is added back in Anlage GK lines 81 to 84 (§ 10 Nummer 2 KStG, § 4 Absatz 5b EStG), so
 		posting the provisions lowers the Jahresüberschuss and leaves the zu versteuerndes Einkommen."""
