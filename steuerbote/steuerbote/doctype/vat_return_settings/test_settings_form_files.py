@@ -83,3 +83,14 @@ class VatReturnFormTest(TestCase):
 		self.assertIn("TRANSFERTICKET.test(", ask)
 		(pattern,) = re.findall(r"const TRANSFERTICKET = /\^(.*)\$/;", self.form)
 		self.assertIn(pattern, self.controller)
+
+
+class ExtensionFormTest(TestCase):
+	def test_the_missing_periods_hide_while_a_base_by_hand_with_its_reason_applies(self):
+		import json
+
+		definition = json.loads(
+			(DOCTYPES / "vat_return_extension" / "vat_return_extension.json").read_text(encoding="utf-8")
+		)
+		(field,) = (field for field in definition["fields"] if field["fieldname"] == "missing_periods")
+		self.assertEqual(field.get("depends_on"), "eval:!(doc.base_override_reason || '').trim()")
