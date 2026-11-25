@@ -90,6 +90,18 @@ class SetupPageFilesTest(TestCase):
 		self.assertIn("const action = step.action && !result.before", self.script)
 		self.assertIn('step.doctype && !(result.before && step.outcome === "created")', self.script)
 
+	def test_before_the_setup_a_step_names_the_action_it_offers_after_set_up(self):
+		"""The status view runs nothing, so it offers no action; it says which one the step offers once Einrichten has
+		run, and the summary says that Einrichten makes what is missing and then offers the actions."""
+		self.assertIn(
+			'const later = step.action && result.before\n\t\t\t? `<p class="text-muted">${escape(\n\t\t\t\t\t__("After Set Up, this step offers „{0}“.", [step.action.label])',
+			self.script,
+		)
+		self.assertIn(
+			'__("Before the setup: Set Up makes what is missing for {0} and then offers the actions of the steps.", [company])',
+			self.script,
+		)
+
 	def test_the_outcomes_before_the_setup_are_those_of_the_core(self):
 		block = re.search(r"const STATUS_OUTCOMES = \{\n(?P<body>.*?)\n\};", self.script, re.DOTALL)
 		self.assertIsNotNone(block)
