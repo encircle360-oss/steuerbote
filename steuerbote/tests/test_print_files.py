@@ -149,6 +149,28 @@ class OneStylesheetTest(TestCase):
 					elif cell:
 						self.assertNotIn("mm", value)
 
+	def test_a_line_of_text_holds_the_dots_of_its_umlauts(self):
+		"""Nimbus Sans rises 0.729 of its size above the baseline, the dots of Ä, Ö and Ü of the bold one 0.922. A line
+		lower than 1.39 times the size leaves the dots above its box, and Chromium paints what stands above the first
+		line of a page onto the foot of the page before. Cells have padding above their line, the Bilanz is a table of
+		cells, and the running head and foot are not broken."""
+		size = re.compile(r"font-size:\s*([\d.]+)pt;")
+		height = re.compile(r"line-height:\s*(\d+)px;")
+		style = rules(read(STYLE))
+		base = style[".sb-print, .sb-running"]
+		base_size, base_height = float(size.search(base)[1]), int(height.search(base)[1])
+		for selector, body in style.items():
+			cells = selector.endswith(("td", "th")) or selector == ".sb-print .sb-bilanz"
+			if cells or selector.startswith(".sb-running"):
+				continue
+			found_size, found_height = size.search(body), height.search(body)
+			if not (found_size or found_height):
+				continue
+			points = float(found_size[1]) if found_size else base_size
+			pixels = int(found_height[1]) if found_height else base_height
+			with self.subTest(selector=selector):
+				self.assertGreaterEqual(pixels / (points * 4 / 3), 1.39)
+
 	def test_sets_a_font_with_the_metrics_of_helvetica_that_the_server_has(self):
 		style = rules(read(STYLE))
 		self.assertIn(

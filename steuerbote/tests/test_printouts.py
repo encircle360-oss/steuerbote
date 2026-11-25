@@ -284,3 +284,35 @@ class AlikeTest(TestCase):
 				"Seite 1: Fuß mit wkhtmltopdf 284,0 mm, mit Chromium keins",
 			],
 		)
+
+
+class FootTest(TestCase):
+	def test_accepts_a_page_whose_foot_holds_only_its_line(self):
+		self.assertEqual(printouts.foot_fragments(pages(("Zeile",)), MARGINS), [])
+
+	def test_names_a_glyph_between_the_content_and_the_foot(self):
+		"""Chromium paints what reaches above the first line of a page, the dots of an Ü, onto the page before."""
+		found = page("Zeile")
+		found = Page(found.width, found.height, (*found.words, word("Ü", 190, 281.5 * MM)))
+		self.assertEqual(
+			printouts.foot_fragments([found], MARGINS), ["Seite 1: „Ü“ unter dem Inhalt über dem Fuß"]
+		)
+
+
+class TableHeadTest(TestCase):
+	def test_names_a_head_of_a_table_that_ends_a_page_and_opens_the_next(self):
+		found = pages(
+			("Zeile", "Anhang: alle Hinweise", "Code Nachricht Referenz"),
+			("Anhang: alle Hinweise", "Code Nachricht Referenz", "ZEITRAUM-FEHLT Keine Voranmeldung"),
+		)
+		self.assertEqual(
+			printouts.lonely_table_heads(found, MARGINS),
+			["Seite 1: Kopf der Tabelle „Code Nachricht Referenz“ allein am Seitenende"],
+		)
+
+	def test_accepts_a_head_repeated_over_rows(self):
+		found = pages(
+			("Anhang: alle Hinweise", "Code Nachricht Referenz", "ZEITRAUM-FEHLT Keine Voranmeldung"),
+			("Anhang: alle Hinweise", "Code Nachricht Referenz", "SB-JA-FEHLT Der Jahresabschluss"),
+		)
+		self.assertEqual(printouts.lonely_table_heads(found, MARGINS), [])
