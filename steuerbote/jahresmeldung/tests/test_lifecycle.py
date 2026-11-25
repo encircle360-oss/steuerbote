@@ -156,26 +156,44 @@ class MovesTest(TestCase):
 
 
 class FitForFilingTest(TestCase):
-	"""„Bereit oder Anmerkungen“: a calculated document is filed when it is ready, or when its remarks say why it is
-	filed nonetheless."""
+	"""„Bereit oder bestätigt“: a calculated document is filed when it is ready, or when every error of its findings is
+	acknowledged with a reason and none is one that can never be (steuerbote/jahresmeldung/acknowledgements.py). The
+	remarks are a note and file nothing."""
+
+	PROVISIONAL = {"code": "KST-VORLAEUFIG", "blocking": 1, "acknowledgeable": 1, "text": "vorläufig"}
+	UNBALANCED = {"code": "JA-BILANZ-UNGLEICH", "blocking": 1, "acknowledgeable": 0, "text": "ungleich"}
 
 	def test_a_ready_document_is_filed(self):
-		fit_for_filing(FILING, Status.READY, True, None)
-		fit_for_filing(ACCOUNTS, Status.CALCULATED, True, "")
+		fit_for_filing(FILING, Status.READY, True, ())
+		fit_for_filing(ACCOUNTS, Status.CALCULATED, True, ())
 
-	def test_a_document_that_is_not_ready_is_filed_with_its_remarks(self):
-		fit_for_filing(FILING, Status.CALCULATED, False, "Mit der Steuerberatung abgestimmt.")
+	def test_a_document_that_is_not_ready_is_filed_once_each_error_is_acknowledged(self):
+		acknowledged = {**self.PROVISIONAL, "acknowledged": 1, "acknowledgement_reason": "Mit der Steuerberatung."}
+		fit_for_filing(FILING, Status.CALCULATED, False, [acknowledged, {"code": "SB-X", "blocking": 0}])
 
-	def test_a_document_that_is_not_ready_needs_its_remarks(self):
-		for remarks in (None, "", "  \n"):
-			with self.subTest(remarks=remarks), self.assertRaises(LifecycleError) as raised:
-				fit_for_filing(FILING, Status.CALCULATED, False, remarks)
-			self.assertIs(raised.exception.problem, Problem.NOT_READY)
+	def test_an_error_that_is_not_acknowledged_holds_it_whatever_the_remarks_say(self):
+		with self.assertRaises(LifecycleError) as raised:
+			fit_for_filing(FILING, Status.CALCULATED, False, [self.PROVISIONAL])
+		self.assertIs(raised.exception.problem, Problem.NOT_READY)
+		self.assertEqual(raised.exception.subject, "KST-VORLAEUFIG")
+
+	def test_an_error_that_can_never_be_acknowledged_holds_it_always(self):
+		marked = {**self.UNBALANCED, "acknowledged": 1, "acknowledgement_reason": "Trotzdem."}
+		with self.assertRaises(LifecycleError) as raised:
+			fit_for_filing(FILING, Status.CALCULATED, False, [marked, self.PROVISIONAL])
+		self.assertIs(raised.exception.problem, Problem.NEVER_ACKNOWLEDGED)
+		self.assertEqual(raised.exception.subject, "JA-BILANZ-UNGLEICH")
+
+	def test_a_document_that_is_not_ready_without_an_error_is_held_as_well(self):
+		"""A check of the module failed without a finding to acknowledge."""
+		with self.assertRaises(LifecycleError) as raised:
+			fit_for_filing(FILING, Status.CALCULATED, False, ())
+		self.assertIs(raised.exception.problem, Problem.NOT_READY)
 
 	def test_a_document_is_calculated_before_it_is_filed(self):
 		for status in (Status.DRAFT, Status.FILED, "Storniert"):
 			with self.subTest(status=status), self.assertRaises(LifecycleError) as raised:
-				fit_for_filing(FILING, status, True, "Anmerkung")
+				fit_for_filing(FILING, status, True, ())
 			self.assertIs(raised.exception.problem, Problem.NOT_CALCULATED)
 
 
