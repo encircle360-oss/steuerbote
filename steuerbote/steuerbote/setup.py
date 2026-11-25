@@ -20,9 +20,16 @@ created or found its document. A mapping that exists without rows and waits for 
 (waits_for_defaults of its controller) lacks them: its step loads them into it as into a new one. Each step runs in a
 savepoint of its own: a step that fails is rolled back and reported, and the others go on. Only a System Manager or an
 Accounts Manager sets up a company, and every document is made with their permissions.
+
+A rollback to a savepoint undoes the database alone (frappe.db.savepoint). What Frappe queues on the transaction while a
+step saves, the background jobs, realtime messages, webhooks and clearings of the cache that wait for its commit or
+rollback, stays queued and would run with the commit of the request; so a step that is rolled back takes that back
+with it (Pending), and the status of the page runs inert (inert). A step acts through the documents it saves alone: it
+enqueues no job, publishes no message and writes no cache entry at once, which no rollback could take back.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -30,7 +37,7 @@ from types import MappingProxyType
 
 import frappe
 from frappe import _
-from frappe.utils import escape_html, fmt_money, formatdate, getdate
+from frappe.utils import escape_html, fmt_money, formatdate, getdate, safe_decode
 
 from steuerbote import dauerfrist_sources, ledger, prior_filings, ustjahr_sources
 from steuerbote.mapping_sync import rows_to_mapping
@@ -55,6 +62,11 @@ OWN_CHART = "Eigener Kontenrahmen"
 EXISTING_COMPANY = "Existing Company"
 SAVEPOINT = "steuerbote_setup_step"
 STATUS_SAVEPOINT = "steuerbote_setup_status"
+# The callbacks Frappe runs at the commit or the rollback of the transaction, and the queues of realtime messages and
+# webhooks it flushes at the commit (frappe.realtime.publish_realtime, frappe.integrations.doctype.webhook).
+CALLBACKS = ("before_commit", "after_commit", "before_rollback", "after_rollback")
+LOCAL_QUEUES = ("_realtime_log", "_webhook_queue")
+DOCUMENT_CACHE = "document_cache::"
 # The parts of the Datenlieferant that saving the settings fills from the company, with their labels.
 DATENLIEFERANT_LABELS = (
 	("filer_name", "Name"),
@@ -195,6 +207,74 @@ class SetupContext:
 	results: Mapping[str, StepResult]
 
 
+@dataclass
+class Pending:
+	"""What the transaction holds for its commit and rollback at a moment, and the messages shown until then."""
+
+	callbacks: dict[str, tuple]
+	queues: dict[str, list | None]
+	shown: int
+
+	@classmethod
+	def now(cls) -> Pending:
+		return cls(
+			{name: tuple(getattr(frappe.db, name)._functions) for name in CALLBACKS},
+			{
+				name: None if (queue := getattr(frappe.local, name, None)) is None else list(queue)
+				for name in LOCAL_QUEUES
+			},
+			len(frappe.local.message_log),
+		)
+
+	def restore(self) -> None:
+		"""Drop what was queued and shown since."""
+		for name, functions in self.callbacks.items():
+			manager = getattr(frappe.db, name)._functions
+			manager.clear()
+			manager.extend(functions)
+		for name, queue in self.queues.items():
+			if queue is not None:
+				setattr(frappe.local, name, queue)
+			elif hasattr(frappe.local, name):
+				delattr(frappe.local, name)
+		del frappe.local.message_log[self.shown :]
+
+
+@contextmanager
+def inert() -> Iterator[None]:
+	"""Run the block for its results alone. The database rolls back to before it, and so does what a rollback leaves:
+	what the block queued for the commit or the rollback of the transaction and the messages it showed are dropped,
+	the documents it cached are dropped from the cache and those it cleared from the cache are cached again as the
+	database holds them, and the global search queues nothing meanwhile."""
+	pending = Pending.now()
+	cached = set(frappe.cache.get_keys(DOCUMENT_CACHE))
+	conf = frappe.local.conf
+	searching = conf.get("disable_global_search")
+	conf.disable_global_search = 1
+	frappe.db.savepoint(STATUS_SAVEPOINT)
+	try:
+		yield
+	finally:
+		frappe.db.rollback(save_point=STATUS_SAVEPOINT)
+		conf.disable_global_search = searching
+		_restore_document_cache(cached)
+		pending.restore()
+
+
+def _restore_document_cache(cached: set) -> None:
+	"""Back to the documents of ``cached``, the keys of the document cache before: the keys added since go, and the
+	documents cleared since are read again from the database, as frappe.get_cached_doc caches them."""
+	keys = set(frappe.cache.get_keys(DOCUMENT_CACHE))
+	if added := keys - cached:
+		frappe.cache.delete_value(list(added), make_keys=False)
+	for key in cached - keys:
+		doctype, _sep, name = safe_decode(key).partition(DOCUMENT_CACHE)[2].partition("::")
+		try:
+			frappe.get_cached_doc(doctype, name)
+		except frappe.DoesNotExistError:
+			continue
+
+
 @frappe.whitelist(methods=["POST"])
 def set_up(company: str | None = None) -> dict:
 	"""Steuerbote einrichten for the company: run every step and report what each did."""
@@ -205,16 +285,11 @@ def set_up(company: str | None = None) -> dict:
 @frappe.whitelist(methods=["POST"])
 def setup_status(company: str | None = None) -> dict:
 	"""What Steuerbote einrichten would do for the company, which the page shows before the setup runs: every step runs
-	as in set_up, and the run is rolled back, so that nothing it makes stays and its messages are not shown. A step that
+	as in set_up, inert, so that nothing it makes, queues or caches stays and its messages are not shown. A step that
 	would make its document reports it as made, ``before`` tells the page that nothing was made."""
 	_require_company(company)
-	shown = len(frappe.local.message_log)
-	frappe.db.savepoint(STATUS_SAVEPOINT)
-	try:
+	with inert():
 		done = run(company, getdate())
-	finally:
-		frappe.db.rollback(save_point=STATUS_SAVEPOINT)
-		del frappe.local.message_log[shown:]
 	return {**report(company, done), "before": True}
 
 
@@ -251,17 +326,17 @@ def run_step(step: Step, context: SetupContext, labels: Mapping[str, str]) -> St
 	if missing := steps.missing_needs(step, context.results):
 		names = ", ".join(_(labels[need]) for need in missing)
 		return StepResult(Outcome.BLOCKED, (Note(NEEDS_STEPS, (names,)),))
-	shown = len(frappe.local.message_log)
+	pending = Pending.now()
 	frappe.db.savepoint(SAVEPOINT)
 	try:
 		result = frappe.get_attr(step.run)(context)
 	except frappe.ValidationError as error:
 		frappe.db.rollback(save_point=SAVEPOINT)
-		del frappe.local.message_log[shown:]
+		pending.restore()
 		return StepResult(Outcome.FAILED, (Note(STEP_FAILED, (str(error),)),))
 	except Exception:
 		frappe.db.rollback(save_point=SAVEPOINT)
-		del frappe.local.message_log[shown:]
+		pending.restore()
 		frappe.log_error(title=_("The setup step {0} of {1} failed").format(step.key, context.company))
 		return StepResult(Outcome.FAILED, (Note(STEP_BROKE),))
 	frappe.db.release_savepoint(SAVEPOINT)
