@@ -92,7 +92,10 @@ class BaseFilesTest(TestCase):
 	def test_the_methods_a_form_calls_are_whitelisted_for_post(self):
 		for method in ("calculate", "make_correction", "mark_filed_outside"):
 			with self.subTest(method=method):
-				self.assertRegex(self.source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+				self.assertRegex(
+					self.source,
+					rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\t@guards\.on_stored\([^\n]*\)\n\tdef {method}\(',
+				)
 
 	def test_every_text_of_the_base_is_translated(self):
 		texts = set(TRANSLATED_LITERAL.findall(self.source)) | definition_texts(read_json(FINDING))
@@ -142,7 +145,10 @@ class FormScriptFilesTest(TestCase):
 		self.assertEqual(methods, {"calculate", "make_correction", "mark_filed_outside"})
 		for method in sorted(methods):
 			with self.subTest(method=method):
-				self.assertRegex(self.base, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+				self.assertRegex(
+					self.base,
+					rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\t@guards\.on_stored\([^\n]*\)\n\tdef {method}\(',
+				)
 
 	def test_the_note_of_a_filing_sends_what_the_base_takes(self):
 		(sent,) = re.findall(r'frm\.call\("mark_filed_outside", \{([^}]*)\}', self.script)

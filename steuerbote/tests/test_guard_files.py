@@ -130,13 +130,21 @@ class FilingsTest(TestCase):
 	def test_the_fields_that_say_what_a_filing_is_for_are_set_once(self):
 		for folder, identity in FILINGS.items():
 			definition = read_json(controller(folder).with_suffix(".json"))
-			once = tuple(field["fieldname"] for field in definition["fields"] if field.get("set_only_once"))
+			once = tuple(
+				field["fieldname"]
+				for field in definition["fields"]
+				if field.get("set_only_once") and field["fieldname"] != "naming_series"
+			)
 			with self.subTest(doctype=definition["name"]):
 				self.assertEqual(once, identity)
 
 	def test_every_filing_is_a_filing_of_the_guards(self):
 		for folder in FILINGS:
-			(cls,) = (node for node in tree(controller(folder)).body if isinstance(node, ast.ClassDef))
+			(cls,) = (
+				node
+				for node in tree(controller(folder)).body
+				if isinstance(node, ast.ClassDef) and "Document" in map(ast.unparse, node.bases)
+			)
 			bases = [ast.unparse(base) for base in cls.bases]
 			with self.subTest(controller=cls.name):
 				self.assertTrue({"Filing", "AnnualFiling"} & set(bases), bases)
