@@ -20,11 +20,28 @@ function release_stale_confirmation(frm) {
 	}
 }
 
+// The numbers a confirmation would ask about now, which the server sends with the form: none when a query of today
+// has answered each already (confirming.py, confirmation_state).
+function has_vat_ids_to_confirm(frm) {
+	const confirmation = (frm.doc.__onload && frm.doc.__onload.confirmation) || {};
+	return (confirmation.numbers || []).length > 0;
+}
+
+// Everything a confirmation sends, for its dialog.
+function what_leaves_the_site(frm) {
+	const confirmation = (frm.doc.__onload && frm.doc.__onload.confirmation) || {};
+	const escape = frappe.utils.escape_html;
+	return __(
+		"Sent to the BZSt: the own USt-IdNr. {0}, the USt-IdNrn. {1} and, where they are known, the name, street, postal code and town of each customer. Only when the BZSt cannot answer does the same go to VIES of the European Commission.",
+		[escape(confirmation.requester || ""), (confirmation.numbers || []).map(escape).join(", ")]
+	);
+}
+
 function confirm_vat_ids(frm, question, texts) {
 	if (!saved(frm, texts)) {
 		return;
 	}
-	frappe.confirm(question, () =>
+	frappe.confirm(`${question}<br><br>${what_leaves_the_site(frm)}`, () =>
 		frm.call("confirm_vat_ids").then((response) => {
 			frappe.show_alert(
 				{

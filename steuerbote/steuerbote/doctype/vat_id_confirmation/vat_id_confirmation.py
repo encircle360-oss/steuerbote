@@ -36,7 +36,11 @@ LATEST_FIELDS = (
 )
 # The field of a record that names the document whose USt-IdNrn. its confirmation asked about.
 SOURCE_FIELDS: MappingProxyType[str, str] = MappingProxyType(
-	{"Recapitulative Statement": "recapitulative_statement", "VAT Return": "vat_return"}
+	{
+		"Recapitulative Statement": "recapitulative_statement",
+		"VAT Return": "vat_return",
+		"Sales Invoice": "sales_invoice",
+	}
 )
 
 
@@ -62,6 +66,8 @@ class VATIDConfirmation(Document):
 		message: DF.SmallText | None
 		name_match: DF.Literal["", "A", "B", "C", "D"]
 		outcome: DF.Literal["valid", "invalid", "unknown"]
+		party: DF.DynamicLink | None
+		party_type: DF.Link | None
 		postcode_match: DF.Literal["", "A", "B", "C", "D"]
 		previous: DF.Link | None
 		qualified: DF.Check
@@ -71,9 +77,19 @@ class VATIDConfirmation(Document):
 		requester: DF.Data
 		response_file: DF.Attach | None
 		result: DF.Literal["valid", "invalid", "unknown"]
+		sales_invoice: DF.Link | None
 		service: DF.Literal["bzst", "vies"]
 		service_date: DF.Date | None
 		service_time: DF.Datetime | None
+		started_by: DF.Literal[
+			"",
+			"Manual",
+			"Partner Changed",
+			"Invoice",
+			"Renewal",
+			"VAT Return",
+			"Recapitulative Statement",
+		]
 		status_code: DF.SmallText | None
 		street_match: DF.Literal["", "A", "B", "C", "D"]
 		unavailable: DF.Check
@@ -95,11 +111,22 @@ class VATIDConfirmation(Document):
 		)
 
 
-def store(confirmation: Confirmation, company: str, source: tuple[str, str] | None = None) -> str:
+def store(
+	confirmation: Confirmation,
+	company: str,
+	source: tuple[str, str] | None = None,
+	party: tuple[str, str] | None = None,
+	started_by: str | None = None,
+) -> str:
 	"""Record each query of the confirmation, the first first, with its answer as a private file; ``source`` is the
-	DocType and the name of the document whose USt-IdNrn. the confirmation asked about. Returns the name of the
-	record of the last query."""
+	DocType and the name of the document whose USt-IdNrn. the confirmation asked about, ``party`` the customer or
+	supplier whose number it is, and ``started_by`` what started it. Returns the name of the record of the last
+	query."""
 	origin = {SOURCE_FIELDS[source[0]]: source[1]} if source else {}
+	if party:
+		origin |= {"party_type": party[0], "party": party[1]}
+	if started_by:
+		origin["started_by"] = started_by
 	previous = None
 	for query, values in zip(confirmation.queries(), records.records(confirmation), strict=True):
 		record = frappe.get_doc(

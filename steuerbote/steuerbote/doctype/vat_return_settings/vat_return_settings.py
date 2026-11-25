@@ -79,6 +79,12 @@ class VATReturnSettings(Document):
 		teilnehmernummer: DF.Data | None
 		tolerance: DF.Currency
 		ust_idnr: DF.Data | None
+		vat_id_check_on_change: DF.Check
+		vat_id_check_suppliers: DF.Check
+		vat_id_goods_max_age: DF.Int
+		vat_id_invoice_goods: DF.Literal["Block", "Warn", "Off"]
+		vat_id_invoice_services: DF.Literal["Block", "Warn", "Off"]
+		vat_id_renewal: DF.Check
 		wid_nr: DF.Data | None
 		zm_rules: DF.Table[ZMRule]
 	# end: auto-generated types

@@ -85,7 +85,8 @@ function can_confirm_vat_ids(frm) {
 		calculated &&
 		!frm.doc.confirmation_in_progress &&
 		!transmission_blocked(frm) &&
-		!locked_as_sent(frm)
+		!locked_as_sent(frm) &&
+		has_vat_ids_to_confirm(frm)
 	);
 }
 
