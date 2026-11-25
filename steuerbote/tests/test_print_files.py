@@ -108,6 +108,12 @@ class OneStylesheetTest(TestCase):
 			style[".sb-print, .sb-running"],
 		)
 
+	def test_sets_no_ligatures_which_turn_nr_into_the_numero_sign(self):
+		"""Chromium sets Nimbus Sans with its ligatures, and they print „Nr.“ as „№“."""
+		style = rules(read(STYLE))
+		self.assertIn("font-variant-ligatures: none;", style[".sb-print, .sb-running"])
+		self.assertIn('font-feature-settings: "liga" 0, "clig" 0, "dlig" 0;', style[".sb-print, .sb-running"])
+
 	def test_prints_in_black_and_grey_and_loads_nothing(self):
 		style = read(STYLE)
 		for colour in HEX_COLOUR.findall(style):
