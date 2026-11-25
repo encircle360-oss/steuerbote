@@ -799,9 +799,15 @@ def comparison_hints(comparison: Comparison, figures: Figures) -> list[Hint]:
 
 
 def _deviation_hint(row: ComparisonRow, previous: Period, figures: Figures) -> Hint:
-	"""A flagged row has an amount of the previous period, and a share unless that amount is zero."""
+	"""A flagged row has an amount of the previous period, and a share unless that amount is zero or the amount
+	changed its sign, such as a surplus that turned into a payment, where a share says nothing."""
 	direction = "über" if row.difference > ZERO else "unter"
-	share = "" if row.difference_percent is None else f" um {figures.percent(abs(row.difference_percent))}"
+	crossed = row.previous_period * row.current < ZERO
+	share = (
+		""
+		if row.difference_percent is None or crossed
+		else f" um {figures.percent(abs(row.difference_percent))}"
+	)
 	earlier = f"der Vorperiode {previous.label} ({figures.money(row.previous_period)})"
 	text = f"Kz {row.kennzahl} liegt mit {figures.money(row.current)}{share} {direction} {earlier}."
 	return Hint(Code.PREVIOUS_PERIOD, text)
