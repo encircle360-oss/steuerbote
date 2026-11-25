@@ -93,4 +93,4 @@ class ExtensionFormTest(TestCase):
 			(DOCTYPES / "vat_return_extension" / "vat_return_extension.json").read_text(encoding="utf-8")
 		)
 		(field,) = (field for field in definition["fields"] if field["fieldname"] == "missing_periods")
-		self.assertEqual(field.get("depends_on"), "eval:!(doc.base_override_reason || '').trim()")
+		self.assertEqual(field.get("depends_on"), "eval:doc.missing_periods && !(doc.base_override_reason || '').trim()")
