@@ -473,6 +473,18 @@ class FindingsTest(TestCase):
 		(bare,) = bridge.findings(found, lambda template: template, {})
 		self.assertEqual(bare.text, "ERiC rule 30089 applies: KeinFeldAngegeben(E3001401).")
 
+	def test_without_the_documentation_on_the_site_a_rule_says_where_its_text_comes_from(self):
+		"""No ERiC documentation on the server (texts None): the finding names the rule by code and condition and says
+		that the official text comes from the Jahresdokumentation the operator provides."""
+		found = [form.Finding("30089", form.Severity.HINT, RULE, ("30089", "KeinFeldAngegeben(E3001401)"))]
+		(untexted,) = bridge.findings(found, lambda template: template, None)
+		self.assertEqual(
+			untexted.text,
+			"ERiC rule 30089 applies: KeinFeldAngegeben(E3001401). The official text of the rule comes from the "
+			"Jahresdokumentation of the ERiC documentation, which this server does not have: the operator names its "
+			"directory in the environment variable STEUERBOTE_ERIC_DOC_DIR of the web and worker processes.",
+		)
+
 	def test_reads_the_official_text_of_each_rule_from_the_rows_of_the_documentation(self):
 		rows = [
 			("USt2A", {"Fehlercode": "30089", "Fehler- /Hinweistext": " Bitte die Dauer angeben. "}),
