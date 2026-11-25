@@ -18,7 +18,7 @@ from frappe.utils import flt, getdate
 from steuerbote.eric.result import Outcome
 from steuerbote.steuerbote.doctype.corporate_income_tax_return import bridge
 from steuerbote.tests import income_tax
-from steuerbote.tests.helpers import acknowledge_errors, make_account, make_company, make_user
+from steuerbote.tests.helpers import acknowledge_errors, make_account, make_company, make_user, post_ledger
 from steuerbote.tests.income_tax import (
 	COMPANY,
 	MAPPING,
@@ -607,8 +607,46 @@ class TestCorporateIncomeTaxReturn(Transmitting, IntegrationTestCase):
 		self.assertEqual(self.values(doc, *before), before)
 		self.assertEqual(money(doc.net_income), d("86339.00"))
 		self.assertNotIn("KST-VORAUSZAHLUNGEN", finding_codes(doc))
-		with self.assertRaisesRegex(frappe.ValidationError, "hold provisions for the taxes of 2026 already"):
-			doc.propose_provisions()
+		self.assertNotIn("KST-RUECKSTELLUNG-DIFFERENZ", finding_codes(doc))
+		self.assertEqual(doc.propose_provisions(), "")
+
+	def test_after_a_later_posting_the_return_names_the_difference_and_proposes_it(self):
+		"""„Rückstellungen sind zu bilden für ungewisse Verbindlichkeiten“ (§ 249 Abs. 1 Satz 1 HGB), in full: a sale
+		posted after the provisions raises the taxes, and the provisions in the books stay too low until the difference
+		is posted."""
+		a = self.account
+		doc = self.calculated()
+		frappe.get_doc("Journal Entry", doc.propose_provisions()).submit()
+		self.addCleanup(frappe.db.delete, "GL Entry", {"voucher_no": "JV-STMIT-NACHTRAG"})
+		post_ledger(
+			COMPANY,
+			"Journal Entry",
+			"JV-STMIT-NACHTRAG",
+			"2026-12-30",
+			[(a["8400"], 0, 10000), (a["1200"], 10000, 0)],
+		)
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		(finding,) = [row for row in doc.findings if row.code == "KST-RUECKSTELLUNG-DIFFERENZ"]
+		self.assertEqual(finding.severity, "Hinweis")
+		self.assertIn("1.500,00 €", finding.text)
+		entry = frappe.get_doc("Journal Entry", doc.propose_provisions())
+		self.assertEqual(
+			[
+				(
+					row.account,
+					money(row.debit_in_account_currency),
+					money(row.credit_in_account_currency),
+					row.user_remark,
+				)
+				for row in entry.accounts[:2]
+			],
+			[
+				(a["2200"], d("1500.00"), d("0.00"), "Anpassung Rückstellung Körperschaftsteuer 2026"),
+				(a["0963"], d("0.00"), d("1500.00"), "Anpassung Rückstellung Körperschaftsteuer 2026"),
+			],
+		)
 
 	def test_without_a_hebesatz_the_proposal_leaves_out_the_gewerbesteuer(self):
 		a = self.account
