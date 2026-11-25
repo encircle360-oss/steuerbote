@@ -160,6 +160,86 @@ def store(
 	return previous
 
 
+# What a record of another company keeps of the query it shares: everything the service answered and was asked.
+SHARED_FIELDS = (
+	"requested",
+	"requester",
+	"service",
+	"outcome",
+	"result",
+	"status_code",
+	"message",
+	"consultation_id",
+	"qualified",
+	"unavailable",
+	"requested_at",
+	"answered_at",
+	"service_time",
+	"service_date",
+	"valid_from",
+	"valid_until",
+	"details_name",
+	"details_street",
+	"details_postcode",
+	"details_city",
+	"name_match",
+	"street_match",
+	"postcode_match",
+	"city_match",
+	"fallback_reason",
+	"http_status",
+)
+
+
+def share(
+	names: Iterable[str],
+	company: str,
+	source: tuple[str, str] | None = None,
+	party: tuple[str, str] | None = None,
+	started_by: str | None = None,
+) -> str:
+	"""Record for the company the queries of the records ``names``, the first first, which another company of the
+	same own USt-IdNr. made: the service received each once, under that USt-IdNr., and the answer is the proof for
+	both (UStAE 18e.1 Abs. 2 Satz 5). The answer file is copied; ``source``, ``party`` and ``started_by`` as for store.
+	Returns the name of the record of the last query."""
+	previous = None
+	for name in names:
+		row = frappe.db.get_value(DOCTYPE, name, [*SHARED_FIELDS, "response_file"], as_dict=True)
+		origin = {SOURCE_FIELDS[source[0]]: source[1]} if source else {}
+		if party:
+			origin |= {"party_type": party[0], "party": party[1]}
+		if started_by:
+			origin["started_by"] = started_by
+		record = guards.insert_record(
+			frappe.get_doc(
+				{
+					"doctype": DOCTYPE,
+					**{field: row[field] for field in SHARED_FIELDS},
+					"company": company,
+					**origin,
+					"user": frappe.session.user,
+					"previous": previous,
+				}
+			)
+		)
+		if row.response_file:
+			original = frappe.get_doc("File", {"file_url": row.response_file, "attached_to_name": name})
+			file = frappe.get_doc(
+				{
+					"doctype": "File",
+					"file_name": original.file_name.replace(name, record.name, 1),
+					"attached_to_doctype": DOCTYPE,
+					"attached_to_name": record.name,
+					"attached_to_field": "response_file",
+					"is_private": 1,
+					"content": original.get_content(),
+				}
+			).insert(ignore_permissions=True)
+			frappe.db.set_value(DOCTYPE, record.name, "response_file", file.file_url, update_modified=False)
+		previous = record.name
+	return previous
+
+
 def latest(company: str, vat_ids: Iterable[str]) -> dict[str, frappe._dict]:
 	"""The newest record of each USt-IdNr. that the company asked about, by the number: queries run one after
 	the other and each is stored when it is answered."""

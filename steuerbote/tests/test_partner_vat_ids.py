@@ -787,9 +787,9 @@ class TestPartnerVatIds(IntegrationTestCase):
 
 	def test_the_setup_offers_to_relabel_the_tax_id_and_leaves_a_label_of_its_own(self):
 		context = SimpleNamespace(company=COMPANY)
-		for doctype in vat_id_setup.LABELLED_DOCTYPES:
+		for doctype, fieldname, _label in vat_id_setup.LABELLED_FIELDS:
 			frappe.db.delete(
-				"Property Setter", {"doc_type": doctype, "field_name": "tax_id", "property": "label"}
+				"Property Setter", {"doc_type": doctype, "field_name": fieldname, "property": "label"}
 			)
 		self.addCleanup(self.forget_labels)
 		result = vat_id_setup.check_tax_id_label(context)
@@ -824,7 +824,7 @@ class TestPartnerVatIds(IntegrationTestCase):
 	def forget_labels(self):
 		"""Undo the Property Setters before the cache of the DocTypes is cleared, so that it does not keep them."""
 		frappe.db.rollback(save_point="partner_vat_id_test")
-		for doctype in vat_id_setup.LABELLED_DOCTYPES:
+		for doctype, _fieldname, _label in vat_id_setup.LABELLED_FIELDS:
 			frappe.clear_cache(doctype=doctype)
 
 	def test_the_setup_offers_to_switch_on_the_automatic_check_of_the_company(self):
