@@ -22,6 +22,7 @@ class VATReturnKennzahl(Document):
 		parentfield: DF.Data
 		parenttype: DF.Data
 		reported: DF.Currency
+		tax: DF.Currency
 	# end: auto-generated types
 
 	pass

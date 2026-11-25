@@ -23,6 +23,7 @@ from steuerbote.ustva import (
 	LedgerLine,
 	Mapping,
 	Period,
+	StatutoryTax,
 	UstvaResult,
 	calculate,
 	catalogue_for,
@@ -94,6 +95,7 @@ class _Entry:
 	kennzahl: Kennzahl
 	reported: Decimal
 	override: Override | None
+	tax: Decimal = ZERO
 
 
 def to_amount(value: object) -> Decimal:
@@ -126,8 +128,29 @@ def _entries(rows: Iterable[Row], catalogue: ReadOnlyMapping[str, Kennzahl]) -> 
 		if amount and not reason:
 			raise RowError(RowProblem.MISSING_REASON, number)
 		override = Override(amount, reason) if reason else None
-		entries.append(_Entry(kennzahl, to_amount(row.get("reported")), override))
+		entries.append(_Entry(kennzahl, to_amount(row.get("reported")), override, to_amount(row.get("tax"))))
 	return entries
+
+
+def statutory_tax_of(value: object) -> StatutoryTax:
+	"""The setting a return was calculated with (StatutoryTax of steuerbote/ustva/calculation.py); a return calculated
+	before the setting existed holds the tax of the form."""
+	return StatutoryTax(value) if value else StatutoryTax.FROM_BASE
+
+
+def filed_taxes(
+	rows: Iterable[Row], catalogue: ReadOnlyMapping[str, Kennzahl], statutory_tax: StatutoryTax
+) -> dict[str, Decimal]:
+	"""The tax as booked that a return files with Kz 83, by base at a statutory rate: the tax Berechnen stored in each
+	row of such a base without an override. An overridden base takes the tax of the form, since no booking stands
+	behind the amount filed instead; a return with the tax of the form files none."""
+	if statutory_tax is not StatutoryTax.AS_BOOKED:
+		return {}
+	return {
+		entry.kennzahl.number: entry.tax
+		for entry in _entries(rows, catalogue)
+		if entry.kennzahl.derives_tax and entry.override is None
+	}
 
 
 def overrides_of(rows: Iterable[Row], catalogue: ReadOnlyMapping[str, Kennzahl]) -> dict[str, Override]:
@@ -152,6 +175,7 @@ def kennzahl_rows(
 				**_description(kennzahl),
 				"amount": value.amount if value else ZERO,
 				"reported": value.reported if value else ZERO,
+				"tax": value.tax if value and value.tax is not None else ZERO,
 				"override": override.amount if override else ZERO,
 				"override_reason": override.reason if override else "",
 			}
@@ -168,11 +192,12 @@ class Filing:
 	totals: dict[str, Decimal]
 
 
-def filing(rows: Sequence[Row], year: int) -> Filing:
+def filing(rows: Sequence[Row], year: int, statutory_tax: StatutoryTax = StatutoryTax.FROM_BASE) -> Filing:
 	"""Final amounts and the form's sums: an override with a reason replaces the reported amount.
 
-	The sums come from the core, which takes the final amounts as extra values on an empty ledger; Kz 83
-	follows from them and is never taken from a row.
+	The sums come from the core, which takes the final amounts as extra values on an empty ledger, with the tax as
+	booked of the rows (filed_taxes) when the return was calculated with it; Kz 83 follows from them and is never taken
+	from a row.
 	"""
 	catalogue = catalogue_for(year)
 	entries = _entries(rows, catalogue)
@@ -181,7 +206,13 @@ def filing(rows: Sequence[Row], year: int) -> Filing:
 		for entry in entries
 		if entry.kennzahl.number != BALANCE_KENNZAHL
 	}
-	form = calculate((), Mapping(chart="", rules=(), year=year), extra_values=amounts)
+	form = calculate(
+		(),
+		Mapping(chart="", rules=(), year=year),
+		extra_values=amounts,
+		statutory_tax=statutory_tax,
+		taxes=filed_taxes(rows, catalogue, statutory_tax),
+	)
 	return Filing(
 		rows=tuple(
 			{
@@ -202,9 +233,11 @@ def filing(rows: Sequence[Row], year: int) -> Filing:
 	)
 
 
-def final_amounts(rows: Sequence[Row], year: int) -> dict[str, Decimal]:
+def final_amounts(
+	rows: Sequence[Row], year: int, statutory_tax: StatutoryTax = StatutoryTax.FROM_BASE
+) -> dict[str, Decimal]:
 	"""The amount each Kennzahl of the rows is filed with, Kz 83 as filing() computes it."""
-	return {row["kennzahl"]: row["final"] for row in filing(rows, year).rows}
+	return {row["kennzahl"]: row["final"] for row in filing(rows, year, statutory_tax).rows}
 
 
 def restored(stored: Iterable[Row], rows: Iterable[Row]) -> list[dict[str, Any]]:
@@ -221,7 +254,9 @@ def restored(stored: Iterable[Row], rows: Iterable[Row]) -> list[dict[str, Any]]
 	for row in rows:
 		before = by_name.pop(row.get("name"), None)
 		if before is None:
-			kept.append({"name": None, "kennzahl": _number(row), "amount": ZERO, "reported": ZERO})
+			kept.append(
+				{"name": None, "kennzahl": _number(row), "amount": ZERO, "reported": ZERO, "tax": ZERO}
+			)
 		else:
 			kept.append(
 				{
@@ -229,6 +264,7 @@ def restored(stored: Iterable[Row], rows: Iterable[Row]) -> list[dict[str, Any]]
 					"kennzahl": _number(before),
 					"amount": to_amount(before.get("amount")),
 					"reported": to_amount(before.get("reported")),
+					"tax": to_amount(before.get("tax")),
 				}
 			)
 	removed = next((_number(row) for row in by_name.values() if _computed(row)), None)
@@ -238,19 +274,25 @@ def restored(stored: Iterable[Row], rows: Iterable[Row]) -> list[dict[str, Any]]
 
 
 def _computed(row: Row) -> bool:
-	"""Whether Berechnen made the row: kennzahl_rows gives one to each Kennzahl the core computed, each with an amount,
-	and to Kz 83, which the core always computes."""
-	return _number(row) == BALANCE_KENNZAHL or bool(to_amount(row.get("amount")))
+	"""Whether Berechnen made the row: kennzahl_rows gives one to each Kennzahl the core computed, each with an amount or
+	a tax as booked, and to Kz 83, which the core always computes."""
+	return (
+		_number(row) == BALANCE_KENNZAHL
+		or bool(to_amount(row.get("amount")))
+		or bool(to_amount(row.get("tax")))
+	)
 
 
-def amounts_kept(rows: Sequence[Row], stored: Row, year: int) -> bool:
+def amounts_kept(
+	rows: Sequence[Row], stored: Row, year: int, statutory_tax: StatutoryTax = StatutoryTax.FROM_BASE
+) -> bool:
 	"""Whether ``stored`` holds the final amount of each Kennzahl and the sums of the form that ``rows`` give.
 
 	A filing writes the amounts the return holds, which every save sets from its rows (filing). Computed again
 	before a filing, they differ when they were changed past the save, or when the rows changed while the return
 	was filed.
 	"""
-	computed = filing(rows, year)
+	computed = filing(rows, year, statutory_tax)
 	held = {_number(row): to_amount(row.get("final")) for row in stored.get("kennzahlen") or ()}
 	return held == {row["kennzahl"]: row["final"] for row in computed.rows} and all(
 		to_amount(stored.get(field)) == amount for field, amount in computed.totals.items()
@@ -424,7 +466,8 @@ def filer(settings: Row) -> ustva_xml.Filer:
 
 
 def voranmeldung(return_: Row, period: Period, reported_before: Iterable[str] = ()) -> ustva_xml.Voranmeldung:
-	"""The return as filed: the final amount of each row, Kz 83 as the return keeps it, and its further details.
+	"""The return as filed: the final amount of each row, Kz 83 as the return keeps it, the tax as booked it files with
+	(filed_taxes), and its further details.
 
 	``reported_before`` are the Kennzahlen of the returns that a corrected return replaces, see ``reported``.
 	"""
@@ -434,6 +477,11 @@ def voranmeldung(return_: Row, period: Period, reported_before: Iterable[str] = 
 		if (number := _number(row)) != BALANCE_KENNZAHL
 	}
 	corrected = _checked(return_.get("is_correction"))
+	taxes = filed_taxes(
+		return_.get("kennzahlen") or (),
+		catalogue_for(period.year),
+		statutory_tax_of(return_.get("statutory_tax")),
+	)
 	return ustva_xml.Voranmeldung(
 		period,
 		{**amounts, BALANCE_KENNZAHL: to_amount(return_.get("kz83"))},
@@ -445,6 +493,7 @@ def voranmeldung(return_: Row, period: Period, reported_before: Iterable[str] = 
 		begruendung=return_.get("kz500_begruendung") or None,
 		regelbesteuerung_from=to_date(return_.get("regelbesteuerung_from")),
 		reported_before=frozenset(reported_before) if corrected else frozenset(),
+		taxes=taxes,
 	)
 
 

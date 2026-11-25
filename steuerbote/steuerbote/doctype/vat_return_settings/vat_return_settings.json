@@ -13,6 +13,7 @@
   "tolerance",
   "period_basis",
   "late_documents",
+  "statutory_tax",
   "comparison_section",
   "comparison_threshold_percent",
   "column_break_comparison",
@@ -106,6 +107,15 @@
    "fieldtype": "Select",
    "label": "Documents for a Filed Period",
    "options": "Corrected Return\nCurrent Period",
+   "reqd": 1
+  },
+  {
+   "default": "From the Base in Full Euros",
+   "description": "As booked, the tax of Kz 81, 86, 89 and 93 is the tax of the vouchers with its cents, so that Kz 83 equals the balance of the tax accounts; from the base, it is the rate times the base in full euros, as the official form computes it. The interface of the tax office accepts both.",
+   "fieldname": "statutory_tax",
+   "fieldtype": "Select",
+   "label": "Tax on Turnover at a Statutory Rate",
+   "options": "From the Base in Full Euros\nAs Booked",
    "reqd": 1
   },
   {
@@ -322,7 +332,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-25 12:00:00.000000",
+ "modified": "2026-11-25 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",
