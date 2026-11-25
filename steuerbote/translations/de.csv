@@ -2416,3 +2416,5 @@
 "§ 8b results","§ 8b-Ergebnisse"
 "Überleitungsrechnung of the E-Bilanz {0}","Überleitungsrechnung der E-Bilanz {0}"
 "Übermittlung to the Unternehmensregister","Übermittlung an das Unternehmensregister"
+"The provisions for the taxes of {0} in the books differ from the taxes {1} computes on the books of today: {2}. This balance sheet would show them so; Rückstellungen vorschlagen at {1} proposes the difference (§ 249 Abs. 1 Satz 1 HGB).","Die Rückstellungen für die Steuern {0} in den Büchern weichen von den Steuern ab, die {1} aus den Büchern von heute berechnet: {2}. Diese Bilanz würde sie so zeigen; „Rückstellungen vorschlagen“ an {1} schlägt die Differenz vor (§ 249 Abs. 1 Satz 1 HGB)."
+"The books hold a provision for the Gewerbesteuer of {0} that differs from this return: {1}. Rückstellungen vorschlagen at {2} proposes the difference (§ 249 Abs. 1 Satz 1 HGB).","Die Bücher halten für die Gewerbesteuer {0} eine Rückstellung, die von dieser Erklärung abweicht: {1}. „Rückstellungen vorschlagen“ an {2} schlägt die Differenz vor (§ 249 Abs. 1 Satz 1 HGB)."
