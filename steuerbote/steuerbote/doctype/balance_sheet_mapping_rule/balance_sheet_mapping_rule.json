@@ -33,7 +33,7 @@
    "read_only": 1
   },
   {
-   "columns": 3,
+   "columns": 2,
    "description": "The position of the HGB-Taxonomie, without the prefix de-gaap-ci, such as bs.ass.currAss.cashEquiv.bank.",
    "fieldname": "concept",
    "fieldtype": "Data",
@@ -46,7 +46,9 @@
    "fieldname": "concept_label",
    "fieldtype": "Small Text",
    "label": "Label of the Position",
-   "read_only": 1
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
   },
   {
    "columns": 2,
@@ -68,12 +70,10 @@
    "reqd": 1
   },
   {
-   "columns": 1,
    "default": "0",
    "description": "Ausleihungen, Forderungen and Verbindlichkeiten owed to or by the shareholders, which the Jahresabschluss notes (§ 42 Abs. 3 GmbHG).",
    "fieldname": "shareholder",
    "fieldtype": "Check",
-   "in_list_view": 1,
    "label": "Owed to or by Shareholders"
   },
   {
