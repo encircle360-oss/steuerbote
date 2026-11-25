@@ -231,6 +231,12 @@ class HoldingsTest(TestCase):
 			{key: beg[key] for key in (("E4050701", ()), ("E4050801", ()), ("E4050901", ()))},
 			{("E4050701", ()): "1", ("E4050801", ()): Decimal("300"), ("E4050901", ()): Decimal("100")},
 		)
+		# Rules 40944, 40946 and 40956 of the Jahresdokumentation GewSt 2025: line 12 with line 14 and, beside line 7,
+		# line 16 as line 14, even at zero (validation with ERiC 44.3.6.0).
+		self.assertEqual(
+			{key: beg.get(key) for key in (("E4051201", ()), ("E4051401", ()), ("E4051601", ()))},
+			{("E4051201", ()): Decimal("12000"), ("E4051401", ()): ZERO, ("E4051601", ()): ZERO},
+		)
 
 	def test_a_holding_abroad_falls_under_number_7(self):
 		holding = rules.Holding("Beta GmbH", YEAR, Decimal("20"), Decimal("20"), country="Austria")

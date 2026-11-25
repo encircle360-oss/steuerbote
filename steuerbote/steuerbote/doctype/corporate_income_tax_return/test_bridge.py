@@ -1087,6 +1087,7 @@ class Kst1Test(TestCase):
 				("E8002606", ()): FROM,
 				("E8002607", ()): TO,
 				("E8001007", ()): False,
+				("E8122111", (0,)): False,
 				("E8122101", (0,)): "Erika Muster",
 				("E8122102", (0,)): "Musterweg 2",
 				("E8122103", (0,)): "12345 Musterstadt",
@@ -1129,6 +1130,21 @@ class Kst1Test(TestCase):
 		filed = self.kst1(replace(RETURN, from_date=founded), settings)
 		self.assertIs(filed[("E8000703", ())], True)
 		self.assertIs(filed[("E8122601", ())], True)
+		self.assertIs(filed[("E8122111", (0,))], True)
+
+	def test_says_for_each_shareholder_whether_its_data_changed(self):
+		"""KSt 1 line 21a: ERiC refuses an Anteilseigner without it, rule 8912022 („NichtAlleFelderOderKeinFeldAngegeben
+		(E8122111, E8122101, E8122102, E8122103)“, Jahresdokumentation KSt 2025; validation with ERiC 44.3.6.0). A
+		shareholder whose holding begins or ends within the Wirtschaftsjahr changed, one who held all year did not."""
+		settings = replace(
+			SETTINGS,
+			shareholders=(
+				shareholder(percent="60"),
+				shareholder(row=2, name="Max Muster", percent="40", from_date=date(2026, 7, 1)),
+			),
+		)
+		filed = self.kst1(settings=settings)
+		self.assertEqual((filed[("E8122111", (0,))], filed[("E8122111", (1,))]), (False, True))
 		self.assertEqual(filed[("E8122106", (0, 0))], founded)
 
 	def test_the_trading_book_and_the_steuerberatung_of_the_year(self):

@@ -138,6 +138,7 @@ class VordruckeTest(TestCase):
 				"E4003502": Decimal("6000"),
 				"E4003602": Decimal("24000"),
 				"E4003703": Decimal("10000"),
+				"E4004103": Decimal("0"),
 				"E4006601": Decimal("11400"),
 				"E4003403": Decimal("1000"),
 			},
@@ -149,9 +150,22 @@ class VordruckeTest(TestCase):
 				"E4050201": "Beta GmbH",
 				"E4050601": Decimal("12000"),
 				"E4051201": Decimal("12000"),
+				"E4051401": Decimal("0"),
 				"E4051501": Decimal("11400"),
 			},
 		)
+
+	def test_line_56_goes_with_line_57_and_line_12_with_line_14(self):
+		"""ERiC refuses line 56 of GewSt 1 A without line 57 (rule 40260, „FelderNichtGemeinsamAngegeben(E4003703,
+		E4004103)“) and, for a Körperschaft, line 12 of Anlage BEG without line 14 (rule 40944), Jahresdokumentation
+		GewSt 2025; validation of the worked example with ERiC 44.3.6.0. Line 57 holds the part of line 56 paid to
+		beschränkt Steuerpflichtige (§ 50a Absatz 1 Nummer 3 EStG), which the books do not tell apart: zero, unless a
+		line by hand says otherwise."""
+		(gewst_1a, beg) = vordrucke(gewerbesteuer(koerperschaftsteuer()))
+		self.assertEqual(
+			(gewst_1a.value("E4003703"), gewst_1a.value("E4004103")), (Decimal("10000"), Decimal("0"))
+		)
+		self.assertEqual((beg.value("E4051201"), beg.value("E4051401")), (Decimal("12000"), Decimal("0")))
 
 	def test_a_holding_of_at_least_15_percent_cuts_its_dividends_with_the_costs_beside_them(self):
 		"""§ 8b Absatz 7 KStG taxes the dividends in full, so § 9 Nummer 2a GewStG cuts them: lines 7, 8, 9, 14 and 16
