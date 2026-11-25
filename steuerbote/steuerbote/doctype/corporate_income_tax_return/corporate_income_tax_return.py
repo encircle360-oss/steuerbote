@@ -61,6 +61,7 @@ from steuerbote.steuerbote.doctype.elster_transmission.transmission import Trans
 from steuerbote.steuerbote.doctype.trade_tax_return import bridge as trade_tax_bridge
 from steuerbote.steuerbote.doctype.vat_return.vat_return import SiteFigures
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
+from steuerbote.steuerbote.recorded_vouchers import ProposedJournalEntries
 from steuerbote.ustva.years import UnknownYearError
 
 DOCTYPE = "Corporate Income Tax Return"
@@ -84,7 +85,8 @@ HOLDING_COLUMNS = ("percent_on_1_january", "percent_at_start_of_ez", "exemption"
 """The columns of the § 8b results that a save fills from the holdings register."""
 
 
-class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
+class CorporateIncomeTaxReturn(ProposedJournalEntries, AnnualFiling, Transmittable, Document):
+	PROPOSED_ENTRIES = ("provisions_entry",)
 	LINES = "lines"
 	LINE_COLUMNS = bridge.LINE_COLUMNS
 	CALCULATED_FIELDS = (

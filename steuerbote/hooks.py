@@ -59,6 +59,16 @@ company_data_to_be_ignored = [
 	*(name for name in _ANNUAL_DOCUMENTS if (_DOCTYPES / name.lower().replace(" ", "_")).is_dir()),
 ]
 
+# The rows that record a voucher of the ledger as Berechnen found it keep no voucher from being cancelled or deleted
+# (steuerbote/steuerbote/recorded_vouchers.py).
+ignore_links_on_delete = [
+	"VAT Return Deviation",
+	"VAT Return Hint",
+	"VAT Return Late Change",
+	"Recapitulative Statement Hint",
+	"Recapitulative Statement Voucher",
+]
+
 # The files of an ELSTER Transmission and the answer kept with a VAT ID Confirmation stay as they were stored.
 doc_events = {
 	"File": {
