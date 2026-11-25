@@ -146,7 +146,7 @@ class TestUmsatzsteuerVoranmeldung(IntegrationTestCase):
 			attachments=1,
 			regelbesteuerung_from="2026-04-01",
 			no_sepa_mandate=1,
-			supplementary_code="2",
+			supplementary_code="2 = A legal view deliberately deviating from the view of the administration is taken.",
 			kz500_begruendung="Umsatzsteuer auf Gutscheine, siehe Schreiben vom 10. April",
 		)
 		text = cells(self.printed(doc))

@@ -303,7 +303,10 @@ class TestVATReturnExtension(IntegrationTestCase):
 				for change in (
 					{"base_override": 55000},
 					{"no_sepa_mandate": 1, "remarks": "Ohne Lastschrift"},
-					{"supplementary_code": "1", "kz500_begruendung": "Siehe Schreiben"},
+					{
+						"supplementary_code": "1 = Facts relevant to the tax could not be explained.",
+						"kz500_begruendung": "Siehe Schreiben",
+					},
 					{"filed_via": "mein_elster", "filed_on": "2026-02-09"},
 				):
 					doc.update(change)
@@ -422,7 +425,12 @@ class TestVATReturnExtension(IntegrationTestCase):
 		):
 			doc.save()
 		doc.reload()
-		doc.update({"supplementary_code": "1", "kz500_begruendung": ""})
+		doc.update(
+			{
+				"supplementary_code": "1 = Facts relevant to the tax could not be explained.",
+				"kz500_begruendung": "",
+			}
+		)
 		with self.assertRaisesRegex(frappe.ValidationError, "Kennzahl 500 needs a Begründung"):
 			doc.save()
 

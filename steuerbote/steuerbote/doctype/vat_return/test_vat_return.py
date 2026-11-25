@@ -395,7 +395,10 @@ class TestVATReturn(IntegrationTestCase):
 						"kennzahlen", {"kennzahl": "81", "override": 1000, "override_reason": "Rechnung"}
 					),
 					lambda draft: draft.update(
-						{"supplementary_code": "1", "kz500_begruendung": "Siehe Schreiben"}
+						{
+							"supplementary_code": "1 = Facts relevant to the tax could not be explained.",
+							"kz500_begruendung": "Siehe Schreiben",
+						}
 					),
 					lambda draft: draft.update({"offset_requested": 1, "remarks": "Mit Verrechnung"}),
 					lambda draft: draft.update({"is_correction": 1}),

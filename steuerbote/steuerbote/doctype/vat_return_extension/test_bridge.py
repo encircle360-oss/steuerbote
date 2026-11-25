@@ -372,6 +372,12 @@ class FormTest(TestCase):
 		form = bridge.form(self.doc(supplementary_code="2", kz500_begruendung="Siehe Anlage"))
 		self.assertEqual((form.supplementary_code, form.begruendung), ("2", "Siehe Anlage"))
 
+	def test_carries_the_code_of_the_key_kz500_keeps(self):
+		for wording, code in bridge.SUPPLEMENTARY_INFORMATION.items():
+			with self.subTest(wording=wording):
+				form = bridge.form(self.doc(supplementary_code=wording, kz500_begruendung="Siehe Anlage"))
+				self.assertEqual(form.texts()["Kz500"], code)
+
 	def test_passes_on_what_the_form_refuses(self):
 		with self.assertRaises(FormError) as caught:
 			bridge.form(self.doc(offset_requested=1))

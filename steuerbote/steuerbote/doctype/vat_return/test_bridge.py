@@ -782,6 +782,29 @@ class VoranmeldungTest(TestCase):
 		self.assertEqual((voranmeldung.supplementary_code, voranmeldung.begruendung), ("2", "Siehe Anlage"))
 		self.assertEqual(voranmeldung.reported_before, frozenset({"43"}))
 
+	def test_kz500_keeps_a_key_with_the_wording_of_the_form_and_files_its_code(self):
+		"""The select field keeps a key that reads as line 55 of USt 1 A; the Nutzdaten carry the code 1 to 4 as
+		before (UStVA-2026.xsd), and a code from before the keys passes as it is."""
+		keys = {
+			"1 = Facts relevant to the tax could not be explained.": "1",
+			"2 = A legal view deliberately deviating from the view of the administration is taken.": "2",
+			"3 = Facts are to be examined in depth by a person.": "3",
+			"4 = Several of the reasons above apply (multiple choice).": "4",
+		}
+		self.assertEqual(dict(bridge.SUPPLEMENTARY_INFORMATION), keys)
+		for key, code in {**keys, "2": "2"}.items():
+			with self.subTest(key=key):
+				voranmeldung = bridge.voranmeldung(
+					{**self.doc, "supplementary_code": key, "kz500_begruendung": "Siehe Anlage"},
+					Period.month(2026, 3),
+				)
+				self.assertEqual(
+					ustva_xml.supplementary_details(
+						voranmeldung.supplementary_code, voranmeldung.begruendung
+					),
+					{"Kz500": code, "Kz500_Begruendung": "Siehe Anlage"},
+				)
+
 	def test_files_january_2027_in_the_schema_of_2027(self):
 		rows = list(
 			bridge.filing(

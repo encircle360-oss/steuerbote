@@ -10,11 +10,13 @@ from frappe.utils import add_days
 from steuerbote.patches import link_transmissions_to_their_document as transmissions
 from steuerbote.patches import mark_the_bases_of_earlier_overrides_unknown as unknown_bases
 from steuerbote.patches import set_the_basis_of_overrides as bases
+from steuerbote.patches import use_keys_for_kz_500 as kz500
 
 TRANSMISSION = "ELSTER Transmission"
 PATCH = "steuerbote.patches.link_transmissions_to_their_document"
 BASES_PATCH = "steuerbote.patches.set_the_basis_of_overrides"
 UNKNOWN_PATCH = "steuerbote.patches.mark_the_bases_of_earlier_overrides_unknown"
+KZ500_PATCH = "steuerbote.patches.use_keys_for_kz_500"
 
 
 class TestLinkTransmissionsToTheirDocument(IntegrationTestCase):
@@ -287,3 +289,39 @@ class TestMarkTheBasesOfEarlierOverridesUnknown(IntegrationTestCase):
 		with patch.object(unknown_bases, "EARLIER_PATCH", "steuerbote.patches.of_no_site"):
 			unknown_bases.execute()
 		self.assertEqual(self.unknown("VAT Return Kennzahl", row, "override_basis_unknown"), 0)
+
+
+class TestUseKeysForKz500(IntegrationTestCase):
+	"""Documents from before the keys hold the code of Kz 500, 1 to 4, which the select field no longer offers."""
+
+	FIELDS = (
+		("VAT Return", "supplementary_code", "the view of the administration"),
+		("VAT Return Extension", "supplementary_code", "the view of the administration"),
+		("Annual VAT Return", "kz500", "the opinion of the administration"),
+	)
+
+	def test_runs_after_the_doctypes_are_migrated(self):
+		self.assertIn(KZ500_PATCH, get_patches_from_app("steuerbote", PatchType.post_model_sync))
+
+	def test_turns_each_code_into_its_key_and_runs_again_without_a_change(self):
+		names = {}
+		for doctype, fieldname, _view in self.FIELDS:
+			for code in ("1", "2", "3", "4", ""):
+				name = f"Steuerbote Test Kz500 {code or 'ohne'}"
+				frappe.get_doc({"doctype": doctype, "name": name, fieldname: code}).db_insert()
+				names[doctype, code] = name
+		kz500.execute()
+		kz500.execute()
+		for doctype, fieldname, view in self.FIELDS:
+			stored = {code: frappe.db.get_value(doctype, names[doctype, code], fieldname) for code in "1234"}
+			with self.subTest(doctype=doctype):
+				self.assertEqual(
+					stored,
+					{
+						"1": "1 = Facts relevant to the tax could not be explained.",
+						"2": f"2 = A legal view deliberately deviating from {view} is taken.",
+						"3": "3 = Facts are to be examined in depth by a person.",
+						"4": "4 = Several of the reasons above apply (multiple choice).",
+					},
+				)
+				self.assertFalse(frappe.db.get_value(doctype, names[doctype, ""], fieldname))
