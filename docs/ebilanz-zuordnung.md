@@ -152,7 +152,7 @@ Was für alle Unternehmen anders gelten soll, gehört in die Vorgaben selbst: di
 
 Jeder Stand der Vorgaben hat einen Namen aus Kontenrahmen, Version der Taxonomie, Ausgabe des DATEV-Kontenrahmens und Revision, und jeder Name steht für denselben Inhalt; eine Bilanzzuordnung hält den Stand, den sie übernommen hat, mit seinen Zeilen fest. Eine neue Revision erreicht eine bestehende Zuordnung über „Vorgaben aktualisieren“: Der Dialog stellt jede Zeile der Zuordnung neben die Vorgabe von heute und die übernommene Vorgabe und hakt die Änderungen der Vorgaben an, eigene Änderungen nicht, siehe [Vorgaben aktualisieren](einrichtung.md#vorgaben-aktualisieren).
 
-- **Von Revision 0.** Eine Zuordnung, die vor diesen Vorgaben angelegt wurde, hat die leere Tabelle der Revision 0 übernommen. „Vorgaben aktualisieren“ schlägt ihr jede Zeile des Stands 2026.1 als Änderung der Vorgaben vor, angehakt; eine Zeile, die das Unternehmen inzwischen selbst angelegt hat, bleibt eine eigene Änderung. Hat sie noch keine Zeilen, bekommt sie die Vorgaben von heute beim nächsten „Steuerbote einrichten“ wie eine neue Zuordnung, und bis dahin nennt ihr Formular sie über den Feldern.
+- **Von Revision 0.** Eine Zuordnung, die vor diesen Vorgaben angelegt wurde, hat die leere Tabelle der Revision 0 übernommen. „Vorgaben aktualisieren“ schlägt ihr jede Zeile des heutigen Stands als Änderung der Vorgaben vor, angehakt; eine Zeile, die das Unternehmen inzwischen selbst angelegt hat, bleibt eine eigene Änderung. Hat sie noch keine Zeilen, bekommt sie die Vorgaben von heute beim nächsten „Steuerbote einrichten“ wie eine neue Zuordnung, und bis dahin nennt ihr Formular sie über den Feldern.
 - **Neue Ausgabe der Kontenrahmen.** Eine neue Ausgabe der DATEV-Kontenrahmen beginnt wieder bei Revision 1, etwa „SKR04 Taxonomie 6.9 2027.1“.
 - **Neue Version der Taxonomie.** Eine neue Version der HGB-Taxonomie bekommt eigene Gruppen und einen eigenen Stand, denn ihre Positionen können anders heißen; eine Zuordnung wechselt mit ihrer Version.
 
@@ -175,7 +175,7 @@ Die Vorgaben für die HGB-Taxonomie 6.10 sind die von 6.9, durch die Änderungen
 | 4340, 4350, 4355, 4510, 2285, 2287 | 7650, 7675, 7678, 7685, 7690, 7692 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.other` |
 | 2289 | 7694 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.releaseTaxProvision` |
 
-Stand: „SKR03 Taxonomie 6.10 2026.1“ und „SKR04 Taxonomie 6.10 2026.1“. Eine Bilanzzuordnung, die „Auf neue Taxonomie heben“ von 6.9 auf 6.10 hebt, behält die übernommenen Vorgaben von 6.9; „Vorgaben aktualisieren“ schlägt ihr diese Zeilen dann als Änderungen der Vorgaben vor.
+Stand: „SKR03 Taxonomie 6.10 2026.2“ und „SKR04 Taxonomie 6.10 2026.2“. Eine Bilanzzuordnung, die „Auf neue Taxonomie heben“ von 6.9 auf 6.10 hebt, behält die übernommenen Vorgaben von 6.9; „Vorgaben aktualisieren“ schlägt ihr diese Zeilen dann als Änderungen der Vorgaben vor.
 
 Für die Steuerberatung zu prüfen:
 
