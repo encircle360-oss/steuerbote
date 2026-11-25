@@ -43,7 +43,7 @@ class TestObligations(IntegrationTestCase):
 		frappe.db.savepoint("obligations_test")
 		self.addCleanup(frappe.db.rollback, save_point="obligations_test")
 
-	def new_return(self, month: int):
+	def new_return(self, month: int, **fields):
 		return frappe.get_doc(
 			{
 				"doctype": "VAT Return",
@@ -51,6 +51,7 @@ class TestObligations(IntegrationTestCase):
 				"year": 2026,
 				"rhythm": "monthly",
 				"period_index": month,
+				**fields,
 			}
 		).insert()
 
@@ -121,3 +122,23 @@ class TestObligations(IntegrationTestCase):
 		self.assertFalse(doc.cancellable())
 		doc.mark_filed_outside(filed_via="mein_elster")
 		self.assertFalse(frappe.get_doc("VAT Return", doc.name).cancellable())
+
+	def test_a_corrected_return_names_what_it_adds_and_says_when_it_changes_nothing(self):
+		a = self.account
+		post_journal_entry(
+			COMPANY, "2026-03-10", [(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)]
+		)
+		filed = self.calculate(self.new_return(3))
+		filed.mark_filed_outside(filed_via="mein_elster")
+		unchanged = self.calculate(self.new_return(3, is_correction=1))
+		self.assertIn("BERICHTIGUNG-OHNE-AENDERUNG", self.codes(unchanged))
+		self.assertEqual(unchanged.late_changes, [])
+		late = post_journal_entry(
+			COMPANY, "2026-03-20", [(a["1400"], 238, 0), (a["8400"], 0, 200), (a["1776"], 0, 38)]
+		)
+		changed = self.calculate(frappe.get_doc("VAT Return", unchanged.name))
+		self.assertNotIn("BERICHTIGUNG-OHNE-AENDERUNG", self.codes(changed))
+		self.assertEqual(
+			[(row.voucher_no, row.kind) for row in changed.late_changes], [(late.name, "Booked after Filing")]
+		)
+		self.assertIn("reported by this corrected return", changed.late_changes[0].message)
