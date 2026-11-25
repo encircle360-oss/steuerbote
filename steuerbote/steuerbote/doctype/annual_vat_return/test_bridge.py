@@ -7,6 +7,7 @@ from unittest import TestCase
 from steuerbote.elster.ustva_xml import XmlError
 from steuerbote.jahresmeldung.findings import DATA_LENGTH, Severity
 from steuerbote.jahresmeldung.overrides import OverrideError
+from steuerbote.setup.start import PriorFiling, PriorPayment
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import Address
 from steuerbote.steuerbote.doctype.annual_vat_return import bridge
 from steuerbote.steuerbote.doctype.annual_vat_return.bridge import (
@@ -14,6 +15,7 @@ from steuerbote.steuerbote.doctype.annual_vat_return.bridge import (
 	BLOCKED,
 	KLEINUNTERNEHMER,
 	MESSAGES,
+	PRIOR_PAYMENT,
 	RELEASED,
 	SWITCH_MISSING,
 	SWITCH_OTHER,
@@ -499,6 +501,23 @@ class FindingsTest(TestCase):
 		(before,) = bridge.start_findings(YEAR, date(YEAR + 1, 1, 1))
 		self.assertEqual(before.values, ("01.01.2027", YEAR))
 
+	def test_a_hint_for_a_payment_of_a_return_filed_before_steuerbote(self):
+		filed = PriorFiling(Period.month(2025, 12), "VVS-2025-00012", date(2026, 2, 10), Decimal("1200.00"))
+		found = bridge.prior_payment_findings(
+			[PriorPayment("Journal Entry:ACC-JV-2026-00007", Decimal("1200.00"), filed)], YEAR
+		)
+		self.assertEqual(
+			[(finding.code, finding.severity, finding.template, finding.values) for finding in found],
+			[
+				(
+					"SB-ZAHLUNG-VOR-START",
+					form.Severity.HINT,
+					PRIOR_PAYMENT,
+					("ACC-JV-2026-00007", "1200.00", "Dezember 2025", "VVS-2025-00012", YEAR),
+				)
+			],
+		)
+
 	def test_every_message_is_a_template_of_its_own(self):
 		self.assertEqual(
 			MESSAGES,
@@ -511,6 +530,7 @@ class FindingsTest(TestCase):
 				SWITCH_OTHER,
 				RELEASED,
 				BEFORE_START,
+				PRIOR_PAYMENT,
 			),
 		)
 		self.assertEqual(len(set(MESSAGES)), len(MESSAGES))
