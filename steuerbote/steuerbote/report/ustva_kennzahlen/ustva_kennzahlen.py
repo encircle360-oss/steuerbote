@@ -167,7 +167,11 @@ def _period(filters: frappe._dict) -> tuple[ustva.Period | None, str | None]:
 
 def _rhythm_note(settings: Document, period: ustva.Period) -> str | None:
 	"""Why no return files the period, where the settings prescribe another rhythm for its first month."""
-	prescribed = settings.rhythm_for(period.year, period.first_month)
+	try:
+		prescribed = settings.rhythm_for(period.year, period.first_month)
+	except frappe.ValidationError:
+		frappe.clear_last_message()
+		return None
 	if prescribed is period.rhythm:
 		return None
 	return _(
