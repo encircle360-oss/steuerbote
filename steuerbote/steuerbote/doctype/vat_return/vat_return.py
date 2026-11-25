@@ -315,7 +315,10 @@ class VATReturn(Confirming, Transmittable, Document):
 		)
 		comparison = build_comparison(self, period, settings, mapping, ledger)
 		self.set("comparison", bridge.comparison_rows(comparison))
-		self.set("late_changes", late_change_rows(ledger, period, settings, mapping))
+		late_rows = late_change_rows(ledger, period, settings, mapping)
+		if self.is_correction:
+			late_rows += [_late_row(row) for row in late.correction_rows(ledger.late(), period)]
+		self.set("late_changes", late_rows)
 		self.update({"period_basis": ledger.basis.value, "late_treatment": ledger.treatment.value})
 		reconciliation = build_reconciliation(
 			self.company, period, mapping, load_lines(self.company, period.start, period.end)
@@ -333,7 +336,10 @@ class VATReturn(Confirming, Transmittable, Document):
 		)
 		hints = build_hints(self, period, mapping, result, comparison, reconciliation, sales_invoices(lines))
 		hints = plausibility.merged(
-			hints, release_hints, return_hints(self.company, period, mapping, lines, settings, result)
+			hints,
+			release_hints,
+			return_hints(self.company, period, mapping, lines, settings, result),
+			self._correction_hints(),
 		)
 		self.set("hints", bridge.hint_rows(hints))
 		self.ready = int(
@@ -348,6 +354,22 @@ class VATReturn(Confirming, Transmittable, Document):
 			self.save()
 		finally:
 			self.flags.calculating = False
+
+	def _correction_hints(self) -> list[plausibility.Hint]:
+		"""For a corrected return, whether it files the amounts the return it replaces filed."""
+		if not self.is_correction:
+			return []
+		filed = self._other_filed_returns(status=FILED)
+		if not filed:
+			return []
+		year = cint(self.year)
+		statutory = self.statutory_tax_of_the_return()
+		final = _read_rows(bridge.final_amounts, self.kennzahlen, year, statutory)
+		before = frappe.get_doc(DOCTYPE, filed[0])
+		amounts = _read_rows(
+			bridge.final_amounts, before.kennzahlen, year, before.statutory_tax_of_the_return()
+		)
+		return obligations.correction_hints(final, amounts, before.name)
 
 	def changes_since_filing(self) -> list[dict] | None:
 		"""For the form of a filed return: the bookings made after the filing of its period, where they are

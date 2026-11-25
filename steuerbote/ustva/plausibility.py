@@ -76,6 +76,7 @@ class Code(StrEnum):
 	ACQUISITION_OUTSIDE_EU = "ERWERB-AUS-DRITTLAND"
 	PERIOD_NOT_ENDED = "ZEITRAUM-NICHT-ABGELAUFEN"
 	ZM_WITHOUT_RHYTHM = "ZM-OHNE-RHYTHMUS"
+	CORRECTION_UNCHANGED = "BERICHTIGUNG-OHNE-AENDERUNG"
 
 
 # A wrong invoice is a warning; a difference that may well be explained, such as a journal entry on a
@@ -105,6 +106,7 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.ACQUISITION_OUTSIDE_EU: Severity.WARNING,
 		Code.PERIOD_NOT_ENDED: Severity.WARNING,
 		Code.ZM_WITHOUT_RHYTHM: Severity.WARNING,
+		Code.CORRECTION_UNCHANGED: Severity.HINT,
 	}
 )
 

@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from types import MappingProxyType
 from unittest import TestCase
 
 from steuerbote.ustva.obligations import (
@@ -89,7 +90,7 @@ class ZmRhythmHintsTest(TestCase):
 
 
 class CorrectionHintsTest(TestCase):
-	FILED = {"81": Decimal("1000"), "83": Decimal("190.00")}
+	FILED = MappingProxyType({"81": Decimal("1000"), "83": Decimal("190.00")})
 
 	def test_a_corrected_return_that_files_what_was_filed_says_so(self):
 		(hint,) = correction_hints(dict(self.FILED), self.FILED, "UStVA-0001")

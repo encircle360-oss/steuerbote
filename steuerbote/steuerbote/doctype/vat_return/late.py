@@ -29,6 +29,9 @@ NEEDS_CORRECTION = (
 	"Belongs to {0} and was booked after {0} was filed: make a corrected return (Kz 10) of {0}."
 )
 CHANGED_AMOUNT = "Kz {0}: filed {1}, now {2}."
+REPORTED_BY_CORRECTION = (
+	"Belongs to {0} and was booked after {0} was filed: reported by this corrected return."
+)
 OUTSIDE_MOVED_HERE = "Belongs to {0}, which was filed outside Steuerbote before the start of its books: reported in this period."
 OUTSIDE_NEEDS_CORRECTION = "Belongs to {0}, which was filed outside Steuerbote before the start of its books: its corrected return (Kz 10) goes where {0} was filed, or Documents for a Filed Period set to Current Period reports it in the period open when it was booked."
 MESSAGES = (
@@ -39,6 +42,7 @@ MESSAGES = (
 	MOVED_TO,
 	NEEDS_CORRECTION,
 	CHANGED_AMOUNT,
+	REPORTED_BY_CORRECTION,
 	OUTSIDE_MOVED_HERE,
 	OUTSIDE_NEEDS_CORRECTION,
 )
@@ -100,6 +104,15 @@ def filed_rows(placements: Iterable[Placement], period: Period) -> list[Row]:
 		else:
 			rows.append(_voucher(placement, period, NEEDS_CORRECTION, (period.label,)))
 	return rows
+
+
+def correction_rows(placements: Iterable[Placement], period: Period) -> list[Row]:
+	"""The late bookings of ``period`` that its corrected return reports: those that stay in the period."""
+	return [
+		_voucher(placement, period, REPORTED_BY_CORRECTION, (period.label,))
+		for placement in placements
+		if placement.tax_period == period and placement.needs_correction
+	]
 
 
 def change_rows(period: Period, changes: Iterable[Change], money: Callable[[Decimal], str]) -> list[Row]:

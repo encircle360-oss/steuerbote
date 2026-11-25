@@ -13,6 +13,9 @@ a Dreiecksgeschäft (Kz 42, § 25b Abs. 2 UStG) or sonstige Leistungen whose tax
 state (Kz 21) files a Zusammenfassende Meldung for them (§ 18a Abs. 1 and 2 UStG). Steuerbote knows its deadlines from
 the rhythm the VAT Return Settings record; a return with such turnover in a month without that rhythm says so.
 
+**A corrected return that changes nothing.** A corrected return (Kz 10) replaces the return filed for the period
+(§ 153 Abs. 1 AO); one that files the same amounts changes nothing, and a hint says so before it goes out.
+
 This module is pure Python and never imports Frappe.
 """
 
@@ -71,3 +74,22 @@ def zm_rhythm_hints(
 def _listed(items: Iterable[str]) -> str:
 	items = list(items)
 	return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} und {items[-1]}"
+
+
+def correction_hints(
+	final: ReadOnlyMapping[str, Decimal], filed: ReadOnlyMapping[str, Decimal] | None, filed_name: str
+) -> list[Hint]:
+	"""A hint when a corrected return files the amounts the return ``filed_name`` filed, Kennzahlen of zero left out."""
+	if filed is None:
+		return []
+	if _without_zero(final) != _without_zero(filed):
+		return []
+	text = (
+		f"Die berichtigte Anmeldung meldet dieselben Beträge wie die abgegebene Meldung {filed_name}: Sie ändert "
+		"nichts. Abgegeben wird sie nur, wenn sich eine Angabe außerhalb der Beträge ändert."
+	)
+	return [Hint(Code.CORRECTION_UNCHANGED, text)]
+
+
+def _without_zero(amounts: ReadOnlyMapping[str, Decimal]) -> dict[str, Decimal]:
+	return {number: amount for number, amount in amounts.items() if amount != ZERO}
