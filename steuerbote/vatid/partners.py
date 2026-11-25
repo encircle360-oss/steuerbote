@@ -33,7 +33,14 @@ from enum import Enum
 from zoneinfo import ZoneInfo
 
 from steuerbote.vatid.result import Details, Outcome
-from steuerbote.vatid.ustid import COUNTRY_CODE, MEMBER_STATES, is_german, normalize, problem
+from steuerbote.vatid.ustid import (
+	COUNTRY_CODE,
+	MEMBER_STATES,
+	german_problem,
+	normalize,
+	problem,
+	structure_hint,
+)
 
 GOODS = ("41", "42")
 """Kz 41 and 42: innergemeinschaftliche Lieferungen and Lieferungen des ersten Abnehmers bei Dreiecksgeschäften."""
@@ -54,18 +61,25 @@ class Kind(Enum):
 
 	MISSING = "missing"
 	CONFIRMABLE = "confirmable"
-	"""A plausible USt-IdNr. of another member state, which the BZSt confirms."""
+	"""A plausible USt-IdNr. of another member state with the structure the BZSt describes, which the BZSt confirms."""
 	GERMAN = "german"
-	"""A German USt-IdNr., which the BZSt does not confirm (§ 18e Nr. 1 UStG)."""
+	"""A German USt-IdNr. with the right check digit, which the BZSt does not confirm (§ 18e Nr. 1 UStG) and VIES
+	checks for its validity alone."""
 	NOT_CONFIRMABLE = "not_confirmable"
-	"""A number with a country code the BZSt does not confirm: GB, GR, or a country outside the EU."""
+	"""A number with a country code no service checks: GB, GR, or a country outside the EU."""
 	MALFORMED = "malformed"
-	"""No country code, the wrong length, or a German number that is not DE and nine digits."""
+	"""No country code, the wrong length, not the structure of its member state, or a German number that is not DE
+	and nine digits or whose check digit is wrong."""
 
 	@property
 	def sent(self) -> bool:
-		"""Whether Steuerbote sends a number of this kind anywhere."""
+		"""Whether the BZSt confirms a number of this kind."""
 		return self is Kind.CONFIRMABLE
+
+	def checked(self, german: bool) -> bool:
+		"""Whether Steuerbote asks a service about a number of this kind, with ``german`` where the company checks
+		German numbers."""
+		return self is Kind.CONFIRMABLE or (german and self is Kind.GERMAN)
 
 
 def kind(value: str | None) -> Kind:
@@ -73,14 +87,25 @@ def kind(value: str | None) -> Kind:
 	number = normalize(value) if isinstance(value, str) else ""
 	if not number:
 		return Kind.MISSING
-	if is_german(number):
-		return Kind.GERMAN
+	if number[:2] == "DE":
+		return Kind.GERMAN if german_problem(number) is None else Kind.MALFORMED
 	if problem(number) is None:
-		return Kind.CONFIRMABLE
+		return Kind.CONFIRMABLE if structure_hint(number) is None else Kind.MALFORMED
 	code = number[:2]
-	if not COUNTRY_CODE.fullmatch(code) or code in MEMBER_STATES or code == "DE":
+	if not COUNTRY_CODE.fullmatch(code) or code in MEMBER_STATES:
 		return Kind.MALFORMED
 	return Kind.NOT_CONFIRMABLE
+
+
+def reason(value: str | None) -> str | None:
+	"""What is wrong with a number that is neither missing nor checkable, in German; None for a number a service
+	checks or none at all."""
+	number = normalize(value) if isinstance(value, str) else ""
+	if not number:
+		return None
+	if number[:2] == "DE":
+		return german_problem(number)
+	return problem(number) or structure_hint(number)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +144,8 @@ class Standing(Enum):
 	"""Valid, but only simple although name and town are known now."""
 	DETAILS_DIFFER = "Details Differ"
 	"""Valid, but the member state has another name or address registered."""
+	GERMAN_UNCHECKED = "German VAT ID, Not Checked"
+	"""A German number the company checks, not asked about yet."""
 
 	@property
 	def work(self) -> bool:
@@ -127,23 +154,37 @@ class Standing(Enum):
 
 
 def standing(
-	number: Kind, answer: Answer | None, asked: bool, reference: date, max_age: int, has_details: bool
+	number: Kind,
+	answer: Answer | None,
+	asked: bool,
+	reference: date,
+	max_age: int,
+	has_details: bool,
+	german: bool = False,
 ) -> Standing | None:
 	"""Where the confirmation of a partner's number stands on the reference day; None for a partner whose number
-	needs none, because it has none or a German one. ``asked`` says whether any query about the number was made,
-	``has_details`` whether the partner has the name and town of the qualified query."""
-	if number in (Kind.MISSING, Kind.GERMAN):
+	needs none: it has none, or a German one the company does not check. ``asked`` says whether any query about the
+	number was made, ``has_details`` whether the partner has the name and town of the qualified query, ``german``
+	whether the company checks German numbers, whose check is simple and never qualified. A valid answer of a
+	service outweighs the structure of the Merkblatt, which may be stricter than the member state."""
+	if number is Kind.MALFORMED and answer is not None and answer.outcome is Outcome.VALID:
+		number = Kind.CONFIRMABLE
+	if number is Kind.MISSING or (number is Kind.GERMAN and not german):
 		return None
 	if number is Kind.NOT_CONFIRMABLE:
 		return Standing.NOT_CONFIRMABLE
 	if number is Kind.MALFORMED:
 		return Standing.MALFORMED
 	if answer is None:
-		return Standing.NO_ANSWER if asked else Standing.MISSING
+		if asked:
+			return Standing.NO_ANSWER
+		return Standing.GERMAN_UNCHECKED if number is Kind.GERMAN else Standing.MISSING
 	if answer.outcome is Outcome.INVALID:
 		return Standing.INVALID
 	if age(answer, reference) > max_age:
 		return Standing.EXPIRED
+	if number is Kind.GERMAN:
+		return Standing.CURRENT
 	if not answer.qualified:
 		return Standing.NOT_QUALIFIED if has_details else Standing.ADDRESS_MISSING
 	if answer.differs:
@@ -177,15 +218,21 @@ def is_due(
 	today: date,
 	max_age: int,
 	has_details: bool,
+	german: bool = False,
 ) -> bool:
-	"""Whether the renewal asks about the number today: a number the BZSt confirms, not asked about today, without an
-	answer, with an answer as old as the settings allow or older, or with a simple answer although name and town are
-	known now."""
-	if not number.sent or last_query_on == today:
+	"""Whether the renewal asks about the number today: a number a service checks for the company (Kind.checked), not
+	asked about today, without an answer, with an answer as old as the settings allow or older, or, for a number of
+	another member state, with a simple answer although name and town are known now."""
+	if not number.checked(german) or last_query_on == today:
 		return False
 	if answer is None or age(answer, today) >= max_age:
 		return True
-	return answer.outcome is Outcome.VALID and not answer.qualified and has_details
+	return (
+		number is Kind.CONFIRMABLE
+		and answer.outcome is Outcome.VALID
+		and not answer.qualified
+		and has_details
+	)
 
 
 @dataclass(frozen=True, slots=True)
@@ -399,6 +446,8 @@ def _finding(
 ) -> Finding | None:
 	if policy.level is Level.OFF:
 		return None
+	if number is Kind.MALFORMED and answer is not None and answer.outcome is Outcome.VALID:
+		number = Kind.CONFIRMABLE
 	if number in KIND_PROBLEMS:
 		return Finding(KIND_PROBLEMS[number], policy.level, kennzahlen)
 	if answer is None:

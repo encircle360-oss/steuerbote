@@ -33,7 +33,8 @@ from steuerbote.tests.helpers import (
 )
 from steuerbote.vatid.exemption import consequence
 from steuerbote.vatid.service import confirm
-from steuerbote.vatid.tests.fakes import FakeBzst, FakeFetch, bzst
+from steuerbote.vatid.tests.fakes import FakeBzst, FakeFetch, bzst, vies
+from steuerbote.vatid.vies import URL as VIES_URL
 
 SETTINGS = "VAT Return Settings"
 CONFIRMATION = "VAT ID Confirmation"
@@ -47,6 +48,10 @@ ITALIAN = "IT12345678901"
 ALPEN = "Alpen Handel GmbH (Partner)"
 PARIS = "Paris Services SA (Partner)"
 MUENCHEN = "Münchner Einkauf GmbH (Partner)"
+PRUEFZIFFER = "Falsche Prüfziffer GmbH (Partner)"
+# Invented German numbers: the first with the right check digit, the second with a wrong one.
+GERMAN = "DE987654328"
+GERMAN_WRONG = "DE987654321"
 FORMFEHLER = "Formfehler Sp. z o.o. (Partner)"
 ZUERICH = "Zürcher Werkstatt AG (Partner)"
 NOWHERE = "Ohne Adresse SRL (Partner)"
@@ -95,12 +100,14 @@ class TestPartnerVatIds(IntegrationTestCase):
 			ust_idnr=OWN_VAT_ID,
 			vat_id_check_on_change=1,
 			vat_id_renewal=1,
+			vat_id_check_german=0,
 		)
 		make_settings(OTHER, [(2026, "monthly", 1)])
 		make_mapping(COMPANY)
 		make_customer(ALPEN, "Austria", AUSTRIAN, city="Wien")
 		make_customer(PARIS, "France", FRENCH, city="Paris")
-		make_customer(MUENCHEN, "Germany", "DE987654321", city="München")
+		make_customer(MUENCHEN, "Germany", GERMAN, city="München")
+		make_customer(PRUEFZIFFER, "Germany", GERMAN_WRONG, city="Köln")
 		make_customer(FORMFEHLER, "Poland", "PL-12", city="Warszawa")
 		make_customer(ZUERICH, "Switzerland", "CHE-123.456.789 MWST", city="Zürich")
 		insert_record("Customer", name=NOWHERE, customer_name=NOWHERE, tax_id="RO1234567890")
@@ -109,6 +116,7 @@ class TestPartnerVatIds(IntegrationTestCase):
 			("Customer", ALPEN),
 			("Customer", PARIS),
 			("Customer", MUENCHEN),
+			("Customer", PRUEFZIFFER),
 			("Customer", FORMFEHLER),
 			("Customer", ZUERICH),
 			("Customer", NOWHERE),
@@ -171,13 +179,14 @@ class TestPartnerVatIds(IntegrationTestCase):
 	def test_the_status_of_a_partner_follows_its_number(self):
 		statuses = {
 			party: partner_module.refresh_status("Customer", party)["vat_id_status"]
-			for party in (ALPEN, MUENCHEN, FORMFEHLER, ZUERICH)
+			for party in (ALPEN, MUENCHEN, PRUEFZIFFER, FORMFEHLER, ZUERICH)
 		}
 		self.assertEqual(
 			statuses,
 			{
 				ALPEN: "Not Checked",
-				MUENCHEN: "German VAT ID",
+				MUENCHEN: "German VAT ID, Not Checked",
+				PRUEFZIFFER: "Malformed",
 				FORMFEHLER: "Malformed",
 				ZUERICH: "Not Confirmable",
 			},
@@ -196,7 +205,11 @@ class TestPartnerVatIds(IntegrationTestCase):
 		)
 		frappe.db.set_value("Customer", FORMFEHLER, "vat_id_status", None)
 		frappe.db.set_value("Customer", MUENCHEN, "vat_id_status", "Valid")
+		frappe.db.set_value("Customer", PRUEFZIFFER, "vat_id_status", "German VAT ID")
+		frappe.db.set_value("Customer", ZUERICH, "vat_id_status", "Not Checked")
 		partner_module.fill_statuses()
+		self.assertEqual(frappe.db.get_value("Customer", PRUEFZIFFER, "vat_id_status"), "Malformed")
+		self.assertEqual(frappe.db.get_value("Customer", ZUERICH, "vat_id_status"), "Not Confirmable")
 		self.assertEqual(frappe.db.get_value("Customer", FORMFEHLER, "vat_id_status"), "Malformed")
 		self.assertEqual(frappe.db.get_value("Customer", MUENCHEN, "vat_id_status"), "Valid")
 
@@ -260,7 +273,9 @@ class TestPartnerVatIds(IntegrationTestCase):
 			for party in (MUENCHEN, FORMFEHLER, ZUERICH):
 				partner_module.on_party_update(frappe.get_doc("Customer", party))
 			enqueue.assert_not_called()
-			with self.assertRaisesRegex(frappe.ValidationError, "has no USt-IdNr. of another member state"):
+			with self.assertRaisesRegex(frappe.ValidationError, "has no USt-IdNr. that a service checks"):
+				partner_module.confirm_vat_id("Customer", PRUEFZIFFER)
+			with self.assertRaisesRegex(frappe.ValidationError, "checks no German USt-IdNrn."):
 				partner_module.confirm_vat_id("Customer", MUENCHEN)
 		self.assertEqual(frappe.db.get_value("Customer", FORMFEHLER, "vat_id_status"), "Malformed")
 
@@ -540,6 +555,67 @@ class TestPartnerVatIds(IntegrationTestCase):
 
 	# The worklist, the form and the setup
 
+	# German numbers
+
+	def test_saving_a_partner_with_a_wrong_number_says_what_is_wrong(self):
+		doc = frappe.get_doc("Customer", PRUEFZIFFER)
+		with patch("frappe.msgprint") as message, patch("frappe.enqueue") as enqueue:
+			partner_module.on_party_update(doc)
+		enqueue.assert_not_called()
+		self.assertIn("Die Prüfziffer von DE987654321 stimmt nicht", message.call_args.args[0])
+		self.assertEqual(doc.vat_id_status, "Malformed")
+
+	def test_a_german_number_is_checked_simply_at_vies_where_the_company_checks_german_numbers(self):
+		self.assertEqual(frappe.get_meta(SETTINGS).get_field("vat_id_check_german").default, "1")
+		frappe.db.set_value(SETTINGS, COMPANY, "vat_id_check_german", 1)
+		with patch("frappe.enqueue") as enqueue:
+			self.assertTrue(partner_module.confirm_vat_id("Customer", MUENCHEN))
+		self.assertEqual(enqueue.call_args.kwargs["party"], MUENCHEN)
+		service = FakeFetch(vies(True, countryCode="DE", vatNumber=GERMAN[2:]))
+		self.run_job(service, party_type="Customer", party=MUENCHEN, trigger="Manual")
+		self.assertEqual(service.urls(), [VIES_URL])
+		self.assertNotIn("traderName", service.requests[0].body.decode())
+		(record,) = frappe.get_all(
+			CONFIRMATION,
+			filters={"party": MUENCHEN},
+			fields=["service", "qualified", "result", "requested", "started_by"],
+		)
+		self.assertEqual(
+			(record.service, record.qualified, record.result, record.requested, record.started_by),
+			("vies", 0, "valid", GERMAN, "Manual"),
+		)
+		self.assertEqual(frappe.db.get_value("Customer", MUENCHEN, "vat_id_status"), "Valid (Simple)")
+		state = partner_module.vat_id_state("Customer", MUENCHEN)
+		self.assertEqual(
+			(state["kind"], [(row["company"], row["standing"]) for row in state["companies"]]),
+			("german", [(COMPANY, "Current")]),
+		)
+
+	def test_the_renewal_checks_german_numbers_where_the_company_checks_them(self):
+		frappe.db.set_value(SETTINGS, COMPANY, "vat_id_check_german", 1)
+		for party in (ALPEN, NOWHERE, PARIS):
+			self.stored(
+				frappe.db.get_value("Customer", party, "tax_id"),
+				noon(),
+				bzst("evatr-0000"),
+				party=("Customer", party),
+			)
+		self.stored(ITALIAN, noon(), bzst("evatr-0000"))
+		service = FakeFetch(vies(False, countryCode="DE", vatNumber=GERMAN[2:]))
+		self.renew(service)
+		self.assertEqual(service.urls(), [VIES_URL])
+		self.assertEqual(frappe.db.get_value("Customer", MUENCHEN, "vat_id_status"), "Invalid")
+
+	def test_the_worklist_names_german_partners_not_checked_where_the_company_checks_them(self):
+		_columns, rows, _message = worklist_report.execute({"company": COMPANY})
+		self.assertNotIn(MUENCHEN, [row["party"] for row in rows])
+		self.assertIn((PRUEFZIFFER, "Malformed"), [(row["party"], row["standing"]) for row in rows])
+		frappe.db.set_value(SETTINGS, COMPANY, "vat_id_check_german", 1)
+		_columns, rows, _message = worklist_report.execute({"company": COMPANY})
+		self.assertIn(
+			(MUENCHEN, "German VAT ID, Not Checked"), [(row["party"], row["standing"]) for row in rows]
+		)
+
 	def test_the_worklist_names_every_partner_without_a_current_confirmation(self):
 		self.stored(FRENCH, noon(), bzst("evatr-0000"), bzst("evatr-0000", **QUALIFIED), details=self.paris())
 		self.stored(AUSTRIAN, noon(-200))
@@ -551,6 +627,7 @@ class TestPartnerVatIds(IntegrationTestCase):
 				[
 					(ALPEN, "Expired"),
 					(FORMFEHLER, "Malformed"),
+					(PRUEFZIFFER, "Malformed"),
 					(NOWHERE, "Missing"),
 					(ZUERICH, "Not Confirmable"),
 					(ROMA, "Missing"),

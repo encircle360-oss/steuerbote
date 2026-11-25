@@ -32,6 +32,7 @@
   "vat_id_check_on_change",
   "vat_id_renewal",
   "vat_id_check_suppliers",
+  "vat_id_check_german",
   "column_break_vat_id_checks",
   "vat_id_invoice_goods",
   "vat_id_goods_max_age",
@@ -246,6 +247,13 @@
    "label": "Confirm Suppliers"
   },
   {
+   "default": "1",
+   "description": "Check the German USt-IdNrn. of partners at VIES of the European Commission, as a simple check of their validity without any comparison of name or address; the BZSt confirms no German numbers. Takes effect when the automatic check is on and on the buttons. It is not the confirmation of § 18e UStG.",
+   "fieldname": "vat_id_check_german",
+   "fieldtype": "Check",
+   "label": "Check German VAT IDs"
+  },
+  {
    "fieldname": "column_break_vat_id_checks",
    "fieldtype": "Column Break"
   },
@@ -395,7 +403,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-25 20:00:00.000000",
+ "modified": "2026-11-25 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",

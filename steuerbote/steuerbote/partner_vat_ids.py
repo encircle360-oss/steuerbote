@@ -7,8 +7,11 @@ partner and what started it.
 A confirmation belongs to a company and is asked with its own USt-IdNr. (UStAE 18e.1 Abs. 1). A partner is confirmed
 for the companies it deals with, those of its Party Accounts and of its submitted invoices, or for the default
 company when it deals with none yet; a company takes part once its VAT Return Settings hold its own German USt-IdNr.
-Only a number the BZSt confirms leaves the site: a German number, one of a country outside the EU and a malformed one
-are never sent, and the status of the partner says why.
+Only a number a service checks leaves the site: a plausible number of another member state with the structure the
+BZSt describes goes to the BZSt, and to VIES only when the BZSt cannot answer; a German number whose check digit is
+right goes to VIES alone, simply, where the company checks German numbers, since the BZSt confirms no German
+numbers. A malformed number and one of a country outside the EU are never sent, and the status of the partner says
+why.
 
 may_ask() is the one rule for who may make Steuerbote ask a service; every trigger of this module goes through it.
 """
@@ -70,7 +73,7 @@ TRIGGERS = (MANUAL, CHANGED, INVOICE, RENEWAL, "VAT Return", "Recapitulative Sta
 NOT_CHECKED = "Not Checked"
 KIND_STATUS = {
 	Kind.MISSING: "",
-	Kind.GERMAN: "German VAT ID",
+	Kind.GERMAN: "German VAT ID, Not Checked",
 	Kind.NOT_CONFIRMABLE: "Not Confirmable",
 	Kind.MALFORMED: "Malformed",
 }
@@ -80,7 +83,20 @@ EXEMPTION_PROBLEMS = frozenset(
 	{Problem.NO_VAT_ID, Problem.GERMAN, Problem.NOT_CONFIRMABLE, Problem.MALFORMED, Problem.INVALID}
 )
 RESULT_STATUS = {"valid": "Valid", "invalid": "Invalid", "unknown": "No Answer"}
-STATUSES = ("", NOT_CHECKED, "Valid", "Invalid", "No Answer", "German VAT ID", "Not Confirmable", "Malformed")
+VALID_SIMPLE = "Valid (Simple)"
+STATUSES = (
+	"",
+	NOT_CHECKED,
+	"Valid",
+	VALID_SIMPLE,
+	"Invalid",
+	"No Answer",
+	"German VAT ID, Not Checked",
+	"Not Confirmable",
+	"Malformed",
+)
+# The status a partner with a German number had before German numbers were checked; after_migrate gives it anew.
+LEGACY_STATUSES = ("German VAT ID",)
 
 PARTY_JOB = "steuerbote.steuerbote.partner_vat_ids.run_party_confirmation"
 PARTY_EVENT = "steuerbote_partner_vat_id"
@@ -277,6 +293,8 @@ class CompanyPolicy:
 	max_age: int
 	goods: Policy
 	services: Policy
+	german: bool = False
+	"""Whether the company checks German USt-IdNrn. at VIES."""
 
 
 def company_policy(company: str) -> CompanyPolicy | None:
@@ -293,6 +311,7 @@ def company_policy(company: str) -> CompanyPolicy | None:
 			"vat_id_goods_max_age",
 			"vat_id_invoice_goods",
 			"vat_id_invoice_services",
+			"vat_id_check_german",
 		],
 		as_dict=True,
 	)
@@ -308,6 +327,7 @@ def company_policy(company: str) -> CompanyPolicy | None:
 		max_age,
 		Policy(_level(settings.vat_id_invoice_goods, Level.BLOCK), _days(settings.vat_id_goods_max_age, 0)),
 		Policy(_level(settings.vat_id_invoice_services, Level.WARN), max_age),
+		bool(cint(settings.vat_id_check_german)),
 	)
 
 
@@ -353,26 +373,29 @@ def default_company() -> str | None:
 
 
 def companies_asking(
-	party_type: str, party: str, trigger: str, source: tuple[str, str] | None
+	party_type: str, party: str, trigger: str, source: tuple[str, str] | None, number: Kind = Kind.CONFIRMABLE
 ) -> list[CompanyPolicy]:
-	"""The companies that confirm the partner's number for the trigger: for an invoice its company, else those of
-	companies_for."""
+	"""The companies that confirm the partner's number of the kind ``number`` for the trigger: for an invoice its
+	company, else those of companies_for."""
 	if source and source[0] == "Sales Invoice":
 		company = frappe.db.get_value("Sales Invoice", source[1], "company")
 		policy = company_policy(company) if company else None
-		return [policy] if policy else []
-	return companies_for(party_type, party, trigger)
+		return [policy] if policy and number.checked(policy.german) else []
+	return companies_for(party_type, party, trigger, number)
 
 
-def companies_for(party_type: str, party: str, trigger: str) -> list[CompanyPolicy]:
+def companies_for(
+	party_type: str, party: str, trigger: str, number: Kind = Kind.CONFIRMABLE
+) -> list[CompanyPolicy]:
 	"""The companies that confirm the partner's number for the trigger: those it deals with, or the default company
 	when it deals with none, each with its own German USt-IdNr.; a change asks only where the settings confirm on a
-	change, and a supplier only where they confirm suppliers, unless someone pressed the button."""
+	change, and a supplier only where they confirm suppliers, unless someone pressed the button; a German number only
+	where the company checks German numbers, whatever the trigger."""
 	companies = dealings(party_type, [party]).get(party) or {default_company()}
 	chosen = []
 	for company in sorted(name for name in companies if name):
 		policy = company_policy(company)
-		if policy is None:
+		if policy is None or not number.checked(policy.german):
 			continue
 		if trigger != MANUAL and (
 			(trigger == CHANGED and not policy.on_change) or (party_type == SUPPLIER and not policy.suppliers)
@@ -387,7 +410,8 @@ def companies_for(party_type: str, party: str, trigger: str) -> list[CompanyPoli
 
 def refresh_status(party_type: str, party: str) -> dict:
 	"""Set the status of the partner's number from its kind or from the newest confirmation of the number of any
-	company, the day of that confirmation and its record; returns these values."""
+	company, the day of that confirmation and its record; returns these values. A German number valid at VIES is
+	„Valid (Simple)“: VIES confirms its validity without any comparison of name or address."""
 	tax_id = frappe.db.get_value(party_type, party, "tax_id")
 	number_kind = partners.kind(tax_id)
 	values = {
@@ -395,7 +419,7 @@ def refresh_status(party_type: str, party: str) -> dict:
 		CHECKED_ON_FIELD: None,
 		LATEST_FIELD: None,
 	}
-	if number_kind is Kind.CONFIRMABLE:
+	if number_kind in (Kind.CONFIRMABLE, Kind.GERMAN):
 		newest = frappe.get_all(
 			CONFIRMATION,
 			filters={"requested": vatid.normalize(tax_id)},
@@ -404,8 +428,9 @@ def refresh_status(party_type: str, party: str) -> dict:
 			limit=1,
 		)
 		if newest:
+			result = RESULT_STATUS[newest[0].result]
 			values = {
-				STATUS_FIELD: RESULT_STATUS[newest[0].result],
+				STATUS_FIELD: VALID_SIMPLE if number_kind is Kind.GERMAN and result == "Valid" else result,
 				CHECKED_ON_FIELD: _day(newest[0].requested_at),
 				LATEST_FIELD: newest[0].name,
 			}
@@ -421,6 +446,16 @@ def on_party_update(doc, method: str | None = None) -> None:
 	new name or a new primary address is confirmed in the background."""
 	doc.update(refresh_status(doc.doctype, doc.name))
 	before = doc.get_doc_before_save()
+	if (before is None or before.get("tax_id") != doc.get("tax_id")) and partners.kind(
+		doc.get("tax_id")
+	) is Kind.MALFORMED:
+		frappe.msgprint(
+			_("The USt-IdNr. {0} is malformed and is not checked: {1}").format(
+				escape_html(doc.get("tax_id") or ""), escape_html(partners.reason(doc.get("tax_id")) or "")
+			),
+			title=_("USt-IdNr."),
+			indicator="orange",
+		)
 	watched = (*WATCHED_PARTY_FIELDS, NAME_FIELDS[doc.doctype], ADDRESS_FIELDS[doc.doctype])
 	if before is not None and all(before.get(field) == doc.get(field) for field in watched):
 		return
@@ -445,13 +480,22 @@ def request(
 	values = frappe.db.get_value(party_type, party, ["tax_id", "disabled"], as_dict=True)
 	if not values or (cint(values.disabled) and trigger != MANUAL):
 		return False
-	if not partners.kind(values.tax_id).sent:
+	number_kind = partners.kind(values.tax_id)
+	if not number_kind.checked(german=True):
 		if throw:
 			frappe.throw(
-				_("{0} has no USt-IdNr. of another member state that the BZSt confirms.").format(party)
+				_("{0} has no USt-IdNr. that a service checks: {1}").format(
+					party, partners.reason(values.tax_id) or _("The USt-IdNr. is missing.")
+				)
 			)
 		return False
-	if not companies_asking(party_type, party, trigger, source):
+	if not companies_asking(party_type, party, trigger, source, number_kind):
+		if throw and number_kind is Kind.GERMAN and companies_asking(party_type, party, trigger, source):
+			frappe.throw(
+				_(
+					"{0} has a German USt-IdNr., and the company checks no German USt-IdNrn.: switch on „Check German VAT IDs“ in the VAT Return Settings."
+				).format(party)
+			)
 		if throw:
 			frappe.throw(
 				_(
@@ -519,11 +563,12 @@ def run_party_confirmation(
 	stored, failed = 0, []
 	try:
 		tax_id = frappe.db.get_value(party_type, party, "tax_id")
-		if partners.kind(tax_id).sent:
+		number_kind = partners.kind(tax_id)
+		if number_kind.checked(german=True):
 			number = vatid.normalize(tax_id)
-			details = party_details(party_type, party)
+			details = party_details(party_type, party) if number_kind is Kind.CONFIRMABLE else None
 			source = (source_doctype, source_name) if source_doctype and source_name else None
-			for policy in companies_asking(party_type, party, trigger, source):
+			for policy in companies_asking(party_type, party, trigger, source, number_kind):
 				outcome = _confirm(policy, number, details, (party_type, party), trigger, source)
 				if outcome is Asked.FAILED:
 					failed.append(policy.company)
@@ -580,15 +625,21 @@ def renew_confirmations() -> None:
 			continue
 		chosen: dict[str, tuple[str, str]] = {}
 		for party_type, party, tax_id in partners_of(policy):
-			number_kind = partners.kind(tax_id)
-			if number_kind.sent:
+			if partners.kind(tax_id).checked(policy.german):
 				chosen.setdefault(vatid.normalize(tax_id), (party_type, party))
 		facts = known(policy.company, chosen)
 		for number, party in sorted(chosen.items()):
 			fact = facts.get(number, Known())
-			has_details = party_details(*party) is not None
+			number_kind = partners.kind(number)
+			has_details = number_kind is Kind.CONFIRMABLE and party_details(*party) is not None
 			if partners.is_due(
-				Kind.CONFIRMABLE, fact.answer, fact.last_query_on, today, policy.max_age, has_details
+				number_kind,
+				fact.answer,
+				fact.last_query_on,
+				today,
+				policy.max_age,
+				has_details,
+				german=policy.german,
 			):
 				key = f"{policy.company}\x1f{number}"
 				targets[key] = (policy, number, party)
@@ -597,7 +648,7 @@ def renew_confirmations() -> None:
 	def ask(candidate: Candidate) -> Asked:
 		policy, number, party = targets[candidate.key]
 		try:
-			details = party_details(*party)
+			details = party_details(*party) if partners.kind(number) is Kind.CONFIRMABLE else None
 		except Exception:
 			frappe.log_error(title=_("Confirmation of a USt-IdNr. failed"))
 			return Asked.FAILED
@@ -635,23 +686,26 @@ def partners_of(policy: CompanyPolicy) -> list[tuple[str, str, str]]:
 
 
 def fill_statuses() -> None:
-	"""after_migrate: give every partner with a USt-IdNr. but no status yet its status, without asking anyone. The
+	"""after_migrate: give every partner with a USt-IdNr. but no status yet, or a status of an earlier version, its
+	status, and every partner whose number no service checks the status that says why, without asking anyone. The
 	status fields come with the fixtures, which bench migrate loads after the patches."""
 	for party_type in PARTY_TYPES:
 		if not frappe.db.has_column(party_type, STATUS_FIELD):
 			continue
-		for name in frappe.get_all(
-			party_type, filters={"tax_id": ["is", "set"], STATUS_FIELD: ["is", "not set"]}, pluck="name"
-		):
-			refresh_status(party_type, name)
+		for status in (["is", "not set"], ["in", list(LEGACY_STATUSES)]):
+			for name in frappe.get_all(
+				party_type, filters={"tax_id": ["is", "set"], STATUS_FIELD: status}, pluck="name"
+			):
+				refresh_status(party_type, name)
+	refresh_statuses()
 
 
 def refresh_statuses() -> None:
-	"""Set the status of every partner whose number is never sent, so that a malformed number shows on its form and in
-	the worklist without a query."""
+	"""Set the status of every partner whose number no service checks, so that a malformed number shows on its form and
+	in the worklist without a query."""
 	for party_type in PARTY_TYPES:
 		for row in frappe.get_all(party_type, filters={"tax_id": ["is", "set"]}, fields=["name", "tax_id"]):
-			if not partners.kind(row.tax_id).sent:
+			if partners.kind(row.tax_id) in (Kind.MALFORMED, Kind.NOT_CONFIRMABLE):
 				refresh_status(party_type, row.name)
 
 
@@ -805,12 +859,18 @@ def vat_id_state(party_type: str, party: str) -> dict:
 	number_kind = partners.kind(tax_id)
 	has_details = party_details(party_type, party) is not None
 	rows = []
-	if number_kind.sent:
+	if number_kind.checked(german=True):
 		number = vatid.normalize(tax_id)
-		for policy in companies_for(party_type, party, MANUAL):
+		for policy in companies_for(party_type, party, MANUAL, number_kind):
 			fact = known(policy.company, [number]).get(number, Known())
 			standing = partners.standing(
-				number_kind, fact.answer, fact.asked, getdate(), policy.max_age, has_details
+				number_kind,
+				fact.answer,
+				fact.asked,
+				getdate(),
+				policy.max_age,
+				has_details,
+				german=policy.german,
 			)
 			rows.append(
 				{
@@ -824,11 +884,11 @@ def vat_id_state(party_type: str, party: str) -> dict:
 			)
 	return {
 		"kind": number_kind.value,
-		"sent": number_kind.sent,
-		"problem": vatid.problem(tax_id) if number_kind in (Kind.NOT_CONFIRMABLE, Kind.MALFORMED) else None,
-		"has_details": has_details,
+		"sent": bool(rows),
+		"problem": partners.reason(tax_id) if number_kind in (Kind.NOT_CONFIRMABLE, Kind.MALFORMED) else None,
+		"has_details": has_details and number_kind is Kind.CONFIRMABLE,
 		"companies": rows,
-		"can_ask": number_kind.sent and may_ask(party_type, party),
+		"can_ask": bool(rows) and may_ask(party_type, party),
 		"queued": is_job_enqueued(party_job_id(party_type, party)),
 	}
 
@@ -846,9 +906,11 @@ def worklist(company: str, party_types: Iterable[str] = PARTY_TYPES, today: date
 			continue
 		number_kind = partners.kind(tax_id)
 		number = vatid.normalize(tax_id)
-		fact = known(company, [number]).get(number, Known()) if number_kind.sent else Known()
+		fact = known(company, [number]).get(number, Known()) if number else Known()
 		has_details = party_details(party_type, party) is not None
-		standing = partners.standing(number_kind, fact.answer, fact.asked, today, policy.max_age, has_details)
+		standing = partners.standing(
+			number_kind, fact.answer, fact.asked, today, policy.max_age, has_details, german=policy.german
+		)
 		if standing is None or not standing.work:
 			continue
 		rows.append(
@@ -860,7 +922,7 @@ def worklist(company: str, party_types: Iterable[str] = PARTY_TYPES, today: date
 				"answer": fact.answer,
 				"record": fact.record,
 				"age": partners.age(fact.answer, today) if fact.answer else None,
-				"problem": vatid.problem(tax_id)
+				"problem": partners.reason(tax_id)
 				if standing in (Standing.NOT_CONFIRMABLE, Standing.MALFORMED)
 				else None,
 			}

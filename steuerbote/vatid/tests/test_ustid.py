@@ -13,7 +13,10 @@ from steuerbote.vatid.ustid import (
 	MEMBER_STATES,
 	MIN_LENGTH,
 	REFUSED,
+	checked_german_pair,
 	checked_pair,
+	german_check_digit,
+	german_problem,
 	has_german_check_digit,
 	is_german,
 	is_plausible,
@@ -226,6 +229,66 @@ class GermanNumberTest(TestCase):
 		for value in ("DE12345678", "DE1234567890", "DEU12345678", "ATU12345678", "", None, 123456789):
 			with self.subTest(value=value):
 				self.assertFalse(is_german(value))
+
+
+class GermanCheckDigitComputationTest(TestCase):
+	"""The check digit of a German USt-IdNr. after the Konstruktionsregeln of the Austrian BMF (Stand November 2020),
+	which Germany released for publication: ISO/IEC 7064 MOD 11,10 over the first eight digits."""
+
+	def test_computes_the_ninth_digit_from_the_first_eight(self):
+		self.assertEqual(
+			[
+				german_check_digit(digits)
+				for digits in ("11111112", "12345678", "98765432", "81234567", "31355133")
+			],
+			[5, 8, 8, 3, 0],
+		)
+
+	def test_tells_whether_the_last_digit_is_the_check_digit(self):
+		self.assertEqual(
+			[has_german_check_digit(value) for value in ("DE111111125", "DE123456789", "ATU12345678", None)],
+			[True, False, False, False],
+		)
+
+	def test_a_remainder_of_ten_gives_the_check_digit_zero(self):
+		self.assertEqual(german_check_digit("31355133"), 0)
+
+	def test_takes_eight_digits_only(self):
+		for value in ("1234567", "123456789", "1234567A"):
+			with self.subTest(value=value), self.assertRaises(ValueError):
+				german_check_digit(value)
+
+	def test_finds_nothing_wrong_with_a_number_whose_check_digit_is_right(self):
+		for value in ("DE111111125", "de 123 456 788", "DE987654328"):
+			with self.subTest(value=value):
+				self.assertIsNone(german_problem(value))
+
+	def test_names_a_wrong_check_digit_a_leading_zero_and_the_wrong_shape(self):
+		self.assertEqual(
+			german_problem("DE123456789"),
+			"Die Prüfziffer von DE123456789 stimmt nicht: Nach dem Verfahren der deutschen USt-IdNr. wäre die "
+			"letzte Ziffer 8.",
+		)
+		self.assertEqual(
+			german_problem("DE011111111"),
+			"Eine deutsche USt-IdNr. beginnt nach DE nicht mit 0, DE011111111 schon.",
+		)
+		self.assertTrue(has_german_check_digit("DE000000003"), "ERiC takes it as a W-IdNr.")
+		self.assertIn("nicht mit 0", german_problem("DE000000003"))
+		for value in ("DE12345", "DE1234567890", "ATU12345678", "", None):
+			with self.subTest(value=value):
+				self.assertIn("DE und neun Ziffern", german_problem(value))
+
+
+class CheckedGermanPairTest(TestCase):
+	def test_takes_a_german_number_whose_check_digit_is_right(self):
+		self.assertEqual(checked_german_pair("de 111 111 125", "DE123456789"), ("DE111111125", "DE123456789"))
+
+	def test_refuses_a_wrong_german_number_and_a_foreign_requester(self):
+		with self.assertRaisesRegex(ValueError, "Prüfziffer"):
+			checked_german_pair("DE123456789", "DE123456789")
+		with self.assertRaisesRegex(ValueError, "ATU87654321"):
+			checked_german_pair("DE111111125", "ATU87654321")
 
 
 class GermanCheckDigitTest(TestCase):

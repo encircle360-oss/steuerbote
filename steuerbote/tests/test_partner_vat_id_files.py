@@ -225,6 +225,7 @@ class FieldFilesTest(TestCase):
 				"vat_id_check_on_change": "0",
 				"vat_id_renewal": "0",
 				"vat_id_check_suppliers": "1",
+				"vat_id_check_german": "1",
 				"vat_id_invoice_goods": "Block",
 				"vat_id_goods_max_age": "0",
 				"vat_id_invoice_services": "Warn",
@@ -325,7 +326,7 @@ class FormFilesTest(TestCase):
 	def test_every_trigger_asks_the_one_rule_of_who_may_ask(self):
 		source = read(PARTNERS)
 		self.assertIn("if not may_ask(*(source or (party_type, party)), throw=throw):", source)
-		self.assertIn('"can_ask": number_kind.sent and may_ask(party_type, party)', source)
+		self.assertIn('"can_ask": bool(rows) and may_ask(party_type, party)', source)
 		self.assertNotIn("check_permission(", source)
 
 

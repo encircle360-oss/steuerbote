@@ -21,14 +21,15 @@ if (!window.steuerbote_partner_vat_id) {
 				lines.push(escape(__("The USt-IdNr. is never sent: {0}", [state.problem])));
 			}
 			for (const row of state.companies) {
+				const simple = state.kind === "german" ? ` ${__("(valid at VIES, without comparison of name)")}` : "";
 				const answered = row.asked_on
 					? __("latest answer of {0}", [frappe.datetime.str_to_user(row.asked_on)])
 					: __("no answer yet");
 				const color = INDICATORS[row.standing] || "orange";
 				lines.push(
-					`<span class="indicator ${color}">${escape(row.company)}: ${escape(row.standing_label)} (${escape(
-						answered
-					)})</span>`
+					`<span class="indicator ${color}">${escape(row.company)}: ${escape(row.standing_label)}${escape(
+						row.standing === "Current" ? simple : ""
+					)} (${escape(answered)})</span>`
 				);
 			}
 			const manual = state.companies.filter((row) => !row.automatic).map((row) => row.company);
@@ -83,6 +84,14 @@ if (!window.steuerbote_partner_vat_id) {
 	const confirm_vat_id = (frm, state) => {
 		const escape = frappe.utils.escape_html;
 		const companies = state.companies.map((row) => escape(row.company)).join(", ");
+		if (state.kind === "german") {
+			const question = __(
+				"Steuerbote asks VIES of the European Commission in the background for {0} whether the German USt-IdNr. {1} is valid, with the own USt-IdNr. of the company and nothing else. The answer confirms the validity alone, without name or address, and is not the confirmation of § 18e UStG, which the BZSt gives for numbers of other member states only. It is kept as a USt-IdNr.-Bestätigung. The query goes out also while ERiC runs as a simulation: the simulation stands in for ELSTER only.",
+				[companies, escape(frm.doc.tax_id)]
+			);
+			frappe.confirm(question, () => send_confirmation(frm));
+			return;
+		}
 		const sent = state.has_details
 			? __("its own USt-IdNr., the USt-IdNr. {0} and the name, street, postal code and town of the partner", [
 					escape(frm.doc.tax_id),
@@ -92,18 +101,19 @@ if (!window.steuerbote_partner_vat_id) {
 			"Steuerbote asks the BZSt in the background for {0}, with {1}. Only when the BZSt cannot answer does the same go to VIES of the European Commission. Every answer is kept as a USt-IdNr.-Bestätigung. The query goes out also while ERiC runs as a simulation: the simulation stands in for ELSTER only.",
 			[companies, sent]
 		);
-		frappe.confirm(question, () =>
-			frappe.call({ method: CONFIRM_METHOD, args: { party_type: frm.doctype, party: frm.doc.name } }).then(() => {
-				frappe.show_alert(
-					{
-						message: __("The confirmation runs in the background. A notice follows when it has finished."),
-						indicator: "blue",
-					},
-					10
-				);
-			})
-		);
+		frappe.confirm(question, () => send_confirmation(frm));
 	};
+
+	const send_confirmation = (frm) =>
+		frappe.call({ method: CONFIRM_METHOD, args: { party_type: frm.doctype, party: frm.doc.name } }).then(() => {
+			frappe.show_alert(
+				{
+					message: __("The confirmation runs in the background. A notice follows when it has finished."),
+					indicator: "blue",
+				},
+				10
+			);
+		});
 
 	const on_partner_confirmed = (frm, data) => {
 		if (data.party_type !== frm.doctype || data.party !== frm.doc.name) {

@@ -26,7 +26,7 @@ from lxml import etree
 
 from steuerbote.vatid.result import NO_ANSWER, UNREADABLE, Confirmation, Details, Match, Outcome, Service
 from steuerbote.vatid.transport import SERVER_ERROR, Clock, Fetch, Request, Response
-from steuerbote.vatid.ustid import checked_pair
+from steuerbote.vatid.ustid import checked_german_pair, checked_pair
 
 URL = "https://ec.europa.eu/taxation_customs/vies/services/checkVatService"
 SOAP = "http://schemas.xmlsoap.org/soap/envelope/"
@@ -120,9 +120,14 @@ def query(
 	"""One call of checkVatApprox, with name and address when details are given.
 
 	The numbers are checked as for the BZSt (ustid.checked_pair); whatever comes back, or does not,
-	becomes the record.
+	becomes the record. A German number (ustid.checked_german_pair), which the BZSt does not confirm, is asked
+	simply, without name and address: the query checks its validity and nothing else.
 	"""
-	requested, requester = checked_pair(requested, requester)
+	if (requested or "").strip()[:2].upper() == "DE":
+		requested, requester = checked_german_pair(requested, requester)
+		details = None
+	else:
+		requested, requester = checked_pair(requested, requester)
 	request = Request(URL, HEADERS, _body(requested, requester, details))
 	asked = {"requested": requested, "requester": requester, "service": Service.VIES, "details": details}
 	requested_at = clock()
