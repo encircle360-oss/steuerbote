@@ -265,6 +265,17 @@ class Statement:
 	def ready_against(self, held: ReadOnlyMapping[tuple[str, Art], Decimal] | None) -> bool:
 		return not self.holding(held)
 
+	def settled(self, held: ReadOnlyMapping[tuple[str, Art], Decimal] | None) -> tuple[Finding, ...]:
+		"""For a Berichtigung, the findings that would hold a line it repeats unchanged, which they no longer do."""
+		if held is None:
+			return ()
+		return tuple(
+			finding
+			for line in self.lines
+			if line.blocked and line.unchanged(held)
+			for finding in line.holding_findings
+		)
+
 	@property
 	def findings(self) -> tuple[Finding, ...]:
 		return tuple(finding for line in self.lines for finding in line.findings)

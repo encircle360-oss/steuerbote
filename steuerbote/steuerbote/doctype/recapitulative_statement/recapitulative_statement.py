@@ -344,7 +344,7 @@ class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 		self.set(
 			"hints",
 			bridge.with_names(
-				bridge.hint_rows(findings),
+				bridge.hint_rows(findings, statement.settled(held)),
 				_rows(stored.hints if stored else (), named=True),
 				bridge.HINT_FIELDS,
 			),
@@ -861,7 +861,7 @@ class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 		self.set(
 			"hints",
 			bridge.with_names(
-				bridge.merged_hints(statement, before.hints),
+				bridge.merged_hints(statement, before.hints, held),
 				_rows(before.hints, named=True),
 				bridge.HINT_FIELDS,
 			),
