@@ -28,7 +28,7 @@ class TestDefaultAccountsSetup(IntegrationTestCase):
 		cls.discount_19 = make_account(COMPANY, "8736", "Gewährte Skonti 19 % USt", "Income")
 		cls.write_off = make_account(COMPANY, "2400", "Forderungsverluste", "Expense")
 		cls.round_off = make_account(COMPANY, "2309", "Sonstige Aufwendungen unregelmäßig", "Expense")
-		cls.own = make_account(COMPANY, "2318", "Rundungsdifferenzen", "Expense")
+		cls.own = make_account(COMPANY, "2990", "Rundungsdifferenzen", "Expense")
 
 	def setUp(self):
 		frappe.db.savepoint("default_accounts_setup_test")
@@ -52,7 +52,7 @@ class TestDefaultAccountsSetup(IntegrationTestCase):
 			[
 				(default_accounts_setup.HOLDS_VAT, "8730"),
 				(default_accounts_setup.HOLDS_VAT, "2400"),
-				(default_accounts_setup.UNKNOWN, "2318"),
+				(default_accounts_setup.UNKNOWN, "2990"),
 			],
 		)
 		self.assertEqual(result.notes[0].values[3], "8736 (19 %), 8731 (7 %), 8734 (0 %)")
