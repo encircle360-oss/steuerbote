@@ -22,6 +22,10 @@ whose correction is its amount. Rows are mappings, such as the dicts of the chil
   the correction stays as it is and takes anew when it changes. When Berechnen computes another amount later, such as
   after a late booking, the correction would hide the change, in the document and in its Berichtigung, which takes the
   corrections with their bases; stale names those lines, and the document holds them as errors.
+- unconfirmed: a correction from before Steuerbote kept the basis has the amount of the day of the update as its
+  basis, which may already include a late booking, and carries the mark basis_unknown. Its document holds it as an
+  error, whatever Berechnen computes, until a change of its amount or reason confirms it against the amount the line
+  shows; Berechnen and a save keep the mark while the correction stays as it is.
 - reported: what a line files.
 - kept: whether the amounts stored for the lines are those the lines give, before a filing.
 - changed: whether a save changed what Berechnen checked.
@@ -72,6 +76,7 @@ class Columns:
 	reported: str = "reported"
 	manual: str = "manual"
 	basis: str = "correction_basis"
+	basis_unknown: str = "correction_basis_unknown"
 
 	def __post_init__(self) -> None:
 		if not self.amounts:
@@ -159,15 +164,17 @@ def recalculated(computed: Iterable[Row], rows: Iterable[Row], columns: Columns)
 	for row in computed:
 		key = _required_key(row, columns)
 		correction = corrections.pop(key, None)
-		basis = ZERO
+		basis, unknown = ZERO, 0
 		if correction:
 			kept_basis = corrected_rows[key].get(columns.basis)
 			basis = to_amount(row.get(columns.amount)) if kept_basis is None else to_amount(kept_basis)
+			unknown = _unknown(corrected_rows[key], columns)
 		line = {
 			**_without_name(row),
 			columns.correction: correction.amount if correction else ZERO,
 			columns.reason: correction.reason if correction else "",
 			columns.basis: basis,
+			columns.basis_unknown: unknown,
 			columns.manual: 0,
 		}
 		lines.append(line)
@@ -195,6 +202,7 @@ def restored(stored: Iterable[Row], sent: Iterable[Row], columns: Columns) -> li
 		else:
 			line = {**row, **{column: before.get(column) for column in columns.filled}, columns.manual: 0}
 		line[columns.basis] = ZERO if line[columns.manual] else _basis(before, row, columns)
+		line[columns.basis_unknown] = 0 if line[columns.manual] else _kept_unknown(before, row, columns)
 		lines.append(line)
 	removed = next((row for row in by_name.values() if not _manual(row, columns)), None)
 	if removed is not None:
@@ -215,12 +223,38 @@ def _basis(before: Row, row: Row, columns: Columns) -> Decimal:
 	return to_amount(before.get(columns.amount))
 
 
+def _kept_unknown(before: Row, row: Row, columns: Columns) -> int:
+	"""The mark of an unknown basis, which a correction keeps while it stays as the stored one is."""
+	correction, stored = correction_of(row, columns), correction_of(before, columns)
+	if (
+		correction is None
+		or stored is None
+		or (stored.amount, stored.reason) != (correction.amount, correction.reason)
+	):
+		return 0
+	return _unknown(before, columns)
+
+
+def _unknown(row: Row, columns: Columns) -> int:
+	return int(bool(int(row.get(columns.basis_unknown) or 0)))
+
+
+def unconfirmed(lines: Iterable[Row], columns: Columns) -> tuple[tuple[str, Decimal], ...]:
+	"""The lines Berechnen computed whose correction has an unknown basis, as key and the amount computed now, in their
+	order."""
+	return tuple(
+		(_key(line, columns), to_amount(line.get(columns.amount)))
+		for line in lines
+		if not _manual(line, columns) and correction_of(line, columns) is not None and _unknown(line, columns)
+	)
+
+
 def stale(lines: Iterable[Row], columns: Columns) -> tuple[tuple[str, Decimal, Decimal], ...]:
 	"""The lines Berechnen computed whose correction was made against another amount than the one it computes now, as
-	key, basis and amount, in their order."""
+	key, basis and amount, in their order; a correction of an unknown basis is unconfirmed instead."""
 	found = []
 	for line in lines:
-		if _manual(line, columns) or correction_of(line, columns) is None:
+		if _manual(line, columns) or correction_of(line, columns) is None or _unknown(line, columns):
 			continue
 		basis, amount = to_amount(line.get(columns.basis)), to_amount(line.get(columns.amount))
 		if basis != amount:

@@ -22,7 +22,9 @@ Abweichung muss erklärt sein, bevor die Meldung abgegeben wird“ (docs/roadmap
 a hint.
 
 The registers and the ledger lines compared go by posting date, the return by the period of the supply and of a late
-booking (steuerbote/ustva/assignment.py). Given the lines the return is computed from (``reported``), an information
+booking (steuerbote/ustva/assignment.py). The registers list no cancelled invoice, and the return counts a
+cancellation on the day of the voucher it reverses, so the caller leaves a cancelled voucher and its reversal out of
+the ledger lines, wherever the immutable ledger posted the reversal. Given the lines the return is computed from (``reported``), an information
 row per Kennzahl of a register names the vouchers the return reports in another period than the one they are posted
 in, with the amount by which they change the Kennzahl: those posted elsewhere and reported here, and those posted here
 and reported elsewhere. It is compared with nothing; a person sees why the Kennzahl of the return is not the amount of

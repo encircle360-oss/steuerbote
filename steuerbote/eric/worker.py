@@ -400,8 +400,7 @@ def flags(operation: Operation, kind: Datenart) -> int:
 def versions(runtime: RuntimeInfo) -> dict[str, object]:
 	"""The product versions of the libraries ERiC loads, as EricVersion lists them."""
 	try:
-		library = EricLibrary(runtime.lib_dir / LIBRARY)
-		library.initialise(runtime.plugin_dir, runtime.log_dir)
+		library = _initialised(runtime)
 	except (OSError, EricError) as error:
 		return {"error": str(error)}
 	try:
@@ -417,11 +416,19 @@ def versions(runtime: RuntimeInfo) -> dict[str, object]:
 	}
 
 
+def _initialised(runtime: RuntimeInfo) -> EricLibrary:
+	"""ERiC loaded and initialised with the directory of its eric.log, which it does not create itself: without it
+	EricInitialisiere fails (ERIC_GLOBAL_FEHLER_INITIALISIERUNG, ERiC-API-Referenz 44.3.6.0)."""
+	library = EricLibrary(runtime.lib_dir / LIBRARY)
+	runtime.log_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+	library.initialise(runtime.plugin_dir, runtime.log_dir)
+	return library
+
+
 def steuernummer(runtime: RuntimeInfo, number: str) -> dict[str, object]:
 	"""Whether ERiC takes the Steuernummer, by EricPruefeSteuernummer."""
 	try:
-		library = EricLibrary(runtime.lib_dir / LIBRARY)
-		library.initialise(runtime.plugin_dir, runtime.log_dir)
+		library = _initialised(runtime)
 	except (OSError, EricError) as error:
 		return {"error": str(error)}
 	try:

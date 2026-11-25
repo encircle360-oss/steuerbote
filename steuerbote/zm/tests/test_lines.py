@@ -19,20 +19,18 @@ from steuerbote.zm.lines import (
 )
 from steuerbote.zm.tests.support import AUSTRIA, FIGURES, FRANCE, SPAIN, d, invoice
 
-NO_VAT_ID_ADVICE = (
-	"Berichtige die Rechnung, oder nimm die Zeile mit der Korrektur 0 und einer Begründung aus der ZM."
-)
+NO_VAT_ID_ADVICE = "Berichtigen Sie die Rechnung, oder nehmen Sie die Zeile mit der Korrektur 0 und einer Begründung aus der ZM."
 MALFORMED_ADVICE = (
-	"Berichtige die USt-IdNr. in der Rechnung, oder nimm die Zeile mit der Korrektur 0 und einer Begründung "
+	"Berichtigen Sie die USt-IdNr. in der Rechnung, oder nehmen Sie die Zeile mit der Korrektur 0 und einer Begründung "
 	"aus der ZM."
 )
 INVALID_ADVICE = (
-	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, gib die USt-IdNr. mit Begründung frei; "
-	"sonst berichtige die Rechnung."
+	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, geben Sie die USt-IdNr. mit Begründung frei; "
+	"sonst berichtigen Sie die Rechnung."
 )
 UNCONFIRMED_ADVICE = (
 	"Die Bestätigung soll spätestens zum Umsatz vorliegen (UStAE 6a.8 Abs. 6): „USt-IdNrn. prüfen“ fragt beim "
-	"BZSt an; liegt eine Bestätigung anders vor, gib die USt-IdNr. mit Begründung frei."
+	"BZSt an; liegt eine Bestätigung anders vor, geben Sie die USt-IdNr. mit Begründung frei."
 )
 
 
@@ -424,7 +422,7 @@ class OverrideBasisTest(TestCase):
 			line.findings[1].text,
 			f"Die Korrektur der Zeile {AUSTRIA} (L) auf 55.000,00 € wurde bei 55.000,99 € im Hauptbuch eingetragen; "
 			"das Hauptbuch bucht jetzt 57.000,99 €. Die Zeile hält die Meldung an, bis die Korrektur bestätigt ist: "
-			"Passe Betrag oder Begründung an, oder lösche die Korrektur, dann meldet die Zeile das Hauptbuch.",
+			"Passen Sie Betrag oder Begründung an, oder löschen Sie die Korrektur, dann meldet die Zeile das Hauptbuch.",
 		)
 		self.assertIs(line.findings[1].severity, Severity.ERROR)
 		self.assertEqual(line.override.basis, d("55000.99"))
@@ -470,6 +468,27 @@ class OverrideBasisTest(TestCase):
 		with self.assertRaises(ValueError):
 			Override(d("10"), "Grund", basis=d("1.001"))
 		self.assertIsNone(Override(d("10"), "Grund").basis)
+
+	def test_an_override_whose_basis_is_unknown_holds_the_line_until_it_is_confirmed(self):
+		"""An override from before Steuerbote kept the basis has the ledger amount of the day of the update as its
+		basis, which may already include a late invoice; it holds its line even where that amount is the ledger's."""
+		override = Override(d("55000"), "Nachweis", basis=d("57000.99"), basis_unknown=True)
+		result = statement(
+			invoice("1", "55000.99"), invoice("2", "2000.00"), overrides={(AUSTRIA, Art.L): override}
+		)
+		line = result.lines[0]
+		self.assertEqual(codes(line), [Code.OVERRIDE_STALE])
+		self.assertEqual(
+			line.findings[0].text,
+			f"Die Korrektur der Zeile {AUSTRIA} (L) auf 55.000,00 € stammt aus einer Version von Steuerbote, die nicht "
+			"festhielt, bei welchem Betrag im Hauptbuch sie eingetragen wurde; das Hauptbuch bucht jetzt 57.000,99 €. "
+			"Die Zeile hält die Meldung an, bis die Korrektur bestätigt ist: Prüfen Sie sie gegen das Hauptbuch und "
+			"ändern Sie Betrag oder Begründung, oder löschen Sie die Korrektur, dann meldet die Zeile das Hauptbuch.",
+		)
+		self.assertTrue(line.override.basis_unknown)
+		self.assertTrue(line.blocked)
+		self.assertFalse(result.ready)
+		self.assertFalse(Override(d("10"), "Grund").basis_unknown)
 
 
 class AcceptanceTest(TestCase):
@@ -574,6 +593,20 @@ class CorrectionReadinessTest(TestCase):
 		self.assertTrue(result.ready_against(held))
 		self.assertEqual([line.vat_id for line in result.holding(None)], [AUSTRIA])
 		self.assertFalse(result.ready_against(None))
+
+	def test_the_findings_of_an_unchanged_line_are_settled_for_the_berichtigung(self):
+		"""The finding of the unconfirmed number of a line the Berichtigung repeats unchanged holds nothing; it is
+		settled, so that the statement shows it as such and not as an error beside the one that holds it."""
+		result = statement(
+			invoice("1", "10000.00"),
+			invoice("2", "4000.00", kennzahl="21", vat_id=FRANCE),
+			validity={AUSTRIA: Validity.UNCONFIRMED, FRANCE: Validity.UNCONFIRMED},
+		)
+		held = {(AUSTRIA, Art.L): d("10000"), (FRANCE, Art.S): d("2500")}
+		(settled,) = result.settled(held)
+		self.assertEqual((settled.code, settled.text.split(" ")[2]), (Code.UNCONFIRMED_VAT_ID, AUSTRIA))
+		self.assertEqual([line.vat_id for line in result.holding(held)], [FRANCE])
+		self.assertEqual(result.settled(None), ())
 
 	def test_a_changed_line_holds_it(self):
 		result = statement(invoice("1", "12000.00"), validity={AUSTRIA: Validity.UNCONFIRMED})
