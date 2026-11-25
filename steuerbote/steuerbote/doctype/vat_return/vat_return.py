@@ -38,6 +38,7 @@ gives these hints anew when it has finished; the return does not change while it
 """
 
 import re
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -286,7 +287,7 @@ class VATReturn(Confirming, Transmittable, Document):
 				self.get(RECONCILIATION),
 			),
 		)
-		hints = build_hints(self, period, mapping, result, comparison, reconciliation)
+		hints = build_hints(self, period, mapping, result, comparison, reconciliation, sales_invoices(lines))
 		self.set("hints", bridge.hint_rows((*hints, *release_hints)))
 		self.ready = int(result.ready and bridge.provisional_forms(year) is None)
 		self.status = READY if self.ready else CALCULATED
@@ -929,6 +930,7 @@ def build_hints(
 	result: ustva.UstvaResult,
 	comparison: plausibility.Comparison,
 	reconciliation: tuple[registers.Row, ...] = (),
+	invoices_of_the_period: Collection[str] | None = None,
 ) -> tuple[plausibility.Hint, ...]:
 	"""Hinweise: the invoices of the period, their reconciliation with the ledger, the balances on the accounts
 	watched for a hint, the bases taken from the tax of a voucher without base account, the suppliers of the vouchers of
@@ -937,7 +939,9 @@ def build_hints(
 	registers.
 
 	A hint informs and never holds the return; whether it is ready follows the Verprobung and the accounts
-	watched at the blocking level alone.
+	watched at the blocking level alone. ``invoices_of_the_period`` names the Sales Invoices whose bookings the
+	return reports (sales_invoices), so the invoices meet the ledger amounts they belong to; without it the Sales
+	Invoices posted in the period count.
 	"""
 	lines = invoices.load_lines(
 		doc.company,
@@ -945,6 +949,7 @@ def build_hints(
 		period.end,
 		plausibility.sales_accounts(mapping),
 		plausibility.purchase_accounts(mapping),
+		invoices_of_the_period,
 	)
 	ledger = {number: value.amount for number, value in result.values.items()}
 	currency = frappe.get_cached_value("Company", doc.company, "default_currency")
@@ -971,6 +976,14 @@ def build_hints(
 			account_labels(doc.company, (row.account_number for row in reconciliation if row.account_number)),
 			figures,
 		),
+	)
+
+
+def sales_invoices(lines: Iterable[ustva.LedgerLine]) -> list[str]:
+	"""The Sales Invoices behind the ledger lines, each once."""
+	prefix = f"{invoices.SALES.doctype}:"
+	return sorted(
+		{line.voucher.removeprefix(prefix) for line in lines if (line.voucher or "").startswith(prefix)}
 	)
 
 
