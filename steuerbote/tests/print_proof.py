@@ -26,7 +26,8 @@ from pathlib import Path
 
 import frappe
 from frappe import _
-from frappe.translate import print_language
+from frappe.translate import clear_cache as clear_translations
+from frappe.translate import get_translations_from_csv, print_language
 from frappe.utils.pdf import get_pdf
 
 from steuerbote.tests import printouts
@@ -134,6 +135,8 @@ BUNDLE = re.compile(r'href="(/assets/[^"]*print\.bundle[^"]*\.css)"')
 def run(directory: str) -> None:
 	"""Every printout in German, the language of the sites Steuerbote serves: German texts run longer than their
 	English source, and the checks of margins and page breaks are only worth what the texts they measure are."""
+	# The translations Frappe keeps in Redis may be those a process built before the app's were complete.
+	clear_translations()
 	with print_language(LANGUAGE):
 		if (
 			_(
@@ -142,7 +145,8 @@ def run(directory: str) -> None:
 			== PROBE
 		):
 			raise SystemExit(
-				"Die deutschen Übersetzungen von Steuerbote fehlen, die Ausdrucke wären englisch."
+				"Die deutschen Übersetzungen von Steuerbote fehlen, die Ausdrucke wären englisch "
+				f"(Sprache {frappe.local.lang}, in de.csv: {PROBE in get_translations_from_csv(LANGUAGE, 'steuerbote')})."
 			)
 		proof_all(directory)
 
