@@ -121,6 +121,8 @@ REPEAT = 3
 LANGUAGE = "de"
 # The words a printout must not hold, which only an English one does.
 ENGLISH = ("the", "has", "with")
+# The margins of the stylesheet of the print formats, steuerbote/templates/includes/print/style.html.
+MARGINS = printouts.Margins(top=28, bottom=18, left=20, right=15)
 # German texts that the printouts of the documents of the seed hold, so that a fallback to English fails the run.
 GERMAN = {
 	"Corporate Income Tax Return": ("Steuerbote hat die Vordrucke für",),
@@ -169,11 +171,23 @@ def proof_all(directory: str) -> None:
 			renders = [("wkhtmltopdf", False), ("chrome", False)]
 			if variant == "kurz":
 				renders.append(("wkhtmltopdf", True))
+			printed = {}
 			for engine, bundle in renders:
 				stem = f"{slug(print_format)}__{variant}__{engine}{'__mit-druckstil' if bundle else ''}"
 				problems, pages = proof(out, stem, doc, print_format, together, engine, bundle)
+				if not bundle:
+					printed[engine] = pages
 				failed = failed or bool(problems)
-				report.append(f"- {stem}: {pages} Seiten{'' if not problems else ', ' + '; '.join(problems)}")
+				report.append(
+					f"- {stem}: {len(pages)} Seiten{'' if not problems else ', ' + '; '.join(problems)}"
+				)
+			if all(printed.values()):
+				differences = printouts.alike(printed["wkhtmltopdf"], printed["chrome"], MARGINS)
+				failed = failed or bool(differences)
+				report.append(
+					f"- {slug(print_format)}__{variant}: "
+					+ ("beide Generatoren gleich" if not differences else "; ".join(differences))
+				)
 	(out / "report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
 	sys.stdout.write("\n".join(report) + "\n")
 	if failed:
@@ -418,11 +432,11 @@ def renamed(doc):
 
 def proof(
 	out: Path, stem: str, doc, print_format: str, together, engine: str, bundle: bool
-) -> tuple[list[str], int]:
+) -> tuple[list[str], list[printouts.Page]]:
 	try:
 		pdf = render(doc, print_format, engine, bundle)
 	except Exception as error:
-		return [f"nicht gedruckt: {error}"], 0
+		return [f"nicht gedruckt: {error}"], []
 	path = out / f"{stem}.pdf"
 	path.write_bytes(pdf)
 	pdftotext = shutil.which("pdftotext") or "pdftotext"
@@ -439,8 +453,9 @@ def proof(
 		together=together,
 		somewhere=GERMAN.get(doc.doctype, ()),
 		nowhere=ENGLISH,
+		margins=MARGINS,
 	)
-	return printouts.check(pages, expected), len(pages)
+	return printouts.check(pages, expected), pages
 
 
 def render(doc, print_format: str, engine: str, bundle: bool) -> bytes:

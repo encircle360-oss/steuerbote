@@ -19,6 +19,8 @@ SAME_LINE = 2.0
 OVERPRINT = 0.8
 # How far a word may reach into the margin before it counts as cut off or bleeding, in points.
 BLEED = 1.0
+# How far apart the same line may stand in the printouts of the two generators, in points.
+SAME_PLACE = 1 * MM
 
 PAGE = re.compile(r'<page width="([\d.]+)" height="([\d.]+)">(.*?)</page>', re.DOTALL)
 WORD = re.compile(
@@ -208,6 +210,51 @@ def nowhere(pages, texts) -> list[str]:
 		for number, page in enumerate(pages, start=1)
 		if f" {' '.join(text.split())} " in f" {page_text(page)} "
 	]
+
+
+@dataclass(frozen=True)
+class Frame:
+	"""Where on a page the running head ends, the content begins and the running foot begins, in points from the top
+	edge; None where the page has nothing there."""
+
+	head: float | None
+	first: float | None
+	foot: float | None
+
+
+def frame(page: Page, margins: Margins) -> Frame:
+	top, bottom = margins.top * MM, page.height - margins.bottom * MM
+	return Frame(
+		head=max((word.y1 for word in page.words if word.y1 < top - BLEED), default=None),
+		first=min((word.y0 for word in body(page, margins)), default=None),
+		foot=min((word.y0 for word in page.words if word.y0 > bottom + BLEED), default=None),
+	)
+
+
+def _mm(points: float | None) -> str:
+	return "keins" if points is None else f"{points / MM:.1f} mm".replace(".", ",")
+
+
+def alike(wkhtmltopdf, chromium, margins: Margins) -> list[str]:
+	"""The printout of one document with both generators: the same number of pages, and on each page the head, the
+	first line and the foot at the same place, so that it does not matter which generator a site prints with."""
+	if len(wkhtmltopdf) != len(chromium):
+		return [f"wkhtmltopdf {len(wkhtmltopdf)} Seiten, Chromium {len(chromium)} Seiten"]
+	problems = []
+	for number, (one, other) in enumerate(zip(wkhtmltopdf, chromium, strict=True), start=1):
+		first, second = frame(one, margins), frame(other, margins)
+		for label, here, there in (
+			("Ende des Kopfs", first.head, second.head),
+			("erste Zeile", first.first, second.first),
+			("Fuß", first.foot, second.foot),
+		):
+			if (here is None) != (there is None) or (
+				here is not None and there is not None and abs(here - there) > SAME_PLACE
+			):
+				problems.append(
+					f"Seite {number}: {label} mit wkhtmltopdf {_mm(here)}, mit Chromium {_mm(there)}"
+				)
+	return problems
 
 
 def check(pages, expected: Expectations) -> list[str]:
