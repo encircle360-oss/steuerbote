@@ -118,6 +118,7 @@ class Reason(StrEnum):
 	CASH_IN_TRANSIT = "cash_in_transit"
 	COOPERATIVE = "cooperative"
 	CREDITOR_PREPAYMENT = "creditor_prepayment"
+	CURRENCY_TRANSLATION = "currency_translation"
 	CURRENT_ASSETS_MIXED = "current_assets_mixed"
 	DEBTOR_COUNTER = "debtor_counter"
 	DEFERRAL_PROVISION = "deferral_provision"
@@ -296,6 +297,12 @@ REASONS: MappingProxyType[Reason, str] = MappingProxyType(
 			"DATEV puts the account under the sonstige betriebliche Erträge or Aufwendungen "
 			"(Bilanzposten, Fußnote 2); what it holds, the valuation of the Finanzmittelfonds or the "
 			"results of trading, the Steuerberatung looks at."
+		),
+		Reason.CURRENCY_TRANSLATION: (
+			"Erträge und Aufwendungen aus der Währungsumrechnung stand apart in the GuV (§ 277 Abs. 5 Satz 2 HGB); "
+			"ERPNext's Wechselkursneubewertung books both onto the one account of the company, so the account takes "
+			"the position of the other direction for a balance on the other side, and a hint asks to book them apart "
+			"(steuerbote.xbrl.mapping, BILANZ-WAEHRUNG-SALDIERT)."
 		),
 		Reason.CASH_IN_TRANSIT: (
 			"Money on its way between Kasse and Bank at the Bilanzstichtag is an asset, and DATEV "
@@ -4332,6 +4339,8 @@ _GROUPS_6_9: tuple[Group, ...] = (
 	_position(
 		"is.netIncome.regular.operatingTC.otherOpRevenue.currGains",
 		("2660", "4840", "Erträge aus der Währungsumrechnung"),
+		opposite="is.netIncome.regular.operatingTC.otherCost.currLoss",
+		reason=Reason.CURRENCY_TRANSLATION,
 	),
 	_position(
 		"is.netIncome.regular.operatingTC.otherOpRevenue.miscellaneous",
@@ -6023,6 +6032,8 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		"is.netIncome.regular.operatingTC.otherCost.currLoss",
 		("2150", "6880", "Aufwendungen aus der Währungsumrechnung"),
 		("2151", "6881", "Aufwendungen aus der Währungsumrechnung (nicht § 256a HGB)"),
+		opposite="is.netIncome.regular.operatingTC.otherOpRevenue.currGains",
+		reason=Reason.CURRENCY_TRANSLATION,
 	),
 	_position(
 		"is.netIncome.regular.operatingTC.otherCost.otherOrdinary",
@@ -7515,7 +7526,7 @@ DEFAULTS: MappingProxyType[str, MappingProxyType[str, Defaults]] = MappingProxyT
 		for version in GROUPS
 	}
 )
-REVISIONS: MappingProxyType[str, int] = MappingProxyType({"6.9": 2, "6.10": 2})
+REVISIONS: MappingProxyType[str, int] = MappingProxyType({"6.9": 3, "6.10": 3})
 
 
 def defaults_for(chart: str, version: str) -> Defaults:

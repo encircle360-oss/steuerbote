@@ -1,5 +1,6 @@
 """The checks of the Bilanzzuordnung against the HGB-Taxonomie 6.9 of esteuer.de (steuerbote/xbrl/tests/real.py)."""
 
+from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.hgb.statement import RemainingTerm
@@ -141,3 +142,45 @@ class PlacementTest(TestCase):
 		):
 			with self.subTest(concept=concept):
 				self.assertEqual(mapping.catch_all(taxonomy, concept), expected)
+
+
+CURRENCY_LOSS = "is.netIncome.regular.operatingTC.otherCost.currLoss"
+CURRENCY_GAINS = "is.netIncome.regular.operatingTC.otherOpRevenue.currGains"
+
+
+class CurrencyTest(TestCase):
+	"""Erträge und Aufwendungen aus der Währungsumrechnung stand apart in the GuV (§ 277 Abs. 5 Satz 2 HGB), and § 246
+	Abs. 2 Satz 1 HGB forbids netting them; ERPNext's Wechselkursneubewertung books both onto one account."""
+
+	def place(self, *balances: mapping.AccountBalance) -> mapping.Placement:
+		rules = (
+			Rule("6880", CURRENCY_LOSS, opposite=CURRENCY_GAINS),
+			Rule("4840", CURRENCY_GAINS, opposite=CURRENCY_LOSS),
+		)
+		return mapping.place(
+			Mapping("SKR04", rules=rules), mapping.Books(balances), real.view(), mapping.Purpose.BOTH
+		)
+
+	def balance(self, number: str, debit: str, credit: str) -> mapping.AccountBalance:
+		return mapping.AccountBalance(
+			number, number, number, Part.INCOME_STATEMENT, Decimal(debit), Decimal(credit)
+		)
+
+	def test_an_account_with_gains_and_losses_of_the_year_gets_a_hint(self):
+		placement = self.place(self.balance("6880", "300.00", "1000.00"), self.balance("4840", "0", "50.00"))
+		(found,) = [finding for finding in placement.findings if finding.code == mapping.Code.CURRENCY_NETTED]
+		self.assertEqual(found.severity, mapping.Severity.HINT)
+		self.assertEqual(
+			found.text,
+			"Konto 6880 bucht im Jahr Erträge und Aufwendungen aus der Währungsumrechnung (Haben 1.000,00 €, Soll "
+			"300,00 €) und zeigt nur ihren Saldo von 700,00 €. Die GuV weist beide gesondert aus (§ 277 Abs. 5 Satz 2 "
+			"HGB), verrechnet werden dürfen sie nicht (§ 246 Abs. 2 Satz 1 HGB): Buchen Sie Erträge und Aufwendungen "
+			"aus der Währungsumrechnung auf getrennte Konten, auch wo die Wechselkursneubewertung von ERPNext beide auf "
+			"ein Konto bucht.",
+		)
+		(gain,) = [item for item in placement.placed if item.balance.number == "6880"]
+		self.assertEqual(gain.concept, CURRENCY_GAINS)
+
+	def test_an_account_of_one_direction_gets_none(self):
+		placement = self.place(self.balance("6880", "300.00", "0"), self.balance("4840", "0", "50.00"))
+		self.assertNotIn(mapping.Code.CURRENCY_NETTED, [finding.code for finding in placement.findings])
