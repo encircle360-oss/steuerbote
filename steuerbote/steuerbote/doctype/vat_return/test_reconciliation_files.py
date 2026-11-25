@@ -116,7 +116,7 @@ class FormTest(TestCase):
 		self.assertIn("leave_kennzahlen_without_override_blank();", setup["body"])
 		body = function(self.script, "leave_kennzahlen_without_override_blank")
 		self.assertIn('frappe.meta.set_formatter("VAT Return Kennzahl", "override", null,', body)
-		self.assertIn("!doc || !doc.override_reason ? \"<span></span>\"", body)
+		self.assertIn('!doc || !doc.override_reason ? "<span></span>"', body)
 
 	def test_the_file_for_mein_elster_waits_for_the_explanations_or_the_remarks(self):
 		offer = function(self.script, "can_make_import_file")
