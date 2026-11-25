@@ -136,6 +136,19 @@ class OneStylesheetTest(TestCase):
 		)
 		self.assertIn("steuerbote.steuerbote.about.steuerbote_pdf_generator", read("steuerbote/hooks.py"))
 
+	def test_rows_and_lines_are_whole_pixels_high(self):
+		"""wkhtmltopdf rounds a line height, the padding of a cell or a rule down to a whole pixel, Chromium keeps the
+		fraction; with fractions every row is higher with Chromium and the same document runs to more pages."""
+		vertical = re.compile(r"(line-height|padding(?:-top|-bottom)?|border(?:-top|-bottom)?):\s*([^;]+);")
+		for selector, body in rules(read(STYLE)).items():
+			cell = selector.endswith(("td", "th"))
+			for name, value in vertical.findall(body):
+				with self.subTest(selector=selector, property=name):
+					if name == "line-height":
+						self.assertRegex(value, r"^\d+px$")
+					elif cell:
+						self.assertNotIn("mm", value)
+
 	def test_sets_a_font_with_the_metrics_of_helvetica_that_the_server_has(self):
 		style = rules(read(STYLE))
 		self.assertIn(
