@@ -88,7 +88,13 @@ class TestPartnerVatIds(IntegrationTestCase):
 			number: make_account(COMPANY, number, name, root_type)
 			for number, (name, root_type) in ACCOUNTS.items()
 		}
-		make_settings(COMPANY, [(2026, "monthly", 1)], ust_idnr=OWN_VAT_ID)
+		make_settings(
+			COMPANY,
+			[(2026, "monthly", 1)],
+			ust_idnr=OWN_VAT_ID,
+			vat_id_check_on_change=1,
+			vat_id_renewal=1,
+		)
 		make_settings(OTHER, [(2026, "monthly", 1)])
 		make_mapping(COMPANY)
 		make_customer(ALPEN, "Austria", AUSTRIAN, city="Wien")
@@ -192,6 +198,29 @@ class TestPartnerVatIds(IntegrationTestCase):
 		partner_module.fill_statuses()
 		self.assertEqual(frappe.db.get_value("Customer", FORMFEHLER, "vat_id_status"), "Malformed")
 		self.assertEqual(frappe.db.get_value("Customer", MUENCHEN, "vat_id_status"), "Valid")
+
+	def test_nothing_is_sent_by_itself_until_the_automatic_check_is_switched_on(self):
+		"""Both automatic triggers are off by default; the button works all the same."""
+		fields = frappe.get_meta(SETTINGS)
+		self.assertEqual(
+			[fields.get_field(name).default for name in ("vat_id_check_on_change", "vat_id_renewal")],
+			["0", "0"],
+		)
+		frappe.db.set_value(SETTINGS, COMPANY, {"vat_id_check_on_change": 0, "vat_id_renewal": 0})
+		with patch("frappe.enqueue") as enqueue:
+			partner_module.on_party_update(frappe.get_doc("Customer", ALPEN))
+			enqueue.assert_not_called()
+			self.assertTrue(partner_module.confirm_vat_id("Customer", ALPEN))
+		service = FakeBzst({})
+		self.renew(service)
+		self.assertEqual(service.requests, [])
+		self.assertEqual(frappe.db.get_value("Customer", ALPEN, "vat_id_status"), "Not Checked")
+		state = partner_module.vat_id_state("Customer", ALPEN)
+		self.assertEqual(
+			[(row["company"], row["automatic"]) for row in state["companies"]], [(COMPANY, False)]
+		)
+		_columns, _rows, message = worklist_report.execute({"company": COMPANY})
+		self.assertIn("automatic check is off", message)
 
 	def test_a_new_partner_and_a_changed_number_name_or_address_queue_a_confirmation(self):
 		doc = frappe.get_doc("Customer", ALPEN)
@@ -440,6 +469,17 @@ class TestPartnerVatIds(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "saved draft invoice"):
 			partner_module.confirm_invoice_customer(invoice)
 
+	def test_a_confirmation_of_the_same_day_after_a_refused_submit_lets_the_invoice_through(self):
+		doc = self.invoice(ALPEN, self.accounts["8125"])
+		with self.assertRaisesRegex(frappe.ValidationError, "Confirm VAT ID of the Customer") as refused:
+			partner_module.check_invoice(doc)
+		for step in ("Confirm VAT ID", "VAT ID Override Reason"):
+			self.assertIn(step, str(refused.exception))
+		service = FakeBzst({AUSTRIAN: [bzst("evatr-0000"), bzst("evatr-0000", **QUALIFIED)]})
+		self.run_job(service, party_type="Customer", party=ALPEN, trigger="Invoice")
+		partner_module.check_invoice(doc)
+		self.assertEqual(frappe.db.get_value(CONFIRMATION, doc.vat_id_confirmation, "requested"), AUSTRIAN)
+
 	def test_a_reason_submits_a_blocked_invoice_and_stays_on_it(self):
 		doc = self.invoice(ALPEN, self.accounts["8125"], vat_id_override_reason="Bestätigung per Telefon")
 		with patch("frappe.msgprint") as message:
@@ -551,6 +591,24 @@ class TestPartnerVatIds(IntegrationTestCase):
 		for doctype in vat_id_setup.LABELLED_DOCTYPES:
 			frappe.clear_cache(doctype=doctype)
 
+	def test_the_setup_offers_to_switch_on_the_automatic_check_of_the_company(self):
+		context = SimpleNamespace(company=COMPANY)
+		frappe.db.set_value(SETTINGS, COMPANY, {"vat_id_check_on_change": 0, "vat_id_renewal": 0})
+		result = vat_id_setup.check_automatic_check(context)
+		self.assertEqual(
+			(result.outcome, result.action.method),
+			(Outcome.UNDECIDED, f"{vat_id_setup.__name__}.enable_automatic_check"),
+		)
+		vat_id_setup.enable_automatic_check(COMPANY)
+		self.assertEqual(
+			frappe.db.get_value(SETTINGS, COMPANY, ["vat_id_check_on_change", "vat_id_renewal"]), (1, 1)
+		)
+		self.assertEqual(vat_id_setup.check_automatic_check(context).outcome, Outcome.SKIPPED)
+		self.assertEqual(
+			vat_id_setup.check_automatic_check(SimpleNamespace(company=OTHER)).outcome, Outcome.UNDECIDED
+		)
+		self.assertIsNone(vat_id_setup.check_automatic_check(SimpleNamespace(company=OTHER)).action)
+
 	def test_the_setup_offers_to_stop_the_vat_id_job_of_erpnext_germany_where_it_runs(self):
 		context = SimpleNamespace(company=COMPANY)
 		with patch.object(vat_id_setup.frappe, "get_installed_apps", return_value=["frappe", "erpnext"]):
@@ -571,6 +629,6 @@ class TestPartnerVatIds(IntegrationTestCase):
 			self.assertEqual(frappe.db.get_value("Scheduled Job Type", job, "stopped"), 1)
 			self.assertEqual(vat_id_setup.check_erpnext_germany(context).outcome, Outcome.SKIPPED)
 		self.assertEqual(
-			[step["key"] for step in frappe.get_hooks("steuerbote_setup_steps", app_name="steuerbote")][-2:],
-			["vat_id_label", "erpnext_germany_vat_id_check"],
+			[step["key"] for step in frappe.get_hooks("steuerbote_setup_steps", app_name="steuerbote")][-3:],
+			["vat_id_label", "erpnext_germany_vat_id_check", "vat_id_automatic_check"],
 		)

@@ -178,6 +178,10 @@ class HookFilesTest(TestCase):
 				self.assertRegex(source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\ndef {method}\(')
 				self.assertIn(f'f"{{__name__}}.{method}"', source)
 		self.assertNotIn("import erpnext_germany", source)
+		self.assertEqual(
+			steps["vat_id_automatic_check"]["run"], "steuerbote.steuerbote.vat_id_setup.check_automatic_check"
+		)
+		self.assertRegex(source, r'@frappe\.whitelist\(methods=\["POST"\]\)\ndef enable_automatic_check\(')
 
 
 class FieldFilesTest(TestCase):
@@ -208,7 +212,7 @@ class FieldFilesTest(TestCase):
 		)
 		self.assertEqual(literal(PARTNERS, "OVERRIDE_FIELD"), "vat_id_override_reason")
 
-	def test_the_settings_confirm_on_a_change_renew_daily_and_block_goods_by_default(self):
+	def test_the_settings_send_nothing_by_themselves_and_block_goods_by_default(self):
 		fields = fields_of("vat_return_settings")
 		self.assertEqual(
 			{
@@ -217,8 +221,8 @@ class FieldFilesTest(TestCase):
 				if name.startswith("vat_id_") and field["fieldtype"] not in ("Section Break", "Column Break")
 			},
 			{
-				"vat_id_check_on_change": "1",
-				"vat_id_renewal": "1",
+				"vat_id_check_on_change": "0",
+				"vat_id_renewal": "0",
 				"vat_id_check_suppliers": "1",
 				"vat_id_invoice_goods": "Block",
 				"vat_id_goods_max_age": "0",

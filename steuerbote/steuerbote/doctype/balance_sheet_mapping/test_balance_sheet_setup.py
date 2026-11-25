@@ -107,8 +107,13 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 	def test_the_setup_runs_the_step_of_the_hook_last(self):
 		"""Last of the steps that make a document; only the steps on the USt-IdNrn. of partners follow it."""
 		self.assertEqual(
-			[found.key for found in setup.setup_steps()][-3:],
-			["balance_sheet_mapping", "vat_id_label", "erpnext_germany_vat_id_check"],
+			[found.key for found in setup.setup_steps()][-4:],
+			[
+				"balance_sheet_mapping",
+				"vat_id_label",
+				"erpnext_germany_vat_id_check",
+				"vat_id_automatic_check",
+			],
 		)
 
 	def test_makes_the_mapping_with_the_defaults_of_revision_0_and_leaves_every_account_open(self):

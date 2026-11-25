@@ -211,6 +211,7 @@ class SetupPageTest(TestCase):
 				"balance_sheet_mapping",
 				"vat_id_label",
 				"erpnext_germany_vat_id_check",
+				"vat_id_automatic_check",
 			],
 		)
 		rows = [line for line in SETUP.read_text(encoding="utf-8").splitlines() if line.startswith("| ")]
