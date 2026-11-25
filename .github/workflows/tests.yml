@@ -293,6 +293,22 @@ jobs:
           nohup node apps/frappe/socketio.js > "$RUNNER_TEMP/browser-results/socketio.log" 2>&1 &
           curl --fail --silent --show-error --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/method/ping
 
+      - name: Install wkhtmltopdf, the fonts of the image and Poppler for the printouts
+        if: ${{ !cancelled() }}
+        # The image of a site installs wkhtmltopdf 0.12.6.1-3 with patched Qt from the packages of the wkhtmltopdf
+        # project, and its fontconfig finds Nimbus Sans of the URW fonts. The same build for Ubuntu, checked by its
+        # SHA-256, renders the printouts here, also those Drucken of the browser tests prints; Poppler reads the words
+        # of their pages for the checks.
+        env:
+          WKHTMLTOPDF: https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
+          WKHTMLTOPDF_SHA256: 4f723b2691ad8638a9df960e0421d346d7315083e3583a334f33362280ddba15
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/wkhtmltox.deb" "$WKHTMLTOPDF"
+          echo "$WKHTMLTOPDF_SHA256  $RUNNER_TEMP/wkhtmltox.deb" | sha256sum --check --strict
+          sudo apt-get install -y "$RUNNER_TEMP/wkhtmltox.deb" fonts-urw-base35 poppler-utils
+          wkhtmltopdf --version
+          fc-match "Nimbus Sans"
+
       - name: Install Playwright and Chromium
         run: |
           python -m venv "$RUNNER_TEMP/browser-venv"
@@ -310,21 +326,6 @@ jobs:
           name: browser-tests
           path: ${{ runner.temp }}/browser-results
           if-no-files-found: ignore
-
-      - name: Install wkhtmltopdf, the fonts of the image and Poppler for the printouts
-        if: ${{ !cancelled() }}
-        # The image of a site installs wkhtmltopdf 0.12.6.1-3 with patched Qt from the packages of the wkhtmltopdf
-        # project, and its fontconfig finds Nimbus Sans of the URW fonts. The same build for Ubuntu, checked by its
-        # SHA-256, renders the printouts here; Poppler reads the words of their pages for the checks.
-        env:
-          WKHTMLTOPDF: https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
-          WKHTMLTOPDF_SHA256: 4f723b2691ad8638a9df960e0421d346d7315083e3583a334f33362280ddba15
-        run: |
-          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/wkhtmltox.deb" "$WKHTMLTOPDF"
-          echo "$WKHTMLTOPDF_SHA256  $RUNNER_TEMP/wkhtmltox.deb" | sha256sum --check --strict
-          sudo apt-get install -y "$RUNNER_TEMP/wkhtmltox.deb" fonts-urw-base35 poppler-utils
-          wkhtmltopdf --version
-          fc-match "Nimbus Sans"
 
       - name: Print every print format as PDF and check its pages
         if: ${{ !cancelled() }}
