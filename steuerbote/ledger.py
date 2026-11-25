@@ -18,6 +18,9 @@ load_bookings reads a cancelled voucher whatever the ledger flags: its entries a
 of each as a cancellation on the posting date of the entries it reverses, entered when the voucher was cancelled
 (assignment, „A cancelled voucher“). With the immutable ledger that day may lie in another period, before the voucher
 or after it, so it reads the reversals of the vouchers of its time wherever ERPNext posted them.
+load_lines_without_cancelled reads by posting date as well, for the reconciliation with ERPNext's registers, which list
+no cancelled invoice: it leaves out every entry of a cancelled voucher and of its reversal, which the immutable ledger
+does not flag, so that a cancellation nets out in the month of its voucher as the return counts it.
 """
 
 from collections.abc import Collection, Iterable
@@ -56,6 +59,34 @@ def load_lines(
 		)
 		for row in _ledger_rows(company, from_date, to_date, account_numbers)
 	]
+
+
+def load_lines_without_cancelled(
+	company: str, from_date: date | str, to_date: date | str
+) -> list[LedgerLine]:
+	"""The ledger lines of load_lines without those of a cancelled voucher and of its reversal, wherever ERPNext
+	posted the reversal."""
+	lines = load_lines(company, from_date, to_date)
+	cancelled = _cancelled_vouchers(company, {line.voucher for line in lines})
+	return [line for line in lines if line.voucher not in cancelled]
+
+
+def _cancelled_vouchers(company: str, vouchers: Collection[str]) -> set[str]:
+	"""Those of the vouchers, as load_lines keys them, that have a reversal in the ledger: they are cancelled."""
+	if not vouchers:
+		return set()
+	gl_entry = frappe.qb.DocType("GL Entry")
+	names = sorted({voucher.partition(":")[2] for voucher in vouchers})
+	rows = (
+		frappe.qb.from_(gl_entry)
+		.select(gl_entry.voucher_type, gl_entry.voucher_no)
+		.distinct()
+		.where(gl_entry.company == company)
+		.where(gl_entry.voucher_no.isin(names))
+		.where(Coalesce(gl_entry.remarks, "").like(f"{REVERSAL_REMARKS}%"))
+		.run(as_dict=True)
+	)
+	return {f"{row.voucher_type}:{row.voucher_no}" for row in rows} & set(vouchers)
 
 
 def _ledger_rows(

@@ -67,11 +67,14 @@ def provisional_forms(year: int) -> dict[str, Any] | None:
 @dataclass(frozen=True, slots=True)
 class Override:
 	"""An amount the user files instead of the computed one, with the reason why, and the exact ledger amount of the
-	Kennzahl it was made against; None for an override Berechnen meets for the first time."""
+	Kennzahl it was made against; None for an override Berechnen meets for the first time. ``basis_unknown`` marks an
+	override from before Steuerbote kept the basis, whose basis is the ledger amount of the day of the update and not
+	the one it was made against; it holds the return until it is confirmed (stale_override_hints)."""
 
 	amount: Decimal
 	reason: str
 	basis: Decimal | None = None
+	basis_unknown: bool = False
 
 
 class RowProblem(Enum):
@@ -130,7 +133,10 @@ def _entries(rows: Iterable[Row], catalogue: ReadOnlyMapping[str, Kennzahl]) -> 
 		if amount and not reason:
 			raise RowError(RowProblem.MISSING_REASON, number)
 		basis = row.get("override_basis")
-		override = Override(amount, reason, None if basis is None else to_amount(basis)) if reason else None
+		unknown = bool(int(row.get("override_basis_unknown") or 0))
+		override = (
+			Override(amount, reason, None if basis is None else to_amount(basis), unknown) if reason else None
+		)
 		entries.append(_Entry(kennzahl, to_amount(row.get("reported")), override, to_amount(row.get("tax"))))
 	return entries
 
@@ -183,6 +189,7 @@ def kennzahl_rows(
 				"override": override.amount if override else ZERO,
 				"override_reason": override.reason if override else "",
 				"override_basis": _basis(override, amount),
+				"override_basis_unknown": int(bool(override and override.basis_unknown)),
 			}
 		)
 	return rows
@@ -214,25 +221,52 @@ def override_bases(stored: Iterable[Row], rows: Iterable[Row]) -> list[Decimal |
 	return bases
 
 
+def unknown_bases(stored: Iterable[Row], rows: Iterable[Row]) -> list[int]:
+	"""Whether the basis of each override of ``rows`` is unknown: an override the stored row holds as it is keeps the
+	mark of the stored row (Override.basis_unknown); a new or changed one is confirmed against the ledger amount the
+	row showed and has a known basis (override_bases). Never from the rows a save sends, like the basis."""
+	by_number = {_number(row): row for row in stored}
+	unknown: list[int] = []
+	for row in rows:
+		before = by_number.get(_number(row))
+		kept = (
+			before is not None
+			and str(row.get("override_reason") or "").strip()
+			and _override(before) == _override(row)
+		)
+		unknown.append(int(bool(kept) and bool(int(before.get("override_basis_unknown") or 0))))
+	return unknown
+
+
 def _override(row: Row) -> tuple[Decimal, str]:
 	return to_amount(row.get("override")), str(row.get("override_reason") or "").strip()
 
 
 def stale_override_hints(rows: Iterable[Row], figures: plausibility.Figures) -> list[plausibility.Hint]:
-	"""An error per override whose Kennzahl the ledger books at another amount than the one it was made against, in
-	the order of the rows: the override would hide the change from the return."""
+	"""An error per override whose Kennzahl the ledger books at another amount than the one it was made against, and per
+	override whose basis is unknown, in the order of the rows: the override would hide the change from the return."""
 	found = []
 	for row in rows:
 		if not str(row.get("override_reason") or "").strip():
 			continue
 		basis, amount = to_amount(row.get("override_basis")), to_amount(row.get("amount"))
+		if int(row.get("override_basis_unknown") or 0):
+			text = (
+				f"Kz {_number(row)}: Die Korrektur auf {figures.money(to_amount(row.get('override')))} stammt aus einer "
+				"Version von Steuerbote, die nicht festhielt, bei welchem Betrag im Hauptbuch sie eingetragen wurde; das "
+				f"Hauptbuch bucht jetzt {figures.money(amount)}. Die Voranmeldung ist nicht bereit, bis die Korrektur "
+				"bestätigt ist: Prüfen Sie sie gegen das Hauptbuch und ändern Sie Betrag oder Begründung, oder löschen "
+				"Sie die Korrektur."
+			)
+			found.append(plausibility.Hint(plausibility.Code.OVERRIDE_STALE, text))
+			continue
 		if basis == amount:
 			continue
 		text = (
 			f"Kz {_number(row)}: Die Korrektur auf {figures.money(to_amount(row.get('override')))} wurde bei "
 			f"{figures.money(basis)} im Hauptbuch eingetragen; das Hauptbuch bucht jetzt {figures.money(amount)}. Die "
-			"Voranmeldung ist nicht bereit, bis die Korrektur bestätigt ist: Passe Betrag oder Begründung an, oder "
-			"lösche die Korrektur."
+			"Voranmeldung ist nicht bereit, bis die Korrektur bestätigt ist: Passen Sie Betrag oder Begründung an, "
+			"oder löschen Sie die Korrektur."
 		)
 		found.append(plausibility.Hint(plausibility.Code.OVERRIDE_STALE, text))
 	return found

@@ -17,6 +17,7 @@ from frappe.utils import add_days, getdate, today
 from frappe.utils.data import convert_utc_to_system_timezone
 
 from steuerbote import zm_sources
+from steuerbote.patches import mark_the_bases_of_earlier_overrides_unknown as unknown_bases
 from steuerbote.steuerbote.doctype.recapitulative_statement import recapitulative_statement as controller
 from steuerbote.steuerbote.doctype.recapitulative_statement.recapitulative_statement import run_confirmation
 from steuerbote.steuerbote.doctype.vat_id_confirmation import confirming
@@ -923,6 +924,75 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			(money(9900), 0),
 		)
 		self.assertNotIn("ZM-KORREKTUR-UEBERHOLT", [hint.code for hint in doc.hints])
+
+	def test_an_override_from_before_the_basis_holds_the_statement_and_its_berichtigung_until_confirmed(self):
+		"""The upgrade to 0.15.0 gave an override the ledger amount of the day of the update as its basis. Where a late
+		invoice had been calculated before, the override hid it; the patch after it marks the basis unknown, and the
+		line holds the statement and its Berichtigung until a change of the override confirms it."""
+		self.roll_back_afterwards()
+		doc = self.calculated(4)
+		row = self.line(doc, AUSTRIAN)
+		row.override = 9800
+		row.override_reason = "Die Nummer war am Liefertag bestätigt."
+		self.line(doc, FRENCH).acceptance_reason = "Bestätigung vom Leistungstag liegt in der Akte."
+		doc.save()
+		a = self.account
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-04-5", ALPEN, "2026-04-29", [(a["1400"], 2000, 0), (a["8125"], 0, 2000)]
+		)
+		doc.reload()
+		row = self.line(doc, AUSTRIAN)
+		# What 0.14.0 kept and the patch of 0.15.0 wrote: the ledger amount at the last calculation as the basis.
+		frappe.db.set_value("Recapitulative Statement Line", row.name, "override_basis", 11800)
+		since = frappe.db.get_value("Patch Log", {"patch": unknown_bases.EARLIER_PATCH}, "creation")
+		frappe.db.set_value(DOCTYPE, doc.name, "creation", add_days(since, -1), update_modified=False)
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		self.assertEqual((doc.status, self.line(doc, AUSTRIAN).blocked), ("Bereit", 0))
+		unknown_bases.execute()
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		line = self.line(doc, AUSTRIAN)
+		self.assertEqual(
+			(money(line.amount), money(line.override_basis), line.override_basis_unknown, line.blocked),
+			(money(11800), money(11800), 1, 1),
+		)
+		(stale,) = (hint for hint in doc.hints if hint.code == "ZM-KORREKTUR-UEBERHOLT")
+		self.assertIn("nicht festhielt", stale.text)
+		self.assertEqual((doc.status, doc.ready), ("Berechnet", 0))
+		line.override_reason = (
+			"Die Nummer war am Liefertag bestätigt; die Rechnung vom 29. April ist enthalten."
+		)
+		line.override = 11800
+		doc.save()
+		doc.reload()
+		line = self.line(doc, AUSTRIAN)
+		self.assertEqual(
+			(money(line.override_basis), line.override_basis_unknown, line.blocked), (money(11800), 0, 0)
+		)
+		self.assertNotIn("ZM-KORREKTUR-UEBERHOLT", [hint.code for hint in doc.hints])
+
+	def test_a_berichtigung_takes_the_unknown_basis_of_the_filed_statement(self):
+		"""A Berichtigung of a statement filed before the update takes its overrides with the mark, so the late invoice
+		cannot hide behind them there either."""
+		self.roll_back_afterwards()
+		doc = self.calculated(4)
+		row = self.line(doc, AUSTRIAN)
+		row.override = 9800
+		row.override_reason = "Die Nummer war am Liefertag bestätigt."
+		self.line(doc, FRENCH).acceptance_reason = "Bestätigung vom Leistungstag liegt in der Akte."
+		doc.save()
+		doc.mark_filed_outside(filed_via="mein_elster")
+		doc.reload()
+		frappe.db.set_value(
+			"Recapitulative Statement Line", self.line(doc, AUSTRIAN).name, "override_basis_unknown", 1
+		)
+		doc.reload()
+		correction = frappe.get_doc(DOCTYPE, doc.make_correction())
+		line = self.line(correction, AUSTRIAN)
+		self.assertEqual((line.override_basis_unknown, line.blocked, correction.status), (1, 1, "Berechnet"))
 
 	def test_a_save_keeps_the_names_of_the_rows_that_stay(self):
 		"""Every save builds the lines and findings anew; the version of the statement shows what changed, not every
