@@ -16,7 +16,9 @@ import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import flt, getdate
 
+from steuerbote.deadlines import Kind, annual_obligations
 from steuerbote.eric.result import Outcome
+from steuerbote.steuerbote import deadlines
 from steuerbote.tests.helpers import (
 	ensure_fiscal_year,
 	insert_record,
@@ -352,6 +354,24 @@ class TestAnnualVATReturn(Transmitting, IntegrationTestCase):
 		doc.reload()
 		doc.save()
 		self.assertEqual(getdate(doc.deadline), date(2028, 2, 29))
+
+	def test_a_year_the_settings_state_no_return_for_has_none_and_no_deadline(self):
+		"""The company states, with its Steuerberatung, that it owes no Umsatzsteuererklärung for the year, such as a
+		holding that is no Unternehmer (§ 2 UStG); Steuerbote takes the statement as given."""
+		settings = frappe.get_doc("Annual Filing Settings", COMPANY)
+		row = settings.append("years", {"year": 2026, "no_vat_return": 1})
+		with self.assertRaisesRegex(frappe.ValidationError, "needs one of the reasons|braucht einen der Gründe"):
+			settings.save()
+		row.no_vat_return_reason = "Not an Unternehmer (§ 2 UStG)"
+		settings.save()
+		self.addCleanup(self.forget_the_steuerberatung)
+		with self.assertRaisesRegex(frappe.ValidationError, "owes no Umsatzsteuererklärung for 2026|keine Umsatzsteuererklärung für 2026"):
+			self.new_return()
+		rules = deadlines.annual_rules(COMPANY)
+		self.assertNotIn(
+			Kind.UMSATZSTEUERERKLAERUNG,
+			[item.kind for item in annual_obligations(rules, date(2027, 12, 31))],
+		)
 
 	def forget_the_steuerberatung(self):
 		settings = frappe.get_doc("Annual Filing Settings", COMPANY)
