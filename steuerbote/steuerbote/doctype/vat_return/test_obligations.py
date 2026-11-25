@@ -1,0 +1,103 @@
+"""A return for a period that has not ended is not ready, and a return whose Kz 41, 42 or 21 holds turnover tells
+that the settings name no rhythm of the Zusammenfassende Meldung for its months (steuerbote/ustva/obligations.py)."""
+
+import frappe
+from frappe.tests import IntegrationTestCase
+
+from steuerbote.tests.helpers import (
+	make_account,
+	make_company,
+	make_mapping,
+	make_settings,
+	post_journal_entry,
+)
+
+IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
+
+COMPANY = "Steuerbote Test Pflichten GmbH"
+ACCOUNTS = {
+	"8400": ("Erlöse 19 % USt", "Income"),
+	"1776": ("Umsatzsteuer 19 %", "Liability"),
+	"8125": ("Steuerfreie innergemeinschaftliche Lieferungen", "Income"),
+	"1400": ("Forderungen aus Lieferungen und Leistungen", "Asset"),
+}
+NOTE = "Erfunden: abgegeben in Mein ELSTER."
+
+
+class TestObligations(IntegrationTestCase):
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		make_company(COMPANY, "STPF")
+		cls.account = {
+			number: make_account(COMPANY, number, name, root_type)
+			for number, (name, root_type) in ACCOUNTS.items()
+		}
+		make_settings(COMPANY, [(2026, "monthly", 1)])
+		make_mapping(COMPANY)
+
+	def setUp(self):
+		frappe.db.savepoint("obligations_test")
+		self.addCleanup(frappe.db.rollback, save_point="obligations_test")
+
+	def new_return(self, month: int):
+		return frappe.get_doc(
+			{
+				"doctype": "VAT Return",
+				"company": COMPANY,
+				"year": 2026,
+				"rhythm": "monthly",
+				"period_index": month,
+			}
+		).insert()
+
+	def calculate(self, doc):
+		doc.calculate()
+		doc.reload()
+		return doc
+
+	def codes(self, doc) -> list[str]:
+		return [row.code for row in doc.hints]
+
+	def test_a_period_that_has_not_ended_is_not_ready_and_files_only_with_remarks(self):
+		a = self.account
+		post_journal_entry(
+			COMPANY, "2026-11-10", [(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)]
+		)
+		with self.freeze_time("2026-11-25 09:00:00"):
+			doc = self.calculate(self.new_return(11))
+			self.assertEqual((doc.status, doc.ready), ("Berechnet", 0))
+			self.assertIn("ZEITRAUM-NICHT-ABGELAUFEN", self.codes(doc))
+			with self.assertRaisesRegex(frappe.ValidationError, "November 2026"):
+				doc.make_import_file()
+			with self.assertRaisesRegex(frappe.ValidationError, "November 2026"):
+				doc.mark_filed_outside(filed_via="mein_elster")
+		with self.freeze_time("2026-12-01 09:00:00"):
+			doc = self.calculate(frappe.get_doc("VAT Return", doc.name))
+			self.assertEqual((doc.status, doc.ready), ("Bereit", 1))
+			self.assertNotIn("ZEITRAUM-NICHT-ABGELAUFEN", self.codes(doc))
+
+	def test_a_period_that_has_not_begun_is_not_ready_either(self):
+		with self.freeze_time("2026-11-25 09:00:00"):
+			doc = self.calculate(self.new_return(12))
+			self.assertEqual(doc.status, "Berechnet")
+			self.assertIn("ZEITRAUM-NICHT-ABGELAUFEN", self.codes(doc))
+
+	def test_turnover_of_the_zm_without_its_rhythm_gets_a_warning(self):
+		a = self.account
+		post_journal_entry(COMPANY, "2026-09-10", [(a["1400"], 8000, 0), (a["8125"], 0, 8000)])
+		doc = self.calculate(self.new_return(9))
+		self.assertIn("ZM-OHNE-RHYTHMUS", self.codes(doc))
+		self.assertEqual(doc.status, "Bereit")
+		settings = frappe.get_doc("VAT Return Settings", COMPANY)
+		settings.append("zm_rules", {"year": 2026, "valid_from_month": 7, "rhythm": "quarterly"})
+		settings.save()
+		doc = self.calculate(frappe.get_doc("VAT Return", doc.name))
+		self.assertNotIn("ZM-OHNE-RHYTHMUS", self.codes(doc))
+
+	def test_no_warning_on_the_zm_without_its_turnover(self):
+		a = self.account
+		post_journal_entry(
+			COMPANY, "2026-08-10", [(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)]
+		)
+		self.assertNotIn("ZM-OHNE-RHYTHMUS", self.codes(self.calculate(self.new_return(8))))

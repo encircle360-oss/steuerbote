@@ -843,6 +843,8 @@ class HintsTest(TestCase):
 				Code.VAT_ID_INVALID,
 				Code.EU_SERVICE_OUTSIDE,
 				Code.ACQUISITION_OUTSIDE_EU,
+				Code.PERIOD_NOT_ENDED,
+				Code.ZM_WITHOUT_RHYTHM,
 			},
 		)
 
@@ -871,6 +873,8 @@ class HintsTest(TestCase):
 				"SITZ-WIDERSPRUCH",
 				"KZ46-OHNE-EU-SITZ",
 				"ERWERB-AUS-DRITTLAND",
+				"ZEITRAUM-NICHT-ABGELAUFEN",
+				"ZM-OHNE-RHYTHMUS",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung"])
