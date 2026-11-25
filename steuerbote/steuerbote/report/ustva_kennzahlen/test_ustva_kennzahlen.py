@@ -384,9 +384,17 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 			],
 		)
 
-	def test_a_period_number_that_does_not_exist_is_refused(self):
-		with self.assertRaisesRegex(frappe.ValidationError, "there is no Voranmeldungszeitraum 13"):
-			execute(filters(13))
+	def test_a_period_or_year_it_cannot_show_leaves_the_report_empty_with_the_reason(self):
+		"""The report says why it shows nothing, instead of an error that leaves the grid loading and the Error Log a
+		record of a mistyped filter."""
+		for values, reason in (
+			(filters(13), "there is no Voranmeldungszeitraum 13"),
+			({**filters(3), "year": 2030}, "Steuerbote has no Kennzahlen for 2030 yet."),
+		):
+			with self.subTest(values=values):
+				columns, rows, message = execute(values)
+				self.assertEqual((columns, rows), (report.get_columns(), []))
+				self.assertIn(reason, message)
 
 	def test_without_all_filters_the_report_is_empty(self):
 		columns, rows = execute({"company": COMPANY, "year": 2026, "rhythm": "monthly"})
@@ -405,6 +413,11 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 				"kennzahl",
 				"line",
 				"label",
+				"reported",
+				"amount",
+				"previous_period",
+				"previous_year",
+				"difference",
 				"posting_date",
 				"voucher_type",
 				"voucher_no",
@@ -413,11 +426,6 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 				"account",
 				"debit",
 				"credit",
-				"amount",
-				"reported",
-				"previous_period",
-				"previous_year",
-				"difference",
 				"currency",
 			],
 		)
