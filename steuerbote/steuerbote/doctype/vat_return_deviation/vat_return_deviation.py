@@ -16,6 +16,7 @@ class VATReturnDeviation(RecordedVoucherRow, Document):
 		check_label: DF.Data | None
 		computed_tax: DF.Currency
 		difference: DF.Currency
+		note: DF.SmallText | None
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data

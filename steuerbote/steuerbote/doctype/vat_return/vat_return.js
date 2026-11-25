@@ -14,6 +14,7 @@ frappe.ui.form.on("VAT Return", {
 		frm.show_submit_message = () => {};
 		leave_unknown_comparison_values_blank();
 		leave_what_is_not_compared_blank();
+		leave_kennzahlen_without_override_blank();
 	},
 
 	refresh(frm) {
@@ -295,6 +296,13 @@ function late_notes(frm) {
 // A Currency field stores no blank, so a row of the reconciliation with the registers that is not compared holds 0
 // as its ledger amount and difference. Writing an explanation refreshes the row, and the grid formats a cell whose
 // text is empty once more with the document of the form, which shows 0, so the cell gets an empty element instead.
+// An override always comes with its reason, so a row without a reason has none, and its zero would read as a correction.
+function leave_kennzahlen_without_override_blank() {
+	frappe.meta.set_formatter("VAT Return Kennzahl", "override", null, (value, df, options, doc) =>
+		!doc || !doc.override_reason ? "<span></span>" : frappe.form.formatters[df.fieldtype](value, df, options, doc)
+	);
+}
+
 function leave_what_is_not_compared_blank() {
 	for (const fieldname of ["ledger_amount", "difference"]) {
 		frappe.meta.set_formatter("VAT Return Register Reconciliation", fieldname, null, (value, df, options, doc) =>

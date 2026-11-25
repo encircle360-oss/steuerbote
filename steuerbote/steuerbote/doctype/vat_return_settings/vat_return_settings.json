@@ -198,7 +198,7 @@
    "length": 11
   },
   {
-   "description": "The company's own German USt-IdNr., DE and nine digits, with which the USt-IdNrn. of its customers are confirmed. Empty: the Tax ID of the company, if it is one.",
+   "description": "The company's own German USt-IdNr., DE and nine digits, with which the USt-IdNrn. of its customers are confirmed. Empty: the field VAT ID of the company (tax_id), if it holds a German USt-IdNr.",
    "fieldname": "ust_idnr",
    "fieldtype": "Data",
    "label": "VAT ID",
@@ -403,7 +403,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-26 09:00:00.000000",
+ "modified": "2026-11-25 21:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",

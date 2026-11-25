@@ -176,7 +176,8 @@ class CurrencyTest(TestCase):
 			"300,00 €) und zeigt nur ihren Saldo von 700,00 €. Die GuV weist beide gesondert aus (§ 277 Abs. 5 Satz 2 "
 			"HGB), verrechnet werden dürfen sie nicht (§ 246 Abs. 2 Satz 1 HGB): Buchen Sie Erträge und Aufwendungen "
 			"aus der Währungsumrechnung auf getrennte Konten, auch wo die Wechselkursneubewertung von ERPNext beide auf "
-			"ein Konto bucht.",
+			"ein Konto bucht: Buchen Sie dann die Erträge vor dem Abschluss auf das Konto der Erträge um. Welche Konten "
+			"ERPNext dafür nimmt, sagt der Schritt „Konten der Wechselkursdifferenzen“ von „Steuerbote einrichten“.",
 		)
 		(gain,) = [item for item in placement.placed if item.balance.number == "6880"]
 		self.assertEqual(gain.concept, CURRENCY_GAINS)

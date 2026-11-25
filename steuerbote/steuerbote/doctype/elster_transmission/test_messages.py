@@ -35,7 +35,17 @@ class SummaryTest(TestCase):
 
 	def test_without_messages_there_is_nothing_to_show(self):
 		self.assertEqual(
-			messages.summary([]), {"errors": 0, "hints": 0, "first_errors": [], "first_hints": []}
+			messages.summary([]),
+			{"errors": 0, "hints": 0, "first_errors": [], "first_hints": [], "schema_unchecked": False},
+		)
+
+	def test_a_simulation_without_the_documentation_says_that_it_checked_no_schema(self):
+		"""Without the ERiC documentation the simulation checks the structure alone and says so in SIM-001; the run
+		succeeds, but the form and the notice may not read as a full check."""
+		rows = [{"severity": "hint", "code": "SIM-001", "text": "Nur die Struktur geprüft."}]
+		self.assertTrue(messages.summary(rows)["schema_unchecked"])
+		self.assertFalse(
+			messages.summary([{"severity": "hint", "code": "610001003", "text": "x"}])["schema_unchecked"]
 		)
 
 	def test_the_kinds_are_those_of_the_messages_of_a_transmission(self):

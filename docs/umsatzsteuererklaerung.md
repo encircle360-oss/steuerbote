@@ -30,7 +30,7 @@ Ein Beleg je Unternehmen und Jahr, benannt nach dem Jahr, für das er gilt (`USt
 | `line_41` bis `line_122` | Zeile 41 bis Zeile 122 | die Summen des Vordrucks: Zeilen 41, 50, 62, 64, 70, 74, 93, 108 (zwei Spalten), 109 bis 118 und 122 |
 | `kz129` | Verrechnung des Erstattungsbetrages erwünscht oder Erstattungsbetrag abgetreten (Kz 129) | Zeile 22 |
 | `kz136` | Datum des Wechsels von der Kleinunternehmer-Regelung (Kz 136) | Zeile 18, der Tag, den Kz 70 der Voranmeldung des Zeitraums nennt (USt 1 E 2026, Zeile 12); nennt eine abgegebene Voranmeldung einen anderen, gibt „Berechnen“ den Hinweis `SB-KZ136` |
-| `kz500`, `kz500_text` | Ergänzende Angaben zur Steuererklärung (Kz 500), Ergänzende Angaben | Zeile 23, der Schlüssel 1 bis 4 mit seinem Text |
+| `kz500`, `kz500_text` | Ergänzende Angaben zur Steuererklärung (Kz 500), Ergänzende Angaben | Zeile 23, der Schlüssel 1 bis 4 im Wortlaut des Vordrucks, der von der „Verwaltungsmeinung“ spricht, wo die Voranmeldung „Verwaltungsauffassung“ sagt |
 | `bescheid` | Bescheiddaten zum Abruf bereitstellen | der Vorsatz fragt mit Bescheid 1 nach den Bescheiddaten zum elektronischen Abruf, sonst mit 2; Vorgabe nein |
 | `kz370`, `properties` | Grundstücke im Jahr erstmals verwendet (Kz 370), Grundstücke (Zeile 95) | Zeile 95 mit der Tabelle „Grundstück nach § 15a UStG“ (`Annual VAT Return Property`): Lage, Zeitpunkt der erstmaligen tatsächlichen Verwendung, Art und Umfang der Verwendung im Erstjahr, insgesamt angefallene und in den Vorjahren bereits abgezogene Vorsteuer, höchstens 99 |
 | `kz371`, `kz372`, `kz369` | Geänderte Verhältnisse … | die Fragen der Zeilen 96 bis 98 |

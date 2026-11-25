@@ -245,6 +245,33 @@ class RunningHeadAndFootTest(TestCase):
 		)
 
 
+class BrowserPrintTest(TestCase):
+	"""The page /printview, which a browser prints itself without a PDF generator, gets the running head and foot
+	from the margin boxes of @page and its page numbers from the counters of the browser; the preview on the screen
+	and the browser hide the parts the generators take as head and foot."""
+
+	def setUp(self):
+		self.running = read(RUNNING)
+
+	def test_the_browser_gets_head_foot_and_page_numbers_from_the_margin_boxes(self):
+		self.assertRegex(
+			self.running,
+			r'\{%-? if steuerbote_print_medium\(\) == "browser" -?%\}\s*<style>\s*\{\{ steuerbote_browser_page\(',
+		)
+
+	def test_screen_and_browser_hide_the_parts_of_the_generators(self):
+		self.assertRegex(
+			self.running,
+			r'\{%-? if steuerbote_print_medium\(\) != "pdf" -?%\}\s*<style>\s*#header-html,\s*#footer-html \{\s*display: none !important;',
+		)
+
+	def test_the_jinja_methods_are_hooked(self):
+		hooks = read("steuerbote/hooks.py")
+		for method in ("steuerbote_print_medium", "steuerbote_browser_page"):
+			with self.subTest(method=method):
+				self.assertIn(f"steuerbote.steuerbote.print_medium.{method}", hooks)
+
+
 class ClassesTest(TestCase):
 	def test_every_class_is_one_of_its_own_and_styled_or_one_frappe_gives_a_meaning(self):
 		styled = set(

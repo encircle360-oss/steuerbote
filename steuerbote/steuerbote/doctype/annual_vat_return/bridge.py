@@ -142,6 +142,17 @@ FLAGS = MappingProxyType(
 TEXTS = MappingProxyType(
 	{"kz500": "E3002201", "kz500_text": "E3002202", "change_reason": "E3008402", "kz136": "E3001601"}
 )
+# Kz 500: the keys the select field keeps, each the text of line 23 of USt 2 A 2026 (BMF-Schreiben „Muster der
+# Umsatzsteuererklärung 2026“ of 29 December 2025) in English, which de.csv gives in the wording of the form, and the
+# code E3002201 carries. Line 23 says Verwaltungsmeinung where the Voranmeldung says Verwaltungsauffassung.
+SUPPLEMENTARY_INFORMATION = MappingProxyType(
+	{
+		"1 = Facts relevant to the tax could not be explained.": "1",
+		"2 = A legal view deliberately deviating from the opinion of the administration is taken.": "2",
+		"3 = Facts are to be examined in depth by a person.": "3",
+		"4 = Several of the reasons above apply (multiple choice).": "4",
+	}
+)
 STATEMENT_FIELDS = (*FLAGS, *TEXTS)
 """The fields of the document that the return files as the statements of the company."""
 
@@ -824,6 +835,8 @@ def details(
 			values[element] = True
 	for fieldname, element in TEXTS.items():
 		value = statements.get(fieldname)
+		if fieldname == "kz500" and value:
+			value = SUPPLEMENTARY_INFORMATION.get(str(value), value)
 		if isinstance(value, date):
 			values[element] = value
 		elif value is not None and (text := " ".join(str(value).split())):

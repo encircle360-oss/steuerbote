@@ -73,7 +73,7 @@ from types import MappingProxyType
 from typing import Any
 from xml.etree import ElementTree
 
-from steuerbote.ebilanz.defaults import DATEV_EDITION, defaults_for
+from steuerbote.ebilanz.defaults import defaults_for
 from steuerbote.elster import kst_xml
 from steuerbote.elster.erklaerung import Field
 from steuerbote.elster.ustva_xml import XmlError
@@ -370,9 +370,10 @@ UNMAPPED_TEXT = (
 	"Körperschaftsteuer and the Gewerbesteuer, but the Income Tax Mapping of the company has no row for it."
 )
 UNKNOWN_TEXT = (
-	"Account {0} has a balance (debit {1}, credit {2}) but is no account of the DATEV chart {3} {4} the defaults "
-	"follow, so it counts in the Jahresüberschuss alone. If it holds Bezüge, Gewinne or Gewinnminderungen aus Anteilen "
-	"(§ 8b KStG) or another amount the taxes on income treat apart, give it its category in the Income Tax Mapping."
+	"Account {0} has a balance (debit {1}, credit {2}) but no place in the defaults of {3}, so it counts in the "
+	"Jahresüberschuss alone. If it holds Bezüge, Gewinne or Gewinnminderungen aus Anteilen (§ 8b KStG) or another "
+	"amount the taxes on income treat apart, give it its category in the Income Tax Mapping; if it holds none, "
+	"acknowledge this error with the reason."
 )
 HOLDING_WITHOUT_SHARE_TEXT = (
 	"The holding {0} of the Annual Filing Settings for {1} names no share, so § 8b Absatz 4 KStG takes its dividends of "
@@ -1252,10 +1253,11 @@ def unmapped(
 ) -> list[Finding]:
 	"""The accounts with a balance that the defaults of the chart give a place in the mapping, a category or a watch,
 	and the mapping of the company does not: DATEV marks them for its tax programs (Programmverbindung K or G,
-	steuerbote.kst.defaults). A hint names each account with a balance the mapping does not place that is no account
-	of the DATEV chart at all (the accounts of the defaults of the Bilanzzuordnung, steuerbote.ebilanz.defaults), such
-	as one of an older edition: it gets no default and counts in the Jahresüberschuss alone. A chart of its own has no
-	defaults to compare with."""
+	steuerbote.kst.defaults). An account with a balance the mapping does not place that the defaults of the chart do
+	not know at all (those of the Bilanzzuordnung, steuerbote.ebilanz.defaults, take every account of the DATEV chart,
+	of ERPNext's template and of the earlier editions they name) holds the return as well: it would count in the
+	Jahresüberschuss alone, a result under § 8b KStG taxed in full; the error can be acknowledged with the reason that
+	the account holds no such amount. A chart of its own has no defaults to compare with."""
 	try:
 		defaults = {account.number for account in default_accounts(mapping.chart)}
 		chart = datev_accounts(mapping.chart)
@@ -1280,9 +1282,9 @@ def unmapped(
 			found.append(_error(UNMAPPED, text, "Kontenzuordnung Ertragsteuern"))
 		elif number not in chart:
 			text = translate(UNKNOWN_TEXT).format(
-				number, figures.money(debit), figures.money(credit), mapping.chart, DATEV_EDITION
+				number, figures.money(debit), figures.money(credit), mapping.chart
 			)
-			found.append(Finding(UNKNOWN, Severity.HINT, text, "Kontenzuordnung Ertragsteuern"))
+			found.append(_error(UNKNOWN, text, "Kontenzuordnung Ertragsteuern"))
 	return found
 
 
@@ -1409,7 +1411,7 @@ def _inputs(
 			text = translate(UNKNOWN_HOLDING_TEXT).format(row.get("holding_name"), ret.year)
 			found.append(_error(UNKNOWN_HOLDING, text, "§ 8b Absatz 4 Satz 1 KStG"))
 			continue
-		if registered.percent_on_1_january is None and registered.percent_at_start_of_ez is None:
+		if not registered.percent_on_1_january and not registered.percent_at_start_of_ez:
 			text = translate(HOLDING_WITHOUT_SHARE_TEXT).format(
 				registered.name, ret.year, figures.money(to_amount(row.get("amount")))
 			)

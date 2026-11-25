@@ -143,10 +143,12 @@ testpaths = [
     "steuerbote/tests/test_menu.py",
     "steuerbote/tests/test_docs_overview.py",
     "steuerbote/tests/test_formal_address.py",
+    "steuerbote/tests/test_exchange_setup_files.py",
     "steuerbote/tests/test_partner_vat_id_files.py",
     "steuerbote/tests/test_guard_files.py",
     "steuerbote/tests/test_about_files.py",
     "steuerbote/tests/test_print_files.py",
+    "steuerbote/tests/test_print_medium.py",
     "steuerbote/tests/test_printouts.py",
 ]
 # The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
@@ -199,6 +201,7 @@ source = [
     "steuerbote.steuerbote.doctype.electronic_balance_sheet.layout",
     "steuerbote.steuerbote.report.e_bilanz_positionen.rows",
     "steuerbote.steuerbote.about",
+    "steuerbote.steuerbote.print_medium",
     "steuerbote.tests.printouts",
 ]
 omit = ["*/tests/*", "*/steuerbote/eric/secrets.py"]

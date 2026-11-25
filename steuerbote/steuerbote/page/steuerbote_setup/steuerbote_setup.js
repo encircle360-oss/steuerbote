@@ -104,6 +104,11 @@ function show_report(report, result) {
 					step.action.method
 			  )}">${escape(step.action.label)}</button>`
 			: "";
+		const later = step.action && result.before
+			? `<p class="text-muted">${escape(
+					__("After Set Up, this step offers „{0}“.", [step.action.label])
+			  )}</p>`
+			: "";
 		const document = step.doctype && !(result.before && step.outcome === "created")
 			? `<a href="${escape(frappe.utils.get_form_link(step.doctype, step.name))}">${escape(
 					step.document_label
@@ -112,7 +117,7 @@ function show_report(report, result) {
 		return `<tr data-step="${escape(step.key)}">
 			<td>${escape(step.label)}</td>
 			<td><span class="indicator-pill ${outcome.indicator}">${escape(outcome.label)}</span></td>
-			<td><ul class="list-unstyled">${notes.join("")}</ul>${action}</td>
+			<td><ul class="list-unstyled">${notes.join("")}</ul>${action}${later}</td>
 			<td>${document}</td>
 		</tr>`;
 	});
@@ -125,7 +130,7 @@ function show_report(report, result) {
 		: __("Nothing changed: {0} was set up already.", [company]);
 	if (result.before) {
 		summary = result.changed
-			? __("Before the setup: Set Up makes what is missing for {0}.", [company])
+			? __("Before the setup: Set Up makes what is missing for {0} and then offers the actions of the steps.", [company])
 			: __("{0} has everything the setup makes.", [company]);
 	}
 	if (open) {

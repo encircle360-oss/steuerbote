@@ -10,7 +10,8 @@ merely because the app was installed or updated.
 ERPNext keeps one tax identifier per party and company, tax_id, and every app that reads it, Steuerbote included, takes
 it as the USt-IdNr.; ERPNext's German translation calls it „Steuernummer“, so users enter the Steuernummer there. The
 action labels the field „USt-IdNr.“ on Company, Customer and Supplier through Property Setters, which a later update of
-ERPNext keeps. The Steuernummer of a partner has a field of its own (steuernummer), and so has a number from outside
+ERPNext keeps, and so the copies ERPNext 16 fetches onto the documents: tax_id of Sales Invoice, Purchase Invoice,
+Sales Order and Delivery Note, and company_tax_id of Sales Invoice, the company's own („Eigene USt-IdNr.“). The Steuernummer of a partner has a field of its own (steuernummer), and so has a number from outside
 the EU (foreign_tax_id).
 
 erpnext_germany checks the USt-IdNrn. of all customers and suppliers at VIES in a job of its own, with the default
@@ -29,6 +30,17 @@ from steuerbote.setup.steps import Action, Note, Outcome, StepResult
 TAX_ID = "tax_id"
 LABELLED_DOCTYPES = ("Company", "Customer", "Supplier")
 LABEL = "VAT ID"
+OWN_LABEL = "Own VAT ID"
+# Each field that holds a USt-IdNr., with its label; the party fields also get the description (ERPNext 16.60.0, the
+# JSON of the DocTypes).
+LABELLED_FIELDS = (
+	*((doctype, TAX_ID, LABEL) for doctype in LABELLED_DOCTYPES),
+	("Sales Invoice", TAX_ID, LABEL),
+	("Sales Invoice", "company_tax_id", OWN_LABEL),
+	("Purchase Invoice", TAX_ID, LABEL),
+	("Sales Order", TAX_ID, LABEL),
+	("Delivery Note", TAX_ID, LABEL),
+)
 DESCRIPTION = (
 	"The USt-IdNr. with its country code, such as ATU12345678. The Steuernummer has a field of its own."
 )
@@ -37,8 +49,10 @@ GERMANY_JOB = "erpnext_germany.tasks.all"
 JOB_TYPE = "Scheduled Job Type"
 MANAGER = "System Manager"
 
-LABELLED = "ERPNext's Tax ID reads „USt-IdNr.“ on Company, Customer and Supplier."
-LABEL_MISLEADS = "ERPNext calls its Tax ID „Steuernummer“ in German, but Steuerbote and the other apps read it as the USt-IdNr.: an entered Steuernummer would be taken for one. Relabel it on Company, Customer and Supplier; the Steuernummer of a partner has a field of its own."
+LABELLED = (
+	"ERPNext's Tax ID reads „USt-IdNr.“ on Company, Customer and Supplier and on the documents that copy it."
+)
+LABEL_MISLEADS = "ERPNext calls its Tax ID „Steuernummer“ in German, but Steuerbote and the other apps read it as the USt-IdNr.: an entered Steuernummer would be taken for one. Relabel it on Company, Customer and Supplier and on the invoices, orders and delivery notes that copy it; the Steuernummer of a partner has a field of its own."
 LABEL_OWN = "{0} carries a label of its own for the Tax ID, which Steuerbote leaves as it is."
 RELABEL = "Relabel as USt-IdNr."
 GERMANY_ABSENT = "erpnext_germany is not installed: Steuerbote alone confirms USt-IdNrn."
@@ -74,17 +88,24 @@ MESSAGES = (
 def check_tax_id_label(context) -> StepResult:
 	"""The step vat_id_label: done when the Tax ID reads „USt-IdNr.“ everywhere; otherwise it offers the relabelling,
 	and leaves alone a label someone set by hand."""
-	labels = {doctype: _label_of(doctype) for doctype in LABELLED_DOCTYPES}
-	own = [Note(LABEL_OWN, (doctype,)) for doctype, label in labels.items() if label not in (None, LABEL)]
-	if None not in labels.values():
+	labels = {
+		(doctype, fieldname): (_label_of(doctype, fieldname), label)
+		for doctype, fieldname, label in LABELLED_FIELDS
+	}
+	own = [
+		Note(LABEL_OWN, (doctype,))
+		for (doctype, _fieldname), (current, label) in labels.items()
+		if current not in (None, label)
+	]
+	if all(current is not None for current, _label in labels.values()):
 		return StepResult(Outcome.SKIPPED, tuple(own) or (Note(LABELLED),))
 	notes = (Note(LABEL_MISLEADS, open=True), *own)
 	return StepResult(Outcome.UNDECIDED, notes, action=Action(RELABEL, f"{__name__}.relabel_tax_id"))
 
 
-def _label_of(doctype: str) -> str | None:
+def _label_of(doctype: str, fieldname: str = TAX_ID) -> str | None:
 	return frappe.db.get_value(
-		"Property Setter", {"doc_type": doctype, "field_name": TAX_ID, "property": "label"}, "value"
+		"Property Setter", {"doc_type": doctype, "field_name": fieldname, "property": "label"}, "value"
 	)
 
 
@@ -93,13 +114,16 @@ def relabel_tax_id(company: str | None = None) -> None:
 	"""The action of vat_id_label: label the Tax ID „USt-IdNr.“ where it carries ERPNext's label; ``company`` is the
 	company of the page, which the label does not depend on."""
 	frappe.only_for(MANAGER, message=True)
-	for doctype in LABELLED_DOCTYPES:
-		if _label_of(doctype) is not None:
+	for doctype, fieldname, label in LABELLED_FIELDS:
+		if _label_of(doctype, fieldname) is not None:
 			continue
-		for name, value in (("label", LABEL), ("description", DESCRIPTION)):
+		properties = [("label", label)]
+		if doctype in LABELLED_DOCTYPES:
+			properties.append(("description", DESCRIPTION))
+		for name, value in properties:
 			make_property_setter(
 				doctype,
-				TAX_ID,
+				fieldname,
 				name,
 				value,
 				"Data",

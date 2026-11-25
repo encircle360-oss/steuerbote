@@ -585,6 +585,7 @@ def run_transmission(name: str, operation: str, transmission: str) -> None:
 			"operation": transmission.operation,
 			"status": transmission.status,
 			"simulated": cint(transmission.simulated),
+			"schema_unchecked": messages.summary(transmission.messages)["schema_unchecked"],
 		},
 		user=transmission.user,
 		after_commit=True,

@@ -9,6 +9,7 @@ from unittest import TestCase
 from steuerbote.dauerfrist import Context, FormError, Ust1H
 from steuerbote.dauerfrist.form import LATEST_YEAR, NO_LAYOUT
 from steuerbote.setup.start import PriorFiling
+from steuerbote.steuerbote.doctype.vat_return.bridge import SUPPLEMENTARY_INFORMATION
 from steuerbote.steuerbote.doctype.vat_return_extension import bridge
 from steuerbote.steuerbote.doctype.vat_return_extension.bridge import (
 	Activity,
@@ -371,6 +372,12 @@ class FormTest(TestCase):
 	def test_carries_kz500_with_its_begruendung(self):
 		form = bridge.form(self.doc(supplementary_code="2", kz500_begruendung="Siehe Anlage"))
 		self.assertEqual((form.supplementary_code, form.begruendung), ("2", "Siehe Anlage"))
+
+	def test_carries_the_code_of_the_key_kz500_keeps(self):
+		for wording, code in SUPPLEMENTARY_INFORMATION.items():
+			with self.subTest(wording=wording):
+				form = bridge.form(self.doc(supplementary_code=wording, kz500_begruendung="Siehe Anlage"))
+				self.assertEqual(form.texts()["Kz500"], code)
 
 	def test_passes_on_what_the_form_refuses(self):
 		with self.assertRaises(FormError) as caught:

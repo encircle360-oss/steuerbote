@@ -217,6 +217,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 					"operation": "validate",
 					"status": "Erfolgreich",
 					"simulated": 1,
+					"schema_unchecked": False,
 				},
 			),
 		)

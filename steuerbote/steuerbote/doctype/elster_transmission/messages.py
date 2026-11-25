@@ -10,7 +10,7 @@ import re
 from collections.abc import Iterable
 from typing import Any, Protocol
 
-from steuerbote.eric.result import ERROR, HINT
+from steuerbote.eric.result import ERROR, HINT, SCHEMA_NOT_CHECKED
 
 ERIC_PATH = re.compile(r"\$(/[^$]*)\$")
 """A field in the text of a message of ERiC, its path in the delivery between dollar signs."""
@@ -34,7 +34,8 @@ class Row(Protocol):
 
 
 def summary(rows: Iterable[Row], shown: int = SHOWN) -> dict[str, Any]:
-	"""How many errors and how many hints ``rows`` hold, and the first ``shown`` of each with code and text."""
+	"""How many errors and how many hints ``rows`` hold, the first ``shown`` of each with code and text, and whether the
+	simulation checked no schema (SCHEMA_NOT_CHECKED), which a run that succeeds may not hide."""
 	messages = [
 		(row.get("severity"), {"code": row.get("code") or "", "text": row.get("text") or ""}) for row in rows
 	]
@@ -45,6 +46,7 @@ def summary(rows: Iterable[Row], shown: int = SHOWN) -> dict[str, Any]:
 		"hints": len(hints),
 		"first_errors": errors[:shown],
 		"first_hints": hints[:shown],
+		"schema_unchecked": any(message["code"] == SCHEMA_NOT_CHECKED for _severity, message in messages),
 	}
 
 

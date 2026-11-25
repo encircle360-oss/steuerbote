@@ -41,6 +41,8 @@ jinja = {
 	"methods": [
 		"steuerbote.steuerbote.about.steuerbote_version",
 		"steuerbote.steuerbote.about.steuerbote_pdf_generator",
+		"steuerbote.steuerbote.print_medium.steuerbote_print_medium",
+		"steuerbote.steuerbote.print_medium.steuerbote_browser_page",
 	]
 }
 
@@ -170,6 +172,12 @@ steuerbote_setup_steps = [
 		"label": "Balance Sheet Mapping",
 		"order": 50,
 		"run": "steuerbote.steuerbote.doctype.balance_sheet_mapping.setup.run",
+	},
+	{
+		"key": "exchange_accounts",
+		"label": "Exchange Rate Accounts",
+		"order": 55,
+		"run": "steuerbote.steuerbote.exchange_setup.check",
 	},
 	{
 		"key": "vat_id_label",

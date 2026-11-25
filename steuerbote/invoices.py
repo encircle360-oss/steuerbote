@@ -10,7 +10,7 @@ dates of the period and leave out invoices marked as opening entries. Only the a
 with two queries per kind of invoice, through Frappe's query builder with parameters.
 """
 
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -18,7 +18,7 @@ from decimal import Decimal
 import frappe
 from frappe.query_builder.functions import Sum
 
-from steuerbote.ustva.plausibility import InvoiceLine
+from steuerbote.ustva.plausibility import AssetSale, AssetSaleCorrection, InvoiceLine
 from steuerbote.ustva.rounding import CENT, ZERO
 
 
@@ -205,3 +205,93 @@ def _taxes(
 def _cents(amount: float | Decimal | None) -> Decimal:
 	"""Currency values arrive as floats; through their shortest repr they become the cents they were stored in."""
 	return Decimal(str(amount or 0)).quantize(CENT)
+
+
+def asset_sales_without_tax(
+	company: str, from_date: date | str, to_date: date | str, names: Collection[str] | None = None
+) -> list[AssetSale]:
+	"""The company's submitted Sales Invoices without tax that sell a fixed asset through the row with the Asset
+	(is_fixed_asset and asset of Sales Invoice Item, ERPNext 16), each with the price of its asset rows, by invoice;
+	returns and opening entries are left out. ``names`` as for load_lines."""
+	invoice = frappe.qb.DocType(SALES.doctype)
+	item = frappe.qb.DocType(SALES.items)
+	party = frappe.qb.DocType(SALES.party_doctype)
+	address = frappe.qb.DocType("Address")
+	query = (
+		frappe.qb.from_(item)
+		.inner_join(invoice)
+		.on(invoice.name == item.parent)
+		.left_join(party)
+		.on(party.name == invoice[SALES.party])
+		.left_join(address)
+		.on(address.name == invoice[SALES.address])
+		.where(item.parenttype == SALES.doctype)
+		.where(invoice.company == company)
+		.where(invoice.docstatus == 1)
+		.where(invoice.is_opening == "No")
+		.where(invoice.is_return == 0)
+		.where(invoice.base_total_taxes_and_charges == 0)
+		.where(item.is_fixed_asset == 1)
+		.where(item.asset.isnotnull() & (item.asset != ""))
+	)
+	if names is None:
+		query = query.where(invoice.posting_date.between(from_date, to_date))
+	else:
+		query = query.where(invoice.name.isin(sorted(names) or [""]))
+	columns = (invoice.name, invoice[SALES.party], invoice[SALES.party_name], party.tax_id, address.country)
+	rows = (
+		query.select(*columns, Sum(item.base_net_amount).as_("net_amount"))
+		.groupby(*columns)
+		.orderby(invoice.name)
+		.run(as_dict=True)
+	)
+	return [
+		AssetSale(
+			voucher_no=row.name,
+			party=row[SALES.party_name] or row[SALES.party],
+			party_country=row.country,
+			party_tax_id=row.tax_id,
+			net_amount=_cents(row.net_amount),
+		)
+		for row in rows
+	]
+
+
+def asset_sale_corrections(names: Iterable[str]) -> list[AssetSaleCorrection]:
+	"""Of the Sales Invoices ``names``, those that book back the tax of a taxed asset sale through the row with the
+	Asset: a credit note against such a sale, or the sale itself once cancelled."""
+	names = sorted(set(names))
+	if not names:
+		return []
+	invoices = frappe.get_all(
+		SALES.doctype,
+		filters={"name": ["in", names]},
+		fields=["name", "is_return", "return_against", "docstatus"],
+	)
+	candidates = {row.return_against if row.is_return else row.name for row in invoices} - {None, ""}
+	sold = set(
+		frappe.get_all(
+			SALES.items,
+			filters={
+				"parenttype": SALES.doctype,
+				"parent": ["in", sorted(candidates) or [""]],
+				"is_fixed_asset": 1,
+				"asset": ["is", "set"],
+			},
+			pluck="parent",
+		)
+	)
+	taxed = set(
+		frappe.get_all(
+			SALES.doctype,
+			filters={"name": ["in", sorted(sold) or [""]], "base_total_taxes_and_charges": ["!=", 0]},
+			pluck="name",
+		)
+	)
+	found = []
+	for row in sorted(invoices, key=lambda row: row.name):
+		if row.is_return and row.return_against in taxed:
+			found.append(AssetSaleCorrection(row.name, row.return_against))
+		elif not row.is_return and row.docstatus == 2 and row.name in taxed:
+			found.append(AssetSaleCorrection(row.name, None))
+	return found

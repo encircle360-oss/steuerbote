@@ -139,6 +139,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 					"operation": "validate",
 					"status": "Erfolgreich",
 					"simulated": 1,
+					"schema_unchecked": False,
 				},
 			),
 		)
@@ -475,6 +476,7 @@ class TestExtensionTransmission(Transmitting, IntegrationTestCase):
 				"hints": 1,
 				"first_errors": [],
 				"first_hints": [{"code": "610001003", "text": "Hinweise während der Plausibilitätsprüfung."}],
+				"schema_unchecked": False,
 			},
 		)
 		self.assertIn("show_latest_run(frm);", get_form_meta(DOCTYPE, cached=False).get("__js"))

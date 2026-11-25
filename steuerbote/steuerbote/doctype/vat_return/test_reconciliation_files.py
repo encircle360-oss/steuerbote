@@ -109,6 +109,15 @@ class FormTest(TestCase):
 		columns = fields(TABLE)
 		self.assertEqual((columns["compared"]["fieldtype"], columns["compared"]["hidden"]), ("Check", 1))
 
+	def test_the_form_leaves_the_corrected_amount_of_a_kennzahl_without_correction_blank(self):
+		"""A Kennzahl without an override shows no „Korrigierter Betrag 0,00 €“; an override of zero with its reason
+		does."""
+		setup = re.search(r"\n\tsetup\(frm\) \{\n(?P<body>.*?)\n\t\},\n", self.script, re.DOTALL)
+		self.assertIn("leave_kennzahlen_without_override_blank();", setup["body"])
+		body = function(self.script, "leave_kennzahlen_without_override_blank")
+		self.assertIn('frappe.meta.set_formatter("VAT Return Kennzahl", "override", null,', body)
+		self.assertIn('!doc || !doc.override_reason ? "<span></span>"', body)
+
 	def test_the_file_for_mein_elster_waits_for_the_explanations_or_the_remarks(self):
 		offer = function(self.script, "can_make_import_file")
 		self.assertIn("(remarks || !unexplained_differences(doc).length)", offer)

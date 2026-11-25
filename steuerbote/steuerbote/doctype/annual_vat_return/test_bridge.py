@@ -714,6 +714,20 @@ class DetailsTest(TestCase):
 			with self.subTest(element=element):
 				self.assertNotIn(element, values)
 
+	def test_kz500_keeps_a_key_with_the_wording_of_line_23_and_files_its_code(self):
+		"""Line 23 of USt 2 A speaks of the Verwaltungsmeinung where USt 1 A says Verwaltungsauffassung."""
+		keys = {
+			"1 = Facts relevant to the tax could not be explained.": "1",
+			"2 = A legal view deliberately deviating from the opinion of the administration is taken.": "2",
+			"3 = Facts are to be examined in depth by a person.": "3",
+			"4 = Several of the reasons above apply (multiple choice).": "4",
+		}
+		self.assertEqual(dict(bridge.SUPPLEMENTARY_INFORMATION), keys)
+		for key, code in keys.items():
+			with self.subTest(key=key):
+				values = bridge.details(YEAR, Company("Muster GmbH"), {"kz500": key, "kz500_text": "Anlage"})
+				self.assertEqual(values["E3002201"], code)
+
 	def test_a_year_with_a_steuerberatung_files_the_mitwirkung_of_lines_127_to_129(self):
 		advisor = Advisor(
 			name="Steuerkanzlei Beispiel",

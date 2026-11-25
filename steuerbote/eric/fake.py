@@ -48,7 +48,16 @@ from xml.etree import ElementTree
 
 from steuerbote.eric.datenart import Datenart, of_version
 from steuerbote.eric.header import EnvelopeHeader, problems, without_declaration
-from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Message, Operation, Outcome, TransmissionResult
+from steuerbote.eric.result import (
+	ERROR,
+	HINT,
+	SCHEMA_NOT_CHECKED,
+	TESTMERKER,
+	Message,
+	Operation,
+	Outcome,
+	TransmissionResult,
+)
 from steuerbote.eric.runtime import Check
 from steuerbote.eric.simulation import Checks, Structure, bilanz, gewst, kst, ust
 from steuerbote.vatid.ustid import has_german_check_digit
@@ -242,7 +251,7 @@ class Simulation:
 				)
 				errors.extend(schema_errors)
 				if unchecked:
-					messages.append(Message("SIM-001", checks.structure_only(kind, unchecked), HINT))
+					messages.append(Message(SCHEMA_NOT_CHECKED, checks.structure_only(kind, unchecked), HINT))
 				messages.extend(checks.hints(found, kind))
 		if errors:
 			return TransmissionResult(

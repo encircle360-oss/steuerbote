@@ -177,7 +177,7 @@ Der DocType `VAT Return Extension` heißt in der Oberfläche „Dauerfristverlä
 | `base` | Grundlage (Zeile 8) | die Grundlage, aus der Kz 38 folgt |
 | `sondervorauszahlung` | Sondervorauszahlung (Kz 38) | `sondervorauszahlung` oder, nach einem Beginn im Jahr des Belegs, `expected_sondervorauszahlung` |
 | `offset_requested`, `no_sepa_mandate` | Verrechnung erwünscht oder Erstattungsbetrag abgetreten (Kz 29), SEPA-Lastschriftmandat ausnahmsweise nicht verwenden (Kz 26) | nur bei der Anmeldung der Sondervorauszahlung |
-| `supplementary_code`, `kz500_begruendung` | Ergänzende Angaben zur Steueranmeldung (Kz 500), Begründung zu Kz 500 | in beiden Vordrucken |
+| `supplementary_code`, `kz500_begruendung` | Ergänzende Angaben zur Steueranmeldung (Kz 500), Begründung zu Kz 500 | in beiden Vordrucken; die Auswahl zeigt die Schlüssel 1 bis 4 im Wortlaut von Zeile 12 |
 | `findings` | Offene Punkte | was dem Status „Bereit“ entgegensteht |
 | `remarks` | Anmerkungen | Pflicht, wenn ein Beleg abgegeben wird, der nicht bereit ist |
 | `filed_via`, `filed_on`, `transferticket`, `filing_note` | Abgegeben über, Abgegeben am, Transferticket, Wie und wann abgegeben | setzt die Abgabe: ERiC (`eric`) mit dem Tag der Antwort und dem Transferticket nach einem Senden, das ELSTER angenommen hat, sonst der Vermerk mit Mein ELSTER (`mein_elster`) oder einem anderen Weg (`other_way`) |

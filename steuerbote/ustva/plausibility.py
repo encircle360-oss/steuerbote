@@ -84,6 +84,7 @@ class Code(StrEnum):
 	ZM_WITHOUT_RHYTHM = "ZM-OHNE-RHYTHMUS"
 	CORRECTION_UNCHANGED = "BERICHTIGUNG-OHNE-AENDERUNG"
 	OUTPUT_TAX_WITHOUT_REVENUE = "UMSATZ-OHNE-ERLOESKONTO"
+	ASSET_SALE_TAX_FREE = "ANLAGENVERKAUF-STEUERFREI"
 
 
 # A turnover that loses its exemption without a valid USt-IdNr. of the customer and an override that hides a change of
@@ -117,6 +118,7 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.ZM_WITHOUT_RHYTHM: Severity.WARNING,
 		Code.CORRECTION_UNCHANGED: Severity.HINT,
 		Code.OUTPUT_TAX_WITHOUT_REVENUE: Severity.HINT,
+		Code.ASSET_SALE_TAX_FREE: Severity.WARNING,
 	}
 )
 # The order of the hints of a return: errors, then warnings, then hints.
@@ -440,6 +442,81 @@ def derived_base_hints(derived: Iterable[DerivedBase], figures: Figures) -> list
 		voucher_type, _, voucher_no = (base.voucher or "").partition(":")
 		found.append(Hint(Code.BASE_FROM_TAX, text, voucher_type, voucher_no))
 	return found
+
+
+@dataclass(frozen=True, slots=True)
+class AssetSale:
+	"""A submitted Sales Invoice without tax that sells a fixed asset through the row with the Asset: ERPNext books its
+	price as the disposal of the asset (get_gl_entries_on_asset_disposal), on no account of a Kennzahl. ``net_amount``
+	is the price of its asset rows in company currency; the party as for InvoiceLine."""
+
+	voucher_no: str
+	party: str
+	party_country: str | None
+	party_tax_id: str | None
+	net_amount: Decimal
+
+
+# The Kennzahl of a tax-free supply by where the goods go: Kz 41 for an innergemeinschaftliche Lieferung to a customer
+# with a USt-IdNr. (§ 4 Nr. 1 Buchst. b, § 6a UStG), Kz 43 for an Ausfuhrlieferung (§ 4 Nr. 1 Buchst. a, § 6 UStG);
+# Anleitung USt 1 E 2026 zu den Zeilen 19 und 20.
+INTRA_COMMUNITY_SUPPLY = ("41", "innergemeinschaftliche Lieferung")
+EXPORT_SUPPLY = ("43", "Ausfuhrlieferung")
+# The prefix of a USt-IdNr. that is not the ISO code of its member state (Art. 215 MwStSystRL).
+VAT_ID_PREFIXES = MappingProxyType({"EL": "GR"})
+
+
+def tax_free_asset_sale_hints(sales: Iterable[AssetSale], figures: Figures) -> list[Hint]:
+	"""A warning for each asset sale without tax to a customer in another member state or outside the EU, naming the
+	invoice, the Kennzahl its price belongs in and the documented way to book it; Steuerbote adds no amount. The
+	country is that of the invoice's address, else that of the customer's USt-IdNr.; a sale in Germany or without a
+	country is left alone."""
+	found = []
+	for sale in sales:
+		prefix = (sale.party_tax_id or "").strip()[:2].upper()
+		country = (sale.party_country or "").strip() or VAT_ID_PREFIXES.get(prefix, prefix) or None
+		if country is None:
+			continue
+		state = member_state(country)
+		if state is not None and state.code == GERMANY:
+			continue
+		if state is None and not (sale.party_country or "").strip():
+			continue
+		kennzahl, kind = INTRA_COMMUNITY_SUPPLY if state is not None else EXPORT_SUPPLY
+		text = (
+			f"Kz {kennzahl}: Die Rechnung {sale.voucher_no} an {sale.party} verkauft ein Anlagegut über die Position "
+			f"mit Vermögensgegenstand ohne Umsatzsteuer für {figures.money(sale.net_amount)}, als {kind}. ERPNext "
+			f"bucht dabei kein Konto der Kz {kennzahl}, und Steuerbote meldet den Verkauf nicht. Buchen Sie ihn mit "
+			f"einem Artikel ohne Anlagegut auf das Erlöskonto der Kz {kennzahl} und verschrotten Sie den "
+			f"Vermögensgegenstand, oder tragen Sie den Betrag mit Begründung als Korrektur in Kz {kennzahl} ein."
+		)
+		found.append(Hint(Code.ASSET_SALE_TAX_FREE, text, "Sales Invoice", sale.voucher_no, sale.party))
+	return found
+
+
+@dataclass(frozen=True, slots=True)
+class AssetSaleCorrection:
+	"""A Sales Invoice that books back the tax of an asset sale through the row with the Asset: a credit note, with the
+	invoice it corrects as ``original``, or the sale itself cancelled in a later period, without ``original``."""
+
+	voucher_no: str
+	original: str | None
+
+
+def asset_sale_deviation_note(correction: AssetSaleCorrection) -> str:
+	"""Why the Verprobung deviates for the voucher: the tax of an asset sale comes back without a base, since
+	Steuerbote derives a base from the remaining output tax in the credit alone (UMSATZ-OHNE-ERLOESKONTO, accepted
+	as a deviation in 0.15.0), and what the user does about it."""
+	if correction.original is None:
+		cause = f"Stornierung des Anlagenverkaufs {correction.voucher_no}"
+	else:
+		cause = f"Gutschrift zum Anlagenverkauf {correction.original}"
+	return (
+		f"{cause}: Für die Gutschrift oder Stornierung eines Anlagenverkaufs über die Position mit Vermögensgegenstand "
+		"leitet Steuerbote keine Bemessungsgrundlage aus der Steuer ab, deshalb weicht die Verprobung ab. Tragen Sie "
+		"die Minderung der Bemessungsgrundlage mit Begründung als Korrektur der Kennzahl ein, oder begründen Sie die "
+		"Abweichung in den Anmerkungen."
+	)
 
 
 def _turnover_hint(base: DerivedBase, figures: Figures) -> Hint:

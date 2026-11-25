@@ -473,6 +473,23 @@ class TestCorporateIncomeTaxReturn(Transmitting, IntegrationTestCase):
 				finally:
 					income_tax.discard_returns()
 
+	def test_a_holding_whose_row_names_no_share_holds_the_return_back_with_its_dividends(self):
+		"""The register names Gamma AG for the year but no share: without one its dividends would be Streubesitz and
+		taxed in full (§ 8b Abs. 4 Satz 1 KStG), so the return is held back with the amount."""
+
+		def without_the_share(settings):
+			for row in settings.holdings:
+				if row.holding_name == "Gamma AG":
+					row.percent_on_1_january = None
+					row.percent_at_start_of_ez = None
+
+		self.change_settings(without_the_share)
+		doc = self.calculated()
+		self.assertIn("KST-BETEILIGUNG-OHNE-ANTEIL", blocking_codes(doc))
+		(finding,) = (row for row in doc.findings if row.code == "KST-BETEILIGUNG-OHNE-ANTEIL")
+		self.assertIn("Gamma AG", finding.text)
+		self.assertIn("Streubesitz", finding.text)
+
 	def test_hints_name_what_the_books_say_otherwise_and_hold_nothing_back(self):
 		credits = income_tax.RETURN_TABLES["credits"][:1]
 		receipt = [{"recipient": "Musterverein e. V.", "amount": 800}]

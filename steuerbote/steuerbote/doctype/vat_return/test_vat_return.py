@@ -395,7 +395,10 @@ class TestVATReturn(IntegrationTestCase):
 						"kennzahlen", {"kennzahl": "81", "override": 1000, "override_reason": "Rechnung"}
 					),
 					lambda draft: draft.update(
-						{"supplementary_code": "1", "kz500_begruendung": "Siehe Schreiben"}
+						{
+							"supplementary_code": "1 = Facts relevant to the tax could not be explained.",
+							"kz500_begruendung": "Siehe Schreiben",
+						}
 					),
 					lambda draft: draft.update({"offset_requested": 1, "remarks": "Mit Verrechnung"}),
 					lambda draft: draft.update({"is_correction": 1}),
@@ -660,7 +663,9 @@ class TestVATReturn(IntegrationTestCase):
 			"kennzahlen", {"kennzahl": "43", "override": 250, "override_reason": "Export without booking"}
 		)
 		doc.attachments = 1
-		doc.supplementary_code = "2"
+		doc.supplementary_code = (
+			"2 = A legal view deliberately deviating from the view of the administration is taken."
+		)
 		doc.kz500_begruendung = (
 			"\N{DOUBLE LOW-9 QUOTATION MARK}Gutscheine\N{LEFT DOUBLE QUOTATION MARK}, siehe Anlage"
 		)
@@ -679,7 +684,7 @@ class TestVATReturn(IntegrationTestCase):
 
 	def test_a_kz500_without_begruendung_is_refused(self):
 		doc = self.calculated(3)
-		doc.supplementary_code = "1"
+		doc.supplementary_code = "1 = Facts relevant to the tax could not be explained."
 		with self.assertRaisesRegex(frappe.ValidationError, "Kennzahl 500 needs a Begründung"):
 			doc.save()
 

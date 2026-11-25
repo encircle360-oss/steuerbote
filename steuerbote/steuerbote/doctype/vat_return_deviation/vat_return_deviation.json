@@ -10,7 +10,8 @@
   "voucher_no",
   "computed_tax",
   "booked_tax",
-  "difference"
+  "difference",
+  "note"
  ],
  "fields": [
   {
@@ -63,11 +64,18 @@
    "label": "Difference",
    "options": "Company:company:default_currency",
    "read_only": 1
+  },
+  {
+   "description": "Why the voucher deviates, where Steuerbote recognises the cause.",
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note",
+   "read_only": 1
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-18 00:00:00.000000",
+ "modified": "2026-11-25 20:30:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Deviation",

@@ -232,6 +232,28 @@ def today_queries(company: str, number: str, today: date) -> list[TodayQuery]:
 	]
 
 
+def shared_today(policy: CompanyPolicy, number: str, details: Details | None, today: date) -> list[str]:
+	"""The records, the first query first, of the newest confirmation of today that another company made about the
+	number under the same own USt-IdNr. and that answers the question (partners.covered_today); none without one."""
+	rows = frappe.get_all(
+		CONFIRMATION,
+		filters={"requester": policy.requester, "requested": number, "company": ["!=", policy.company]},
+		fields=[*CONFIRMATION_FIELDS, "previous"],
+		order_by="creation desc",
+	)
+	by_name = {row.name: row for row in rows}
+	for row in rows:
+		if _day(row.requested_at) != today:
+			continue
+		if not partners.covered_today([TodayQuery(Outcome(row.outcome), _asked_details(row))], details):
+			continue
+		chain = [row.name]
+		while (earlier := by_name.get(by_name[chain[-1]].previous)) is not None:
+			chain.append(earlier.name)
+		return chain[::-1]
+	return []
+
+
 def _asked_details(row: frappe._dict) -> Details | None:
 	if not cint(row.qualified):
 		return None
@@ -614,11 +636,18 @@ def _confirm(
 	trigger: str,
 	source: tuple[str, str] | None,
 ) -> Asked | None:
-	"""Confirm the number for the company and keep each query; None when a query of today answers it already."""
-	if partners.covered_today(today_queries(policy.company, number, getdate()), details):
+	"""Confirm the number for the company and keep each query; None when a query of today answers it already. A
+	company of the same own USt-IdNr. that asked the same question today shares its answer instead of a new query:
+	the services count the same question asked again on one day as misuse."""
+	today = getdate()
+	if partners.covered_today(today_queries(policy.company, number, today), details):
 		return None
 	frappe.db.savepoint(SAVEPOINT)
 	try:
+		if shared := shared_today(policy, number, details, today):
+			vat_id_confirmation.share(shared, policy.company, source, party=party, started_by=trigger)
+			frappe.db.commit()
+			return Asked.ANSWERED
 		answer = vatid.confirm(number, policy.requester, details, UrllibFetch(), _clock)
 		vat_id_confirmation.store(answer, policy.company, source, party=party, started_by=trigger)
 		frappe.db.commit()
@@ -799,6 +828,8 @@ def check_invoice(doc, method: str | None = None) -> None:
 			indicator="orange",
 		)
 		return
+	# The refusal is the gate working as intended, not an error of the code: the browser gets the message alone.
+	frappe.local.flags.disable_traceback = True
 	if not finding.releasable:
 		frappe.throw(
 			_(
@@ -919,7 +950,9 @@ def vat_id_state(party_type: str, party: str) -> dict:
 				{
 					"company": policy.company,
 					"standing": standing.value if standing else None,
-					"standing_label": _(standing.value) if standing else "",
+					"standing_label": _(NOT_CHECKED if standing is Standing.MISSING else standing.value)
+					if standing
+					else "",
 					"asked_on": fact.answer.asked_on if fact.answer else None,
 					"record": fact.record,
 					"automatic": policy.on_change or policy.renewal,
