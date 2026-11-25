@@ -458,6 +458,17 @@ class TestPartnerVatIds(IntegrationTestCase):
 			frappe.get_hooks("doc_events", app_name="steuerbote")["Sales Invoice"]["before_submit"],
 		)
 
+	def test_an_invoice_for_goods_to_a_customer_without_a_number_is_blocked(self):
+		customer = insert_record(
+			"Customer", name="Ohne Nummer GmbH (Partner)", customer_name="Ohne Nummer GmbH"
+		)
+		doc = self.invoice(customer, self.accounts["8125"])
+		with self.assertRaisesRegex(
+			frappe.ValidationError, "goes to Kz 41, but the customer .* has no USt-IdNr."
+		):
+			partner_module.check_invoice(doc)
+		self.assertIsNone(doc.vat_id_confirmation)
+
 	def test_a_german_number_on_an_invoice_for_goods_is_blocked(self):
 		doc = self.invoice(MUENCHEN, self.accounts["8125"])
 		with self.assertRaisesRegex(frappe.ValidationError, "is German; Kz 41 needs one"):
