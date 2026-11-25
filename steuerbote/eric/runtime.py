@@ -695,6 +695,32 @@ def _hersteller_id_check(hersteller_id: str) -> Check:
 	return Check("hersteller_id", True, f"Hersteller-ID {hersteller_id}.")
 
 
+def copyright_check(value: str | None) -> Check:
+	"""The copyright notice of the ERiC Settings, which the Vorsatz of every Erklärung carries (rules 10435 and 6;
+	steuerbote/elster/vorsatz.py): without it no Umsatzsteuer-, Körperschaftsteuer- or Gewerbesteuererklärung runs with
+	ERiC."""
+	from steuerbote.elster.ustva_xml import XmlError
+	from steuerbote.elster.vorsatz import copyright_text
+
+	consequence = (
+		"ohne ihn geht keine Umsatzsteuer-, Körperschaftsteuer- oder Gewerbesteuererklärung über ERiC."
+	)
+	if not (value or "").strip():
+		return Check(
+			"copyright", False, f"Der Copyrightvermerk fehlt in den ERiC-Einstellungen; {consequence}"
+		)
+	try:
+		text = copyright_text(value)
+	except XmlError:
+		return Check(
+			"copyright",
+			False,
+			"Den Copyrightvermerk nimmt ELSTER so nicht: höchstens 50 Zeichen, die ELSTER annimmt, das Zeichen © "
+			f"gehört nicht dazu; {consequence}",
+		)
+	return Check("copyright", True, f"Copyrightvermerk „{text}“.")
+
+
 def _platform() -> tuple[str, str, str | None]:
 	"""The platform of the site: sys.platform, the machine and the glibc, None without one."""
 	# musl knows the name but no value for it and raises OSError, as platform.libc_ver of the standard library expects;

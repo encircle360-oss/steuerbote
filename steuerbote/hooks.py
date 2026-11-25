@@ -134,4 +134,10 @@ steuerbote_setup_steps = [
 		"order": 50,
 		"run": "steuerbote.steuerbote.doctype.balance_sheet_mapping.setup.run",
 	},
+	{
+		"key": "eric_settings",
+		"label": "ERiC Settings",
+		"order": 60,
+		"run": "steuerbote.steuerbote.doctype.eric_settings.setup.run",
+	},
 ]
