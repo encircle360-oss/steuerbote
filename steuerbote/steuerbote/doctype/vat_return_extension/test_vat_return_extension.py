@@ -93,7 +93,8 @@ def new_vat_return(company: str, period: int, **fields):
 
 
 def filed_vat_return(company: str, period: int, **fields):
-	doc = new_vat_return(company, period, **fields)
+	"""A return filed in Mein ELSTER, with remarks for a period that had not ended when it was calculated."""
+	doc = new_vat_return(company, period, **{"remarks": FILED_IN_MEIN_ELSTER, **fields})
 	doc.calculate()
 	doc.reload()
 	doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)

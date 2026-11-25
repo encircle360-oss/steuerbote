@@ -36,6 +36,19 @@ the year it stays in its tax period and needs a corrected return, since a Besteu
 year (§ 16 Abs. 1 Satz 2 UStG) and the annual return holds it in its own year. Either way every posting is
 reported in exactly one period: placements are a function of the posting, the periods and their filings.
 
+**A cancelled voucher.** Cancelling a voucher says that its booking was wrong: the supply, the invoice or the
+payment it booked did not happen as booked, so it never belonged to any Voranmeldung. ERPNext reverses each GL Entry
+of the voucher, and with „Unveränderliches Hauptbuch aktivieren“ in the Accounts Settings posts the reversal on the
+day of the cancellation; a reversal counts on the day of the entries it reverses, booked when the voucher was
+cancelled (``Booking.cancellation``). In a period not yet filed the voucher and its reversal leave no line (settled).
+After the filing of its period the cancellation corrects a return that reported the voucher: a corrected return of
+that period, as the tax of a period is that of its turnover (§ 16 Abs. 1 Satz 2 and § 18 Abs. 1 UStG, § 153 Abs. 1
+AO), or with CURRENT_PERIOD the period open when it was cancelled, as for every late booking. A later change of the
+base of a real supply is no cancellation: a credit note, a debit note or a purchase return changes the base „für den
+Besteuerungszeitraum ..., in dem die Änderung der Bemessungsgrundlage eingetreten ist“ (§ 17 Abs. 1 Satz 8 UStG) and
+counts on its own posting date, as does the input tax of the recipient, which § 17 Abs. 1 Satz 2 UStG corrects in
+the same way.
+
 **Before the start of the books.** A company that starts with Steuerbote in the middle of its life keeps its books
 in ERPNext from a day on; the Voranmeldungen of the periods before were filed outside Steuerbote, from other books.
 No booking in ERPNext is in such a return, so each period before the start counts as filed before any booking
@@ -111,7 +124,8 @@ def invoice_date_accounts(mapping: Mapping) -> frozenset[str]:
 @dataclass(frozen=True, slots=True)
 class Booking:
 	"""The postings of one voucher on one account on one posting date, when they were booked, and the date of
-	the supply the voucher names, if any."""
+	the supply the voucher names, if any. A ``cancellation`` reverses postings of its voucher and carries their
+	posting date and supply."""
 
 	account_number: str
 	voucher: str
@@ -120,6 +134,7 @@ class Booking:
 	debit: Decimal = ZERO
 	credit: Decimal = ZERO
 	service_date: date | None = None
+	cancellation: bool = False
 
 	def __post_init__(self) -> None:
 		if not self.voucher:
@@ -223,7 +238,11 @@ class Assignment:
 		return self.lines_between(bookings, period.start, period.end)
 
 	def lines_between(self, bookings: Iterable[Booking], start: date, end: date) -> list[LedgerLine]:
-		return [booking.line() for booking in bookings if start <= self.place(booking).date <= end]
+		placements = [self.place(booking) for booking in bookings]
+		return [
+			placement.booking.line()
+			for placement in settled(placement for placement in placements if start <= placement.date <= end)
+		]
 
 	def late(self, bookings: Iterable[Booking]) -> list[Placement]:
 		"""The late bookings, in the order they were booked."""
@@ -231,11 +250,12 @@ class Assignment:
 		return sorted((placement for placement in placements if placement.late), key=_booked_at)
 
 	def late_vouchers(self, bookings: Iterable[Booking]) -> list[Placement]:
-		"""The first late booking of each voucher and tax period, in the order they were booked."""
-		seen: set[tuple[str, Period | None]] = set()
+		"""The first late booking of each voucher and tax period, and the first late cancellation, in the order they were
+		booked."""
+		seen: set[tuple[str, Period | None, bool]] = set()
 		found = []
 		for placement in self.late(bookings):
-			key = (placement.booking.voucher, placement.tax_period)
+			key = (placement.booking.voucher, placement.tax_period, placement.booking.cancellation)
 			if key not in seen:
 				seen.add(key)
 				found.append(placement)
@@ -258,6 +278,26 @@ class Assignment:
 
 def _booked_at(placement: Placement) -> tuple[datetime, str]:
 	return placement.booking.booked_at, placement.booking.voucher
+
+
+def settled(placements: Iterable[Placement]) -> list[Placement]:
+	"""The placements of a period without the bookings a cancellation takes back there: per voucher and account, the
+	bookings that sum to zero once a cancellation is among them."""
+	placements = list(placements)
+	groups: dict[tuple[str, str], list[Placement]] = {}
+	for placement in placements:
+		groups.setdefault((placement.booking.voucher, placement.booking.account_number), []).append(placement)
+	cancelled = {
+		key
+		for key, group in groups.items()
+		if any(placement.booking.cancellation for placement in group)
+		and sum((placement.booking.debit - placement.booking.credit for placement in group), ZERO) == ZERO
+	}
+	return [
+		placement
+		for placement in placements
+		if (placement.booking.voucher, placement.booking.account_number) not in cancelled
+	]
 
 
 def periods_with_the_books(
