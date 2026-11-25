@@ -293,6 +293,24 @@ class ColumnWidthsTest(TestCase):
 		self.assertIn('<col class="sb-num sb-base">', template)
 		self.assertIn('<th class="sb-num">Bemessungsgrundlage ohne Umsatzsteuer<br>EUR</th>', template)
 
+	def test_the_totals_of_the_voranmeldung_keep_their_line(self):
+		"""„Umsatzsteuer (Summe der Zeilen 13 bis 18 und 25 bis 32)“ is 86.5 mm long in bold Nimbus Sans of 9 pt and
+		needs 89.2 mm with the padding of its cell. The Kennzahlen have at most three digits and the tax at most
+		-9.876.543,21, 19.6 mm, so that their columns give the text what the wider Bemessungsgrundlage takes."""
+		template = print_formats()["umsatzsteuer_voranmeldung"][1]
+		colgroup = template[template.index("<colgroup>") : template.index("</colgroup>")]
+		widths = {
+			match[1]: float(width)
+			for selector, body in self.style.items()
+			for width in re.findall(r"^\s*width:\s*([\d.]+)mm;", body, re.MULTILINE)
+			for part in selector.split(",")
+			if (match := re.fullmatch(r"\.sb-print \.([\w-]+)", part.strip()))
+		}
+		used = 0.0
+		for classes in re.findall(r'<col(?: class="([^"]*)")?>', colgroup):
+			used += max((widths.get(name, 0.0) for name in classes.split()), default=0.0) if classes else 0.0
+		self.assertGreaterEqual(210 - 20 - 15 - used, 89.2)
+
 	def test_the_labels_of_the_bilanz_keep_their_words_whole(self):
 		"""Four columns of amounts in Kontoform leave the labels less than half the page each; the amounts give up the
 		padding on their left, which a right-aligned number does not use, and still hold 9.999.999,99 at 8 pt, so
