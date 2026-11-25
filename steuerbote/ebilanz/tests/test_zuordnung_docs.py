@@ -91,7 +91,6 @@ class ReviewTest(TestCase):
 			[
 				"Freigabe.",
 				"Restlaufzeiten.",
-				"Verrechnung.",
 				"Auffangpositionen.",
 				"Personengesellschaften.",
 				"Gesellschafter.",
@@ -99,6 +98,7 @@ class ReviewTest(TestCase):
 				"Abschlusszweck.",
 				"Konten der Vorlagen von ERPNext.",
 				"Beobachtete Konten.",
+				"Verrechnung.",
 			],
 		)
 

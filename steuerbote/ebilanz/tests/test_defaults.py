@@ -16,7 +16,6 @@ from steuerbote.ebilanz import defaults
 from steuerbote.ebilanz.calculation import calculate
 from steuerbote.ebilanz.defaults import (
 	CHARTS,
-	DATEV_EDITION,
 	DEFAULTS,
 	GROUPS,
 	REASONS,
@@ -210,7 +209,7 @@ class DefaultsForTest(TestCase):
 
 class DefaultsVersionTest(TestCase):
 	def test_the_version_names_the_chart_the_taxonomy_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, dict(REVISIONS)), (2026, {"6.9": 2, "6.10": 2}))
+		self.assertEqual(dict(REVISIONS), {"6.9": 2, "6.10": 2})
 		self.assertEqual(
 			[defaults_version(chart, "6.9") for chart in sorted(CHARTS)],
 			["SKR03 Taxonomie 6.9 2026.2", "SKR04 Taxonomie 6.9 2026.2"],
@@ -363,9 +362,10 @@ class PlacesTest(TestCase):
 					for chart, span in spans.items()
 				)
 				datev = any(span in labelled[chart] for chart, span in spans.items())
+				both = both or group.netting is not None
 				with self.subTest(account=account):
 					if group.opposite is not None:
-						self.assertTrue(both or not datev or group.netting is not None)
+						self.assertTrue(both or not datev)
 					elif both:
 						self.assertIn(group.reason, one_position)
 
