@@ -44,6 +44,13 @@ function annual_filing_refresh(frm, texts) {
 		annual_transmission_buttons(frm, state, texts);
 	}
 	annual_findings_note(frm, texts);
+	if (!frm.is_new() && (frm.doc.findings || []).some((row) => !row.blocking)) {
+		// The printout shows the hints by kind; every hint goes into its annex only on request.
+		frm.add_custom_button(__("Print with All Hints"), () => {
+			const query = new URLSearchParams({ doctype: frm.doctype, name: frm.doc.name, all_hints: 1 });
+			window.open(`/printview?${query.toString()}`);
+		});
+	}
 	const notes = [...annual_filing_notes(frm, state)];
 	if (transmits) {
 		show_latest_run(frm);

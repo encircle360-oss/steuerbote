@@ -1,10 +1,12 @@
 {#-
-	The findings of an annual document, the errors first: what holds it back from Bereit and what someone should look
-	at, as the table Befunde holds them.
+	The findings of an annual document: each error with its text and, where it is acknowledged, the reason why the
+	document is filed nonetheless; the hints by kind with their number and the first of them; every hint in an annex
+	only when the print asks for it (all_hints). The table Befunde of the form holds every finding.
 -#}
 {%- set annual = annual if annual is defined else doc.annual_print() -%}
 {%- if annual.findings %}
 <h2>Befunde</h2>
+{%- if annual.errors %}
 <table class="sb-lines">
 	<thead>
 		<tr>
@@ -15,9 +17,51 @@
 		</tr>
 	</thead>
 	<tbody>
-		{%- for row in annual.findings %}
+		{%- for row in annual.errors %}
 		<tr>
 			<td class="sb-kind">{{ (row.severity or "") | e }}</td>
+			<td class="sb-code">{{ (row.code or "") | e }}</td>
+			<td>{{ (row.text or "") | e }}{% if row.acknowledged and row.acknowledgement_reason %}<br>Bestätigt: {{ row.acknowledgement_reason | e }}{% endif %}</td>
+			<td class="sb-ref">{{ (row.reference or "") | e }}</td>
+		</tr>
+		{%- endfor %}
+	</tbody>
+</table>
+{%- endif %}
+{%- if annual.hint_kinds %}
+<h3>Hinweise nach Art</h3>
+<table class="sb-lines">
+	<thead>
+		<tr>
+			<th class="sb-code">Code</th>
+			<th class="sb-kind">Anzahl</th>
+			<th>Beispiel</th>
+		</tr>
+	</thead>
+	<tbody>
+		{%- for kind in annual.hint_kinds %}
+		<tr>
+			<td class="sb-code">{{ (kind.code or "") | e }}</td>
+			<td class="sb-kind">{{ kind.count }}</td>
+			<td>{{ (kind.text or "") | e }}</td>
+		</tr>
+		{%- endfor %}
+	</tbody>
+</table>
+{%- endif %}
+{%- if annual.hints %}
+<h3>Anhang: alle Hinweise</h3>
+<table class="sb-lines">
+	<thead>
+		<tr>
+			<th class="sb-code">Code</th>
+			<th>Nachricht</th>
+			<th class="sb-ref">Referenz</th>
+		</tr>
+	</thead>
+	<tbody>
+		{%- for row in annual.hints %}
+		<tr>
 			<td class="sb-code">{{ (row.code or "") | e }}</td>
 			<td>{{ (row.text or "") | e }}</td>
 			<td class="sb-ref">{{ (row.reference or "") | e }}</td>
@@ -25,4 +69,5 @@
 		{%- endfor %}
 	</tbody>
 </table>
+{%- endif %}
 {%- endif %}
