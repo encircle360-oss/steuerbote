@@ -132,7 +132,7 @@ Neben den Befunden der Bilanzzuordnung (`BILANZ-…`) schreibt „Berechnen“ d
 | `JA-ARBEITNEHMER-HAND` | Hinweis | die Arbeitnehmer von Hand ersetzen die gezählten |
 | `JA-ARBEITNEHMER-ART` | Hinweis | die Einstellungen lassen Arten der Beschäftigung aus, die Mitarbeiter haben aber keine |
 | `JA-VORJAHR-FEHLT` | Fehler | kein Vorjahr in den Büchern und keines von Hand |
-| `JA-GROESSE-EINSTELLUNGEN` | Hinweis | die Größenmerkmale der Einstellungen nennen für den Abschlussstichtag nicht die angewandte Klasse; die Frist der Feststellung rechnet nach ihnen |
+| `JA-GROESSE-EINSTELLUNGEN` | Hinweis | die Größenmerkmale der Einstellungen nennen für den Abschlussstichtag nicht die angewandte Klasse; nennen sie keine, rechnet die Frist der Feststellung am Beleg mit der angewandten Klasse (elf Monate für eine kleine Gesellschaft), Offene Fristen weiter nach den Einstellungen |
 | `JA-UG-RUECKLAGE` | Fehler | eine UG stellt weniger als ein Viertel ihres Jahresüberschusses in die gesetzliche Rücklage ein (§ 5a Abs. 3 Satz 1 GmbHG) |
 | `JA-HINTERLEGUNG` | Hinweis | eine Kleinstkapitalgesellschaft veröffentlicht, was sie hinterlegen könnte |
 | `JA-KORREKTUR` | Fehler | eine Korrektur einer Zeile, die die Klasse nicht zeigt |
