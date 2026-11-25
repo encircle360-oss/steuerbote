@@ -391,6 +391,23 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		saved._name_left_out(correction)
 		return url
 
+	def left_out_lines(self) -> list[dict]:
+		"""For the print format „Zusammenfassende Meldung“: the lines with an amount in the ledger that the file does
+		not report (bridge.left_out), so that the printout is never taken for the whole statement."""
+		correction = self.meldeart == bridge.BERICHTIGUNG
+		return [
+			{"vat_id": vat_id, "art": art, "party": party, "amount": amount}
+			for vat_id, art, party, amount in bridge.left_out(self.lines, correction)
+		]
+
+	def open_errors(self) -> list[dict]:
+		"""For the print format „Zusammenfassende Meldung“: the errors that still hold the statement (bridge.open_errors)."""
+		with zm_errors():
+			statement = bridge.statement_of(self.vouchers, self.lines, self._figures())
+			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
+			found = bridge.open_errors(statement, self.hints, held)
+		return [{"code": code, "text": text} for code, text in found]
+
 	def _name_left_out(self, correction: bool) -> None:
 		"""Say which lines with an amount in the ledger the file leaves out, so that nobody takes the file for the
 		whole statement (§ 18a Absatz 7 UStG)."""

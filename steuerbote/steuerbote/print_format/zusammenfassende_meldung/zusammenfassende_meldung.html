@@ -8,6 +8,9 @@
 {%- set correction = doc.meldeart == "Berichtigung" -%}
 {%- set filed = (doc.lines or []) | selectattr("in_file") | list -%}
 {%- set overrides = (doc.lines or []) | selectattr("override_reason") | list -%}
+{%- set releases = (doc.lines or []) | selectattr("acceptance_reason") | list -%}
+{%- set left_out = doc.left_out_lines() -%}
+{%- set errors = doc.open_errors() -%}
 {%- set arts = [
 	("L", "Innergemeinschaftliche Warenlieferungen"),
 	("D", "Lieferungen im Dreiecksgeschäft (§ 25b Absatz 2 UStG)"),
@@ -124,6 +127,62 @@
 			{%- endfor %}
 		</tbody>
 	</table>
+	{%- endif %}
+
+	{%- if releases %}
+	<h2>Freigegebene USt-IdNrn.</h2>
+	<table class="sb-lines">
+		<thead>
+			<tr>
+				<th class="sb-id">USt-IdNr.</th>
+				<th class="sb-art">Art</th>
+				<th>Begründung der Freigabe</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in releases %}
+			<tr>
+				<td class="sb-id">{{ (row.vat_id or "") | e }}</td>
+				<td class="sb-art">{{ row.art }}</td>
+				<td>{{ row.get_formatted("acceptance_reason") }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+	{%- endif %}
+
+	{%- if left_out %}
+	<h2>Nicht in der Meldung</h2>
+	<p class="sb-note">Diese Zeilen bucht das Hauptbuch, die Meldung meldet sie aber nicht, wie sie stehen.</p>
+	<table class="sb-lines">
+		<thead>
+			<tr>
+				<th class="sb-id">USt-IdNr.</th>
+				<th>Kunde</th>
+				<th class="sb-art">Art</th>
+				<th class="sb-num">Betrag laut Hauptbuch</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in left_out %}
+			<tr>
+				<td class="sb-id">{{ row.vat_id | e }}</td>
+				<td>{{ row.party | e }}</td>
+				<td class="sb-art">{{ row.art }}</td>
+				<td class="sb-num">{{ frappe.utils.fmt_money(row.amount, 2, None, "#.###,##") }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+	{%- endif %}
+
+	{%- if errors %}
+	<h2>Offene Fehler</h2>
+	<ul>
+		{%- for row in errors %}
+		<li>{{ row.code | e }}: {{ (row.text or "") | e }}</li>
+		{%- endfor %}
+	</ul>
 	{%- endif %}
 
 	{%- if doc.remarks %}

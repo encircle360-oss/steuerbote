@@ -360,12 +360,17 @@ class TestAnnualVATReturn(Transmitting, IntegrationTestCase):
 		holding that is no Unternehmer (§ 2 UStG); Steuerbote takes the statement as given."""
 		settings = frappe.get_doc("Annual Filing Settings", COMPANY)
 		row = settings.append("years", {"year": 2026, "no_vat_return": 1})
-		with self.assertRaisesRegex(frappe.ValidationError, "needs one of the reasons|braucht einen der Gründe"):
+		with self.assertRaisesRegex(
+			frappe.ValidationError, "needs one of the reasons|braucht einen der Gründe"
+		):
 			settings.save()
 		row.no_vat_return_reason = "Not an Unternehmer (§ 2 UStG)"
 		settings.save()
 		self.addCleanup(self.forget_the_steuerberatung)
-		with self.assertRaisesRegex(frappe.ValidationError, "owes no Umsatzsteuererklärung for 2026|keine Umsatzsteuererklärung für 2026"):
+		with self.assertRaisesRegex(
+			frappe.ValidationError,
+			"owes no Umsatzsteuererklärung for 2026|keine Umsatzsteuererklärung für 2026",
+		):
 			self.new_return()
 		rules = deadlines.annual_rules(COMPANY)
 		self.assertNotIn(

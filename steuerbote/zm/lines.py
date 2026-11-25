@@ -221,6 +221,11 @@ class Line:
 			return False
 		return not (self.override is not None and (self.valid or self.override.amount == ZERO))
 
+	@property
+	def holding_findings(self) -> tuple[Finding, ...]:
+		"""The findings that hold the line, without those an override or a release lifted."""
+		return tuple(finding for finding in self.findings if self._holds(finding))
+
 	def unchanged(self, held: ReadOnlyMapping[tuple[str, Art], Decimal]) -> bool:
 		"""The line reports what the BZSt holds for it, and only the confirmation of its number holds it."""
 		return (

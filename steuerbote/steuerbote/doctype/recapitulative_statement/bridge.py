@@ -368,7 +368,28 @@ def statement_of(voucher_rows: Iterable[Row], line_rows: Sequence[Row], figures:
 	amounts = voucher_amounts(voucher_rows)
 	overrides = overrides_of(line_rows)
 	records = {str(row.get("vat_id") or ""): {"result": row.get("confirmation_outcome")} for row in line_rows}
-	return build(amounts, figures, validity_for(line_vat_ids(amounts, overrides), records), overrides)
+	validity = validity_for(line_vat_ids(amounts, overrides), records)
+	return build(amounts, figures, validity, overrides, accepted=acceptances_of(line_rows))
+
+
+def open_errors(
+	statement: Statement,
+	hints: Iterable[Row],
+	held: ReadOnlyMapping[tuple[str, Art], Decimal] | None = None,
+) -> list[tuple[str, str]]:
+	"""The errors that hold the statement, as code and text: those of the lines that still hold it, without the ones
+	an override or a release lifted, then the stored errors no override lifts."""
+	lines = [
+		(finding.code.value, finding.text)
+		for line in statement.holding(held)
+		for finding in line.holding_findings
+	]
+	others = [
+		(str(row.get("code")), str(row.get("text") or ""))
+		for row in hints
+		if row.get("severity") == Severity.ERROR.value and row.get("code") not in LINE_CODES
+	]
+	return [*lines, *others]
 
 
 def confirmation_fields(record: Row) -> dict[str, Any]:

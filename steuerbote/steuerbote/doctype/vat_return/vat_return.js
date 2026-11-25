@@ -187,7 +187,7 @@ function ask_for_filing_note(frm, filed_via) {
 		return;
 	}
 	const in_mein_elster = filed_via === "mein_elster";
-	frappe.prompt(
+	prompt_until_filed(
 		[
 			{
 				fieldtype: "Data",
@@ -223,6 +223,20 @@ function ask_for_filing_note(frm, filed_via) {
 		in_mein_elster ? __("Filed in Mein ELSTER") : __("Mark as Filed Outside"),
 		__("Mark as Filed")
 	);
+}
+
+// frappe.prompt closes its dialog before the call, so a note the server refuses, such as a mistyped Transferticket,
+// would lose what was entered; this dialog closes only once the filing is noted.
+function prompt_until_filed(fields, file, title, primary_action_label) {
+	const dialog = new frappe.ui.Dialog({
+		title,
+		fields,
+		primary_action_label,
+		primary_action(values) {
+			file(values).then(() => dialog.hide());
+		},
+	});
+	dialog.show();
 }
 
 function show_intro(frm) {
