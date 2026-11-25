@@ -66,6 +66,7 @@ class Code(StrEnum):
 	TAX_TEMPLATE_WITHOUT_PLACE = "STEUERVORLAGE-OHNE-KENNZAHL"
 	REGISTER_DEVIATION = "REGISTER-ABWEICHUNG"
 	BASE_FROM_TAX = "GRUNDLAGE-AUS-STEUER"
+	BEFORE_START = "VOR-START"
 
 
 # A wrong invoice is a warning; a difference that may well be explained, such as a journal entry on a
@@ -81,6 +82,7 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.PREVIOUS_PERIOD: Severity.HINT,
 		Code.NO_CATALOGUE: Severity.HINT,
 		Code.MAPPING_UNFIT: Severity.HINT,
+		Code.BEFORE_START: Severity.HINT,
 		Code.VAT_ID_UNCONFIRMED: Severity.HINT,
 		Code.VAT_ID_STALE: Severity.HINT,
 		Code.VAT_ID_INVALID: Severity.WARNING,
@@ -397,8 +399,9 @@ class EarlierPeriod:
 	"""A period to compare with and its reported amounts by Kennzahl.
 
 	``values`` is None when Steuerbote cannot compute the period; ``missing`` then says why: no catalogue
-	of Kennzahlen for its year (NO_CATALOGUE), or a mapping that does not fit the form of that year
-	(MAPPING_UNFIT).
+	of Kennzahlen for its year (NO_CATALOGUE), a mapping that does not fit the form of that year
+	(MAPPING_UNFIT), or a period before the start of the books in Steuerbote, whose ledger holds only the opening
+	balances (BEFORE_START, steuerbote/setup/start.py).
 	"""
 
 	period: Period
@@ -484,6 +487,7 @@ MISSING: MappingProxyType[Code, str] = MappingProxyType(
 	{
 		Code.NO_CATALOGUE: "Kein Katalog für {0}",
 		Code.MAPPING_UNFIT: "Die Kontenzuordnung passt nicht zum Vordruck {0}",
+		Code.BEFORE_START: "Vor dem Start der Bücher in Steuerbote",
 	}
 )
 

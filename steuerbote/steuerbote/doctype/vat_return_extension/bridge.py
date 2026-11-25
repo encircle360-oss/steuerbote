@@ -1,7 +1,8 @@
 """Pure Python between the VAT Return Extension document and the core in steuerbote.dauerfrist.
 
 Nothing here imports Frappe. The module picks the filed VAT Returns of the previous year whose Kz 83 and Kz 39
-make the base of the Sondervorauszahlung, names the Voranmeldungszeiträume the base lacks, hands base and
+make the base of the Sondervorauszahlung, with the Voranmeldungen filed before Steuerbote for the periods no VAT
+Return covers (steuerbote/setup/start.py), names the Voranmeldungszeiträume the base lacks, hands base and
 Kz 38 to the core and builds form USt 1 H from the values of the document, so that the controller only moves
 data and every rule is tested without a bench.
 """
@@ -16,6 +17,7 @@ from typing import Any
 
 from steuerbote import dauerfrist
 from steuerbote.dauerfrist import Context, Ust1H
+from steuerbote.setup import start
 from steuerbote.steuerbote.doctype.vat_return.bridge import Row, to_amount
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
 from steuerbote.ustva import Period
@@ -27,12 +29,13 @@ MONTHS_PER_YEAR = 12
 @dataclass(frozen=True, slots=True)
 class FiledReturn:
 	"""A VAT Return as filed: its Voranmeldungszeitraum, its name, its Kz 83 and the Sondervorauszahlung its
-	Kz 39 credited."""
+	Kz 39 credited. ``prior`` marks a Voranmeldung filed before Steuerbote, whose name is that of its record."""
 
 	period: Period
 	name: str
 	kz83: Decimal
 	kz39: Decimal = ZERO
+	prior: bool = False
 
 
 def latest_per_period(returns: Iterable[FiledReturn]) -> tuple[FiledReturn, ...]:
@@ -47,13 +50,33 @@ def latest_per_period(returns: Iterable[FiledReturn]) -> tuple[FiledReturn, ...]
 	return tuple(sorted(latest.values(), key=lambda filed: filed.period.start))
 
 
+def with_prior(returns: Iterable[FiledReturn], prior: Iterable[start.PriorFiling]) -> tuple[FiledReturn, ...]:
+	"""The filed VAT Returns, the latest of each period first as latest_per_period() takes them, and the latest
+	Voranmeldung filed before Steuerbote of each period whose months no VAT Return covers, in the order of the year:
+	they count as filed, as their records hold them."""
+	own = latest_per_period(returns)
+	months = {
+		(filed.period.year, month)
+		for filed in own
+		for month in range(filed.period.first_month, filed.period.last_month + 1)
+	}
+	outside = [
+		FiledReturn(filed.period, filed.name, filed.kz83, filed.kz39, prior=True)
+		for filed in start.latest(prior)
+		if not months.intersection(filed.months)
+	]
+	return tuple(sorted((*own, *outside), key=lambda filed: filed.period.start))
+
+
 def base_rows(returns: Iterable[FiledReturn]) -> list[dict[str, Any]]:
-	"""The rows of the table of the base: one per filed return."""
+	"""The rows of the table of the base: one per filed return, linked to its VAT Return or, filed before Steuerbote,
+	to its record."""
 	return [
 		{
 			"period_label": filed.period.label,
 			"period_code": filed.period.code,
-			"vat_return": filed.name,
+			"vat_return": None if filed.prior else filed.name,
+			"prior_filing": filed.name if filed.prior else None,
 			"kz83": filed.kz83,
 			"kz39": filed.kz39,
 		}

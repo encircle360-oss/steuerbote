@@ -38,18 +38,19 @@ unknown outcome; a further statement of it is a Berichtigung.
 
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import frappe
 from frappe import _
 from frappe.core.doctype.file.utils import get_content_hash
 from frappe.model.document import Document
-from frappe.utils import cint, escape_html, getdate
+from frappe.utils import cint, escape_html, formatdate, getdate
 
-from steuerbote import holiday_list, vatid, zm_sources
+from steuerbote import holiday_list, prior_filings, vatid, zm_sources
 from steuerbote.elster import zm_xml
 from steuerbote.eric import datenart as eric_datenart
+from steuerbote.setup import start as first_year
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
 	FILED_VIA,
@@ -74,7 +75,7 @@ from steuerbote.steuerbote.doctype.vat_return.vat_return import (
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
 from steuerbote.vatid import Details, UrllibFetch
-from steuerbote.zm.comparison import compare, comparison_hints, earlier
+from steuerbote.zm.comparison import before_start, compare, comparison_hints, earlier
 from steuerbote.zm.correction import as_filed
 from steuerbote.zm.csv_file import csv_file
 from steuerbote.zm.errors import ZmError
@@ -88,6 +89,7 @@ from steuerbote.zm.rhythm import (
 	coverage,
 	coverage_or_months,
 	threshold_findings,
+	threshold_unknown,
 	threshold_window,
 )
 
@@ -202,6 +204,7 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 			return  # the mandatory check that follows names the missing fields
 		covered = self._set_period()
 		period = covered.period
+		self._refuse_a_period_before_the_start(period)
 		self._check_correction()
 		self._refuse_second_statement(covered)
 		self._keep_the_filing()
@@ -281,9 +284,27 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 			amounts = bridge.voucher_amounts_of(shares, parties)
 			statement, confirmations = self._build(amounts, overrides, covered, figures)
 			previous = build(bridge.voucher_amounts_of(previous_shares, parties), figures)
-			compared = compare(statement, previous, _thresholds(settings).exceeded, before.arts)
-			deliveries = zm_sources.deliveries(self.company, threshold_window(period), mapping)
-			threshold = threshold_findings(rules, period, deliveries, figures)
+			books_start = prior_filings.books_start(self.company)
+			not_compared = before_start(before, books_start)
+			compared = (
+				()
+				if not_compared
+				else compare(statement, previous, _thresholds(settings).exceeded, before.arts)
+			)
+			window = threshold_window(period)
+			deliveries = zm_sources.deliveries(self.company, window, mapping)
+			prior = prior_filings.prior_filings(self.company, range(window[0].year, window[1].year + 1))
+			deliveries.update(
+				{
+					month: amount
+					for month, amount in first_year.deliveries(prior).items()
+					if first_year.before_start(date(*month, 1), books_start)
+				}
+			)
+			threshold = (
+				*threshold_findings(rules, period, deliveries, figures),
+				*threshold_unknown(rules, period, books_start, first_year.covered(prior)),
+			)
 			reconciliation = reconcile(statement, shares, figures, self._filed(covered))
 			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
 			lines = bridge.line_rows(statement, confirmations, period, held)
@@ -296,6 +317,7 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 			*threshold,
 			*reconciliation.findings,
 			*comparison_hints(compared, before, figures),
+			*((not_compared,) if not_compared else ()),
 		]
 		self.set("hints", bridge.hint_rows(findings))
 		self._set_totals_and_status(statement)
@@ -540,6 +562,18 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 			or not self.period_kind
 			or any(not row.art for row in self.lines)
 		)
+
+	def _refuse_a_period_before_the_start(self, period: ReportingPeriod) -> None:
+		"""A Meldezeitraum that begins before the start of the books in Steuerbote was reported outside it, and the
+		ledger holds only the opening balances of that time (steuerbote/setup/start.py): a statement computed from it
+		would report nothing, and as a Berichtigung replace what the BZSt has."""
+		books_start = prior_filings.books_start(self.company)
+		if first_year.before_start(period.start, books_start):
+			frappe.throw(
+				_(
+					"{0} begins before the start of the books in Steuerbote on {1}: its Zusammenfassende Meldung was filed outside Steuerbote, and the ledger holds only the opening balances of that time. A Berichtigung of it goes where the books of that time are kept."
+				).format(period.label, formatdate(books_start))
+			)
 
 	def _set_period(self) -> Coverage:
 		"""Meldezeitraum, code, dates and deadline, and the months whose lines the statement reports, as the rhythm

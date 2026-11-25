@@ -67,6 +67,7 @@ from steuerbote.ustjahr.soll import SOLL as SOLL_SUBJECT
 from steuerbote.ustjahr.soll import WITHOUT_REASON, Filed, FiledKennzahl, Override, SollError
 from steuerbote.ustjahr.split import Split
 from steuerbote.ustva.calculation import LedgerLine
+from steuerbote.ustva.carried import Release
 from steuerbote.ustva.kennzahlen import catalogue_for as ustva_catalogue_for
 from steuerbote.ustva.period import Period
 from steuerbote.ustva.rounding import ZERO, to_cents
@@ -207,7 +208,24 @@ SWITCH_OTHER = (
 	"A filed Voranmeldung of {0} dates the switch from the Kleinunternehmer-Regelung to the Regelbesteuerung (Kz 70) "
 	"on {1}, but Kz 136 of the return on {2}: give Kz 136 the day of the switch."
 )
-MESSAGES = (VERPROBUNG, BLOCKED, WATCHED, KLEINUNTERNEHMER, SWITCH_MISSING, SWITCH_OTHER)
+RELEASED = (
+	"Account {0} releases {1} euros of the balance of {2} euros it carried into {3}: such a bridge into a later "
+	"Voranmeldung does not hold the return."
+)
+BEFORE_START = (
+	"The books of the company begin in ERPNext on {0}, after the first day of {1}: the return needs the ledger of the "
+	"whole year. Compute it where the books of the months before are kept, or bring those books into ERPNext."
+)
+MESSAGES = (
+	VERPROBUNG,
+	BLOCKED,
+	WATCHED,
+	KLEINUNTERNEHMER,
+	SWITCH_MISSING,
+	SWITCH_OTHER,
+	RELEASED,
+	BEFORE_START,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -598,6 +616,28 @@ def own_findings(result: AnnualResult, split: Split, kleinunternehmer: bool = Fa
 	if kleinunternehmer:
 		found.append(Finding("SB-KLEINUNTERNEHMER", Severity.HINT, KLEINUNTERNEHMER, (year,)))
 	return tuple(found)
+
+
+def release_findings(found: Iterable[Release], year: int) -> tuple[Finding, ...]:
+	"""A hint for each watched timing account whose movement over the year releases the balance it carried into it,
+	which no longer holds the return (steuerbote/ustva/carried.py)."""
+	return tuple(
+		Finding(
+			"SB-KONTO-AUFGELOEST",
+			Severity.HINT,
+			RELEASED,
+			(release.account_number, _euros(abs(release.released)), _euros(abs(release.carried)), year),
+		)
+		for release in found
+	)
+
+
+def start_findings(year: int, books_start: date | None) -> tuple[Finding, ...]:
+	"""An error where the books of the company in ERPNext begin after the first day of the year
+	(steuerbote/setup/start.py): the ledger of the year is not complete, and the return would file too little."""
+	if books_start is None or books_start <= date(year, 1, 1):
+		return ()
+	return (Finding("SB-VOR-START", Severity.ERROR, BEFORE_START, (f"{books_start:%d.%m.%Y}", year)),)
 
 
 def switch_findings(year: int, switch: date | None, kz136: date | None) -> tuple[Finding, ...]:

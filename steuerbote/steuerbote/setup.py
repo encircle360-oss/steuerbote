@@ -24,7 +24,7 @@ Accounts Manager sets up a company, and every document is made with their permis
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from types import MappingProxyType
 
@@ -32,11 +32,13 @@ import frappe
 from frappe import _
 from frappe.utils import escape_html, fmt_money, formatdate, getdate
 
-from steuerbote import dauerfrist_sources, ledger
+from steuerbote import dauerfrist_sources, ledger, prior_filings
 from steuerbote.mapping_sync import rows_to_mapping
 from steuerbote.setup import chart as charts
 from steuerbote.setup import rhythm, steps
+from steuerbote.setup import start as first_year
 from steuerbote.setup.steps import Note, Outcome, Step, StepResult
+from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.ustva import CATALOGUES, DEFAULTS, MappingError, UnknownYearError, calculate
 from steuerbote.ustva.period import MONTH_NAMES
 
@@ -121,6 +123,9 @@ NO_POSTINGS = (
 )
 NOT_READY = "No proposal: the tax of {0} decides (§ 18 Absatz 2 UStG), and in the ledger of {0} an account watched at the level Blocking has a balance or a Verprobung has a difference."
 ENTER_FILING_PERIOD = "Enter the Voranmeldungszeitraum the Finanzamt set in the VAT Return Settings."
+PROPOSED_FROM_PRIOR = "Proposed: {0} from {1}, because the tax of {2} comes to {3} by its Voranmeldungen filed before Steuerbote (§ 18 Absatz 2 Sätze 1 and 2 UStG)."
+NO_PRIOR_FILINGS = "No proposal: the tax of {0} decides (§ 18 Absatz 2 UStG), and the books in ERPNext begin after the start of {0}. Enter the Voranmeldungen of {0} filed before Steuerbote as VAT Return Prior Filings and run the setup again."
+START_PROPOSED = "Books Start set to {0}: the books of the company begin that day with opening entries only. Check the day; the Voranmeldungen before it count as filed outside Steuerbote."
 MESSAGES = (
 	NOT_A_COMPANY,
 	NEEDS_STEPS,
@@ -154,6 +159,9 @@ MESSAGES = (
 	NO_POSTINGS,
 	NOT_READY,
 	ENTER_FILING_PERIOD,
+	PROPOSED_FROM_PRIOR,
+	NO_PRIOR_FILINGS,
+	START_PROPOSED,
 )
 
 
@@ -364,9 +372,14 @@ def propose_filing_period(context: SetupContext) -> StepResult:
 	if settings.period_rules:
 		return StepResult(Outcome.SKIPPED, (Note(PERIODS_EXIST),), (SETTINGS, settings.name))
 	began = dauerfrist_sources.date_of_establishment(company)
-	tax, no_tax = (None, None)
+	tax, no_tax, from_prior = None, None, False
 	if rhythm.needs_tax(year, began):
-		tax, no_tax = previous_year_tax(company, year - 1)
+		tax = first_year.year_tax(prior_filings.prior_filings(company, {year - 1}), year - 1)
+		from_prior = tax is not None
+		if tax is None and first_year.before_start(date(year - 1, 1, 1), prior_filings.books_start(company)):
+			no_tax = Note(NO_PRIOR_FILINGS, (year - 1,))
+		elif tax is None:
+			tax, no_tax = previous_year_tax(company, year - 1)
 	proposal = rhythm.propose(year, began, tax)
 	if proposal.rhythm is None:
 		reason = no_tax or _undecided(proposal.reason, year, began)
@@ -384,7 +397,8 @@ def propose_filing_period(context: SetupContext) -> StepResult:
 	if proposal.reason is rhythm.Reason.STARTED:
 		notes = [Note(PROPOSED_FROM_START, (start, began))]
 	else:
-		notes = [Note(PROPOSED_FROM_TAX, (_(proposal.rhythm.value), start, year - 1, proposal.tax))]
+		template = PROPOSED_FROM_PRIOR if from_prior else PROPOSED_FROM_TAX
+		notes = [Note(template, (_(proposal.rhythm.value), start, year - 1, proposal.tax))]
 	if proposal.exemption_possible:
 		notes.append(Note(EXEMPTION_POSSIBLE))
 	if proposal.month_possible:
@@ -400,6 +414,129 @@ def _undecided(reason: rhythm.Reason, year: int, began: date | None) -> Note:
 	if reason is rhythm.Reason.STARTED_LAST_YEAR:
 		return Note(STARTED_LAST_YEAR, (began, year - 1))
 	return Note(NOT_STARTED, (began, year))
+
+
+def check_books_start(context: SetupContext) -> StepResult:
+	"""Start in Steuerbote (steuerbote/setup/start.py): set the start of the books where the ledger shows it plainly, and
+	show or check what a start with opening balances needs, in the order a user works through it."""
+	company = context.company
+	settings = frappe.get_doc(SETTINGS, company)
+	outcome, notes = Outcome.SKIPPED, []
+	if not settings.books_start:
+		proposed = proposed_books_start(company)
+		if proposed is None:
+			return StepResult(Outcome.SKIPPED, (Note(first_year.START_MISSING),), (SETTINGS, settings.name))
+		settings.books_start = proposed
+		# The settings the setup made lack the Bundesland and the Steuernummer until the user enters them.
+		settings.flags.ignore_mandatory = True
+		settings.save()
+		outcome = Outcome.CREATED
+		notes.append(Note(START_PROPOSED, (proposed,), open=True))
+	facts = start_facts(company, getdate(settings.books_start))
+	checks = first_year.checklist(facts)
+	for check in checks:
+		values = check.values
+		if check.template == first_year.CARRY_FORWARDS_MISSING:
+			values = (values[0], ", ".join(_(str(kind)) for kind in facts.missing_carry_forwards))
+		notes.append(Note(check.template, values, open=check.done is False))
+	if outcome is Outcome.SKIPPED and any(check.done is False for check in checks):
+		outcome = Outcome.UNDECIDED
+	return StepResult(outcome, tuple(notes), (SETTINGS, settings.name))
+
+
+def proposed_books_start(company: str) -> date | None:
+	"""The day the books of the company begin, where its first entries are opening entries alone, on the first day of a
+	month or on the last day of the month before it; None where they are not, or where the company was founded then and
+	so has every period in its books."""
+	first = frappe.get_all(
+		"GL Entry",
+		filters={"company": company, "is_cancelled": 0},
+		fields=["posting_date"],
+		order_by="posting_date asc",
+		limit=1,
+	)
+	if not first:
+		return None
+	day = getdate(first[0].posting_date)
+	if frappe.db.exists(
+		"GL Entry", {"company": company, "is_cancelled": 0, "posting_date": day, "is_opening": "No"}
+	):
+		return None
+	following = date(day.year + (day.month == 12), day.month % 12 + 1, 1)
+	if day.day == 1:
+		books_start = day
+	elif following - timedelta(days=1) == day:
+		books_start = following
+	else:
+		return None
+	began = dauerfrist_sources.date_of_establishment(company)
+	if began is not None and began >= books_start - timedelta(days=31):
+		return None
+	return books_start
+
+
+def start_facts(company: str, books_start: date) -> first_year.Facts:
+	"""What the site says about the start of the books for the checklist."""
+	began = dauerfrist_sources.date_of_establishment(company)
+	annual = settings_of(company)
+	missing = ()
+	if annual is not None:
+		year_end = date(first_year.first_annual_year(books_start) - 1, 12, 31)
+		missing = first_year.missing_carry_forwards(annual.get_carry_forwards(), year_end)
+	return first_year.Facts(
+		books_start,
+		unflagged=unflagged_opening_entries(company, books_start),
+		missing_prior=first_year.missing_months(books_start, began, prior_filings.prior_filings(company)),
+		annual_settings=annual is not None,
+		missing_carry_forwards=missing,
+	)
+
+
+def unflagged_opening_entries(company: str, books_start: date) -> tuple[str, ...]:
+	"""The Journal Entries of the start of the books and the day before that the Voranmeldung counts: no opening entry,
+	without the flag Exclude from VAT Return, on an account of the VAT Return Mapping."""
+	numbers = set(
+		frappe.get_all(
+			"VAT Return Mapping Rule",
+			filters={"parent": company, "parenttype": MAPPING},
+			pluck="account_number",
+		)
+	) | set(
+		frappe.get_all(
+			"VAT Return Watched Account",
+			filters={"parent": company, "parenttype": MAPPING},
+			pluck="account_number",
+		)
+	)
+	numbers.discard(None)
+	if not numbers:
+		return ()
+	accounts = frappe.get_all(
+		"Account", filters={"company": company, "account_number": ["in", sorted(numbers)]}, pluck="name"
+	)
+	vouchers = frappe.get_all(
+		"GL Entry",
+		filters={
+			"company": company,
+			"is_cancelled": 0,
+			"is_opening": "No",
+			"voucher_type": "Journal Entry",
+			"posting_date": ["between", [books_start - timedelta(days=1), books_start]],
+			"account": ["in", accounts or [""]],
+		},
+		pluck="voucher_no",
+		distinct=True,
+	)
+	if not vouchers:
+		return ()
+	flagged = set(
+		frappe.get_all(
+			"Journal Entry",
+			filters={"name": ["in", vouchers], ledger.EXCLUDE_FIELD: 1},
+			pluck="name",
+		)
+	)
+	return tuple(sorted(set(vouchers) - flagged))
 
 
 def previous_year_tax(company: str, year: int) -> tuple[Decimal | None, Note | None]:

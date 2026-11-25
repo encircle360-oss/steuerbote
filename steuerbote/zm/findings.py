@@ -27,11 +27,16 @@ class Code(StrEnum):
 	FILED_RETURNS = "ZM-ABGLEICH-VORANMELDUNG"
 	PREVIOUS_PERIOD = "ZM-ABWEICHUNG-VORPERIODE"
 	OWN_LINE = "ZM-ZEILE-VON-HAND"
+	THRESHOLD_UNKNOWN = "ZM-SCHWELLE-UNBEKANNT"
+	BEFORE_START = "ZM-VOR-START"
 
 
 # The rounding of a ZM may part from the filed Voranmeldungen by some euros, a quieter period explains a change,
-# and the Begründung of a line entered by hand explains why no voucher stands behind it; none holds the ZM back.
-BLOCKING: frozenset[Code] = frozenset(set(Code) - {Code.FILED_RETURNS, Code.PREVIOUS_PERIOD, Code.OWN_LINE})
+# the Begründung of a line entered by hand explains why no voucher stands behind it, and a previous period before
+# the start of the books in Steuerbote has nothing to compare with; none holds the ZM back.
+BLOCKING: frozenset[Code] = frozenset(
+	set(Code) - {Code.FILED_RETURNS, Code.PREVIOUS_PERIOD, Code.OWN_LINE, Code.BEFORE_START}
+)
 
 
 @dataclass(frozen=True, slots=True)

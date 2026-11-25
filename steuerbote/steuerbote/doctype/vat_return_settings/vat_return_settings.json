@@ -33,6 +33,8 @@
   "column_break_datenlieferant",
   "phone",
   "email",
+  "books_start_section",
+  "books_start",
   "period_rules_section",
   "period_rules",
   "prepayments_section",
@@ -228,6 +230,18 @@
    "options": "Email"
   },
   {
+   "description": "For a company that starts with Steuerbote in the middle of its life: the Voranmeldungen before the books start were filed outside Steuerbote and are entered as VAT Return Prior Filings, see Start mit Steuerbote im laufenden Betrieb.",
+   "fieldname": "books_start_section",
+   "fieldtype": "Section Break",
+   "label": "Start in Steuerbote"
+  },
+  {
+   "description": "The first day of a month from which the books of the company in ERPNext are complete, the day of the opening balances. Steuerbote computes no Voranmeldung, Zusammenfassende Meldung or annual return for a period that begins before it. Empty when the books of every period are in ERPNext.",
+   "fieldname": "books_start",
+   "fieldtype": "Date",
+   "label": "Books Start"
+  },
+  {
    "fieldname": "period_rules_section",
    "fieldtype": "Section Break"
   },
@@ -288,7 +302,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-23 12:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",

@@ -21,7 +21,7 @@ The rules come from the company, which knows its Anzeigen; the ledger can only s
 rule breaks the threshold, which threshold_findings() reports.
 """
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass
 from datetime import date
@@ -30,6 +30,7 @@ from enum import Enum
 from itertools import pairwise
 
 from steuerbote.ustva.calculation import require_cents
+from steuerbote.ustva.period import day_label
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import ZERO
 from steuerbote.zm.errors import ZmError
@@ -253,6 +254,42 @@ def threshold_findings(
 			if total > THRESHOLD and earlier not in found:
 				found[earlier] = _excess(earlier, total, figures)
 	return tuple(found[key] for key in sorted(found))
+
+
+def threshold_unknown(
+	rules: Iterable[Rule],
+	period: ReportingPeriod,
+	start: date | None,
+	known: Collection[tuple[int, int]],
+) -> tuple[Finding, ...]:
+	"""An error where a quarterly or yearly rule needs the Lieferungen of one of the four previous quarters
+	(§ 18a Absatz 1 Satz 2 UStG) and that quarter has a month before the start of the books in Steuerbote that no
+	Voranmeldung filed before Steuerbote gives (``known``, by year and month): the ledger holds only the opening
+	balances of that time, so threshold_findings() would read nothing there (steuerbote/setup/start.py)."""
+	if start is None:
+		return ()
+	rules = tuple(rules)
+	unknown: list[tuple[int, int]] = []
+	for year, quarter in _quarters_not_filed_monthly(rules, period):
+		for back in range(PREVIOUS_QUARTERS, 0, -1):
+			earlier = _quarter_before(year, quarter, back)
+			lacking = [
+				month
+				for month in _months(*earlier)
+				if date(earlier[0], month, 1) < start and (earlier[0], month) not in known
+			]
+			if lacking and earlier not in unknown:
+				unknown.append(earlier)
+	if not unknown:
+		return ()
+	labels = [ReportingPeriod.quarter(*quarter).label for quarter in sorted(unknown)]
+	named = labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} und {labels[-1]}"
+	text = (
+		f"Ob die Lieferungen im {named} 50.000 € überstiegen, weiß Steuerbote nicht: Sie liegen vor dem "
+		f"Start der Bücher in Steuerbote am {day_label(start)}. Tragen Sie die Voranmeldungen dieser Zeit mit Kz 41 "
+		"und 42 als Voranmeldungen vor Steuerbote ein (§ 18a Absatz 1 Satz 2 UStG)."
+	)
+	return (Finding(Code.THRESHOLD_UNKNOWN, text),)
 
 
 def _crossing(

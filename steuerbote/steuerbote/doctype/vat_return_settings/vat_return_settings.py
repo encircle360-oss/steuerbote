@@ -6,9 +6,11 @@ import frappe
 from frappe import _
 from frappe.contacts.doctype.address.address import get_default_address
 from frappe.model.document import Document
-from frappe.utils import cint, escape_html, flt
+from frappe.utils import cint, escape_html, flt, getdate
 
+from steuerbote import prior_filings
 from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster, ustva_xml, zm_xml
+from steuerbote.setup import start
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
 from steuerbote.ustva import Rhythm
@@ -32,6 +34,7 @@ class VATReturnSettings(Document):
 		)
 		from steuerbote.steuerbote.doctype.zm_rule.zm_rule import ZMRule
 
+		books_start: DF.Date | None
 		chart: DF.Literal["SKR03", "SKR04", "Eigener Kontenrahmen"]
 		city: DF.Data | None
 		company: DF.Link
@@ -89,6 +92,42 @@ class VATReturnSettings(Document):
 			rules.check_period_rules(self.get_period_rules())
 			rules.check_prepayments(self.get_prepayments())
 			rules.check_zm_rules(self.get_zm_rules())
+		self.check_books_start()
+
+	def check_books_start(self) -> None:
+		"""The books start on the first day of a month (steuerbote/setup/start.py), after no period a VAT Return filed
+		through Steuerbote holds and on no period entered as filed before Steuerbote."""
+		if not self.books_start:
+			return
+		day = getdate(self.books_start)
+		try:
+			start.check_start(day)
+		except start.StartError as error:
+			frappe.throw(_(error.template).format(*error.values))
+		filed = frappe.get_all(
+			"VAT Return",
+			filters={"company": self.company, "docstatus": 1, "from_date": ["<", day]},
+			fields=["name", "period_label"],
+			order_by="from_date desc",
+			limit=1,
+		)
+		if filed:
+			frappe.throw(
+				_(
+					"{0} files {1} through Steuerbote, so the books of the company cannot start after it."
+				).format(filed[0].name, filed[0].period_label)
+			)
+		later = [
+			filed
+			for filed in prior_filings.prior_filings(self.company)
+			if not start.before_start(filed.period.start, day)
+		]
+		if later:
+			frappe.throw(
+				_(
+					"{0} enters {1} as filed before Steuerbote: the books of the company start after that period."
+				).format(later[0].name, later[0].period.label)
+			)
 
 	def set_elster_tax_number(self) -> None:
 		"""A missing state or number is reported by the mandatory check, which runs after validate."""

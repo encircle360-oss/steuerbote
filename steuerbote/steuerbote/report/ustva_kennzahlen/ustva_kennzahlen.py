@@ -19,10 +19,11 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.query_builder.functions import Min
-from frappe.utils import cint
+from frappe.utils import cint, formatdate
 
-from steuerbote import ustva
+from steuerbote import prior_filings, ustva
 from steuerbote.ledger import account_names, load_lines
+from steuerbote.setup.start import before_start
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for, settings_for
 from steuerbote.steuerbote.report.ustva_kennzahlen import comparison
@@ -167,6 +168,11 @@ def _compared(
 ) -> tuple[ustva.UstvaResult | None, str | None]:
 	"""What a period to compare with reported, computed from its ledger with the company's mapping on the form
 	of its own year, or why the report cannot compare with it."""
+	books_start = prior_filings.books_start(company)
+	if before_start(period.start, books_start):
+		return None, _(
+			"No comparison with {0}: it lies before the start of the books in Steuerbote on {1}."
+		).format(period.label, formatdate(books_start))
 	try:
 		year_mapping = mapping.for_year(period.year)
 	except ustva.UnknownYearError:

@@ -38,7 +38,7 @@ gives these hints anew when it has finished; the return does not change while it
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -46,13 +46,20 @@ import frappe
 from frappe import _
 from frappe.core.doctype.file.utils import get_content_hash
 from frappe.model.document import Document
-from frappe.utils import cint, escape_html, fmt_money, getdate
+from frappe.utils import cint, escape_html, fmt_money, formatdate, getdate
 
-from steuerbote import invoices, ustva, zm_sources
+from steuerbote import invoices, prior_filings, ustva, zm_sources
 from steuerbote.elster import ustva_xml
 from steuerbote.eric import datenart as eric_datenart
-from steuerbote.ledger import account_labels, account_names, accounts_without_number, load_lines
+from steuerbote.ledger import (
+	account_labels,
+	account_names,
+	accounts_without_number,
+	closing_balances,
+	load_lines,
+)
 from steuerbote.registers import register_lines
+from steuerbote.setup.start import before_start
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
 	FILED_VIA,
@@ -68,8 +75,8 @@ from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
 from steuerbote.tax_templates import template_accounts
-from steuerbote.ustva import plausibility, registers, tax_templates
-from steuerbote.ustva.defaults import deliberately_without_kennzahl
+from steuerbote.ustva import carried, plausibility, registers, tax_templates
+from steuerbote.ustva.defaults import TIMING_ACCOUNTS, deliberately_without_kennzahl
 from steuerbote.vatid import Details, UrllibFetch
 from steuerbote.zm.lines import VoucherAmount
 
@@ -181,6 +188,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		self._require_catalogue()
 		self.provisional = int(bridge.provisional_forms(cint(self.year)) is not None)
 		self._set_period()
+		self._refuse_a_period_before_the_start()
 		self._refuse_second_return()
 		self._keep_the_calculation()
 		self._set_final_amounts()
@@ -230,7 +238,9 @@ class VATReturn(Confirming, Transmittable, Document):
 		overrides = _read_rows(bridge.overrides_of, self.kennzahlen, catalogue)
 		mapping = mapping_for(self.company, year)
 		lines = load_lines(self.company, period.start, period.end)
-		result = _calculated(lines, mapping, period, settings)
+		result, released = _released(
+			self.company, _calculated(lines, mapping, period, settings), lines, mapping, period
+		)
 		self.set("kennzahlen", bridge.kennzahl_rows(result, catalogue, overrides))
 		self.set("checks", bridge.check_rows(result))
 		self.set("deviations", bridge.deviation_rows(result))
@@ -251,9 +261,8 @@ class VATReturn(Confirming, Transmittable, Document):
 				self.get(RECONCILIATION),
 			),
 		)
-		self.set(
-			"hints", bridge.hint_rows(build_hints(self, period, mapping, result, comparison, reconciliation))
-		)
+		hints = build_hints(self, period, mapping, result, comparison, reconciliation)
+		self.set("hints", bridge.hint_rows((*hints, *released)))
 		self.ready = int(result.ready and bridge.provisional_forms(year) is None)
 		self.status = READY if self.ready else CALCULATED
 		self.accounts_without_number = len(accounts_without_number(self.company))
@@ -533,6 +542,18 @@ class VATReturn(Confirming, Transmittable, Document):
 				).format(_(self.rhythm), self.period_index)
 			)
 
+	def _refuse_a_period_before_the_start(self) -> None:
+		"""A period that begins before the start of the books in Steuerbote was filed outside it, and the ledger holds
+		only the opening balances of that time (steuerbote/setup/start.py): a return computed from it would file
+		nothing, and as a corrected return replace what the Finanzamt has."""
+		books_start = prior_filings.books_start(self.company)
+		if before_start(getdate(self.from_date), books_start):
+			frappe.throw(
+				_(
+					"{0} begins before the start of the books in Steuerbote on {1}: its Voranmeldung was filed outside Steuerbote, and the ledger holds only the opening balances of that time. Enter it as a VAT Return Prior Filing; a corrected return of it goes where the books of that time are kept."
+				).format(self.period_label, formatdate(books_start))
+			)
+
 	def _refuse_second_return(self) -> None:
 		if self.is_correction:
 			return
@@ -730,6 +751,29 @@ def _calculated(
 		frappe.throw(str(error))
 
 
+def _released(
+	company: str,
+	result: ustva.UstvaResult,
+	lines: list[ustva.LedgerLine],
+	mapping: ustva.Mapping,
+	period: ustva.Period,
+) -> tuple[ustva.UstvaResult, list[plausibility.Hint]]:
+	"""The result without the block of a watched timing account that releases in the period the balance it carried
+	into it, and a hint for each such release (steuerbote/ustva/carried.py)."""
+	timing = TIMING_ACCOUNTS.get(mapping.chart, ())
+	candidates = [account for account in result.unmapped if account in timing]
+	if not candidates:
+		return result, []
+	balances = carried.carried_balances(closing_balances(company, period.end, candidates), lines)
+	found = carried.releases(result.unmapped, lines, balances, timing)
+	if not found:
+		return result, []
+	currency = frappe.get_cached_value("Company", company, "default_currency")
+	names = account_labels(company, (release.account_number for release in found))
+	hints = carried.release_hints(found, names, SiteFigures(currency))
+	return replace(result, unmapped=carried.still_blocked(result.unmapped, found)), hints
+
+
 def build_comparison(
 	doc: Document, period: ustva.Period, settings: Document, mapping: ustva.Mapping
 ) -> plausibility.Comparison:
@@ -758,6 +802,8 @@ def build_comparison(
 def _earlier_period(
 	company: str, period: ustva.Period, settings: Document, mapping: ustva.Mapping
 ) -> plausibility.EarlierPeriod:
+	if prior_filings.lies_before_start(company, period.start):
+		return plausibility.EarlierPeriod(period, None, plausibility.Code.BEFORE_START)
 	try:
 		mapping_of_the_year = mapping.for_year(period.year)
 	except ustva.UnknownYearError:

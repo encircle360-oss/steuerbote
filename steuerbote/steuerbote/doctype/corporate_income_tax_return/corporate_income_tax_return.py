@@ -410,6 +410,7 @@ class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
 			previous_nominal_capital=self.previous_nominal_capital,
 			ebilanz=income_tax_sources.ebilanz(self.electronic_balance_sheet, self.company),
 			prior_ebilanz=income_tax_sources.prior_ebilanz(self.company, cint(self.year)),
+			first_year=income_tax_sources.first_year(self.company, DOCTYPE, cint(self.year)),
 		)
 
 
