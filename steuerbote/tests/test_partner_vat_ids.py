@@ -33,9 +33,6 @@ from steuerbote.tests.helpers import (
 from steuerbote.vatid.service import confirm
 from steuerbote.vatid.tests.fakes import FakeBzst, FakeFetch, bzst
 
-# The company, its accounts and partners are made by the tests themselves.
-IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
-
 SETTINGS = "VAT Return Settings"
 CONFIRMATION = "VAT ID Confirmation"
 COMPANY = "Steuerbote Test Partner USt-IdNr. GmbH"

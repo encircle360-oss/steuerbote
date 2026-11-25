@@ -84,6 +84,8 @@ class IntegrationTestIncomeTaxSetup(IntegrationTestCase):
 				"books_start",
 				"income_tax_mapping",
 				"balance_sheet_mapping",
+				"vat_id_label",
+				"erpnext_germany_vat_id_check",
 			],
 		)
 
