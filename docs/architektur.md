@@ -8,7 +8,9 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 
 | Modul | Aufgabe |
 |---|---|
-| `steuerbote/ledger.py` | liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns und die Namen und Bezeichnungen von Konten, mit Frappe |
+| `steuerbote/ledger.py` | liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns, die Buchungen mit Zeitpunkt des Eintrags und Leistungsdatum der Ausgangsrechnung (`load_bookings`) und die Namen und Bezeichnungen von Konten, mit Frappe |
+| `steuerbote/vat_periods.py` | ordnet die Buchungen nach den Einstellungen und den Abgaben den Voranmeldungszeiträumen zu (`VatLedger`), für Voranmeldung, Bericht „UStVA Kennzahlen“, Umsatzsteuererklärung und Einrichtung, mit Frappe; die Regeln rechnet `steuerbote/ustva/assignment.py`, siehe [Zuordnung zum Voranmeldungszeitraum](#zuordnung-zum-voranmeldungszeitraum) |
+| `vat_return/late.py` | die Zeilen der Tabelle „Nach der Abgabe geändert“ und was eine abgegebene Meldung über ihren Zeitraum sagt, ohne Frappe |
 | `steuerbote/invoices.py` | liest die eingereichten Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise, mit Frappe |
 | `steuerbote/suppliers.py` | liest zu den Belegen der Abschnitte C und D (`purchase_vouchers`) Buchungsdatum, Lieferanten mit Land, Land der Hauptanschrift und USt-IdNr., die Steuervorlage der Eingangsrechnung und die Einordnungen nach § 13b UStG der Kontenzuordnung, mit Frappe; welche Kennzahl ein Beleg danach nimmt, entscheidet `steuerbote/ustva/residence.py` im Kern, siehe [Kz 46 oder Kz 84](ustva-kennzahlen.md#kz-46-oder-kz-84-der-sitz-des-leistenden) |
 | `steuerbote/registers.py` | führt die Berichte Sales Register und Purchase Register von ERPNext für einen Zeitraum aus und gibt jede Zelle einer Kontospalte als Zeile des Kerns weiter, mit Frappe; den Abgleich rechnet `steuerbote/ustva/registers.py`, siehe [Abgleich mit Sales Register und Purchase Register](#abgleich-mit-sales-register-und-purchase-register) |
@@ -53,12 +55,12 @@ Jeder Betrag einer Meldung kommt aus dem Kern: Kennzahlen, Rundung, die Summen d
 So läuft „Berechnen“ an einer Meldung:
 
 1. Die Meldung bestimmt aus Jahr, Abgaberhythmus und Nummer ihren Zeitraum und prüft ihn gegen die Einstellungen des Unternehmens. Diese liefern auch die Dauerfristverlängerung für die Fälligkeit und, im letzten Zeitraum des Jahres, die Sondervorauszahlung für Kz 39.
-2. `ledger.load_lines` liest die Buchungen (GL Entry) des Zeitraums.
+2. `vat_periods.VatLedger` liest die Buchungen (GL Entry) vom Beginn des Vorjahres bis zum Ende des Zeitraums und ordnet sie nach den Einstellungen den Zeiträumen zu; die Buchungszeilen des Zeitraums sind die, die er meldet, siehe [Zuordnung zum Voranmeldungszeitraum](#zuordnung-zum-voranmeldungszeitraum).
 3. Die Kontenzuordnung des Unternehmens wird über `mapping_sync.rows_to_mapping` zur `Mapping` des Kerns, geprüft gegen den Vordruck des Jahres der Meldung.
 4. `calculate()` rechnet Kennzahlen, Summen, Kz 83 und Verprobung.
 5. `bridge.py` schreibt das Ergebnis in die Tabellen der Meldung. Bei jedem Speichern rechnet der Kern Summen und Kz 83 aus den gemeldeten Beträgen neu, damit Korrekturen mit Begründung darin eingehen.
-6. `build_comparison` rechnet Vorperiode und Vorjahr aus dem Hauptbuch, `build_hints` liest die Rechnungen des Zeitraums, nimmt aus dem Ergebnis des Kerns die Salden der beobachteten Konten der Stufe „Hinweis“, liest die Belege hinter Kz 41, 42 und 21 mit der letzten USt-IdNr.-Bestätigung jeder Nummer und nimmt die Konten der Steuervorlagen ohne Platz in der Kontenzuordnung mit ihrem Saldo im Zeitraum; beide füllen die Tabellen „Vorperiodenvergleich“ und „Hinweise“, siehe [Vorperiodenvergleich und Hinweise](#vorperiodenvergleich-und-hinweise).
-7. `build_reconciliation` führt die Berichte Sales Register und Purchase Register für den Zeitraum aus und stellt ihre Summen neben die Buchungszeilen aus Schritt 2; das Ergebnis füllt die Tabelle „Abgleich mit Registern“, und jede Differenz gibt einen Hinweis, siehe [Abgleich mit Sales Register und Purchase Register](#abgleich-mit-sales-register-und-purchase-register).
+6. `build_comparison` rechnet Vorperiode und Vorjahr aus derselben Zuordnung, `late_change_rows` füllt die Tabelle „Nach der Abgabe geändert“, `build_hints` liest die Ausgangsrechnungen, deren Buchungen der Zeitraum meldet, und die Eingangsrechnungen des Zeitraums, nimmt aus dem Ergebnis des Kerns die Salden der beobachteten Konten der Stufe „Hinweis“, liest die Belege hinter Kz 41, 42 und 21 mit der letzten USt-IdNr.-Bestätigung jeder Nummer und nimmt die Konten der Steuervorlagen ohne Platz in der Kontenzuordnung mit ihrem Saldo im Zeitraum; beide füllen die Tabellen „Vorperiodenvergleich“ und „Hinweise“, siehe [Vorperiodenvergleich und Hinweise](#vorperiodenvergleich-und-hinweise).
+7. `build_reconciliation` führt die Berichte Sales Register und Purchase Register für den Zeitraum aus und stellt ihre Summen neben die Buchungszeilen des Zeitraums nach Buchungsdatum (`ledger.load_lines`), denn auch die Berichte wählen nach Buchungsdatum; das Ergebnis füllt die Tabelle „Abgleich mit Registern“, und jede Differenz gibt einen Hinweis, siehe [Abgleich mit Sales Register und Purchase Register](#abgleich-mit-sales-register-und-purchase-register).
 
 ## DocTypes
 
@@ -74,6 +76,8 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen. Anlegen und ändern 
 | `chart` | Kontenrahmen | SKR03, SKR04 oder Eigener Kontenrahmen |
 | `taxation_type` | Besteuerung | nur Soll; die Ist-Versteuerung wird noch nicht unterstützt |
 | `tolerance` | Toleranz je Beleg | wie weit die gebuchte Steuer eines Belegs in der Verprobung abweichen darf, Vorgabe 0,01 EUR |
+| `period_basis` | Zuordnung zum Voranmeldungszeitraum | Pflicht, „nach Leistungsdatum (gesetzlicher Regelfall)“ (Vorgabe) oder „nach Buchungsdatum“, siehe [Zuordnung zum Voranmeldungszeitraum](ustva-kennzahlen.md#zuordnung-zum-voranmeldungszeitraum) |
+| `late_documents` | Belege für abgegebene Zeiträume | Pflicht, „Berichtigung des abgegebenen Zeitraums“ (Vorgabe) oder „im laufenden Zeitraum melden“, siehe [Belege für abgegebene Zeiträume](ustva-kennzahlen.md#belege-für-abgegebene-zeiträume) |
 | `comparison_threshold_percent`, `comparison_threshold_amount` | Schwelle Vorperiodenvergleich (%), Schwelle Vorperiodenvergleich (EUR) | ab wann eine Kennzahl gegenüber der Vorperiode auffällig ist, Vorgabe 50 % und 100 EUR; gelten für die Meldung und den Bericht „UStVA Kennzahlen“, die Schwelle in EUR auch als Toleranz des Abgleichs der Umsatzsteuererklärung mit den Umsatzerlösen |
 | `state` | Bundesland | Pflicht |
 | `tax_number` | Steuernummer | Pflicht, wie vom Finanzamt vergeben; das Format wird gegen das Bundesland geprüft |
@@ -206,6 +210,7 @@ Einreichbar, Nummernkreis `UStVA-.{year}.-.#####`: Das Jahr im Namen ist das Jah
 | `is_correction` | Berichtigte Anmeldung (Kz 10) | |
 | `period_label`, `period_code` | Voranmeldungszeitraum, Zeitraumcode | berechnet, etwa „März 2026“ und „03“, Quartale 41 bis 44 |
 | `from_date`, `to_date`, `deadline` | Von-Datum, Bis-Datum, Fälligkeitsdatum | berechnet |
+| `period_basis`, `late_treatment` | Zuordnung zum Voranmeldungszeitraum, Belege für abgegebene Zeiträume | die Einstellungen, nach denen „Berechnen“ gerechnet hat, festgehalten mit der Meldung |
 | `status` | Status | Entwurf, Berechnet, Bereit, Abgegeben oder Ersetzt |
 | `kennzahlen` | Kennzahlen | Tabelle „Kennzahl der Umsatzsteuer-Voranmeldung“: Kennzahl, Zeile im Vordruck, Beschreibung, Art des Betrags, Betrag laut Hauptbuch, Betrag laut Vordruck, Korrigierter Betrag, Begründung der Korrektur und Gemeldeter Betrag |
 | `output_tax`, `input_tax`, `other_tax` | Umsatzsteuer (Zeile 37), Vorsteuer (Zeilen 38 bis 44), Andere Steuerbeträge (Zeilen 46 und 47) | Summen über die gemeldeten Beträge |
@@ -218,6 +223,7 @@ Einreichbar, Nummernkreis `UStVA-.{year}.-.#####`: Das Jahr im Namen ist das Jah
 | `accounts_without_number` | Konten ohne Kontonummer | Zahl der Konten, die in keine Kennzahl eingehen können |
 | `hints` | Hinweise | Tabelle „Hinweis zur Umsatzsteuer-Voranmeldung“: Art (Hinweis oder Warnung), Code, Nachricht, Belegtyp, Belegnr. und Partei; füllt „Berechnen“, hält die Meldung nie an |
 | `comparison` | Vorperiodenvergleich | Tabelle „Vorperiodenvergleich der Umsatzsteuer-Voranmeldung“: Kennzahl, Beschreibung, Dieser Zeitraum, Vorperiode, Vorjahr, Differenz zur Vorperiode, Differenz (%) und Auffällig; füllt „Berechnen“ |
+| `late_changes` | Nach der Abgabe geändert | Tabelle „Änderung nach der Abgabe“: Abgegebener Zeitraum, Art („Nach der Abgabe gebucht“ oder „Seit der Abgabe geändert“), Belegtyp, Belegnr., Gebucht am und Nachricht; füllt „Berechnen“, hält die Meldung nie an, siehe [Zuordnung zum Voranmeldungszeitraum](#zuordnung-zum-voranmeldungszeitraum) |
 | `register_reconciliation` | Abgleich mit Registern | Tabelle „Abgleich der Umsatzsteuer-Voranmeldung mit Registern“: Bericht, Konto oder Gruppe, Betrag laut Übersicht, Betrag laut Hauptbuch, Unterschied und Erklärung, dazu Kennzahl, Konto und ob die Zeile abgeglichen ist; füllt „Berechnen“, schreiben lässt sich nur die Erklärung, siehe [Abgleich mit Sales Register und Purchase Register](#abgleich-mit-sales-register-und-purchase-register) |
 | `attachments` | Belege beigefügt oder gesondert eingereicht (Kz 22) | Kennzeichen des Vordrucks |
 | `regelbesteuerung_from` | Datum des Wechsels zur Regelbesteuerung (Kz 70) | Zeile 12 des Vordrucks, nur in den Fällen der Anleitung zu Zeile 12 (USt 1 E 2026): der Tag des Umsatzes, mit dem der Gesamtumsatz 100.000 Euro überschritten hat, im Jahr der Gründung 25.000 Euro, oder der 1. Januar nach dem Verzicht auf die Kleinunternehmer-Regelung (§ 19 Absatz 3 UStG). Das Speichern lehnt ein Datum außerhalb des Jahres der Meldung ab (Regel 11085153 der Jahresdokumentation UStVA 2026). Kz 70 trägt keinen Betrag und ändert keine Summe. |
@@ -331,6 +337,16 @@ Steuerbote ergänzt die Journalbuchung (Journal Entry) um das Feld „Nicht in d
 Soll und Haben werden je Kontonummer und Beleg summiert und als `Decimal` in Cent übergeben. Ein Beleg heißt beim Kern „Belegtyp:Belegnummer“, weil zwei Belegtypen dieselbe Nummer tragen können. Die Abfrage läuft über den Query Builder von Frappe mit Parametern, ohne zusammengesetztes SQL.
 
 **Stornierte Belege.** Ohne „Unveränderliches Hauptbuch aktivieren“ (`enable_immutable_ledger`) in den Buchhaltungseinstellungen kennzeichnet ERPNext beim Stornieren die Buchungen eines Belegs und ihre Gegenbuchungen als storniert, und die Abfrage lässt beide aus, auch in einem Zeitraum, der schon gemeldet ist. Mit der Einstellung bucht ERPNext die Gegenbuchungen am Tag der Stornierung und kennzeichnet nichts, die Abfrage liest also beide: Im selben Zeitraum heben sie sich auf, eine Stornierung in einem späteren Zeitraum mindert diesen Zeitraum.
+
+## Zuordnung zum Voranmeldungszeitraum
+
+Welche Buchungen ein Zeitraum meldet, entscheidet `steuerbote/vat_periods.py` mit dem Kern `steuerbote/ustva/assignment.py`; die fachlichen Regeln mit ihren Quellen stehen unter [Zuordnung zum Voranmeldungszeitraum](ustva-kennzahlen.md#zuordnung-zum-voranmeldungszeitraum).
+
+- **Buchungen.** `ledger.load_bookings` liest wie `load_lines`, mit denselben Ausschlüssen, aber je Konto, Beleg und Buchungsdatum mit dem Zeitpunkt des ersten Eintrags (`creation`). Nach Leistungsdatum liest es zusätzlich jede Buchung einer Ausgangsrechnung, deren Leistungszeitraum oder Lieferschein in die Zeit fällt, wo immer sie gebucht ist, und gibt jeder Ausgangsrechnung ihr Leistungsdatum mit.
+- **Zeiträume und Abgaben.** Die Zeiträume eines Jahres kommen aus den Regeln der Einstellungen (`rules.periods_of`), die Abgaben aus den ELSTER-Übermittlungen, die eine Meldung abgeben (`transmission.filings`): je Zeitraum die erste und die letzte, mit dem Zeitpunkt ihres Abschlusses (`finished_at`).
+- **`VatLedger`** gibt die Buchungszeilen eines Zeitraums (`lines`), einer Zeit (`lines_between`), die nachträglichen Buchungen (`late`) und die abgegebenen Zeiträume vor einem Zeitraum (`filed_before`). Die Meldung liest vom Beginn des Vorjahres bis zum Ende ihres Zeitraums, damit Vorperiode, Vorjahr und die abgegebenen Zeiträume davor aus derselben Zuordnung kommen; die Umsatzsteuererklärung und die Einrichtung lesen ein Jahr, der Bericht „UStVA Kennzahlen“ wie die Meldung.
+- **Abgegebene Meldung.** Beim Öffnen einer abgegebenen Meldung (`onload`, `changes_since_filing`) liest Steuerbote ihr Jahr bis zum Ende ihres Zeitraums und nennt die nachträglichen Buchungen des Zeitraums und die Kennzahlen, deren Betrag laut Hauptbuch sich seit der Abgabe geändert hat. „Berichtigung anlegen“ (`make_correction`) legt den Entwurf der berichtigten Anmeldung an oder gibt den vorhandenen.
+- **Was beim Lesen bleibt.** Die Zusammenfassende Meldung, die Hinweise zu den Steuervorlagen und der Abgleich mit den Registern lesen weiter mit `load_lines` nach Buchungsdatum.
 
 ## Einstellungen je Unternehmen und Zeitraum
 

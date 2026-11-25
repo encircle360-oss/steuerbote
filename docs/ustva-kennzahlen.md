@@ -1269,6 +1269,103 @@ Die Steuer zu den Zeilen 63 und 66 kommt über Kz 69 aus den Rollen ihrer Steuer
 | 5560 | Waren aus einem Umsatzsteuerlager, § 13a UStG 7 % Vorsteuer und 7 % Umsatzsteuer | E3102804 (Kz 852) | 63 | Soll |
 | 5565 | Waren aus einem Umsatzsteuerlager, § 13a UStG 19 % Vorsteuer und 19 % Umsatzsteuer | E3102804 (Kz 852) | 63 | Soll |
 
+## Zuordnung zum Voranmeldungszeitraum
+
+Steuerbote rechnet die Voranmeldung aus dem Hauptbuch. Welcher Voranmeldungszeitraum eine Buchung meldet, entscheidet die Einstellung „Zuordnung zum Voranmeldungszeitraum“ (`period_basis`), was mit einer Buchung für einen schon abgegebenen Zeitraum geschieht, die Einstellung „Belege für abgegebene Zeiträume“ (`late_documents`), beide in den Einstellungen Umsatzsteuer-Voranmeldung. Die Regeln stehen im Kern unter [`assignment.py`](../steuerbote/ustva/assignment.py), gelesen wird über [`vat_periods.py`](../steuerbote/vat_periods.py), siehe [Architektur](architektur.md#zuordnung-zum-voranmeldungszeitraum). Die Quellen stehen am Ende des Abschnitts als [Z1] bis [Z9], alle am 25. November 2026 gelesen; was eine Steuerberatung bestätigen sollte, steht unter [Offen zur Zuordnung](#offen-zur-zuordnung) und in der [Prüfliste](pruefliste-steuerberatung.md#zuordnung-zum-voranmeldungszeitraum).
+
+### Was das Gesetz sagt
+
+Bei der Soll-Versteuerung entsteht die Steuer „mit Ablauf des Voranmeldungszeitraums, in dem die Leistungen ausgeführt worden sind“ (§ 13 Abs. 1 Nr. 1 Buchst. a Satz 1 UStG [Z1]), gleich, wann die Rechnung geschrieben wird: „Der Zeitpunkt der Leistung ist entscheidend, für welchen Voranmeldungszeitraum ein Umsatz zu berücksichtigen ist“ (UStAE 13.1 Abs. 1 Satz 6 [Z7]). Eine Leistung im Juli, die am 1. August oder am 20. September berechnet wird, gehört in den Juli.
+
+| Vorgang | Zeitraum nach dem Gesetz | Quelle | Steuerbote nach Leistungsdatum |
+|---|---|---|---|
+| Eigene Lieferung oder sonstige Leistung | Ablauf des Zeitraums der Ausführung. Eine Lieferung ist ausgeführt, wenn der Kunde die Verfügungsmacht erlangt oder die Beförderung beginnt, eine sonstige Leistung mit ihrer Vollendung, eine Dauerleistung mit ihrem Ende, außer die Beteiligten haben Teilleistungen vereinbart | § 13 Abs. 1 Nr. 1 Buchst. a Sätze 1 bis 3 UStG [Z1]; UStAE 13.1 Abs. 2 und 3, 13.4 [Z7] | Ausgangsrechnung im Zeitraum ihres Leistungsdatums, siehe [Rangfolge](#rangfolge-der-daten) |
+| Anzahlung vor der Leistung | Ablauf des Zeitraums, in dem sie vereinnahmt wird | § 13 Abs. 1 Nr. 1 Buchst. a Satz 4 UStG [Z1]; UStAE 13.5 [Z7] | Zahlung (Payment Entry) mit ihrer Steuer nach Buchungsdatum |
+| Unentgeltliche Wertabgabe | Ablauf des Zeitraums der Ausführung | § 13 Abs. 1 Nr. 2 UStG [Z1] | Journalbuchung nach Buchungsdatum |
+| Gutschrift, Preisnachlass, Rückgabe, Forderungsausfall | „Die Berichtigungen … sind für den Besteuerungszeitraum vorzunehmen, in dem die Änderung der Bemessungsgrundlage eingetreten ist“ | § 17 Abs. 1 Satz 8 und Abs. 2 UStG [Z3] | Gutschrift (`is_return`) und Belastungsanzeige (`is_debit_note`) nach Buchungsdatum, auch mit Leistungszeitraum |
+| Ist-Versteuerung | Ablauf des Zeitraums der Vereinnahmung | § 13 Abs. 1 Nr. 1 Buchst. b, § 20 UStG [Z1] | nicht unterstützt, siehe [Ist-Versteuerung](#ist-versteuerung) |
+| Vorsteuer | der Zeitraum, in dem Leistung und Rechnung erstmals beide vorliegen; bei einer Anzahlung Rechnung und Zahlung | § 15 Abs. 1 Satz 1 Nr. 1 UStG [Z4]; UStAE 15.2 Abs. 2 Sätze 5 und 6 [Z7] | Eingangsrechnung nach Buchungsdatum: Sie wird gebucht, wenn die Rechnung da ist, nie vor ihrem Datum |
+| Steuer nach § 13b Abs. 1 UStG: sonstige Leistung eines im übrigen Gemeinschaftsgebiet ansässigen Unternehmers (Kz 46/47) | Ablauf des Zeitraums der Ausführung | § 13b Abs. 1 und 4 UStG [Z5]; UStAE 13b.12 Abs. 1 Nr. 1 [Z7] | Eingangsrechnung nach Buchungsdatum, siehe [Offen zur Zuordnung](#offen-zur-zuordnung) |
+| Steuer nach § 13b Abs. 2 UStG, etwa Werklieferungen ausländischer Unternehmer oder Bauleistungen (Kz 84/85) | mit Ausstellung der Rechnung, spätestens mit Ablauf des Monats nach der Ausführung | § 13b Abs. 2 UStG [Z5]; UStAE 13b.12 Abs. 1 Nr. 2 [Z7] | Eingangsrechnung nach Buchungsdatum |
+| Innergemeinschaftlicher Erwerb (Kz 89, 93) | mit Ausstellung der Rechnung, spätestens mit Ablauf des Monats nach dem Erwerb; die Vorsteuer daraus im selben Zeitraum | § 13 Abs. 1 Nr. 6, § 15 Abs. 1 Satz 1 Nr. 3 UStG [Z1] [Z4] | Eingangsrechnung nach Buchungsdatum |
+| Innergemeinschaftliche Lieferung (Kz 41) | Zeitraum, „in dem die Rechnung für diesen Umsatz ausgestellt wird, spätestens jedoch“ der, in dem der Monat nach der Lieferung endet; die Rechnung ist bis zum 15. dieses Monats auszustellen | § 18b Satz 2, § 14a Abs. 3 Satz 1 UStG [Z2] [Z6] | Ausgangsrechnung nach Buchungsdatum, dem Tag der Rechnung |
+| Sonstige Leistung nach § 3a Abs. 2 UStG im übrigen Gemeinschaftsgebiet (Kz 21), Lieferung des ersten Abnehmers im Dreiecksgeschäft (Kz 42) | Zeitraum der Ausführung | § 18b Satz 3 UStG [Z2] | Ausgangsrechnung nach Buchungsdatum, wie die Zusammenfassende Meldung, siehe unten |
+| Zusammenfassende Meldung | Lieferungen (L): Meldezeitraum der Rechnung, spätestens der des Monats nach der Lieferung; sonstige Leistungen (S) und Dreiecksgeschäfte (D): Meldezeitraum der Ausführung | § 18a Abs. 8 UStG [Z2] | unverändert nach Buchungsdatum (Entscheidung des Maintainers), siehe [Zusammenfassende Meldung](zm.md#meldezeilen-aus-dem-hauptbuch) |
+
+**Kz 41, 42 und 21 bleiben beim Buchungsdatum.** Für Kz 41 ist das der Tag der Rechnung und damit, was § 18b Satz 2 UStG verlangt, solange die Rechnung rechtzeitig ausgestellt wird. Kz 21 und 42 gehören nach § 18b Satz 3 UStG in den Zeitraum der Ausführung. Die Zusammenfassende Meldung wählt ihre Belege aber nach Buchungsdatum, und ihr [Abgleich](zm.md#abgleich-mit-der-voranmeldung) setzt sie gegen Kz 41, 42 und 21 der abgegebenen Voranmeldungen. Deshalb behalten die Konten dieser drei Kennzahlen in der Kontenzuordnung (`invoice_date_accounts`) unter beiden Einstellungen das Buchungsdatum: Voranmeldung und Zusammenfassende Meldung melden dieselben Belege in denselben Zeiträumen. Beide auf die Ausführung umzustellen ist ein eigener Schritt, der die Zusammenfassende Meldung mitnimmt.
+
+**Eingangsseite.** Eingangsrechnungen tragen in ERPNext kein Leistungsdatum, das Steuerbote liest; sie zählen nach Buchungsdatum. Für die Vorsteuer ist das die gesetzliche Regel, solange die Rechnung gebucht wird, wenn sie vorliegt. Bei § 13b Abs. 1 UStG entsteht die Steuer dagegen schon im Zeitraum der Ausführung, bei § 13b Abs. 2 UStG und beim innergemeinschaftlichen Erwerb spätestens mit Ablauf des Folgemonats. Kommt die Rechnung später, gehört die Buchung in den früheren Zeitraum. Weil Steuer und Vorsteuer daraus im selben Zeitraum stehen (§ 15 Abs. 1 Satz 1 Nr. 3 und 4 UStG [Z4]), ändert das bei vollem Vorsteuerabzug die Zahllast nicht, wohl aber die Kennzahlen des Zeitraums.
+
+### Die Einstellung „Zuordnung zum Voranmeldungszeitraum“
+
+| Wert | Bedeutung |
+|---|---|
+| nach Leistungsdatum (gesetzlicher Regelfall), Vorgabe | Eine Ausgangsrechnung zählt im Zeitraum ihres Leistungsdatums, jede andere Buchung an ihrem Buchungsdatum |
+| nach Buchungsdatum | Jede Buchung zählt an ihrem Buchungsdatum, wie Steuerbote bis Version 0.13 gerechnet hat. Das passt zu Büchern, deren Buchungsdatum schon den Zeitraum trägt, etwa übernommenen Journalbuchungen aus einer Buchhaltung, die nach Buchungsperioden bucht |
+
+Mehr Werte gibt es nicht. Ein Wert „nach Rechnungsdatum“ fiele mit „nach Buchungsdatum“ zusammen, denn das Buchungsdatum einer Ausgangsrechnung ist ihr Datum. Die Ist-Versteuerung ist keine Frage der Zuordnung, sondern der Bemessungsgrundlage, und bleibt ein eigenes Paket.
+
+#### Rangfolge der Daten
+
+Das Leistungsdatum einer Ausgangsrechnung (`service_date` in `assignment.py`, gelesen von `steuerbote/ledger.py`) ist, in dieser Reihenfolge:
+
+1. das Bis-Datum (`to_date`) des Leistungszeitraums der Rechnung. ERPNext füllt Von- und Bis-Datum bei Rechnungen aus einem Abonnement; die App für E-Rechnungen schreibt den Zeitraum in die E-Rechnung und nimmt das Bis-Datum als Lieferdatum. Eine Leistung über mehrere Monate ist mit ihrem Ende ausgeführt, sie zählt also im Zeitraum, in dem der Leistungszeitraum endet. Sind Teilleistungen vereinbart, etwa ein monatliches Entgelt, bekommt jede ihre eigene Rechnung mit ihrem eigenen Zeitraum;
+2. ohne Bis-Datum das Von-Datum;
+3. ohne beide das Buchungsdatum des letzten eingereichten Lieferscheins, den eine Position der Rechnung nennt, der Tag der Lieferung;
+4. sonst das Buchungsdatum.
+
+Kein Leistungsdatum haben Gutschriften und Belastungsanzeigen (§ 17 UStG), Zahlungen, Journalbuchungen, Lohnbuchungen und Eingangsrechnungen; Rechnungen der Kasse (POS) tragen keinen Leistungszeitraum und zählen am Tag ihrer Buchung. Das Leistungsdatum gilt für alle Buchungen der Rechnung, Erlös, Umsatzsteuer und Forderung, so dass die Verprobung je Beleg aufgeht; ausgenommen sind die Konten der Kz 41, 42 und 21. Die Termine der Rechnungsabgrenzung an den Positionen (`service_start_date`, `service_end_date`) liest Steuerbote nicht: Sie verteilen Erlöse über Monate, die Steuer der Rechnung bleibt an ihr.
+
+Liegt das Leistungsdatum nach der Rechnung, zählt sie im späteren Zeitraum der Leistung. Wird eine solche Rechnung vor der Leistung bezahlt, entsteht die Steuer nach § 13 Abs. 1 Nr. 1 Buchst. a Satz 4 UStG schon mit der Zahlung; das erkennt Steuerbote nicht, siehe [Offen zur Zuordnung](#offen-zur-zuordnung).
+
+Eine stornierte Ausgangsrechnung fällt ohne unveränderliches Hauptbuch ganz heraus, weil ERPNext ihre Buchungen markiert. Mit „Unveränderliches Hauptbuch aktivieren“ bucht ERPNext die Gegenbuchung am Tag der Stornierung; sie trägt dasselbe Leistungsdatum und gleicht die Rechnung in ihrem Leistungszeitraum aus. Ist der schon abgegeben, gilt der nächste Abschnitt.
+
+### Belege für abgegebene Zeiträume
+
+Ein Zeitraum gilt als abgegeben, sobald eine seiner Meldungen gesendet oder als abgegeben vermerkt ist, wie es [Übermittlung](uebermittlung.md) beschreibt. Als Zeitpunkt zählt, wann Steuerbote die Abgabe festgehalten hat (`finished_at` der ELSTER-Übermittlung); bei einem Vermerk ist das nie vor der Abgabe. Eine Buchung ist nachträglich, wenn ihr Eintrag im Hauptbuch (`creation` des GL Entry) später liegt als die Abgabe ihres Zeitraums. Das gilt für jede Buchung, auch eine rückdatierte Journalbuchung, und unter beiden Werten der Zuordnung.
+
+Eine Buchung für einen abgegebenen Zeitraum macht dessen Anmeldung unvollständig. § 153 Abs. 1 Satz 1 Nr. 1 AO [Z8] verlangt dann, „dies unverzüglich anzuzeigen und die erforderliche Richtigstellung vorzunehmen“; bei der Voranmeldung geschieht das mit einer berichtigten Anmeldung (Kz 10). Viele Buchhaltungen melden einen solchen Beleg stattdessen im Zeitraum, den sie gerade bearbeiten. Die Einstellung „Belege für abgegebene Zeiträume“ bietet beides:
+
+| Wert | Was mit der nachträglichen Buchung geschieht |
+|---|---|
+| Berichtigung des abgegebenen Zeitraums, Vorgabe | Sie bleibt in ihrem Zeitraum. Die Meldung, die gerade vorbereitet wird, nennt sie, und der abgegebene Zeitraum braucht eine berichtigte Anmeldung. Eine Berichtigung, die nach der Buchung abgegeben wird, enthält sie; danach gilt sie nicht mehr als nachträglich. |
+| im laufenden Zeitraum melden | Sie geht in den ersten Zeitraum desselben Jahres nach ihrem, der bei ihrer Buchung noch nicht abgegeben war, also den, der gerade vorbereitet wurde, und zählt dort ab seinem ersten Tag. Es entscheidet die erste Abgabe des Zeitraums: Eine spätere Berichtigung holt die Buchung nicht zurück. Gibt es im Jahr keinen offenen Zeitraum mehr, bleibt sie in ihrem Zeitraum und braucht dessen Berichtigung, denn Besteuerungszeitraum ist das Kalenderjahr (§ 16 Abs. 1 Satz 2 UStG), und die Umsatzsteuererklärung des Jahres hält sie. |
+
+**Kein Beleg doppelt, keiner verloren.** Wohin eine Buchung gehört, folgt allein aus ihr, den Zeiträumen und deren Abgaben; jede Buchung landet in genau einem Zeitraum. Die Tests prüfen das für jede Kombination der beiden Einstellungen an denselben Buchungen (`LinesTest` in `steuerbote/ustva/tests/test_assignment.py`). Mit „im laufenden Zeitraum melden“ rechnet eine Berichtigung des abgegebenen Zeitraums die verschobene Buchung nicht mit, und der Zeitraum, der sie meldet, zählt sie einmal. Wer eine der beiden Einstellungen ändert, ändert, wohin frühere Buchungen gehören: Die abgegebenen Zeiträume, deren Beträge sich dadurch ändern, zeigt Steuerbote an, wie im nächsten Absatz. Die Einstellungen sollten deshalb nur zum Jahreswechsel und mit der Steuerberatung geändert werden.
+
+**Wo Steuerbote es zeigt.** „Berechnen“ füllt an der Meldung die Tabelle „Nach der Abgabe geändert“ und hält in „Zuordnung zum Voranmeldungszeitraum“ und „Belege für abgegebene Zeiträume“ fest, nach welchen Einstellungen gerechnet wurde. Die Tabelle nennt
+
+- jede nachträgliche Buchung eines abgegebenen Zeitraums desselben Jahres oder des Vorjahres, die diese Meldung meldet („Gehört zu Juli 2026 und wurde nach der Abgabe von Juli 2026 gebucht: in diesem Zeitraum gemeldet.“) oder die eine Berichtigung ihres Zeitraums braucht, und
+- jede Kennzahl eines abgegebenen Zeitraums vor dieser Meldung, deren Betrag laut Hauptbuch heute von dem abweicht, den die abgegebene Meldung genommen hat („Kz 81: abgegeben 1.000,00 €, jetzt 1.500,00 €.“). Kz 83 und Kz 39 folgen aus den anderen und aus den Einstellungen und werden nicht verglichen. Dieser Vergleich findet auch, was keine nachträgliche Buchung erklärt, etwa eine Stornierung ohne unveränderliches Hauptbuch oder eine geänderte Kontenzuordnung.
+
+Die abgegebene Meldung selbst nennt beim Öffnen über dem Formular, was sich in ihrem Zeitraum seit der Abgabe geändert hat und wo eine nachträgliche Buchung gemeldet ist. „Berichtigung anlegen“ an ihr legt die berichtigte Anmeldung (Kz 10) des Zeitraums als Entwurf an oder öffnet den Entwurf, den es schon gibt.
+
+### Was sich für ein Unternehmen ändert
+
+Mit der Vorgabe „nach Leistungsdatum“ ändert sich nur etwas für Ausgangsrechnungen mit Leistungszeitraum oder Lieferschein in einem anderen Zeitraum als ihr Buchungsdatum: Sie zählen im Zeitraum der Leistung. Journalbuchungen, Zahlungen, Eingangsrechnungen und Rechnungen ohne diese Daten zählen wie bisher. Die [Umsatzsteuererklärung](umsatzsteuererklaerung.md#berechnen), der Bericht „UStVA Kennzahlen“, der Vorperiodenvergleich und der Vorschlag des Voranmeldungszeitraums in der [Einrichtung](einrichtung.md#voranmeldungszeitraum) rechnen nach derselben Zuordnung; ein Jahr ist die Summe seiner Zeiträume. Der [Abgleich mit den Registern](#abgleich-mit-den-registern) vergleicht weiter die Berichte Sales Register und Purchase Register mit dem Hauptbuch nach Buchungsdatum, denn auch die Berichte wählen ihre Rechnungen nach Buchungsdatum. Die Hinweise zu den Rechnungen lesen die Ausgangsrechnungen, deren Buchungen die Meldung meldet. Bestehende Einstellungen bekommen beim Update beide Vorgaben (`steuerbote/patches/set_the_assignment_to_the_voranmeldungszeitraum.py`); eine schon abgegebene Meldung, deren Zeitraum nach der neuen Zuordnung andere Beträge hat, nennt das wie oben.
+
+### Offen zur Zuordnung
+
+- **Tag der Ausführung.** Ob das Bis-Datum des Leistungszeitraums, ersatzweise Von-Datum oder Lieferschein, den Tag der Ausführung im Sinne von UStAE 13.1 Abs. 2 und 3 trifft, hängt vom Vertrag ab, etwa von vereinbarten Teilleistungen. Das bestätigt die Steuerberatung.
+- **Nachträgliche Belege im laufenden Zeitraum.** Die Gesetze und Verwaltungsanweisungen, die Steuerbote liest, sehen dafür keine Erleichterung vor; § 153 AO verlangt die Berichtigung. Ob die Praxis, die die Einstellung „im laufenden Zeitraum melden“ abbildet, für das Unternehmen vertretbar ist, entscheidet die Steuerberatung.
+- **Kz 21 und 42** zählen nach Buchungsdatum, wie die Zusammenfassende Meldung, obwohl § 18b Satz 3 UStG den Zeitraum der Ausführung nennt.
+- **§ 13b und innergemeinschaftlicher Erwerb.** Steuerbote nimmt das Buchungsdatum der Eingangsrechnung, auch wo das Gesetz den Zeitraum der Ausführung (§ 13b Abs. 1 UStG) oder spätestens den Folgemonat verlangt.
+- **Anzahlungen über eine Ausgangsrechnung.** Eine Rechnung mit Leistungszeitraum nach ihrem Datum, die vor der Leistung bezahlt wird, meldet Steuerbote im Zeitraum der Leistung statt der Zahlung.
+- **Rechnungskorrektur.** Eine Gutschrift, die eine falsch ausgestellte Rechnung berichtigt, ohne dass sich das Entgelt ändert, zählt nach ihrem Buchungsdatum wie eine Änderung der Bemessungsgrundlage. Ob sie in den Zeitraum der ursprünglichen Leistung gehört, klärt die Steuerberatung.
+- **Zeitpunkt der Abgabe.** Bei einem Vermerk zählt der Zeitpunkt, zu dem er in Steuerbote erfasst wurde, nicht der Tag der Abgabe in Mein ELSTER; eine Buchung zwischen beiden zählt als nicht nachträglich und erscheint dann als Abweichung der Kennzahlen.
+
+### Quellen zur Zuordnung
+
+- **[Z1]** § 13 UStG „Entstehung der Steuer“: <https://www.gesetze-im-internet.de/ustg_1980/__13.html>
+- **[Z2]** § 18a UStG „Zusammenfassende Meldung“ und § 18b UStG „Gesonderte Erklärung innergemeinschaftlicher Lieferungen und bestimmter sonstiger Leistungen im Besteuerungsverfahren“: <https://www.gesetze-im-internet.de/ustg_1980/__18a.html>, <https://www.gesetze-im-internet.de/ustg_1980/__18b.html>
+- **[Z3]** § 17 UStG „Änderung der Bemessungsgrundlage“: <https://www.gesetze-im-internet.de/ustg_1980/__17.html>
+- **[Z4]** § 15 UStG „Vorsteuerabzug“: <https://www.gesetze-im-internet.de/ustg_1980/__15.html>
+- **[Z5]** § 13b UStG „Leistungsempfänger als Steuerschuldner“: <https://www.gesetze-im-internet.de/ustg_1980/__13b.html>
+- **[Z6]** § 14a UStG „Zusätzliche Pflichten bei der Ausstellung von Rechnungen in besonderen Fällen“: <https://www.gesetze-im-internet.de/ustg_1980/__14a.html>
+- **[Z7]** Umsatzsteuer-Anwendungserlass, Stand 13. November 2026, Abschnitte 13.1, 13.4, 13.5, 13b.12 und 15.2, wie unter [I5](#quellen-zur-ist-versteuerung)
+- **[Z8]** § 153 AO „Berichtigung von Erklärungen“: <https://www.gesetze-im-internet.de/ao_1977/__153.html>
+- **[Z9]** ERPNext 16.60.0, <https://github.com/frappe/erpnext/tree/v16.60.0>: `erpnext/accounts/doctype/sales_invoice/sales_invoice.json` (Felder `from_date`, `to_date`, `is_return`, `is_debit_note`, `is_pos`, `is_consolidated`) und `erpnext/accounts/doctype/sales_invoice_item/sales_invoice_item.json` (`delivery_note`, `service_start_date`, `service_end_date`)
+
 ## Ist-Versteuerung
 
 Steuerbote rechnet die Voranmeldung nach vereinbarten Entgelten (§ 16 Abs. 1 Satz 1 UStG, Soll-Versteuerung); in den Einstellungen kennt „Besteuerung“ (`taxation_type`) nur „Soll“. Dieser Abschnitt schätzt ein, was die Berechnung nach vereinnahmten Entgelten (Ist-Versteuerung) ändert, wie eine Buchhaltung sie buchen müsste, was ERPNext 16 dafür mitbringt und was Steuerbote bräuchte. Umgesetzt ist davon nichts. Die Quellen stehen am Ende des Abschnitts als [I1] bis [I12], alle am 20. November 2026 gelesen; was sie nicht belegen, steht unter [Offen zur Ist-Versteuerung](#offen-zur-ist-versteuerung).

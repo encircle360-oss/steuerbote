@@ -63,7 +63,8 @@ steuerbote/                    Repository
 │   │   ├── documentation.py   liest die Jahresdokumentationen der ERiC-Dokumentation als Daten: Vordrucke mit Kontexten, Feldern, Regeln, Kennzahlen und Texten, Schema und Datenartversionmatrix
 │   │   └── yearcheck.py       Jahresprüfung aller Datenarten: Daten eines Jahres oder einer Taxonomie gegen die ERiC-Dokumentation
 │   ├── eric/                  ERiC: Datenarten, Einrichtung, Versionsinformationen der Pakete, Mindestversionsliste, ctypes-Anbindung, Worker-Prozess, Simulation; Frappe nur in secrets.py
-│   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns
+│   ├── ledger.py              liest das Hauptbuch eines Zeitraums als Buchungszeilen des Kerns und als Buchungen mit Leistungsdatum
+│   ├── vat_periods.py         ordnet die Buchungen den Voranmeldungszeiträumen zu, nach Einstellungen und Abgaben
 │   ├── invoices.py            liest die Rechnungen eines Zeitraums als Rechnungszeilen für die Hinweise
 │   ├── registers.py           führt die Berichte Sales Register und Purchase Register eines Zeitraums aus
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns und zu den Einträgen des Vergleichs, reines Python
