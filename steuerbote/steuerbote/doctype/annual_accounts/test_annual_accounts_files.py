@@ -414,7 +414,7 @@ class PrintFormatFilesTest(TestCase):
 		self.assertEqual(
 			includes,
 			[
-				"annual_filing/style",
+				"print/style",
 				"annual_accounts/offenlegung",
 				"annual_filing/head",
 				"annual_accounts/bilanz",
@@ -478,7 +478,7 @@ class PrintFormatFilesTest(TestCase):
 		for text in (self.template, *self.parts.values()):
 			for value in CLASS_ATTRIBUTE.findall(JINJA_TAG.sub(" ", text)):
 				used.update(value.split())
-		style = (INCLUDES / "annual_filing" / "style.html").read_text(encoding="utf-8") + self.record["css"]
+		style = (INCLUDES / "print" / "style.html").read_text(encoding="utf-8")
 		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", style)))
 		self.assertEqual(sorted(item for item in used if not item.startswith("sb-")), [])
 		self.assertEqual(sorted(used - styled), [])

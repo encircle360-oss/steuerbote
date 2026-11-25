@@ -10,7 +10,8 @@ to ELSTER, each with the record of its Senden. A third company has SKR03 account
 einrichten, and a fourth has SKR03 accounts and the mapping of "Vorgaben laden", for Vorgaben aktualisieren. Every record is invented (steuerbote/tests/e2e/data.py) and made once,
 so the seed runs again on the same site without a change; a second run only calculates the documents of the first
 company again. It also marks the setup wizard complete, gives the site the regional settings of Germany and sets the
-language of the Administrator and the user to German, so that the desk opens as a German accountant sees it. Take a
+language of the Administrator and the user to German, so that the desk opens as a German accountant sees it,
+and makes every record in German, so that the texts Berechnen stores are German too. Take a
 site of its own for it, never one with real data.
 
 Of the annual filings, the seed makes the Umsatzsteuererklärung of the first company for 2026 and calculates it.
@@ -40,6 +41,7 @@ from unittest.mock import patch
 
 import frappe
 from frappe.model.document import Document
+from frappe.translate import print_language
 from frappe.utils import today
 
 from steuerbote import annual_accounts_sources
@@ -104,32 +106,35 @@ FILED_IN_MEIN_ELSTER = "mein_elster"
 
 
 def run() -> None:
-	complete_setup()
-	set_german_regional_settings()
-	make_company(data.COMPANY, data.ABBR)
-	accounts = make_accounts()
-	complete_company(accounts)
-	make_settings_once()
-	if not frappe.db.exists("VAT Return Mapping", data.COMPANY):
-		make_mapping(data.COMPANY)
-	post_invoices(accounts)
-	confirm_eu_vat_id()
-	file_previous_month()
-	calculate_vat_return()
-	calculate_recapitulative_statement()
-	make_extension()
-	calculate_annual_vat_return()
-	make_income_tax_returns()
-	make_annual_accounts()
-	make_ebilanz()
-	make_sent_drafts()
-	make_setup_company()
-	make_mapping_company()
-	simulate_eric()
-	make_desk_users()
-	make_annual_links()
-	make_revenue_hint()
-	frappe.clear_cache()
+	"""Every record of the seed, made in German, the language of the desk, so that the texts Berechnen stores, such as
+	the findings, are German as on a German site."""
+	with print_language(DESK_LANGUAGE):
+		complete_setup()
+		set_german_regional_settings()
+		make_company(data.COMPANY, data.ABBR)
+		accounts = make_accounts()
+		complete_company(accounts)
+		make_settings_once()
+		if not frappe.db.exists("VAT Return Mapping", data.COMPANY):
+			make_mapping(data.COMPANY)
+		post_invoices(accounts)
+		confirm_eu_vat_id()
+		file_previous_month()
+		calculate_vat_return()
+		calculate_recapitulative_statement()
+		make_extension()
+		calculate_annual_vat_return()
+		make_income_tax_returns()
+		make_annual_accounts()
+		make_ebilanz()
+		make_sent_drafts()
+		make_setup_company()
+		make_mapping_company()
+		simulate_eric()
+		make_desk_users()
+		make_annual_links()
+		make_revenue_hint()
+		frappe.clear_cache()
 
 
 def complete_setup() -> None:

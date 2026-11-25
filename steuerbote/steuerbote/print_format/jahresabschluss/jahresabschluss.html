@@ -12,10 +12,12 @@
 {%- set classes = {"Kleinst": "Kleinstkapitalgesellschaft (§ 267a Abs. 1 HGB)", "Klein": "kleine Kapitalgesellschaft (§ 267 Abs. 1 HGB)", "Mittelgroß": "mittelgroße Kapitalgesellschaft (§ 267 Abs. 2 HGB)", "Groß": "große Kapitalgesellschaft (§ 267 Abs. 3 HGB)"} -%}
 {%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
 {%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
-{% include "steuerbote/templates/includes/annual_filing/style.html" %}
-<div class="sb-annual">
+{% include "steuerbote/templates/includes/print/style.html" %}
+{%- set running_title = ("Vorschau der Offenlegung " if accounts.preview else "Jahresabschluss zum ") ~ day(doc.to_date) -%}
+<div class="sb-print">
 	{%- if accounts.preview %}
 	{% include "steuerbote/templates/includes/annual_accounts/offenlegung.html" %}
+	<div class="sb-keep">
 	{%- else %}
 	<h1>Jahresabschluss zum {{ day(doc.to_date) }}</h1>
 	<p class="sb-subtitle">{{ (doc.firma or doc.company) | e }}</p>
@@ -36,20 +38,29 @@
 	{% include "steuerbote/templates/includes/annual_accounts/signatures.html" %}
 
 	{%- if doc.appropriation_reserve or doc.appropriation_dividend %}
-	<h2>Ergebnisverwendung</h2>
-	<table class="sb-head">
-		<tr><td class="sb-label">Jahresergebnis</td><td class="sb-value">{{ money(doc.net_income) }}</td></tr>
-		<tr><td class="sb-label">Gewinnvortrag/Verlustvortrag</td><td class="sb-value">{{ money(doc.carried_forward) }}</td></tr>
-		<tr><td class="sb-label">Einstellung in die Rücklagen</td><td class="sb-value">{{ money(doc.appropriation_reserve) }}</td></tr>
-		<tr><td class="sb-label">Ausschüttung</td><td class="sb-value">{{ money(doc.appropriation_dividend) }}</td></tr>
-		<tr><td class="sb-label">Vortrag auf neue Rechnung</td><td class="sb-value">{{ money(doc.appropriation_carried) }}</td></tr>
-	</table>
+	<div class="sb-block sb-keep">
+		<h2>Ergebnisverwendung</h2>
+		<table class="sb-lines">
+			<colgroup>
+				<col>
+				<col class="sb-value-wide">
+			</colgroup>
+			<tr><td>Jahresergebnis</td><td class="sb-num">{{ money(doc.net_income) }}</td></tr>
+			<tr><td>Gewinnvortrag/Verlustvortrag</td><td class="sb-num">{{ money(doc.carried_forward) }}</td></tr>
+			<tr><td>Einstellung in die Rücklagen</td><td class="sb-num">{{ money(doc.appropriation_reserve) }}</td></tr>
+			<tr><td>Ausschüttung</td><td class="sb-num">{{ money(doc.appropriation_dividend) }}</td></tr>
+			<tr class="sb-sum"><td>Vortrag auf neue Rechnung</td><td class="sb-num">{{ money(doc.appropriation_carried) }}</td></tr>
+		</table>
+	</div>
 	{%- endif %}
 
 	{% include "steuerbote/templates/includes/annual_accounts/upload.html" %}
 	{% include "steuerbote/templates/includes/annual_filing/corrections.html" %}
+	{%- if annual.findings | length <= 8 %}<div class="sb-keep">{% endif %}
 	{% include "steuerbote/templates/includes/annual_filing/findings.html" %}
+	{%- if annual.findings | length > 8 %}<div class="sb-keep">{% endif %}
 	{% include "steuerbote/templates/includes/annual_filing/remarks.html" %}
 	{%- endif %}
 	{% include "steuerbote/templates/includes/annual_filing/footer.html" %}
+	</div>
 </div>

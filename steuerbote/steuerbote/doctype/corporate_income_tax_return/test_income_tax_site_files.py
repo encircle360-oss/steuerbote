@@ -27,6 +27,8 @@ SOURCES = APP / "income_tax_sources.py"
 REPORT = MODULE / "report" / "ertragsteuer_kontennachweis"
 PRINT_FORMATS = MODULE / "print_format"
 INCLUDES = APP / "templates" / "includes" / "annual_filing"
+# The one stylesheet of every print format of the app.
+PRINT_STYLE = APP / "templates" / "includes" / "print" / "style.html"
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 FORM_TEXTS = frozenset(
 	{
@@ -244,7 +246,8 @@ class PrintFormatFilesTest(TestCase):
 			)
 			corrections = ["corrections"] if directory == "körperschaftsteuererklärung" else []
 			with self.subTest(format=name):
-				self.assertEqual(includes, ["style", "head", *corrections, "findings", "remarks", "footer"])
+				self.assertEqual(includes, ["head", *corrections, "findings", "remarks", "footer"])
+				self.assertIn('{% include "steuerbote/templates/includes/print/style.html" %}', template)
 				self.assertIn("{%- set annual = doc.annual_print() -%}", template)
 				self.assertIn("{%- set form = doc.income_tax_print() -%}", template)
 				self.assertIn(f"<h1>{name} {{{{ doc.year }}}}</h1>", template)
@@ -287,8 +290,9 @@ class PrintFormatFilesTest(TestCase):
 	def test_keep_to_classes_of_their_own_and_style_each_they_use(self):
 		for directory, name, _, _ in self.FORMATS:
 			record, template = self.files(directory)
+			self.assertEqual(record["css"], "")
 			used = {item for value in CLASS_ATTRIBUTE.findall(template) for item in value.split()}
-			style = (INCLUDES / "style.html").read_text(encoding="utf-8") + record["css"]
+			style = PRINT_STYLE.read_text(encoding="utf-8")
 			styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", style)))
 			with self.subTest(format=name):
 				self.assertEqual(sorted(item for item in used if not item.startswith("sb-")), [])

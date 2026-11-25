@@ -1,140 +1,259 @@
 {#-
-	E-Bilanz with the labels of the HGB-Taxonomie: the Bilanz in Kontoform, the GuV, the steuerlicher
-	Betriebsvermögensvergleich, the Anlagenspiegel (brutto), the Kontennachweis and, for a Handelsbilanz, the
-	Überleitungsrechnung with the amounts of the Steuerbilanz beside the Bilanz and the GuV, as e_bilanz_print() of the
-	document gives them from its tables (layout.print_sections); then the corrections, the findings and the remarks. A
-	Mussfeld reported as NIL has no amount and is not printed. Mein ELSTER takes no E-Bilanz, so this print serves the
-	Steuerberatung alone. The print computes nothing.
+	E-Bilanz with the labels of the HGB-Taxonomie: the Bilanz in Kontoform, a row of each side beside the other, so that
+	the pages break between rows, the GuV, the steuerlicher Betriebsvermögensvergleich, the Anlagenspiegel (brutto) with
+	each position on a line of its own above its amounts, so that eight columns of amounts fit the page, the
+	Kontennachweis and, for a Handelsbilanz, the Überleitungsrechnung with the amounts of the Steuerbilanz beside the
+	Bilanz and the GuV, as e_bilanz_print() of the document gives them from its tables (layout.print_sections); then the
+	corrections, the findings and the remarks. Each table carries its heading as the first row of its head, which repeats
+	on every page. A Mussfeld reported as NIL has no amount and is not printed. Mein ELSTER takes no E-Bilanz, so this
+	print serves the Steuerberatung alone. The print computes nothing.
 -#}
 {%- set annual = doc.annual_print() -%}
 {%- set form = doc.e_bilanz_print() -%}
 {%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
-{%- macro positions_table(rows) -%}
-<table class="sb-lines">
-	<tbody>
-		{%- for row in rows %}
-		<tr{% if row.sum %} class="sb-sum"{% endif %}>
-			<td class="sb-position" style="padding-left: {{ row.level * 3 }}mm">{{ row.label | e }}</td>
-			<td class="sb-num">{{ row.amount }}</td>
+{%- set position_columns = 3 if form.handelsbilanz else 2 -%}
+{%- macro positions_head(caption) -%}
+		<colgroup>
+			<col>
+			<col class="sb-num">
 			{%- if form.handelsbilanz %}
-			<td class="sb-num">{{ row.tax }}</td>
+			<col class="sb-num">
 			{%- endif %}
-		</tr>
-		{%- endfor %}
-	</tbody>
-</table>
+		</colgroup>
+		<thead>
+			<tr class="sb-caption"><th colspan="{{ position_columns }}">{{ caption }}</th></tr>
+			<tr>
+				<th>Position</th>
+				{%- if form.handelsbilanz %}
+				<th class="sb-num">Handelsbilanz</th>
+				<th class="sb-num">Steuerbilanz</th>
+				{%- else %}
+				<th class="sb-num">Betrag</th>
+				{%- endif %}
+			</tr>
+		</thead>
 {%- endmacro -%}
-{% include "steuerbote/templates/includes/annual_filing/style.html" %}
-<div class="sb-annual">
+{%- macro positions_rows(rows) -%}
+			{%- for row in rows %}
+			<tr>
+				<td{% if row.sum %} class="sb-position sb-strong"{% else %} class="sb-position"{% endif %} style="padding-left: {{ 1.2 + row.level * 3 }}mm">{{ row.label | e }}</td>
+				<td{% if row.sum %} class="sb-num sb-strong"{% else %} class="sb-num"{% endif %}>{{ row.amount }}</td>
+				{%- if form.handelsbilanz %}
+				<td{% if row.sum %} class="sb-num sb-strong"{% else %} class="sb-num"{% endif %}>{{ row.tax }}</td>
+				{%- endif %}
+			</tr>
+			{%- endfor %}
+{%- endmacro -%}
+{%- macro positions_table(caption, rows) -%}
+<div class="sb-block">
+	<table class="sb-lines">
+		{{- positions_head(caption) }}
+		<tbody>
+		{{- positions_rows(rows) }}
+		</tbody>
+	</table>
+</div>
+{%- endmacro -%}
+{%- macro account_columns() -%}
+		<colgroup>
+			<col class="sb-line">
+			<col>
+			<col class="sb-num">
+		</colgroup>
+{%- endmacro -%}
+{%- macro account_row(account) -%}
+		<tr>
+			<td class="sb-line">{{ account.number | e }}</td>
+			<td>{{ account.label | e }}</td>
+			<td class="sb-num">{{ account.amount }}</td>
+		</tr>
+{%- endmacro -%}
+{%- macro asset_columns(columns) -%}
+		<colgroup>
+			<col>
+			{%- for column in columns %}
+			<col class="sb-num">
+			{%- endfor %}
+		</colgroup>
+{%- endmacro -%}
+{% include "steuerbote/templates/includes/print/style.html" %}
+{%- set running_title = "E-Bilanz " ~ doc.year -%}
+<div class="sb-print">
 	<h1>E-Bilanz {{ doc.year }}</h1>
 	<p class="sb-subtitle">{{ doc.statement_type | e }}{% if doc.is_correction %}, Berichtigung{% endif %}</p>
 	{%- set head_rows = [("Bilanzstichtag", day(doc.stichtag)), ("Bilanzierungsstandard", form.standard), ("HGB-Taxonomie", doc.taxonomy_version)] -%}
 	{%- if form.revision_status %}{%- set head_rows = head_rows + [("Status des Berichts", form.revision_status)] -%}{%- endif %}
 	{% include "steuerbote/templates/includes/annual_filing/head.html" %}
 
-	<h2>Bilanz</h2>
-	{%- if form.handelsbilanz %}
-	<p class="sb-note">Je Position der Betrag der Handelsbilanz und daneben der der Steuerbilanz nach der Überleitungsrechnung.</p>
-	{%- endif %}
-	<table class="sb-konto">
-		<tbody>
-			<tr>
-				<td class="sb-side">
-					<h3>Aktiva</h3>
-					{{ positions_table(form.aktiva) }}
-				</td>
-				<td class="sb-side">
-					<h3>Passiva</h3>
-					{{ positions_table(form.passiva) }}
-				</td>
+	{%- set bilanz_rows = [form.aktiva | length, form.passiva | length] | max -%}
+	<div class="sb-block">
+	<table class="sb-lines sb-bilanz">
+		<colgroup>
+			{%- for side in ("Aktiva", "Passiva") %}
+			<col>
+			<col class="sb-num">
+			{%- if form.handelsbilanz %}
+			<col class="sb-num">
+			{%- endif %}
+			{%- endfor %}
+		</colgroup>
+		<thead>
+			<tr class="sb-caption">
+				<th colspan="{{ 2 * position_columns }}">
+					<h2>Bilanz</h2>
+					{%- if form.handelsbilanz %}
+					<p class="sb-note">Je Position der Betrag der Handelsbilanz und daneben der der Steuerbilanz nach der Überleitungsrechnung.</p>
+					{%- endif %}
+				</th>
 			</tr>
+			<tr>
+				{%- for side in ("Aktiva", "Passiva") %}
+				<th>{{ side }}</th>
+				{%- if form.handelsbilanz %}
+				<th class="sb-num">Handelsbilanz</th>
+				<th class="sb-num">Steuerbilanz</th>
+				{%- else %}
+				<th class="sb-num">Betrag</th>
+				{%- endif %}
+				{%- endfor %}
+			</tr>
+		</thead>
+		<tbody>
+			{%- for index in range(bilanz_rows) %}
+			<tr>
+				{%- for rows in (form.aktiva, form.passiva) %}
+				{%- set row = rows[index] if index < rows | length else none %}
+				{%- if row %}
+				<td{% if row.sum %} class="sb-position sb-strong"{% else %} class="sb-position"{% endif %} style="padding-left: {{ 1.2 + row.level * 3 }}mm">{{ row.label | e }}</td>
+				<td{% if row.sum %} class="sb-num sb-strong"{% else %} class="sb-num"{% endif %}>{{ row.amount }}</td>
+				{%- if form.handelsbilanz %}
+				<td{% if row.sum %} class="sb-num sb-strong"{% else %} class="sb-num"{% endif %}>{{ row.tax }}</td>
+				{%- endif %}
+				{%- else %}
+				<td class="sb-position"></td>
+				<td class="sb-num"></td>
+				{%- if form.handelsbilanz %}
+				<td class="sb-num"></td>
+				{%- endif %}
+				{%- endif %}
+				{%- endfor %}
+			</tr>
+			{%- endfor %}
 		</tbody>
 	</table>
+	</div>
 
 	{%- if form.guv %}
-	<h2>Gewinn- und Verlustrechnung (Gesamtkostenverfahren)</h2>
-	{{ positions_table(form.guv) }}
+	{{ positions_table("<h2>Gewinn- und Verlustrechnung (Gesamtkostenverfahren)</h2>", form.guv) }}
 	{%- endif %}
 
 	{%- if form.bvv %}
-	<h2>Steuerlicher Betriebsvermögensvergleich</h2>
-	{{ positions_table(form.bvv) }}
+	{{ positions_table("<h2>Steuerlicher Betriebsvermögensvergleich</h2>", form.bvv) }}
 	{%- endif %}
 
-	<h2>Anlagenspiegel (brutto)</h2>
 	{%- if form.anlagenspiegel.rows %}
 	{%- for part, title, columns in [("cost", "Anschaffungs- und Herstellungskosten", form.anlagenspiegel.cost_columns), ("depreciation", "Abschreibungen und Buchwert", form.anlagenspiegel.depreciation_columns)] %}
-	<h3>{{ title }}</h3>
-	<table class="sb-lines sb-wide">
+	{%- set width = 1 + columns | length %}
+	<div class="sb-block">
+	<table class="sb-lines sb-recon">
+		{{- asset_columns(columns) }}
 		<thead>
+			<tr class="sb-caption">
+				<th colspan="{{ width }}">
+					{%- if loop.first %}<h2>Anlagenspiegel (brutto)</h2>{% endif %}
+					<h3>{{ title }}</h3>
+				</th>
+			</tr>
 			<tr>
-				<th>Position</th>
-				<th>Wertart</th>
+				<th>Position und Wertart</th>
 				{%- for column in columns %}
-				<th class="sb-num">{{ column | e }}</th>
+				<th class="sb-num">{{ column | e | replace("schreibungen", "schrei&shy;bungen") | replace("buchungen", "bu&shy;chungen") }}</th>
 				{%- endfor %}
 			</tr>
 		</thead>
 		<tbody>
 			{%- for row in form.anlagenspiegel.rows %}
-			<tr>
-				<td>{{ row.label | e }}{% if row.source %} ({{ row.source | e }}){% endif %}{% if row.reason and part == "depreciation" %}; {{ row.reason | e }}{% endif %}</td>
-				<td>{{ row.value_type | e }}</td>
-				{%- for value in row[part] %}
-				<td class="sb-num">{{ value }}</td>
-				{%- endfor %}
-			</tr>
+			<tr><td class="sb-nest" colspan="{{ width }}"><table class="sb-lines sb-recon">
+				{{- asset_columns(columns) }}
+				<tr class="sb-asset"><td colspan="{{ width }}">{{ row.label | e }}{% if row.source %} ({{ row.source | e }}){% endif %}{% if row.reason and part == "depreciation" %}; {{ row.reason | e }}{% endif %} · {{ row.value_type | e }}</td></tr>
+				<tr>
+					<td></td>
+					{%- for value in row[part] %}
+					<td class="sb-num">{{ value }}</td>
+					{%- endfor %}
+				</tr>
+			</table></td></tr>
 			{%- endfor %}
 			{%- for total in form.anlagenspiegel.totals %}
-			<tr class="sb-sum">
-				<td>Summe Anlagevermögen</td>
-				<td>{{ total.value_type | e }}</td>
-				{%- for value in total[part] %}
-				<td class="sb-num">{{ value }}</td>
-				{%- endfor %}
-			</tr>
+			<tr><td class="sb-nest" colspan="{{ width }}"><table class="sb-lines sb-recon">
+				{{- asset_columns(columns) }}
+				<tr class="sb-asset sb-sum"><td colspan="{{ width }}">Summe Anlagevermögen · {{ total.value_type | e }}</td></tr>
+				<tr class="sb-sum-values">
+					<td></td>
+					{%- for value in total[part] %}
+					<td class="sb-num">{{ value }}</td>
+					{%- endfor %}
+				</tr>
+			</table></td></tr>
 			{%- endfor %}
 		</tbody>
 	</table>
+	</div>
 	{%- endfor %}
 	<p class="sb-note">Die Abschreibungen des Jahres sind die Summe ihrer Arten; die XBRL-Datei meldet jede Art einzeln.</p>
 	{%- elif form.fixed_assets_in_bilanz %}
-	<p class="sb-note">Kein Anlagenspiegel: Die Bilanz zeigt Anlagevermögen, aber Berechnen fand keine Anlagegüter dazu. Die Befunde nennen, was fehlt.</p>
+	<div class="sb-block sb-keep">
+		<h2>Anlagenspiegel (brutto)</h2>
+		<p class="sb-note">Kein Anlagenspiegel: Die Bilanz zeigt Anlagevermögen, aber Berechnen fand keine Anlagegüter dazu. Die Befunde nennen, was fehlt.</p>
+	</div>
 	{%- else %}
-	<p class="sb-note">Kein Anlagevermögen.</p>
+	<div class="sb-block sb-keep">
+		<h2>Anlagenspiegel (brutto)</h2>
+		<p class="sb-note">Kein Anlagevermögen.</p>
+	</div>
 	{%- endif %}
 
 	{%- if form.kontennachweis %}
-	<h2>Kontennachweis</h2>
+	<div class="sb-block">
 	<table class="sb-lines">
+		{{- account_columns() }}
 		<thead>
+			<tr class="sb-caption"><th colspan="3"><h2>Kontennachweis</h2></th></tr>
 			<tr>
-				<th class="sb-code">Konto</th>
+				<th class="sb-line">Konto</th>
 				<th>Bezeichnung</th>
 				<th class="sb-num">Kontosaldo</th>
 			</tr>
 		</thead>
 		{%- for group in form.kontennachweis %}
+		{%- set kept = group.accounts if group.accounts | length <= 15 else group.accounts[:3] %}
 		<tbody class="sb-group">
-			<tr class="sb-group-head"><td colspan="2">{{ group.label | e }}</td><td class="sb-num">{{ group.sum }}</td></tr>
-			{%- for account in group.accounts %}
-			<tr>
-				<td class="sb-code">{{ account.number | e }}</td>
-				<td>{{ account.label | e }}</td>
-				<td class="sb-num">{{ account.amount }}</td>
-			</tr>
-			{%- endfor %}
+			<tr><td class="sb-nest" colspan="3"><table class="sb-lines">
+				{{- account_columns() }}
+				<tr class="sb-group-head"><td colspan="2">{{ group.label | e }}</td><td class="sb-num">{{ group.sum }}</td></tr>
+				{%- for account in kept %}{{ account_row(account) }}{%- endfor %}
+			</table></td></tr>
+			{%- for account in group.accounts[kept | length :] %}{{ account_row(account) }}{%- endfor %}
 		</tbody>
 		{%- endfor %}
 	</table>
+	</div>
 	{%- endif %}
 
 	{%- if form.ueberleitung %}
-	<h2>Überleitungsrechnung</h2>
+	<div class="sb-block">
 	<table class="sb-lines">
+		<colgroup>
+			<col class="sb-kind">
+			<col>
+			<col class="sb-num">
+			<col class="sb-num">
+			<col>
+		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="5"><h2>Überleitungsrechnung</h2></th></tr>
 			<tr>
-				<th>Art</th>
+				<th class="sb-kind">Art</th>
 				<th>Position</th>
 				<th class="sb-num">laufendes Wirtschaftsjahr</th>
 				<th class="sb-num">frühere Wirtschaftsjahre</th>
@@ -144,7 +263,7 @@
 		<tbody>
 			{%- for row in form.ueberleitung %}
 			<tr>
-				<td>{{ row.kind | e }}</td>
+				<td class="sb-kind">{{ row.kind | e }}</td>
 				<td>{{ row.label | e }}</td>
 				<td class="sb-num">{{ row.current }}</td>
 				<td class="sb-num">{{ row.previous }}</td>
@@ -153,10 +272,14 @@
 			{%- endfor %}
 		</tbody>
 	</table>
+	</div>
 	{%- endif %}
 
 	{% include "steuerbote/templates/includes/annual_filing/corrections.html" %}
+	{%- if annual.findings | length <= 8 %}<div class="sb-keep">{% endif %}
 	{% include "steuerbote/templates/includes/annual_filing/findings.html" %}
+	{%- if annual.findings | length > 8 %}<div class="sb-keep">{% endif %}
 	{% include "steuerbote/templates/includes/annual_filing/remarks.html" %}
 	{% include "steuerbote/templates/includes/annual_filing/footer.html" %}
+	</div>
 </div>
