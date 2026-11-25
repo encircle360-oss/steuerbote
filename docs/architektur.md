@@ -152,7 +152,7 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen.
 |---|---|---|
 | `company` | Unternehmen | Pflicht |
 | `chart` | Kontenrahmen | bestimmt die Vorgabe für „Vorgaben laden“ |
-| `defaults_version` | Stand der Vorgaben | der Stand, den „Vorgaben laden“ oder „Vorgaben aktualisieren“ zuletzt übernommen hat, etwa „SKR03 2026.3“, siehe [Vorgaben aktualisieren](einrichtung.md#vorgaben-aktualisieren) |
+| `defaults_version` | Stand der Vorgaben | der Stand, den „Vorgaben laden“ oder „Vorgaben aktualisieren“ zuletzt übernommen hat, etwa „SKR03 2026.4“, siehe [Vorgaben aktualisieren](einrichtung.md#vorgaben-aktualisieren) |
 | `defaults_rows` | Übernommene Vorgaben | versteckt: die Zeilen, die die Vorgaben dabei gaben, als JSON, gegen die „Vorgaben aktualisieren“ eigene Änderungen erkennt |
 | `rules` | Zuordnungen | Tabelle „Regel der Kontenzuordnung Umsatzsteuer“: Konto, Kontonummer (aus dem Konto), Kennzahl, Seite (Haben oder Soll), Steuersatz (%; leer oder 0 heißt kein Satz, die Tabelle zeigt ihn dann leer), Zusätzliche Kennzahl und Seite der zusätzlichen Kennzahl |
 | `checks` | Verprobungen | Tabelle „Verprobung der Kontenzuordnung Umsatzsteuer“: Bezeichnung, Grundlagenkonten und Steuerkonten (Kontonummern, durch Kommas getrennt), Seite, Kz der Grundlage ohne Grundlagenkonto (siehe [Bemessungsgrundlage ohne Grundlagenkonto](ustva-kennzahlen.md#bemessungsgrundlage-ohne-grundlagenkonto)) und Kz bei Sitz im übrigen Gemeinschaftsgebiet (siehe [Kz 46 oder Kz 84](ustva-kennzahlen.md#kz-46-oder-kz-84-der-sitz-des-leistenden)) |
@@ -434,6 +434,7 @@ Auffällig ist eine Kennzahl, wenn ihre Änderung gegenüber der Vorperiode beid
 | `ZEITRAUM-NICHT-ABGELAUFEN` | Warnung | Der letzte Tag des Zeitraums ist noch nicht vorbei; die Meldung ist nicht bereit, bis „Berechnen“ nach dem Ende des Zeitraums erneut läuft (§ 13 Abs. 1 Nr. 1 Buchst. a, § 18 Abs. 1 UStG). Anders als die übrigen Hinweise hält diese Warnung die Meldung an. |
 | `ZM-OHNE-RHYTHMUS` | Warnung | Kz 41, 42 oder 21 melden Umsätze, aber die Einstellungen nennen für einen Monat des Zeitraums keinen Rhythmus der Zusammenfassenden Meldung (§ 18a Abs. 1 und 2 UStG). |
 | `BERICHTIGUNG-OHNE-AENDERUNG` | Hinweis | Eine berichtigte Anmeldung (Kz 10) meldet dieselben Beträge wie die abgegebene Meldung, die sie ersetzen würde; sie ändert nichts. |
+| `UMSATZ-OHNE-ERLOESKONTO` | Hinweis | Ein Beleg bucht mehr Umsatzsteuer zu 19 oder 7 %, als seine Erlöskonten tragen, etwa der Verkauf eines Anlageguts über eine Ausgangsrechnung, und seine Buchungszeilen auf Konten ohne Platz in der Kontenzuordnung ergeben die Bemessungsgrundlage; Steuerbote meldet sie in Kz 81 oder 86. Der Hinweis nennt Beleg, Steuer, Konten und Bemessungsgrundlage, siehe [Umsatzsteuer ohne Erlöskonto](ustva-kennzahlen.md#umsatzsteuer-ohne-erlöskonto-verkauf-eines-anlageguts). |
 | `REGISTER-ABWEICHUNG` | Hinweis | Eine Kennzahl oder ein Steuerkonto weicht im Abgleich mit Registern vom Bericht ab; die Differenz braucht vor der Abgabe eine Erklärung, siehe [Abgleich mit Sales Register und Purchase Register](#abgleich-mit-sales-register-und-purchase-register). |
 
 ## Abgleich mit Sales Register und Purchase Register
