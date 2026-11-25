@@ -687,7 +687,7 @@ def partners_of(policy: CompanyPolicy) -> list[tuple[str, str, str]]:
 
 def fill_statuses() -> None:
 	"""after_migrate: give every partner with a USt-IdNr. but no status yet, or a status of an earlier version, its
-	status, without asking anyone. The
+	status, and every partner whose number no service checks the status that says why, without asking anyone. The
 	status fields come with the fixtures, which bench migrate loads after the patches."""
 	for party_type in PARTY_TYPES:
 		if not frappe.db.has_column(party_type, STATUS_FIELD):
@@ -697,6 +697,7 @@ def fill_statuses() -> None:
 				party_type, filters={"tax_id": ["is", "set"], STATUS_FIELD: status}, pluck="name"
 			):
 				refresh_status(party_type, name)
+	refresh_statuses()
 
 
 def refresh_statuses() -> None:
