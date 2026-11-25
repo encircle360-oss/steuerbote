@@ -27,6 +27,7 @@ from typing import Any
 
 from steuerbote.elster import zm_xml
 from steuerbote.steuerbote.doctype.vat_return.bridge import Row, split_voucher, to_amount
+from steuerbote.ustva.assignment import Filing
 from steuerbote.ustva.period import Period
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import ZERO
@@ -637,6 +638,20 @@ def uncompared(returns: Iterable[FiledReturn], span: tuple[date, date] | None) -
 		return "Nicht verglichen: Die abgegebenen Voranmeldungen decken die Monate der Meldung nicht je einmal ab."
 	labels = ", ".join(Period.month(year, month).label for year, month in missing)
 	return f"Nicht verglichen: Für {labels} ist keine Voranmeldung abgegeben."
+
+
+def month_filings(statements: Iterable[tuple[tuple[date, date] | None, Iterable[datetime]]]) -> list[Filing]:
+	"""When each month was filed, first and latest, from the filed statements: each with the months whose Lieferungen
+	or whose sonstige Leistungen it reports, and the times its filing was recorded. The ZM places a booking with these
+	filings by the rule of the Voranmeldung (steuerbote.ustva.assignment)."""
+	times: dict[tuple[int, int], list[datetime]] = {}
+	for span, recorded in statements:
+		recorded = list(recorded)
+		if span is None or not recorded:
+			continue
+		for month in _months(*span):
+			times.setdefault(month, []).extend(recorded)
+	return [Filing(Period.month(*month), min(found), max(found)) for month, found in sorted(times.items())]
 
 
 def _months(start: date, end: date) -> list[tuple[int, int]]:
