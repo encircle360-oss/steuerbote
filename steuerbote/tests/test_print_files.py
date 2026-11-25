@@ -220,8 +220,9 @@ class ColumnWidthsTest(TestCase):
 	def test_the_labels_of_the_bilanz_keep_their_words_whole(self):
 		"""Four columns of amounts in Kontoform leave the labels less than half the page each; the amounts give up the
 		padding on their left, which a right-aligned number does not use, and still hold 9.999.999,99 at 8 pt, so
-		that „C. Rechnungsabgrenzungsposten“ stays one word. The right edge keeps the padding of every other table."""
-		amounts = self.style[".sb-print .sb-bilanz th.sb-num, .sb-print .sb-bilanz td.sb-num"]
+		that „C. Rechnungsabgrenzungsposten“ stays one word. The right edge keeps the padding of every other table.
+		The rule takes the columns too: a fixed table layout sizes its columns by their col elements."""
+		amounts = self.style[".sb-print .sb-bilanz .sb-num"]
 		self.assertIn("width: 20mm;", amounts)
 		self.assertIn("padding-left: 0;", amounts)
 		self.assertNotIn("padding-right", amounts)
