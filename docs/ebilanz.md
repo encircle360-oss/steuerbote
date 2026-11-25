@@ -107,7 +107,7 @@ Der steuerliche Betriebsvermögensvergleich eines Jahresabschlusses (Leitfaden B
 2. sonst das „Betriebsvermögen der Steuerbilanz“ der abgegebenen E-Bilanz des Vorjahres, die keine Berichtigung ersetzt hat;
 3. ohne sie das Eigenkapital der Bücher zu Beginn des Wirtschaftsjahres, bei HGBM mit dem steuerlichen Ausgleichsposten des letzten Bilanzstichtags.
 
-Ein anderer Betrag, etwa der eines Bescheids, geht mit Begründung in „Betriebsvermögen des Vorjahres laut Unternehmen“; ohne Begründung nimmt „Berechnen“ den berechneten. Weitere Einlagen, Entnahmen und Ausschüttungen und die Kapitalanpassung gibt das Unternehmen an; ein Betrag von 0 geht als NIL.
+Ein anderer Betrag, etwa der eines Bescheids, geht mit Begründung in „Betriebsvermögen des Vorjahres laut Unternehmen“; ohne Begründung nimmt „Berechnen“ den berechneten. Weitere Einlagen, Entnahmen und Ausschüttungen und die Kapitalanpassung gibt das Unternehmen an; ein Betrag von 0 geht als NIL. Auch im Gründungsjahr ist ein Kapital, das erst nach dem ersten Tag eingezahlt und gebucht wird, eine „Weitere Einlage“: Die „Einlagen bei der Gründung“ lesen nur das Eigenkapital am ersten Tag. Weicht das Ergebnis vom Jahresüberschuss ab, nennt der Befund `170405109` die Richtung: Ist das Betriebsvermögen stärker gewachsen als der Jahresüberschuss, fehlen Einlagen, ist es schwächer gewachsen, fehlen Entnahmen oder Ausschüttungen, jeweils mit dem Betrag ohne Vorzeichen und dem Feld, in das er gehört.
 
 ## Befunde und „Bereit“
 
