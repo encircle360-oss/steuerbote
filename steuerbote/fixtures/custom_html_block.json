@@ -1,0 +1,12 @@
+[
+ {
+  "doctype": "Custom HTML Block",
+  "name": "Über Steuerbote",
+  "private": 0,
+  "roles": [],
+  "html": "<div class=\"steuerbote-about-block\"></div>",
+  "script": "frappe.call({ method: \"steuerbote.steuerbote.about_block.render\" }).then((response) => {\n\troot_element.querySelector(\".steuerbote-about-block\").innerHTML = response.message;\n});",
+  "style": "",
+  "modified": "2026-11-25 18:00:00.000000"
+ }
+]
