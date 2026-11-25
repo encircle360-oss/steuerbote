@@ -347,3 +347,16 @@ class ClosingTest(TestCase):
 				closing = template[template.rindex('<div class="sb-keep">') :]
 				self.assertRegex(closing, r"<h2>(Anmerkungen|Bemerkungen)</h2>")
 				self.assertIn('<div class="sb-footer">', closing)
+
+
+class FindingsTest(TestCase):
+	def test_the_hints_by_kind_stay_together_on_one_page(self):
+		"""wkhtmltopdf leaves the head of a table alone at the foot of a page when its first row no longer fits, and
+		repeats it over the rows on the next; Chromium does not. The hints by kind are a short table of one row per
+		kind, which a block kept together moves to the next page whole in both generators."""
+		findings = read("steuerbote/templates/includes/annual_filing/findings.html")
+		self.assertRegex(
+			findings,
+			r'\{%- if annual\.hint_kinds %\}\s*<div class="sb-keep">\s*<table class="sb-lines sb-findings">'
+			r"(?s:(?:(?!</table>).)*Hinweise nach Art(?:(?!</table>).)*)</table>\s*</div>\s*\{%- endif %\}",
+		)
