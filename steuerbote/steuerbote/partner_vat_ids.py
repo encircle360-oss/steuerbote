@@ -26,6 +26,7 @@ from frappe.utils.background_jobs import is_job_enqueued
 from steuerbote import vatid
 from steuerbote.steuerbote.doctype.vat_id_confirmation import vat_id_confirmation
 from steuerbote.vatid import partners
+from steuerbote.vatid.exemption import consequence
 from steuerbote.vatid.partners import (
 	Answer,
 	Asked,
@@ -56,7 +57,7 @@ WATCHED_ADDRESS_FIELDS = ("address_line1", "pincode", "city", "country", "disabl
 STATUS_FIELD = "vat_id_status"
 CHECKED_ON_FIELD = "vat_id_checked_on"
 LATEST_FIELD = "vat_id_confirmation"
-OVERRIDE_FIELD = "vat_id_override_reason"
+RELEASE_FIELD = "vat_id_release_reason"
 
 # The triggers a VAT ID Confirmation names; the Zusammenfassende Meldung and the Voranmeldung name their own.
 MANUAL = "Manual"
@@ -73,6 +74,11 @@ KIND_STATUS = {
 	Kind.NOT_CONFIRMABLE: "Not Confirmable",
 	Kind.MALFORMED: "Malformed",
 }
+# The problems after which the turnover loses what the USt-IdNr. carries, with the sentence of the Voranmeldung and the
+# Zusammenfassende Meldung (steuerbote.vatid.exemption).
+EXEMPTION_PROBLEMS = frozenset(
+	{Problem.NO_VAT_ID, Problem.GERMAN, Problem.NOT_CONFIRMABLE, Problem.MALFORMED, Problem.INVALID}
+)
 RESULT_STATUS = {"valid": "Valid", "invalid": "Invalid", "unknown": "No Answer"}
 STATUSES = ("", NOT_CHECKED, "Valid", "Invalid", "No Answer", "German VAT ID", "Not Confirmable", "Malformed")
 
@@ -682,21 +688,34 @@ def check_invoice(doc, method: str | None = None) -> None:
 	if finding is None:
 		return
 	text = finding_text(finding, vat_id, doc.customer_name or doc.customer, fact.answer)
+	if finding.problem in EXEMPTION_PROBLEMS:
+		text = f"{text} {consequence(finding.kennzahlen[0])}"
+	title = _("USt-IdNr. of the Customer")
 	if finding.level is Level.WARN:
-		frappe.msgprint(text, title=_("USt-IdNr. of the Customer"), indicator="orange")
+		frappe.msgprint(text, title=title, indicator="orange")
 		return
-	if (doc.get(OVERRIDE_FIELD) or "").strip():
+	reason = (doc.get(RELEASE_FIELD) or "").strip()
+	if finding.releasable and reason:
 		frappe.msgprint(
-			_("{0} The invoice is submitted with the reason given, which stays on it.").format(text),
-			title=_("USt-IdNr. of the Customer"),
+			_("{0} The USt-IdNr. is released for this invoice; reason: {1}").format(
+				text, escape_html(reason)
+			),
+			title=title,
 			indicator="orange",
 		)
 		return
+	if not finding.releasable:
+		frappe.throw(
+			_(
+				"{0} Correct the USt-IdNr. of the customer and of the invoice, or book the invoice on a revenue account that the mapping does not put into Kz 41, 42 or 21."
+			).format(text),
+			title=title,
+		)
 	frappe.throw(
 		_(
-			"{0} Next: press „Confirm VAT ID of the Customer“ on this invoice, or „Confirm VAT ID“ on the customer, wait for the notice that the confirmation has finished, and submit again. To submit all the same, give the reason in „VAT ID Override Reason“."
+			"{0} Next: press „Confirm VAT ID of the Customer“ on this invoice, or „Confirm VAT ID“ on the customer, wait for the notice that the confirmation has finished, and submit again. If a confirmation of the day of the supply lies outside Steuerbote, give it in „Reason for Releasing the VAT ID“."
 		).format(text),
-		title=_("USt-IdNr. of the Customer"),
+		title=title,
 	)
 
 

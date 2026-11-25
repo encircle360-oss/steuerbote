@@ -332,6 +332,13 @@ class Problem(Enum):
 	NOT_QUALIFIED = "not_qualified"
 
 
+RELEASABLE = frozenset(
+	{Problem.UNCONFIRMED, Problem.NO_ANSWER, Problem.INVALID, Problem.STALE, Problem.NOT_QUALIFIED}
+)
+"""What a written reason on the invoice releases, as a release of the number lifts an unconfirmed or invalid number on
+a line of the Zusammenfassende Meldung (steuerbote.zm.lines.RELEASABLE): a confirmation may lie outside Steuerbote. A
+missing, German, non-confirmable or malformed number is wrong on the invoice and has to be corrected there."""
+
 KIND_PROBLEMS = {
 	Kind.MISSING: Problem.NO_VAT_ID,
 	Kind.GERMAN: Problem.GERMAN,
@@ -350,6 +357,11 @@ class Finding:
 	kennzahlen: tuple[str, ...]
 	age: int | None = None
 	max_age: int | None = None
+
+	@property
+	def releasable(self) -> bool:
+		"""Whether a written reason on the invoice lifts the finding."""
+		return self.problem in RELEASABLE
 
 
 def invoice_finding(

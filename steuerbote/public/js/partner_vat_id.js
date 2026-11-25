@@ -7,6 +7,9 @@ if (!window.steuerbote_partner_vat_id) {
 	const STATE_METHOD = "steuerbote.steuerbote.partner_vat_ids.vat_id_state";
 	const CONFIRM_METHOD = "steuerbote.steuerbote.partner_vat_ids.confirm_vat_id";
 	const PARTNER_EVENT = "steuerbote_partner_vat_id";
+	// The realtime notice of a finished confirmation may not arrive, as behind a proxy that refuses the socket; while a
+	// confirmation of the partner waits or runs, the form asks the server this often whether it has finished.
+	const POLL_INTERVAL_MS = 4000;
 	const INDICATORS = { Current: "green", Invalid: "red", Malformed: "red", "Not Confirmable": "red" };
 
 	const show_vat_id_state = (frm) => {
@@ -40,12 +43,40 @@ if (!window.steuerbote_partner_vat_id) {
 			}
 			if (state.queued) {
 				lines.push(escape(__("A confirmation of the USt-IdNr. is waiting in the queue.")));
+				poll_while_queued(frm);
 			}
 			frm.dashboard.set_headline_alert(lines.length ? `<div>${lines.join("<br>")}</div>` : "");
 			if (state.can_ask) {
 				frm.add_custom_button(__("Confirm VAT ID"), () => confirm_vat_id(frm, state));
 			}
 		});
+	};
+
+	// Reloads the form once the confirmation of the partner has left the queue; stops when the form shows another
+	// document.
+	const poll_while_queued = (frm) => {
+		if (frm.$steuerbote_vat_id_poll) {
+			return;
+		}
+		const doctype = frm.doctype;
+		const name = frm.doc.name;
+		const stop = () => {
+			clearInterval(frm.$steuerbote_vat_id_poll);
+			frm.$steuerbote_vat_id_poll = null;
+		};
+		frm.$steuerbote_vat_id_poll = setInterval(() => {
+			const [view, route_doctype, route_name] = frappe.get_route();
+			if (view !== "Form" || route_doctype !== doctype || route_name !== name || frm.doc.name !== name) {
+				stop();
+				return;
+			}
+			frappe.call({ method: STATE_METHOD, args: { party_type: doctype, party: name } }).then((response) => {
+				if (!response.message.queued) {
+					stop();
+					frm.reload_doc();
+				}
+			});
+		}, POLL_INTERVAL_MS);
 	};
 
 	// The dialog names everything that leaves the site.
