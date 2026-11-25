@@ -1803,6 +1803,8 @@
 "The installation of ERiC runs in the background.","Die Installation von ERiC läuft im Hintergrund."
 "The installation of the taxonomy runs in the background.","Die Einrichtung der Taxonomie läuft im Hintergrund."
 "The invoice goes to Kz {0}, but the customer {1} has no USt-IdNr.","Die Rechnung geht in Kz {0}, aber der Kunde {1} hat keine USt-IdNr."
+"The invoice is submitted all the same. Correct the USt-IdNr. of the customer.","Die Rechnung wird trotzdem gebucht. Bitte berichtigen Sie die USt-IdNr. am Kunden."
+"The invoice is submitted all the same. Next: press „Confirm VAT ID“ on the customer; for a service the qualified confirmation, with name and address, shows the customer a Unternehmer (UStAE 3a.2 Abs. 9).","Die Rechnung wird trotzdem gebucht. Als Nächstes: „USt-IdNr. bestätigen“ am Kunden drücken; für eine sonstige Leistung weist die qualifizierte Bestätigung mit Name und Anschrift den Kunden als Unternehmer aus (UStAE 3a.2 Abs. 9)."
 "The items A to E of the Aktivseite, without a Fehlbetrag not covered by Eigenkapital (§ 267 Abs. 4a HGB).","Die Posten A bis E der Aktivseite, ohne einen nicht durch Eigenkapital gedeckten Fehlbetrag (§ 267 Abs. 4a HGB)."
 "The label of the position in the HGB-Taxonomie, which saving fills in once the taxonomy is installed.","Die Bezeichnung der Position in der HGB-Taxonomie, die das Speichern einträgt, sobald die Taxonomie eingerichtet ist."
 "The last Voranmeldung of the year, which deducts the Sondervorauszahlung.","Die letzte Voranmeldung des Jahres, die die Sondervorauszahlung abzieht."
