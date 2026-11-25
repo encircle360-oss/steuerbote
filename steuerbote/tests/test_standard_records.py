@@ -38,6 +38,7 @@ MAPPING_DOCTYPES = (
 	"vat_return_mapping_check",
 	"vat_return_watched_account",
 	"vat_return_annual_rule",
+	"vat_return_mapping_reverse_charge",
 )
 # The charts of the mapping read the same in every language.
 CHART_NAMES = frozenset({"SKR03", "SKR04", "Eigener Kontenrahmen"})
@@ -75,6 +76,13 @@ FRAMEWORK_LABELS = frozenset(
 		"Setup",
 		"Voucher No",
 		"Voucher Type",
+		"Applies To",
+		"Document",
+		"Journal Entry",
+		"Note",
+		"Purchase Invoice",
+		"Purchase Taxes and Charges Template",
+		"Supplier",
 		*FRAMEWORK_GERMAN,
 	}
 )

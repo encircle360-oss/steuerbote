@@ -9,6 +9,7 @@ from steuerbote.ustva.defaults import SKR03
 from steuerbote.ustva.plausibility import (
 	DEFAULT_CONFIRMATION_AGE,
 	EU_MEMBER_STATES,
+	RESIDENCE_CODES,
 	SEVERITIES,
 	VAT_ID_CODES,
 	VAT_ID_KENNZAHLEN,
@@ -28,10 +29,12 @@ from steuerbote.ustva.plausibility import (
 	merged,
 	purchase_accounts,
 	reconciliation_hints,
+	residence_hints,
 	sales_accounts,
 	vat_id_hints,
 	watched_account_hints,
 )
+from steuerbote.ustva.residence import Finding, Problem
 from steuerbote.vatid.result import Outcome
 
 
@@ -415,6 +418,175 @@ class DerivedBaseHintsTest(TestCase):
 		self.assertEqual(codes(found), [Code.WATCHED_ACCOUNT, Code.BASE_FROM_TAX])
 
 
+class ResidenceHintsTest(TestCase):
+	"""The decisions on the suppliers of sections C and D, as the person who files reads them."""
+
+	def hint(
+		self, problem: Problem, *facts: str, supplier: str = "Harbor Analytics Inc.", kennzahl: str = "84"
+	):
+		alternative = "46" if kennzahl == "84" else "84"
+		finding = Finding(problem, "Purchase Invoice:PI-7", supplier, facts, kennzahl, alternative)
+		(found,) = residence_hints([finding])
+		self.assertEqual(
+			(found.voucher_type, found.voucher_no, found.party), ("Purchase Invoice", "PI-7", supplier)
+		)
+		return found
+
+	def test_a_voucher_without_supplier(self):
+		finding = Finding(Problem.NO_SUPPLIER, "Journal Entry:J-3", kennzahl="84", alternative="46")
+		(hint,) = residence_hints([finding])
+		self.assertEqual((hint.code, hint.severity), (Code.RESIDENCE_OPEN, Severity.HINT))
+		self.assertEqual((hint.voucher_type, hint.voucher_no, hint.party), ("Journal Entry", "J-3", ""))
+		self.assertEqual(
+			hint.text,
+			"Kz 84: Der Beleg bucht Steuer nach § 13b UStG ohne Grundlagenkonto und nennt keinen Lieferanten; "
+			"Steuerbote meldet die Bemessungsgrundlage in Kz 84, der Vorgabe der Verprobung. Ist es eine sonstige "
+			"Leistung nach § 3a Abs. 2 UStG eines im übrigen Gemeinschaftsgebiet ansässigen Unternehmers, gehört sie "
+			"in Kz 46: Ordne den Beleg oder den Lieferanten in der Kontenzuordnung unter „Einordnung nach § 13b UStG“ "
+			"ein.",
+		)
+
+	def test_suppliers_in_different_places(self):
+		hint = self.hint(
+			Problem.SUPPLIERS_DISAGREE,
+			"Vltava Software s.r.o.",
+			"other member state",
+			"Harbor Analytics Inc.",
+			"third country",
+		)
+		self.assertEqual(hint.code, Code.RESIDENCE_OPEN)
+		self.assertEqual(
+			hint.text,
+			"Kz 84: Die Lieferanten des Belegs sind an verschiedenen Orten ansässig (Vltava Software s.r.o. im "
+			"übrigen Gemeinschaftsgebiet, Harbor Analytics Inc. im Drittlandsgebiet); Steuerbote meldet die "
+			"Bemessungsgrundlage in Kz 84. Ordne den Beleg oder den Lieferanten in der Kontenzuordnung unter "
+			"„Einordnung nach § 13b UStG“ ein.",
+		)
+
+	def test_a_supplier_without_country(self):
+		hint = self.hint(Problem.NO_COUNTRY, supplier="Nebula Tools LLC")
+		self.assertEqual(hint.code, Code.RESIDENCE_OPEN)
+		self.assertEqual(
+			hint.text,
+			"Kz 84: Beim Lieferanten Nebula Tools LLC ist weder ein Land noch eine Anschrift mit Land gepflegt. "
+			"Steuerbote meldet die Bemessungsgrundlage in Kz 84. Pflege das Land des Lieferanten, oder ordne den "
+			"Beleg oder den Lieferanten in der Kontenzuordnung unter „Einordnung nach § 13b UStG“ ein.",
+		)
+		with_prefix = self.hint(Problem.NO_COUNTRY, "IE", supplier="Nebula Tools LLC")
+		self.assertIn(
+			"gepflegt; seine USt-IdNr. beginnt mit IE, das zeigt aber nur eine Registrierung. Steuerbote",
+			with_prefix.text,
+		)
+
+	def test_an_address_elsewhere(self):
+		hint = self.hint(Problem.ADDRESS_ELSEWHERE, "United States", "Ireland")
+		self.assertEqual((hint.code, hint.severity), (Code.RESIDENCE_CONFLICT, Severity.HINT))
+		self.assertEqual(
+			hint.text,
+			"Kz 84: Beim Lieferanten Harbor Analytics Inc. steht als Land United States, seine Anschrift liegt aber "
+			"in Ireland. Steuerbote folgt dem Land; bitte prüfe, wo der Lieferant ansässig ist.",
+		)
+
+	def test_a_vat_id_of_another_place(self):
+		hint = self.hint(Problem.VAT_ID_PREFIX, "United States", "IE")
+		self.assertEqual(hint.code, Code.RESIDENCE_CONFLICT)
+		self.assertEqual(
+			hint.text,
+			"Kz 84: Der Lieferant Harbor Analytics Inc. hat das Land United States, seine USt-IdNr. beginnt aber mit "
+			"IE. Steuerbote folgt dem Land, denn ansässig ist ein Unternehmer, wo er Sitz, Geschäftsleitung oder eine "
+			"Betriebsstätte hat (§ 13b Abs. 7 UStG), nicht wo er registriert ist; bitte prüfe den Sitz am Beleg.",
+		)
+
+	def test_a_template_of_another_reverse_charge_for_a_supplier_of_a_member_state(self):
+		hint = self.hint(
+			Problem.TEMPLATE_OTHER_FROM_MEMBER_STATE, "Reverse Charge", supplier="Liffey Cloud Ltd"
+		)
+		self.assertEqual(hint.code, Code.RESIDENCE_CONFLICT)
+		self.assertEqual(
+			hint.text,
+			"Kz 84: Die Steuervorlage Reverse Charge ist als andere Leistung nach § 13b Abs. 2 UStG eingeordnet, der "
+			"Lieferant Liffey Cloud Ltd ist aber im übrigen Gemeinschaftsgebiet ansässig. Ist es eine sonstige "
+			"Leistung nach § 3a Abs. 2 UStG, gehört sie in Kz 46: Ordne den Beleg oder den Lieferanten in der "
+			"Kontenzuordnung unter „Einordnung nach § 13b UStG“ ein.",
+		)
+
+	def test_an_eu_service_stated_for_a_supplier_outside_the_member_states(self):
+		hint = self.hint(Problem.STATED_EU_SERVICE_OUTSIDE, "supplier", "third country", kennzahl="46")
+		self.assertEqual((hint.code, hint.severity), (Code.EU_SERVICE_OUTSIDE, Severity.WARNING))
+		self.assertEqual(
+			hint.text,
+			"Kz 46: Der Lieferant ist als sonstige Leistung aus dem übrigen Gemeinschaftsgebiet eingeordnet, der "
+			"Lieferant Harbor Analytics Inc. ist laut Stammdaten aber im Drittlandsgebiet ansässig. Kz 46 setzt einen "
+			"im übrigen Gemeinschaftsgebiet ansässigen Unternehmer voraus (§ 13b Abs. 1 UStG); bitte prüfe die "
+			"Einordnung.",
+		)
+		for source, start in (
+			("voucher", "Der Beleg ist"),
+			("tax template", "Die Steuervorlage des Belegs ist"),
+		):
+			with self.subTest(source=source):
+				hint = self.hint(Problem.STATED_EU_SERVICE_OUTSIDE, source, "domestic", kennzahl="46")
+				self.assertTrue(hint.text.startswith(f"Kz 46: {start} als sonstige Leistung"))
+				self.assertIn("laut Stammdaten aber im Inland ansässig", hint.text)
+
+	def test_a_base_account_of_kz_46_for_a_supplier_outside_the_member_states(self):
+		hint = self.hint(Problem.EU_SERVICE_ACCOUNT_OUTSIDE, "country", "third country", kennzahl="46")
+		self.assertEqual((hint.code, hint.severity), (Code.EU_SERVICE_OUTSIDE, Severity.WARNING))
+		self.assertEqual(
+			hint.text,
+			"Kz 46: Der Beleg bucht auf ein Grundlagenkonto von Kz 46, der Lieferant Harbor Analytics Inc. ist laut "
+			"Stammdaten aber im Drittlandsgebiet ansässig. Kz 46 nimmt nur sonstige Leistungen nach § 3a Abs. 2 UStG "
+			"eines im übrigen Gemeinschaftsgebiet ansässigen Unternehmers auf (§ 13b Abs. 1 UStG), alle anderen "
+			"gehören in Kz 84.",
+		)
+		stated = self.hint(
+			Problem.EU_SERVICE_ACCOUNT_OUTSIDE, "supplier", "other member state", kennzahl="46"
+		)
+		self.assertIn(
+			"Harbor Analytics Inc. ist aber als andere Leistung nach § 13b Abs. 2 UStG eingeordnet.",
+			stated.text,
+		)
+		addressed = self.hint(Problem.EU_SERVICE_ACCOUNT_OUTSIDE, "address", "domestic", kennzahl="46")
+		self.assertIn("laut Stammdaten aber im Inland ansässig", addressed.text)
+
+	def test_an_acquisition_from_a_supplier_of_the_drittlandsgebiet(self):
+		hint = self.hint(Problem.ACQUISITION_OUTSIDE_EU, "United States", kennzahl="")
+		self.assertEqual((hint.code, hint.severity), (Code.ACQUISITION_OUTSIDE_EU, Severity.WARNING))
+		self.assertEqual(
+			hint.text,
+			"Der Beleg bucht Umsatzsteuer aus innergemeinschaftlichem Erwerb, der Lieferant Harbor Analytics Inc. ist "
+			"laut Stammdaten aber im Drittlandsgebiet ansässig (United States). Ein innergemeinschaftlicher Erwerb "
+			"setzt voraus, dass der Gegenstand aus einem anderen Mitgliedstaat kommt (§ 1a Abs. 1 Nr. 1 UStG); kommt "
+			"er aus dem Drittlandsgebiet, ist es eine Einfuhr. Bitte prüfe den Beleg.",
+		)
+
+	def test_every_problem_has_a_code(self):
+		self.assertEqual(set(RESIDENCE_CODES), set(Problem))
+
+	def test_hints_put_them_after_the_bases_from_the_tax_and_the_warnings_first(self):
+		comparison = compare(
+			{},
+			EarlierPeriod(Period.month(2026, 10), {}),
+			EarlierPeriod(Period.month(2025, 11), {}),
+			KENNZAHLEN,
+			report_rule,
+		)
+		findings = (
+			Finding(Problem.NO_SUPPLIER, "Journal Entry:J1", kennzahl="84", alternative="46"),
+			Finding(Problem.ACQUISITION_OUTSIDE_EU, "Purchase Invoice:P1", "Harbor Analytics Inc.", ("US",)),
+		)
+		found = hints(
+			comparison,
+			[],
+			{"84": d("63.05")},
+			SKR03,
+			FIGURES,
+			derived=(derived("Journal Entry:J1", "63.05", "11.98"),),
+			findings=findings,
+		)
+		self.assertEqual(codes(found), [Code.ACQUISITION_OUTSIDE_EU, Code.BASE_FROM_TAX, Code.RESIDENCE_OPEN])
+
+
 class WatchedAccountHintsTest(TestCase):
 	"""A balance on an account watched for a hint is named with its debits and credits and holds nothing."""
 
@@ -662,7 +834,15 @@ class HintsTest(TestCase):
 		self.assertEqual(set(SEVERITIES), set(Code))
 		self.assertEqual(
 			{code for code, severity in SEVERITIES.items() if severity is Severity.WARNING},
-			{Code.EU_WITHOUT_VAT_ID, Code.EU_ADDRESS, Code.ZERO_TAX, Code.TAX_DEVIATION, Code.VAT_ID_INVALID},
+			{
+				Code.EU_WITHOUT_VAT_ID,
+				Code.EU_ADDRESS,
+				Code.ZERO_TAX,
+				Code.TAX_DEVIATION,
+				Code.VAT_ID_INVALID,
+				Code.EU_SERVICE_OUTSIDE,
+				Code.ACQUISITION_OUTSIDE_EU,
+			},
 		)
 
 	def test_the_codes_and_severities_are_those_the_return_stores(self):
@@ -685,6 +865,10 @@ class HintsTest(TestCase):
 				"REGISTER-ABWEICHUNG",
 				"GRUNDLAGE-AUS-STEUER",
 				"VOR-START",
+				"SITZ-OFFEN",
+				"SITZ-WIDERSPRUCH",
+				"KZ46-OHNE-EU-SITZ",
+				"ERWERB-AUS-DRITTLAND",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung"])

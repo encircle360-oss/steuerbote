@@ -676,6 +676,17 @@ class CheckTest(TestCase):
 			derived = {check.label: check.derived_base for check in mapping.checks if check.derived_base}
 			self.assertEqual(derived, expected, mapping.chart)
 
+	def test_the_services_of_a_supplier_of_another_member_state_go_to_kz_46(self):
+		"""§ 13b Absatz 1 UStG, line 30: the sonstigen Leistungen of § 3a Absatz 2 UStG of a business established in
+		another member state. Both rates, because Kz 46 has none of its own; the acquisitions are of a member state by
+		definition and keep their Kennzahl."""
+		expected = {"Umsatzsteuer nach § 13b UStG 19 %": "46", "Umsatzsteuer nach § 13b UStG 7 %": "46"}
+		for mapping in (SKR03, SKR04):
+			derived = {
+				check.label: check.derived_base_eu for check in mapping.checks if check.derived_base_eu
+			}
+			self.assertEqual(derived, expected, mapping.chart)
+
 
 class MirrorTest(TestCase):
 	def test_both_charts_know_the_same_roles(self):
@@ -852,13 +863,15 @@ DIGESTS = {
 	"SKR04 2026.1": "67ca14cab3a3ca95c488815e4fd960aeb607be54d1a7ee8f00413e007cc1bbf5",
 	"SKR03 2026.2": "52810e4a93a136b745730cbd3c95e209f451ebe7057f3a1b11942f0fddadf093",
 	"SKR04 2026.2": "21b19ba024c5101eac2087ef84dc72f03409163641b053b6b3e048ee6c3666f1",
+	"SKR03 2026.3": "41fdbbbe0873d5025b0ed46d4bee380b964e25ad4143f60174d76c188eb0659d",
+	"SKR04 2026.3": "91b7b061344ddd79161c3d94cb1ec3ae33ac242c49c186f167ba7d13cb05529a",
 }
 
 
 class DefaultsVersionTest(TestCase):
 	def test_the_version_names_the_chart_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, REVISION), (2026, 2))
-		self.assertEqual([defaults_version(chart) for chart in DEFAULTS], ["SKR03 2026.2", "SKR04 2026.2"])
+		self.assertEqual((DATEV_EDITION, REVISION), (2026, 3))
+		self.assertEqual([defaults_version(chart) for chart in DEFAULTS], ["SKR03 2026.3", "SKR04 2026.3"])
 
 	def test_a_chart_without_defaults_has_no_version(self):
 		with self.assertRaisesRegex(KeyError, "no default mapping for chart 'Eigener Kontenrahmen'"):

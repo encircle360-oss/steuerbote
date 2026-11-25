@@ -284,7 +284,7 @@ class CompanySetupTest(IntegrationTestCase):
 		result = result_of(done, "vat_return_mapping")
 		self.assertEqual((result.outcome, result.document), (Outcome.CREATED, (MAPPING, SET_UP_COMPANY)))
 		mapping = frappe.get_doc(MAPPING, SET_UP_COMPANY)
-		self.assertEqual(mapping.defaults_version, "SKR03 2026.2")
+		self.assertEqual(mapping.defaults_version, "SKR03 2026.3")
 		self.assertEqual(
 			[(row.account_number, row.kennzahl) for row in mapping.rules], [("8400", "81"), ("1576", "66")]
 		)
@@ -293,7 +293,7 @@ class CompanySetupTest(IntegrationTestCase):
 		self.assertEqual(
 			texts_of(done, "vat_return_mapping"),
 			[
-				f"The VAT Return Mapping of {SET_UP_COMPANY} had no rows and now holds the defaults SKR03 2026.2: "
+				f"The VAT Return Mapping of {SET_UP_COMPANY} had no rows and now holds the defaults SKR03 2026.3: "
 				"account rules 2, tax checks 1, watched accounts 1.",
 				f"{len(mapping.load_defaults())} accounts of the defaults do not exist in the company and were left "
 				"out.",

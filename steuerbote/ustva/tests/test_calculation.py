@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from typing import ClassVar
 from unittest import TestCase
@@ -12,10 +13,21 @@ from steuerbote.ustva.calculation import (
 	UstvaResult,
 	calculate,
 	derive_bases,
+	purchase_vouchers,
 	require_cents,
 )
 from steuerbote.ustva.defaults import SKR03, SKR04
 from steuerbote.ustva.mapping import AccountRule, Mapping, Side, TaxCheck, WatchedAccount, WatchLevel
+from steuerbote.ustva.residence import (
+	Classification,
+	Finding,
+	Placement,
+	Problem,
+	Residence,
+	Source,
+	Supplier,
+	Voucher,
+)
 
 
 def line(account: str, debit: str = "0", credit: str = "0", voucher: str | None = None) -> LedgerLine:
@@ -575,6 +587,218 @@ class DerivedBaseTest(TestCase):
 		derived = DerivedBase(REVERSE_CHARGE_19, "V1", "84", d("19"), d("19.00"), d("100.00"), ("4980",))
 		with self.assertRaises(AttributeError):
 			derived.base = d("0")  # type: ignore[misc]
+
+
+DAY = date(2027, 3, 10)
+PRAGUE = Supplier("Vltava Software s.r.o.", "Czech Republic", vat_id="CZ12345678")
+BOSTON = Supplier("Harbor Analytics Inc.", "United States")
+REVERSE_CHARGE_7 = "Umsatzsteuer nach § 13b UStG 7 %"
+
+
+def known(*suppliers: Supplier, **fields) -> Voucher:
+	return Voucher(DAY, suppliers, **fields)
+
+
+def service(voucher: str, net: str = "1000.00", tax: str = "190.00") -> list[LedgerLine]:
+	"""A service of § 13b UStG on an expense account, its tax booked by a tax key or template on 1577 and 1787."""
+	return purchase(voucher, ("4980", net, "0"), ("1577", tax, "0"), ("1787", "0", tax), ("1600", "0", net))
+
+
+class SupplierResidenceTest(TestCase):
+	"""The derived base of § 13b UStG goes to Kz 46 when its supplier is established in another member state and the
+	service is one of § 3a Absatz 2 UStG, to Kz 84 otherwise; residence.py decides from what the caller knows."""
+
+	def test_a_supplier_of_another_member_state_sends_the_base_to_46_and_47(self):
+		result = calculate(service("PI-1"), SKR03, vouchers={"PI-1": known(PRAGUE)})
+		self.assertEqual((result.reported("46"), result.reported("47")), (d("1000"), d("190.00")))
+		self.assertNotIn("84", result.values)
+		self.assertEqual(result.kz83, d("0.00"))
+		(derived,) = check_of(result, "1787").derived
+		self.assertEqual(
+			derived,
+			DerivedBase(
+				REVERSE_CHARGE_19,
+				"PI-1",
+				"46",
+				d("19"),
+				d("190.00"),
+				d("1000.00"),
+				("4980",),
+				Placement(Classification.EU_SERVICE, Residence.OTHER_MEMBER_STATE, Source.COUNTRY),
+			),
+		)
+		self.assertTrue(result.ready)
+		self.assertEqual(result.findings, ())
+
+	def test_a_supplier_of_the_drittlandsgebiet_keeps_the_base_in_84(self):
+		result = calculate(service("PI-1"), SKR03, vouchers={"PI-1": known(BOSTON)})
+		self.assertEqual((result.reported("84"), result.reported("85")), (d("1000"), d("190.00")))
+		self.assertNotIn("46", result.values)
+		self.assertEqual(result.findings, ())
+
+	def test_the_7_percent_check_sends_it_to_46_at_7_percent(self):
+		lines = purchase("PI-1", ("4900", "100.00", "0"), ("1578", "7.00", "0"), ("1785", "0", "7.00"))
+		result = calculate(lines, SKR03, vouchers={"PI-1": known(PRAGUE)})
+		self.assertEqual((result.reported("46"), result.reported("47")), (d("100"), d("7.00")))
+		self.assertEqual(check_of(result, "1785").derived[0].label, REVERSE_CHARGE_7)
+
+	def test_one_month_splits_by_supplier_and_the_bases_and_taxes_add_up(self):
+		lines = [*service("PI-1"), *service("PI-2", "500.00", "95.00"), *service("PI-3", "33.33", "6.33")]
+		vouchers = {"PI-1": known(PRAGUE), "PI-2": known(BOSTON), "PI-3": known(PRAGUE)}
+		split = calculate(lines, SKR03, vouchers=vouchers)
+		together = calculate(lines, SKR03)
+		self.assertEqual((split.reported("46"), split.reported("47")), (d("1033"), d("196.33")))
+		self.assertEqual((split.reported("84"), split.reported("85")), (d("500"), d("95.00")))
+		self.assertEqual(split.reported("46") + split.reported("84"), together.reported("84"))
+		self.assertEqual(split.reported("47") + split.reported("85"), together.reported("85"))
+		self.assertEqual(split.kz83, together.kz83)
+
+	def test_without_what_the_caller_knows_every_base_stays_in_84(self):
+		result = calculate(service("PI-1"), SKR03)
+		self.assertEqual(result.reported("84"), d("1000"))
+		self.assertIsNone(check_of(result, "1787").derived[0].placement)
+		self.assertEqual(result.findings, ())
+
+	def test_a_voucher_the_caller_does_not_know_stays_in_84_without_a_finding(self):
+		result = calculate([*service("PI-1"), *service("PI-2")], SKR03, vouchers={"PI-1": known(PRAGUE)})
+		self.assertEqual((result.reported("46"), result.reported("84")), (d("1000"), d("1000")))
+		self.assertEqual(result.findings, ())
+
+	def test_lines_without_voucher_stay_in_84(self):
+		lines = purchase(None, ("4980", "100.00", "0"), ("1577", "19.00", "0"), ("1787", "0", "19.00"))
+		result = calculate(lines, SKR03, vouchers={"PI-1": known(PRAGUE)})
+		self.assertEqual(result.reported("84"), d("100"))
+		self.assertEqual(result.findings, ())
+
+	def test_a_journal_entry_without_supplier_stays_in_84_with_a_finding(self):
+		result = calculate(service("Journal Entry:J1"), SKR03, vouchers={"Journal Entry:J1": known()})
+		self.assertEqual(result.reported("84"), d("1000"))
+		self.assertEqual(
+			result.findings,
+			(Finding(Problem.NO_SUPPLIER, "Journal Entry:J1", kennzahl="84", alternative="46"),),
+		)
+
+	def test_a_voucher_classified_by_a_person_goes_where_it_says(self):
+		other = calculate(
+			service("PI-1"), SKR03, vouchers={"PI-1": known(PRAGUE, classification="Other Reverse Charge")}
+		)
+		self.assertEqual(other.reported("84"), d("1000"))
+		eu = calculate(service("J1"), SKR03, vouchers={"J1": known(classification=Classification.EU_SERVICE)})
+		self.assertEqual(eu.reported("46"), d("1000"))
+		self.assertEqual((other.findings, eu.findings), ((), ()))
+
+	def test_a_finding_names_the_kennzahl_the_base_went_to_and_the_other_one(self):
+		supplier = Supplier("Harbor Analytics Inc.", "United States", vat_id="IE9999999W")
+		result = calculate(service("PI-1"), SKR03, vouchers={"PI-1": known(supplier)})
+		self.assertEqual(
+			result.findings,
+			(Finding(Problem.VAT_ID_PREFIX, "PI-1", supplier.name, ("United States", "IE"), "84", "46"),),
+		)
+		addressed = Supplier("Vltava Software s.r.o.", "Czech Republic", "United States")
+		result = calculate(service("PI-2"), SKR03, vouchers={"PI-2": known(addressed)})
+		self.assertEqual(
+			result.findings,
+			(
+				Finding(
+					Problem.ADDRESS_ELSEWHERE,
+					"PI-2",
+					addressed.name,
+					("Czech Republic", "United States"),
+					"46",
+					"84",
+				),
+			),
+		)
+
+	def test_a_voucher_in_both_checks_is_found_once(self):
+		lines = [
+			*service("Journal Entry:J1", "100.00", "19.00"),
+			*purchase(
+				"Journal Entry:J1", ("4900", "100.00", "0"), ("1578", "7.00", "0"), ("1785", "0", "7.00")
+			),
+		]
+		result = calculate(lines, SKR03, vouchers={"Journal Entry:J1": known()})
+		self.assertEqual(len(result.derived), 2)
+		self.assertEqual([finding.problem for finding in result.findings], [Problem.NO_SUPPLIER])
+
+	def test_a_base_account_always_wins_over_the_supplier(self):
+		lines = purchase("PI-1", ("3125", "1000.00", "0"), ("1577", "190.00", "0"), ("1787", "0", "190.00"))
+		result = calculate(lines, SKR03, vouchers={"PI-1": known(PRAGUE)})
+		self.assertEqual(result.reported("84"), d("1000"))
+		self.assertEqual(result.derived, ())
+		self.assertEqual(result.findings, ())
+
+	def test_a_base_account_of_46_with_a_supplier_outside_the_member_states_is_a_finding(self):
+		lines = purchase("PI-1", ("3123", "1000.00", "0"), ("1577", "190.00", "0"), ("1787", "0", "190.00"))
+		result = calculate(lines, SKR03, vouchers={"PI-1": known(BOSTON)})
+		self.assertEqual(result.reported("46"), d("1000"))
+		self.assertEqual(
+			result.findings,
+			(
+				Finding(
+					Problem.EU_SERVICE_ACCOUNT_OUTSIDE,
+					"PI-1",
+					BOSTON.name,
+					("country", "third country"),
+					"46",
+					"84",
+				),
+			),
+		)
+		stated = calculate(
+			lines, SKR03, vouchers={"PI-1": known(PRAGUE, classification=Classification.OTHER)}
+		)
+		self.assertEqual(stated.findings[0].facts, ("voucher", "other member state"))
+		self.assertEqual(calculate(lines, SKR03, vouchers={"PI-1": known(PRAGUE)}).findings, ())
+		self.assertEqual(calculate(lines, SKR03, vouchers={}).findings, ())
+
+	def test_an_acquisition_from_a_supplier_of_the_drittlandsgebiet_is_a_finding(self):
+		derived = purchase("PI-1", ("4930", "500.00", "0"), ("1574", "95.00", "0"), ("1774", "0", "95.00"))
+		booked = purchase("PI-2", ("3425", "200.00", "0"), ("1574", "38.00", "0"), ("1774", "0", "38.00"))
+		addressed = Supplier("Granite Supply Corp.", address_country="Canada")
+		vouchers = {"PI-1": known(BOSTON, PRAGUE), "PI-2": known(addressed)}
+		result = calculate([*derived, *booked], SKR03, vouchers=vouchers)
+		self.assertEqual(result.reported("89"), d("700"))
+		self.assertEqual(
+			result.findings,
+			(
+				Finding(Problem.ACQUISITION_OUTSIDE_EU, "PI-1", BOSTON.name, ("United States",)),
+				Finding(Problem.ACQUISITION_OUTSIDE_EU, "PI-2", addressed.name, ("Canada",)),
+			),
+		)
+		self.assertEqual(calculate(derived, SKR03, vouchers={"PI-1": known(PRAGUE)}).findings, ())
+		self.assertEqual(calculate(derived, SKR03, vouchers={}).findings, ())
+
+	def test_derive_bases_gives_what_calculate_derives(self):
+		lines = [*service("PI-1"), *service("PI-2")]
+		vouchers = {"PI-1": known(PRAGUE), "PI-2": known(BOSTON)}
+		self.assertEqual(
+			derive_bases(lines, SKR03, vouchers), calculate(lines, SKR03, vouchers=vouchers).derived
+		)
+		self.assertEqual([base.kennzahl for base in derive_bases(lines, SKR03, vouchers)], ["46", "84"])
+
+	def test_a_mapping_without_a_kennzahl_for_the_member_states_keeps_every_base_in_its_derived_base(self):
+		mapping = Mapping(
+			"own",
+			(AccountRule("3125", "84", Side.DEBIT, d("19")),),
+			(TaxCheck(REVERSE_CHARGE_19, ("3125",), ("1787",), derived_base="84"),),
+		)
+		result = calculate(service("PI-1"), mapping, vouchers={"PI-1": known(PRAGUE)})
+		self.assertEqual(result.reported("84"), d("1000"))
+		self.assertIsNone(result.derived[0].placement)
+
+	def test_the_vouchers_to_ask_about_are_those_of_sections_c_and_d(self):
+		lines = [
+			*service("PI-1"),
+			line("8400", credit="100", voucher="SI-1"),
+			line("1776", credit="19", voucher="SI-1"),
+			line("3425", debit="10", voucher="PI-2"),
+			line("1774", credit="1.90", voucher="PI-3"),
+			line("3123", debit="5", voucher=None),
+			line("1787", credit="0.95", voucher="PI-1"),
+		]
+		self.assertEqual(purchase_vouchers(lines, SKR03), ("PI-1", "PI-2", "PI-3"))
+		self.assertEqual(purchase_vouchers([], SKR03), ())
 
 
 class VoucherRoundingTest(TestCase):
