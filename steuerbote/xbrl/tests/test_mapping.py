@@ -699,7 +699,9 @@ class PlacesOfBalancesTest(TestCase):
 		self.assertEqual(
 			finding.text,
 			"Konto 1360 Geldtransit hat einen Saldo, aber keinen Platz in der Bilanzzuordnung: Ordnen Sie es einer "
-			"Position zu, oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt.",
+			"Position zu, oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt. Die Vorgaben geben Konten, die "
+			"der Kontenrahmen nicht beschriftet, keinen Platz; die Steuerberatung entscheidet ihn. „Konten prüfen“ in "
+			"der Bilanzzuordnung nennt alle Konten ohne Platz.",
 		)
 		self.assertEqual((finding.amount, finding.source), (Decimal("5"), "§ 246 Abs. 1 Satz 1 HGB"))
 		self.assertEqual((placement.left_out, placement.ready), ((books[1],), False))
