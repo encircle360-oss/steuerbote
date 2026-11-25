@@ -26,8 +26,8 @@ from steuerbote.eric.service import (
 	WorkerError,
 	WorkerOutput,
 	library_versions,
-	steuernummer_valid,
 	run,
+	steuernummer_valid,
 )
 from steuerbote.eric.tests import stub
 from steuerbote.eric.tests.tracebacks import frame_variables, interrupted_after

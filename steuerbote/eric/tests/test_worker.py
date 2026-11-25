@@ -654,6 +654,11 @@ class SteuernummerTest(WorkerTestCase):
 		)
 		self.assertEqual(code, 0)
 		self.assertIn("610001526", json.loads(stdout)["error"])
+		runtime = replace(self.runtime, lib_dir=self.directory / "nowhere")
+		code, stdout, _ = self.serve(
+			{"command": "steuernummer", "runtime": runtime.to_dict(), "steuernummer": "1"}
+		)
+		self.assertIn("libericapi.so", json.loads(stdout)["error"])
 		code, stdout, stderr = self.serve(
 			{"command": "steuernummer", "runtime": self.runtime.to_dict(), "steuernummer": 4}
 		)

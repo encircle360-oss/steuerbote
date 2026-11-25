@@ -106,11 +106,11 @@ class IntegrationTestAnnualFilingSettings(IntegrationTestCase):
 		settings = self.make().insert()
 		settings.income_tax_number = "123/456/78902"
 		adapter = "steuerbote.steuerbote.doctype.vat_return.transmission_adapter.steuernummer_valid"
-		with patch(adapter, return_value=False) as checked:
-			with self.assertRaisesRegex(
-				frappe.ValidationError, "ERiC refuses the Steuernummer 123/456/78902"
-			):
-				settings.save()
+		with (
+			patch(adapter, return_value=False) as checked,
+			self.assertRaisesRegex(frappe.ValidationError, "ERiC refuses the Steuernummer 123/456/78902"),
+		):
+			settings.save()
 		checked.assert_called_once_with("9123045678902")
 
 	def test_a_steuernummer_for_kst_and_gewst_needs_the_bundesland_of_the_vat_return_settings(self):

@@ -101,11 +101,11 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 		"""EricPruefeSteuernummer of the installed ERiC (steuerbote.eric.service.steuernummer_valid); without a runtime
 		it cannot say, and the settings are saved."""
 		adapter = "steuerbote.steuerbote.doctype.vat_return.transmission_adapter.steuernummer_valid"
-		with patch(adapter, return_value=False) as checked:
-			with self.assertRaisesRegex(
-				frappe.ValidationError, "ERiC refuses the Steuernummer 123/456/78901"
-			):
-				self.make_settings().insert()
+		with (
+			patch(adapter, return_value=False) as checked,
+			self.assertRaisesRegex(frappe.ValidationError, "ERiC refuses the Steuernummer 123/456/78901"),
+		):
+			self.make_settings().insert()
 		checked.assert_called_once_with("9123045678901")
 		with patch(adapter, return_value=None):
 			self.make_settings().insert()

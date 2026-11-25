@@ -535,6 +535,7 @@
 "ERiC Versions","ERiC-Versionen"
 "ERiC needs glibc 2.28 or newer; this site has no glibc.","ERiC braucht glibc 2.28 oder neuer; diese Site hat keine glibc."
 "ERiC needs glibc 2.28 or newer; this site has {0}.","ERiC braucht glibc 2.28 oder neuer; diese Site hat {0}."
+"ERiC refuses the Steuernummer {0}: its check digit or its Finanzamt is wrong. Compare it with the last notice of the Finanzamt.","ERiC weist die Steuernummer {0} zurück: Ihre Prüfziffer oder ihr Finanzamt stimmt nicht. Bitte mit dem letzten Bescheid des Finanzamts vergleichen."
 "ERiC rule {0} applies: {1}.","Die Regel {0} von ERiC schlägt an: {1}."
 "ERiC runs on Linux x86_64 only; this site runs on {0} {1}.","ERiC läuft nur auf Linux x86_64; diese Site läuft auf {0} {1}."
 "ERiC takes Zusammenfassende Meldungen for {1} and later years, not for {0}.","ERiC nimmt Zusammenfassende Meldungen ab {1}, nicht für {0}."
