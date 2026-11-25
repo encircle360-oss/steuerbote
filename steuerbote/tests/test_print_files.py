@@ -11,6 +11,7 @@ PRINT_FORMATS = APP / "steuerbote" / "print_format"
 INCLUDES = APP / "templates" / "includes"
 STYLE = "steuerbote/templates/includes/print/style.html"
 RUNNING = "steuerbote/templates/includes/print/running.html"
+CHROMIUM = "steuerbote/templates/includes/print/chromium.html"
 # The parts that include the running head and foot for the print formats that include them.
 RUNNING_FOR = (
 	"steuerbote/templates/includes/annual_filing/head.html",
@@ -54,8 +55,8 @@ def templates() -> dict[str, str]:
 
 
 def rules(style: str) -> dict[str, str]:
-	"""The rules of the stylesheet by their selector, without its comment and its @media blocks."""
-	sheet = re.sub(r"</?style>", "", JINJA_COMMENT.sub("", style))
+	"""The rules of the stylesheet by their selector, without its comments, its Jinja tags and its @media blocks."""
+	sheet = re.sub(r"</?style>", "", JINJA_TAG.sub("", JINJA_COMMENT.sub("", style)))
 	sheet = re.sub(r"@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}", "", sheet)
 	return {" ".join(selector.split()): body for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", sheet)}
 
@@ -106,7 +107,34 @@ class OneStylesheetTest(TestCase):
 		itself, so a gap at the bottom of the head lies between it and the content in either of them."""
 		style = read(STYLE)
 		self.assertNotRegex(style, r"(header|footer)-spacing")
-		self.assertIn("padding-bottom: 4mm;", rules(style)[".sb-running-head"])
+		self.assertIn("bottom: 4mm;", rules(style)[".sb-running-rule"])
+
+	def test_the_running_head_and_foot_fill_the_top_and_bottom_margins(self):
+		"""wkhtmltopdf sets the head into the top margin, its bottom on the content, and the foot into the bottom
+		margin, its top under the content. A head as high as the top margin and a foot as high as the bottom margin
+		stand at the same place with the Chromium-based generator, which stacks margin, head and content."""
+		style = rules(read(STYLE))
+		margins = dict(re.findall(r"([\w-]+):\s*([^;]+);", style[".print-format"]))
+		self.assertIn(f"height: {margins['margin-top']};", style[".sb-running-head"])
+		self.assertIn(f"height: {margins['margin-bottom']};", style[".sb-running-foot"])
+		self.assertIn("top: 4mm;", style[".sb-running-foot-rule"])
+
+	def test_the_chromium_based_generator_gets_no_top_and_bottom_margin(self):
+		"""Frappe's Chromium-based generator puts the head below the top margin and the foot above the bottom margin;
+		with both at 0 the head and foot, as high as the margins, take their place. Frappe sets pdf_generator in the
+		form_dict before it renders the print view for a PDF, and the jinja method reads it."""
+		include = f'{{% include "{CHROMIUM}" %}}'
+		self.assertRegex(
+			read(STYLE),
+			r'\{%-? if steuerbote_pdf_generator\(\) == "chrome" -?%\}\s*'
+			+ re.escape(include)
+			+ r"\s*\{%-? endif -?%\}",
+		)
+		self.assertEqual(
+			dict(re.findall(r"([\w-]+):\s*([^;]+);", rules(read(CHROMIUM))[".print-format"])),
+			{"margin-top": "0mm", "margin-bottom": "0mm"},
+		)
+		self.assertIn("steuerbote.steuerbote.about.steuerbote_pdf_generator", read("steuerbote/hooks.py"))
 
 	def test_sets_a_font_with_the_metrics_of_helvetica_that_the_server_has(self):
 		style = rules(read(STYLE))
