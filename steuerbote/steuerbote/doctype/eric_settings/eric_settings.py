@@ -69,6 +69,7 @@ from steuerbote.elster import ustva_xml, vorsatz
 from steuerbote.eric import proxy, releases, runtime
 from steuerbote.eric.releases import MinimumList, MinimumListError
 from steuerbote.eric.runtime import Check, RuntimeInstallError, UnsupportedPlatform
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.xbrl import taxonomy
@@ -286,6 +287,7 @@ class ERiCSettings(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def install_runtime(self) -> None:
 		"""Laufzeitumgebung installieren: unpack the ERiC archive that common_site_config.json names in a background
 		job, which reads the archive there itself."""
@@ -303,6 +305,7 @@ class ERiCSettings(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def install_taxonomy(self) -> None:
 		"""Taxonomie einrichten: install each version of the HGB-Taxonomie whose package common_site_config.json names,
 		in a background job, which reads the packages there itself."""
@@ -320,6 +323,7 @@ class ERiCSettings(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read")
 	def check_runtime(self) -> list[dict]:
 		"""Laufzeitumgebung prüfen: the checks of the status page for the runtimes installed, among them whether one
 		holds the plugin of the current year and the plugin checkZMDO of the Zusammenfassende Meldung, then whether

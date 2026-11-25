@@ -62,6 +62,7 @@ from steuerbote.balance_mapping_sync import (
 )
 from steuerbote.ebilanz.defaults import CHARTS, defaults_version
 from steuerbote.mappings import diff, taking_over, transfer
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.eric_settings import eric_settings
 from steuerbote.steuerbote.doctype.vat_return_mapping.vat_return_mapping import (
 	CHANGES,
@@ -275,6 +276,7 @@ class BalanceSheetMapping(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write", new=True)
 	def load_defaults(self) -> list[str]:
 		"""Replace the rows by the defaults of the chart, reduced to the ledger accounts of the company, and note the
 		version of the defaults and the rows they gave. A watched account keeps the level its row had, by the number of
@@ -294,6 +296,7 @@ class BalanceSheetMapping(Document):
 		return list(without_defaults(self.chart, self.taxonomy_version, names.keys()))
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read", new=True)
 	def compare_with_defaults(self) -> dict:
 		"""Vorgaben aktualisieren: each difference between the rows and the defaults of today, with whether it comes
 		from the defaults, which the form proposes to take over, or from the user."""
@@ -309,6 +312,7 @@ class BalanceSheetMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def update_from_defaults(self, chosen: list[str] | None = None, acknowledge: bool = False) -> int:
 		"""Take over the chosen differences of compare_with_defaults, by their id, keep every other row, note the
 		defaults of today as taken over, and save. Taking over none notes them only with ``acknowledge``, the word of
@@ -325,6 +329,7 @@ class BalanceSheetMapping(Document):
 		return len(keys)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def export_mapping(self) -> dict:
 		"""Zuordnung exportieren: the mapping as saved, with the version of its taxonomy and the defaults it took over,
 		as a file attached privately, where a file of the same content attached before is kept instead. Returns the
@@ -348,6 +353,7 @@ class BalanceSheetMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read")
 	def compare_with_file(self, file_url: str | None = None, content: str | None = None) -> dict:
 		"""Zuordnung importieren: what the file of a mapping, uploaded privately to this mapping or pasted, would change
 		here, each difference proposed, and what its header says, with the earlier version it was lifted from."""
@@ -367,6 +373,7 @@ class BalanceSheetMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def import_file(
 		self, file_url: str | None = None, content: str | None = None, chosen: list[str] | None = None
 	) -> int:
@@ -382,6 +389,7 @@ class BalanceSheetMapping(Document):
 		return len(keys)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read", new=True)
 	def accounts_without_place(self) -> list[dict]:
 		"""Konten prüfen: the ledger accounts of the company that the mapping, as the form holds it, gives no place,
 		each with its number, its name and its root type; an account without number can have no place."""
@@ -405,6 +413,7 @@ class BalanceSheetMapping(Document):
 		]
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def watch_accounts_without_place(self) -> list[str]:
 		"""Watch every account of accounts_without_place that has an account number at the level Sperrt, then save.
 		Returns the accounts it adds."""
@@ -424,6 +433,7 @@ class BalanceSheetMapping(Document):
 		return [account["account"] for account in added]
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def lift_taxonomy(self, target: str | None = None) -> dict:
 		"""Auf neue Taxonomie heben: the rows on the positions of a later version of the HGB-Taxonomie, by default the
 		latest, through its changes (steuerbote.balance_mapping_sync.lifted_items), against its fiscal view, which
@@ -464,6 +474,7 @@ class BalanceSheetMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def export_previous_mapping(self) -> dict:
 		"""The rows before Auf neue Taxonomie heben as the file of Zuordnung exportieren on the positions of the
 		previous version, attached privately as export_mapping attaches its file."""

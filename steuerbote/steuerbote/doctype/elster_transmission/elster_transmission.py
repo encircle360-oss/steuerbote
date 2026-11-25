@@ -15,6 +15,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
+from steuerbote.steuerbote import guards
+
 # The documents that go to ELSTER through ERiC. The DocTypes of the annual documents come with their modules, under
 # the names stage 3 fixed for them: the Umsatzsteuererklärung, the E-Bilanz, the Körperschaft- and the
 # Gewerbesteuererklärung.
@@ -79,7 +81,7 @@ class ELSTERTransmission(Document):
 	# end: auto-generated types
 
 	def validate(self) -> None:
-		if not self.is_new() and not self.flags.recording:
+		if not self.is_new() and not guards.recorded(self):
 			frappe.throw(_("An ELSTER Transmission cannot be changed after it was recorded."))
 		if self.document_type not in DOCUMENT_TYPES:
 			frappe.throw(

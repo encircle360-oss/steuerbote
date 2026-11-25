@@ -59,13 +59,23 @@ company_data_to_be_ignored = [
 	*(name for name in _ANNUAL_DOCUMENTS if (_DOCTYPES / name.lower().replace(" ", "_")).is_dir()),
 ]
 
+# The records of what Steuerbote did, which only Steuerbote writes and nobody renames (steuerbote/steuerbote/guards.py).
+_RECORDS = ("ELSTER Transmission", "VAT ID Confirmation", "Deadline Reminder")
+
 # The files of an ELSTER Transmission and the answer kept with a VAT ID Confirmation stay as they were stored.
 doc_events = {
 	"File": {
 		"before_validate": "steuerbote.steuerbote.record_files.keep_unchanged",
 		"on_trash": "steuerbote.steuerbote.record_files.keep_while_recorded",
 		"before_rename": "steuerbote.steuerbote.record_files.keep_name",
-	}
+	},
+	**{
+		doctype: {
+			"before_insert": "steuerbote.steuerbote.guards.refuse_unless_recorded",
+			"before_rename": "steuerbote.steuerbote.guards.refuse_rename",
+		}
+		for doctype in _RECORDS
+	},
 }
 
 # Every day the recipients in the VAT Return Settings of each company hear of its deadlines not filed. Every week
