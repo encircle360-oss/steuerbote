@@ -37,6 +37,18 @@ cents drop 99 cents of base each, and their taxes miss 19 % of the base of the y
 Finanzverwaltung computes the tax of the annual return so is unverified; the research recommends it as the closest
 to § 12 Absatz 1 UStG, and the tests pin it.
 
+A company that files the Voranmeldungen with the tax as booked (StatutoryTax.AS_BOOKED, steuerbote/ustva/calculation.py)
+files the annual return so as well: the tax of a rate line of Kz 81, 86, 89 or 93 is the tax its vouchers book
+(booked_taxes()), each part of a voucher on the line of its base account and a part without one on the default line of
+its Kennzahl, plus the rate times the accounts only the annual return reads and the lines by hand on the base. The
+booked tax of each voucher is the same in its Voranmeldung and in the year, so the twelve Voranmeldungen and the annual
+return add up without a cent of difference; the lines without voucher of the year count as one voucher, as those of
+each period do, and may differ by cents. As long as that tax is at most one euro away from the rate times the base as
+filed, ERiC takes it (rules 30639 and the like above); beyond that the line takes the tax of the exact annual base
+instead and a hint (BOOKED_TAX_CODE) names the difference. The exact parts of a rate line stay the rate times those of
+its base either way, so the reconciliation with the Voranmeldungen splits the difference as before
+(steuerbote/ustjahr/reconciliation.py).
+
 entries() turns the amounts of the form, after the corrections of the company, into the amounts the return files:
 
 - A zero is left out, but a base and its tax go together as soon as one of them is not zero, since ERiC takes them
@@ -64,13 +76,23 @@ from steuerbote.ustva.calculation import (
 	AccountBalance,
 	CheckResult,
 	LedgerLine,
+	StatutoryTax,
 	UstvaResult,
+	booked_taxes,
 	require_cents,
 )
 from steuerbote.ustva.calculation import calculate as calculate_ustva
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL
 from steuerbote.ustva.residence import Voucher
-from steuerbote.ustva.rounding import HUNDRED, ZERO, require_decimal, tax_from_base, to_cents, to_full_euros
+from steuerbote.ustva.rounding import (
+	EURO,
+	HUNDRED,
+	ZERO,
+	require_decimal,
+	tax_from_base,
+	to_cents,
+	to_full_euros,
+)
 
 DECEMBER = 12
 LAST_OF_DECEMBER = 31
@@ -82,6 +104,7 @@ NACHSTEUER_KENNZAHL = "65"
 NACHSTEUER_LINE = "E3005901"
 CHANGE_OF_TAXATION_LINE = "E3102901"
 NACHSTEUER_CODE = "NACHSTEUER-ZEILE"
+BOOKED_TAX_CODE = "STEUER-WIE-GEBUCHT"
 FILED_ALWAYS = frozenset({KZ_816, SOLL, KZ_820})
 
 MANUAL_WITHOUT_REASON = "The line by hand for field {0} needs a reason."
@@ -101,6 +124,10 @@ NACHSTEUER = (
 	"infolge des Wechsels der Besteuerungsform belongs in Kz 317 (line 39): give the mapping rule that annual field "
 	"if it applies."
 )
+BOOKED_TAX_OUTSIDE_TOLERANCE = (
+	"The tax as booked of field {0} is {1} euros, {2} euros away from {3} % of the base of {4} euros as filed, more "
+	"than the one euro ERiC takes: the return files the tax of the exact annual base, {5} euros."
+)
 MESSAGES = (
 	MANUAL_WITHOUT_REASON,
 	MANUAL_NOT_FED,
@@ -109,6 +136,7 @@ MESSAGES = (
 	NOT_WHOLE_EUROS,
 	NOT_CENTS,
 	NACHSTEUER,
+	BOOKED_TAX_OUTSIDE_TOLERANCE,
 )
 
 
@@ -202,12 +230,14 @@ def calculate(
 	manual: Iterable[ManualLine] = (),
 	tolerance: Decimal = TOLERANCE_PER_VOUCHER,
 	vouchers: ReadOnlyMapping[str, Voucher] | None = None,
+	statutory_tax: StatutoryTax = StatutoryTax.FROM_BASE,
 ) -> AnnualResult:
 	"""The fields of the annual return from the ledger lines of the year, the split and the lines by hand.
 
 	``tolerance`` is how far the booked tax of a voucher may differ from the tax of its bases in the Verprobung
 	(steuerbote/ustva/calculation.py). ``vouchers`` holds what the caller knows of the suppliers of the vouchers of
 	sections C and D, so that a derived base of § 13b UStG goes to Kz 46 or 84 as in the Voranmeldung.
+	``statutory_tax`` is the setting of the Voranmeldungen for the tax of the bases at a statutory rate, see the module.
 	"""
 	lines = tuple(lines)
 	manual = tuple(manual)
@@ -236,15 +266,19 @@ def calculate(
 		_add_run(ledger, split, _targets(split, element, kennzahlen[element]), run)
 	for line_by_hand in manual:
 		_add(by_hand, _manual_field(catalogue, line_by_hand).element, line_by_hand.amount)
-	year = calculate_ustva(lines, split.mapping, tolerance=tolerance, vouchers=vouchers)
+	year = calculate_ustva(
+		lines, split.mapping, tolerance=tolerance, vouchers=vouchers, statutory_tax=statutory_tax
+	)
 	_add_derived(ledger, split, year)
+	booked = _booked(split, lines, vouchers) if statutory_tax is StatutoryTax.AS_BOOKED else {}
+	values, outside = _values(catalogue, ledger, annual_only, by_hand, booked)
 	return AnnualResult(
 		year=catalogue.year,
-		values=_values(catalogue, ledger, annual_only, by_hand),
+		values=values,
 		ustva=year,
 		unmapped=tuple(account for account in year.unmapped if split.assignment(account) is None),
 		paragraphs=_paragraphs(catalogue, split, balances, manual),
-		findings=_nachsteuer(split, balances),
+		findings=(*_nachsteuer(split, balances), *outside),
 		manual=manual,
 	)
 
@@ -341,6 +375,24 @@ def _add_to_line(amounts: dict[str, Decimal], catalogue: Catalogue, kennzahl: st
 	_add(amounts, line.element, line.sign * amount)
 
 
+def _booked(
+	split: Split, lines: tuple[LedgerLine, ...], vouchers: ReadOnlyMapping[str, Voucher] | None
+) -> dict[str, Decimal]:
+	"""The tax as booked of the bases at a statutory rate, by the base field of its line: the line of the base account,
+	or the default line of the Kennzahl for a part without one."""
+	catalogue = split.catalogue
+	found: dict[str, Decimal] = {}
+	for share in booked_taxes(lines, split.mapping, vouchers):
+		assignment = split.assignment(share.account) if share.account is not None else None
+		field = (
+			catalogue.field(assignment.field)
+			if assignment is not None
+			else catalogue.default_child(share.kennzahl)
+		)
+		_add(found, field.element, field.sign * share.tax)
+	return found
+
+
 def _manual_field(catalogue: Catalogue, line: ManualLine) -> Field:
 	try:
 		field = catalogue.field(line.field)
@@ -358,12 +410,19 @@ def _values(
 	ledger: dict[str, Decimal],
 	annual_only: dict[str, Decimal],
 	by_hand: dict[str, Decimal],
-) -> MappingProxyType[str, FieldValue]:
+	booked: ReadOnlyMapping[str, Decimal],
+) -> tuple[MappingProxyType[str, FieldValue], tuple[Finding, ...]]:
 	values: dict[str, FieldValue] = {}
+	outside: list[Finding] = []
 	for field in catalogue.fields:
 		if field.rate is not None:
 			base = values.get(field.base)
-			if base is not None:
+			if field.base in booked:
+				base = base or FieldValue(field.base, ZERO, ZERO, ZERO, ZERO)
+				value, finding = _booked_rate_value(field, field.rate, base, booked[field.base])
+				values[field.element] = value
+				outside.extend(finding)
+			elif base is not None:
 				values[field.element] = _rate_value(field, field.rate, base)
 			continue
 		parts = (
@@ -375,7 +434,7 @@ def _values(
 			amount = sum(parts, ZERO)
 			form = to_full_euros(amount) if field.format.whole_euros else to_cents(amount)
 			values[field.element] = FieldValue(field.element, *parts, form)
-	return MappingProxyType(values)
+	return MappingProxyType(values), tuple(outside)
 
 
 def _rate_value(field: Field, rate: Decimal, base: FieldValue) -> FieldValue:
@@ -386,6 +445,37 @@ def _rate_value(field: Field, rate: Decimal, base: FieldValue) -> FieldValue:
 		base.manual * rate / HUNDRED,
 		tax_from_base(base.amount, rate),
 	)
+
+
+def _booked_rate_value(
+	field: Field, rate: Decimal, base: FieldValue, booked: Decimal
+) -> tuple[FieldValue, tuple[Finding, ...]]:
+	"""The rate line of a base whose vouchers book their tax: that tax, with the rate of what the ledger does not book,
+	as long as ERiC takes it; else the tax of the exact base and the hint why."""
+	derived = _rate_value(field, rate, base)
+	tax = to_cents(booked + (base.annual_only + base.manual) * rate / HUNDRED)
+	away = abs(tax - base.form * rate / HUNDRED)
+	if away <= EURO:
+		return FieldValue(field.element, derived.ledger, derived.annual_only, derived.manual, tax), ()
+	finding = Finding(
+		BOOKED_TAX_CODE,
+		Severity.HINT,
+		BOOKED_TAX_OUTSIDE_TOLERANCE,
+		(
+			field.element,
+			_euros(tax),
+			_euros(away),
+			format(rate, "f"),
+			format(base.form, "f"),
+			_euros(derived.form),
+		),
+		(field.element,),
+	)
+	return derived, (finding,)
+
+
+def _euros(amount: Decimal) -> str:
+	return format(to_cents(amount), "f")
 
 
 def _paragraphs(

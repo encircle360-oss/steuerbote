@@ -40,6 +40,7 @@ from steuerbote.setup import start as first_year
 from steuerbote.setup.steps import Note, Outcome, Step, StepResult
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.steuerbote.doctype.annual_vat_return import bridge as annual_vat_return_bridge
+from steuerbote.steuerbote.doctype.vat_return.bridge import statutory_tax_of
 from steuerbote.ustva import CATALOGUES, DEFAULTS, MappingError, UnknownYearError, calculate
 from steuerbote.ustva.period import MONTH_NAMES
 from steuerbote.vat_periods import VatLedger
@@ -555,7 +556,8 @@ def unflagged_opening_entries(company: str, books_start: date) -> tuple[str, ...
 
 def previous_year_tax(company: str, year: int) -> tuple[Decimal | None, Note | None]:
 	"""Kz 83 of the year by the ledger, placed by the settings as for the Voranmeldung (steuerbote.vat_periods), with
-	the mapping of the company, as Berechnen computes it for a period; or
+	the mapping of the company and the tax of the bases at a statutory rate as the settings choose it, as Berechnen
+	computes it for a period; or
 	None and the note why it is unknown: Steuerbote does not know the Kennzahlen of the year, the mapping has no
 	defaults or does not fit the form of the year, the ledger holds nothing of the year, or what it holds is not
 	ready to file."""
@@ -578,7 +580,11 @@ def previous_year_tax(company: str, year: int) -> tuple[Decimal | None, Note | N
 	lines = VatLedger(company, start, end).lines_between(start, end)
 	if not lines:
 		return None, Note(NO_POSTINGS, (year,))
-	result = calculate(lines, mapping)
+	result = calculate(
+		lines,
+		mapping,
+		statutory_tax=statutory_tax_of(frappe.db.get_value("VAT Return Settings", company, "statutory_tax")),
+	)
 	if not result.ready:
 		return None, Note(NOT_READY, (year,))
 	return result.kz83, None

@@ -71,6 +71,7 @@ class VATReturnSettings(Document):
 			"Schleswig-Holstein",
 			"Thüringen",
 		]
+		statutory_tax: DF.Literal["From the Base in Full Euros", "As Booked"]
 		street: DF.Data | None
 		tax_number: DF.Data
 		tax_office: DF.Data | None

@@ -61,7 +61,7 @@ from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings
 from steuerbote.steuerbote.doctype.annual_vat_return import bridge, layout, revenue
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import Transmittable
 from steuerbote.steuerbote.doctype.vat_return import bridge as vat_return_bridge
-from steuerbote.steuerbote.doctype.vat_return.vat_return import settings_for
+from steuerbote.steuerbote.doctype.vat_return.vat_return import settings_for, statutory_tax_of
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
 from steuerbote.suppliers import load_vouchers
@@ -96,6 +96,7 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 		year = self._year()
 		settings = settings_for(self.company)
 		tolerance = to_amount(settings.tolerance)
+		statutory_tax = statutory_tax_of(settings)
 		stored = self._rows(self.LINES)
 		with core_errors():
 			annual_split = ustjahr_sources.annual_split(self.company, year)
@@ -103,14 +104,14 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 			lines = ustjahr_sources.year_lines(self.company, year)
 			manual = self._lines(bridge.manual_lines, stored)
 			vouchers = load_vouchers(self.company, lines, mapping)
-			result = calculation.calculate(lines, annual_split, manual, tolerance, vouchers)
+			result = calculation.calculate(lines, annual_split, manual, tolerance, vouchers, statutory_tax)
 			result, released = _released(self.company, result, lines, mapping, year)
 			periods = bridge.year_periods(
 				settings.get_period_rules(), year, date_of_establishment(self.company)
 			)
 			filed = ustjahr_sources.filed_voranmeldungen(self.company, year)
 			runs = ustjahr_sources.period_runs(
-				self.company, bridge.periods_to_run(periods, filed), mapping, tolerance
+				self.company, bridge.periods_to_run(periods, filed), mapping, tolerance, statutory_tax
 			)
 			reasons = bridge.waivers_of(self._rows(PERIODS))
 			previous = self._previous_kz816()

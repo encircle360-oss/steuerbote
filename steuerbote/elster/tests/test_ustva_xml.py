@@ -356,6 +356,24 @@ class BalanceTest(TestCase):
 			write({"86": d("100"), "89": d("100"), "93": d("100"), "83": d("33.00")})["Kz83"], "33.00"
 		)
 
+	def test_takes_the_tax_as_booked_that_the_return_gives(self):
+		written = write({"81": d("99.99"), "83": d("18.99")}, taxes={"81": d("18.99")})
+		self.assertEqual(written, {"Kz81": "99", "Kz83": "18.99"})
+
+	def test_the_tax_as_booked_of_a_base_below_one_euro_counts_without_writing_the_base(self):
+		self.assertEqual(write({"81": d("0.80"), "83": d("0.15")}, taxes={"81": d("0.15")}), {"Kz83": "0.15"})
+
+	def test_refuses_a_kz83_that_the_tax_as_booked_does_not_give(self):
+		with self.assertRaises(XmlError) as raised:
+			write({"81": d("99"), "83": d("18.81")}, taxes={"81": d("18.99")})
+		self.assertEqual(raised.exception.values, ("18.81", "18.99"))
+
+	def test_a_base_without_a_tax_as_booked_takes_the_tax_of_the_form(self):
+		self.assertEqual(
+			write({"81": d("99"), "86": d("100"), "83": d("25.99")}, taxes={"81": d("18.99")})["Kz83"],
+			"25.99",
+		)
+
 	def test_deducts_the_sondervorauszahlung(self):
 		self.assertEqual(write({"39": d("1200"), "83": d("-1200")}), {"Kz39": "1200.00", "Kz83": "-1200.00"})
 

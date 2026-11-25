@@ -24,7 +24,12 @@ from steuerbote import prior_filings, ustva
 from steuerbote.ledger import account_labels, account_names
 from steuerbote.setup.start import before_start
 from steuerbote.steuerbote.doctype.vat_return import bridge
-from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for, released, settings_for
+from steuerbote.steuerbote.doctype.vat_return.vat_return import (
+	mapping_for,
+	released,
+	settings_for,
+	statutory_tax_of,
+)
 from steuerbote.steuerbote.report.ustva_kennzahlen import comparison
 from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import (
 	contributions,
@@ -154,7 +159,8 @@ def _period(filters: frappe._dict) -> ustva.Period:
 def _calculate(
 	lines: list[ustva.LedgerLine], mapping: ustva.Mapping, period: ustva.Period, settings: Document
 ) -> ustva.UstvaResult:
-	"""What "Berechnen" computes for the period, Kz 39 included in the last period of the year."""
+	"""What "Berechnen" computes for the period, Kz 39 included in the last period of the year, with the tax of the
+	bases at a statutory rate as the settings choose it, so lines 37, 45 and 48 are those of the return."""
 	try:
 		return ustva.calculate(
 			lines,
@@ -165,6 +171,7 @@ def _calculate(
 				bridge.to_amount(settings.sondervorauszahlung(period.year)),
 			),
 			vouchers=load_vouchers(settings.company, lines, mapping),
+			statutory_tax=statutory_tax_of(settings),
 		)
 	except ValueError as error:
 		frappe.throw(str(error))

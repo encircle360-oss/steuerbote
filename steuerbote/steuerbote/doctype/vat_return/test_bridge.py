@@ -7,9 +7,21 @@ from unittest import TestCase
 from steuerbote.elster import ustva_xml
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.report.ustva_kennzahlen import comparison
-from steuerbote.ustva import KENNZAHLEN, LedgerLine, Period, calculate, plausibility, registers
+from steuerbote.ustva import (
+	DEFAULT_STATUTORY_TAX,
+	KENNZAHLEN,
+	LedgerLine,
+	Period,
+	StatutoryTax,
+	calculate,
+	plausibility,
+	registers,
+)
 from steuerbote.ustva.defaults import SKR03
 from steuerbote.vatid.result import Outcome
+
+BOOKED = StatutoryTax.AS_BOOKED
+FROM_BASE = StatutoryTax.FROM_BASE
 
 
 def d(value: str) -> Decimal:
@@ -99,10 +111,15 @@ class KennzahlRowsTest(TestCase):
 				"kind": "base",
 				"amount": d("1000"),
 				"reported": d("1000"),
+				"tax": d("190.00"),
 				"override": d("0"),
 				"override_reason": "",
 			},
 		)
+
+	def test_a_kennzahl_without_a_tax_at_a_statutory_rate_carries_none(self):
+		rows = bridge.kennzahl_rows(self.result, KENNZAHLEN, {})
+		self.assertEqual({row["kennzahl"]: row["tax"] for row in rows if row["tax"]}, {"81": d("190.00")})
 
 	def test_overrides_are_kept(self):
 		overrides = {"45": bridge.Override(d("600.00"), "Correction from the Steuerberatung")}
@@ -271,7 +288,14 @@ class RestoredTest(TestCase):
 		)
 		kept = bridge.restored(self.stored, sent)
 		self.assertEqual(
-			kept[0], {"name": "row-0", "kennzahl": "81", "amount": d("1000.00"), "reported": d("1000.00")}
+			kept[0],
+			{
+				"name": "row-0",
+				"kennzahl": "81",
+				"amount": d("1000.00"),
+				"reported": d("1000.00"),
+				"tax": d("190.00"),
+			},
 		)
 		self.assertEqual(
 			[(row["name"], row["kennzahl"]) for row in kept],
@@ -281,14 +305,14 @@ class RestoredTest(TestCase):
 	def test_a_row_the_save_adds_only_overrides(self):
 		added = [
 			{"kennzahl": " 43 ", "amount": 99, "reported": 99, "override": 250, "override_reason": "Export"},
-			{"name": "forged", "kennzahl": "86", "amount": 500, "reported": 500},
+			{"name": "forged", "kennzahl": "86", "amount": 500, "reported": 500, "tax": 35},
 		]
 		kept = bridge.restored(self.stored, [*self.stored, *added])
 		self.assertEqual(
 			kept[-2:],
 			[
-				{"name": None, "kennzahl": "43", "amount": d("0"), "reported": d("0")},
-				{"name": None, "kennzahl": "86", "amount": d("0"), "reported": d("0")},
+				{"name": None, "kennzahl": "43", "amount": d("0"), "reported": d("0"), "tax": d("0")},
+				{"name": None, "kennzahl": "86", "amount": d("0"), "reported": d("0"), "tax": d("0")},
 			],
 		)
 
@@ -1153,3 +1177,112 @@ class UnexplainedTest(TestCase):
 		self.assertEqual(
 			bridge.unexplained(bridge.reconciliation_rows(reconciliation(), KENNZAHLEN, {}, {})), []
 		)
+
+
+def booked_month() -> list[LedgerLine]:
+	"""Three invoices of 33.33 euros with 6.33 euros of tax each: 99 euros of Kz 81, 18.99 euros on the tax account."""
+	return [
+		posting
+		for number in (1, 2, 3)
+		for posting in (
+			line("8400", credit="33.33", voucher=f"Sales Invoice:SINV-{number}"),
+			line("1776", credit="6.33", voucher=f"Sales Invoice:SINV-{number}"),
+		)
+	]
+
+
+class StatutoryTaxTest(TestCase):
+	"""A return calculated with the tax as booked keeps that tax in its rows and files Kz 83 with it."""
+
+	def setUp(self):
+		result = calculate(booked_month(), SKR03, statutory_tax=BOOKED)
+		self.rows = [
+			{**row, "name": f"row-{index}"}
+			for index, row in enumerate(bridge.kennzahl_rows(result, KENNZAHLEN, {}))
+		]
+
+	def row(self, kennzahl: str) -> dict:
+		return next(row for row in self.rows if row["kennzahl"] == kennzahl)
+
+	def test_the_row_of_kz81_keeps_the_tax_as_booked(self):
+		self.assertEqual((self.row("81")["reported"], self.row("81")["tax"]), (d("99"), d("18.99")))
+
+	def test_files_kz83_with_the_tax_as_booked(self):
+		filing = bridge.filing(self.rows, 2026, BOOKED)
+		self.assertEqual((filing.totals["output_tax"], filing.totals["kz83"]), (d("18.99"), d("18.99")))
+		self.assertEqual(bridge.final_amounts(self.rows, 2026, BOOKED), {"81": d("99"), "83": d("18.99")})
+
+	def test_a_return_from_the_base_files_the_tax_of_the_form_whatever_its_rows_keep(self):
+		self.assertEqual(bridge.filing(self.rows, 2026).totals["kz83"], d("18.81"))
+		self.assertEqual(bridge.filing(self.rows, 2026, FROM_BASE).totals["kz83"], d("18.81"))
+		self.assertEqual(bridge.statutory_tax_of(""), FROM_BASE)
+		self.assertEqual(bridge.statutory_tax_of(None), FROM_BASE)
+		self.assertEqual(bridge.statutory_tax_of("As Booked"), BOOKED)
+
+	def test_an_overridden_base_takes_the_tax_of_the_form(self):
+		self.row("81").update({"override": 100.0, "override_reason": "Invoice booked in April"})
+		self.assertEqual(bridge.filed_taxes(self.rows, KENNZAHLEN, BOOKED), {})
+		self.assertEqual(bridge.filing(self.rows, 2026, BOOKED).totals["kz83"], d("19.00"))
+
+	def test_the_taxes_a_return_files(self):
+		self.assertEqual(bridge.filed_taxes(self.rows, KENNZAHLEN, BOOKED), {"81": d("18.99")})
+		self.assertEqual(bridge.filed_taxes(self.rows, KENNZAHLEN, FROM_BASE), {})
+
+	def test_a_base_below_one_euro_files_nothing_but_its_tax(self):
+		result = calculate(
+			[line("8400", credit="0.80", voucher="V1"), line("1776", credit="0.15", voucher="V1")],
+			SKR03,
+			statutory_tax=BOOKED,
+		)
+		rows = bridge.kennzahl_rows(result, KENNZAHLEN, {})
+		filing = bridge.filing(rows, 2026, BOOKED)
+		self.assertEqual(
+			{row["kennzahl"]: row["final"] for row in filing.rows}, {"81": d("0"), "83": d("0.15")}
+		)
+
+	def test_a_row_with_a_tax_but_no_amount_stays_on_the_return(self):
+		stored = [{"name": "row-0", "kennzahl": "81", "amount": 0.0, "reported": 0.0, "tax": 1.0}]
+		with self.assertRaises(bridge.RowError) as raised:
+			bridge.restored(stored, [])
+		self.assertEqual(
+			(raised.exception.problem, raised.exception.kennzahl), (bridge.RowProblem.REMOVED, "81")
+		)
+
+	def test_a_save_keeps_the_tax_berechnen_stored(self):
+		sent = [{**row, "tax": 0} for row in self.rows]
+		self.assertEqual(bridge.restored(self.rows, sent)[0]["tax"], d("18.99"))
+
+	def test_amounts_kept_follow_the_setting_of_the_return(self):
+		filing = bridge.filing(self.rows, 2026, BOOKED)
+		stored = {
+			"kennzahlen": [{**row, **filed} for row, filed in zip(self.rows, filing.rows, strict=True)],
+			**filing.totals,
+		}
+		self.assertTrue(bridge.amounts_kept(self.rows, stored, 2026, BOOKED))
+		self.assertFalse(bridge.amounts_kept(self.rows, stored, 2026))
+
+	def test_the_file_for_mein_elster_writes_kz83_with_the_tax_as_booked(self):
+		filing = bridge.filing(self.rows, 2026, BOOKED)
+		doc = {"kennzahlen": list(filing.rows), "kz83": 18.99, "statutory_tax": "As Booked"}
+		rows = [{**row, **filed} for row, filed in zip(self.rows, filing.rows, strict=True)]
+		voranmeldung = bridge.voranmeldung({**doc, "kennzahlen": rows}, Period.month(2026, 3))
+		self.assertEqual(dict(voranmeldung.taxes), {"81": d("18.99")})
+		self.assertEqual(voranmeldung.amounts["83"], d("18.99"))
+		content = ustva_xml.to_import_file(bridge.filer(SETTINGS), voranmeldung, date(2026, 4, 2))
+		self.assertIn(b"<Kz83>18.99</Kz83>", content)
+
+	def test_the_file_of_a_return_from_the_base_gives_no_taxes(self):
+		voranmeldung = bridge.voranmeldung({"kennzahlen": self.rows, "kz83": 18.81}, Period.month(2026, 3))
+		self.assertEqual(dict(voranmeldung.taxes), {})
+
+	def test_the_tables_hold_what_the_rows_and_the_settings_carry(self):
+		self.assertEqual(fields_of("vat_return_kennzahl")["tax"]["fieldtype"], "Currency")
+		self.assertTrue(fields_of("vat_return_kennzahl")["tax"]["read_only"])
+		self.assertLessEqual(set(self.rows[0]) - {"name"}, set(fields_of("vat_return_kennzahl")))
+		on_the_return = fields_of("vat_return")["statutory_tax"]
+		self.assertEqual(on_the_return["options"].split("\n"), ["", *(value.value for value in StatutoryTax)])
+		self.assertTrue(on_the_return["read_only"])
+		setting = fields_of("vat_return_settings")["statutory_tax"]
+		self.assertEqual(setting["options"].split("\n"), [value.value for value in StatutoryTax])
+		self.assertEqual(setting["default"], DEFAULT_STATUTORY_TAX.value)
+		self.assertTrue(setting["reqd"])

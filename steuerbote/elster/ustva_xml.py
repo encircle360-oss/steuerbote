@@ -38,7 +38,9 @@ The rules (JD, sheet "Allg. Information" for the formats):
 - A base and its tax in a Kennzahl of its own go together (110085065 to 110085072), so the other one is
   written as zero if need be.
 - Kz 83 is recomputed from the values as written and has to match: no rule of ERiC checks it, and Mein
-  ELSTER copies it „in das Feld für die manuelle Eingabe“ (help).
+  ELSTER copies it „in das Feld für die manuelle Eingabe“ (help). A return with the tax as booked of the bases at a
+  statutory rate (StatutoryTax of steuerbote/ustva/calculation.py) gives that tax with its amounts (``taxes``), and
+  the check takes it instead of the tax of the base in full euros; nothing else of the file changes.
 - Kz 29 needs a surplus in Kz 83 or Kz 10 (11085149); Kz 500 and its Begründung go together (11085137);
   the date in Kz 70 lies in the year of the period (11085153).
 - Texts use the ELSTER character set (charset.py) and have no blank at either end (JD "Formale Fehler").
@@ -56,7 +58,7 @@ from typing import NamedTuple
 from lxml import etree
 
 from steuerbote.elster.charset import CharsetError, describe, transliterate
-from steuerbote.ustva import Kennzahl, Kind, Mapping, Period, calculate, catalogue_for
+from steuerbote.ustva import Kennzahl, Kind, Mapping, Period, StatutoryTax, calculate, catalogue_for
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL
 from steuerbote.ustva.rounding import ZERO, require_decimal, to_cents, to_full_euros
 
@@ -310,7 +312,8 @@ class Voranmeldung:
 	(Kz 10, 22, 26, 29), Kz 500 with its Begründung and the date of Kz 70 have fields of their own.
 	``reported_before`` names the Kennzahlen that the returns a corrected return replaces reported; it
 	writes each of them, as zero if it has no amount for it. Those zeros are inferred from the hints on zero
-	values, not prescribed; see the rules in the docstring of the module.
+	values, not prescribed; see the rules in the docstring of the module. ``taxes`` holds the tax as booked of the
+	bases at a statutory rate that Kz 83 holds, by Kennzahl; none when Kz 83 holds the tax of the form.
 	"""
 
 	period: Period
@@ -323,9 +326,11 @@ class Voranmeldung:
 	begruendung: str | None = None
 	regelbesteuerung_from: date | None = None
 	reported_before: frozenset[str] = frozenset()
+	taxes: ReadOnlyMapping[str, Decimal] = MappingProxyType({})
 
 	def __post_init__(self) -> None:
 		object.__setattr__(self, "amounts", MappingProxyType(dict(self.amounts)))
+		object.__setattr__(self, "taxes", MappingProxyType(dict(self.taxes)))
 		object.__setattr__(self, "reported_before", frozenset(self.reported_before))
 		if self.reported_before and not self.corrected:
 			raise ValueError("only a corrected return (Kz 10) writes the Kennzahlen reported before")
@@ -420,7 +425,7 @@ def _kennzahlen(schema: Schema, voranmeldung: Voranmeldung) -> dict[str, str]:
 		number: amounts[number] if number in amounts else _rounded(schema, catalogue[number], ZERO)
 		for number in written
 	}
-	_check_balance(schema.year, values)
+	_check_balance(schema.year, values, voranmeldung.taxes)
 	return {
 		**{f"Kz{number}": format(value, "f") for number, value in values.items()},
 		**_further_details(schema, voranmeldung, values[BALANCE_KENNZAHL]),
@@ -450,10 +455,18 @@ def _rounded(schema: Schema, kennzahl: Kennzahl, amount: Decimal) -> Decimal:
 	return value
 
 
-def _check_balance(year: int, values: dict[str, Decimal]) -> None:
-	"""Kz 83 as the form computes it from the values written, with the taxes it derives from the bases."""
+def _check_balance(year: int, values: dict[str, Decimal], taxes: ReadOnlyMapping[str, Decimal]) -> None:
+	"""Kz 83 as the form computes it from the values written, with the taxes it derives from the bases or, for a base
+	with a tax as booked, that tax."""
 	written = {number: value for number, value in values.items() if number != BALANCE_KENNZAHL}
-	form = calculate((), Mapping(chart="", rules=(), year=year), extra_values=written)
+	statutory_tax = StatutoryTax.AS_BOOKED if taxes else StatutoryTax.FROM_BASE
+	form = calculate(
+		(),
+		Mapping(chart="", rules=(), year=year),
+		extra_values=written,
+		statutory_tax=statutory_tax,
+		taxes=taxes,
+	)
 	if form.kz83 != values[BALANCE_KENNZAHL]:
 		raise XmlError(BALANCE_MISMATCH, format(values[BALANCE_KENNZAHL], "f"), format(form.kz83, "f"))
 

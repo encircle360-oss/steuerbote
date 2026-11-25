@@ -40,7 +40,7 @@ from steuerbote.steuerbote.report.e_bilanz_positionen.rows import REVENUE
 from steuerbote.suppliers import load_vouchers
 from steuerbote.ustjahr.soll import Filed
 from steuerbote.ustjahr.split import Split
-from steuerbote.ustva import LedgerLine, Mapping, Period, Rhythm, UstvaResult, calculate
+from steuerbote.ustva import LedgerLine, Mapping, Period, Rhythm, StatutoryTax, UstvaResult, calculate
 from steuerbote.ustva.rounding import ZERO
 from steuerbote.vat_periods import VatLedger
 
@@ -72,10 +72,15 @@ def annual_split(company: str, year: int) -> Split:
 
 
 def period_runs(
-	company: str, periods: Iterable[Period], mapping: Mapping, tolerance: Decimal
+	company: str,
+	periods: Iterable[Period],
+	mapping: Mapping,
+	tolerance: Decimal,
+	statutory_tax: StatutoryTax = StatutoryTax.FROM_BASE,
 ) -> dict[Period, UstvaResult]:
 	"""The run of the Voranmeldung on today's ledger of each period, as Berechnen of a VAT Return runs it without the
-	Sondervorauszahlung, which the reconciliation takes from Kz 39 of the filed return."""
+	Sondervorauszahlung, which the reconciliation takes from Kz 39 of the filed return, with the tax of the bases at a
+	statutory rate as the settings choose it."""
 	periods = list(periods)
 	if not periods:
 		return {}
@@ -86,7 +91,11 @@ def period_runs(
 	for period in periods:
 		lines = ledger.lines(period)
 		runs[period] = calculate(
-			lines, mapping, tolerance=tolerance, vouchers=load_vouchers(company, lines, mapping)
+			lines,
+			mapping,
+			tolerance=tolerance,
+			vouchers=load_vouchers(company, lines, mapping),
+			statutory_tax=statutory_tax,
 		)
 	return runs
 

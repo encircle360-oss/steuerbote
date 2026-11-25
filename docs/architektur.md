@@ -78,6 +78,7 @@ Ein Dokument je Unternehmen, sein Name ist das Unternehmen. Anlegen und ändern 
 | `tolerance` | Toleranz je Beleg | wie weit die gebuchte Steuer eines Belegs in der Verprobung abweichen darf, Vorgabe 0,01 EUR |
 | `period_basis` | Zuordnung zum Voranmeldungszeitraum | Pflicht, „nach Leistungsdatum (gesetzlicher Regelfall)“ (Vorgabe) oder „nach Buchungsdatum“, siehe [Zuordnung zum Voranmeldungszeitraum](ustva-kennzahlen.md#zuordnung-zum-voranmeldungszeitraum) |
 | `late_documents` | Belege für abgegebene Zeiträume | Pflicht, „Berichtigung des abgegebenen Zeitraums“ (Vorgabe) oder „im laufenden Zeitraum melden“, siehe [Belege für abgegebene Zeiträume](ustva-kennzahlen.md#belege-für-abgegebene-zeiträume) |
+| `statutory_tax` | Steuer zu Umsätzen mit festem Steuersatz | Pflicht, „aus der Bemessungsgrundlage in vollen Euro (wie im amtlichen Formular)“ (Vorgabe) oder „wie gebucht (Summe der Steuer aus den Belegen)“, für Voranmeldung und Umsatzsteuererklärung, siehe [Steuer zu Umsätzen mit festem Steuersatz](ustva-kennzahlen.md#steuer-zu-umsätzen-mit-festem-steuersatz) |
 | `comparison_threshold_percent`, `comparison_threshold_amount` | Schwelle Vorperiodenvergleich (%), Schwelle Vorperiodenvergleich (EUR) | ab wann eine Kennzahl gegenüber der Vorperiode auffällig ist, Vorgabe 50 % und 100 EUR; gelten für die Meldung und den Bericht „UStVA Kennzahlen“, die Schwelle in EUR auch als Toleranz des Abgleichs der Umsatzsteuererklärung mit den Umsatzerlösen |
 | `state` | Bundesland | Pflicht |
 | `tax_number` | Steuernummer | Pflicht, wie vom Finanzamt vergeben; das Format wird gegen das Bundesland geprüft |
@@ -210,9 +211,9 @@ Einreichbar, Nummernkreis `UStVA-.{year}.-.#####`: Das Jahr im Namen ist das Jah
 | `is_correction` | Berichtigte Anmeldung (Kz 10) | |
 | `period_label`, `period_code` | Voranmeldungszeitraum, Zeitraumcode | berechnet, etwa „März 2026“ und „03“, Quartale 41 bis 44 |
 | `from_date`, `to_date`, `deadline` | Von-Datum, Bis-Datum, Fälligkeitsdatum | berechnet |
-| `period_basis`, `late_treatment` | Zuordnung zum Voranmeldungszeitraum, Belege für abgegebene Zeiträume | die Einstellungen, nach denen „Berechnen“ gerechnet hat, festgehalten mit der Meldung |
+| `period_basis`, `late_treatment`, `statutory_tax` | Zuordnung zum Voranmeldungszeitraum, Belege für abgegebene Zeiträume, Steuer zu Umsätzen mit festem Steuersatz | die Einstellungen, nach denen „Berechnen“ gerechnet hat, festgehalten mit der Meldung; Speichern, Druck, Datei für Mein ELSTER und Übermittlung rechnen Kz 83 mit der festgehaltenen Steuer |
 | `status` | Status | Entwurf, Berechnet, Bereit, Abgegeben oder Ersetzt |
-| `kennzahlen` | Kennzahlen | Tabelle „Kennzahl der Umsatzsteuer-Voranmeldung“: Kennzahl, Zeile im Vordruck, Beschreibung, Art des Betrags, Betrag laut Hauptbuch, Betrag laut Vordruck, Korrigierter Betrag, Begründung der Korrektur und Gemeldeter Betrag |
+| `kennzahlen` | Kennzahlen | Tabelle „Kennzahl der Umsatzsteuer-Voranmeldung“: Kennzahl, Zeile im Vordruck, Beschreibung, Art des Betrags, Betrag laut Hauptbuch, Betrag laut Vordruck, Steuer (bei Kz 81, 86, 89 und 93 die Steuer, mit der die Bemessungsgrundlage in die Summen eingeht), Korrigierter Betrag, Begründung der Korrektur und Gemeldeter Betrag |
 | `output_tax`, `input_tax`, `other_tax` | Umsatzsteuer (Zeile 37), Vorsteuer (Zeilen 38 bis 44), Andere Steuerbeträge (Zeilen 46 und 47) | Summen über die gemeldeten Beträge |
 | `sondervorauszahlung`, `kz83` | Sondervorauszahlung (Kz 39), Verbleibende Vorauszahlung oder verbleibender Überschuss (Kz 83) | |
 | `ready` | Bereit zur Abgabe | alle Verprobungen gehen auf und kein beobachtetes Konto der Stufe „Sperrt“ hat einen Saldo, und die Vordrucke des Jahres sind nicht vorläufig |

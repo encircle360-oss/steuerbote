@@ -6,6 +6,8 @@ from types import MappingProxyType
 from unittest import TestCase
 
 from steuerbote.ustjahr.calculation import (
+	BOOKED_TAX_CODE,
+	BOOKED_TAX_OUTSIDE_TOLERANCE,
 	MANUAL_NO_PARAGRAPH,
 	MANUAL_NOT_FED,
 	MANUAL_WITHOUT_REASON,
@@ -24,7 +26,7 @@ from steuerbote.ustjahr.calculation import (
 from steuerbote.ustjahr.form import CATALOGUES, SOLL, Finding, Severity
 from steuerbote.ustjahr.split import AnnualRule, Choice, split
 from steuerbote.ustva import calculate as calculate_ustva
-from steuerbote.ustva.calculation import AccountBalance, LedgerLine
+from steuerbote.ustva.calculation import AccountBalance, LedgerLine, StatutoryTax
 from steuerbote.ustva.mapping import (
 	DERIVED_BASE_KENNZAHLEN,
 	AccountRule,
@@ -667,6 +669,7 @@ class MessagesTest(TestCase):
 				NOT_WHOLE_EUROS,
 				NOT_CENTS,
 				NACHSTEUER,
+				BOOKED_TAX_OUTSIDE_TOLERANCE,
 			),
 		)
 
@@ -677,3 +680,98 @@ class MessagesTest(TestCase):
 			(NOT_AN_INPUT, ("E3006001",), NOT_AN_INPUT.format("E3006001")),
 		)
 		self.assertIsInstance(error, ValueError)
+
+
+BOOKED = StatutoryTax.AS_BOOKED
+
+
+def booked_sale(voucher: str, net: str, tax: str, account: str = "8400") -> list[LedgerLine]:
+	return [line(account, credit=net, voucher=voucher), line("1776", credit=tax, voucher=voucher)]
+
+
+class StatutoryTaxTest(TestCase):
+	"""With the tax as booked, the tax of a rate line of Kz 81, 86, 89 and 93 is the tax its vouchers book, so that the
+	Voranmeldungen and the annual return add up to the cent, as long as ERiC takes it."""
+
+	def test_a_rate_line_takes_the_tax_its_vouchers_book(self):
+		lines = [
+			*booked_sale("R1", "33.33", "6.33"),
+			*booked_sale("R2", "33.33", "6.33"),
+			*booked_sale("R3", "33.33", "6.33"),
+		]
+		from_base, booked = calculate(lines, SPLIT), calculate(lines, SPLIT, statutory_tax=BOOKED)
+		self.assertEqual(
+			(from_base.values["E3003304"].form, booked.values["E3003304"].form),
+			(Decimal("19.00"), Decimal("18.99")),
+		)
+		self.assertEqual(booked.values["E3003303"].form, Decimal("99"))
+		self.assertEqual(booked.values["E3003304"].ledger, from_base.values["E3003304"].ledger)
+		self.assertEqual(booked.ustva.values["81"].tax, Decimal("18.99"))
+		self.assertEqual(booked.findings, ())
+
+	def test_twelve_voranmeldungen_and_the_annual_return_add_up_to_the_cent(self):
+		months = [booked_sale(f"R{month}", "100.99", "19.19") for month in range(1, 13)]
+		monthly = sum(
+			(calculate_ustva(lines, MAPPING, statutory_tax=BOOKED).values["81"].tax for lines in months), ZERO
+		)
+		result = calculate([posting for lines in months for posting in lines], SPLIT, statutory_tax=BOOKED)
+		self.assertEqual((monthly, result.values["E3003304"].form), (Decimal("230.28"), Decimal("230.28")))
+		self.assertEqual(result.values["E3003303"].form, Decimal("1211"))
+
+	def test_the_lines_of_a_kennzahl_that_splits_take_the_tax_of_their_accounts(self):
+		lines = [
+			*booked_sale("R1", "33.33", "6.33"),
+			*booked_sale("R2", "33.33", "6.33", account="8910"),
+			line("8400", credit="33.33", voucher="R3"),
+			line("8910", credit="33.33", voucher="R3"),
+			line("1776", credit="12.67", voucher="R3"),
+		]
+		result = calculate(lines, SPLIT, statutory_tax=BOOKED)
+		self.assertEqual(
+			(result.values["E3003304"].form, result.values["E3003406"].form),
+			(Decimal("12.67"), Decimal("12.66")),
+		)
+
+	def test_a_tax_booked_without_a_base_goes_to_the_default_line_of_its_kennzahl(self):
+		result = calculate([line("1776", credit="0.50", voucher="R1")], SPLIT, statutory_tax=BOOKED)
+		self.assertNotIn("E3003303", result.values)
+		self.assertEqual(result.values["E3003304"], FieldValue("E3003304", ZERO, ZERO, ZERO, Decimal("0.50")))
+		self.assertEqual(entries(CATALOGUE, result.reported, ZERO)["E3003303"], ZERO)
+
+	def test_a_line_by_hand_on_the_base_adds_the_tax_of_its_rate(self):
+		manual = (ManualLine("E3003303", Decimal("100.00"), "a sale the books lack"),)
+		result = calculate(booked_sale("R1", "33.33", "6.33"), SPLIT, manual, statutory_tax=BOOKED)
+		self.assertEqual(result.values["E3003304"].form, Decimal("25.33"))
+
+	def test_a_tax_more_than_a_euro_away_from_the_base_as_filed_falls_back_with_a_hint(self):
+		result = calculate(booked_sale("R1", "100.00", "21.50"), SPLIT, statutory_tax=BOOKED)
+		self.assertEqual(result.values["E3003304"].form, Decimal("19.00"))
+		self.assertEqual(
+			result.findings,
+			(
+				Finding(
+					BOOKED_TAX_CODE,
+					Severity.HINT,
+					BOOKED_TAX_OUTSIDE_TOLERANCE,
+					("E3003304", "21.50", "2.50", "19", "100", "19.00"),
+					("E3003304",),
+				),
+			),
+		)
+		self.assertIn(BOOKED_TAX_OUTSIDE_TOLERANCE, MESSAGES)
+
+	def test_one_euro_away_is_still_taken(self):
+		result = calculate(booked_sale("R1", "100.00", "20.00"), SPLIT, statutory_tax=BOOKED)
+		self.assertEqual((result.values["E3003304"].form, result.findings), (Decimal("20.00"), ()))
+
+	def test_seven_percent_and_the_acquisitions_take_their_booked_tax_too(self):
+		lines = [
+			line("8300", credit="10.93", voucher="R1"),
+			line("1771", credit="0.77", voucher="R1"),
+			line("3425", debit="500.53", voucher="E1"),
+			line("1574", debit="95.10", voucher="E1"),
+			line("1774", credit="95.10", voucher="E1"),
+		]
+		result = calculate(lines, SPLIT, statutory_tax=BOOKED)
+		taxes = {element: result.values[element].form for element in ("E3004402", "E3100903")}
+		self.assertEqual(taxes, {"E3004402": Decimal("0.77"), "E3100903": Decimal("95.10")})
