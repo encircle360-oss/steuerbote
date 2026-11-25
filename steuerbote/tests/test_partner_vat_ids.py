@@ -174,6 +174,69 @@ class TestPartnerVatIds(IntegrationTestCase):
 			}
 		)
 
+	# The companies of a partner
+
+	def new_customer(self, name: str = "Neuer Kunde AT GmbH (Partner)") -> str:
+		"""A customer with a valid Austrian number that deals with no company yet."""
+		make_customer(name, "Austria", "ATU99999999", city="Graz")
+		return name
+
+	def test_a_partner_without_dealings_is_asked_about_by_no_company_by_itself(self):
+		"""Decision of the owner: the automatic check asks only the companies a partner deals with, on every site; the
+		default company takes no partner. The button asks for the company of the user."""
+		customer = self.new_customer()
+		frappe.db.set_single_value("Global Defaults", "default_company", COMPANY)
+		self.assertEqual(partner_module.companies_for("Customer", customer, partner_module.CHANGED), [])
+		with patch("frappe.enqueue") as enqueue:
+			self.assertFalse(partner_module.request("Customer", customer, partner_module.CHANGED))
+		enqueue.assert_not_called()
+		self.assertNotIn(
+			customer,
+			[
+				party
+				for _type, party, _id in partner_module.partners_of(partner_module.company_policy(COMPANY))
+			],
+		)
+		with patch("frappe.defaults.get_user_default", return_value=COMPANY):
+			manual = partner_module.companies_for("Customer", customer, partner_module.MANUAL)
+		self.assertEqual([policy.company for policy in manual], [COMPANY])
+
+	def test_a_submitted_quotation_or_order_makes_a_partner_deal_with_its_company(self):
+		customer = self.new_customer()
+		supplier = insert_record(
+			"Supplier",
+			name="Neuer Lieferant IT (Partner)",
+			supplier_name="Neuer Lieferant IT",
+			tax_id=ITALIAN,
+		)
+		self.assertEqual(partner_module.dealings("Customer", [customer]), {})
+		insert_record(
+			"Quotation",
+			name="QTN-STPU-NEU",
+			company=COMPANY,
+			quotation_to="Customer",
+			party_name=customer,
+			docstatus=1,
+		)
+		insert_record("Purchase Order", name="PUR-STPU-NEU", company=COMPANY, supplier=supplier, docstatus=1)
+		self.assertEqual(partner_module.dealings("Customer", [customer]), {customer: {COMPANY}})
+		self.assertEqual(partner_module.dealings("Supplier", [supplier]), {supplier: {COMPANY}})
+		draft = self.new_customer("Entwurf Kunde AT GmbH (Partner)")
+		insert_record("Sales Order", name="SO-STPU-ENTWURF", company=COMPANY, customer=draft, docstatus=0)
+		self.assertEqual(partner_module.dealings("Customer", [draft]), {})
+		insert_record("Sales Order", name="SO-STPU-NEU", company=COMPANY, customer=draft, docstatus=1)
+		self.assertEqual(partner_module.dealings("Customer", [draft]), {draft: {COMPANY}})
+
+	def test_the_form_and_the_worklist_show_a_partner_that_deals_with_no_company(self):
+		customer = self.new_customer()
+		with patch("frappe.defaults.get_user_default", return_value=COMPANY):
+			state = partner_module.vat_id_state("Customer", customer)
+		self.assertFalse(state["assigned"])
+		self.assertEqual([row["company"] for row in state["companies"]], [COMPANY])
+		(row,) = [row for row in partner_module.worklist(COMPANY) if row["party"] == customer]
+		self.assertEqual(row["standing"].value, "Not Assigned")
+		self.assertTrue(partner_module.vat_id_state("Customer", ALPEN)["assigned"])
+
 	# The status and the triggers
 
 	def test_the_status_of_a_partner_follows_its_number(self):

@@ -52,6 +52,7 @@ from steuerbote.dauerfrist_sources import date_of_establishment
 from steuerbote.deadlines import Kind
 from steuerbote.ebilanz import instance, positions
 from steuerbote.ebilanz.calculation import EquityChanges, calculate
+from steuerbote.ebilanz.contributions import Line, booked_contributions
 from steuerbote.ebilanz.instance import EBilanz, Sources
 from steuerbote.ebilanz.positions import AccountingStandard, CaseError, Structure
 from steuerbote.ebilanz.ueberleitung import ueberleitung
@@ -115,6 +116,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		amended_from: DF.Link | None
 		annual_accounts: DF.Link | None
 		bvv_capital_adjustments: DF.Currency
+		bvv_booked_contributions: DF.Currency
 		bvv_contributions: DF.Currency
 		bvv_founding_contribution: DF.Currency
 		bvv_previous_equity: DF.Currency
@@ -171,6 +173,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		"tax_equity",
 		"bvv_previous_equity",
 		"bvv_founding_contribution",
+		"bvv_booked_contributions",
 	)
 	FILED_OUTSIDE = (OTHER_WAY,)
 
@@ -196,14 +199,19 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		previous, founding = self._previous_equity(
 			structure, mapping, purpose, book, first_year, balances_, adjustments, transfers
 		)
-		values = {"bvv_previous_equity": previous, "bvv_founding_contribution": founding}
+		booked = self._booked_contributions(placement, book)
+		values = {
+			"bvv_previous_equity": previous,
+			"bvv_founding_contribution": founding,
+			"bvv_booked_contributions": booked,
+		}
 		with core_errors():
 			sources = Sources(
 				balances=balances_,
 				adjustments=adjustments,
 				assets=bridge.assets_of(assets),
 				transfers=bridge.transfers_of(transfers) if self._handelsbilanz else (),
-				equity=self._equity_changes(previous, founding),
+				equity=self._equity_changes(previous, founding, booked),
 				first_year=first_year,
 			)
 		ebilanz = instance.build(structure, self._master(settings, first_year), sources)
@@ -394,7 +402,9 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 				fixed_assets=self._rows(FIXED_ASSETS),
 				transfers=self._rows(TRANSFERS) if self._handelsbilanz else (),
 				equity=self._equity_changes(
-					to_amount(self.bvv_previous_equity), to_amount(self.bvv_founding_contribution)
+					to_amount(self.bvv_previous_equity),
+					to_amount(self.bvv_founding_contribution),
+					to_amount(self.bvv_booked_contributions),
 				),
 				first_year=bool(cint(self.first_fiscal_year)),
 			)
@@ -611,13 +621,24 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 			lambda concept: calculation.amount(positions.qualified(concept)),
 		)
 
-	def _equity_changes(self, previous: Decimal, founding: Decimal) -> EquityChanges:
+	def _booked_contributions(self, placement: Placement, book: str | None) -> Decimal:
+		"""The Einlagen the entries of the Wirtschaftsjahr book (steuerbote.ebilanz.contributions), with the accounts
+		where the Bilanzzuordnung places them; an Eröffnungsbilanz has none."""
+		if self._opening:
+			return Decimal("0.00")
+		concepts = {balance.account: balance.concept for balance in ebilanz_balances(placement)}
+		year = balances.year_lines(self.company, getdate(self.from_date), getdate(self.to_date), book)
+		with core_errors():
+			return booked_contributions((Line(*row) for row in year), concepts)
+
+	def _equity_changes(self, previous: Decimal, founding: Decimal, booked: Decimal) -> EquityChanges:
 		with core_errors():
 			return bridge.equity_changes(
 				previous,
 				override=self.bvv_previous_equity_override,
 				override_reason=self.bvv_previous_equity_reason,
 				founding=founding,
+				booked=booked,
 				contributions=self.bvv_contributions,
 				withdrawals=self.bvv_withdrawals,
 				adjustments=self.bvv_capital_adjustments,

@@ -825,17 +825,18 @@ def equity_changes(
 	override: object = None,
 	override_reason: str | None = None,
 	founding: object = None,
+	booked: object = None,
 	contributions: object = None,
 	withdrawals: object = None,
 	adjustments: object = None,
 ) -> EquityChanges:
 	"""What the Betriebsvermögensvergleich takes beyond the books: the Betriebsvermögen at the end of the previous
-	fiscal year, by the company where it states another with its reason; the Einlagen, those of the founding and the
-	others; the Entnahmen and Ausschüttungen; and a Kapitalanpassung. An amount of zero is NIL, which the comparison
+	fiscal year, by the company where it states another with its reason; the Einlagen, those of the founding, those the
+	entries of the year book (steuerbote.ebilanz.contributions) and the others by hand; the Entnahmen and Ausschüttungen; and a Kapitalanpassung. An amount of zero is NIL, which the comparison
 	counts as zero (Leitfaden B.14.3.2.12)."""
 	reason = str(override_reason or "").strip()
 	stated = to_amount(override) if reason else previous
-	paid_in = to_amount(founding) + to_amount(contributions)
+	paid_in = to_amount(founding) + to_amount(booked) + to_amount(contributions)
 	return EquityChanges(
 		previous_equity=stated,
 		capital_adjustments=to_amount(adjustments) or None,

@@ -101,6 +101,7 @@ class ControllerFilesTest(TestCase):
 				*bridge.totals(ebilanz()),
 				"bvv_previous_equity",
 				"bvv_founding_contribution",
+				"bvv_booked_contributions",
 				"first_fiscal_year",
 				"annual_accounts",
 			},
