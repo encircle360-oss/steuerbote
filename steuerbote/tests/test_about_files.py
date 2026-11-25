@@ -5,9 +5,11 @@ line of every printout that names the version of Steuerbote that made it."""
 import csv
 import json
 import re
+import sys
 from html.parser import HTMLParser
 from pathlib import Path
-from unittest import TestCase
+from types import SimpleNamespace
+from unittest import TestCase, mock
 
 from steuerbote import __version__, hooks
 from steuerbote.steuerbote import about
@@ -237,3 +239,20 @@ class CreatedWithTest(TestCase):
 			},
 		)
 		self.assertEqual(about.steuerbote_version(), __version__)
+
+
+class PdfGeneratorTest(TestCase):
+	"""get_print of Frappe sets pdf_generator in the form_dict before it renders the print view for a PDF."""
+
+	def generator(self, form_dict) -> str:
+		frappe = SimpleNamespace(local=SimpleNamespace(form_dict=form_dict))
+		with mock.patch.dict(sys.modules, {"frappe": frappe}):
+			return about.steuerbote_pdf_generator()
+
+	def test_names_the_generator_frappe_renders_for(self):
+		self.assertEqual(self.generator({"pdf_generator": "chrome"}), "chrome")
+		self.assertEqual(self.generator({"pdf_generator": "wkhtmltopdf"}), "wkhtmltopdf")
+
+	def test_is_empty_for_the_preview_in_the_browser(self):
+		self.assertEqual(self.generator({}), "")
+		self.assertEqual(self.generator(None), "")
