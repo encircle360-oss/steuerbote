@@ -2,12 +2,14 @@ from datetime import date
 from decimal import Decimal
 from unittest import TestCase
 
+from steuerbote.vatid.exemption import consequence
 from steuerbote.zm.errors import ZmError
 from steuerbote.zm.findings import Code, Severity
 from steuerbote.zm.lines import (
 	ART_KENNZAHL,
 	KENNZAHL_ART,
 	Art,
+	ConfirmationAge,
 	Line,
 	Meldezeile,
 	Override,
@@ -16,6 +18,22 @@ from steuerbote.zm.lines import (
 	build,
 )
 from steuerbote.zm.tests.support import AUSTRIA, FIGURES, FRANCE, SPAIN, d, invoice
+
+NO_VAT_ID_ADVICE = (
+	"Berichtige die Rechnung, oder nimm die Zeile mit der Korrektur 0 und einer Begründung aus der ZM."
+)
+MALFORMED_ADVICE = (
+	"Berichtige die USt-IdNr. in der Rechnung, oder nimm die Zeile mit der Korrektur 0 und einer Begründung "
+	"aus der ZM."
+)
+INVALID_ADVICE = (
+	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, gib die USt-IdNr. mit Begründung frei; "
+	"sonst berichtige die Rechnung."
+)
+UNCONFIRMED_ADVICE = (
+	"Die Bestätigung soll am Tag des Umsatzes vorliegen (UStAE 6a.8 Abs. 6): „USt-IdNrn. prüfen“ fragt beim "
+	"BZSt an; liegt eine Bestätigung anders vor, gib die USt-IdNr. mit Begründung frei."
+)
 
 
 def statement(*amounts, validity=None, overrides=None):
@@ -152,10 +170,18 @@ class BlockingTest(TestCase):
 		self.assertEqual(codes(line), [Code.NO_VAT_ID])
 		self.assertEqual(
 			line.findings[0].text,
-			"Beleg SINV-1 geht mit 1.200,50 € in Kz 41 ein, nennt aber keine USt-IdNr. des Kunden Muster SARL.",
+			"Beleg SINV-1 geht mit 1.200,50 € in Kz 41 ein, nennt aber keine USt-IdNr. des Kunden Muster SARL. "
+			f"{consequence('41')} {NO_VAT_ID_ADVICE}",
 		)
 		self.assertEqual(line.findings[0].party, "Muster SARL")
 		self.assertTrue(line.blocked)
+
+	def test_a_customer_whose_name_ends_with_a_full_stop_ends_the_sentence_once(self):
+		line = statement(invoice("SINV-2", "10.00", party="Muster B.V.", vat_id=None)).lines[0]
+		self.assertTrue(
+			line.findings[0].text.startswith("Beleg SINV-2 geht mit 10,00 € in Kz 41 ein, nennt ")
+		)
+		self.assertIn("des Kunden Muster B.V. Ohne", line.findings[0].text)
 
 	def test_malformed_vat_ids(self):
 		cases = {
@@ -168,7 +194,7 @@ class BlockingTest(TestCase):
 			with self.subTest(vat_id):
 				line = statement(invoice("1", "10.00", vat_id=vat_id)).lines[0]
 				self.assertEqual((line.vat_id, codes(line)), (vat_id, [Code.MALFORMED_VAT_ID]))
-				self.assertEqual(line.findings[0].text, text)
+				self.assertEqual(line.findings[0].text, f"{text} {consequence('41')} {MALFORMED_ADVICE}")
 				self.assertEqual(line.findings[0].party, "Muster GmbH")
 				self.assertFalse(line.valid)
 				self.assertTrue(line.blocked)
@@ -184,7 +210,8 @@ class BlockingTest(TestCase):
 		self.assertEqual((services.art, codes(services)), (Art.S, [Code.MALFORMED_VAT_ID]))
 		self.assertEqual(
 			services.findings[0].text,
-			"„XI123456789“ ist eine nordirische USt-IdNr.; sie gilt in der ZM nur für Lieferungen, nicht für sonstige Leistungen.",
+			"„XI123456789“ ist eine nordirische USt-IdNr.; sie gilt in der ZM nur für Lieferungen, nicht für "
+			f"sonstige Leistungen. {consequence('21')} {MALFORMED_ADVICE}",
 		)
 		self.assertEqual(result.meldezeilen, (Meldezeile("XI123456789", Art.L, d("10")),))
 
@@ -199,10 +226,13 @@ class BlockingTest(TestCase):
 		austria, spain, france = result.lines
 		self.assertEqual(codes(austria), [Code.INVALID_VAT_ID])
 		self.assertEqual(
-			austria.findings[0].text, f"Die USt-IdNr. {AUSTRIA} ist laut Bestätigungsabfrage ungültig."
+			austria.findings[0].text,
+			f"Die USt-IdNr. {AUSTRIA} ist laut Bestätigungsabfrage ungültig. {consequence('41')} {INVALID_ADVICE}",
 		)
 		self.assertEqual(codes(france), [Code.UNCONFIRMED_VAT_ID])
-		self.assertEqual(france.findings[0].text, f"Die USt-IdNr. {FRANCE} ist nicht bestätigt.")
+		self.assertEqual(
+			france.findings[0].text, f"Die USt-IdNr. {FRANCE} ist nicht bestätigt. {UNCONFIRMED_ADVICE}"
+		)
 		self.assertEqual(codes(spain), [])
 		self.assertEqual([line.blocked for line in result.lines], [True, False, True])
 
@@ -218,9 +248,10 @@ class BlockingTest(TestCase):
 		self.assertEqual(
 			[finding.text for finding in result.findings],
 			[
-				f"Die USt-IdNr. {AUSTRIA} ist laut Bestätigungsabfrage vom 2. März 2025 ungültig.",
+				f"Die USt-IdNr. {AUSTRIA} ist laut Bestätigungsabfrage vom 2. März 2025 ungültig. "
+				f"{consequence('41')} {INVALID_ADVICE}",
 				f"Die USt-IdNr. {FRANCE} ist nicht bestätigt; die Bestätigungsabfrage vom 20. November 2026 "
-				"ergab kein Ergebnis.",
+				f"ergab kein Ergebnis. {UNCONFIRMED_ADVICE}",
 			],
 		)
 
@@ -362,6 +393,226 @@ class OverrideTest(TestCase):
 		with self.assertRaisesRegex(ZmError, "Begründung"):
 			Override(d("10"), None)  # type: ignore[arg-type]
 		self.assertEqual(Override(d("10.00"), "Grund").amount, d("10"))
+
+
+class OverrideBasisTest(TestCase):
+	"""An override is made against the ledger amount of its line. When the ledger books another amount later, such
+	as a late invoice of the same customer, the override would hide it from the ZM and from its Berichtigung, which
+	has to report the full correct sum (§ 18a Absatz 10 UStG; Anleitung zur ZM, IV.12.2)."""
+
+	def test_a_new_override_remembers_the_ledger_amount_of_its_line(self):
+		line = statement(
+			invoice("1", "999.99"), overrides={(AUSTRIA, Art.L): Override(d("1000"), "Nachweis")}
+		).lines[0]
+		self.assertEqual(line.override.basis, d("999.99"))
+		self.assertNotIn(Code.OVERRIDE_STALE, codes(line))
+
+	def test_an_override_made_against_another_ledger_amount_holds_the_line(self):
+		override = Override(d("55000"), "Nummer war am Liefertag bestätigt", basis=d("55000.99"))
+		result = statement(
+			invoice("1", "55000.99"),
+			invoice("2", "2000.00"),
+			validity={AUSTRIA: Validity.UNCONFIRMED},
+			overrides={(AUSTRIA, Art.L): override},
+		)
+		line = result.lines[0]
+		self.assertEqual(codes(line), [Code.UNCONFIRMED_VAT_ID, Code.OVERRIDE_STALE])
+		self.assertEqual(
+			line.findings[1].text,
+			f"Die Korrektur der Zeile {AUSTRIA} (L) auf 55.000,00 € wurde bei 55.000,99 € im Hauptbuch eingetragen; "
+			"das Hauptbuch bucht jetzt 57.000,99 €. Die Zeile hält die Meldung an, bis die Korrektur bestätigt ist: "
+			"Passe Betrag oder Begründung an, oder lösche die Korrektur, dann meldet die Zeile das Hauptbuch.",
+		)
+		self.assertIs(line.findings[1].severity, Severity.ERROR)
+		self.assertEqual(line.override.basis, d("55000.99"))
+		self.assertTrue(line.blocked)
+		self.assertFalse(result.ready)
+
+	def test_neither_the_override_nor_a_release_lifts_the_block_of_a_changed_ledger(self):
+		result = build(
+			(invoice("1", "10.00"),),
+			FIGURES,
+			overrides={(AUSTRIA, Art.L): Override(d("0"), "Gehört nicht in die ZM", basis=d("5.00"))},
+			accepted={(AUSTRIA, Art.L): "Bestätigung liegt vor"},
+		)
+		self.assertTrue(result.lines[0].blocked)
+
+	def test_an_override_of_its_ledger_amount_holds_nothing(self):
+		result = statement(
+			invoice("1", "10.00"),
+			overrides={(AUSTRIA, Art.L): Override(d("12"), "Nachweis", basis=d("10.00"))},
+		)
+		self.assertEqual((codes(result.lines[0]), result.ready), ([], True))
+
+	def test_a_line_by_hand_holds_once_vouchers_book_on_it(self):
+		own = "ATU99999999"
+		by_hand = Override(d("2500"), "Verbringen in das Lager Wien", basis=d("0"))
+		self.assertTrue(statement(overrides={(own, Art.L): by_hand}).ready)
+		booked = statement(invoice("1", "300.00", vat_id=own), overrides={(own, Art.L): by_hand})
+		self.assertEqual(codes(booked.lines[0]), [Code.OVERRIDE_STALE])
+		self.assertFalse(booked.ready)
+
+	def test_a_line_without_vat_id_names_itself_so(self):
+		result = statement(
+			invoice("1", "10.00", vat_id=None),
+			overrides={("", Art.L): Override(d("0"), "Steuerpflichtig behandelt", basis=d("4.00"))},
+		)
+		self.assertTrue(
+			result.lines[0]
+			.findings[-1]
+			.text.startswith("Die Korrektur der Zeile ohne USt-IdNr. (L) auf 0,00 €")
+		)
+
+	def test_the_basis_is_an_amount_in_cents(self):
+		with self.assertRaises(ValueError):
+			Override(d("10"), "Grund", basis=d("1.001"))
+		self.assertIsNone(Override(d("10"), "Grund").basis)
+
+
+class AcceptanceTest(TestCase):
+	"""Releasing an unconfirmed or invalid USt-IdNr. is not the same as reporting another amount: the line keeps the
+	ledger amount, and only the block of its number lifts (decision of the maintainer, docs/zm.md)."""
+
+	def test_a_release_with_a_reason_lifts_the_block_of_the_number_and_keeps_the_ledger_amount(self):
+		result = build(
+			(invoice("1", "55000.99"), invoice("2", "2000.00")),
+			FIGURES,
+			validity={AUSTRIA: Validity.UNCONFIRMED, FRANCE: Validity.INVALID},
+			accepted={("atu 12345678", Art.L): "Bestätigt am Liefertag, Ausdruck in der Akte"},
+		)
+		line = result.lines[0]
+		self.assertEqual(codes(line), [Code.UNCONFIRMED_VAT_ID, Code.VAT_ID_ACCEPTED])
+		self.assertEqual(
+			line.findings[1].text,
+			f"Die USt-IdNr. {AUSTRIA} ist für die Zeile L freigegeben; Begründung: Bestätigt am Liefertag, "
+			"Ausdruck in der Akte.",
+		)
+		self.assertIs(line.findings[1].severity, Severity.HINT)
+		self.assertEqual(
+			(line.acceptance, line.override, line.reported),
+			(
+				"Bestätigt am Liefertag, Ausdruck in der Akte",
+				None,
+				d("57000"),
+			),
+		)
+		self.assertFalse(line.blocked)
+		self.assertTrue(result.ready)
+
+	def test_a_release_lifts_an_invalid_number_as_well(self):
+		result = build(
+			(invoice("1", "10.00"),),
+			FIGURES,
+			validity={AUSTRIA: Validity.INVALID},
+			accepted={(AUSTRIA, Art.L): "Gültig laut Bestätigung vom Liefertag"},
+		)
+		self.assertTrue(result.ready)
+
+	def test_a_release_lifts_nothing_but_the_confirmation(self):
+		cases = {
+			"no vat id": invoice("1", "10.00", vat_id=None),
+			"malformed": invoice("1", "10.00", vat_id="DE123456789"),
+			"destination": invoice("1", "10.00", kennzahl="42", vat_id=FRANCE, destination="Austria"),
+		}
+		for name, voucher in cases.items():
+			with self.subTest(name):
+				art = voucher.art
+				key = (build((voucher,), FIGURES).lines[0].vat_id, art)
+				result = build((voucher,), FIGURES, accepted={key: "Grund"})
+				self.assertTrue(result.lines[0].blocked)
+				self.assertNotIn(Code.VAT_ID_ACCEPTED, codes(result.lines[0]))
+
+	def test_a_release_without_reason_or_without_line_does_nothing(self):
+		result = build(
+			(invoice("1", "10.00"),),
+			FIGURES,
+			validity={AUSTRIA: Validity.UNCONFIRMED},
+			accepted={(AUSTRIA, Art.L): " ", (FRANCE, Art.L): "Grund"},
+		)
+		self.assertEqual([line.vat_id for line in result.lines], [AUSTRIA])
+		self.assertEqual(result.lines[0].acceptance, "")
+		self.assertFalse(result.ready)
+
+	def test_a_release_of_a_confirmed_number_says_nothing(self):
+		result = build(
+			(invoice("1", "10.00"),),
+			FIGURES,
+			validity={AUSTRIA: Validity.CONFIRMED},
+			accepted={(AUSTRIA, Art.L): "Grund"},
+		)
+		self.assertEqual(codes(result.lines[0]), [])
+
+
+class CorrectionReadinessTest(TestCase):
+	"""A Berichtigung reports the lines that change what the BZSt holds; a line it repeats unchanged is not in its
+	file, so the confirmation of its number does not hold the Berichtigung back. A changed ledger behind an override
+	always does."""
+
+	def test_an_unchanged_line_with_an_unconfirmed_number_holds_no_berichtigung(self):
+		result = statement(
+			invoice("1", "10000.00"),
+			invoice("2", "4000.00", kennzahl="21", vat_id=FRANCE),
+			validity={AUSTRIA: Validity.UNCONFIRMED, FRANCE: Validity.CONFIRMED},
+		)
+		held = {(AUSTRIA, Art.L): d("10000"), (FRANCE, Art.S): d("2500")}
+		self.assertFalse(result.ready)
+		self.assertEqual(result.holding(held), ())
+		self.assertTrue(result.ready_against(held))
+		self.assertEqual([line.vat_id for line in result.holding(None)], [AUSTRIA])
+		self.assertFalse(result.ready_against(None))
+
+	def test_a_changed_line_holds_it(self):
+		result = statement(invoice("1", "12000.00"), validity={AUSTRIA: Validity.UNCONFIRMED})
+		self.assertFalse(result.ready_against({(AUSTRIA, Art.L): d("10000")}))
+
+	def test_a_changed_ledger_behind_an_override_holds_it_even_when_the_amount_is_as_filed(self):
+		result = statement(
+			invoice("1", "57000.99"),
+			validity={AUSTRIA: Validity.UNCONFIRMED},
+			overrides={(AUSTRIA, Art.L): Override(d("55000"), "Nachweis", basis=d("55000.99"))},
+		)
+		self.assertFalse(result.ready_against({(AUSTRIA, Art.L): d("55000")}))
+
+	def test_a_new_line_the_zm_cannot_take_holds_it(self):
+		result = statement(invoice("1", "10.00", vat_id="DE123456789"))
+		self.assertFalse(result.ready_against({}))
+
+
+class ConfirmationAgeTest(TestCase):
+	"""As at the Voranmeldung, a confirmation older than the settings allow gets a hint; it holds nothing back."""
+
+	def test_a_confirmation_older_than_allowed_gets_a_hint(self):
+		result = build(
+			(invoice("1", "10.00"), invoice("2", "10.00", vat_id=FRANCE)),
+			FIGURES,
+			validity={AUSTRIA: Validity.CONFIRMED, FRANCE: Validity.CONFIRMED},
+			asked={AUSTRIA: date(2026, 7, 1), FRANCE: date(2026, 8, 2)},
+			confirmation_age=ConfirmationAge(date(2026, 10, 31), 90),
+		)
+		austria, france = result.lines
+		self.assertEqual(codes(austria), [Code.CONFIRMATION_STALE])
+		self.assertEqual(
+			austria.findings[0].text,
+			f"Die USt-IdNr. {AUSTRIA} ist zuletzt am 1. Juli 2026 bestätigt worden, 122 Tage vor dem Ende der "
+			"Monate der Meldung; die Einstellungen lassen höchstens 90 Tage zu. „USt-IdNrn. prüfen“ fragt erneut.",
+		)
+		self.assertIs(austria.findings[0].severity, Severity.HINT)
+		self.assertEqual(codes(france), [])
+		self.assertTrue(result.ready)
+
+	def test_only_a_confirmed_number_ages(self):
+		result = build(
+			(invoice("1", "10.00"),),
+			FIGURES,
+			validity={AUSTRIA: Validity.UNCONFIRMED},
+			asked={AUSTRIA: date(2025, 1, 1)},
+			confirmation_age=ConfirmationAge(date(2026, 10, 31), 90),
+		)
+		self.assertEqual(codes(result.lines[0]), [Code.UNCONFIRMED_VAT_ID])
+
+	def test_the_age_is_a_number_of_days_from_0_on(self):
+		with self.assertRaises(ValueError):
+			ConfirmationAge(date(2026, 10, 31), -1)
 
 
 class MeldezeileTest(TestCase):

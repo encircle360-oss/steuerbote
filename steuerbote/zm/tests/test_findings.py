@@ -10,9 +10,24 @@ class FindingTest(TestCase):
 				expected = Severity.ERROR if code in BLOCKING else Severity.HINT
 				self.assertIs(Finding(code, "Text.").severity, expected)
 
-	def test_only_the_comparison_the_filed_returns_the_lines_by_hand_and_the_start_give_hints(self):
+	def test_only_the_comparison_the_filed_returns_the_lines_by_hand_the_start_and_the_confirmations_give_hints(
+		self,
+	):
 		hints = {code for code in Code if not Finding(code, "Text.").blocking}
-		self.assertEqual(hints, {Code.FILED_RETURNS, Code.PREVIOUS_PERIOD, Code.OWN_LINE, Code.BEFORE_START})
+		self.assertEqual(
+			hints,
+			{
+				Code.FILED_RETURNS,
+				Code.PREVIOUS_PERIOD,
+				Code.OWN_LINE,
+				Code.BEFORE_START,
+				Code.VAT_ID_ACCEPTED,
+				Code.CONFIRMATION_STALE,
+			},
+		)
+
+	def test_a_changed_ledger_behind_an_override_blocks(self):
+		self.assertTrue(Finding(Code.OVERRIDE_STALE, "Text.").blocking)
 
 	def test_codes_are_distinct_from_those_of_the_voranmeldung(self):
 		self.assertTrue(all(code.value.startswith("ZM-") for code in Code))
