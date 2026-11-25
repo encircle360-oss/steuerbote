@@ -18,6 +18,9 @@ TESTMERKER = "700000004"
 
 ERROR = "error"
 HINT = "hint"
+SCHEMA_NOT_CHECKED = "SIM-001"
+"""The hint of the simulation that it checked the structure of the Nutzdaten alone, without the schema of the
+ERiC documentation."""
 SEVERITIES = frozenset({ERROR, HINT})
 
 EXIT_OK = 0

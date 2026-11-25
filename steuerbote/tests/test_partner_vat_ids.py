@@ -675,6 +675,15 @@ class TestPartnerVatIds(IntegrationTestCase):
 			partner_module.check_invoice(doc)
 		self.assertIsNone(doc.vat_id_confirmation)
 
+	def test_the_refusal_of_an_invoice_is_a_message_without_a_traceback(self):
+		"""The gate refuses as intended; the browser gets its message, not the traceback a System Manager sees for
+		an error of the code (is_traceback_allowed of Frappe)."""
+		self.addCleanup(frappe.local.flags.pop, "disable_traceback", None)
+		customer = insert_record("Customer", name="Ohne Nummer AG (Partner)", customer_name="Ohne Nummer AG")
+		with self.assertRaises(frappe.ValidationError):
+			partner_module.check_invoice(self.invoice(customer, self.accounts["8125"]))
+		self.assertTrue(frappe.local.flags.disable_traceback)
+
 	def test_a_german_number_on_an_invoice_for_goods_is_blocked(self):
 		doc = self.invoice(MUENCHEN, self.accounts["8125"])
 		with self.assertRaisesRegex(frappe.ValidationError, "is German; Kz 41 needs one"):

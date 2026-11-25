@@ -828,6 +828,8 @@ def check_invoice(doc, method: str | None = None) -> None:
 			indicator="orange",
 		)
 		return
+	# The refusal is the gate working as intended, not an error of the code: the browser gets the message alone.
+	frappe.local.flags.disable_traceback = True
 	if not finding.releasable:
 		frappe.throw(
 			_(

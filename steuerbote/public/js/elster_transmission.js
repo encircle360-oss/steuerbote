@@ -152,7 +152,9 @@ function show_latest_run(frm) {
 		__("Latest run {0}, {1}, {2}: errors {3}, hints {4}.", [
 			link,
 			procedure,
-			frappe.utils.escape_html(run.status),
+			frappe.utils.escape_html(
+				run.schema_unchecked && run.status === "Erfolgreich" ? __("Succeeded without schema check") : run.status
+			),
 			run.errors,
 			run.hints,
 		]),
@@ -322,6 +324,17 @@ function on_transmission_finished(frm, data) {
 			"orange",
 		],
 	};
+	if (data.schema_unchecked) {
+		// The simulation without the ERiC documentation checks the structure alone (SIM-001 in transmission.py).
+		notices.Erfolgreich = [
+			__("{0} for {1} ran without checking the schema, since the simulation has no ERiC documentation; see {2}.", [
+				procedure,
+				data.document,
+				link,
+			]),
+			"orange",
+		];
+	}
 	const [message, indicator] = notices[data.status] || [
 		__("{0} for {1} failed, see {2}.", [procedure, data.document, link]),
 		"red",

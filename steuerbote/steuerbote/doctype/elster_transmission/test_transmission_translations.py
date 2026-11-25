@@ -115,6 +115,8 @@ class TransmissionTranslationsTest(TestCase):
 			"Certificate File (.pfx)",
 			"Errors {0}, hints {1}: see the messages below.",
 			"Latest run {0}, {1}, {2}: errors {3}, hints {4}.",
+			"{0} for {1} ran without checking the schema, since the simulation has no ERiC documentation; see {2}.",
+			"Succeeded without schema check",
 			"Proxy URL",
 			proxy.NO_PORT,
 		):

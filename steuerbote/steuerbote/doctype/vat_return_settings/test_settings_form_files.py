@@ -66,6 +66,31 @@ class ListIndicatorTest(TestCase):
 					self.assertIn(f"{option}:", script)
 
 
+class AnnualListIndicatorTest(TestCase):
+	"""The annual filings show their status in the list and the form header as the Voranmeldung does, not „Entwurf“ for
+	every document that is not submitted."""
+
+	def test_each_annual_filing_shows_every_status_of_its_doctype(self):
+		import json
+
+		for name, doctype in (
+			("annual_vat_return", "Annual VAT Return"),
+			("corporate_income_tax_return", "Corporate Income Tax Return"),
+			("trade_tax_return", "Trade Tax Return"),
+			("electronic_balance_sheet", "Electronic Balance Sheet"),
+			("annual_accounts", "Annual Accounts"),
+		):
+			with self.subTest(doctype=doctype):
+				script = (DOCTYPES / name / f"{name}_list.js").read_text(encoding="utf-8")
+				self.assertIn(f'frappe.listview_settings["{doctype}"]', script)
+				self.assertIn('add_fields: ["status"]', script)
+				self.assertIn("has_indicator_for_draft: true", script)
+				definition = json.loads((DOCTYPES / name / f"{name}.json").read_text(encoding="utf-8"))
+				(status,) = (field for field in definition["fields"] if field["fieldname"] == "status")
+				for option in status["options"].split("\n"):
+					self.assertIn(f"{option}:", script)
+
+
 class VatReturnFormTest(TestCase):
 	def setUp(self):
 		self.form = FORMS["VAT Return"].read_text(encoding="utf-8")
