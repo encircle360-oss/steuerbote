@@ -14,6 +14,17 @@
 	("S", "Sonstige Leistungen (§ 3a Absatz 2 UStG)"),
 ] -%}
 
+{%- macro line_columns() -%}
+		<colgroup>
+			<col class="sb-id">
+			<col>
+			<col class="sb-art">
+			{%- if correction %}
+			<col class="sb-num">
+			{%- endif %}
+			<col class="sb-num">
+		</colgroup>
+{%- endmacro -%}
 {%- macro euros(value) -%}{{ frappe.utils.fmt_money(value, 0, None, "#.###,##") }}{%- endmacro -%}
 {%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
 
@@ -49,15 +60,7 @@
 	{%- endif %}
 
 	<table class="sb-lines">
-		<colgroup>
-			<col class="sb-id">
-			<col>
-			<col class="sb-art">
-			{%- if correction %}
-			<col class="sb-num">
-			{%- endif %}
-			<col class="sb-num">
-		</colgroup>
+		{{- line_columns() }}
 		<thead>
 			<tr>
 				<th class="sb-id">USt-IdNr.</th>
@@ -66,7 +69,7 @@
 				{%- if correction %}
 				<th class="sb-num">Bisher gemeldet<br>Euro</th>
 				{%- endif %}
-				<th class="sb-num">Summe der Bemessungsgrundlagen<br>Euro</th>
+				<th class="sb-num">Summe der Bemessungs&shy;grundlagen<br>Euro</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -85,6 +88,7 @@
 			{%- endfor %}
 		</tbody>
 		<tbody class="sb-group">
+			<tr><td class="sb-nest" colspan="{{ 5 if correction else 4 }}"><table class="sb-lines">{{- line_columns() }}
 			<tr class="sb-section"><td colspan="{{ 5 if correction else 4 }}">{{ "Summen der berichtigten Zeilen je Art" if correction else "Summen je Art" }}</td></tr>
 			{%- for art, label in arts %}
 			<tr class="sb-sum">
@@ -96,6 +100,7 @@
 				<td class="sb-num">{{ euros(filed | selectattr("art", "equalto", art) | sum(attribute="reported")) }}</td>
 			</tr>
 			{%- endfor %}
+			</table></td></tr>
 		</tbody>
 	</table>
 

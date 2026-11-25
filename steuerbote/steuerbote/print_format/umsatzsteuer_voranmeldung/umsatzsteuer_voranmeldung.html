@@ -45,6 +45,17 @@
 {%- macro cents(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
 {%- macro amount(row) -%}{{ euros(row.final) if row.kind == "base" else cents(row.final) }}{%- endmacro -%}
 
+{%- macro form_columns() -%}
+		<colgroup>
+			<col class="sb-line">
+			<col>
+			<col class="sb-kz">
+			<col class="sb-num">
+			<col class="sb-kz">
+			<col class="sb-num">
+		</colgroup>
+{%- endmacro -%}
+
 {%- macro flag_row(line, kennzahl, label, value) -%}
 <tr>
 	<td class="sb-line">{{ line }}</td>
@@ -116,14 +127,7 @@
 	</table>
 
 	<table class="sb-lines">
-		<colgroup>
-			<col class="sb-line">
-			<col>
-			<col class="sb-kz">
-			<col class="sb-num">
-			<col class="sb-kz">
-			<col class="sb-num">
-		</colgroup>
+		{{- form_columns() }}
 		<thead>
 			<tr>
 				<th class="sb-line">Zeile</th>
@@ -141,6 +145,7 @@
 		</tbody>
 		{%- for letter, title, first, last in sections %}
 		<tbody class="sb-group">
+			<tr><td class="sb-nest" colspan="6"><table class="sb-lines">{{- form_columns() }}
 			<tr class="sb-section"><td colspan="6">{{ letter }} {{ title }}</td></tr>
 			{%- set printed = namespace(any=false) -%}
 			{%- for line in range(first, last + 1) -%}
@@ -158,14 +163,18 @@
 			{%- if not printed.any %}
 			<tr class="sb-empty"><td></td><td colspan="5">Keine Eintragungen</td></tr>
 			{%- endif %}
+			</table></td></tr>
 		</tbody>
 		{%- endfor %}
 		<tbody class="sb-group">
+			<tr><td class="sb-nest" colspan="6"><table class="sb-lines">{{- form_columns() }}
 			<tr class="sb-section"><td colspan="6">J. Sonstige Angaben</td></tr>
 			{{ flag_row(53, "29", "Verrechnung des Erstattungsbetrags erwünscht / Erstattungsbetrag ist abgetreten", "1 = Ja" if doc.offset_requested else "") }}
 			{{ flag_row(54, "26", "Das SEPA-Lastschriftmandat soll ausnahmsweise für diesen Voranmeldungszeitraum nicht verwendet werden", "1 = Ja" if doc.no_sepa_mandate else "") }}
+			</table></td></tr>
 		</tbody>
 		<tbody class="sb-group">
+			<tr><td class="sb-nest" colspan="6"><table class="sb-lines">{{- form_columns() }}
 			<tr class="sb-section"><td colspan="6">Ergänzende Angaben zur Steueranmeldung</td></tr>
 			<tr>
 				<td class="sb-line">55</td>
@@ -177,6 +186,7 @@
 				<td class="sb-kz">500</td>
 				<td class="sb-flag" colspan="3">{{ doc.supplementary_code or "" }}</td>
 			</tr>
+			</table></td></tr>
 		</tbody>
 	</table>
 

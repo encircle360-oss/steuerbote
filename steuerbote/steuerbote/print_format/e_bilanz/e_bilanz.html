@@ -53,6 +53,20 @@
 	</table>
 </div>
 {%- endmacro -%}
+{%- macro account_columns() -%}
+		<colgroup>
+			<col class="sb-line">
+			<col>
+			<col class="sb-num">
+		</colgroup>
+{%- endmacro -%}
+{%- macro account_row(account) -%}
+		<tr>
+			<td class="sb-line">{{ account.number | e }}</td>
+			<td>{{ account.label | e }}</td>
+			<td class="sb-num">{{ account.amount }}</td>
+		</tr>
+{%- endmacro -%}
 {% include "steuerbote/templates/includes/print/style.html" %}
 {%- set running_title = "E-Bilanz " ~ doc.year -%}
 <div class="sb-print">
@@ -188,11 +202,7 @@
 	{%- if form.kontennachweis %}
 	<div class="sb-block">
 	<table class="sb-lines">
-		<colgroup>
-			<col class="sb-line">
-			<col>
-			<col class="sb-num">
-		</colgroup>
+		{{- account_columns() }}
 		<thead>
 			<tr class="sb-caption"><th colspan="3"><h2>Kontennachweis</h2></th></tr>
 			<tr>
@@ -202,15 +212,14 @@
 			</tr>
 		</thead>
 		{%- for group in form.kontennachweis %}
+		{%- set kept = group.accounts if group.accounts | length <= 15 else group.accounts[:3] %}
 		<tbody class="sb-group">
-			<tr class="sb-group-head"><td colspan="2">{{ group.label | e }}</td><td class="sb-num">{{ group.sum }}</td></tr>
-			{%- for account in group.accounts %}
-			<tr>
-				<td class="sb-line">{{ account.number | e }}</td>
-				<td>{{ account.label | e }}</td>
-				<td class="sb-num">{{ account.amount }}</td>
-			</tr>
-			{%- endfor %}
+			<tr><td class="sb-nest" colspan="3"><table class="sb-lines">
+				{{- account_columns() }}
+				<tr class="sb-group-head"><td colspan="2">{{ group.label | e }}</td><td class="sb-num">{{ group.sum }}</td></tr>
+				{%- for account in kept %}{{ account_row(account) }}{%- endfor %}
+			</table></td></tr>
+			{%- for account in group.accounts[kept | length :] %}{{ account_row(account) }}{%- endfor %}
 		</tbody>
 		{%- endfor %}
 	</table>

@@ -12,6 +12,37 @@
 {%- set causes = {"No Difference": "kein Unterschied", "Late Postings": "spätere Buchungen", "Corrections without Posting": "Korrekturen ohne Buchung", "Late Postings and Corrections": "spätere Buchungen und Korrekturen", "Not Filed": "nicht abgegeben"} -%}
 {%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
 {%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
+{%- macro form_columns() -%}
+		<colgroup>
+			<col class="sb-line">
+			<col>
+			<col class="sb-kz">
+			<col class="sb-num">
+			<col class="sb-kz">
+			<col class="sb-num">
+		</colgroup>
+{%- endmacro -%}
+{%- macro form_row(row) -%}
+		{%- if row.heading %}
+		<tr class="sb-subheading"><td></td><td colspan="5">{{ row.heading | e }}</td></tr>
+		{%- elif row.text is defined %}
+		<tr>
+			<td class="sb-line">{{ row.line }}</td>
+			<td>{{ row.label | e }}</td>
+			<td class="sb-kz">{{ row.right_kz | e }}</td>
+			<td class="sb-text" colspan="3">{{ row.text | e }}</td>
+		</tr>
+		{%- else %}
+		<tr{% if row.sum %} class="sb-sum"{% endif %}>
+			<td class="sb-line">{{ row.line }}</td>
+			<td>{{ row.label | e }}</td>
+			<td class="sb-kz">{{ (row.left_kz or "") | e }}</td>
+			<td class="sb-num">{{ (row.left or "") | e }}</td>
+			<td class="sb-kz">{{ (row.right_kz or "") | e }}</td>
+			<td class="sb-num">{{ (row.right or "") | e }}</td>
+		</tr>
+		{%- endif %}
+{%- endmacro -%}
 {% include "steuerbote/templates/includes/print/style.html" %}
 {%- set running_title = "Umsatzsteuererklärung " ~ doc.year -%}
 <div class="sb-print">
@@ -25,14 +56,7 @@
 	{% include "steuerbote/templates/includes/annual_filing/head.html" %}
 
 	<table class="sb-lines">
-		<colgroup>
-			<col class="sb-line">
-			<col>
-			<col class="sb-kz">
-			<col class="sb-num">
-			<col class="sb-kz">
-			<col class="sb-num">
-		</colgroup>
+		{{- form_columns() }}
 		<thead>
 			<tr>
 				<th class="sb-line">Zeile</th>
@@ -44,40 +68,25 @@
 			</tr>
 		</thead>
 		{%- for section in form.sections %}
+		{%- set kept = section.rows if section.rows | length <= 15 else section.rows[:3] %}
 		<tbody class="sb-group">
-			<tr class="sb-section"><td colspan="6">{{ section.letter }} {{ section.title | e }}</td></tr>
-			{%- if section.rows and (section.left or section.right) %}
-			<tr class="sb-columns">
-				<td></td>
-				<td></td>
-				<td class="sb-num" colspan="2">{{ section.left | e }}</td>
-				<td class="sb-num" colspan="2">{{ section.right | e }}</td>
-			</tr>
-			{%- endif %}
-			{%- for row in section.rows %}
-			{%- if row.heading %}
-			<tr class="sb-subheading"><td></td><td colspan="5">{{ row.heading | e }}</td></tr>
-			{%- elif row.text is defined %}
-			<tr>
-				<td class="sb-line">{{ row.line }}</td>
-				<td>{{ row.label | e }}</td>
-				<td class="sb-kz">{{ row.right_kz | e }}</td>
-				<td class="sb-text" colspan="3">{{ row.text | e }}</td>
-			</tr>
-			{%- else %}
-			<tr{% if row.sum %} class="sb-sum"{% endif %}>
-				<td class="sb-line">{{ row.line }}</td>
-				<td>{{ row.label | e }}</td>
-				<td class="sb-kz">{{ (row.left_kz or "") | e }}</td>
-				<td class="sb-num">{{ (row.left or "") | e }}</td>
-				<td class="sb-kz">{{ (row.right_kz or "") | e }}</td>
-				<td class="sb-num">{{ (row.right or "") | e }}</td>
-			</tr>
-			{%- endif %}
-			{%- endfor %}
-			{%- if not section.rows %}
-			<tr class="sb-empty"><td></td><td colspan="5">Keine Eintragungen</td></tr>
-			{%- endif %}
+			<tr><td class="sb-nest" colspan="6"><table class="sb-lines">
+				{{- form_columns() }}
+				<tr class="sb-section"><td colspan="6">{{ section.letter }} {{ section.title | e }}</td></tr>
+				{%- if section.rows and (section.left or section.right) %}
+				<tr class="sb-columns">
+					<td></td>
+					<td></td>
+					<td class="sb-num" colspan="2">{{ section.left | e }}</td>
+					<td class="sb-num" colspan="2">{{ section.right | e }}</td>
+				</tr>
+				{%- endif %}
+				{%- for row in kept %}{{ form_row(row) }}{%- endfor %}
+				{%- if not section.rows %}
+				<tr class="sb-empty"><td></td><td colspan="5">Keine Eintragungen</td></tr>
+				{%- endif %}
+			</table></td></tr>
+			{%- for row in section.rows[kept | length :] %}{{ form_row(row) }}{%- endfor %}
 		</tbody>
 		{%- endfor %}
 	</table>

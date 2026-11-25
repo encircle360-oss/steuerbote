@@ -10,6 +10,22 @@
 {%- set form = doc.income_tax_print() -%}
 {%- set tax_office = frappe.db.get_value("VAT Return Settings", doc.company, "tax_office") -%}
 {%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
+{%- macro form_columns() -%}
+		<colgroup>
+			<col class="sb-line">
+			<col>
+			<col class="sb-instance">
+			<col class="sb-value-wide">
+		</colgroup>
+{%- endmacro -%}
+{%- macro form_row(row) -%}
+			<tr>
+				<td class="sb-line">{{ row.line | e }}</td>
+				<td>{{ row.label | e }}</td>
+				<td class="sb-instance">{{ row.instance | e }}</td>
+				<td class="sb-value-wide">{{ row.value | e }}</td>
+			</tr>
+{%- endmacro -%}
 {% include "steuerbote/templates/includes/print/style.html" %}
 {%- set running_title = "Gewerbesteuererklärung " ~ doc.year -%}
 <div class="sb-print">
@@ -26,12 +42,7 @@
 	{% include "steuerbote/templates/includes/annual_filing/head.html" %}
 
 	<table class="sb-lines">
-		<colgroup>
-			<col class="sb-line">
-			<col>
-			<col class="sb-instance">
-			<col class="sb-num">
-		</colgroup>
+		{{- form_columns() }}
 		<thead>
 			<tr>
 				<th class="sb-line">Zeile</th>
@@ -41,16 +52,14 @@
 			</tr>
 		</thead>
 		{%- for section in form.sections %}
+		{%- set kept = section.rows if section.rows | length <= 15 else section.rows[:3] %}
 		<tbody class="sb-group">
-			<tr class="sb-section"><td colspan="4">{{ section.title | e }}</td></tr>
-			{%- for row in section.rows %}
-			<tr>
-				<td class="sb-line">{{ row.line | e }}</td>
-				<td>{{ row.label | e }}</td>
-				<td class="sb-instance">{{ row.instance | e }}</td>
-				<td class="sb-value-wide">{{ row.value | e }}</td>
-			</tr>
-			{%- endfor %}
+			<tr><td class="sb-nest" colspan="4"><table class="sb-lines">
+				{{- form_columns() }}
+				<tr class="sb-section"><td colspan="4">{{ section.title | e }}</td></tr>
+				{%- for row in kept %}{{ form_row(row) }}{%- endfor %}
+			</table></td></tr>
+			{%- for row in section.rows[kept | length :] %}{{ form_row(row) }}{%- endfor %}
 		</tbody>
 		{%- endfor %}
 	</table>
