@@ -121,6 +121,8 @@ class VATReturnSettings(Document):
 		reminder; without a default outgoing e-mail account the reminder reaches nobody, which the save says."""
 		from steuerbote.steuerbote import deadlines
 
+		if self.deadline_recipients is not None and not isinstance(self.deadline_recipients, str):
+			frappe.throw(_("The recipients of the reminder are text: one address per line."))
 		invalid = deadlines.invalid_recipients(self.deadline_recipients)
 		if invalid:
 			frappe.throw(

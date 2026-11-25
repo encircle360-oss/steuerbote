@@ -1874,6 +1874,7 @@
 "The query goes to the BZSt or VIES at once, also while ERiC runs as a simulation: the simulation stands in for ELSTER only.","Die Abfrage geht sofort an das BZSt oder an VIES, auch wenn ERiC als Simulation läuft: Die Simulation steht nur für ELSTER."
 "The reason „Other Reason“ for {0} needs a note that says what it is.","Der Grund „Anderer Grund“ für {0} braucht einen Vermerk, der ihn nennt."
 "The receipts of the Zuwendungen come to {0}, the deductible Zuwendungen in the books to {1}.","Die Zuwendungsbestätigungen ergeben {0}, die abziehbaren Zuwendungen in den Büchern {1}."
+"The recipients of the reminder are text: one address per line.","Die Empfänger der Erinnerung sind Text: eine Adresse je Zeile."
 "The reconciliation with the registers shows a difference without an explanation: {0}. Explain it in its row, or in the remarks why the return is filed nonetheless.","Der Abgleich mit Registern zeigt eine Differenz ohne Erklärung: {0}. Bitte in ihrer Zeile erklären oder in den Anmerkungen begründen, warum die Meldung trotzdem abgegeben wird."
 "The record of a Voranmeldung filed before Steuerbote, which the base takes as filed.","Der Eintrag einer vor Steuerbote abgegebenen Voranmeldung, den die Grundlage wie abgegeben nimmt."
 "The reduction of the steuerliches Einlagekonto that the Steuerbescheinigung certifies.","Die Minderung des steuerlichen Einlagekontos, die die Steuerbescheinigung bescheinigt."
