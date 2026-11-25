@@ -467,6 +467,21 @@ class TaxonomyTest(TestCase):
 			[("XBRL-MUSSFELD", "de-gcd:genInfo.company.id.shareholder")],
 		)
 
+	def test_a_choice_nil_as_a_whole_is_no_fact(self):
+		"""ERiC 44.3.6.0 refuses a Mussfeld whose tuple is NIL as a whole with rule 170155092, for it has no fact in a
+		context of the current year (validation of Bilanz_6.9); the simulation is not more lenient."""
+
+		def nil_as_a_whole(root: etree._Element) -> None:
+			found = first(root, "genInfo.company.id.domesticBranchOfForeignCompany")
+			for child in list(found):
+				found.remove(child)
+			found.set(NIL, "true")
+
+		self.assertEqual(
+			errors(changed(EINHEITSBILANZ, nil_as_a_whole)),
+			[("XBRL-MUSSFELD", "de-gcd:genInfo.company.id.domesticBranchOfForeignCompany")],
+		)
+
 	def test_finds_a_wrong_sum_of_the_calculation_linkbase(self):
 		"""steuerbote.xbrl.checks.calculation(); Leitfaden B.14.11."""
 		((code, _),) = errors(changed(EINHEITSBILANZ, amount("bs.ass.fixAss", "41000.00")))
