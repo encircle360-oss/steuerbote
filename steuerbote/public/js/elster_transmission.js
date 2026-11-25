@@ -5,6 +5,9 @@
 // simulated_test_send. The server side is elster_transmission/transmission.py.
 
 const TRANSMISSION_EVENT = "steuerbote_elster_transmission";
+// The realtime notice of a finished run may not arrive, as behind a proxy that refuses the socket; while a run holds
+// the document, its form asks the server this often whether it has finished.
+const POLL_INTERVAL_MS = 4000;
 const STASH_CERTIFICATE = "steuerbote.steuerbote.doctype.elster_transmission.transmission.stash_certificate";
 
 function listen_for_transmissions(frm) {
@@ -68,6 +71,7 @@ function elster_notes(frm, texts) {
 		}
 		if (frm.doc.transmission_in_progress) {
 			notes.push(texts.running);
+			poll_while_running(frm, "transmission_in_progress");
 		}
 		if (eric_simulates(frm)) {
 			const link = `<a href="/app/${frappe.router.slug("ERiC Settings")}">${__("ERiC Settings")}</a>`;
@@ -82,6 +86,35 @@ function elster_notes(frm, texts) {
 		}
 	}
 	return notes;
+}
+
+// Reloads the form once the lock ``fieldname`` of a run is released, whether or not the realtime notice arrives; stops
+// when the form shows another document or the user leaves it.
+function poll_while_running(frm, fieldname) {
+	frm.$polls = frm.$polls || {};
+	if (frm.$polls[fieldname]) {
+		return;
+	}
+	const doctype = frm.doctype;
+	const name = frm.doc.name;
+	const stop = () => {
+		clearInterval(frm.$polls[fieldname]);
+		delete frm.$polls[fieldname];
+	};
+	frm.$polls[fieldname] = setInterval(() => {
+		const [view, route_doctype, route_name] = frappe.get_route();
+		const shown = view === "Form" && route_doctype === doctype && route_name === name;
+		if (!shown || !frm.doc || frm.doc.name !== name || !frm.doc[fieldname]) {
+			stop();
+			return;
+		}
+		frappe.db.get_value(doctype, name, fieldname).then((response) => {
+			if (!cint((response.message || {})[fieldname])) {
+				stop();
+				frm.reload_doc();
+			}
+		});
+	}, POLL_INTERVAL_MS);
 }
 
 // What is left of a draft locked as sent, after an unknown outcome in the words of refuse_if_sent in transmission.py.

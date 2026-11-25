@@ -229,6 +229,7 @@ function show_intro(frm) {
 	const notes = elster_notes(frm, return_texts());
 	if (!frm.is_new() && frm.doc.docstatus === 0 && frm.doc.confirmation_in_progress) {
 		notes.unshift(__("The USt-IdNrn. are being confirmed. The form reloads when the confirmation has finished."));
+		poll_while_running(frm, "confirmation_in_progress");
 	}
 	notes.push(...late_notes(frm));
 	frm.set_intro(notes.join("<br>"), "orange");
