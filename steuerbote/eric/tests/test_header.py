@@ -197,7 +197,8 @@ class ProblemsTest(TestCase):
 			"empty": "",
 			"nine parts": nine,
 			"eleven parts": eleven,
-			"no name": "; Hauptstraße; 1; ; ; 80331; München; Deutschland; ; ",
+			"no name": "; Hauptstraße; 1; ; ; 80331; München; Deutschland; ;",
+			"a blank at the end": "Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; Deutschland; ; ",
 			"too long": ERSTELLER + "x" * (257 - len(ERSTELLER)),
 		}.items():
 			with self.subTest(case):
@@ -207,6 +208,16 @@ class ProblemsTest(TestCase):
 		self.assertEqual(self.fields(replace(BILANZ_HEADER, nutzdaten_datenlieferant=longest)), [])
 		(refused,) = problems(replace(BILANZ_HEADER, nutzdaten_datenlieferant=nine), Operation.VALIDATE)
 		self.assertIn("zehn", refused.text)
+
+	def test_the_datenlieferant_of_the_nutzdaten_header_ends_without_a_blank(self):
+		"""ERiC 44.3.6.0 refuses a value of the NutzdatenHeader that ends with a blank, „nachfolgendesBlank“
+		(validation of Bilanz_6.9 with an E-Bilanz whose company names no e-mail address)."""
+		(refused,) = problems(
+			replace(BILANZ_HEADER, nutzdaten_datenlieferant=ERSTELLER.rpartition(";")[0] + "; "),
+			Operation.VALIDATE,
+		)
+		self.assertEqual(refused.field, "NutzdatenHeader/DatenLieferant")
+		self.assertIn("Leerzeichen", refused.text)
 
 	def test_another_datenart_may_name_a_datenlieferant_of_at_most_256_characters(self):
 		"""DatenLieferantInternSType of headerbasis_datentypen.xsd."""
@@ -239,7 +250,8 @@ class NutzdatenDatenlieferantTest(TestCase):
 			ERSTELLER,
 		)
 
-	def test_keeps_the_place_of_a_part_that_is_missing(self):
+	def test_keeps_the_place_of_a_part_that_is_missing_and_ends_without_a_blank(self):
+		"""ERiC 44.3.6.0 refuses a DatenLieferant that ends with a blank (validation of Bilanz_6.9)."""
 		self.assertEqual(
 			nutzdaten_datenlieferant(
 				name=" Beispiel GmbH ",
@@ -248,7 +260,7 @@ class NutzdatenDatenlieferantTest(TestCase):
 				postal_code="80331",
 				city="München",
 			),
-			"Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; ; ; ",
+			"Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; ; ;",
 		)
 
 

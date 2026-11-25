@@ -145,7 +145,7 @@ class ValidateTest(WorkerTestCase):
 		self.assertEqual(self.stub.recorded("datenart_version"), "UStVA_2026")
 
 	def test_passes_the_datenlieferant_of_the_nutzdaten_header_to_eric(self):
-		datenlieferant = "Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; Deutschland; ; "
+		datenlieferant = "Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; Deutschland; ;"
 		header = replace(HEADER, nutzdaten_datenlieferant=datenlieferant)
 		self.run_operation(Operation.VALIDATE, header=asdict(header))
 		self.assertIn(
