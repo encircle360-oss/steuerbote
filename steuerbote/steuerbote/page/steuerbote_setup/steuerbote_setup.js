@@ -80,6 +80,14 @@ function show_status(company, report) {
 		.then((response) => show_report(report, response.message));
 }
 
+// An action a step offers, such as relabelling a field of ERPNext: it runs only on the click of the user, and the
+// setup runs again afterwards to show what changed.
+function run_action(company, method, report) {
+	frappe
+		.call({ method, args: { company }, freeze: true, freeze_message: __("Setting up …") })
+		.then(() => set_up(company, report));
+}
+
 function show_report(report, result) {
 	const escape = frappe.utils.escape_html;
 	const rows = result.steps.map((step) => {
@@ -90,7 +98,13 @@ function show_report(report, result) {
 					note.open ? `<b>${__("Open")}:</b> ` : ""
 				}${escape(note.text)}</li>`
 		);
-		const document = step.doctype
+		// Before the setup, an action would run the setup, and what a step would make does not exist yet.
+		const action = step.action && !result.before
+			? `<button class="btn btn-xs btn-default steuerbote-setup-action" data-method="${escape(
+					step.action.method
+			  )}">${escape(step.action.label)}</button>`
+			: "";
+		const document = step.doctype && !(result.before && step.outcome === "created")
 			? `<a href="${escape(frappe.utils.get_form_link(step.doctype, step.name))}">${escape(
 					step.document_label
 			  )}</a>`
@@ -98,7 +112,7 @@ function show_report(report, result) {
 		return `<tr data-step="${escape(step.key)}">
 			<td>${escape(step.label)}</td>
 			<td><span class="indicator-pill ${outcome.indicator}">${escape(outcome.label)}</span></td>
-			<td><ul class="list-unstyled">${notes.join("")}</ul></td>
+			<td><ul class="list-unstyled">${notes.join("")}</ul>${action}</td>
 			<td>${document}</td>
 		</tr>`;
 	});
@@ -126,4 +140,7 @@ function show_report(report, result) {
 			<tbody>${rows.join("")}</tbody>
 		</table>
 	`);
+	report.find(".steuerbote-setup-action").on("click", (event) =>
+		run_action(result.company, $(event.currentTarget).attr("data-method"), report)
+	);
 }

@@ -80,7 +80,7 @@ def test_steuerbote_einrichten_sets_up_a_company_once(desk, expect, screenshots)
 	expect(report.locator(".steuerbote-setup-summary")).to_contain_text(
 		f"Steuerbote ist für {data.SETUP_COMPANY} eingerichtet."
 	)
-	expect(report.locator("tbody tr")).to_have_count(7)
+	expect(report.locator("tbody tr")).to_have_count(10)
 	for step, outcome in (
 		("vat_return_settings", "Angelegt"),
 		("vat_return_mapping", "Angelegt"),
@@ -89,9 +89,14 @@ def test_steuerbote_einrichten_sets_up_a_company_once(desk, expect, screenshots)
 		("deadlines", "Offen"),
 		("income_tax_mapping", "Angelegt"),
 		("balance_sheet_mapping", "Angelegt"),
+		("vat_id_label", "Offen"),
+		("erpnext_germany_vat_id_check", "Übersprungen"),
 	):
 		expect(report.locator(f'tr[data-step="{step}"]')).to_contain_text(outcome)
 	expect(report.locator('tr[data-step="vat_return_mapping"]')).to_contain_text("SKR03")
+	expect(report.locator('tr[data-step="vat_id_label"] .steuerbote-setup-action')).to_have_text(
+		"Als USt-IdNr. beschriften"
+	)
 	desk.picture(screenshots / "steuerbote-einrichten.png")
 	set_up(desk)
 	expect(report.locator(".steuerbote-setup-summary")).to_contain_text(

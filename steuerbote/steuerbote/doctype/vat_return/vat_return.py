@@ -432,7 +432,11 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 
 	def details_for(self, vat_id: str) -> Details | None:
 		"""Name and address of the customer of the first voucher of the number that names one, as the ZM reads them."""
-		return zm_sources.customer_details(zm_bridge.customer_of(self._vat_ids().vouchers, vat_id))
+		return zm_sources.customer_details(self.party_for(vat_id))
+
+	def party_for(self, vat_id: str) -> str | None:
+		"""The customer of the first voucher of the number that names one."""
+		return zm_bridge.customer_of(self._vat_ids().vouchers, vat_id)
 
 	def take_in_confirmations(self) -> None:
 		"""The hints on the USt-IdNrn. follow the confirmations the job stored; every other hint stays as Berechnen
