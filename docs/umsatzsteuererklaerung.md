@@ -136,7 +136,7 @@ Liegt die Differenz darüber, nennt der Hinweis `SB-UMSATZERLOESE` die Umsatzerl
 | `NACHSTEUER-ZEILE` | Hinweis | ein Konto von Kz 65 ohne Feld der Erklärung geht in Kz 319 |
 | `STEUER-WIE-GEBUCHT` | Hinweis | die gebuchte Steuer einer Steuerzeile liegt mehr als einen Euro neben dem Satz auf die übermittelte Bemessungsgrundlage; die Zeile nimmt die Steuer der genauen Jahresgrundlage |
 | `VOLLE-EURO`, `VORZEICHEN`, `STELLEN`, `LAENGE`, `PARAGRAF-FEHLT` | Fehler | die eigenen Prüfungen von `rules.check()`: Cent in vollen Euro, ein Minus ohne Vorzeichen, zu viele Stellen, ein zu langer Text, ein Betrag der Zeilen 46, 52 oder 54 ohne Paragrafen |
-| Fehlercode der Jahresdokumentation, etwa `30639` | Fehler oder Hinweis | eine der Regeln, die Steuerbote selbst prüft, mit der Regelart der Jahresdokumentation |
+| Fehlercode der Jahresdokumentation, etwa `30639` | Fehler oder Hinweis | eine der Regeln, die Steuerbote selbst prüft, mit der Regelart der Jahresdokumentation; eine Regel ohne eigene Nachricht von Steuerbote nennt den amtlichen „Fehler- /Hinweistext“ der Jahresdokumentation und dahinter Nummer und Bedingung, wenn der Server die ERiC-Dokumentation hat (`STEUERBOTE_ERIC_DOC_DIR`, siehe [Die Dokumentation im Betrieb](eric.md#die-dokumentation-im-betrieb)), sonst Nummer und Bedingung mit dem Satz, woher der Text käme |
 
 ## Angaben der Erklärung
 

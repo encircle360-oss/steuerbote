@@ -278,16 +278,29 @@ def annual_revenue(company: str, year: int) -> revenue.Revenue | None:
 	return revenue.Revenue(to_amount(reported), revenue.Source.EBILANZ, name)
 
 
-def rule_texts(year: int) -> dict[str, str]:
-	"""The official text of each rule of the Jahresdokumentation E50 of the year, by its Fehlercode, from the ERiC
-	documentation the site names in STEUERBOTE_ERIC_DOC_DIR; none where it names none or the file is missing, so that
-	the findings name the rule by its code and condition alone."""
+def rule_text_source(year: int) -> Path | None:
+	"""The Jahresdokumentation E50 of the year in the ERiC documentation the site names in STEUERBOTE_ERIC_DOC_DIR, None
+	where it names none or the file is missing."""
 	configured = os.environ.get(DOCUMENTATION_VARIABLE)
 	if not configured:
-		return {}
+		return None
 	try:
-		root = documentation.find(Path(configured))
-		path = documentation.jahresdokumentation_path(root, datenart.ust(year))
+		path = documentation.jahresdokumentation_path(
+			documentation.find(Path(configured)), datenart.ust(year)
+		)
+	except OSError, ValueError, documentation.DocumentationError:
+		return None
+	return path if path.is_file() else None
+
+
+def rule_texts(year: int) -> dict[str, str] | None:
+	"""The official text of each rule of the Jahresdokumentation E50 of the year, by its Fehlercode, from the ERiC
+	documentation the site names in STEUERBOTE_ERIC_DOC_DIR; None where the site has no such documentation, so that
+	the findings name the rule by its code and condition and say where its text would come from."""
+	path = rule_text_source(year)
+	if path is None:
+		return None
+	try:
 		return bridge.rule_texts(documentation.read(path).rules)
 	except OSError, ValueError, documentation.DocumentationError:
-		return {}
+		return None
