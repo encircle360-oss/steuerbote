@@ -406,3 +406,28 @@ class WorklistColumnsTest(TestCase):
 		for label, width in columns:
 			with self.subTest(label=label):
 				self.assertGreaterEqual(int(width), 8 * len(german.get(label, label)) + 24)
+
+
+class ConfirmationListTest(TestCase):
+	def test_the_list_of_all_confirmations_shows_and_filters_the_partner_by_its_name(self):
+		"""„Alle Bestätigungen“: a partner named by a number reads as its name in the list, and the filters find it
+		by name or by number (R3-F-03)."""
+		meta = json.loads(
+			(MODULE / "doctype" / "vat_id_confirmation" / "vat_id_confirmation.json").read_text(
+				encoding="utf-8"
+			)
+		)
+		fields = {field["fieldname"]: field for field in meta["fields"]}
+		name = fields["party_name"]
+		self.assertEqual(
+			(
+				name["fieldtype"],
+				name.get("read_only"),
+				name.get("in_list_view"),
+				name.get("in_standard_filter"),
+			),
+			("Data", 1, 1, 1),
+		)
+		self.assertEqual(fields["party"].get("in_standard_filter"), 1)
+		self.assertEqual(meta["field_order"].index("party_name"), meta["field_order"].index("party") + 1)
+		self.assertIn("party_name", meta["search_fields"].split(","))

@@ -23,6 +23,7 @@ from steuerbote.steuerbote.report.partner_ohne_aktuelle_ust_idnr_bestätigung im
 	partner_ohne_aktuelle_ust_idnr_bestätigung as worklist_report,
 )
 from steuerbote.tests.helpers import (
+	NUMBERED_CUSTOMER,
 	insert_record,
 	make_account,
 	make_company,
@@ -742,6 +743,49 @@ class TestPartnerVatIds(IntegrationTestCase):
 		self.assertEqual(service.urls(), [VIES_URL])
 		self.assertEqual(frappe.db.get_value("Customer", MUENCHEN, "vat_id_status"), "Invalid")
 
+	def numbered_customer(self) -> str:
+		"""The customer 10042 „Muster GmbH“ in Austria, named by a number of a naming series, which deals with the
+		company."""
+		number, name = NUMBERED_CUSTOMER
+		make_customer(number, "Austria", "ATU87654321", city="Linz", customer_name=name)
+		deals_with("Customer", number, COMPANY)
+		return number
+
+	def test_the_worklist_names_each_partner_with_its_name_and_finds_it_by_name_or_number(self):
+		"""A bookkeeper does not know who „10042“ is: the worklist shows the name beside the ID, and its filter
+		finds a partner by either."""
+		number = self.numbered_customer()
+		columns, rows, _message = worklist_report.execute({"company": COMPANY})
+		(column,) = [column for column in columns if column["fieldname"] == "party_name"]
+		self.assertEqual(column["fieldtype"], "Data")
+		(row,) = [row for row in rows if row["party"] == number]
+		self.assertEqual(row["party_name"], "Muster GmbH")
+		self.assertEqual(
+			[row["party_name"] for row in rows if row["party"] == ALPEN], [ALPEN], "named by its name"
+		)
+		for search in ("muster", "10042", "Muster GmbH"):
+			with self.subTest(search=search):
+				_columns, found, _message = worklist_report.execute({"company": COMPANY, "party": search})
+				self.assertEqual([row["party"] for row in found], [number])
+
+	def test_a_confirmation_keeps_the_name_of_its_partner_and_follows_a_new_name(self):
+		"""The list of all confirmations shows and filters the partner by its name, which the record keeps beside the
+		ID and takes over when the partner gets a new name."""
+		number = self.numbered_customer()
+		name = self.stored(AUSTRIAN, noon(), party=("Customer", number))
+		self.assertEqual(frappe.db.get_value(CONFIRMATION, name, "party_name"), "Muster GmbH")
+		customer = frappe.get_doc("Customer", number)
+		customer.customer_name = "Muster Handel GmbH"
+		with patch("frappe.enqueue"):
+			customer.save()
+		self.assertEqual(frappe.db.get_value(CONFIRMATION, name, "party_name"), "Muster Handel GmbH")
+
+	def test_the_gate_of_an_invoice_names_the_customer_by_its_name_and_its_number(self):
+		number = self.numbered_customer()
+		doc = self.invoice(number, self.accounts["8125"], customer_name="Muster GmbH")
+		with self.assertRaisesRegex(frappe.ValidationError, r"Muster GmbH \(10042\)"):
+			partner_module.check_invoice(doc)
+
 	def test_the_worklist_names_german_partners_not_checked_where_the_company_checks_them(self):
 		_columns, rows, _message = worklist_report.execute({"company": COMPANY})
 		self.assertNotIn(MUENCHEN, [row["party"] for row in rows])
@@ -771,7 +815,8 @@ class TestPartnerVatIds(IntegrationTestCase):
 			),
 		)
 		self.assertEqual(
-			[column["fieldname"] for column in columns][:4], ["party_type", "party", "tax_id", "standing"]
+			[column["fieldname"] for column in columns][:5],
+			["party_type", "party", "party_name", "tax_id", "standing"],
 		)
 		_columns, rows, _message = worklist_report.execute({"company": COMPANY, "party_type": "Supplier"})
 		self.assertEqual([row["party"] for row in rows], [ROMA])

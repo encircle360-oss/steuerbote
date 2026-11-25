@@ -244,13 +244,14 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 		)
 
 	def test_an_invoice_names_its_customer_or_supplier(self):
+		"""By the name and the ID of the partner, as ERPNext names partners by a number of a naming series too."""
 		vouchers = {row["voucher_no"]: row for row in self.rows(4) if row["indent"]}
 		self.assertEqual(
 			{name: (row["voucher_type"], row["party"]) for name, row in vouchers.items()},
 			{
-				self.invoice: ("Sales Invoice", "Kunde GmbH"),
+				self.invoice: ("Sales Invoice", "Kunde GmbH (CUST-0001)"),
 				self.invoice_without_name: ("Sales Invoice", "CUST-0002"),
-				self.bill: ("Purchase Invoice", "Lieferant AG"),
+				self.bill: ("Purchase Invoice", "Lieferant AG (SUPP-0001)"),
 			},
 		)
 		self.assertEqual(

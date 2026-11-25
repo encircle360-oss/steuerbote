@@ -12,6 +12,8 @@ from frappe.utils import fmt_money
 from steuerbote import ustva
 from steuerbote.invoices import load_lines
 from steuerbote.tests.helpers import (
+	NUMBERED_CUSTOMER,
+	NUMBERED_SUPPLIER,
 	make_account,
 	make_company,
 	make_mapping,
@@ -266,10 +268,13 @@ def insert(doctype: str, **fields) -> str:
 	return doc.name
 
 
-def make_party(doctype: str, name: str, country: str, tax_id: str | None = None) -> str:
-	"""A customer or supplier and its billing address in the country; returns the address."""
+def make_party(
+	doctype: str, name: str, country: str, tax_id: str | None = None, title: str | None = None
+) -> str:
+	"""A customer or supplier and its billing address in the country; returns the address. ``title`` is its name
+	where ``name`` is a number of a naming series."""
 	name_field = "customer_name" if doctype == "Customer" else "supplier_name"
-	insert(doctype, name=name, **{name_field: name}, tax_id=tax_id)
+	insert(doctype, name=name, **{name_field: title or name}, tax_id=tax_id)
 	return insert(
 		"Address",
 		name=f"{name}-Billing",
@@ -303,6 +308,7 @@ def post_invoice(
 		else ("supplier", "supplier_name", "supplier_address")
 	)
 	account_field = "income_account" if doctype == "Sales Invoice" else "expense_account"
+	party_name = fields.pop("party_name", party)
 	insert(
 		doctype,
 		name=name,
@@ -310,7 +316,7 @@ def post_invoice(
 		posting_date=posting_date,
 		docstatus=fields.pop("docstatus", 1),
 		is_opening=fields.pop("is_opening", "No"),
-		**{party_field: party, name_field: party, address_field: address},
+		**{party_field: party, name_field: party_name, address_field: address},
 		**fields,
 	)
 	for index, (account, net, taxes) in enumerate(items, start=1):
@@ -494,6 +500,40 @@ class TestHintsFromInvoices(IntegrationTestCase):
 					False,
 				),
 			],
+		)
+
+	def test_a_partner_named_by_number_reads_as_its_name_and_its_number(self):
+		"""Every hint on an invoice names its customer or supplier as „Muster GmbH (10042)“, whether ERPNext names
+		partners by name or by a number of a naming series."""
+		frappe.db.savepoint("numbered_parties")
+		self.addCleanup(frappe.db.rollback, save_point="numbered_parties")
+		a = self.account
+		customer, customer_name = NUMBERED_CUSTOMER
+		supplier, supplier_name = NUMBERED_SUPPLIER
+		post_invoice(
+			"Sales Invoice",
+			"SINV-STVR-0042",
+			customer,
+			make_party("Customer", customer, "Germany", "DE123456789", customer_name),
+			"2026-12-03",
+			[(a["8400"], 100, (19,))],
+			[(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)],
+			party_name=customer_name,
+		)
+		post_invoice(
+			"Purchase Invoice",
+			"PINV-STVR-0042",
+			supplier,
+			make_party("Supplier", supplier, "Sweden", "SE123456789001", supplier_name),
+			"2026-12-04",
+			[(a["3123"], 300, (57, -57))],
+			[(a["3123"], 300, 0), (a["1577"], 57, 0), (a["1787"], 0, 57), (a["1600"], 0, 300)],
+			party_name=supplier_name,
+		)
+		lines = load_lines(INVOICING_COMPANY, "2026-12-01", "2026-12-31", ["8400"], ["3123"])
+		self.assertEqual(
+			[(line.voucher_no, line.party) for line in lines],
+			[("SINV-STVR-0042", "Muster GmbH (10042)"), ("PINV-STVR-0042", "Beispiel Lieferant KG (70042)")],
 		)
 
 	def test_reads_only_the_accounts_asked_for(self):
