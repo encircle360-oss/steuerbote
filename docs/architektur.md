@@ -637,7 +637,7 @@ Frappe 16 bringt einen Beleg auf mehreren Wegen aufs Papier. Jeder Weg, auf dem 
 | Druckserver (Druckeinstellungen) | `print_by_server` von Frappe mit `get_print(as_pdf=True)` | dasselbe PDF, gedruckt über CUPS |
 | Sammeldruck aus der Liste, E-Mail-Anhang („Send Print as PDF“), Druck nach dem Buchen | `get_print(as_pdf=True)` mit dem Generator | PDF mit Kopf, Fuß und Seitenzahlen |
 | `/printview` für sich geöffnet und mit dem Browser gedruckt | kein Generator; `steuerbote/steuerbote/print_medium.py` erkennt die Seite am Pfad der Anfrage, `running.html` gibt dem Browser Kopf und Fuß in den Randfeldern von `@page` | Chromium ab 131 druckt Kopf, Fuß und „Seite n von N“ auf jede Seite; ein Browser ohne Randfelder druckt Seitenumbrüche und Tabellenköpfe ohne Kopf, Fuß und Seitenzahl |
-| Vorschau in der Druckansicht | `get_html_and_style`, nur für den Bildschirm | ohne Kopf und Fuß, die nur ein Ausdruck nummerieren kann |
+| Vorschau in der Druckansicht | `get_html_and_style`, nur für den Bildschirm | ohne Kopf und Fuß, die nur ein Ausdruck nummerieren kann, mit den seitlichen und dem unteren Rand der Seite als Abstand im Rahmen der Vorschau von Frappe 16.61 |
 
 Ein Drucker, der über QZ Tray zugeordnet ist, und der Rohdruck bleiben bei Frappe; die Druckformate von Steuerbote sind keine Rohdruckformate. Die CI prüft die Wege mit Generator an echten PDFs (siehe [Ausdrucke als PDF](entwicklung.md#ausdrucke-als-pdf)), die Browsertests „Drucken“, den Ausdruck von `/printview` mit Chromium und die Vorschau (`steuerbote/tests/e2e/test_print_button.py`).
 
