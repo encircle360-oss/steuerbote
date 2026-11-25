@@ -423,12 +423,14 @@ def _result(
 	library: EricLibrary, operation: Operation, version: str, testmerker: str | None, answer: ProcessResult
 ) -> TransmissionResult:
 	code = answer.code
+	rules = _rule_messages(answer.return_xml)
 	messages = []
-	if code != ERIC_OK:
+	# The text of 610001002 and 610001003 asks to read the return buffer, which _rule_messages has read.
+	if code != ERIC_OK and not any(message.code != ERIC_CODE for message in rules):
 		messages.append(
 			Message(str(code), library.error_text(code), HINT if code == GLOBAL_HINWEISE else ERROR)
 		)
-	messages.extend(_rule_messages(answer.return_xml))
+	messages.extend(rules)
 	pdf = answer.pdfs[0].data if answer.pdfs else None
 	server_xml = answer.server_response_xml or None
 
