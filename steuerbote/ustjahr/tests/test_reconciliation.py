@@ -305,7 +305,9 @@ class HintsTest(TestCase):
 class JournalEntriesTest(TestCase):
 	"""A Journal Entry on a tax account without the flag Exclude from VAT Return changes the annual return."""
 
-	def test_hints_at_journal_entries_on_the_tax_accounts(self):
+	def test_one_hint_counts_the_journal_entries_on_the_tax_accounts(self):
+		"""One hint for all of them, with their number, their sum and the first of them, rather than one per voucher,
+		which a ledger of journal entries would give by the hundred."""
 		lines = [
 			line("1576", credit="1140.00", voucher="Journal Entry:JV-1"),
 			line("1790", debit="1140.00", voucher="Journal Entry:JV-1"),
@@ -324,16 +326,15 @@ class JournalEntriesTest(TestCase):
 					"JOURNALBUCHUNG-STEUERKONTO",
 					Severity.HINT,
 					JOURNAL_ENTRY,
-					("Journal Entry:JV-1", 2026, "1576", "-1140.00"),
-				),
-				Finding(
-					"JOURNALBUCHUNG-STEUERKONTO",
-					Severity.HINT,
-					JOURNAL_ENTRY,
-					("Journal Entry:JV-2", 2026, "1776", "17.00"),
+					(2, 2026, "JV-1, JV-2"),
 				),
 			),
 		)
+
+	def test_names_the_first_five_journal_entries(self):
+		lines = [line("1776", debit="1.00", voucher=f"Journal Entry:JV-{index}") for index in range(1, 8)]
+		(found,) = journal_entries(2026, lines, MAPPING, {item.voucher for item in lines})
+		self.assertEqual(found.values, (7, 2026, "JV-1, JV-2, JV-3, JV-4, JV-5 …"))
 
 	def test_no_hint_without_journal_entries(self):
 		self.assertEqual(journal_entries(2026, [line("1576", debit="1.00", voucher="JV")], MAPPING, ()), ())
