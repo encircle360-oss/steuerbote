@@ -10,7 +10,8 @@ informational Kennzahl as well, one that does not change the amount owed, such a
 account belongs, or may belong, to the Voranmeldung without a Kennzahl yet: at the blocking level a
 balance on it holds the return, at the hint level it only adds a hint. A Verprobung of a purchase whose tax the
 company owes itself may name the Kennzahl that takes the base of a voucher booking its tax on none of its base
-accounts (``derived_base``, see calculation.py). The defaults for the DATEV charts live in defaults.py; a company
+accounts (``derived_base``, see calculation.py), and another one for a voucher of a supplier established in another
+member state (``derived_base_eu``, see residence.py). The defaults for the DATEV charts live in defaults.py; a company
 adjusts them in its settings. ``for_year`` re-validates the same
 rules against another year's form.
 """
@@ -128,6 +129,8 @@ def _watched(value: Iterable[str | WatchedAccount]) -> tuple[WatchedAccount, ...
 DERIVED_BASE_KENNZAHLEN = frozenset({"89", "93", "95", "94", "46", "73", "84"})
 # Sections C and D of the form: the purchases whose tax the company owes.
 PURCHASE_LINES = range(24, 33)
+# Section C of the form: the innergemeinschaftliche Erwerbe (lines 24 to 29).
+ACQUISITION_LINES = range(24, 30)
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +139,9 @@ class TaxCheck:
 
 	``derived_base`` names the Kennzahl that takes the base of a voucher which books tax on the tax accounts but
 	nothing on the base accounts, one of DERIVED_BASE_KENNZAHLEN; None leaves such a voucher a deviation.
+	``derived_base_eu`` names the Kennzahl that takes that base instead when the voucher is a sonstige Leistung of
+	§ 3a Absatz 2 UStG of a business established in another member state (§ 13b Absatz 1 UStG, residence.py); it
+	needs a ``derived_base`` for every other voucher.
 	"""
 
 	label: str
@@ -143,14 +149,19 @@ class TaxCheck:
 	tax_accounts: tuple[str, ...]
 	side: Side = Side.CREDIT
 	derived_base: str | None = None
+	derived_base_eu: str | None = None
 
 	def __post_init__(self) -> None:
 		object.__setattr__(self, "base_accounts", _accounts(self.base_accounts, f"check {self.label!r}"))
 		object.__setattr__(self, "tax_accounts", _accounts(self.tax_accounts, f"check {self.label!r}"))
 		object.__setattr__(self, "side", Side(self.side))
-		if self.derived_base is not None and not (isinstance(self.derived_base, str) and self.derived_base):
+		for name in ("derived_base", "derived_base_eu"):
+			value = getattr(self, name)
+			if value is not None and not (isinstance(value, str) and value):
+				raise MappingError(f"check {self.label!r}: {name} must be a Kennzahl or None, not {value!r}")
+		if self.derived_base_eu is not None and self.derived_base is None:
 			raise MappingError(
-				f"check {self.label!r}: derived_base must be a Kennzahl or None, not {self.derived_base!r}"
+				f"check {self.label!r}: derived_base_eu needs a derived_base for the vouchers of other suppliers"
 			)
 
 
@@ -226,6 +237,20 @@ class Mapping:
 		"""The side the base accounts of a check that derives a base carry their balance on."""
 		return self._rule_of(self._deriving(check).base_accounts[0]).side
 
+	def is_purchase(self, check: TaxCheck) -> bool:
+		"""Whether every base account of the check feeds a purchase whose tax the company owes (sections C and D)."""
+		return self._in_lines(check, PURCHASE_LINES)
+
+	def is_acquisition(self, check: TaxCheck) -> bool:
+		"""Whether every base account of the check feeds an innergemeinschaftlicher Erwerb (section C)."""
+		return self._in_lines(check, ACQUISITION_LINES)
+
+	def _in_lines(self, check: TaxCheck, lines: range) -> bool:
+		catalogue = self.catalogue
+		return all(
+			catalogue[self._rule_of(account).kennzahl].line in lines for account in check.base_accounts
+		)
+
 	def _deriving(self, check: TaxCheck) -> TaxCheck:
 		if check.derived_base is None:
 			raise MappingError(f"check {check.label!r} derives no base")
@@ -235,12 +260,11 @@ class Mapping:
 		"""The rule of a base account of a check, which _validate_checks requires before it asks for one."""
 		return next(rule for rule in self.rules if rule.account_number == account_number)
 
-	def _validate_derived_base(self, check: TaxCheck, where: str) -> None:
+	def _validate_derived_base(self, check: TaxCheck, where: str, number: str) -> None:
 		"""The base a check derives needs one rate and one side, those of its base accounts, and a Kennzahl that takes
 		it: a purchase of DERIVED_BASE_KENNZAHLEN, at its statutory rate if it has one, whose tax is derived rather
 		than mapped from an account, which would report the tax a second time. The base accounts themselves must be
 		purchases too, so that a Verprobung of turnover never derives one."""
-		number = check.derived_base
 		catalogue = self.catalogue
 		if number not in DERIVED_BASE_KENNZAHLEN or number not in catalogue:
 			raise MappingError(f"{where}: Kennzahl {number} takes no base derived from the tax of a voucher")
@@ -366,8 +390,9 @@ class Mapping:
 					raise MappingError(
 						f"{where}: tax account {account} is also mapped to Kennzahl {rule.kennzahl}"
 					)
-			if check.derived_base is not None:
-				self._validate_derived_base(check, where)
+			for number in dict.fromkeys((check.derived_base, check.derived_base_eu)):
+				if number is not None:
+					self._validate_derived_base(check, where, number)
 
 	def _validate_watched(self) -> None:
 		"""An account watched twice would have two levels, or count its balance twice."""

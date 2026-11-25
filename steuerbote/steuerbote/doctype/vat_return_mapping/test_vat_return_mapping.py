@@ -122,12 +122,19 @@ class IntegrationTestVATReturnMapping(IntegrationTestCase):
 	def test_load_defaults_reduces_the_checks_to_the_accounts_that_exist(self):
 		self.assertEqual(
 			[
-				(row.label, row.base_accounts, row.tax_accounts, row.side, row.derived_base or None)
+				(
+					row.label,
+					row.base_accounts,
+					row.tax_accounts,
+					row.side,
+					row.derived_base or None,
+					row.derived_base_eu or None,
+				)
 				for row in self.mapping_with_defaults().checks
 			],
 			[
-				("Umsatzsteuer 19 %", "8400", "1776", "credit", None),
-				("Umsatzsteuer nach § 13b UStG 19 %", "3123", "1787", "credit", "84"),
+				("Umsatzsteuer 19 %", "8400", "1776", "credit", None, None),
+				("Umsatzsteuer nach § 13b UStG 19 %", "3123", "1787", "credit", "84", "46"),
 			],
 		)
 
@@ -158,7 +165,13 @@ class IntegrationTestVATReturnMapping(IntegrationTestCase):
 				),
 				(
 					TaxCheck("Umsatzsteuer 19 %", ("8400",), ("1776",)),
-					TaxCheck("Umsatzsteuer nach § 13b UStG 19 %", ("3123",), ("1787",), derived_base="84"),
+					TaxCheck(
+						"Umsatzsteuer nach § 13b UStG 19 %",
+						("3123",),
+						("1787",),
+						derived_base="84",
+						derived_base_eu="46",
+					),
 				),
 				(),
 				LATEST_YEAR,

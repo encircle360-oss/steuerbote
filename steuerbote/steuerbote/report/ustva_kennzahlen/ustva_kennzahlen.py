@@ -32,6 +32,7 @@ from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import (
 	report_rows,
 	vouchers_by_type,
 )
+from steuerbote.suppliers import load_vouchers
 
 FILTERS = ("company", "year", "rhythm", "period_index")
 # Optional: only the Kennzahlen and sums that deviate from the previous period.
@@ -59,7 +60,7 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 	result = _calculate(lines, mapping, period, settings)
 	previous, previous_note = _compared(company, period.previous(), mapping, settings)
 	previous_year, previous_year_note = _compared(company, comparison.year_before(period), mapping, settings)
-	by_kennzahl = contributions(lines, mapping)
+	by_kennzahl = contributions(lines, mapping, load_vouchers(company, lines, mapping))
 	numbers = {account for items in by_kennzahl.values() for item in items for account in item.accounts}
 	vouchers = [item.voucher for items in by_kennzahl.values() for item in items]
 	rows = report_rows(
@@ -158,6 +159,7 @@ def _calculate(
 				settings.has_dauerfrist(period.year),
 				bridge.to_amount(settings.sondervorauszahlung(period.year)),
 			),
+			vouchers=load_vouchers(settings.company, lines, mapping),
 		)
 	except ValueError as error:
 		frappe.throw(str(error))

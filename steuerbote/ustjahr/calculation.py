@@ -17,7 +17,8 @@ calculate() leaves the core of the Voranmeldung as it is and runs it in two ways
 A base the Voranmeldung derives for a voucher that books the tax of a Verprobung but none of its bases (derived_base
 of the mapping) has no account the split could assign. The run over the year derives it as each Voranmeldung does,
 and it goes to the default line of its Kennzahl, its tax, rounded per voucher, to the default line of the tax
-Kennzahl.
+Kennzahl. A base of § 13b UStG goes to Kz 46 or 84 by the supplier of its voucher, as in the Voranmeldung
+(steuerbote/ustva/residence.py), when the caller gives what it knows of the vouchers.
 
 The accounts only the annual return reads add their balance, and the lines by hand their amount.
 
@@ -68,6 +69,7 @@ from steuerbote.ustva.calculation import (
 )
 from steuerbote.ustva.calculation import calculate as calculate_ustva
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL
+from steuerbote.ustva.residence import Voucher
 from steuerbote.ustva.rounding import HUNDRED, ZERO, require_decimal, tax_from_base, to_cents, to_full_euros
 
 DECEMBER = 12
@@ -199,11 +201,13 @@ def calculate(
 	split: Split,
 	manual: Iterable[ManualLine] = (),
 	tolerance: Decimal = TOLERANCE_PER_VOUCHER,
+	vouchers: ReadOnlyMapping[str, Voucher] | None = None,
 ) -> AnnualResult:
 	"""The fields of the annual return from the ledger lines of the year, the split and the lines by hand.
 
 	``tolerance`` is how far the booked tax of a voucher may differ from the tax of its bases in the Verprobung
-	(steuerbote/ustva/calculation.py).
+	(steuerbote/ustva/calculation.py). ``vouchers`` holds what the caller knows of the suppliers of the vouchers of
+	sections C and D, so that a derived base of § 13b UStG goes to Kz 46 or 84 as in the Voranmeldung.
 	"""
 	lines = tuple(lines)
 	manual = tuple(manual)
@@ -232,7 +236,7 @@ def calculate(
 		_add_run(ledger, split, _targets(split, element, kennzahlen[element]), run)
 	for line_by_hand in manual:
 		_add(by_hand, _manual_field(catalogue, line_by_hand).element, line_by_hand.amount)
-	year = calculate_ustva(lines, split.mapping, tolerance=tolerance)
+	year = calculate_ustva(lines, split.mapping, tolerance=tolerance, vouchers=vouchers)
 	_add_derived(ledger, split, year)
 	return AnnualResult(
 		year=catalogue.year,

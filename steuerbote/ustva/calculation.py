@@ -34,6 +34,15 @@ accounts but nothing on its base accounts:
 - otherwise from the tax: tax / rate, to cents (rounding.base_from_tax), whose tax is the booked tax again. The
   result names such a voucher, and the return gives a hint for it. Lines without voucher always take this way.
 
+A Verprobung that also names a ``derived_base_eu`` sends the base of a voucher to it when residence.place() classifies
+the voucher as a sonstige Leistung of § 3a Absatz 2 UStG of a business established in another member state (§ 13b
+Absatz 1 UStG, Kz 46), from what the caller knows of the voucher (``vouchers``, by the voucher of the ledger lines);
+every other voucher, and every voucher while its classification stays open, takes the ``derived_base`` (Kz 84). The
+result carries the Findings of these decisions, and two more on the vouchers of sections C and D: a voucher of an
+innergemeinschaftlicher Erwerb whose supplier is established in the Drittlandsgebiet, and a voucher on a base account
+of the ``derived_base_eu`` whose supplier is not established in another member state or that a person classified
+otherwise. Without ``vouchers`` every derived base takes the ``derived_base`` and nothing is found.
+
 A voucher with a posting on a base account of the Verprobung keeps it as before: it says where its base is, so a tax
 that does not fit stays a deviation and nothing is counted twice. The derived base goes to its Kennzahl and, for a
 base with a tax Kennzahl of its own, its tax is derived per voucher with the bases of the base accounts; the
@@ -62,6 +71,7 @@ from steuerbote.ustva.kennzahlen import (
 	Kind,
 )
 from steuerbote.ustva.mapping import Mapping, Side, TaxCheck, WatchLevel, is_account_number
+from steuerbote.ustva.residence import Classification, Finding, Placement, Problem, Residence, Voucher, place
 from steuerbote.ustva.rounding import (
 	CENT,
 	HUNDRED,
@@ -147,7 +157,8 @@ class DerivedBase:
 
 	``label`` names the Verprobung, ``tax`` the tax the voucher books on its tax accounts and ``base`` the exact base
 	that goes to ``kennzahl`` at ``rate``. ``accounts`` are the accounts of the voucher whose balances make up the base;
-	none when the base was taken from the tax. ``voucher`` is None for the lines without voucher.
+	none when the base was taken from the tax. ``voucher`` is None for the lines without voucher. ``placement`` is the
+	decision of residence.place() for a Verprobung with a ``derived_base_eu``, None for every other.
 	"""
 
 	label: str
@@ -157,6 +168,7 @@ class DerivedBase:
 	tax: Decimal
 	base: Decimal
 	accounts: tuple[str, ...]
+	placement: Placement | None = None
 
 	@property
 	def from_tax(self) -> bool:
@@ -219,7 +231,8 @@ class UstvaResult:
 	"""The sums follow the form: line 37, lines 38 to 44, lines 46 and 47, Kennzahl 39, Kennzahl 83.
 
 	``unmapped`` names the accounts watched at the blocking level that have a balance, ``hinted`` the
-	debits and credits of those watched at the hint level that have one, both by account number.
+	debits and credits of those watched at the hint level that have one, both by account number. ``findings`` names
+	the vouchers of sections C and D a person should look at, see the module.
 	"""
 
 	values: ReadOnlyMapping[str, KennzahlValue]
@@ -230,6 +243,7 @@ class UstvaResult:
 	other_tax: Decimal
 	sondervorauszahlung: Decimal
 	hinted: tuple[AccountBalance, ...] = ()
+	findings: tuple[Finding, ...] = ()
 
 	@property
 	def remaining_tax(self) -> Decimal:
@@ -273,6 +287,7 @@ def calculate(
 	mapping: Mapping,
 	extra_values: ReadOnlyMapping[str, Decimal] | None = None,
 	tolerance: Decimal = TOLERANCE_PER_VOUCHER,
+	vouchers: ReadOnlyMapping[str, Voucher] | None = None,
 ) -> UstvaResult:
 	"""Aggregate the ledger into Kennzahlen, derive the taxes the form derives, and balance Kennzahl 83.
 
@@ -288,11 +303,13 @@ def calculate(
 	19 %, can therefore differ from that line by one cent in Kz 47 and 85 together, and Kz 83 keeps the
 	cent. The Verprobung rounds all bases of a voucher at once and stays exact; the per-voucher tolerance
 	of 0.01 absorbs a booked line that was rounded differently.
+
+	``vouchers`` holds what the caller knows of the vouchers of sections C and D (purchase_vouchers), see the module.
 	"""
 	tolerance = _require_tolerance(tolerance)
 	catalogue = mapping.catalogue
 	ledger = _Ledger(lines)
-	derived = _derive(ledger, mapping)
+	derived = _derive(ledger, mapping, vouchers)
 	amounts = _amounts_by_kennzahl(ledger, mapping, derived)
 	_add_extra_values(amounts, extra_values or {}, catalogue)
 	values = {number: _value(catalogue[number], amount) for number, amount in amounts.items() if amount}
@@ -328,6 +345,7 @@ def calculate(
 			for a in sorted(mapping.watched_at(WatchLevel.HINT))
 			if ledger.has_balance(a)
 		),
+		findings=() if vouchers is None else _findings(ledger, mapping, derived, vouchers),
 	)
 
 
@@ -392,14 +410,32 @@ class _Ledger:
 		return self._first_line[voucher]
 
 
-def derive_bases(lines: Iterable[LedgerLine], mapping: Mapping) -> tuple[DerivedBase, ...]:
+def derive_bases(
+	lines: Iterable[LedgerLine], mapping: Mapping, vouchers: ReadOnlyMapping[str, Voucher] | None = None
+) -> tuple[DerivedBase, ...]:
 	"""The bases calculate() derives for vouchers that book the tax of a Verprobung but none of its bases, in the order
 	of the checks, each in the order of the ledger."""
-	derived = _derive(_Ledger(lines), mapping)
+	derived = _derive(_Ledger(lines), mapping, vouchers)
 	return tuple(base for check in mapping.checks for base in derived.get(check.label, ()))
 
 
-def _derive(ledger: _Ledger, mapping: Mapping) -> dict[str, tuple[DerivedBase, ...]]:
+def purchase_vouchers(lines: Iterable[LedgerLine], mapping: Mapping) -> tuple[str, ...]:
+	"""The vouchers whose suppliers calculate() asks about: those that post on a base or tax account of a Verprobung of
+	sections C and D, in the order of the ledger."""
+	ledger = _Ledger(lines)
+	accounts = {
+		account
+		for check in mapping.checks
+		if mapping.is_purchase(check)
+		for account in (*check.base_accounts, *check.tax_accounts)
+	}
+	found = {voucher for account in accounts for voucher in ledger.vouchers(account) if voucher is not None}
+	return tuple(sorted(found, key=ledger.first_line))
+
+
+def _derive(
+	ledger: _Ledger, mapping: Mapping, vouchers: ReadOnlyMapping[str, Voucher] | None
+) -> dict[str, tuple[DerivedBase, ...]]:
 	"""The derived bases of each Verprobung with a derived_base, by its label."""
 	found: dict[str, tuple[DerivedBase, ...]] = {}
 	for check in mapping.checks:
@@ -412,15 +448,24 @@ def _derive(ledger: _Ledger, mapping: Mapping) -> dict[str, tuple[DerivedBase, .
 				booked[voucher] = booked.get(voucher, ZERO) + total.balance(check.side)
 		with_bases = {voucher for account in check.base_accounts for voucher in ledger.vouchers(account)}
 		found[check.label] = tuple(
-			_derived(check.label, kennzahl, voucher, tax, rate, side, ledger, mapping)
+			_derived(check, kennzahl, voucher, tax, rate, side, ledger, mapping, vouchers)
 			for voucher, tax in sorted(booked.items(), key=lambda item: ledger.first_line(item[0]))
 			if tax and voucher not in with_bases
 		)
 	return found
 
 
+def _placement(
+	check: TaxCheck, voucher: str | None, vouchers: ReadOnlyMapping[str, Voucher] | None
+) -> Placement | None:
+	"""The decision on a voucher whose base the check may send to its derived_base_eu; None for every other."""
+	if check.derived_base_eu is None or vouchers is None:
+		return None
+	return place(voucher, vouchers.get(voucher))
+
+
 def _derived(
-	label: str,
+	check: TaxCheck,
 	kennzahl: str,
 	voucher: str | None,
 	tax: Decimal,
@@ -428,13 +473,17 @@ def _derived(
 	side: Side,
 	ledger: _Ledger,
 	mapping: Mapping,
+	vouchers: ReadOnlyMapping[str, Voucher] | None,
 ) -> DerivedBase:
 	accounts = _lines_of_the_base(voucher, tax, rate, side, ledger, mapping)
 	if accounts:
 		base = sum((ledger.vouchers(account)[voucher].balance(side) for account in accounts), ZERO)
 	else:
 		base = base_from_tax(tax, rate)
-	return DerivedBase(label, voucher, kennzahl, rate, tax, base, accounts)
+	placement = _placement(check, voucher, vouchers)
+	if placement is not None and placement.classification is Classification.EU_SERVICE:
+		kennzahl = check.derived_base_eu
+	return DerivedBase(check.label, voucher, kennzahl, rate, tax, base, accounts, placement)
 
 
 def _lines_of_the_base(
@@ -465,6 +514,78 @@ def _lines_of_the_base(
 		return ()
 	(accounts,) = fitting.values()
 	return accounts
+
+
+def _findings(
+	ledger: _Ledger,
+	mapping: Mapping,
+	derived: ReadOnlyMapping[str, tuple[DerivedBase, ...]],
+	vouchers: ReadOnlyMapping[str, Voucher],
+) -> tuple[Finding, ...]:
+	"""What a person should look at in sections C and D, each finding once, in the order of the checks."""
+	found: dict[Finding, None] = {}
+	for check in mapping.checks:
+		for base in derived.get(check.label, ()):
+			if base.placement is not None:
+				alternative = (
+					check.derived_base if base.kennzahl == check.derived_base_eu else check.derived_base_eu
+				)
+				for finding in base.placement.findings:
+					found[_with_kennzahl(finding, base.kennzahl, alternative)] = None
+		if mapping.is_acquisition(check):
+			for voucher in _vouchers_of(ledger, (*check.base_accounts, *check.tax_accounts)):
+				found.update(dict.fromkeys(_acquisition_findings(voucher, vouchers.get(voucher))))
+		if check.derived_base_eu is not None:
+			accounts = [
+				account
+				for account in check.base_accounts
+				if mapping.rule_for(account).kennzahl == check.derived_base_eu
+			]
+			for voucher in _vouchers_of(ledger, accounts):
+				placement = place(voucher, vouchers.get(voucher))
+				if placement.classification is Classification.OTHER:
+					facts = (str(placement.source), str(placement.residence or ""))
+					finding = Finding(
+						Problem.EU_SERVICE_ACCOUNT_OUTSIDE,
+						voucher,
+						", ".join(supplier.name for supplier in vouchers[voucher].suppliers),
+						facts,
+						check.derived_base_eu,
+						check.derived_base,
+					)
+					found[finding] = None
+	return tuple(found)
+
+
+def _with_kennzahl(finding: Finding, kennzahl: str, alternative: str) -> Finding:
+	return Finding(finding.problem, finding.voucher, finding.supplier, finding.facts, kennzahl, alternative)
+
+
+def _vouchers_of(ledger: _Ledger, accounts: Iterable[str]) -> list[str]:
+	"""The vouchers that post on the accounts, in the order of the ledger; the lines without voucher name none."""
+	found = {voucher for account in accounts for voucher in ledger.vouchers(account) if voucher is not None}
+	return sorted(found, key=ledger.first_line)
+
+
+def _acquisition_findings(voucher: str, facts: Voucher | None) -> list[Finding]:
+	"""An innergemeinschaftlicher Erwerb needs goods that come from another member state (§ 1a Absatz 1 Nummer 1
+	UStG); a supplier established in the Drittlandsgebiet makes that worth a look."""
+	if facts is None:
+		return []
+	outside = [
+		supplier
+		for supplier in facts.suppliers
+		if place(voucher, Voucher(facts.day, (supplier,))).residence is Residence.THIRD_COUNTRY
+	]
+	return [
+		Finding(
+			Problem.ACQUISITION_OUTSIDE_EU,
+			voucher,
+			supplier.name,
+			((supplier.country or supplier.address_country or "").strip(),),
+		)
+		for supplier in outside
+	]
 
 
 def _amounts_by_kennzahl(

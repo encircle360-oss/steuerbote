@@ -14,6 +14,8 @@ Wer innergemeinschaftliche Warenlieferungen, Lieferungen im Sinne des § 25b Abs
 
 Dieselben Umsätze stehen in der Voranmeldung (§ 18b UStG [Q2], Vordruck USt 1 A 2026 [Q4]); zu den Zeilen 19 und 35 sagt die Anleitung: „übermitteln Sie bitte Zusammenfassende Meldungen an das Bundeszentralamt für Steuern“. `lines.py` ordnet die Kennzahlen so den Arten zu (`KENNZAHL_ART`).
 
+Das Gegenstück auf der Seite des Empfängers ist Kz 46 der Voranmeldung: Was ein Unternehmer aus einem anderen Mitgliedstaat dem Unternehmen als sonstige Leistung nach § 3a Absatz 2 UStG erbringt, meldet er in seiner ZM unter dessen USt-IdNr. (Artikel 262 Absatz 1 Buchstabe c der Richtlinie 2006/112/EG), und das Unternehmen trägt es in Kz 46 ein (§ 13b Absatz 1 UStG). Wie Steuerbote solche Belege Kz 46 oder Kz 84 zuordnet, steht unter [Kz 46 oder Kz 84](ustva-kennzahlen.md#kz-46-oder-kz-84-der-sitz-des-leistenden).
+
 Die ZM entscheidet über die Steuerbefreiung: Die innergemeinschaftliche Lieferung ist nicht steuerfrei, „wenn der Unternehmer seiner Pflicht zur Abgabe der Zusammenfassenden Meldung (§ 18a) nicht nachgekommen ist oder soweit er diese im Hinblick auf die jeweilige Lieferung unrichtig oder unvollständig abgegeben hat“ (§ 4 Nummer 1 Buchstabe b UStG [Q3]).
 
 ## Meldezeiträume und Fristen

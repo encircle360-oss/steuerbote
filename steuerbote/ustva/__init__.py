@@ -13,6 +13,7 @@ from steuerbote.ustva.calculation import (
 	UstvaResult,
 	calculate,
 	derive_bases,
+	purchase_vouchers,
 )
 from steuerbote.ustva.defaults import DEFAULTS, SKR03, SKR04, default_mapping
 from steuerbote.ustva.kennzahlen import (
@@ -35,6 +36,7 @@ from steuerbote.ustva.mapping import (
 	WatchLevel,
 )
 from steuerbote.ustva.period import Period, Rhythm
+from steuerbote.ustva.residence import Classification, Finding, Supplier, Voucher
 from steuerbote.ustva.rounding import tax_from_base, to_cents, to_full_euros
 
 __all__ = [
@@ -47,9 +49,11 @@ __all__ = [
 	"AccountBalance",
 	"AccountRule",
 	"CheckResult",
+	"Classification",
 	"DerivedBase",
 	"Deviation",
 	"Effect",
+	"Finding",
 	"Kennzahl",
 	"KennzahlValue",
 	"Kind",
@@ -59,15 +63,18 @@ __all__ = [
 	"Period",
 	"Rhythm",
 	"Side",
+	"Supplier",
 	"TaxCheck",
 	"UnknownYearError",
 	"UstvaResult",
+	"Voucher",
 	"WatchLevel",
 	"WatchedAccount",
 	"calculate",
 	"catalogue_for",
 	"default_mapping",
 	"derive_bases",
+	"purchase_vouchers",
 	"tax_from_base",
 	"to_cents",
 	"to_full_euros",

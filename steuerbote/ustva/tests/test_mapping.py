@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import ClassVar
 from unittest import TestCase
 
+from steuerbote.ustva.defaults import SKR03
 from steuerbote.ustva.kennzahlen import LATEST_YEAR, UnknownYearError, catalogue_for
 from steuerbote.ustva.mapping import (
 	DERIVED_BASE_KENNZAHLEN,
@@ -373,6 +374,67 @@ class DerivedBaseValidationTest(TestCase):
 			mapping.derived_rate(check)
 		with self.assertRaisesRegex(MappingError, "check 'x' derives no base"):
 			mapping.base_side(check)
+
+
+class DerivedBaseEuValidationTest(TestCase):
+	"""A Verprobung of § 13b UStG may name a second Kennzahl for the base of a voucher whose supplier is established in
+	another member state (§ 13b Absatz 1 UStG); it is checked as the first."""
+
+	rules: ClassVar[tuple[AccountRule, ...]] = DerivedBaseValidationTest.rules
+
+	def mapping(self, *checks: TaxCheck) -> Mapping:
+		return Mapping("test", self.rules, checks)
+
+	def test_none_by_default(self):
+		self.assertIsNone(TaxCheck("x", ("3123",), ("1787",), derived_base="84").derived_base_eu)
+
+	def test_kz_46_next_to_kz_84_is_accepted(self):
+		check = TaxCheck("13b", ("3123", "3125"), ("1787",), derived_base="84", derived_base_eu="46")
+		self.assertEqual(self.mapping(check).checks[0].derived_base_eu, "46")
+
+	def test_it_needs_a_derived_base_for_the_other_vouchers(self):
+		with self.assertRaisesRegex(
+			MappingError,
+			"check 'x': derived_base_eu needs a derived_base for the vouchers of other suppliers",
+		):
+			TaxCheck("x", ("3123",), ("1787",), derived_base_eu="46")
+
+	def test_kennzahl_must_be_given_as_text(self):
+		with self.assertRaisesRegex(MappingError, "derived_base_eu must be a Kennzahl or None"):
+			TaxCheck("x", ("3123",), ("1787",), derived_base="84", derived_base_eu=46)  # type: ignore[arg-type]
+
+	def test_it_is_validated_as_the_derived_base(self):
+		with self.assertRaisesRegex(MappingError, "check 'x': Kennzahl 81 takes no base derived"):
+			self.mapping(TaxCheck("x", ("3123",), ("1787",), derived_base="84", derived_base_eu="81"))
+		with self.assertRaisesRegex(
+			MappingError, "check 'x': Kennzahl 89 carries 19 %, the base accounts of the"
+		):
+			self.mapping(TaxCheck("x", ("3115",), ("1785",), derived_base="84", derived_base_eu="89"))
+
+	def test_the_same_kennzahl_twice_is_accepted(self):
+		check = TaxCheck("x", ("3123",), ("1787",), derived_base="84", derived_base_eu="84")
+		self.assertEqual(self.mapping(check).checks[0].derived_base_eu, "84")
+
+
+class SectionTest(TestCase):
+	"""Which Verprobungen check purchases whose tax the company owes, and which of them acquisitions."""
+
+	def test_the_checks_of_the_defaults(self):
+		purchases = [check.label for check in SKR03.checks if SKR03.is_purchase(check)]
+		acquisitions = [check.label for check in SKR03.checks if SKR03.is_acquisition(check)]
+		self.assertEqual(
+			acquisitions,
+			[
+				"Umsatzsteuer aus innergemeinschaftlichem Erwerb 19 %",
+				"Umsatzsteuer aus innergemeinschaftlichem Erwerb 7 %",
+				"Umsatzsteuer aus innergemeinschaftlichem Erwerb ohne Vorsteuerabzug",
+				"Umsatzsteuer aus innergemeinschaftlichem Erwerb von Neufahrzeugen",
+			],
+		)
+		self.assertEqual(
+			purchases,
+			[*acquisitions, "Umsatzsteuer nach § 13b UStG 19 %", "Umsatzsteuer nach § 13b UStG 7 %"],
+		)
 
 
 class WatchedValidationTest(TestCase):

@@ -363,6 +363,55 @@ class DerivedBaseRowTest(TestCase):
 		self.assertEqual(mapping.checks[0].derived_base, "84")
 
 
+class DerivedBaseEuRowTest(TestCase):
+	"""The Kennzahl a check gives the base of such a voucher when its supplier is established in another member
+	state, kept as the derived base is."""
+
+	rules = (rule_row("3123", "46", "debit", tax_rate=19.0), rule_row("3125", "84", "debit", tax_rate=19.0))
+
+	def items(self, **fields: Any) -> dict:
+		return items_of_rows(
+			self.rules, [check_row("13b", "3123, 3125", "1787", derived_base="84", **fields)], []
+		)
+
+	def test_the_kennzahl_of_the_row_is_taken_without_blanks(self):
+		(check,) = rows_to_mapping(
+			"own", *rows_of_items(self.items(derived_base_eu=" 46 "))[:3], LATEST_YEAR
+		).checks
+		self.assertEqual((check.derived_base, check.derived_base_eu), ("84", "46"))
+
+	def test_an_empty_field_takes_nothing(self):
+		for empty in (None, "", " "):
+			with self.subTest(empty=empty):
+				self.assertNotIn("derived_base_eu", self.items(derived_base_eu=empty)[(CHECK, "13b")])
+
+	def test_item_row_and_body_hold_it_only_when_there_is_one(self):
+		items = self.items(derived_base_eu="46")
+		self.assertEqual(items[(CHECK, "13b")]["derived_base_eu"], "46")
+		self.assertEqual(rows_of_items(items).check_rows[0]["derived_base_eu"], "46")
+		self.assertEqual(items_of_rows(*rows_of_items(items)), items)
+		(check,) = body_of_items(items)["checks"]
+		self.assertEqual(check["derived_base_eu"], "46")
+		self.assertEqual(items_of_body(body_of_items(items)), items)
+		self.assertNotIn("derived_base_eu", body_of_items(self.items())["checks"][0])
+
+	def test_without_a_derived_base_it_is_refused(self):
+		with self.assertRaisesRegex(MappingError, "derived_base_eu needs a derived_base"):
+			mapping_of(self.rules, [check_row("13b", "3123", "1787", derived_base_eu="46")])
+
+	def test_the_defaults_give_it_to_the_checks_of_section_d(self):
+		_, check_rows, _, _ = defaults_for_accounts(
+			"SKR03", LATEST_YEAR, frozenset({"3123", "1787", "3425", "1774"})
+		)
+		self.assertEqual(
+			[(row["label"], row.get("derived_base_eu")) for row in check_rows],
+			[
+				("Umsatzsteuer aus innergemeinschaftlichem Erwerb 19 %", None),
+				("Umsatzsteuer nach § 13b UStG 19 %", "46"),
+			],
+		)
+
+
 class WatchedRowTest(TestCase):
 	def test_watched_accounts_are_taken_by_number(self):
 		watched = [{"account_number": "1548", "account": "1548 - Vorsteuer - X"}, {"account_number": "1725"}]
@@ -434,7 +483,12 @@ class DefaultsForAccountsTest(TestCase):
 			[
 				check_row("Umsatzsteuer 19 %", "8400", "1776", side="credit"),
 				check_row(
-					"Umsatzsteuer nach § 13b UStG 19 %", "3123", "1787", side="credit", derived_base="84"
+					"Umsatzsteuer nach § 13b UStG 19 %",
+					"3123",
+					"1787",
+					side="credit",
+					derived_base="84",
+					derived_base_eu="46",
 				),
 			],
 		)

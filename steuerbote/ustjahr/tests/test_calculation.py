@@ -2,6 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
+from types import MappingProxyType
 from unittest import TestCase
 
 from steuerbote.ustjahr.calculation import (
@@ -33,6 +34,7 @@ from steuerbote.ustva.mapping import (
 	WatchedAccount,
 	WatchLevel,
 )
+from steuerbote.ustva.residence import Supplier, Voucher
 from steuerbote.ustva.rounding import ZERO, tax_from_base, to_full_euros
 
 CATALOGUE = CATALOGUES[2026]
@@ -312,6 +314,57 @@ class DerivedBaseTest(TestCase):
 				tax = mapping_catalogue[number].tax_kennzahl
 				if tax is not None:
 					self.assertIsNotNone(CATALOGUE.default_child(tax))
+
+
+class DerivedBaseBySupplierTest(TestCase):
+	"""Over the year a derived base of § 13b UStG goes to Kz 46 or 84 by the supplier of its voucher, as in each
+	Voranmeldung."""
+
+	mapping = Mapping(
+		"test",
+		(
+			AccountRule("3123", "46", Side.DEBIT, RATE_19),
+			AccountRule("3125", "84", Side.DEBIT, RATE_19),
+			AccountRule("1577", "67", Side.DEBIT),
+		),
+		checks=(
+			TaxCheck(
+				"Umsatzsteuer nach § 13b UStG 19 %",
+				("3123", "3125"),
+				("1787",),
+				derived_base="84",
+				derived_base_eu="46",
+			),
+		),
+		year=2026,
+	)
+	lines = (
+		line("4980", debit="1000.00", voucher="J1"),
+		line("1577", debit="190.00", voucher="J1"),
+		line("1787", credit="190.00", voucher="J1"),
+		line("4980", debit="500.00", voucher="J2"),
+		line("1577", debit="95.00", voucher="J2"),
+		line("1787", credit="95.00", voucher="J2"),
+	)
+	vouchers = MappingProxyType(
+		{
+			"J1": Voucher(date(2026, 3, 2), (Supplier("Vltava Software s.r.o.", "Czech Republic"),)),
+			"J2": Voucher(date(2026, 3, 9), (Supplier("Harbor Analytics Inc.", "United States"),)),
+		}
+	)
+
+	def test_the_supplier_sends_the_base_to_the_line_of_its_kennzahl(self):
+		result = calculate(self.lines, split(self.mapping), vouchers=self.vouchers)
+		self.assertEqual(result.ustva, calculate_ustva(self.lines, self.mapping, vouchers=self.vouchers))
+		for number, amount in (("46", "1000.00"), ("47", "190.00"), ("84", "500.00"), ("85", "95.00")):
+			with self.subTest(kennzahl=number):
+				self.assertEqual(
+					result.values[CATALOGUE.default_child(number).element].ledger, Decimal(amount)
+				)
+
+	def test_without_the_suppliers_every_base_stays_in_84(self):
+		result = calculate(self.lines, split(self.mapping))
+		self.assertEqual(result.values[CATALOGUE.default_child("84").element].ledger, Decimal("1500.00"))
 
 
 class VerprobungTest(TestCase):

@@ -27,7 +27,16 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from steuerbote.steuerbote.doctype.vat_return.bridge import split_voucher
-from steuerbote.ustva import Kennzahl, LedgerLine, Mapping, Side, UstvaResult, derive_bases, tax_from_base
+from steuerbote.ustva import (
+	Kennzahl,
+	LedgerLine,
+	Mapping,
+	Side,
+	UstvaResult,
+	Voucher,
+	derive_bases,
+	tax_from_base,
+)
 from steuerbote.ustva.rounding import ZERO
 
 COLUMNS = (
@@ -92,8 +101,11 @@ class _DerivedBase:
 	base: Decimal = ZERO
 
 
-def contributions(lines: Iterable[LedgerLine], mapping: Mapping) -> dict[str, list[Contribution]]:
-	"""The contributions of the lines to each Kennzahl, vouchers in the order of their first line."""
+def contributions(
+	lines: Iterable[LedgerLine], mapping: Mapping, vouchers: ReadOnlyMapping[str, Voucher] | None = None
+) -> dict[str, list[Contribution]]:
+	"""The contributions of the lines to each Kennzahl, vouchers in the order of their first line; ``vouchers`` holds
+	the suppliers of the vouchers of sections C and D, which send a derived base to Kz 46 or 84 as in calculate()."""
 	lines = tuple(lines)
 	postings: dict[tuple[str, str | None], _Postings] = {}
 	first_line: dict[str | None, int] = {}
@@ -126,7 +138,7 @@ def contributions(lines: Iterable[LedgerLine], mapping: Mapping) -> dict[str, li
 			base.postings.credit += total.credit
 			base.base += total.balance(rule.side)
 	checks = {check.label: check for check in mapping.checks}
-	for found_base in derive_bases(lines, mapping):
+	for found_base in derive_bases(lines, mapping, vouchers):
 		accounts = found_base.accounts or checks[found_base.label].tax_accounts
 		shown = [account for account in accounts if (account, found_base.voucher) in postings]
 		debit = sum((postings[(account, found_base.voucher)].debit for account in shown), ZERO)

@@ -10,7 +10,17 @@ from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import (
 	report_rows,
 	vouchers_by_type,
 )
-from steuerbote.ustva import KENNZAHLEN, AccountRule, LedgerLine, Mapping, Side, TaxCheck, calculate
+from steuerbote.ustva import (
+	KENNZAHLEN,
+	AccountRule,
+	LedgerLine,
+	Mapping,
+	Side,
+	Supplier,
+	TaxCheck,
+	Voucher,
+	calculate,
+)
 from steuerbote.ustva.defaults import SKR03, SKR04
 
 ZERO = Decimal("0")
@@ -164,9 +174,9 @@ def busy_month(mapping: Mapping) -> list[LedgerLine]:
 class AgreementTest(TestCase):
 	"""The vouchers of every Kennzahl add up to the amount the core computes for it."""
 
-	def assert_agrees(self, lines: list[LedgerLine], mapping: Mapping) -> None:
-		result = calculate(lines, mapping)
-		found = contributions(lines, mapping)
+	def assert_agrees(self, lines: list[LedgerLine], mapping: Mapping, vouchers: dict | None = None) -> None:
+		result = calculate(lines, mapping, vouchers=vouchers)
+		found = contributions(lines, mapping, vouchers)
 		self.assertGreater(len(found), 1)
 		for number in result.values.keys() | found.keys():
 			with self.subTest(kennzahl=number):
@@ -192,6 +202,9 @@ class AgreementTest(TestCase):
 	def test_bases_derived_from_vouchers_without_base_account(self):
 		self.assert_agrees(derived_purchases(), SKR03)
 
+	def test_bases_derived_by_the_supplier_of_their_voucher(self):
+		self.assert_agrees(derived_purchases(), SKR03, SUPPLIERS)
+
 
 def derived_purchases() -> list[LedgerLine]:
 	"""Purchases on expense accounts with the tax of § 13b UStG and of an acquisition, and one the lines do not
@@ -211,6 +224,12 @@ def derived_purchases() -> list[LedgerLine]:
 	]
 
 
+SUPPLIERS = {
+	"Journal Entry:JE-1": Voucher(date(2026, 3, 1), (Supplier("Vltava Software s.r.o.", "Czech Republic"),)),
+	"Journal Entry:JE-3": Voucher(date(2026, 3, 3), (Supplier("Harbor Analytics Inc.", "United States"),)),
+}
+
+
 class DerivedBaseContributionsTest(TestCase):
 	"""A base derived from a voucher without base account is a contribution of that voucher like any other."""
 
@@ -227,6 +246,17 @@ class DerivedBaseContributionsTest(TestCase):
 		self.assertEqual(
 			found["89"], [Contribution("89", "Journal Entry:JE-2", ("4930",), d("300"), d("0"), d("300.00"))]
 		)
+
+	def test_a_supplier_of_another_member_state_sends_the_base_and_its_tax_to_46_and_47(self):
+		found = contributions(derived_purchases(), SKR03, SUPPLIERS)
+		self.assertEqual(
+			found["46"],
+			[Contribution("46", "Journal Entry:JE-1", ("4980",), d("1000"), d("0"), d("1000.00"))],
+		)
+		self.assertEqual(
+			found["47"], [Contribution("47", "Journal Entry:JE-1", ("4980",), d("1000"), d("0"), d("190.00"))]
+		)
+		self.assertEqual([item.voucher for item in found["84"]], ["Journal Entry:JE-3"])
 
 	def test_a_base_from_the_tax_names_the_tax_account(self):
 		found = contributions(derived_purchases(), SKR03)

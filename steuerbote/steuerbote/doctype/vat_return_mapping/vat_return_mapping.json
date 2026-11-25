@@ -12,6 +12,7 @@
   "defaults_rows",
   "rules",
   "checks",
+  "reverse_charge",
   "watched",
   "annual_rules"
  ],
@@ -65,6 +66,13 @@
    "options": "VAT Return Mapping Check"
   },
   {
+   "description": "For the vouchers that book the tax of § 13b UStG without a base account, Steuerbote takes Kz 46 for a supplier established in another member state and Kz 84 for every other, by the country of the supplier. A row here decides instead, for the exceptions: for one voucher, for a supplier or for a tax template; a voucher row wins over a supplier row, a supplier row over a template row.",
+   "fieldname": "reverse_charge",
+   "fieldtype": "Table",
+   "label": "Classifications under § 13b UStG",
+   "options": "VAT Return Mapping Reverse Charge"
+  },
+  {
    "description": "Accounts of the Voranmeldung without a Kennzahl yet. A balance on one watched at the level Blocking holds the return; on one watched at the level Hint, it adds a hint to the return.",
    "fieldname": "watched",
    "fieldtype": "Table",
@@ -80,7 +88,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-23 18:00:00.000000",
+ "modified": "2026-11-25 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Mapping",

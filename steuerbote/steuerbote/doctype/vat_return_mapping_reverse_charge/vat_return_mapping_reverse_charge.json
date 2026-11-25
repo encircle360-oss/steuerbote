@@ -1,0 +1,63 @@
+{
+ "actions": [],
+ "creation": "2026-11-25 18:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "reference_doctype",
+  "reference_name",
+  "classification",
+  "note"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "description": "A supplier, a single purchase invoice or journal entry, or a purchase tax template.",
+   "fieldname": "reference_doctype",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Applies To",
+   "options": "Supplier\nPurchase Invoice\nJournal Entry\nPurchase Taxes and Charges Template",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "Document",
+   "options": "reference_doctype",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "description": "EU Service: a service under § 3a (2) UStG of a business established in another member state, § 13b (1) UStG, Kz 46 in the defaults. Other Reverse Charge: every other supply under § 13b UStG, such as a Werklieferung, a service connected with land or the short-term hire of a means of transport, Kz 84 in the defaults.",
+   "fieldname": "classification",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Classification under § 13b UStG",
+   "options": "EU Service\nOther Reverse Charge",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "description": "Why, for example the invoice that shows it.",
+   "fieldname": "note",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Note"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-25 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT Return Mapping Reverse Charge",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

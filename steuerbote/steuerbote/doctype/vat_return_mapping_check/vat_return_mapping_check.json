@@ -9,7 +9,8 @@
   "base_accounts",
   "tax_accounts",
   "side",
-  "derived_base"
+  "derived_base",
+  "derived_base_eu"
  ],
  "fields": [
   {
@@ -39,7 +40,7 @@
    "reqd": 1
   },
   {
-   "columns": 2,
+   "columns": 1,
    "default": "credit",
    "fieldname": "side",
    "fieldtype": "Select",
@@ -54,11 +55,19 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Kz of the Base Without Base Account"
+  },
+  {
+   "columns": 1,
+   "description": "Kennzahl that takes the base of such a voucher instead when its supplier is established in another member state and the supply is a service under § 3a (2) UStG (§ 13b (1) UStG), by the country of the supplier or the classification under § 13b UStG below. Needs the Kz of the base without base account for every other voucher. Empty: every such voucher takes that Kennzahl.",
+   "fieldname": "derived_base_eu",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kz for Suppliers in Other Member States"
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-25 12:00:00.000000",
+ "modified": "2026-11-25 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Mapping Check",

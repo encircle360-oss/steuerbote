@@ -38,6 +38,7 @@ from steuerbote.steuerbote.doctype.annual_vat_return import bridge, revenue
 from steuerbote.steuerbote.doctype.vat_return.vat_return import DOCTYPE as VAT_RETURN
 from steuerbote.steuerbote.doctype.vat_return.vat_return import FILED
 from steuerbote.steuerbote.report.e_bilanz_positionen.rows import REVENUE
+from steuerbote.suppliers import load_vouchers
 from steuerbote.ustjahr.soll import Filed
 from steuerbote.ustjahr.split import Split
 from steuerbote.ustva import LedgerLine, Mapping, Period, Rhythm, UstvaResult, calculate
@@ -73,10 +74,13 @@ def period_runs(
 ) -> dict[Period, UstvaResult]:
 	"""The run of the Voranmeldung on today's ledger of each period, as Berechnen of a VAT Return runs it without the
 	Sondervorauszahlung, which the reconciliation takes from Kz 39 of the filed return."""
-	return {
-		period: calculate(load_lines(company, period.start, period.end), mapping, tolerance=tolerance)
-		for period in periods
-	}
+	runs = {}
+	for period in periods:
+		lines = load_lines(company, period.start, period.end)
+		runs[period] = calculate(
+			lines, mapping, tolerance=tolerance, vouchers=load_vouchers(company, lines, mapping)
+		)
+	return runs
 
 
 def filed_voranmeldungen(company: str, year: int) -> tuple[Filed, ...]:
