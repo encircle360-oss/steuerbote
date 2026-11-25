@@ -4,10 +4,11 @@
 	label. The PDFs come from wkhtmltopdf, which takes its page margins from a rule on .print-format alone, ignores
 	@page margins and page-break-after, and keeps rows and blocks with page-break-inside: avoid. The sheet does not rely
 	on Frappe's print bundle, which a site may fail to load into wkhtmltopdf. A print format includes it first, then
-	the running head and foot, and wraps its content in <div class="sb-print">. The gap between the running head and
-	the content is padding at the bottom of the head, not the page option for the spacing of the header: Frappe 16.60
-	hands that option to its Chromium-based generator as text and fails, while both generators measure the head with
-	its padding.
+	the running head and foot, and wraps its content in <div class="sb-print">. The head is as high as the top margin
+	and the foot as high as the bottom margin, the gaps to the content inside them, so that both generators put them
+	in the same place: wkhtmltopdf sets them into the margins, the Chromium-based generator stacks them on margins of 0
+	(chromium.html). Neither sets the page option for the spacing of the header: Frappe 16.60 hands it to its
+	Chromium-based generator as text and fails.
 -#}
 <style>
 	@page {
@@ -413,12 +414,17 @@
 	}
 
 	.sb-running-head {
-		padding-bottom: 4mm;
+		height: 28mm;
+		position: relative;
 	}
 
 	.sb-running-rule {
 		border-bottom: 0.3mm solid #777;
-		padding: 7mm 0 1.2mm;
+		bottom: 4mm;
+		left: 0;
+		padding-bottom: 1.2mm;
+		position: absolute;
+		right: 0;
 	}
 
 	.sb-running-head .sb-title {
@@ -427,8 +433,19 @@
 	}
 
 	.sb-running-foot {
+		height: 18mm;
+		position: relative;
+	}
+
+	.sb-running-foot-rule {
 		border-top: 0.3mm solid #777;
-		margin-top: 4mm;
+		left: 0;
 		padding-top: 1.2mm;
+		position: absolute;
+		right: 0;
+		top: 4mm;
 	}
 </style>
+{%- if steuerbote_pdf_generator() == "chrome" %}
+{% include "steuerbote/templates/includes/print/chromium.html" %}
+{%- endif %}

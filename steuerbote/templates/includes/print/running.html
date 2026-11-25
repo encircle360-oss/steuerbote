@@ -25,11 +25,13 @@
 </div>
 <div id="footer-html" class="visible-pdf">
 	<div class="sb-running sb-running-foot">
-		<table>
-			<tr>
-				<td>Erstellt am {{ running_created }} mit Steuerbote {{ steuerbote_version() | e }}</td>
-				<td class="sb-right">Seite <span class="page"></span> von <span class="topage"></span></td>
-			</tr>
-		</table>
+		<div class="sb-running-foot-rule">
+			<table>
+				<tr>
+					<td>Erstellt am {{ running_created }} mit Steuerbote {{ steuerbote_version() | e }}</td>
+					<td class="sb-right">Seite <span class="page"></span> von <span class="topage"></span></td>
+				</tr>
+			</table>
+		</div>
 	</div>
 </div>

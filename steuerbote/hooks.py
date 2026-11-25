@@ -37,7 +37,12 @@ fixtures = [
 ]
 
 # The version of Steuerbote in the line „Erstellt mit Steuerbote“ of the printouts.
-jinja = {"methods": ["steuerbote.steuerbote.about.steuerbote_version"]}
+jinja = {
+	"methods": [
+		"steuerbote.steuerbote.about.steuerbote_version",
+		"steuerbote.steuerbote.about.steuerbote_pdf_generator",
+	]
+}
 
 # ERPNext's "Delete Company Transactions" (Transaction Deletion Record) deletes the documents of every DocType
 # linked to the company with frappe.db.delete, past on_trash, unless the DocType is listed here: the filings and

@@ -203,7 +203,11 @@ class RunningHeadAndFootTest(TestCase):
 
 class ClassesTest(TestCase):
 	def test_every_class_is_one_of_its_own_and_styled_or_one_frappe_gives_a_meaning(self):
-		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", JINJA_COMMENT.sub("", read(STYLE)))))
+		styled = set(
+			CLASS_SELECTOR.findall(
+				re.sub(r"\d+\.\d+", "", JINJA_TAG.sub("", JINJA_COMMENT.sub("", read(STYLE))))
+			)
+		)
 		self.assertEqual(
 			sorted(name for name in styled if not name.startswith("sb-")),
 			sorted(FRAPPE_CLASSES - {"visible-pdf", "page", "topage"}),
