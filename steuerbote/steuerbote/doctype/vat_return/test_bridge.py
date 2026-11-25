@@ -935,7 +935,7 @@ class HintRowsTest(TestCase):
 			bridge.hint_rows(found),
 			[
 				{
-					"severity": "Warnung",
+					"severity": "Fehler",
 					"code": "EU-OHNE-USTID",
 					"text": "Rechnung ...",
 					"voucher_type": "Sales Invoice",
@@ -1038,7 +1038,7 @@ class ReplacedHintsTest(TestCase):
 			"party": party,
 		}
 
-	def test_new_hints_take_the_place_of_those_of_their_codes_and_warnings_stay_first(self):
+	def test_new_hints_take_the_place_of_those_of_their_codes_and_errors_and_warnings_stay_first(self):
 		stored = [
 			{
 				**self.row("Warnung", "EU-OHNE-USTID", "a", "X"),
@@ -1055,12 +1055,12 @@ class ReplacedHintsTest(TestCase):
 		self.assertEqual(
 			bridge.replaced_hints(stored, new, plausibility.VAT_ID_CODES),
 			[
+				self.row("Fehler", "USTIDNR-UNGUELTIG", "c", "Y"),
 				{
 					**self.row("Warnung", "EU-OHNE-USTID", "a", "X"),
 					"voucher_type": "Sales Invoice",
 					"voucher_no": "S-1",
 				},
-				self.row("Warnung", "USTIDNR-UNGUELTIG", "c", "Y"),
 				self.row("Hinweis", "KEIN-KATALOG", "b"),
 				self.row("Hinweis", "USTIDNR-VERALTET", "d", "Z"),
 			],

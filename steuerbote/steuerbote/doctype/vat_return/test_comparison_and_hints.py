@@ -18,6 +18,8 @@ from steuerbote.tests.helpers import (
 	make_settings,
 	post_journal_entry,
 )
+from steuerbote.ustva.plausibility import NO_VAT_ID_ADVICE
+from steuerbote.vatid.exemption import consequence
 
 # The companies, their accounts, parties and vouchers are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
@@ -493,19 +495,21 @@ class TestHintsFromInvoices(IntegrationTestCase):
 		self.assertEqual([line.voucher_no for line in lines], ["SINV-STVR-0002"])
 		self.assertEqual(load_lines(INVOICING_COMPANY, "2026-11-01", "2026-11-30", ["8400"], ["3123"]), [])
 
-	def test_an_eu_service_to_a_customer_without_vat_id_is_a_warning_that_holds_nothing(self):
+	def test_an_eu_service_to_a_customer_without_vat_id_holds_the_return_until_the_remarks_explain_it(self):
+		"""Without a USt-IdNr. of the recipient the ZM cannot report the service, and the Voranmeldung holds the same
+		voucher the same way (decision of the maintainer, docs/zm.md [Q16])."""
 		doc = calculated(INVOICING_COMPANY, 10)
-		self.assertEqual((doc.ready, doc.status), (1, "Bereit"))
+		self.assertEqual((doc.ready, doc.status), (0, "Berechnet"))
 		invoice_hints = [
 			row for row in doc.hints if row.code not in ("ABWEICHUNG-VORPERIODE", "KEIN-KATALOG")
 		]
 		self.assertEqual(
 			[(row.severity, row.code, row.voucher_type, row.voucher_no, row.party) for row in invoice_hints],
-			[("Warnung", "EU-OHNE-USTID", "Sales Invoice", "SINV-STVR-0002", "Alpen Beratung GmbH")],
+			[("Fehler", "EU-OHNE-USTID", "Sales Invoice", "SINV-STVR-0002", "Alpen Beratung GmbH")],
 		)
 		self.assertEqual(
 			invoice_hints[0].text,
 			f"Rechnung SINV-STVR-0002 über {euros('2000.00')} geht in Kz 21 ein, "
-			"aber der Kunde Alpen Beratung GmbH hat keine USt-IdNr.",
+			f"aber der Kunde Alpen Beratung GmbH hat keine USt-IdNr. {consequence('21')} {NO_VAT_ID_ADVICE}",
 		)
 		self.assertEqual(doc.hints[0].code, "EU-OHNE-USTID")

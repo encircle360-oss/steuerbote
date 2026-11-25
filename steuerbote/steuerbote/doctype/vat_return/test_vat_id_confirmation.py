@@ -24,6 +24,8 @@ from steuerbote.tests.helpers import (
 	post_payment_entry,
 	post_sales_invoice,
 )
+from steuerbote.ustva.plausibility import INVALID_ADVICE
+from steuerbote.vatid.exemption import consequence
 from steuerbote.vatid.service import confirm
 from steuerbote.vatid.tests.fakes import FakeBzst, FakeClock, FakeFetch, bzst
 
@@ -255,17 +257,17 @@ class TestVatIdConfirmationOfTheReturn(IntegrationTestCase):
 			event.args[1],
 			{"document_type": DOCTYPE, "document": doc.name, "confirmed": 3, "failed": [], "error": None},
 		)
-		self.assertEqual((doc.confirmation_in_progress, doc.status, doc.ready), (0, "Bereit", 1))
+		self.assertEqual((doc.confirmation_in_progress, doc.status, doc.ready), (0, "Berechnet", 0))
 		self.assertEqual(
 			[(row.severity, row.code, row.party) for row in vat_id_rows(doc)],
-			[("Warnung", "USTIDNR-UNGUELTIG", ROMA)],
+			[("Fehler", "USTIDNR-UNGUELTIG", ROMA)],
 		)
 		self.assertEqual(
 			(doc.hints[0].code, doc.hints[0].text),
 			(
 				"USTIDNR-UNGUELTIG",
 				f"Die USt-IdNr. {ITALIAN} des Kunden {ROMA} (Kz 42) ist laut Bestätigungsabfrage vom "
-				"20. November 2026 ungültig.",
+				f"20. November 2026 ungültig. {consequence('42')} {INVALID_ADVICE}",
 			),
 		)
 		self.assertEqual([(row.code, row.text) for row in doc.hints if row.code not in CODES], others)
@@ -300,8 +302,9 @@ class TestVatIdConfirmationOfTheReturn(IntegrationTestCase):
 		doc.reload()
 		self.assertEqual(
 			[(row.severity, row.code, row.party) for row in vat_id_rows(doc)],
-			[("Warnung", "USTIDNR-UNGUELTIG", ALPEN)],
+			[("Fehler", "USTIDNR-UNGUELTIG", ALPEN)],
 		)
+		self.assertEqual((doc.status, doc.ready), ("Berechnet", 0))
 
 	def test_a_query_without_an_answer_leaves_the_number_unconfirmed(self):
 		self.stored(AUSTRIAN, at(2026, 11, 20), OSError("timed out"), OSError("timed out"))
