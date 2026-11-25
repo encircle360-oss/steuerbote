@@ -15,8 +15,12 @@ document carries (steuerbote.jahresmeldung.lifecycle.standard_fields).
 
 send_reminders() runs once a day (scheduler_events in hooks.py). For each company with VAT Return Settings or Annual
 Filing Settings whose VAT Return Settings name recipients, it sends one e-mail in German with the deadlines that are
-not filed and fall due within the days of notice of those settings, or are overdue, and records each of them in a
-Deadline Reminder; a deadline reminded on a day is not reminded again that day.
+not filed and fall due within the days of notice of those settings, or are overdue, and records each of them with its
+recipients in a Deadline Reminder; a deadline reminded on a day is not reminded again that day. The e-mail has a text
+part of its own with the address of every link (templates/emails/steuerbote_deadline_reminder), and the Error Log of
+the job is written in the language of the site. A company without a Holiday List gets the holidays of every state
+(steuerbote.holiday_list), and its deadlines say so. check_setup() is the step of Steuerbote einrichten that names
+what would let a deadline drop out or a reminder reach nobody.
 """
 
 from collections.abc import Callable
@@ -40,6 +44,8 @@ from frappe.utils import (
 
 from steuerbote import deadlines, holiday_list, zm_sources
 from steuerbote.deadlines import Deadline, Filing, Kind, Note, Status, annual
+from steuerbote.setup.steps import Note as StepNote
+from steuerbote.setup.steps import Outcome, StepResult
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import DOCTYPE as REMINDER
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import reminder_name
@@ -52,6 +58,7 @@ from steuerbote.steuerbote.doctype.vat_return.vat_return import DOCTYPE as VAT_R
 from steuerbote.steuerbote.doctype.vat_return_extension.vat_return_extension import (
 	DOCTYPE as VAT_RETURN_EXTENSION,
 )
+from steuerbote.steuerbote.doctype.vat_return_settings import rules as vat_rules
 from steuerbote.ustva import Mapping
 from steuerbote.ustva.period import Period, Rhythm
 from steuerbote.zm.rhythm import Coverage
@@ -71,6 +78,10 @@ EMAIL_DATE_FORMAT = "dd.mm.yyyy"
 EMAIL_COLUMNS = ("kind", "period_label", "due", "days", "status", "document", "document_status", "note")
 SAVEPOINT = "steuerbote_deadline_reminder"
 NOTE_SEPARATOR = "; "
+# The templates of the e-mail under templates/emails, whose text part keeps the addresses of the links.
+EMAIL_TEMPLATE = "steuerbote_deadline_reminder"
+# Lines and padding of the table as HTML attributes, which mail clients show without a style sheet.
+TABLE_ATTRIBUTES = 'border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse"'
 # The fields every annual document carries that tell whether and when it filed its deadlines.
 ANNUAL_FIELDS = ("name", "year", "status", "docstatus", "filed_via", "filed_on", "modified")
 
@@ -112,6 +123,7 @@ def deadlines_of(company: str, settings: Document | None, today: date, horizon_d
 		holiday_list.holidays(company),
 		reportable=reportable(company),
 		document_types=document_types(),
+		holidays_complete=holiday_list.has_list(company),
 	)
 
 
@@ -356,6 +368,14 @@ def note_texts(language: str | None = None) -> dict[Note, str]:
 			"No size class for the fiscal year: eight months (§ 42a Abs. 2 GmbHG)", lang=language
 		),
 		Note.ON_WEEKEND: _("On a weekend; whether § 193 BGB moves the day is unverified", lang=language),
+		Note.DAUERFRIST_NOT_RECORDED: _(
+			"No Dauerfristverlängerung entered for the year, but one for an earlier year, which holds until it is given up or revoked (§ 46 UStDV): enter the year in the VAT Return Settings, with the extension or without it",
+			lang=language,
+		),
+		Note.NATIONWIDE_HOLIDAYS: _(
+			"The company has no holiday list: only the holidays of every state move the day (§ 108 Abs. 3 AO)",
+			lang=language,
+		),
 	}
 
 
@@ -367,15 +387,76 @@ def note_text(deadline: Deadline, language: str | None = None) -> str:
 
 def document_link(deadline: Deadline, absolute: bool = False, language: str | None = None) -> str:
 	"""A link to the document of the deadline, or for a deadline without one to a new document of its period."""
-	if deadline.document_name:
-		route = get_absolute_url(deadline.document_type, deadline.document_name)
-		label = deadline.document_name
-	else:
-		values = urlencode(deadlines.new_document_values(deadline))
-		route = f"{get_absolute_url(deadline.document_type, 'new')}?{values}"
-		label = _("Create Document", lang=language)
+	route = _document_route(deadline)
+	label = document_label(deadline, language)
 	href = get_url(route) if absolute else route
 	return f'<a href="{escape_html(href)}">{escape_html(label)}</a>'
+
+
+def document_label(deadline: Deadline, language: str | None = None) -> str:
+	"""The name of the document of the deadline, or the text of the link to a new one."""
+	return deadline.document_name or _("Create Document", lang=language)
+
+
+def _document_route(deadline: Deadline) -> str:
+	if deadline.document_name:
+		return get_absolute_url(deadline.document_type, deadline.document_name)
+	values = urlencode(deadlines.new_document_values(deadline))
+	return f"{get_absolute_url(deadline.document_type, 'new')}?{values}"
+
+
+HOLIDAY_LIST_SET = "The holidays of the Holiday List {0} move the deadlines of {1} (§ 108 Abs. 3 AO); it should hold the holidays of the state of the Finanzamt."
+HOLIDAY_LIST_MISSING = "{0} has no Default Holiday List, so only the holidays of every state move its deadlines (§ 108 Abs. 3 AO). Set the list of the state of its Finanzamt in the company, so that a holiday of that state such as Fronleichnam moves them too."
+NO_RECIPIENTS = "The VAT Return Settings name no recipients of the reminder, so nobody is reminded of the deadlines of {0}; the report Offene Fristen shows them."
+INVALID_RECIPIENTS = (
+	"These entries of the recipients of the reminder are no e-mail addresses and get no reminder: {0}."
+)
+NO_OUTGOING_ACCOUNT = "The site has no default outgoing e-mail account, so the reminder of the deadlines reaches nobody. Review the Email Queue before an account is switched on: every mail waiting there goes out with it."
+RECIPIENTS_SET = (
+	"The reminder goes to {0} every day while a deadline is not filed, from {1} days before it is due."
+)
+DAUERFRIST_CARRIED = "The VAT Return Settings have the Dauerfristverlängerung for {0} but no row for {1}. It holds until it is given up or revoked (§ 46 UStDV), and a monthly filer pays the Sondervorauszahlung of every year by 10 February (§ 48 Abs. 2 UStDV): enter {1}, with the extension or without it."
+SETUP_MESSAGES = (
+	HOLIDAY_LIST_SET,
+	HOLIDAY_LIST_MISSING,
+	NO_RECIPIENTS,
+	INVALID_RECIPIENTS,
+	NO_OUTGOING_ACCOUNT,
+	RECIPIENTS_SET,
+	DAUERFRIST_CARRIED,
+)
+
+
+def check_setup(context: Any) -> StepResult:
+	"""Fristen und Erinnerung, a step of Steuerbote einrichten: whether the holidays, the Dauerfristverlängerung of the
+	year and the reminder are set so that no deadline drops out or moves unseen and the reminder reaches someone."""
+	company = context.company
+	settings = frappe.get_doc(SETTINGS, company)
+	notes: list[StepNote] = []
+	holiday_list_name = frappe.db.get_value("Company", company, "default_holiday_list")
+	if holiday_list_name:
+		notes.append(StepNote(HOLIDAY_LIST_SET, (holiday_list_name, company)))
+	else:
+		notes.append(StepNote(HOLIDAY_LIST_MISSING, (company,), open=True))
+	year = getdate(context.today).year
+	carried = vat_rules.carried_dauerfrist(settings.get_prepayments(), year)
+	if carried:
+		notes.append(StepNote(DAUERFRIST_CARRIED, (carried, year), open=True))
+	invalid = invalid_recipients(settings.deadline_recipients)
+	if invalid:
+		notes.append(StepNote(INVALID_RECIPIENTS, (", ".join(invalid),), open=True))
+	recipients = [
+		entry for line in (settings.deadline_recipients or "").splitlines() if (entry := line.strip())
+	]
+	valid = [entry for entry in recipients if entry not in invalid]
+	if not valid:
+		notes.append(StepNote(NO_RECIPIENTS, (company,), open=True))
+	else:
+		notes.append(StepNote(RECIPIENTS_SET, (", ".join(valid), cint(settings.reminder_days))))
+		if not outgoing_account():
+			notes.append(StepNote(NO_OUTGOING_ACCOUNT, open=True))
+	outcome = Outcome.UNDECIDED if any(note.open for note in notes) else Outcome.SKIPPED
+	return StepResult(outcome, tuple(notes), (SETTINGS, settings.name))
 
 
 def send_reminders() -> None:
@@ -389,7 +470,7 @@ def send_reminders() -> None:
 		except Exception:
 			frappe.db.rollback(save_point=SAVEPOINT)
 			frappe.log_error(
-				title=_("The reminder of the deadlines of {0} failed").format(company),
+				title=_("The reminder of the deadlines of {0} failed", lang=site_language()).format(company),
 				reference_doctype=SETTINGS,
 				reference_name=company,
 			)
@@ -424,17 +505,40 @@ def remind(company: str, today: date) -> bool:
 				"period_label": deadline.period_label,
 				"due_date": deadline.due,
 				"sent_on": today,
+				"recipients": "\n".join(recipients),
 			}
 		).insert(ignore_permissions=True)
+	html = reminder_message(company, due, today)
 	frappe.sendmail(
 		recipients=recipients,
 		subject=_("Steuerbote: open deadlines of {0}", lang=EMAIL_LANGUAGE).format(company),
-		message=reminder_message(company, due, today),
+		message=html,
+		template=EMAIL_TEMPLATE,
+		args={"html": html, "text": reminder_text(company, due, today)},
 		reference_doctype=SETTINGS,
 		reference_name=company,
 		add_unsubscribe_link=0,
 	)
 	return True
+
+
+def site_language() -> str:
+	"""The language of the site, in which the Error Log of the daily job is written, whatever the context it runs in."""
+	return frappe.db.get_single_value("System Settings", "language") or EMAIL_LANGUAGE
+
+
+def invalid_recipients(text: str | None) -> list[str]:
+	"""The lines of the field that are no e-mail address."""
+	return [
+		entry
+		for line in (text or "").splitlines()
+		if (entry := line.strip()) and not validate_email_address(entry)
+	]
+
+
+def outgoing_account() -> bool:
+	"""Whether the site has a default outgoing e-mail account, without which no reminder leaves it."""
+	return bool(frappe.db.exists("Email Account", {"default_outgoing": 1, "enable_outgoing": 1}))
 
 
 def recipients_of(company: str, text: str | None) -> list[str]:
@@ -451,9 +555,10 @@ def recipients_of(company: str, text: str | None) -> list[str]:
 		else:
 			invalid.append(entry)
 	if invalid:
+		language = site_language()
 		frappe.log_error(
-			title=_("The reminder of the deadlines of {0} skips addresses").format(company),
-			message=_("These entries are no e-mail addresses and get no reminder: {0}").format(
+			title=_("The reminder of the deadlines of {0} skips addresses", lang=language).format(company),
+			message=_("These entries are no e-mail addresses and get no reminder: {0}", lang=language).format(
 				", ".join(invalid)
 			),
 			reference_doctype=SETTINGS,
@@ -474,8 +579,35 @@ def reminder_message(company: str, items: list[Deadline], today: date) -> str:
 		"The report {0} shows every deadline. This reminder comes every day until a deadline is filed; its recipients and its days of notice are set in the VAT Return Settings.",
 		lang=language,
 	).format(report)
-	table = f"<table><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table>"
+	table = f"<table {TABLE_ATTRIBUTES}><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table>"
 	return f"<p>{escape_html(intro)}</p>{table}<p>{outro}</p>"
+
+
+def reminder_text(company: str, items: list[Deadline], today: date) -> str:
+	"""The text part of the reminder: each deadline on its lines, with the address of its document and of the report,
+	for a mail client that shows no HTML."""
+	language = EMAIL_LANGUAGE
+	labels = column_labels(language)
+	blocks = [_("These deadlines of {0} are not filed yet:", lang=language).format(company)]
+	for item in items:
+		state = f", {labels['document_status']}: {item.document_status}" if item.document_status else ""
+		lines = [
+			f"{item.kind.value} {item.period_label}",
+			f"{labels['due']}: {formatdate(item.due, EMAIL_DATE_FORMAT)} ({labels['days']}: {item.days_left(today)})",
+			f"{labels['status']}: {item.status.value}{state}",
+			f"{labels['document']}: {document_label(item, language)} {get_url(_document_route(item))}",
+		]
+		note = note_text(item, language)
+		if note:
+			lines.append(f"{labels['note']}: {note}")
+		blocks.append("\n".join(lines))
+	blocks.append(
+		_(
+			"The report {0} shows every deadline. This reminder comes every day until a deadline is filed; its recipients and its days of notice are set in the VAT Return Settings.",
+			lang=language,
+		).format(f"{REPORT} ({get_url_to_report(REPORT)})")
+	)
+	return "\n\n".join(blocks) + "\n"
 
 
 def _message_row(item: Deadline, today: date, language: str) -> str:

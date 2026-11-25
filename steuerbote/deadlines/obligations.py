@@ -16,6 +16,9 @@ The rules and their sources are those of the cores; this module asks them period
   steuerbote.dauerfrist.period.antrag_deadline): on 10 February for January, as sondervorauszahlung_deadline
   has it, and later for a company whose Voranmeldungen begin later in the year. A quarterly filer applies for
   the extension once and pays no Sondervorauszahlung (§ 47 Absatz 1 UStDV), so it owes nothing here.
+- A year without a row of the Dauerfristverlängerung after one with it: the extension holds until it is given up or
+  revoked (§ 46 UStDV), so a monthly filer still owes the Sondervorauszahlung, with the note DAUERFRIST_NOT_RECORDED,
+  and the Voranmeldungen of the year keep the day without the extension, which is never late, with the same note.
 
 The annual filings, from the Umsatzsteuererklärung to the Offenlegung of the Jahresabschluss, are the kinds of
 steuerbote.deadlines.annual, which owes them from the Annual Filing Settings.
@@ -110,7 +113,9 @@ def voranmeldungen(
 		extended = rules.has_dauerfrist(prepayments, period.year)
 		due = period.deadline(dauerfristverlaengerung=extended, holidays=holidays)
 		if due <= until:
-			yield Obligation(Kind.VORANMELDUNG, period, period.label, due)
+			yield Obligation(
+				Kind.VORANMELDUNG, period, period.label, due, notes=_carried(prepayments, period.year)
+			)
 
 
 def zusammenfassende_meldungen(
@@ -138,16 +143,28 @@ def sondervorauszahlungen(
 	holidays: Collection[date] = (),
 ) -> Iterator[Obligation]:
 	"""The Sondervorauszahlungen due on or before ``until``, one for each year with the Dauerfristverlängerung
-	whose first Voranmeldungszeitraum is a month."""
-	period_rules = tuple(period_rules)
-	years = sorted({prepayment.year for prepayment in prepayments if prepayment.dauerfristverlaengerung})
-	for year in years:
+	whose first Voranmeldungszeitraum is a month, and for each later year without a row that carries it, with a note."""
+	period_rules, prepayments = tuple(period_rules), tuple(prepayments)
+	extended = [prepayment.year for prepayment in prepayments if prepayment.dauerfristverlaengerung]
+	if not extended:
+		return
+	for year in range(min(extended), until.year + 1):
+		notes = _carried(prepayments, year)
+		if not (rules.has_dauerfrist(prepayments, year) or notes):
+			continue
 		first = first_voranmeldungszeitraum(period_rules, year)
 		if first is None or first.rhythm is not Rhythm.MONTHLY:
 			continue
 		due = dauerfrist.antrag_deadline(first, holidays)
 		if due <= until:
-			yield Obligation(Kind.SONDERVORAUSZAHLUNG, year, str(year), due)
+			yield Obligation(Kind.SONDERVORAUSZAHLUNG, year, str(year), due, notes=notes)
+
+
+def _carried(prepayments: tuple[rules.Prepayment, ...], year: int) -> tuple[Note, ...]:
+	"""The note of a year without a row of the Dauerfristverlängerung whose earlier row still carries it."""
+	from steuerbote.deadlines.annual import Note
+
+	return (Note.DAUERFRIST_NOT_RECORDED,) if rules.carried_dauerfrist(prepayments, year) else ()
 
 
 def first_voranmeldungszeitraum(period_rules: Iterable[rules.PeriodRule], year: int) -> Period | None:

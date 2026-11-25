@@ -79,8 +79,9 @@ scheduler_events = {
 # bench migrate runs after every update of the app; the ERiC Settings then show the version it brings.
 after_migrate = ["steuerbote.steuerbote.doctype.eric_settings.eric_settings.refresh_produkt_version"]
 
-# The steps Steuerbote einrichten runs besides its own (steuerbote/steuerbote/setup.py): the Kontenzuordnung
-# Ertragsteuern and the Bilanzzuordnung, each with the defaults of SKR03 or SKR04.
+# The steps Steuerbote einrichten runs besides its own (steuerbote/steuerbote/setup.py): the start in Steuerbote, the
+# check of the deadlines and the reminder, the Kontenzuordnung Ertragsteuern and the Bilanzzuordnung, each with the
+# defaults of SKR03 or SKR04.
 steuerbote_setup_steps = [
 	{
 		"key": "books_start",
@@ -88,6 +89,13 @@ steuerbote_setup_steps = [
 		"order": 35,
 		"needs": ["vat_return_settings", "vat_return_mapping"],
 		"run": "steuerbote.steuerbote.setup.check_books_start",
+	},
+	{
+		"key": "deadlines",
+		"label": "Deadlines and Reminder",
+		"order": 36,
+		"needs": ["vat_return_settings"],
+		"run": "steuerbote.steuerbote.deadlines.check_setup",
 	},
 	{
 		"key": "income_tax_mapping",

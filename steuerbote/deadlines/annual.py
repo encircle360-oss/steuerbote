@@ -110,6 +110,13 @@ class Note(Enum):
 	"""The settings hold no size class for the fiscal year, so the shorter period of § 42a Abs. 2 GmbHG applies."""
 	ON_WEEKEND = "on_weekend"
 	"""The day is a Saturday or a Sunday and stays, since whether § 193 BGB moves it is unverified."""
+	DAUERFRIST_NOT_RECORDED = "dauerfrist_not_recorded"
+	"""The settings have no row of the Dauerfristverlängerung for the year, but one of an earlier year with it, which
+	holds until it is given up or revoked (§ 46 UStDV): the day is the one without the extension, and a monthly filer
+	owes the Sondervorauszahlung (§ 48 Abs. 2 UStDV)."""
+	NATIONWIDE_HOLIDAYS = "nationwide_holidays"
+	"""The company has no Holiday List, so only the holidays of every state move the day (steuerbote.deadlines.holidays,
+	§ 108 Abs. 3 AO)."""
 
 
 @dataclass(frozen=True, slots=True)

@@ -13,7 +13,8 @@ Steuerbote kennt die Fristen der Umsatzsteuer-Voranmeldung, der Zusammenfassende
 - **Voranmeldung.** Eine Frist gibt es für jeden Voranmeldungszeitraum, den die Regeln der Einstellungen vorsehen (`rhythm_for` in `vat_return_settings/rules.py`). Monate mit „Keine“ und Monate vor der ersten Regel haben keine: Den Zeitraum legt das Finanzamt fest, Steuerbote rät ihn nicht.
 - **Zusammenfassende Meldung.** Die Meldezeiträume ergeben sich aus dem Abgaberhythmus der Einstellungen wie beim Beleg (`goods_period` und `coverage` in `zm/rhythm.py`), auch die zwei Monate eines Quartals nach einem Wechsel zur monatlichen Abgabe und das Kalenderjahr, siehe [Zusammenfassende Meldung](zm.md#meldezeiträume-und-fristen). Ohne Abgaberhythmus gibt es keine Frist.
 - **Sondervorauszahlung.** Ein Unternehmen, das monatlich abgibt, zahlt sie in jedem Jahr mit Dauerfristverlängerung „bis zum gesetzlichen Zeitpunkt der Übermittlung der ersten Voranmeldung“ (§ 48 Abs. 2 Satz 1 UStDV), im Jahr des Antrags mit dem Antrag (§ 48 Abs. 1 UStDV). Beginnen die Voranmeldungen eines Jahres später, etwa im April, ist sie mit der Voranmeldung für April fällig. Wer vierteljährlich abgibt, zahlt keine (§ 47 Abs. 1 UStDV) und hat hier keine Frist. Siehe [Dauerfristverlängerung](dauerfristverlaengerung.md#fristen).
-- **Wochenende und Feiertage.** „Fällt das Ende einer Frist auf einen Sonntag, einen gesetzlichen Feiertag oder einen Sonnabend, so endet die Frist mit dem Ablauf des nächstfolgenden Werktags.“ (§ 108 Abs. 3 AO; für die ZM über § 18a Abs. 11 UStG) Die Feiertage kommen für alle drei Arten aus der Standard-Feiertagsliste des Unternehmens, ohne die wöchentlich freien Tage (`steuerbote/holiday_list.py`). Das Feld „Fälligkeitsdatum“ der Voranmeldung selbst berücksichtigt die Feiertage noch nicht; fällt der 10. auf einen Feiertag der Liste, nennt der Bericht den nächsten Werktag.
+- **Über den Jahreswechsel.** Die Einstellungen halten die Dauerfristverlängerung je Jahr fest; sie gilt aber fort, bis das Unternehmen erklärt, sie nicht mehr in Anspruch zu nehmen, oder das Finanzamt sie widerruft (§ 46 UStDV; Anleitung USt 5 E: „Die Fristverlängerung gilt solange, bis …“). Fehlt die Zeile eines Jahres, nachdem ein früheres Jahr die Verlängerung hat, fällt deshalb keine Frist still weg (`carried_dauerfrist` in `vat_return_settings/rules.py`): Wer monatlich abgibt, behält die Frist der Sondervorauszahlung des Jahres, und die Voranmeldungen des Jahres stehen mit dem Tag ohne Verlängerung im Bericht, der nie zu spät ist; beide tragen den Hinweis „Keine Dauerfristverlängerung für das Jahr erfasst …“. Erst die Zeile des Jahres, mit Haken oder ohne, löst ihn auf; eine Zeile ohne Haken beendet die Verlängerung für die Jahre danach. „Steuerbote einrichten“ nennt das fehlende Jahr ebenso.
+- **Wochenende und Feiertage.** „Fällt das Ende einer Frist auf einen Sonntag, einen gesetzlichen Feiertag oder einen Sonnabend, so endet die Frist mit dem Ablauf des nächstfolgenden Werktags.“ (§ 108 Abs. 3 AO; für die ZM über § 18a Abs. 11 UStG) Die Feiertage kommen für alle drei Arten aus der Standard-Feiertagsliste des Unternehmens, ohne die wöchentlich freien Tage (`steuerbote/holiday_list.py`). Gemeint sind die Feiertage am Sitz der Behörde: für Voranmeldung und Sondervorauszahlung die des Landes des Finanzamts, das die Liste deshalb halten soll. Für die ZM ist die Behörde das BZSt; ein Feiertag nur einzelner Länder fällt nie auf den 25. bis 28. eines Monats, den Tagen, auf die eine ZM-Frist fallen kann, so dass dort die Feiertage aller Länder genügen. Hat das Unternehmen keine Liste, nimmt Steuerbote die Feiertage, die in jedem Land gelten: Neujahr, Karfreitag, Ostermontag, 1. Mai, Christi Himmelfahrt, Pfingstmontag, Tag der Deutschen Einheit (Art. 2 Abs. 2 Einigungsvertrag) und beide Weihnachtsfeiertage (`steuerbote/deadlines/holidays.py`). Sie verschieben eine Frist überall; ein Feiertag nur des eigenen Landes, etwa Fronleichnam, der auf den 10. Juni fallen kann, braucht die Liste. Jede Frist, die § 108 Abs. 3 AO verschiebt, trägt dann den Hinweis „Das Unternehmen hat keine Feiertagsliste …“, und „Steuerbote einrichten“ nennt die fehlende Liste. Das Feld „Fälligkeitsdatum“ der Voranmeldung selbst berücksichtigt die Feiertage noch nicht; fällt der 10. auf einen Feiertag der Liste, nennt der Bericht den nächsten Werktag.
 
 Beispiele aus den Tests:
 
@@ -82,6 +83,8 @@ Der Bericht und die Erinnerung nennen in der Spalte „Hinweis“, worauf der Ta
 | Eröffnungsbilanz des Gründungsjahres (§ 5b Abs. 1 Satz 4 EStG); die Frist ist angenommen | an der Eröffnungsbilanz |
 | Keine Größenklasse für das Geschäftsjahr: acht Monate (§ 42a Abs. 2 GmbHG) | an der Feststellung, wenn die Größenmerkmale für den Abschlussstichtag keine Klasse halten |
 | Fällt auf ein Wochenende; ob § 193 BGB den Tag verschiebt, ist ungeprüft | an der Feststellung und der Offenlegung |
+| Keine Dauerfristverlängerung für das Jahr erfasst, aber eine für ein früheres Jahr, die gilt, bis sie aufgegeben oder widerrufen ist (§ 46 UStDV): das Jahr in den Einstellungen Umsatzsteuer-Voranmeldung erfassen, mit oder ohne Verlängerung | an den Voranmeldungen und der Sondervorauszahlung eines Jahres ohne Zeile, siehe [Über den Jahreswechsel](#welche-fristen) |
+| Das Unternehmen hat keine Feiertagsliste: Nur die Feiertage aller Länder verschieben den Tag (§ 108 Abs. 3 AO) | an jeder Frist außer Feststellung und Offenlegung, wenn das Unternehmen keine Standard-Feiertagsliste hat |
 
 ### Aus den Einstellungen Jahresmeldungen
 
@@ -171,17 +174,19 @@ Die Zeilen stehen nach dem Tag der Frist geordnet. Der Bericht rechnet nichts se
 
 ## Die Erinnerung
 
-Jeden Tag läuft der Job `send_reminders` (`scheduler_events` in `hooks.py`, „daily“). Er geht jedes Unternehmen mit Einstellungen Umsatzsteuer-Voranmeldung oder Einstellungen Jahresmeldungen durch. Nennen seine Einstellungen Umsatzsteuer-Voranmeldung Empfänger, schickt er ihnen eine E-Mail mit den Fristen, die nicht abgegeben sind und innerhalb des Vorlaufs fällig werden oder überschritten sind, wie unter [Welche Fristen erscheinen](#welche-fristen-erscheinen), auch denen der Jahresmeldungen. Die E-Mail ist deutsch: „Steuerbote: offene Fristen für …“, darin eine Tabelle wie der Bericht mit Art, Zeitraum, Fällig am, Tage, Status, einem Link auf den Beleg oder auf einen neuen Beleg des Zeitraums, Stand des Belegs und Hinweis, darunter ein Link auf den Bericht. Sie geht über die E-Mail-Warteschlange von Frappe und braucht ein ausgehendes E-Mail-Konto.
+Jeden Tag läuft der Job `send_reminders` (`scheduler_events` in `hooks.py`, „daily“). Er geht jedes Unternehmen mit Einstellungen Umsatzsteuer-Voranmeldung oder Einstellungen Jahresmeldungen durch. Nennen seine Einstellungen Umsatzsteuer-Voranmeldung Empfänger, schickt er ihnen eine E-Mail mit den Fristen, die nicht abgegeben sind und innerhalb des Vorlaufs fällig werden oder überschritten sind, wie unter [Welche Fristen erscheinen](#welche-fristen-erscheinen), auch denen der Jahresmeldungen. Die E-Mail ist deutsch: „Steuerbote: offene Fristen für …“, darin eine Tabelle wie der Bericht mit Art, Zeitraum, Fällig am, Tage, Status, einem Link auf den Beleg oder auf einen neuen Beleg des Zeitraums, Stand des Belegs und Hinweis, darunter ein Link auf den Bericht. Die Tabelle hat Linien und Abstand als HTML-Attribute, die jedes E-Mail-Programm ohne Stylesheet zeigt, und lädt nichts von außen. Der Textteil der E-Mail kommt aus einer eigenen Vorlage (`steuerbote/templates/emails/steuerbote_deadline_reminder.txt`) und nennt jede Frist mit der vollen Adresse ihres Belegs und die Adresse des Berichts, so dass auch ein E-Mail-Programm ohne HTML die Links zeigt. Sie geht über die E-Mail-Warteschlange von Frappe und braucht ein ausgehendes E-Mail-Konto.
+- **Das ausgehende E-Mail-Konto ist eines der Site.** Sobald eine Site ein Standard-Konto für ausgehende E-Mails hat, sendet nicht nur die Erinnerung, sondern jede E-Mail-Quelle der Site: Benachrichtigungen, Erinnerungen anderer Apps und alles, was in der E-Mail-Warteschlange (Email Queue) wartet. Wer ein Konto einschaltet, prüft vorher die Warteschlange und die Benachrichtigungen der Site. Die Fußzeile unter jeder E-Mail, etwa „Sent via ERPNext“, ist eine Einstellung der Site, nicht von Steuerbote: Sie steht in den Systemeinstellungen (System Settings) unter „Standard-E-Mail-Fußzeile deaktivieren“ und „Fußzeile“.
 
 - **Jeden Tag, bis abgegeben ist.** Eine Frist steht vom ersten Tag des Vorlaufs an jeden Tag in der E-Mail, auch nach ihrem Ablauf, bis ihr Beleg abgegeben ist. Ist an einem Tag nichts offen, geht keine E-Mail.
 - **Nie zweimal am selben Tag.** Jede Frist der E-Mail hält eine „Fristerinnerung“ (`Deadline Reminder`) fest. Läuft der Job an einem Tag noch einmal, schickt er nur Fristen, an die an diesem Tag noch nicht erinnert wurde, etwa nach einem längeren Vorlauf, und sonst nichts.
 - **Ohne Empfänger** geht nichts hinaus, und es gibt keinen Fehler. Empfänger und Vorlauf stehen in den Einstellungen Umsatzsteuer-Voranmeldung; ein Unternehmen, das nur Einstellungen Jahresmeldungen hat, bekommt keine Erinnerung, der Bericht zeigt seine Fristen trotzdem.
-- **Ungültige Einträge.** Eine Zeile, die keine E-Mail-Adresse ist, bekommt keine E-Mail; das Fehlerprotokoll (Error Log) nennt sie.
+- **Ungültige Einträge.** Eine Zeile, die keine E-Mail-Adresse ist, lehnt schon das Speichern der Einstellungen ab und nennt sie. Steht doch eine im Feld, etwa aus der Zeit vor dieser Prüfung, bekommt sie keine E-Mail, und das Fehlerprotokoll (Error Log) nennt sie, in der Sprache der Site wie jeder Eintrag des Jobs.
+- **Ohne ausgehendes E-Mail-Konto** erreicht die Erinnerung niemanden. Das Speichern der Einstellungen sagt es, wenn sie Empfänger nennen, und „Steuerbote einrichten“ ebenso.
 - **Fehler bei einem Unternehmen.** Scheitert die Erinnerung eines Unternehmens, etwa an seinen Einstellungen, nimmt Steuerbote ihre Änderungen zurück, schreibt den Fehler in das Fehlerprotokoll und macht mit den anderen Unternehmen weiter.
 
 ### Fristerinnerung (`Deadline Reminder`)
 
-Ein Dokument je Frist und Tag einer Erinnerung. Nur der Server legt es an, niemand ändert es; ein System Manager darf es löschen, dann kann an die Frist am selben Tag noch einmal erinnert werden. Sein Name ist aus Unternehmen, Art, Zeitraum, Fälligkeit und Tag gebildet, deshalb lässt sich dieselbe Erinnerung nicht zweimal anlegen. Die Liste steht in der Seitenleiste als „Fristerinnerungen“.
+Ein Dokument je Frist und Tag einer Erinnerung, mit den Adressen, an die sie ging. Nur der Server legt es an, niemand ändert es; ein System Manager darf es löschen, dann kann an die Frist am selben Tag noch einmal erinnert werden. Sein Name ist aus Unternehmen, Art, Zeitraum, Fälligkeit und Tag gebildet, deshalb lässt sich dieselbe Erinnerung nicht zweimal anlegen. Die Liste steht in der Seitenleiste als „Fristerinnerungen“.
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
@@ -190,6 +195,7 @@ Ein Dokument je Frist und Tag einer Erinnerung. Nur der Server legt es an, niema
 | `period_label` | Zeitraum | wie im Bericht |
 | `due_date` | Fällig am | der Tag der Frist zur Zeit der Erinnerung |
 | `sent_on` | Gesendet am | der Tag der Erinnerung |
+| `recipients` | Empfänger | die Adressen, an die die Erinnerung ging, eine je Zeile |
 
 ## Einstellungen
 
@@ -197,7 +203,7 @@ Im Abschnitt „Fristen“ der Einstellungen Umsatzsteuer-Voranmeldung:
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
-| `deadline_recipients` | Empfänger der Erinnerung | E-Mail-Adressen, eine je Zeile; leer geht keine Erinnerung hinaus |
+| `deadline_recipients` | Empfänger der Erinnerung | E-Mail-Adressen, eine je Zeile; leer geht keine Erinnerung hinaus; eine Zeile, die keine Adresse ist, lehnt das Speichern ab |
 | `reminder_days` | Vorlauf (Tage) | ab wie vielen Tagen vor der Fälligkeit die Erinnerung eine Frist nennt, Vorgabe 7 |
 
 Die Fristen selbst kommen aus den Regeln der Einstellungen: Voranmeldungszeiträume, Dauerfristverlängerung je Jahr und Abgaberhythmus der Zusammenfassenden Meldung, siehe [Einstellungen je Unternehmen und Zeitraum](architektur.md#einstellungen-je-unternehmen-und-zeitraum), und für die Jahresmeldungen aus den Einstellungen Jahresmeldungen, siehe [Aus den Einstellungen Jahresmeldungen](#aus-den-einstellungen-jahresmeldungen).
@@ -208,8 +214,9 @@ Die Fristen selbst kommen aus den Regeln der Einstellungen: Voranmeldungszeiträ
 |---|---|
 | `steuerbote/deadlines/obligations.py` | welche Meldungen die Regeln für welchen Zeitraum verlangen und wann sie fällig sind, im Kern ohne Frappe |
 | `steuerbote/deadlines/annual.py` | welche Jahresmeldungen ein Jahr verlangt und wann sie fällig sind, wann ein Beleg einer Jahresmeldung sie abgibt, und das Verzeichnis der DocTypes, die sie abgeben, im Kern ohne Frappe |
+| `steuerbote/deadlines/holidays.py` | die Feiertage aller Länder für ein Unternehmen ohne Feiertagsliste, im Kern ohne Frappe |
 | `steuerbote/deadlines/overview.py` | Status aus den Belegen, die Fristen bis zur Vorschau und die überschrittenen (`upcoming`), im Kern ohne Frappe |
-| `steuerbote/steuerbote/deadlines.py` | liest Einstellungen, Geschäftsjahre, Belege, Feiertage und Hauptbuch, gibt einem Beleg einer Jahresmeldung sein Fälligkeitsdatum (`annual_deadline`), schickt die Erinnerung und legt die Fristerinnerungen an, mit Frappe |
+| `steuerbote/steuerbote/deadlines.py` | liest Einstellungen, Geschäftsjahre, Belege, Feiertage und Hauptbuch, gibt einem Beleg einer Jahresmeldung sein Fälligkeitsdatum (`annual_deadline`), schickt die Erinnerung und legt die Fristerinnerungen an, prüft für „Steuerbote einrichten“ Feiertagsliste, Dauerfristverlängerung, Empfänger und E-Mail-Konto (`check_setup`), mit Frappe |
 | `steuerbote/steuerbote/report/offene_fristen/` | Bericht „Offene Fristen“ |
 | `steuerbote/steuerbote/doctype/deadline_reminder/` | Fristerinnerung |
 
