@@ -683,7 +683,7 @@ class UnternehmerTest(TestCase):
 	SETTINGS = MappingProxyType(
 		{
 			"company": "Beispiel GmbH",
-			"ust_idnr": "DE123456789",
+			"ust_idnr": "DE123456788",
 			"filer_name": None,
 			"street": "Hauptstraße 1",
 			"postal_code": "80331",
@@ -698,7 +698,7 @@ class UnternehmerTest(TestCase):
 		self.assertEqual(
 			bridge.unternehmer(self.SETTINGS, "de"),
 			zm_xml.Unternehmer(
-				ust_idnr="DE123456789",
+				ust_idnr="DE123456788",
 				name="Beispiel GmbH",
 				street="Hauptstraße 1",
 				postal_code="80331",

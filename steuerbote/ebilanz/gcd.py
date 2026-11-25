@@ -51,28 +51,50 @@ Company (genInfo.company):
 - Zuordnung zur Einkunftsart „Einkünfte aus Gewerbebetrieb“ [incomeClassification.trade], which a GmbH must choose
   (B.14.3.1.9; rule 170405037), and the Geschäftstätigkeit where the settings give it.
 
-Every other Mussfeld of the GCD of the legal form (steuerbote.xbrl.checks.required(); B.14.2.1, B.14.2.3) is NIL:
-„Wenn eine Position mit Auswahlwerten als Mussfeld deklariert ist, dann muss zumindest einer der enthaltenen
-Auswahlwerte berichtet werden oder das jeweilige Tupel ist mit dem Wert NIL zu berichten.“, and of a tuple with
-Mussfelder „Es ist vielmehr erforderlich, die Inhalte der Datenstruktur so zu berichten, dass die darin enthaltenen
-Mussfelder mit NIL-Werten befüllt werden.“ (A.10.1): the Gesellschafter, whom the KSt 1 names, and the
-Unternehmenskennnummern Steuerbote does not keep, with the parts their sequence cannot do without. A Mussfeld of
-another legal form is not sent, not even NIL (FAQ zur E-Bilanz, Tz. 4 a). The facts follow the presentation of the
-GCD, which also decides what is reported: „Es dürfen nur solche Positionen übermittelt werden, die in dem Presentation
-Network erfasst sind“ (B.11).
+- Gesellschafter [shareholder], a Mussfeld of the GCD of a GmbH (B.14.2.1), once for each shareholder of the Annual
+  Filing Settings who holds shares on the Bilanzstichtag: the name, the Rechtsform des Gesellschafters [legalStatus]
+  KOER for a corporation and PG for a partnership, and the Beteiligungsschlüssel [ShareDivideKey] as Zähler and Nenner
+  in lowest terms, both digits only (de-gcd-2025-04-01.xsd). The Rechtsform of a natural person tells Privatvermögen
+  (NPP) from Betriebsvermögen (NPB), which the settings do not record, so it stays NIL. Steuernummer, IdNr. and W-IdNr.
+  of a shareholder are kept for the KSt 1 (§ 139b Abs. 2 AO for the IdNr.) and are NIL here; the Gesellschafterschlüssel
+  [id] is for a partnership (B.14.3.1.19) and NIL as well. Without shareholders in the settings one Gesellschafter is
+  NIL, as the GmbH example HandelsbilanzLandwirt_GmbH.xml reports it.
+
+Every other Mussfeld of the GCD of the legal form (steuerbote.xbrl.checks.required(); B.14.2.1, B.14.2.3) is NIL, and
+of a tuple with Mussfelder „Es ist vielmehr erforderlich, die Inhalte der Datenstruktur so zu berichten, dass die
+darin enthaltenen Mussfelder mit NIL-Werten befüllt werden.“ (A.10.1): the Unternehmenskennnummern Steuerbote does not
+keep, with the parts their sequence cannot do without. „Wenn eine Position mit Auswahlwerten als Mussfeld deklariert
+ist, dann muss zumindest einer der enthaltenen Auswahlwerte berichtet werden oder das jeweilige Tupel ist mit dem Wert
+NIL zu berichten.“ (A.10.1) ERiC takes only the first: its rule 170155092 looks for a fact of the Mussfeld in the
+contexts of the current year, which a tuple has none of, so a choice NIL as a whole fails (validation with ERiC
+44.3.6.0, Bilanz_6.9). A choice without a value reports one Auswahlwert NIL in the fiscal year instead, the one the
+GmbH example names: „Unternehmen mit Gewinnermittlung für besondere Fälle“ [entityWithTaxablePurposeBusiness], which
+a GmbH or UG with the ordinary determination of its profit is not, and „Inländische Betriebsstätte eines ausländischen
+Unternehmens“ [domesticBranchOfForeignCompany], which a GmbH with its Sitz in Germany is not. NIL is no value: the
+Ausprägungen of entityWithTaxablePurposeBusiness count only „werthaltig“ (B.20.1.2, B.20.1.3). A Mussfeld of another
+legal form is not sent, not even NIL (FAQ zur E-Bilanz, Tz. 4 a). The facts follow the presentation of the GCD, which
+also decides what is reported: „Es dürfen nur solche Positionen übermittelt werden, die in dem Presentation Network
+erfasst sind“ (B.11).
 
 This module is pure Python and never imports Frappe.
 """
 
-from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal
+from fractions import Fraction
 
 from steuerbote.ebilanz.kontennachweis import NOT_YET_POSSIBLE
 from steuerbote.ebilanz.positions import Finding, Structure, leitfaden, rule
 from steuerbote.elster.charset import CharsetError, describe, transliterate
 from steuerbote.jahresmeldung.corrections import RevisionStatus, revision_status_concept
-from steuerbote.steuerbote.doctype.annual_filing_settings.rules import ELSTER_STEUERNUMMER
+from steuerbote.steuerbote.doctype.annual_filing_settings.rules import (
+	ELSTER_STEUERNUMMER,
+	Shareholder,
+	ShareholderKind,
+	shareholders_on,
+)
 from steuerbote.xbrl.facts import Entity, Fact, Item, Period, Tuple, choice, nil
 from steuerbote.xbrl.taxonomy import GCD, Kind, Taxonomy
 from steuerbote.xbrl.versions import UnknownTaxonomyError, version_of
@@ -100,6 +122,43 @@ COUNTRY_NAME = gcd("genInfo.company.id.location.country")
 BUSINESS = gcd("genInfo.company.id.business")
 FISCAL_YEAR_BEGIN = gcd("genInfo.report.period.fiscalYearBegin")
 PREVIOUS_FISCAL_YEAR_END = gcd("genInfo.report.period.fiscalPreviousYearEnd")
+SHAREHOLDER = gcd("genInfo.company.id.shareholder")
+SHAREHOLDER_NAME = gcd("genInfo.company.id.shareholder.name")
+SHAREHOLDER_STATUS = "genInfo.company.id.shareholder.legalStatus"
+SHAREHOLDER_LEGAL_STATUS = {
+	ShareholderKind.CORPORATION: "legalStatus.KOER",
+	ShareholderKind.PARTNERSHIP: "legalStatus.PG",
+}
+SHARE_DIVIDE_KEY = gcd("genInfo.company.id.shareholder.ShareDivideKey")
+NIL_CHOICES = {
+	gcd("genInfo.company.id.entityWithTaxablePurposeBusiness"): gcd(
+		"genInfo.company.id.entityWithTaxablePurposeBusiness.merchantVesselsInInternationalTraffic"
+	),
+	gcd("genInfo.company.id.domesticBranchOfForeignCompany"): gcd(
+		"genInfo.company.id.domesticBranchOfForeignCompany.other"
+	),
+	gcd(SHAREHOLDER_STATUS): gcd(f"{SHAREHOLDER_STATUS}.legalStatus.NPP"),
+}
+"""The Auswahlwert a choice without a value reports NIL, as the GmbH example of the ERiC documentation 44.3.6.0,
+HandelsbilanzLandwirt_GmbH.xml, does; any other choice reports its first."""
+CHOICE = "choice"
+
+
+@dataclass(frozen=True, slots=True)
+class Gesellschafter:
+	"""A shareholder as the GCD reports it: the name, the kind of the Annual Filing Settings and the share in percent."""
+
+	name: str
+	kind: ShareholderKind
+	percent: Decimal
+
+
+def gesellschafter(shareholders: Iterable[Shareholder], day: date) -> tuple[Gesellschafter, ...]:
+	"""The shareholders of the settings who hold shares on the day, the Bilanzstichtag."""
+	return tuple(
+		Gesellschafter(shareholder.name, shareholder.kind, shareholder.percent)
+		for shareholder in shareholders_on(shareholders, day)
+	)
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +183,7 @@ class MasterData:
 	revision_status: RevisionStatus = RevisionStatus.FIRST
 	previous_fiscal_year: tuple[date, date] | None = None
 	generated: date | None = None
+	shareholders: tuple[Gesellschafter, ...] = field(default=())
 
 	@property
 	def finanzamt(self) -> str | None:
@@ -185,9 +245,13 @@ def facts(structure: Structure, master: MasterData, *, reason: str = "") -> tupl
 		_item(BUSINESS, _text(master.business)),
 		_choice("genInfo.company.id.incomeClassification", "trade"),
 	]
+	given.extend(_shareholder(shareholder) for shareholder in master.shareholders)
 	if master.generated is not None:
 		given.append(_item(gcd("genInfo.doc.id.generationDate"), master.generated))
-	return tuple(_completed(structure, {fact.concept: fact for fact in given}))
+	by_concept: dict[str, list[Fact]] = {}
+	for fact in given:
+		by_concept.setdefault(fact.concept, []).append(fact)
+	return tuple(_completed(structure, by_concept))
 
 
 def check(structure: Structure, master: MasterData, *, reason: str = "") -> tuple[Finding, ...]:
@@ -216,6 +280,10 @@ def check(structure: Structure, master: MasterData, *, reason: str = "") -> tupl
 		(POSTAL_CODE, master.postal_code, "Firmensitz, Postleitzahl"),
 		(CITY, master.city, "Firmensitz, Ort"),
 		(BUSINESS, master.business, "Geschäftstätigkeit"),
+		*(
+			(SHAREHOLDER_NAME, shareholder.name, "Name des Gesellschafters")
+			for shareholder in master.shareholders
+		),
 	]
 	if not case.kontennachweis:
 		texts.append(
@@ -372,7 +440,34 @@ def _text(value: str) -> str | None:
 		return text
 
 
-def _completed(structure: Structure, given: Mapping[str, Fact]) -> Iterator[Fact]:
+def _shareholder(shareholder: Gesellschafter) -> Tuple:
+	share = Fraction(shareholder.percent) / 100
+	status = SHAREHOLDER_LEGAL_STATUS.get(shareholder.kind)
+	return Tuple(
+		SHAREHOLDER,
+		(
+			_item(SHAREHOLDER_NAME, _text(shareholder.name)),
+			*(
+				_item(gcd(f"genInfo.company.id.shareholder.{part}"), None)
+				for part in ("id", "taxnumber", "taxid", "WID")
+			),
+			_choice(SHAREHOLDER_STATUS, status)
+			if status
+			else Tuple(
+				gcd(SHAREHOLDER_STATUS), (nil(NIL_CHOICES[gcd(SHAREHOLDER_STATUS)], Period.WIRTSCHAFTSJAHR),)
+			),
+			Tuple(
+				SHARE_DIVIDE_KEY,
+				(
+					_item(f"{SHARE_DIVIDE_KEY}.numerator", str(share.numerator)),
+					_item(f"{SHARE_DIVIDE_KEY}.denominator", str(share.denominator)),
+				),
+			),
+		),
+	)
+
+
+def _completed(structure: Structure, given: Mapping[str, list[Fact]]) -> Iterator[Fact]:
 	"""The given facts and NIL for every other Mussfeld, in the order of the presentation of the GCD."""
 	taxonomy = structure.taxonomy
 	required = frozenset(name for name in structure.required if name.startswith(PREFIX))
@@ -380,7 +475,7 @@ def _completed(structure: Structure, given: Mapping[str, Fact]) -> Iterator[Fact
 		if taxonomy.tuples_of(name):
 			continue
 		if name in given:
-			yield _with_parts(taxonomy, given[name], required)
+			yield from (_with_parts(taxonomy, fact, required) for fact in given[name])
 		elif name in required:
 			yield _nil(taxonomy, name, required)
 
@@ -399,11 +494,13 @@ def _with_parts(taxonomy: Taxonomy, fact: Fact, required: frozenset[str]) -> Fac
 
 
 def _nil(taxonomy: Taxonomy, name: str, required: frozenset[str]) -> Fact:
-	"""A Mussfeld without a value: NIL, a tuple with its parts NIL or, without parts it must hold, NIL as a whole."""
-	if taxonomy.concepts[name].kind is not Kind.TUPLE:
+	"""A Mussfeld without a value: NIL, a tuple with its parts NIL or, for a choice, one Auswahlwert NIL."""
+	concept = taxonomy.concepts[name]
+	if concept.kind is not Kind.TUPLE:
 		return nil(name, Period.WIRTSCHAFTSJAHR)
-	parts = tuple(_nil(taxonomy, part, required) for part in _parts(taxonomy, name, required))
-	return Tuple(name, parts) if parts else Tuple(name, nil=True)
+	if concept.content.group == CHOICE:
+		return Tuple(name, (nil(NIL_CHOICES.get(name) or taxonomy.parts(name)[0], Period.WIRTSCHAFTSJAHR),))
+	return Tuple(name, tuple(_nil(taxonomy, part, required) for part in _parts(taxonomy, name, required)))
 
 
 def _parts(taxonomy: Taxonomy, name: str, required: frozenset[str]) -> list[str]:

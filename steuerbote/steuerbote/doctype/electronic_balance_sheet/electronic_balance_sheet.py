@@ -623,6 +623,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 			if first_year
 			else ebilanz_sources.previous_fiscal_year(self.company, getdate(self.from_date)),
 			generated=getdate(),
+			stichtag=getdate(self.from_date if self._opening else self.to_date),
 		)
 
 	def _first_year(self) -> bool:

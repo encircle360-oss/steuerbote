@@ -338,6 +338,7 @@ class ERiCSettings(Document):
 			*releases.checks(installed, stored_minimum_list(self.minimum_versions), getdate()),
 			*taxonomy_status(),
 			*simulation_status(),
+			*((runtime.copyright_check(self.copyright),) if has_annual_filings() else ()),
 		)
 		return [{"name": check.name, "ok": check.ok, "detail": check.detail} for check in checks]
 

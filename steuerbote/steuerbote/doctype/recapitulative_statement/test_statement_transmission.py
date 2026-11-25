@@ -7,6 +7,7 @@ statements out again, so that the next one can file the same Meldezeitraum; a te
 month has that month to itself.
 """
 
+import re
 from datetime import date
 from unittest.mock import patch
 
@@ -60,7 +61,7 @@ SETTINGS = "VAT Return Settings"
 # Files the ZM monthly from January 2026 and delivers to Alpen every month, 1.000 € times the month.
 COMPANY = "Steuerbote Test ZM-Übermittlung GmbH"
 ABBR = "STZU"
-OWN_VAT_ID = "DE123456789"
+OWN_VAT_ID = "DE123456788"
 AUSTRIAN = "ATU12345678"
 ALPEN = "Alpen Handel GmbH (ZM-Übermittlung)"
 ADDRESS = {"street": "Hauptstraße 1", "postal_code": "80331", "city": "München", "phone": "089 1234567"}
@@ -185,7 +186,7 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		)
 		for element in (
 			'<zm xmlns="http://www.elster.de/elsterxml/schema/v11" version="000005">',
-			"<knri>DE123456789</knri>",
+			"<knri>DE123456788</knri>",
 			"<zulnr1>N</zulnr1>",
 			"<zulnr2>1111111</zulnr2>",
 			f"<name>{COMPANY}</name>",
@@ -638,7 +639,9 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 		_, _, run = self.transmitted(doc, "validate")
 		self.assertIn("<zulnr2>0300000</zulnr2>", run.call_args.args[1])
 
-	def test_settings_the_zm_does_not_take_end_in_a_failed_transmission(self):
+	def test_settings_the_zm_does_not_take_are_refused_at_the_button(self):
+		"""The Unternehmer is built when the run is asked for, as the Erklärungen build their Vorsatz, so the message
+		comes at the button and no failed ELSTER Transmission is left behind."""
 		doc = self.calculated(11)
 		for values, message in (
 			({"street": None}, "The street of the Unternehmer is missing."),
@@ -649,8 +652,14 @@ class TestStatementTransmission(Transmitting, IntegrationTestCase):
 				before = frappe.db.get_value(SETTINGS, COMPANY, list(values), as_dict=True)
 				frappe.db.set_value(SETTINGS, COMPANY, values)
 				try:
-					transmission, _, run = self.transmitted(doc, "validate")
+					with (
+						patch("frappe.enqueue") as enqueue,
+						self.assertRaisesRegex(frappe.ValidationError, re.escape(message)),
+					):
+						doc.transmit("validate")
 				finally:
 					frappe.db.set_value(SETTINGS, COMPANY, dict(before))
-				self.assertEqual((transmission.status, run.call_count), ("Fehlgeschlagen", 0))
-				self.assertIn(message, transmission.messages[-1].text)
+				enqueue.assert_not_called()
+				self.assertFalse(frappe.db.exists(TRANSMISSION, {"document": doc.name}))
+				doc.reload()
+				self.assertEqual(doc.transmission_in_progress, 0)

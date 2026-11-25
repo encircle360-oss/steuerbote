@@ -51,7 +51,7 @@ class TestUstjahrSources(IntegrationTestCase):
 			COMPANY,
 			[(2026, "monthly", 1)],
 			[(2026, True, "1100.00")],
-			wid_nr="DE123456789",
+			wid_nr="DE123456788",
 			phone="089 1234567",
 			email="buchhaltung@example.org",
 		)
@@ -150,7 +150,7 @@ class TestUstjahrSources(IntegrationTestCase):
 		details = ustjahr_sources.company(COMPANY)
 		self.assertEqual(
 			(details.name, details.wid_nr, details.phone, details.email, details.address),
-			(COMPANY, "DE123456789", "089 1234567", "buchhaltung@example.org", None),
+			(COMPANY, "DE123456788", "089 1234567", "buchhaltung@example.org", None),
 		)
 		settings = frappe.get_doc(
 			{

@@ -362,6 +362,38 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 		self.assertEqual(doc.ready, 0)
 		self.assertIn("170205051", blocking_codes(doc))
 
+	def test_the_gcd_names_the_shareholders_on_the_bilanzstichtag(self):
+		"""The Gesellschafter of the GCD, with the Rechtsform des Gesellschafters and the Beteiligungsschlüssel
+		(steuerbote/ebilanz/gcd.py); one who left before the Bilanzstichtag is not named."""
+		settings = frappe.get_doc(SETTINGS, COMPANY)
+		for name, kind, to_date in (
+			("Muster Beteiligungs GmbH", "Corporation", None),
+			("Frühere Gesellschafterin GmbH", "Corporation", "2025-01-01"),
+		):
+			settings.append(
+				"shareholders",
+				{
+					"shareholder_name": name,
+					"kind": kind,
+					"percent": 100,
+					"nominal_amount": 25000,
+					"from_date": "2025-01-02" if to_date is None else "2024-01-01",
+					"to_date": to_date,
+					"street": "Musterweg 1",
+					"postal_code_and_town": "12345 Musterstadt",
+				},
+			)
+		settings.save(ignore_permissions=True)
+		self.addCleanup(
+			frappe.db.delete, "Annual Filing Shareholder", {"parent": COMPANY, "parenttype": SETTINGS}
+		)
+		doc = self.calculated()
+		_, _, run = self.transmitted(doc, "validate")
+		_, nutzdaten, *_ = run.call_args.args
+		self.assertIn(">Muster Beteiligungs GmbH<", nutzdaten)
+		self.assertIn("genInfo.company.id.shareholder.legalStatus.legalStatus.KOER", nutzdaten)
+		self.assertNotIn("Frühere Gesellschafterin", nutzdaten)
+
 	# The kinds of the E-Bilanz.
 
 	def test_an_eroeffnungsbilanz_shows_the_bilanz_on_the_first_day(self):

@@ -589,6 +589,16 @@ class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 	def nutzdaten(self, hersteller_id: str) -> str:
 		"""The Nutzdaten for ERiC: the element zm of the statement as saved, with the Unternehmer from the VAT Return
 		Settings. ZMDO has no field for the Hersteller-ID, which only the TransferHeader names."""
+		unternehmer = self._unternehmer()
+		period = self._chosen_period()
+		with xml_errors(_("ELSTER Transmission")), zm_errors():
+			statement = bridge.statement_of(self.vouchers, self.lines, self._figures())
+			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
+			zm = bridge.zm(period, statement, held, self.anzeige, self.widerruf)
+			return zm_xml.to_nutzdaten(unternehmer, zm, getdate())
+
+	def _unternehmer(self) -> zm_xml.Unternehmer:
+		"""The company that files the ZM, from the VAT Return Settings, or the refusal of what ELSTER does not take."""
 		settings = settings_for(self.company)
 		if not vatid.is_german(settings.ust_idnr):
 			frappe.throw(
@@ -599,12 +609,8 @@ class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 		country = frappe.db.get_value(
 			"Country", frappe.db.get_value("Company", self.company, "country"), "code"
 		)
-		period = self._chosen_period()
-		with xml_errors(_("ELSTER Transmission")), zm_errors():
-			statement = bridge.statement_of(self.vouchers, self.lines, self._figures())
-			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
-			zm = bridge.zm(period, statement, held, self.anzeige, self.widerruf)
-			return zm_xml.to_nutzdaten(bridge.unternehmer(settings, country), zm, getdate())
+		with xml_errors(_("ELSTER Transmission")):
+			return bridge.unternehmer(settings, country)
 
 	def check_transmittable(self) -> None:
 		"""A calculated draft whose USt-IdNrn. are not being confirmed."""
@@ -619,6 +625,7 @@ class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 		if cint(self.confirmation_in_progress):
 			frappe.throw(_("The USt-IdNrn. of this statement are being confirmed. Wait for the result."))
 		self._require_amounts_as_stored(self)
+		self._unternehmer()
 
 	def check_can_be_sent(self) -> None:
 		"""Senden files the statement, once: it needs the statement fit for filing, the ledger of its months as

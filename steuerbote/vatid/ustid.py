@@ -206,7 +206,9 @@ def german_check_digit(first_eight: str) -> int:
 	bilateraler Vereinbarungen zur Veröffentlichung freigegeben.“ P = 10; for each digit M = (digit + P) modulo 10,
 	10 where that is 0, and P = 2 M modulo 11; R = 11 - P, and the check digit is 0 where R is 10, else R. The BZSt
 	and the BMF of Germany publish no rule of their own; the BZSt names a number that breaks the scheme
-	„syntaktisch falsch“ (evatr-0004, evatr-0012)."""
+	„syntaktisch falsch“ (evatr-0004, evatr-0012). ERiC holds the ninth digit to be a check digit („Die letzte der
+	neun Ziffern ist eine Prüfziffer.“, ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 6.3.5, with the example DE123456788),
+	and this procedure gave the same answer as EricPruefeWIdNr of ERiC 44.3.6.0 for 20,000 random numbers."""
 	if len(first_eight) != 8 or not first_eight.isascii() or not first_eight.isdigit():
 		raise ValueError(f"the check digit is computed from eight digits, not from {first_eight!r}")
 	product = 10
@@ -219,7 +221,10 @@ def german_check_digit(first_eight: str) -> int:
 
 def has_german_check_digit(value: str | None) -> bool:
 	"""True for a German USt-IdNr. or W-IdNr. whose ninth digit is the check digit of the eight before it
-	(german_check_digit)."""
+	(german_check_digit). ERiC refused DE123456789 as the own USt-IdNr. of a Zusammenfassende Meldung
+	(ungueltigeUStIDNr) and accepted DE123456788 (validation on 25 November 2026). A first digit 0 passes, as
+	EricPruefeWIdNr takes a W-IdNr. such as DE000000003; only the check of a partner's number refuses it
+	(german_problem)."""
 	if not is_german(value):
 		return False
 	number = normalize(value)

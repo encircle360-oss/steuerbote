@@ -20,6 +20,7 @@ from frappe.utils import cint, cstr, escape_html, flt, formatdate, getdate
 from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster
 from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.annual_filing_settings import rules
+from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 
 REGISTER_FIELDS = ("register_court", "register_type", "register_number")
 # A Period Closing Voucher closes the result only into such an account (check_closing_account of ERPNext 16).
@@ -185,6 +186,8 @@ class AnnualFilingSettings(Document):
 				),
 				title=_("Invalid Steuernummer"),
 			)
+		if self.has_value_changed("elster_income_tax_number"):
+			transmission_adapter.require_valid_steuernummer(self.elster_income_tax_number, number)
 
 	def keep_adoption_dates(self) -> None:
 		"""Only the Jahresabschluss writes the day of its Feststellung, through record_adoption: a save keeps the stored

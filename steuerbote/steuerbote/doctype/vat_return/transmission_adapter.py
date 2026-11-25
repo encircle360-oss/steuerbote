@@ -16,7 +16,7 @@ from pathlib import Path
 
 import frappe
 from frappe import _
-from frappe.utils import cint, get_bench_path, getdate
+from frappe.utils import cint, escape_html, get_bench_path, getdate
 
 from steuerbote.eric import runtime, service
 from steuerbote.eric.datenart import Datenart
@@ -81,6 +81,33 @@ def detect_runtime(
 		hersteller_id=hersteller_id,
 		confirmed_privacy_notice=bool(cint(frappe.get_single(ERIC_SETTINGS).privacy_notice_confirmed)),
 	)
+
+
+def steuernummer_valid(number: str) -> bool | None:
+	"""Whether ERiC takes the 13-digit Steuernummer of ELSTER, by EricPruefeSteuernummer of the newest installed runtime
+	(ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 6.3.3); None without a runtime, without the confirmed Datenschutzhinweise
+	or when the check gives no answer."""
+	try:
+		runtime_info = runtime.detect(
+			runtime_root(),
+			allow_beta=True,
+			confirmed_privacy_notice=bool(cint(frappe.get_single(ERIC_SETTINGS).privacy_notice_confirmed)),
+		)
+	except runtime.RuntimeIntegrityError:
+		return None
+	return service.steuernummer_valid(runtime_info, number)
+
+
+def require_valid_steuernummer(number: str, entered: str) -> None:
+	"""Refuse a Steuernummer whose check digit ERiC refuses, when the settings are saved rather than at the first
+	transmission; ``entered`` is the number as the user wrote it."""
+	if steuernummer_valid(number) is False:
+		frappe.throw(
+			_(
+				"ERiC refuses the Steuernummer {0}: its check digit or its Finanzamt is wrong. Compare it with the last notice of the Finanzamt."
+			).format(escape_html(entered)),
+			title=_("Invalid Steuernummer"),
+		)
 
 
 def runtime_status(hersteller_id: str) -> tuple[runtime.Check, ...]:

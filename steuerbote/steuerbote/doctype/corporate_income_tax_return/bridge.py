@@ -231,6 +231,7 @@ SUPPLEMENT_KEY, SUPPLEMENT_TEXT = "E8001305", "E8001304"
 WJ_FROM, WJ_TO, FOUNDED = "E8002606", "E8002607", "E8000703"
 TRADING_BOOK, SECTION_8_9, SHAREHOLDERS_CHANGED = "E8001008", "E8001007", "E8122601"
 SHAREHOLDER_NAME, SHAREHOLDER_STREET, SHAREHOLDER_TOWN = "E8122101", "E8122102", "E8122103"
+SHAREHOLDER_DATA_CHANGED = "E8122111"
 SHAREHOLDER_TAX_NUMBER, SHAREHOLDER_IDNR, SHAREHOLDER_WID_NR, SHAREHOLDER_FOREIGN_ID = (
 	"E8122109",
 	"E8122110",
@@ -1008,7 +1009,9 @@ def shareholders_changed(ret: Return, shareholders: Iterable[rules.Shareholder])
 
 def shareholder_entries(ret: Return, shareholders: Iterable[rules.Shareholder]) -> list[Entry]:
 	"""KSt 1 lines 21 to 23b: each Anteilseigner of the Wirtschaftsjahr once, by its name, with each of its holding
-	periods in it, at most three, cut to the Wirtschaftsjahr."""
+	periods in it, at most three, cut to the Wirtschaftsjahr, and line 21a, whether its data changed against the
+	previous year, as shareholders_changed() tells it for its periods: ERiC refuses an Anteilseigner without line 21a
+	(rule 8912022 of the Jahresdokumentation KSt 2025; validation with ERiC 44.3.6.0)."""
 	found = []
 	for person, periods in enumerate(_persons(ret, shareholders).values()):
 		first = periods[0]
@@ -1023,6 +1026,7 @@ def shareholder_entries(ret: Return, shareholders: Iterable[rules.Shareholder]) 
 		):
 			if value:
 				found.append(Entry(feldkennung, value, (person,)))
+		found.append(Entry(SHAREHOLDER_DATA_CHANGED, shareholders_changed(ret, periods), (person,)))
 		ordered = sorted(periods, key=lambda item: item.from_date)[:MOST_SHARE_PERIODS]
 		for instance, period in enumerate(ordered):
 			rows = (person, instance)

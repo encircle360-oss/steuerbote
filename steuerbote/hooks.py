@@ -180,4 +180,10 @@ steuerbote_setup_steps = [
 		"needs": ["vat_return_settings"],
 		"run": "steuerbote.steuerbote.vat_id_setup.check_automatic_check",
 	},
+	{
+		"key": "eric_settings",
+		"label": "ERiC Settings",
+		"order": 80,
+		"run": "steuerbote.steuerbote.doctype.eric_settings.setup.run",
+	},
 ]

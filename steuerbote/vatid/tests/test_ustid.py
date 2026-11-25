@@ -231,7 +231,7 @@ class GermanNumberTest(TestCase):
 				self.assertFalse(is_german(value))
 
 
-class GermanCheckDigitTest(TestCase):
+class GermanCheckDigitComputationTest(TestCase):
 	"""The check digit of a German USt-IdNr. after the Konstruktionsregeln of the Austrian BMF (Stand November 2020),
 	which Germany released for publication: ISO/IEC 7064 MOD 11,10 over the first eight digits."""
 
@@ -273,6 +273,8 @@ class GermanCheckDigitTest(TestCase):
 			german_problem("DE011111111"),
 			"Eine deutsche USt-IdNr. beginnt nach DE nicht mit 0, DE011111111 schon.",
 		)
+		self.assertTrue(has_german_check_digit("DE000000003"), "ERiC takes it as a W-IdNr.")
+		self.assertIn("nicht mit 0", german_problem("DE000000003"))
 		for value in ("DE12345", "DE1234567890", "ATU12345678", "", None):
 			with self.subTest(value=value):
 				self.assertIn("DE und neun Ziffern", german_problem(value))
@@ -287,6 +289,40 @@ class CheckedGermanPairTest(TestCase):
 			checked_german_pair("DE123456789", "DE123456789")
 		with self.assertRaisesRegex(ValueError, "ATU87654321"):
 			checked_german_pair("DE111111125", "ATU87654321")
+
+
+class GermanCheckDigitTest(TestCase):
+	"""The ninth digit of a German USt-IdNr. or W-IdNr. is a check digit (ERiC-Entwicklerhandbuch 44.3.6.0,
+	Kap. 6.3.5: „DE123456788 … Nur mit der Prüfziffer 8 als neunter Ziffer ist diese W-IdNr. gültig.“). The numbers
+	below were checked with EricPruefeWIdNr of ERiC 44.3.6.0, the knri of ZMDO_5_send-Auth.xml among them."""
+
+	def test_takes_the_check_digit_eric_takes(self):
+		for value in (
+			"DE123456788",
+			"de 123 456 788",
+			"DE554367942",
+			"DE100000008",
+			"DE999999995",
+			"DE000000003",
+			"DE123456704",
+			"DE314159262",
+			"DE271828180",
+		):
+			with self.subTest(value=value):
+				self.assertTrue(has_german_check_digit(value))
+
+	def test_refuses_any_other(self):
+		for value in (
+			"DE123456789",
+			"DE554367941",
+			"DE271828181",
+			"DE000000000",
+			"DE12345678",
+			"ATU12345678",
+			None,
+		):
+			with self.subTest(value=value):
+				self.assertFalse(has_german_check_digit(value))
 
 
 class CheckedPairTest(TestCase):

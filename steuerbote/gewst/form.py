@@ -36,14 +36,15 @@ Vordruck.extended() adds them.
 This module is pure Python and never imports Frappe.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from decimal import Decimal
 from types import MappingProxyType
 
 from steuerbote.elster.erklaerung import Form, FormCatalogue, Rule
 from steuerbote.eric.datenart import gewst
 from steuerbote.gewst.chain import STEPS, BegLine, GewstResult
 from steuerbote.kst.form import Entry, Vordruck, checked, entries, table_fields
-from steuerbote.ustva.rounding import half_up_euro
+from steuerbote.ustva.rounding import ZERO, ceil_euro, half_up_euro
 from steuerbote.ustva.years import UnknownYearError
 
 # The JD, sheet „GewSt1A - Felder“.
@@ -449,6 +450,17 @@ BEG_FINANCING_COSTS = "E4050801"
 BEG_OTHER_COSTS = "E4050901"
 BEG_EXEMPT = "E4051201"
 BEG_NOT_EXEMPT = "E4051401"
+BEG_CUT_BASE = "E4051601"
+BEG_WITH_CUT_BASE = MappingProxyType(
+	{"E4051701": BEG_FINANCING_COSTS, "E4051801": BEG_OTHER_COSTS, "E4051901": None}
+)
+"""Lines 17, 18 and 19 of Anlage BEG, which go beside line 16, each with the line it needs filed as well."""
+LICENCES = "E4003703"
+BEG_FINANCING_CUT = "E4051701"
+BEG_HINZURECHNUNG_CUT = "E4052001"
+BEG_SUMS = MappingProxyType({BEG_HINZURECHNUNG_CUT: "E4006701", "E4051901": "E4006801"})
+"""The line of GewSt 1 A that sums a line of the Anlagen BEG, by the Feldkennung of that line."""
+LICENCES_NONRESIDENTS = "E4004103"
 # Anlage BEG lines 15 to 19, by the attribute of BegLine that holds each.
 BEG_LINES = (
 	("addback", "E4051501"),
@@ -477,28 +489,60 @@ def vordrucke(result: GewstResult) -> tuple[Vordruck, ...]:
 		declared = result.lines[step.key].declared
 		if step.field is not None and (declared or step.field == PROFIT):
 			amounts[step.field] = declared
-	return (
-		Vordruck("GewSt1A", entries(amounts)),
-		*(Vordruck("BEG", tuple(_beg(line))) for line in result.beg),
-	)
+	if LICENCES in amounts:
+		amounts[LICENCES_NONRESIDENTS] = ZERO
+	begs = tuple(Vordruck("BEG", tuple(_beg(line))) for line in result.beg)
+	amounts.update(beg_sums(begs))
+	return (Vordruck("GewSt1A", entries(amounts)), *begs)
+
+
+def beg_sums(begs: Iterable[Vordruck]) -> dict[str, Decimal]:
+	"""GewSt 1 A line 79, the sum of line 20, and line 81, the sum of line 19 of the Anlagen BEG, each where one of
+	them files its line, at zero as well (rules 40448, 40449, 40491 and 40492)."""
+	sums: dict[str, Decimal] = {}
+	for beg in begs:
+		for entry in beg.entries:
+			if entry.feldkennung in BEG_SUMS:
+				total = BEG_SUMS[entry.feldkennung]
+				sums[total] = sums.get(total, ZERO) + entry.value
+	return sums
+
+
+def beg_lines(amounts: Mapping[str, Decimal], written: set[str]) -> list[Entry]:
+	"""Lines 15 to 19 of Anlage BEG by their Feldkennung, after the lines ``written`` above them, which it extends.
+
+	A line that is not zero goes, and so does one a rule of the Jahresdokumentation GewSt 2025 wants beside another,
+	at zero as well: line 16 beside lines 7 and 14 (rules 40946, 40956), lines 17 and 18 beside line 16 where lines 8
+	and 9 are filed, and line 19 beside line 16 (rules 40947 to 40949); validation with ERiC 44.3.6.0. Line 20 goes
+	beside line 17 (rule 40750), for a Körperschaft „Aufrunden([E4051701])“ (rule 40966)."""
+	found = []
+	for _, feldkennung in BEG_LINES:
+		amount = amounts.get(feldkennung, ZERO)
+		if feldkennung == BEG_CUT_BASE:
+			required = {BEG_PARAGRAPH, BEG_NOT_EXEMPT} <= written
+		else:
+			source = BEG_WITH_CUT_BASE.get(feldkennung, "")
+			required = source != "" and BEG_CUT_BASE in written and (source is None or source in written)
+		if amount or required:
+			found.append(Entry(feldkennung, amount))
+			written.add(feldkennung)
+	if BEG_FINANCING_CUT in written:
+		found.append(Entry(BEG_HINZURECHNUNG_CUT, ceil_euro(amounts.get(BEG_FINANCING_CUT, ZERO))))
+	return found
 
 
 def _beg(line: BegLine) -> Iterable[Entry]:
 	holding = line.holding.result
-	yield Entry(BEG_NAME, holding.holding.name)
-	yield Entry(BEG_DIVIDENDS, line.dividends)
+	found = [Entry(BEG_NAME, holding.holding.name), Entry(BEG_DIVIDENDS, line.dividends)]
 	if line.paragraph is not None:
-		yield Entry(BEG_PARAGRAPH, str(line.paragraph))
+		found.append(Entry(BEG_PARAGRAPH, str(line.paragraph)))
 		for feldkennung, costs in (
 			(BEG_FINANCING_COSTS, holding.financing_costs),
 			(BEG_OTHER_COSTS, holding.other_costs),
 		):
 			if half_up_euro(costs):
-				yield Entry(feldkennung, half_up_euro(costs))
+				found.append(Entry(feldkennung, half_up_euro(costs)))
 	if line.exempt or line.not_exempt:
-		yield Entry(BEG_EXEMPT, line.exempt)
-	if line.not_exempt:
-		yield Entry(BEG_NOT_EXEMPT, line.not_exempt)
-	for attribute, feldkennung in BEG_LINES:
-		if amount := getattr(line, attribute):
-			yield Entry(feldkennung, amount)
+		found += [Entry(BEG_EXEMPT, line.exempt), Entry(BEG_NOT_EXEMPT, line.not_exempt)]
+	amounts = {feldkennung: getattr(line, attribute) for attribute, feldkennung in BEG_LINES}
+	return (*found, *beg_lines(amounts, {entry.feldkennung for entry in found}))

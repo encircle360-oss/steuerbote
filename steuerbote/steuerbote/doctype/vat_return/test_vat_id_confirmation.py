@@ -39,7 +39,7 @@ CONFIRMATION = "VAT ID Confirmation"
 # Germany, in November 2026 in Germany alone.
 COMPANY = "Steuerbote Test Voranmeldung USt-IdNr. GmbH"
 # The example numbers of the OpenAPI document of the eVatR API and invented ones of France, Italy and Germany.
-OWN_VAT_ID = "DE123456789"
+OWN_VAT_ID = "DE123456788"
 AUSTRIAN = "ATU12345678"
 FRENCH = "FR12345678901"
 ITALIAN = "IT12345678901"

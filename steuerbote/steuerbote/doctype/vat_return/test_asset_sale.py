@@ -83,7 +83,7 @@ class TestAssetSale(IntegrationTestCase):
 		)
 		make_masters(cls.account)
 		# With an own USt-IdNr., the check of the customer's USt-IdNr. runs when an invoice is submitted.
-		make_settings(COMPANY, [(2026, "monthly", 1)], ust_idnr="DE123456789")
+		make_settings(COMPANY, [(2026, "monthly", 1)], ust_idnr="DE123456788")
 		make_mapping(COMPANY)
 		ensure_fiscal_year(COMPANY, "2026-01-01")
 		frappe.cache.delete_value("fiscal_years")

@@ -111,7 +111,7 @@ class ImportFileTest(Schema2027TestCase):
 			regelbesteuerung_from=date(YEAR, 12, 31),
 		)
 		longest = filer(
-			wid_nr="DE123456789",
+			wid_nr="DE123456788",
 			**{attribute: "x" * field.length for attribute, field in DATENLIEFERANT.items()},
 		)
 		self.assert_valid(self.nutzdaten, to_import_file(longest, full, CREATED))
@@ -201,7 +201,7 @@ class Ust1HTest(Schema2027TestCase):
 
 	def test_every_element_follows_the_schema(self):
 		longest = {
-			"wid_nr": "DE123456789",
+			"wid_nr": "DE123456788",
 			**{attribute: "x" * field.length for attribute, field in DATENLIEFERANT.items()},
 		}
 		for filing in (

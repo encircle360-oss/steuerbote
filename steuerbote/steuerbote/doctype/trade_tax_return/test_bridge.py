@@ -116,6 +116,7 @@ class MusterItGmbhTest(TestCase):
 				("53", "E4003502", Decimal("6000"), Decimal("6000.00")),
 				("55", "E4003602", Decimal("24000"), Decimal("24000.00")),
 				("56", "E4003703", Decimal("10000"), Decimal("10000.00")),
+				("57", "E4004103", ZERO, ZERO),
 				("77", "E4006601", Decimal("11400"), ZERO),
 				("92d", "E4003403", Decimal("1000"), ZERO),
 			],
@@ -230,6 +231,21 @@ class HoldingsTest(TestCase):
 		self.assertEqual(
 			{key: beg[key] for key in (("E4050701", ()), ("E4050801", ()), ("E4050901", ()))},
 			{("E4050701", ()): "1", ("E4050801", ()): Decimal("300"), ("E4050901", ()): Decimal("100")},
+		)
+		# Rules 40944, 40946 to 40949 and 40750 of the Jahresdokumentation GewSt 2025: line 12 with line 14, beside
+		# line 7 line 16 as line 14, beside line 16 lines 17 and 18 for lines 8 and 9 and line 19, and line 20 beside
+		# line 17, even at zero (validation with ERiC 44.3.6.0).
+		self.assertEqual(
+			{key[0]: value for key, value in beg.items() if key[0] >= "E4051201"},
+			{
+				"E4051201": Decimal("12000"),
+				"E4051401": ZERO,
+				"E4051601": ZERO,
+				"E4051701": ZERO,
+				"E4051801": ZERO,
+				"E4051901": ZERO,
+				"E4052001": ZERO,
+			},
 		)
 
 	def test_a_holding_abroad_falls_under_number_7(self):

@@ -18,6 +18,8 @@ The worker reads one JSON object from standard input and writes one to standard 
 		removes once the worker has ended, since a killed worker removes nothing
 	{"command": "version", "runtime": {…}}
 		answers {"libraries": {name: product version}} or {"error": "…"}
+	{"command": "steuernummer", "runtime": {…}, "steuernummer": "<13 digits of ELSTER>"}
+		answers {"valid": true | false} by EricPruefeSteuernummer, or {"error": "…"}
 
 Exit codes: 0 when the answer is on standard output, whatever the outcome; 2 when the request was not
 understood, before anything was loaded, or the pid of the parent is missing; 1 for an unexpected error and
@@ -218,6 +220,7 @@ class Request:
 	password: str | None = None
 	proxy: Proxy | None = None
 	work_dir: Path | None = None
+	steuernummer: str = ""
 
 
 def main() -> int:
@@ -239,7 +242,12 @@ def serve(stdin: BinaryIO, stdout: BinaryIO, stderr: TextIO) -> int:
 		stderr.write(f"steuerbote.eric.worker: invalid request: {error}\n")
 		return EXIT_INVALID_REQUEST
 	try:
-		answer = process(request).to_dict() if request.command == "process" else versions(request.runtime)
+		if request.command == "process":
+			answer = process(request).to_dict()
+		elif request.command == "steuernummer":
+			answer = steuernummer(request.runtime, request.steuernummer)
+		else:
+			answer = versions(request.runtime)
 	except Exception as error:
 		stderr.write(f"steuerbote.eric.worker: unexpected {type(error).__name__}\n")
 		return EXIT_FAILURE
@@ -282,6 +290,11 @@ def parse_request(data: bytes) -> Request:
 	command = request.get("command")
 	if command == "version":
 		return Request(command, runtime)
+	if command == "steuernummer":
+		number = request.get("steuernummer")
+		if not isinstance(number, str):
+			raise RequestError("steuernummer")
+		return Request(command, runtime, steuernummer=number)
 	if command != "process":
 		raise RequestError("command")
 	try:
@@ -404,6 +417,21 @@ def versions(runtime: RuntimeInfo) -> dict[str, object]:
 	}
 
 
+def steuernummer(runtime: RuntimeInfo, number: str) -> dict[str, object]:
+	"""Whether ERiC takes the Steuernummer, by EricPruefeSteuernummer."""
+	try:
+		library = EricLibrary(runtime.lib_dir / LIBRARY)
+		library.initialise(runtime.plugin_dir, runtime.log_dir)
+	except (OSError, EricError) as error:
+		return {"error": str(error)}
+	try:
+		return {"valid": library.steuernummer_valid(number)}
+	except EricError as error:
+		return {"error": str(error)}
+	finally:
+		library.finish()
+
+
 def outcome(operation: Operation, code: int, *, server_answered: bool) -> Outcome:
 	"""What a return code of EricBearbeiteVorgang means for the operation, given whether a server answer came."""
 	if not operation.sends:
@@ -423,12 +451,14 @@ def _result(
 	library: EricLibrary, operation: Operation, version: str, testmerker: str | None, answer: ProcessResult
 ) -> TransmissionResult:
 	code = answer.code
+	rules = _rule_messages(answer.return_xml)
 	messages = []
-	if code != ERIC_OK:
+	# The text of 610001002 and 610001003 asks to read the return buffer, which _rule_messages has read.
+	if code != ERIC_OK and not any(message.code != ERIC_CODE for message in rules):
 		messages.append(
 			Message(str(code), library.error_text(code), HINT if code == GLOBAL_HINWEISE else ERROR)
 		)
-	messages.extend(_rule_messages(answer.return_xml))
+	messages.extend(rules)
 	pdf = answer.pdfs[0].data if answer.pdfs else None
 	server_xml = answer.server_response_xml or None
 

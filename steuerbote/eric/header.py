@@ -105,7 +105,9 @@ def nutzdaten_datenlieferant(
 	email: str = "",
 ) -> str:
 	"""The DatenLieferant of the NutzdatenHeader of an E-Bilanz: its ten parts in their order, each without blanks at
-	either end; a part that is missing keeps its place. problems refuses parts that do not come out as ten."""
+	either end; a part that is missing keeps its place. The whole ends without a blank, which ERiC 44.3.6.0 refuses
+	(„nachfolgendesBlank“, validation of Bilanz_6.9), so missing last parts end in a bare semicolon. problems refuses
+	parts that do not come out as ten."""
 	parts = (
 		name,
 		street,
@@ -118,7 +120,7 @@ def nutzdaten_datenlieferant(
 		phone,
 		email,
 	)
-	return DATENLIEFERANT_SEPARATOR.join(part.strip() for part in parts)
+	return DATENLIEFERANT_SEPARATOR.join(part.strip() for part in parts).rstrip()
 
 
 def without_declaration(xml: str) -> str:
@@ -191,6 +193,8 @@ def _datenart(datenart_version: str) -> Datenart | None:
 def _datenlieferant_problem(kind: Datenart, datenlieferant: str | None) -> str | None:
 	if datenlieferant is not None and len(datenlieferant) > DATENLIEFERANT_LENGTH:
 		return "Der Datenlieferant im NutzdatenHeader hat höchstens 256 Zeichen."
+	if datenlieferant and datenlieferant != datenlieferant.rstrip():
+		return "Der Datenlieferant im NutzdatenHeader endet nicht mit einem Leerzeichen."
 	if not kind.nutzdaten_datenlieferant:
 		return None
 	parts = (datenlieferant or "").split(";")

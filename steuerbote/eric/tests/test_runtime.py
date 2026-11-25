@@ -898,3 +898,19 @@ class RuntimeInfoTest(TestCase):
 		):
 			with self.subTest(data=data), self.assertRaises(ValueError):
 				RuntimeInfo.from_dict(data)
+
+
+class CopyrightCheckTest(TestCase):
+	"""The copyright notice of the Vorsatz, which every Erklärung over ERiC needs (steuerbote/elster/vorsatz.py)."""
+
+	def test_names_the_notice_or_what_it_lacks(self):
+		check = runtime.copyright_check("(c) 2026 Beispiel GmbH, München")
+		self.assertEqual((check.name, check.ok), ("copyright", True))
+		self.assertIn("(c) 2026 Beispiel GmbH, München", check.detail)
+		for value in (None, "", "  "):
+			with self.subTest(value=value):
+				check = runtime.copyright_check(value)
+				self.assertFalse(check.ok)
+				self.assertIn("Copyrightvermerk", check.detail)
+		self.assertFalse(runtime.copyright_check("\N{COPYRIGHT SIGN} 2026 Beispiel GmbH").ok)
+		self.assertFalse(runtime.copyright_check("x" * 51).ok)
