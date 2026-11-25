@@ -80,7 +80,7 @@ def test_steuerbote_einrichten_sets_up_a_company_once(desk, expect, screenshots)
 	expect(report.locator(".steuerbote-setup-summary")).to_contain_text(
 		f"Steuerbote ist für {data.SETUP_COMPANY} eingerichtet."
 	)
-	expect(report.locator("tbody tr")).to_have_count(10)
+	expect(report.locator("tbody tr")).to_have_count(11)
 	for step, outcome in (
 		("vat_return_settings", "Angelegt"),
 		("vat_return_mapping", "Angelegt"),
