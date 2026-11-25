@@ -12,6 +12,7 @@ from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl import mapping
 from steuerbote.xbrl.mapping import (
 	AccountBalance,
+	AccountKind,
 	Accounts,
 	Books,
 	DefaultExcluded,
@@ -22,6 +23,7 @@ from steuerbote.xbrl.mapping import (
 	Mapping,
 	MappingError,
 	Part,
+	PartyBalance,
 	Purpose,
 	Rule,
 	Watched,
@@ -643,6 +645,196 @@ class NettingTest(TestCase):
 		self.assertNotIn(mapping.Code.NETTED, [finding.code for finding in placement.findings])
 
 
+OTHER_LIABILITIES = "bs.eqLiab.liab.other"
+RECLASSIFIED = MappingProxyType(
+	{AccountKind.RECEIVABLE: OTHER_LIABILITIES, AccountKind.PAYABLE: OTHER_ASSETS}
+)
+
+
+def party(name: str, debit: str = "0", credit: str = "0", party_type: str = "Customer", linked: str = ""):
+	return PartyBalance(party_type, name, Decimal(debit), Decimal(credit), linked)
+
+
+def ledger(number: str, kind: AccountKind, *parties: PartyBalance) -> AccountBalance:
+	"""An account of type Receivable or Payable with the balance of each party, as ERPNext keeps it per party."""
+	return AccountBalance(
+		f"{number} - Konto - MG",
+		number,
+		f"Konto {number}",
+		Part.BALANCE_SHEET,
+		sum((item.debit for item in parties), Decimal(0)),
+		sum((item.credit for item in parties), Decimal(0)),
+		kind=kind,
+		parties=parties,
+	)
+
+
+class PartySplitTest(TestCase):
+	"""„Posten der Aktivseite dürfen nicht mit Posten der Passivseite ... verrechnet werden“ (§ 246 Abs. 2 Satz 1 HGB):
+	a customer with a credit balance is no Forderung that lowers those of the other customers but a sonstige
+	Verbindlichkeit, a supplier with a debit balance a sonstiger Vermögensgegenstand. The balance of an account of type
+	Receivable or Payable is split by party at the Stichtag: each part goes to the position on its side."""
+
+	RECEIVABLE = Rule("1400", RECEIVABLES, opposite=OTHER_LIABILITIES)
+	PAYABLE = Rule("1600", BANK_LIABILITY, opposite=OTHER_ASSETS)
+
+	def placed(self, *rules, balances):
+		return placed(*rules, balances=balances, reclassification=RECLASSIFIED)
+
+	def test_a_customer_with_a_credit_balance_is_a_liability(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			balances=[
+				ledger(
+					"1400", AccountKind.RECEIVABLE, party("Kunde A", "1000"), party("Kunde B", credit="300")
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.balance.number, item.concept, item.value, item.reclassified) for item in placement.placed],
+			[
+				("1400", RECEIVABLES, Decimal("1000"), False),
+				("1400", OTHER_LIABILITIES, Decimal("300"), True),
+			],
+		)
+		self.assertEqual(sum(item.amount for item in placement.placed), Decimal("700"))
+		(hint,) = [finding for finding in placement.findings if finding.code is mapping.Code.RECLASSIFIED]
+		self.assertEqual(
+			(hint.severity, hint.account, hint.amount), (mapping.Severity.HINT, "1400", Decimal("-300"))
+		)
+		self.assertIn("1 Partei", hint.text)
+
+	def test_a_supplier_with_a_debit_balance_is_an_asset(self):
+		placement = self.placed(
+			self.PAYABLE,
+			balances=[
+				ledger(
+					"1600",
+					AccountKind.PAYABLE,
+					party("Lieferant A", credit="500", party_type="Supplier"),
+					party("Lieferant B", "80", party_type="Supplier"),
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed],
+			[(BANK_LIABILITY, Decimal("500")), (OTHER_ASSETS, Decimal("80"))],
+		)
+
+	def test_an_account_without_a_position_for_the_opposite_balance_takes_the_one_of_its_kind(self):
+		"""A receivable account of one party, which a company sets up itself and the defaults do not know."""
+		placement = self.placed(
+			Rule("1450", RECEIVABLES),
+			balances=[ledger("1450", AccountKind.RECEIVABLE, party("Kunde C", credit="40"))],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed], [(OTHER_LIABILITIES, Decimal("40"))]
+		)
+
+	def test_a_customer_linked_to_a_supplier_is_set_off_on_the_side_of_the_balance_of_both(self):
+		"""One person that is customer and supplier, as a Party Link of ERPNext records it: the claim and the debt can
+		be set off (§ 387 BGB), so the net shows on the side of the larger one, in its position."""
+		placement = self.placed(
+			self.RECEIVABLE,
+			self.PAYABLE,
+			balances=[
+				ledger("1400", AccountKind.RECEIVABLE, party("Partner", "1000", linked="Partner")),
+				ledger(
+					"1600",
+					AccountKind.PAYABLE,
+					party("Partner GmbH", credit="1200", party_type="Supplier", linked="Partner"),
+				),
+			],
+		)
+		self.assertEqual(
+			[(item.balance.number, item.concept, item.value) for item in placement.placed],
+			[("1400", BANK_LIABILITY, Decimal("-1000")), ("1600", BANK_LIABILITY, Decimal("1200"))],
+		)
+		self.assertIn(mapping.Code.PARTY_SET_OFF, [finding.code for finding in placement.findings])
+
+	def test_a_customer_and_a_supplier_without_a_link_stay_apart(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			self.PAYABLE,
+			balances=[
+				ledger("1400", AccountKind.RECEIVABLE, party("Partner", "1000")),
+				ledger("1600", AccountKind.PAYABLE, party("Partner", credit="1200", party_type="Supplier")),
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed],
+			[(RECEIVABLES, Decimal("1000")), (BANK_LIABILITY, Decimal("1200"))],
+		)
+
+	def test_postings_without_a_party_are_a_hint_and_count_on_their_own(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			balances=[
+				ledger(
+					"1400",
+					AccountKind.RECEIVABLE,
+					party("Kunde A", "1000"),
+					PartyBalance("", "", Decimal(0), Decimal("50")),
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed],
+			[(RECEIVABLES, Decimal("1000")), (OTHER_LIABILITIES, Decimal("50"))],
+		)
+		(hint,) = [finding for finding in placement.findings if finding.code is mapping.Code.NO_PARTY]
+		self.assertEqual((hint.severity, hint.amount), (mapping.Severity.HINT, Decimal("-50")))
+
+	def test_the_parts_of_an_account_on_one_position_are_one_balance(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			balances=[
+				ledger(
+					"1400",
+					AccountKind.RECEIVABLE,
+					party("Kunde A", "1000"),
+					party("Kunde B", "200"),
+					party("Kunde C", credit="30"),
+					party("Kunde D", credit="20"),
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.balance.debit, item.balance.credit) for item in placement.placed],
+			[(RECEIVABLES, Decimal("1200"), Decimal(0)), (OTHER_LIABILITIES, Decimal(0), Decimal("50"))],
+		)
+		self.assertTrue(all(not item.balance.parties for item in placement.placed))
+
+	def test_a_party_without_a_balance_and_a_link_of_one_party_alone_change_nothing(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			balances=[
+				ledger(
+					"1400",
+					AccountKind.RECEIVABLE,
+					party("Kunde A", "100", "100"),
+					party("Partner", "1000", linked="Partner"),
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed], [(RECEIVABLES, Decimal("1000"))]
+		)
+		self.assertEqual(placement.findings, ())
+
+	def test_the_parties_add_up_to_the_account(self):
+		with self.assertRaises(ValueError):
+			AccountBalance(
+				"1400 - Konto - MG",
+				"1400",
+				"Konto 1400",
+				Part.BALANCE_SHEET,
+				Decimal("100"),
+				kind=AccountKind.RECEIVABLE,
+				parties=(party("Kunde A", "90"),),
+			)
+
+
 class PurposeTest(TestCase):
 	def test_a_balance_counts_in_the_balance_sheets_its_rule_is_for(self):
 		rules = (
@@ -699,7 +891,9 @@ class PlacesOfBalancesTest(TestCase):
 		self.assertEqual(
 			finding.text,
 			"Konto 1360 Geldtransit hat einen Saldo, aber keinen Platz in der Bilanzzuordnung: Ordnen Sie es einer "
-			"Position zu, oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt.",
+			"Position zu, oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt. Die Vorgaben geben Konten, die "
+			"der Kontenrahmen nicht beschriftet, keinen Platz; die Steuerberatung entscheidet ihn. „Konten prüfen“ in "
+			"der Bilanzzuordnung nennt alle Konten ohne Platz.",
 		)
 		self.assertEqual((finding.amount, finding.source), (Decimal("5"), "§ 246 Abs. 1 Satz 1 HGB"))
 		self.assertEqual((placement.left_out, placement.ready), ((books[1],), False))

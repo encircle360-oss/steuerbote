@@ -54,6 +54,7 @@ def get_columns() -> list[dict[str, Any]]:
 		{"fieldname": "line", "label": _("Form Line"), "fieldtype": "Data", "width": 130},
 		{"fieldname": "feldkennung", "label": _("Field Code"), "fieldtype": "Data", "width": 100},
 		{"fieldname": "label", "label": _("Label"), "fieldtype": "Data", "width": 300},
+		{"fieldname": "amount", "label": _("Ledger Amount"), **money},
 		{
 			"fieldname": "account",
 			"label": _("Account"),
@@ -78,7 +79,6 @@ def get_columns() -> list[dict[str, Any]]:
 		},
 		{"fieldname": "debit", "label": _("Debit"), **money},
 		{"fieldname": "credit", "label": _("Credit"), **money},
-		{"fieldname": "amount", "label": _("Ledger Amount"), **money},
 		{
 			"fieldname": "currency",
 			"label": _("Currency"),

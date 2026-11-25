@@ -14,6 +14,7 @@ from steuerbote.jahresmeldung.overrides import (
 	recalculated,
 	reported,
 	restored,
+	stale,
 )
 
 # The columns of a line table such as that of the Umsatzsteuererklärung: the Feldkennung, the amount the form takes
@@ -44,6 +45,7 @@ class ColumnsTest(TestCase):
 			("key", ("computed",), (), "correction", "correction_reason"),
 		)
 		self.assertEqual((columns.reported, columns.manual), ("reported", "manual"))
+		self.assertEqual(columns.basis, "correction_basis")
 
 	def test_berechnen_fills_the_key_its_amounts_and_the_description(self):
 		self.assertEqual(COLUMNS.filled, ("element", "form", "ledger", "label"))
@@ -156,6 +158,7 @@ class RecalculatedTest(TestCase):
 					"label": "Umsätze zu 19 %",
 					"correction": Decimal("0"),
 					"correction_reason": "",
+					"correction_basis": Decimal("0"),
 					"reported": Decimal("1000.00"),
 					"manual": 0,
 				}
@@ -277,6 +280,51 @@ class RestoredTest(TestCase):
 		with self.assertRaises(OverrideError) as raised:
 			restored(stored, stored, COLUMNS)
 		self.assertIs(raised.exception.problem, Problem.DUPLICATE)
+
+
+class CorrectionBasisTest(TestCase):
+	"""A correction is made against the amount Berechnen computed for its line, its basis. When Berechnen computes
+	another amount later, the correction would hide the change, in the document and in its Berichtigung; the line then
+	holds the document until the correction is confirmed or removed."""
+
+	def test_a_new_correction_takes_the_amount_computed_now(self):
+		before = [row("E3003303", "800", correction="900", reason=REASON, name="r1", correction_basis=None)]
+		(line,) = recalculated([row("E3003303", "1000")], before, COLUMNS)
+		self.assertEqual(line["correction_basis"], Decimal("1000.00"))
+		self.assertEqual(stale([line], COLUMNS), ())
+
+	def test_a_kept_correction_keeps_its_basis_and_is_found_when_the_amount_changed(self):
+		before = [row("E3003303", "800", correction="900", reason=REASON, name="r1", correction_basis="800")]
+		(line,) = recalculated([row("E3003303", "1000")], before, COLUMNS)
+		self.assertEqual(line["correction_basis"], Decimal("800.00"))
+		self.assertEqual(stale([line], COLUMNS), (("E3003303", Decimal("800.00"), Decimal("1000.00")),))
+		(same,) = recalculated([row("E3003303", "800")], before, COLUMNS)
+		self.assertEqual(stale([same], COLUMNS), ())
+
+	def test_a_line_by_hand_and_a_line_without_correction_are_never_stale(self):
+		lines = [
+			row("E3005901", manual=1, correction="250", reason=REASON, correction_basis="7"),
+			row("E3003303", "1000", correction_basis="5"),
+		]
+		self.assertEqual(stale(lines, COLUMNS), ())
+
+	def test_a_save_keeps_the_basis_of_an_unchanged_correction_and_sets_that_of_a_new_or_changed_one(self):
+		stored = [
+			row("E3003303", "1000", correction="900", reason=REASON, name="r1", correction_basis="800"),
+			row("E3004401", "500", name="r2"),
+		]
+		sent = [
+			row("E3003303", correction="900", reason=f" {REASON} ", name="r1", correction_basis="1"),
+			row("E3004401", correction="450", reason=REASON, name="r2", correction_basis="1"),
+			row("E3005901", correction="250", reason=REASON, name=None, correction_basis="1"),
+		]
+		self.assertEqual(
+			[line["correction_basis"] for line in restored(stored, sent, COLUMNS)],
+			[Decimal("800.00"), Decimal("500.00"), Decimal("0")],
+		)
+		changed_amount = [row("E3003303", correction="950", reason=REASON, name="r1")]
+		(line,) = restored(stored[:1], changed_amount, COLUMNS)
+		self.assertEqual(line["correction_basis"], Decimal("1000.00"))
 
 
 class KeptTest(TestCase):

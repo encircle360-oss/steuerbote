@@ -29,13 +29,25 @@ class Code(StrEnum):
 	OWN_LINE = "ZM-ZEILE-VON-HAND"
 	THRESHOLD_UNKNOWN = "ZM-SCHWELLE-UNBEKANNT"
 	BEFORE_START = "ZM-VOR-START"
+	OVERRIDE_STALE = "ZM-KORREKTUR-UEBERHOLT"
+	VAT_ID_ACCEPTED = "ZM-USTID-FREIGEGEBEN"
+	CONFIRMATION_STALE = "ZM-USTID-VERALTET"
 
 
 # The rounding of a ZM may part from the filed Voranmeldungen by some euros, a quieter period explains a change,
-# the Begründung of a line entered by hand explains why no voucher stands behind it, and a previous period before
-# the start of the books in Steuerbote has nothing to compare with; none holds the ZM back.
+# the Begründung of a line entered by hand explains why no voucher stands behind it, a previous period before
+# the start of the books in Steuerbote has nothing to compare with, a released USt-IdNr. carries its Begründung, and
+# an old confirmation is a reason to ask again, as at the Voranmeldung; none holds the ZM back.
 BLOCKING: frozenset[Code] = frozenset(
-	set(Code) - {Code.FILED_RETURNS, Code.PREVIOUS_PERIOD, Code.OWN_LINE, Code.BEFORE_START}
+	set(Code)
+	- {
+		Code.FILED_RETURNS,
+		Code.PREVIOUS_PERIOD,
+		Code.OWN_LINE,
+		Code.BEFORE_START,
+		Code.VAT_ID_ACCEPTED,
+		Code.CONFIRMATION_STALE,
+	}
 )
 
 

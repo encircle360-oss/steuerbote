@@ -787,7 +787,7 @@ class StatutoryTaxTest(TestCase):
 					BOOKED_TAX_CODE,
 					Severity.HINT,
 					BOOKED_TAX_OUTSIDE_TOLERANCE,
-					("E3003304", "21.50", "2.50", "19", "100", "19.00"),
+					("E3003304", "21,50", "2,50", "19", "100", "19,00"),
 					("E3003304",),
 				),
 			),

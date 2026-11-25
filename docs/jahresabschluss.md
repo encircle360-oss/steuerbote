@@ -7,7 +7,7 @@ Der Beleg lebt auf der Grundlage der Jahresmeldungen mit dem Lebenslauf `ACCOUNT
 ## Umfang
 
 - **Unternehmen:** eine GmbH oder UG (haftungsbeschränkt) mit den Einstellungen Jahresmeldungen und einer Bilanzzuordnung. Für eine Kleinstkapitalgesellschaft (§ 267a HGB) und eine kleine Gesellschaft (§ 267 Abs. 1 HGB) bereitet Steuerbote alles vor, was die Offenlegung braucht; für eine mittelgroße oder große Gesellschaft berechnet und druckt der Beleg Bilanz und Gewinn- und Verlustrechnung, Anhang und Offenlegung übernimmt die Steuerberatung oder der Abschlussprüfer.
-- **Geschäftsjahre:** das Geschäftsjahr von ERPNext, das im Jahr des Belegs endet, für die Offenlegung eines der HGB-Taxonomie 6.9, siehe [Umfang der Offenlegung](offenlegung.md#umfang).
+- **Geschäftsjahre:** das Geschäftsjahr von ERPNext, das im Jahr des Belegs endet, für die Offenlegung eines der HGB-Taxonomie 6.9, siehe [Umfang der Offenlegung](offenlegung.md#umfang). Steuerbote kennt Schwellen der Größenklassen und Gliederungen heute für 2026 (`schemes.years()`); einen Jahresabschluss für ein anderes Jahr lehnt schon das Anlegen ab, mit der Meldung „Steuerbote hat noch keinen Jahresabschluss für …“.
 - **Gliederung:** die Bilanz nach § 266 HGB in der Kontoform der Größenklasse und die Gewinn- und Verlustrechnung nach dem Gesamtkostenverfahren (§ 275 Abs. 2 HGB), denn das Hauptbuch kennt die Art eines Aufwands, nicht seine Funktion (`steuerbote/hgb/schemes.py`).
 - **Nicht darin:** Lagebericht, Konzernabschluss, Umsatzkostenverfahren, Tabellen der Haftungsverhältnisse und der Vorschüsse und Kredite an Organmitglieder (sie stehen im Text und Betrag ihrer Angabe), die Steuerbilanz und die Übermittlung selbst, siehe [Grenzen](#grenzen).
 
@@ -64,6 +64,7 @@ Die Tabelle „Posten des Jahresabschlusses“ (`Annual Accounts Line`) hält je
 | `concept` | Position der Taxonomie | die Position der HGB-Taxonomie oder ihres Vermerks, ohne das Präfix `de-gaap-ci:` |
 | `amount`, `prior` | Betrag, Vorjahr | was „Berechnen“ aus den Büchern ermittelt und der Betrag des Vorjahres (§ 265 Abs. 2 Satz 1 HGB) |
 | `correction`, `correction_reason` | Korrigierter Betrag, Begründung der Korrektur | eine Korrektur mit ihrer Begründung, nur an einer Zeile, die Salden selbst aufnimmt, siehe [Korrekturen](#korrekturen) |
+| `correction_basis` | Berechnet bei der Korrektur | der Betrag, den „Berechnen“ für die Zeile ergab, als die Korrektur eingetragen oder zuletzt geändert wurde, siehe [Jahresmeldungen](jahresmeldungen.md) |
 | `reported` | Betrag im Abschluss | was die Zeile ausweist: die Korrektur, sonst der Betrag |
 | `shown` | Im Abschluss gezeigt | ob der Posten in einem der beiden Jahre einen Betrag hat (§ 265 Abs. 8 HGB) |
 | `takes_correction` | Korrigierbar | ob die Zeile eine Korrektur nimmt |
@@ -132,7 +133,8 @@ Neben den Befunden der Bilanzzuordnung (`BILANZ-…`) schreibt „Berechnen“ d
 | `JA-ARBEITNEHMER-HAND` | Hinweis | die Arbeitnehmer von Hand ersetzen die gezählten |
 | `JA-ARBEITNEHMER-ART` | Hinweis | die Einstellungen lassen Arten der Beschäftigung aus, die Mitarbeiter haben aber keine |
 | `JA-VORJAHR-FEHLT` | Fehler | kein Vorjahr in den Büchern und keines von Hand |
-| `JA-GROESSE-EINSTELLUNGEN` | Hinweis | die Größenmerkmale der Einstellungen nennen für den Abschlussstichtag nicht die angewandte Klasse; die Frist der Feststellung rechnet nach ihnen |
+| `JA-GROESSE-EINSTELLUNGEN` | Hinweis | die Größenmerkmale der Einstellungen nennen für den Abschlussstichtag nicht die angewandte Klasse; nennen sie keine, rechnet die Frist der Feststellung am Beleg mit der angewandten Klasse (elf Monate für eine kleine Gesellschaft), Offene Fristen weiter nach den Einstellungen |
+| `SB-RUECKSTELLUNG-ABWEICHUNG` | Hinweis | die Rückstellungen für die Steuern vom Einkommen und Ertrag in den Büchern weichen von der zuletzt berechneten Körperschaft- und Gewerbesteuererklärung ab (§ 249 Abs. 1 Satz 1 HGB); „Rückstellungen vorschlagen“ an der Körperschaftsteuererklärung schlägt die Differenz vor |
 | `JA-UG-RUECKLAGE` | Fehler | eine UG stellt weniger als ein Viertel ihres Jahresüberschusses in die gesetzliche Rücklage ein (§ 5a Abs. 3 Satz 1 GmbHG) |
 | `JA-HINTERLEGUNG` | Hinweis | eine Kleinstkapitalgesellschaft veröffentlicht, was sie hinterlegen könnte |
 | `JA-KORREKTUR` | Fehler | eine Korrektur einer Zeile, die die Klasse nicht zeigt |
@@ -154,6 +156,7 @@ Neben den Befunden der Bilanzzuordnung (`BILANZ-…`) schreibt „Berechnen“ d
 | `JA-UNTERSCHRIFT-OHNE-DATUM` | Fehler | einer Unterschrift fehlt das Datum |
 | `JA-UNTERSCHRIFT-DATUM` | Fehler | eine Unterschrift liegt im Geschäftsjahr |
 | `SB-NEU-BERECHNEN` | Fehler | seit „Berechnen“ hat sich eine Eingabe geändert: eine Korrektur, eine Angabe, ein Unterzeichner, das Vorjahr von Hand, Größenklasse oder Arbeitnehmer von Hand, die Ergebnisverwendung, die Offenlegung oder der Tag der Feststellung |
+| `SB-KORREKTUR-UEBERHOLT` | Fehler | eine Korrektur wurde gegen einen anderen Betrag eingetragen, als „Berechnen“ jetzt für ihre Zeile ergibt, siehe [Jahresmeldungen](jahresmeldungen.md) |
 
 Was die XBRL-Datei anhält (`JA-XBRL-…` und `XBRL-…`), steht in [Befunde der Offenlegung](offenlegung.md#befunde).
 

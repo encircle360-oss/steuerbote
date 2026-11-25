@@ -18,6 +18,7 @@
   "form_amount",
   "correction",
   "correction_reason",
+  "correction_basis",
   "reported",
   "manual"
  ],
@@ -105,6 +106,14 @@
    "label": "Reason for the Override"
   },
   {
+   "description": "The amount Berechnen computed for the line when the correction was entered or last changed. When Berechnen computes another amount, the line holds the document until the correction is confirmed or removed.",
+   "fieldname": "correction_basis",
+   "fieldtype": "Currency",
+   "label": "Computed Amount of the Correction",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
    "columns": 2,
    "fieldname": "reported",
    "fieldtype": "Currency",
@@ -123,7 +132,7 @@
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-23 20:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Annual VAT Return Line",

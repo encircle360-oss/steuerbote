@@ -14,7 +14,7 @@ SCRIPT = DOCTYPES / "vat_return" / "vat_return.js"
 TABLES = ("vat_return_comparison", "vat_return_hint")
 VAT_RETURN_FIELDS = ("hints_section", "hints", "comparison_section", "comparison")
 # The severities of a hint are German already, like the status of a return.
-UNTRANSLATED = frozenset({"Hinweis", "Warnung"})
+UNTRANSLATED = frozenset({"Hinweis", "Warnung", "Fehler"})
 # Labels Frappe and ERPNext translate themselves; the app keeps out of their translations.
 FRAMEWORK_LABELS = frozenset(
 	{"Code", "Description", "Kind", "Message", "Party", "Voucher No", "Voucher Type"}

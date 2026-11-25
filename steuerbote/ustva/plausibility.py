@@ -4,8 +4,11 @@ Every Kennzahl comes from the ledger (see calculation.py). This module adds what
 Kennzahlen before filing and changes none of them: the Vorperiodenvergleich, which sets each Kennzahl
 against the previous period of the same rhythm and against the same period a year earlier, and hints where
 the invoices behind the ledger look wrong, where invoices and ledger part ways, or where an account watched
-at the hint level has a balance. A hint never holds a return; whether a return is ready stays with the
-Verprobung and the accounts watched at the blocking level.
+at the hint level has a balance. A hint or a warning never holds a return. An error does (holds): a turnover in Kz 41,
+42 or 21 whose customer has no valid USt-IdNr., which costs the exemption (steuerbote.vatid.exemption), and an override
+whose ledger amount changed since it was made. Steuerbote cannot tax an invoice anew; the return waits for the invoice
+to be corrected or for remarks that say why it is filed nonetheless, as the Zusammenfassende Meldung holds the same
+voucher (decision of the maintainer, docs/zm.md [Q16]).
 
 The rules behind the hints on single invoices:
 
@@ -43,6 +46,7 @@ from steuerbote.ustva.mapping import DERIVED_TURNOVER_KENNZAHLEN, AccountRule, M
 from steuerbote.ustva.period import Period, day_label
 from steuerbote.ustva.residence import Finding, Problem, Residence, Source
 from steuerbote.ustva.rounding import CENT, EURO, HUNDRED, ZERO, tax_from_base, to_cents
+from steuerbote.vatid.exemption import consequence
 from steuerbote.vatid.result import Outcome, valid_through
 from steuerbote.vatid.ustid import is_plausible, normalize, problem
 
@@ -50,6 +54,7 @@ from steuerbote.vatid.ustid import is_plausible, normalize, problem
 class Severity(Enum):
 	HINT = "Hinweis"
 	WARNING = "Warnung"
+	ERROR = "Fehler"
 
 
 class Code(StrEnum):
@@ -74,17 +79,19 @@ class Code(StrEnum):
 	RESIDENCE_CONFLICT = "SITZ-WIDERSPRUCH"
 	EU_SERVICE_OUTSIDE = "KZ46-OHNE-EU-SITZ"
 	ACQUISITION_OUTSIDE_EU = "ERWERB-AUS-DRITTLAND"
+	OVERRIDE_STALE = "KORREKTUR-UEBERHOLT"
 	PERIOD_NOT_ENDED = "ZEITRAUM-NICHT-ABGELAUFEN"
 	ZM_WITHOUT_RHYTHM = "ZM-OHNE-RHYTHMUS"
 	CORRECTION_UNCHANGED = "BERICHTIGUNG-OHNE-AENDERUNG"
 	OUTPUT_TAX_WITHOUT_REVENUE = "UMSATZ-OHNE-ERLOESKONTO"
 
 
-# A wrong invoice is a warning; a difference that may well be explained, such as a journal entry on a
-# revenue account or a quieter month, is a hint.
+# A turnover that loses its exemption without a valid USt-IdNr. of the customer and an override that hides a change of
+# the ledger are errors; a wrong invoice is a warning; a difference that may well be explained, such as a journal entry
+# on a revenue account or a quieter month, is a hint.
 SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 	{
-		Code.EU_WITHOUT_VAT_ID: Severity.WARNING,
+		Code.EU_WITHOUT_VAT_ID: Severity.ERROR,
 		Code.EU_ADDRESS: Severity.WARNING,
 		Code.ZERO_TAX: Severity.WARNING,
 		Code.TAX_DEVIATION: Severity.WARNING,
@@ -97,7 +104,7 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.BEFORE_START: Severity.HINT,
 		Code.VAT_ID_UNCONFIRMED: Severity.HINT,
 		Code.VAT_ID_STALE: Severity.HINT,
-		Code.VAT_ID_INVALID: Severity.WARNING,
+		Code.VAT_ID_INVALID: Severity.ERROR,
 		Code.TAX_TEMPLATE_WITHOUT_PLACE: Severity.HINT,
 		Code.REGISTER_DEVIATION: Severity.HINT,
 		Code.BASE_FROM_TAX: Severity.HINT,
@@ -105,11 +112,25 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.RESIDENCE_CONFLICT: Severity.HINT,
 		Code.EU_SERVICE_OUTSIDE: Severity.WARNING,
 		Code.ACQUISITION_OUTSIDE_EU: Severity.WARNING,
+		Code.OVERRIDE_STALE: Severity.ERROR,
 		Code.PERIOD_NOT_ENDED: Severity.WARNING,
 		Code.ZM_WITHOUT_RHYTHM: Severity.WARNING,
 		Code.CORRECTION_UNCHANGED: Severity.HINT,
 		Code.OUTPUT_TAX_WITHOUT_REVENUE: Severity.HINT,
 	}
+)
+# The order of the hints of a return: errors, then warnings, then hints.
+SEVERITY_ORDER: MappingProxyType[Severity, int] = MappingProxyType(
+	{Severity.ERROR: 0, Severity.WARNING: 1, Severity.HINT: 2}
+)
+NO_VAT_ID_ADVICE = "Berichtige die Rechnung, oder begründe in den Anmerkungen, warum die Voranmeldung trotzdem so abgegeben wird."
+INVALID_ADVICE = (
+	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, begründe das in den Anmerkungen; sonst "
+	"berichtige die Rechnung."
+)
+MALFORMED_ADVICE = (
+	"Berichtige die USt-IdNr. in der Rechnung, oder begründe in den Anmerkungen, warum die Voranmeldung trotzdem so "
+	"abgegeben wird."
 )
 
 EU_KENNZAHLEN = ("41", "21")
@@ -287,7 +308,10 @@ def _eu_hints(line: InvoiceLine, kennzahl: str, net: Decimal, figures: Figures) 
 	customer = f"des Kunden {line.party}"
 	found: list[Hint] = []
 	if not (line.party_tax_id or "").strip():
-		text = f"{booked}, aber der Kunde {line.party} hat keine USt-IdNr."
+		text = (
+			f"{_sentence(f'{booked}, aber der Kunde {line.party} hat keine USt-IdNr')} "
+			f"{consequence(kennzahl)} {NO_VAT_ID_ADVICE}"
+		)
 		found.append(_about(line, Code.EU_WITHOUT_VAT_ID, text))
 	state = member_state(line.party_country)
 	if not (line.party_country or "").strip():
@@ -689,7 +713,7 @@ def hints(
 	derived: Iterable[DerivedBase] = (),
 	findings: Iterable[Finding] = (),
 ) -> tuple[Hint, ...]:
-	"""Every hint of a return: the warnings first, then the hints; each kind in the order it is found.
+	"""Every hint of a return: the errors first, then the warnings, then the hints; each kind in the order it is found.
 
 	The invoices come first, then their reconciliation with the ledger, then the balances of the accounts
 	watched at the hint level (``watched``, named after ``names``), then the bases taken from the tax of their
@@ -705,7 +729,16 @@ def hints(
 		*residence_hints(findings),
 		*comparison_hints(comparison, figures),
 	]
-	return tuple(sorted(found, key=lambda hint: hint.severity is not Severity.WARNING))
+	return tuple(sorted(found, key=_rank))
+
+
+def _rank(hint: Hint) -> int:
+	return SEVERITY_ORDER[hint.severity]
+
+
+def holds(found: Iterable[Hint]) -> bool:
+	"""Whether an error among the hints holds the return back from „Bereit“."""
+	return any(hint.severity is Severity.ERROR for hint in found)
 
 
 # The Kennzahlen whose turnover a customer takes under a USt-IdNr. another member state issued, in the order of the
@@ -790,6 +823,10 @@ def vat_id_hints(
 		if finding is not None:
 			code, predicate = finding
 			subject = _subject(number, written[number], parties[number], kennzahlen[number])
+			if code is Code.VAT_ID_INVALID:
+				first = next(kennzahl for kennzahl in VAT_ID_KENNZAHLEN if kennzahl in kennzahlen[number])
+				advice = MALFORMED_ADVICE if problem(number) is not None else INVALID_ADVICE
+				predicate = f"{predicate} {consequence(first)} {advice}"
 			found.append(Hint(code, f"{subject} {predicate}", party=parties[number]))
 	return found
 
@@ -833,11 +870,6 @@ def _finding(
 
 
 def merged(*groups: Iterable[Hint]) -> tuple[Hint, ...]:
-	"""The hints of several sources as one list, as hints() orders its own: the warnings first, then the hints, each
-	kind in the order of the sources and within each source in its order."""
-	return tuple(
-		sorted(
-			(hint for group in groups for hint in group),
-			key=lambda hint: hint.severity is not Severity.WARNING,
-		)
-	)
+	"""The hints of several sources as one list, as hints() orders its own: the errors first, then the warnings, then
+	the hints, each kind in the order of the sources and within each source in its order."""
+	return tuple(sorted((hint for group in groups for hint in group), key=_rank))

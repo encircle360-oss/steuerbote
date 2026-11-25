@@ -69,6 +69,7 @@ from datetime import date
 from decimal import Decimal
 from types import MappingProxyType
 
+from steuerbote.ustjahr import text
 from steuerbote.ustjahr.form import KZ_816, KZ_820, SOLL, Catalogue, Field, Finding, Severity, Source
 from steuerbote.ustjahr.split import How, Split
 from steuerbote.ustva.calculation import (
@@ -475,7 +476,7 @@ def _booked_rate_value(
 
 
 def _euros(amount: Decimal) -> str:
-	return format(to_cents(amount), "f")
+	return text.euros(amount)
 
 
 def _paragraphs(

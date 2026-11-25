@@ -93,6 +93,7 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 
 	def compute(self) -> Calculation:
 		"""Berechnen: the lines, the Vorauszahlungssoll and the reconciliation of the year from the sources."""
+		self._refuse_a_year_without_return()
 		year = self._year()
 		settings = settings_for(self.company)
 		tolerance = to_amount(settings.tolerance)
@@ -174,6 +175,7 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 					),
 				),
 				_,
+				ustjahr_sources.rule_texts(year),
 			),
 			passed=result.ready and found_soll.ready and found.ready,
 		)
@@ -248,6 +250,7 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 
 	def before_insert(self) -> None:
 		"""A new return keeps of its periods only the reasons why it is filed without their Voranmeldung."""
+		self._refuse_a_year_without_return()
 		reasons = bridge.waivers_of(self._rows(PERIODS))
 		super().before_insert()
 		self.set(
@@ -400,6 +403,17 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 		if not cint(self.is_correction) or not self.corrects:
 			return None
 		return to_amount(frappe.db.get_value(DOCTYPE, self.corrects, "kz816"))
+
+	def _refuse_a_year_without_return(self) -> None:
+		"""A year the Annual Filing Settings state no Umsatzsteuererklärung for has none in Steuerbote: the statement is
+		the company's, made with its Steuerberatung, and Steuerbote does not judge it."""
+		year_settings = self._year_settings() if self.company and self.year else None
+		if year_settings and year_settings.no_vat_return:
+			frappe.throw(
+				_(
+					"{0} states in the Annual Filing Settings that it owes no Umsatzsteuererklärung for {1}: {2}. To make one, remove that statement there, as agreed with the Steuerberatung."
+				).format(self.company, self.year, _(year_settings.no_vat_return_reason or ""))
+			)
 
 	def _year_settings(self):
 		settings = settings_of(self.company)

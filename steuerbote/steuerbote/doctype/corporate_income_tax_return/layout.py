@@ -65,8 +65,22 @@ def print_sections(
 	return sections
 
 
+RECHTSFORM_FIELDS = frozenset({"E8001105", "E4000501"})
+"""The Rechtsform of KSt 1 and of GewSt 1 A, which the print writes with its meaning."""
+RECHTSFORM_NAMES: MappingProxyType[str, str] = MappingProxyType(
+	{
+		"350": "Gesellschaft mit beschränkter Haftung",
+		"370": "Unternehmergesellschaft (haftungsbeschränkt)",
+	}
+)
+"""The Rechtsformen Steuerbote files by their keys in the Anleitungen to KSt 1 and GewSt 1 A."""
+
+
 def value_text(item: Field, value: object) -> str | None:
-	"""The value of a field as the print writes it, None for a yes field that says no where the form takes only a yes."""
+	"""The value of a field as the print writes it, None for a yes field that says no where the form takes only a yes;
+	a Rechtsform with its meaning beside its key."""
+	if item.feldkennung in RECHTSFORM_FIELDS and str(value) in RECHTSFORM_NAMES:
+		return f"{value} ({RECHTSFORM_NAMES[str(value)]})"
 	if isinstance(value, bool):
 		if not value and item.format != "Y":
 			return None

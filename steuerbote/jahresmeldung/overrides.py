@@ -18,6 +18,10 @@ whose correction is its amount. Rows are mappings, such as the dicts of the chil
 - restored: Frappe keeps no read-only field from a save through its API, so a save takes what the company enters on a
   line and keeps what Berechnen computed. A new line is a line by hand, and a line Berechnen computed cannot be
   removed.
+- stale: a correction is made against the amount Berechnen computed for its line, its basis, which a save keeps while
+  the correction stays as it is and takes anew when it changes. When Berechnen computes another amount later, such as
+  after a late booking, the correction would hide the change, in the document and in its Berichtigung, which takes the
+  corrections with their bases; stale names those lines, and the document holds them as errors.
 - reported: what a line files.
 - kept: whether the amounts stored for the lines are those the lines give, before a filing.
 - changed: whether a save changed what Berechnen checked.
@@ -67,6 +71,7 @@ class Columns:
 	reason: str = "correction_reason"
 	reported: str = "reported"
 	manual: str = "manual"
+	basis: str = "correction_basis"
 
 	def __post_init__(self) -> None:
 		if not self.amounts:
@@ -149,14 +154,20 @@ def recalculated(computed: Iterable[Row], rows: Iterable[Row], columns: Columns)
 		for row in rows
 		if not _manual(row, columns) and (correction := correction_of(row, columns))
 	}
+	corrected_rows = {_key(row, columns): row for row in rows if _key(row, columns) in corrections}
 	lines = []
 	for row in computed:
 		key = _required_key(row, columns)
 		correction = corrections.pop(key, None)
+		basis = ZERO
+		if correction:
+			kept_basis = corrected_rows[key].get(columns.basis)
+			basis = to_amount(row.get(columns.amount)) if kept_basis is None else to_amount(kept_basis)
 		line = {
 			**_without_name(row),
 			columns.correction: correction.amount if correction else ZERO,
 			columns.reason: correction.reason if correction else "",
+			columns.basis: basis,
 			columns.manual: 0,
 		}
 		lines.append(line)
@@ -183,12 +194,38 @@ def restored(stored: Iterable[Row], sent: Iterable[Row], columns: Columns) -> li
 			line = {**row, **dict.fromkeys(columns.amounts, ZERO), columns.manual: 1}
 		else:
 			line = {**row, **{column: before.get(column) for column in columns.filled}, columns.manual: 0}
+		line[columns.basis] = ZERO if line[columns.manual] else _basis(before, row, columns)
 		lines.append(line)
 	removed = next((row for row in by_name.values() if not _manual(row, columns)), None)
 	if removed is not None:
 		raise OverrideError(Problem.REMOVED, _key(removed, columns))
 	_refuse_duplicates(lines, columns)
 	return [_with_reported(line, columns) for line in lines]
+
+
+def _basis(before: Row, row: Row, columns: Columns) -> Decimal:
+	"""The amount a correction a save sends was made against: that of the stored correction while it stays as it is,
+	else the amount Berechnen computed for the stored line."""
+	correction = correction_of(row, columns)
+	if correction is None:
+		return ZERO
+	stored = correction_of(before, columns)
+	if stored is not None and (stored.amount, stored.reason) == (correction.amount, correction.reason):
+		return to_amount(before.get(columns.basis))
+	return to_amount(before.get(columns.amount))
+
+
+def stale(lines: Iterable[Row], columns: Columns) -> tuple[tuple[str, Decimal, Decimal], ...]:
+	"""The lines Berechnen computed whose correction was made against another amount than the one it computes now, as
+	key, basis and amount, in their order."""
+	found = []
+	for line in lines:
+		if _manual(line, columns) or correction_of(line, columns) is None:
+			continue
+		basis, amount = to_amount(line.get(columns.basis)), to_amount(line.get(columns.amount))
+		if basis != amount:
+			found.append((_key(line, columns), basis, amount))
+	return tuple(found)
 
 
 def kept(rows: Iterable[Row], stored: Iterable[Row], columns: Columns) -> bool:

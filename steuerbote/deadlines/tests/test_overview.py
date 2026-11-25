@@ -102,6 +102,21 @@ class UpcomingTest(TestCase):
 		found = upcoming(RULES, (), TODAY, 30, holidays={date(2026, 12, 10)})
 		self.assertEqual(found[-1], deadline(VA, NOVEMBER, "November 2026", date(2026, 12, 11)))
 
+	def test_without_a_holiday_list_of_its_own_each_deadline_that_moves_says_so(self):
+		"""§ 108 Abs. 3 AO moves a deadline off the holidays at the seat of the authority; a company without a Holiday
+		List gets those of every state only, and each deadline that moves says so."""
+		found = upcoming(RULES, (), TODAY, 30, holidays_complete=False)
+		self.assertTrue(found)
+		self.assertTrue(all(item.notes == (Note.NATIONWIDE_HOLIDAYS,) for item in found))
+		self.assertTrue(all(item.notes == () for item in upcoming(RULES, (), TODAY, 30)))
+
+	def test_the_days_of_the_jahresabschluss_do_not_move_and_get_no_note_on_holidays(self):
+		found = upcoming(ANNUAL_RULES, (), SUMMER, 400, holidays_complete=False)
+		self.assertEqual(
+			{item.kind for item in found if Note.NATIONWIDE_HOLIDAYS not in item.notes},
+			{FESTSTELLUNG, OFFENLEGUNG},
+		)
+
 	def test_the_sondervorauszahlung_follows_the_voranmeldung_due_on_the_same_day(self):
 		rules = CompanyRules(
 			COMPANY,
