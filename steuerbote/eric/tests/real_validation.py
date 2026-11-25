@@ -127,8 +127,19 @@ def ebilanzen() -> list[tuple[str, str, str, str]]:
 	shareholders = replace(
 		MASTER,
 		shareholders=(
-			Gesellschafter("Muster Beteiligungs GmbH", ShareholderKind.CORPORATION, Decimal("50")),
-			Gesellschafter("Erika Beispiel", ShareholderKind.NATURAL_PERSON, Decimal("33.3333")),
+			Gesellschafter(
+				"Muster Beteiligungs GmbH",
+				ShareholderKind.CORPORATION,
+				Decimal("50"),
+				steuernummer="5133081508159",
+				wid="DE123456788-00001",
+			),
+			Gesellschafter(
+				"Erika Beispiel",
+				ShareholderKind.NATURAL_PERSON,
+				Decimal("33.3333"),
+				steuernummer="5230099990012",
+			),
 			Gesellschafter("Muster KG", ShareholderKind.PARTNERSHIP, Decimal("16.6667")),
 		),
 	)

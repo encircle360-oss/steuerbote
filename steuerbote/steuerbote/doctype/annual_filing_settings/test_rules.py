@@ -496,7 +496,7 @@ class IdentifierTest(TestCase):
 		self.assertEqual(
 			str(raised.exception),
 			"Row 2 of the shareholders: a Wirtschafts-Identifikationsnummer is DE and nine digits, for the E-Bilanz "
-			"with its five-digit Unterscheidungsmerkmal, such as DE123456789-00001.",
+			"with a hyphen and its five-digit Unterscheidungsmerkmal.",
 		)
 
 	def test_the_steuernummer_of_a_shareholder_in_the_13_digit_form_for_elster(self):
