@@ -203,6 +203,7 @@ An der Gewerbesteuererklärung dazu: genau eine Betriebsstätte im Erhebungszeit
 | `KST-EBILANZ-ABWEICHUNG` | Fehler, Hinweis | der Jahresüberschuss der E-Bilanz weicht um einen Euro oder mehr von dem der Bücher ab; ein Hinweis, wo die E-Bilanz ein anderes Finanzbuch liest als die Erklärung |
 | `KST-EIGENKAPITAL-QUELLE` | Hinweis | woher KSt 1 F Zeilen 17 und 18 kommen: aus der abgegebenen E-Bilanz des Vorjahres oder von Hand |
 | `KST-KONTO-OHNE-ZUORDNUNG` | Fehler | ein Konto mit Saldo, dem die Vorgaben einen Platz geben und die Zuordnung nicht |
+| `KST-KONTO-UNBEKANNT` | Hinweis | ein Konto mit Saldo, das die Zuordnung nicht einordnet und das der DATEV-Kontenrahmen der Vorgaben gar nicht kennt, etwa SKR03 2723 oder 2323 einer früheren Ausgabe für den Verkauf von Anteilen: Es zählt nur im Jahresüberschuss, ein Ergebnis nach § 8b KStG darauf bliebe voll besteuert |
 | `KST-KONTO-OHNE-NUMMER` | Fehler | ein Erfolgskonto ohne Kontonummer mit Saldo |
 | `KST-KONTO-OHNE-KATEGORIE` | Fehler | ein beobachtetes Konto der Stufe „Sperrt“ hat einen Saldo |
 | `KST-KONTO-BEOBACHTET` | Hinweis | ein beobachtetes Konto der Stufe „Hinweis“ hat einen Saldo |
@@ -213,6 +214,7 @@ An der Gewerbesteuererklärung dazu: genau eine Betriebsstätte im Erhebungszeit
 | `KST-UMSATZ-FEHLT` | Fehler | die Zuwendungen übersteigen 20 % der Summe der Einkünfte, und Anlage Z Zeile 10 fehlt |
 | `KST-8B-EINZELANGABEN` | Fehler | eine Summe der Anlage GK Zeilen 166b, 166c, 176 oder 188 ohne Einzelangabe in den § 8b-Ergebnissen |
 | `KST-BETEILIGUNG-UNBEKANNT` | Fehler | Bezüge einer Beteiligung, die die Einstellungen für das Jahr nicht nennen |
+| `KST-BETEILIGUNG-OHNE-ANTEIL` | Fehler | Bezüge einer Beteiligung, deren Zeile in den Einstellungen für das Jahr keinen Anteil nennt: Ohne ihn wäre sie Streubesitz, und ihre Bezüge blieben voll steuerpflichtig, auch bei der Kürzung nach § 9 Nr. 2a GewStG |
 | `KST-STREUBESITZ` | Hinweis | Bezüge der Bücher, die keiner Zeile „Bezüge“ der § 8b-Ergebnisse gehören, bleiben als Streubesitz steuerpflichtig |
 | `KST-BEZUEGE-UEBER-HAUPTBUCH` | Fehler | die § 8b-Ergebnisse nennen mehr Bezüge, als die Bücher haben |
 | `KST-8B-ABSATZ-7` | Hinweis | nach den Einstellungen gilt § 8b Abs. 7 KStG (KSt 1 Zeile 16) |
@@ -332,7 +334,8 @@ Steuerbote ersetzt keine Steuerberatung. Vor der ersten Erklärung, die abgegebe
 
 - Die Vordrucke 2026 sind vorläufig die von 2025, siehe [Vorläufige Vordrucke 2026](#vorläufige-vordrucke-2026).
 - Eine Betriebsstätte in einer Gemeinde; keine Zerlegung (GewSt 1 D). Keine oder mehrere Betriebsstätten halten die Gewerbesteuererklärung an.
-- Keine Organschaft, keine Anlage AESt und kein Investmentsteuergesetz: Salden auf ausländischen Steuern (SKR03 2218 und 2219, SKR04 7638 und 7639) und aus Investmentfonds halten die Erklärung an.
+- Keine Organschaft, keine Anlage AESt und kein Investmentsteuergesetz: Salden auf ausländischen Steuern (SKR03 2218 und 2219, SKR04 7638 und 7639) und aus Investmentfonds halten die Erklärung an. Die Erklärung mit Anlage AESt gibt dann die Steuerberatung ab, und der Beleg wird als außerhalb abgegeben vermerkt; das sagt auch der Befund. Erträge aus Investmentfonds erkennt Steuerbote nur auf den Konten des Handels (SKR03 2654 und 2166, SKR04 7115 und 6883); eine Ausschüttung eines Fonds oder ETF auf „Zins- und Dividendenerträge“ (SKR03 2640, SKR04 7020) zählt ohne Teilfreistellung (§ 20 InvStG), und die Kontenzuordnung beobachtet das Konto nur mit einem Hinweis.
+- **Konten der Anteile ohne Kennzeichen.** DATEV kennzeichnet die Ergebnisse aus Anteilen nach § 8b KStG nur auf eigenen Konten (etwa SKR03 2615, 2616, 2723 einer früheren Ausgabe, 2724, 4871; SKR04 7005, 7006, 4904, 7204). Auf „Erträge aus Beteiligungen“ (SKR03 2600 und 2619, SKR04 7000 und 7009) hält ein Saldo die Erklärung an (`KST-KONTO-OHNE-KATEGORIE`), bis das Konto in der Kontenzuordnung Ertragsteuern seine Kategorie hat oder der Betrag auf einem gekennzeichneten Konto steht; auf Zins- und Dividendenerträgen, Erträgen aus Wertpapieren des Finanzanlagevermögens, dem Abgang von Gegenständen des Umlaufvermögens und Abschreibungen auf Finanzanlagen und Wertpapiere gibt er einen Hinweis (`KST-KONTO-BEOBACHTET`, Vorgaben ab Stand 2026.2). Ein Konto, das der DATEV-Kontenrahmen 2026 nicht kennt, nennt `KST-KONTO-UNBEKANNT`.
 - Ein Wirtschaftsjahr je Jahr: Anlage GK und KSt 1 F für ein zweites Wirtschaftsjahr, etwa bei der Umstellung des Wirtschaftsjahres, gibt Steuerbote nicht ab.
 - Anlage GK Zeile 11 kommt aus der E-Bilanz des Jahres, ohne sie aus dem Hauptbuch mit der Überleitung von Hand; KSt 1 F Zeilen 17 und 18 kommen aus der abgegebenen E-Bilanz des Vorjahres, ohne sie von Hand. Das Finanzbuch der Steuerbilanz liest die Erklärung nur über die E-Bilanz.
 - Von Anlage WA gibt Steuerbote die Zeilen 2, 3 und 15 ab; die Einzelangaben der Zeile 16 nicht.
