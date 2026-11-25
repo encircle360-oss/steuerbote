@@ -18,7 +18,7 @@ from typing import Any
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, formatdate
+from frappe.utils import cint, escape_html, formatdate
 
 from steuerbote import prior_filings, ustva
 from steuerbote.ledger import account_labels, account_names
@@ -52,13 +52,17 @@ PARTY_FIELDS = MappingProxyType(
 )
 
 
-def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def execute(filters: dict | None = None) -> tuple:
+	"""The columns and rows of the report; for a year or period it cannot show, no rows and the reason as the message of
+	the report, which leaves the grid ready for other filters."""
 	filters = frappe._dict(filters or {})
 	if any(filters.get(name) in (None, "") for name in FILTERS):
 		return get_columns(), []
 	company = filters.company
 	frappe.has_permission("Company", "read", doc=company, throw=True)
-	period = _period(filters)
+	period, reason = _period(filters)
+	if period is None:
+		return get_columns(), [], reason
 	settings = settings_for(company)
 	mapping = mapping_for(company, period.year)
 	ledger = VatLedger.for_period(company, period)
@@ -94,11 +98,18 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 
 
 def get_columns() -> list[dict[str, Any]]:
+	"""The amounts come right after the Kennzahl, so that a narrow window shows them without scrolling; the vouchers
+	behind a Kennzahl follow."""
 	money = {"fieldtype": "Currency", "options": "currency", "width": 130}
 	return [
 		{"fieldname": "kennzahl", "label": _("Kennzahl"), "fieldtype": "Data", "width": 100},
 		{"fieldname": "line", "label": _("Form Line"), "fieldtype": "Int", "width": 90},
 		{"fieldname": "label", "label": _("Label"), "fieldtype": "Data", "width": 300},
+		{"fieldname": "reported", "label": _("Form Amount"), **money},
+		{"fieldname": "amount", "label": _("Ledger Amount"), **money},
+		{"fieldname": "previous_period", "label": _("Previous Period"), **money},
+		{"fieldname": "previous_year", "label": _("Previous Year"), **money},
+		{"fieldname": "difference", "label": _("Difference to Previous Period"), **money, "width": 170},
 		{"fieldname": "posting_date", "label": _("Posting Date"), "fieldtype": "Date", "width": 110},
 		{
 			"fieldname": "voucher_type",
@@ -125,11 +136,6 @@ def get_columns() -> list[dict[str, Any]]:
 		},
 		{"fieldname": "debit", "label": _("Debit"), **money},
 		{"fieldname": "credit", "label": _("Credit"), **money},
-		{"fieldname": "amount", "label": _("Ledger Amount"), **money},
-		{"fieldname": "reported", "label": _("Form Amount"), **money},
-		{"fieldname": "previous_period", "label": _("Previous Period"), **money},
-		{"fieldname": "previous_year", "label": _("Previous Year"), **money},
-		{"fieldname": "difference", "label": _("Difference to Previous Period"), **money, "width": 170},
 		{
 			"fieldname": "currency",
 			"label": _("Currency"),
@@ -140,20 +146,19 @@ def get_columns() -> list[dict[str, Any]]:
 	]
 
 
-def _period(filters: frappe._dict) -> ustva.Period:
+def _period(filters: frappe._dict) -> tuple[ustva.Period | None, str | None]:
+	"""The period of the filters, or None and why the report cannot show it."""
 	year = cint(filters.year)
 	try:
 		ustva.catalogue_for(year)
 	except ustva.UnknownYearError:
-		frappe.throw(_("Steuerbote has no Kennzahlen for {0} yet.").format(year))
+		return None, _("Steuerbote has no Kennzahlen for {0} yet.").format(year)
 	try:
-		return ustva.Period(year, ustva.Rhythm(filters.rhythm), cint(filters.period_index))
+		return ustva.Period(year, ustva.Rhythm(filters.rhythm), cint(filters.period_index)), None
 	except ValueError:
-		frappe.throw(
-			_(
-				"Filing {0}, there is no Voranmeldungszeitraum {1}: months run from 1 to 12, quarters from 1 to 4."
-			).format(_(filters.rhythm), filters.period_index)
-		)
+		return None, _(
+			"Filing {0}, there is no Voranmeldungszeitraum {1}: months run from 1 to 12, quarters from 1 to 4."
+		).format(_(filters.rhythm), escape_html(str(filters.period_index)))
 
 
 def _calculate(
