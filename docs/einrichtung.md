@@ -194,7 +194,7 @@ Steuerbote lässt die USt-IdNrn. der Kunden und Lieferanten aus anderen Mitglied
 2. **Automatische Prüfung.** Sie ist ausgeschaltet; bis sie eingeschaltet ist, bestätigt Steuerbote nur auf Knopfdruck. Der Schritt „Automatische USt-IdNr.-Prüfung“ von „Steuerbote einrichten“ schaltet sie ein, siehe [Die automatische Prüfung](ust-idnr-pruefung.md#die-automatische-prüfung).
 3. **Einstellungen abstimmen.** Abschnitt „USt-IdNr.-Prüfung“ und „Höchstalter der USt-IdNr.-Bestätigung (Tage)“, mit den Vorgaben und ihrer Wirkung unter [Einstellungen](ust-idnr-pruefung.md#einstellungen); die Höchstalter klärt das Unternehmen mit der Steuerberatung, siehe [Prüfliste](pruefliste-steuerberatung.md#ust-idnrn-der-geschäftspartner).
 4. **Stammdaten der Partner.** Kunden und Lieferanten aus anderen Mitgliedstaaten bekommen eine Hauptadresse mit Ort, damit Steuerbote qualifiziert fragt. Steuernummern deutscher Partner und Nummern von außerhalb der EU gehören in „Steuernummer“ und „Ausländische Steuernummer“, nicht in die USt-IdNr.
-5. **Arbeitsliste.** Der Bericht „Partner ohne aktuelle USt-IdNr-Bestätigung“ („Offene USt-IdNrn.“ in der Seitenleiste) nennt jeden Partner, dem noch eine aktuelle Bestätigung fehlt, und warum.
+5. **Arbeitsliste.** Der Bericht „Partner ohne aktuelle USt-IdNr-Bestätigung“ („Offene Bestätigungen“ in der Seitenleiste) nennt jeden Partner, dem noch eine aktuelle Bestätigung fehlt, und warum.
 6. **Datenschutz.** Die Bestätigung sendet Daten der Partner an das BZSt und ersatzweise an VIES; was die Datenschutzhinweise und das Verarbeitungsverzeichnis dazu sagen sollten, steht unter [Datenschutz](ust-idnr-pruefung.md#datenschutz).
 
 ## Zuordnung exportieren und importieren

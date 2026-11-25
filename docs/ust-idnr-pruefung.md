@@ -321,7 +321,7 @@ Am Ende zeigt jede Zeile der Zusammenfassenden Meldung die letzte Prüfung ihrer
 
 ### Arbeitsliste
 
-Der Bericht „Partner ohne aktuelle USt-IdNr-Bestätigung“ (in der Seitenleiste „Offene USt-IdNrn.“, im Arbeitsbereich „Steuern“ unter „Zusammenfassende Meldung“) listet je Unternehmen jeden Kunden und Lieferanten, mit dem es zu tun hat und dessen USt-IdNr. keine aktuelle Bestätigung hat; ein Filter wählt Kunden oder Lieferanten. Partner ohne USt-IdNr. stehen nicht darauf, Partner mit deutscher USt-IdNr. nur, wenn das Unternehmen deutsche USt-IdNrn. prüft. Der Name des Berichts schreibt „USt-IdNr“ ohne Punkt, weil Frappe aus dem Namen eines Berichts den Pfad seines Python-Moduls bildet.
+Der Bericht „Partner ohne aktuelle USt-IdNr-Bestätigung“ (auf seiner Seite „Offene USt-IdNr.-Bestätigungen“, in der Seitenleiste und im Arbeitsbereich „Steuern“ unter „Zusammenfassende Meldung“ „Offene Bestätigungen“, vor „Alle Bestätigungen“, der Liste jeder Bestätigung) listet je Unternehmen jeden Kunden und Lieferanten, mit dem es zu tun hat und dessen USt-IdNr. keine aktuelle Bestätigung hat; ein Filter wählt Kunden oder Lieferanten. Partner ohne USt-IdNr. stehen nicht darauf, Partner mit deutscher USt-IdNr. nur, wenn das Unternehmen deutsche USt-IdNrn. prüft. Der Name des Berichts schreibt „USt-IdNr“ ohne Punkt, weil Frappe aus dem Namen eines Berichts den Pfad seines Python-Moduls bildet.
 
 | Stand | Bedeutung |
 |---|---|
