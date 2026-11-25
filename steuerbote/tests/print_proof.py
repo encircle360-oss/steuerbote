@@ -174,9 +174,9 @@ def proof_all(directory: str) -> None:
 			printed = {}
 			for engine, bundle in renders:
 				stem = f"{slug(print_format)}__{variant}__{engine}{'__mit-druckstil' if bundle else ''}"
-				problems, pages = proof(out, stem, doc, print_format, together, engine, bundle)
+				problems, pages, lines = proof(out, stem, doc, print_format, together, engine, bundle)
 				if not bundle:
-					printed[engine] = pages
+					printed[engine] = lines
 				failed = failed or bool(problems)
 				report.append(
 					f"- {stem}: {len(pages)} Seiten{'' if not problems else ', ' + '; '.join(problems)}"
@@ -432,11 +432,12 @@ def renamed(doc):
 
 def proof(
 	out: Path, stem: str, doc, print_format: str, together, engine: str, bundle: bool
-) -> tuple[list[str], list[printouts.Page]]:
+) -> tuple[list[str], list[printouts.Page], list[printouts.Page]]:
+	"""The problems of a printout, its pages as pdftotext reads them and its pages with the text at its baselines."""
 	try:
 		pdf = render(doc, print_format, engine, bundle)
 	except Exception as error:
-		return [f"nicht gedruckt: {error}"], []
+		return [f"nicht gedruckt: {error}"], [], []
 	path = out / f"{stem}.pdf"
 	path.write_bytes(pdf)
 	pdftotext = shutil.which("pdftotext") or "pdftotext"
@@ -455,7 +456,28 @@ def proof(
 		nowhere=ENGLISH,
 		margins=MARGINS,
 	)
-	return printouts.check(pages, expected), pages
+	return printouts.check(pages, expected), pages, baselines(path)
+
+
+def baselines(path: Path) -> list[printouts.Page]:
+	"""The pages of a PDF with each piece of text as a word whose box is its baseline, in points from the top edge.
+	pdftotext boxes a word by the ascent and descent of its font, and the two generators embed the same font with
+	different ones; the baseline is where both set the text."""
+	from pypdf import PdfReader
+
+	pages = []
+	for page in PdfReader(path).pages:
+		height = float(page.mediabox.height)
+		words = []
+
+		def visit(text, cm, tm, _font, _size, words=words, height=height):
+			if text.strip():
+				base = height - (tm[4] * cm[1] + tm[5] * cm[3] + cm[5])
+				words.append(printouts.Word(0.0, base, 0.0, base, text.strip()))
+
+		page.extract_text(visitor_text=visit)
+		pages.append(printouts.Page(float(page.mediabox.width), height, tuple(words)))
+	return pages
 
 
 def render(doc, print_format: str, engine: str, bundle: bool) -> bytes:
