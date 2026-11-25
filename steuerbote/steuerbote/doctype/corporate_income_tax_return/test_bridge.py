@@ -1131,6 +1131,7 @@ class Kst1Test(TestCase):
 		self.assertIs(filed[("E8000703", ())], True)
 		self.assertIs(filed[("E8122601", ())], True)
 		self.assertIs(filed[("E8122111", (0,))], True)
+		self.assertEqual(filed[("E8122106", (0, 0))], founded)
 
 	def test_says_for_each_shareholder_whether_its_data_changed(self):
 		"""KSt 1 line 21a: ERiC refuses an Anteilseigner without it, rule 8912022 („NichtAlleFelderOderKeinFeldAngegeben
@@ -1145,7 +1146,6 @@ class Kst1Test(TestCase):
 		)
 		filed = self.kst1(settings=settings)
 		self.assertEqual((filed[("E8122111", (0,))], filed[("E8122111", (1,))]), (False, True))
-		self.assertEqual(filed[("E8122106", (0, 0))], founded)
 
 	def test_the_trading_book_and_the_steuerberatung_of_the_year(self):
 		advisor = bridge.Advisor(

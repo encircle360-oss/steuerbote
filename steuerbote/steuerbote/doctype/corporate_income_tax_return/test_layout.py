@@ -77,6 +77,7 @@ class SectionsTest(TestCase):
 		self.assertEqual(
 			[row for row in rows if row[1]],
 			[
+				("21a", "1", "Nein"),
 				("22c", "1", "Erika Muster"),
 				("22d", "1", "Musterweg 2"),
 				("22e", "1", "12345 Musterstadt"),

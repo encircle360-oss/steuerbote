@@ -42,7 +42,7 @@ from steuerbote.eric.datenart import gewst as gewst_datenart
 from steuerbote.eric.simulation import gewst as gewst_rules
 from steuerbote.gewst.chain import STEPS, GewstInputs, GewstResult
 from steuerbote.gewst.chain import compute as compute_gewst
-from steuerbote.gewst.form import BEG_LINES, catalogue_for, vordrucke
+from steuerbote.gewst.form import BEG_LINES, beg_lines, catalogue_for, vordrucke
 from steuerbote.gewst.years import year_of
 from steuerbote.jahresmeldung.findings import Finding
 from steuerbote.jahresmeldung.overrides import Columns, to_amount
@@ -351,8 +351,8 @@ def general_entries(ret: Return, settings: kst.Settings | None, municipalities: 
 
 def beg_vordruck(row: Row) -> Vordruck:
 	"""Anlage BEG of a row of the table of holdings, as steuerbote.gewst.form writes it: the name and the dividends, the
-	Kürzung of line 7 with the costs of lines 8 and 9 that are not zero, line 12 beside line 14, and lines 14 to 19
-	that are not zero (rules 40921, 40933 and 40969)."""
+	Kürzung of line 7 with the costs of lines 8 and 9 that are not zero, lines 12 and 14 together, and lines 15 to 19 as
+	steuerbote.gewst.form.beg_lines() files them (rules 40921, 40933, 40944, 40946 to 40949 and 40969)."""
 	entries = [
 		Entry(BEG_NAME, str(row.get("holding_name")).strip()),
 		Entry(BEG_DIVIDENDS, to_amount(row.get("dividends"))),
@@ -368,13 +368,11 @@ def beg_vordruck(row: Row) -> Vordruck:
 				entries.append(Entry(feldkennung, costs))
 	exempt, not_exempt = to_amount(row.get("exempt")), to_amount(row.get("not_exempt"))
 	if exempt or not_exempt:
-		entries.append(Entry(BEG_EXEMPT, exempt))
-	if not_exempt:
-		entries.append(Entry(BEG_NOT_EXEMPT, not_exempt))
-	columns = dict(BEG_COLUMNS)
-	for attribute, feldkennung in BEG_LINES:
-		if amount := to_amount(row.get(columns[attribute])):
-			entries.append(Entry(feldkennung, amount))
+		entries += [Entry(BEG_EXEMPT, exempt), Entry(BEG_NOT_EXEMPT, not_exempt)]
+	amounts = {
+		feldkennung: to_amount(row.get(BEG_COLUMNS[attribute])) for attribute, feldkennung in BEG_LINES
+	}
+	entries += beg_lines(amounts, {entry.feldkennung for entry in entries})
 	return Vordruck("BEG", tuple(entries))
 
 
