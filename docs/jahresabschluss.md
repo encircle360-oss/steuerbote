@@ -135,7 +135,7 @@ Neben den Befunden der Bilanzzuordnung (`BILANZ-…`) schreibt „Berechnen“ d
 | `JA-ARBEITNEHMER-ART` | Hinweis | die Einstellungen lassen Arten der Beschäftigung aus, die Mitarbeiter haben aber keine |
 | `JA-VORJAHR-FEHLT` | Fehler | kein Vorjahr in den Büchern und keines von Hand |
 | `JA-GROESSE-EINSTELLUNGEN` | Hinweis | die Größenmerkmale der Einstellungen nennen für den Abschlussstichtag nicht die angewandte Klasse; nennen sie keine, rechnet die Frist der Feststellung am Beleg mit der angewandten Klasse (elf Monate für eine kleine Gesellschaft), Offene Fristen weiter nach den Einstellungen |
-| `SB-RUECKSTELLUNG-ABWEICHUNG` | Hinweis | die Rückstellungen für die Steuern vom Einkommen und Ertrag in den Büchern weichen von der zuletzt berechneten Körperschaft- und Gewerbesteuererklärung ab (§ 249 Abs. 1 Satz 1 HGB); „Rückstellungen vorschlagen“ an der Körperschaftsteuererklärung schlägt die Differenz vor |
+| `SB-RUECKSTELLUNG-ABWEICHUNG` | Hinweis | die Rückstellungen für die Steuern vom Einkommen und Ertrag in den Büchern weichen von den Steuern ab, die die zuletzt berechnete Körperschaftsteuererklärung mit der Gewerbesteuer aus den Büchern von heute berechnet, auch ohne neues „Berechnen“ der Erklärungen (§ 249 Abs. 1 Satz 1 HGB); „Rückstellungen vorschlagen“ an der Körperschaftsteuererklärung schlägt die Differenz vor |
 | `JA-UG-RUECKLAGE` | Fehler | eine UG stellt weniger als ein Viertel ihres Jahresüberschusses in die gesetzliche Rücklage ein (§ 5a Abs. 3 Satz 1 GmbHG) |
 | `JA-HINTERLEGUNG` | Hinweis | eine Kleinstkapitalgesellschaft veröffentlicht, was sie hinterlegen könnte |
 | `JA-KORREKTUR` | Fehler | eine Korrektur einer Zeile, die die Klasse nicht zeigt |

@@ -20,6 +20,8 @@ from playwright.sync_api import ConsoleMessage, Download, Locator, Page, Request
 REFUSED_RESOURCE = re.compile(r"Failed to load resource: the server responded with a status of 4\d\d\b")
 SERVER_TRACEBACK = "Traceback (most recent call last):"
 DOC_METHOD = "/api/method/run_doc_method"
+# The method that makes the PDF of a print format with the PDF generator of the site, as the button PDF loads it.
+PRINTED_PDF = "/api/method/frappe.utils.print_format.download_pdf"
 # The entries of the sidebar of the module, and those of them that are groups (frappe/public/js/frappe/ui/sidebar).
 SIDEBAR_ENTRIES = ".body-sidebar .sidebar-items > .sidebar-item-container"
 CLOSED_GROUPS = f"{SIDEBAR_ENTRIES}.section-item:has(> .nested-container.hidden) > .standard-sidebar-item"
@@ -267,6 +269,15 @@ class Desk:
 			if page is not self.page:
 				page.close()
 		return download.value
+
+	def printed(self) -> tuple[bytes, list[str]]:
+		"""What Drucken in the print view prints: the PDF the desk asks the server for, and the address of every
+		window the click opened, where the browser would print the HTML of the print view instead."""
+		opened: list[str] = []
+		self.page.context.on("page", lambda page: opened.append(page.url))
+		with self.page.expect_response(lambda response: PRINTED_PDF in response.url) as answer:
+			self.page.locator(".page-actions .primary-action").click()
+		return answer.value.body(), opened
 
 	def called(self, method: str) -> bool:
 		"""Whether the page asked the server to run the document method."""

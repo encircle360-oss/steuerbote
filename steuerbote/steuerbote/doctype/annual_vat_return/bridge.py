@@ -176,6 +176,11 @@ FIRST_USE = "first_use"
 # 3830 of the same names. The defaults of the Voranmeldung leave them without Kennzahl for that reason
 # (steuerbote/ustva/defaults.py).
 PAYMENT_ACCOUNTS = MappingProxyType({"SKR03": ("1780", "1781"), "SKR04": ("3820", "3830")})
+# The accounts of the Umsatzsteuer of a year the Vorauszahlungen are settled against, DATEV Kontenrahmen 2026, SKR 03
+# „1789 Umsatzsteuer laufendes Jahr“, „1790 Umsatzsteuerverbindlichkeiten Vorjahr“ and „1791
+# Umsatzsteuerverbindlichkeiten frühere Jahre“, SKR 04 3840, 3841 and 3845 (steuerbote/ebilanz/defaults.py). A voucher
+# that moves the Vorauszahlungen only to these accounts, as at the start of a year, pays nothing to the Finanzamt.
+SETTLEMENT_ACCOUNTS = MappingProxyType({"SKR03": ("1789", "1790", "1791"), "SKR04": ("3840", "3841", "3845")})
 # The cause of the difference of a period, as the table Voranmeldungszeiträume names it.
 CAUSES = MappingProxyType(
 	{
@@ -688,6 +693,12 @@ def switch_findings(year: int, switch: date | None, kz136: date | None) -> tuple
 
 OFFICIAL_RULE = "{0} (ERiC rule {1}; condition: {2})"
 """A rule of the Jahresdokumentation with its official text first and its condition as the detail."""
+UNTEXTED_RULE = (
+	"ERiC rule {0} applies: {1}. The official text of the rule comes from the Jahresdokumentation of the ERiC "
+	"documentation, which this server does not have: the operator names its directory in the environment variable "
+	"STEUERBOTE_ERIC_DOC_DIR of the web and worker processes."
+)
+"""A rule of the Jahresdokumentation where the site has no documentation to read its official text from."""
 RULE_TEXT = "Fehler- /Hinweistext"
 """The column of the official text of a rule in the sheets „<Vordruck> - Regeln“ of a Jahresdokumentation."""
 
@@ -709,13 +720,16 @@ def findings(
 	"""The findings of the core as the table Befunde keeps them: code and severity of the rule, the message in the
 	words ``translate`` gives the template, and the fields it names as the reference. A rule the core names only by
 	its code and condition (rules.RULE) shows the official text ``texts`` holds for its code first, where the
-	Jahresdokumentation is installed, and the condition as the detail."""
+	Jahresdokumentation is installed, and the condition as the detail; without the documentation on the site
+	(``texts`` None) it says where the text would come from."""
 	rows = []
 	for finding in found:
 		template, values = finding.template, finding.values
 		official = (texts or {}).get(finding.code)
 		if template == rules.RULE and official:
 			template, values = OFFICIAL_RULE, (official, *values)
+		elif template == rules.RULE and texts is None:
+			template = UNTEXTED_RULE
 		rows.append(
 			AnnualFinding(
 				finding.code,
@@ -882,6 +896,11 @@ def journal_entry_lines(lines: Iterable[LedgerLine]) -> tuple[tuple[LedgerLine, 
 def payment_accounts(chart: str) -> tuple[str, ...]:
 	"""The accounts of the payments to the Finanzamt in the chart, none for a chart of its own."""
 	return PAYMENT_ACCOUNTS.get(chart, ())
+
+
+def settlement_accounts(chart: str) -> tuple[str, ...]:
+	"""The accounts of the Umsatzsteuer of a year in the chart, none for a chart of its own."""
+	return SETTLEMENT_ACCOUNTS.get(chart, ())
 
 
 def paid(lines: Iterable[LedgerLine], accounts: Collection[str]) -> Decimal | None:

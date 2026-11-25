@@ -356,6 +356,16 @@ class TestAnnualAccounts(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "holds the Ergebnisverwendung proposed before"):
 			doc.make_appropriation_entry()
 
+	def test_the_draft_of_the_ergebnisverwendung_may_be_deleted_to_make_it_again(self):
+		doc = data.ready_for_the_feststellung(KLEINST, appropriation_dividend=5000)
+		with self.freeze_time(data.AFTER_ADOPTION):
+			doc.submit()
+			name = doc.make_appropriation_entry()
+			frappe.delete_doc("Journal Entry", name)
+			self.assertIsNone(frappe.db.get_value(doc.doctype, doc.name, "appropriation_entry"))
+			again = doc.make_appropriation_entry()
+		self.assertEqual(frappe.db.get_value("Journal Entry", again, "docstatus"), 0)
+
 	def test_the_uebermittlung_and_the_einstellung_move_the_festgestellter_jahresabschluss_on(self):
 		doc = data.ready_for_the_feststellung(KLEINST)
 		with self.freeze_time(data.AFTER_ADOPTION):
