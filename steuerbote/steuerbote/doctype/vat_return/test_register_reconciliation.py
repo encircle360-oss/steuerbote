@@ -151,6 +151,11 @@ class TestRegisterReconciliation(IntegrationTestCase):
 			COMPANY, "2026-09-10", [(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)]
 		)
 
+	def setUp(self):
+		"""November has ended, so its return can be ready."""
+		super().setUp()
+		self.enterContext(self.freeze_time("2026-12-15 09:00:00", tick=True))
+
 	def roll_back_afterwards(self) -> None:
 		frappe.db.savepoint("register_test")
 		self.addCleanup(frappe.db.rollback, save_point="register_test")

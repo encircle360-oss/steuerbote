@@ -82,6 +82,8 @@ ACCOUNTS_USER = "steuerbote-uebermittlung@example.com"
 # The form of TransferTicketSType in headerbasis_datentypen.xsd, invented.
 MEIN_ELSTER_TICKET = "ab123cdefghijkmnopqrstuvwxyz0123"
 NOTE = "Am 9. Oktober 2026 von der Steuerberatung abgegeben"
+# A day after the periods of 2026 have ended, so that their returns can be sent.
+AFTER_2026 = "2027-01-04 09:00:00"
 STUB_TICKET = "et0stub0accepted0000000000000001"
 STUB_LIB = "ERiC-44.3.6.0/Linux-x86_64/lib"
 
@@ -403,6 +405,7 @@ class TestTransmission(TransmissionTestCase):
 		)
 
 	def test_a_send_that_may_have_reached_elster_blocks_sending_until_it_is_cleared(self):
+		self.enterContext(self.freeze_time(AFTER_2026, tick=True))
 		self.use_runtime()
 		doc = self.calculated(12)
 		lost = Message("SB-WORKER", "ERiC hat nach 120 Sekunden nicht geantwortet.", ERROR)
@@ -490,6 +493,7 @@ class TestTransmission(TransmissionTestCase):
 		self.assertEqual(frappe.db.get_value(TRANSMISSION, second, "status"), "Läuft")
 
 	def test_a_send_whose_job_is_gone_has_an_unknown_outcome_and_is_not_repeated(self):
+		self.enterContext(self.freeze_time(AFTER_2026, tick=True))
 		self.use_runtime()
 		doc = self.calculated(11)
 		first, _ = self.transmit(doc, "send", self.stash(doc))

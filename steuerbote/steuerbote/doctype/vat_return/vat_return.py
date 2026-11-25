@@ -466,18 +466,18 @@ class VATReturn(Confirming, Transmittable, Document):
 		self._require_explained_differences()
 
 	def _not_ready(self) -> str:
-		"""Why a return that is not ready is filed with remarks only: a period that had not ended when it was
-		calculated, the forms of a provisional year, or else the Verprobung and the watched accounts."""
-		if any(row.code == plausibility.Code.PERIOD_NOT_ENDED for row in self.hints):
-			period = self._chosen_period(cint(self.year))
-			return _(
-				"{0} ends on {1}, and the return was calculated before: it is not ready. Calculate it again after that day, or explain in the remarks why it is filed nonetheless."
-			).format(period.label, formatdate(period.end))
+		"""Why a return that is not ready is filed with remarks only: the forms of a provisional year, a period that had
+		not ended when it was calculated, or else the Verprobung and the watched accounts."""
 		forms = bridge.provisional_forms(cint(self.year))
 		if forms is not None:
 			return _(
 				"Steuerbote has the forms of {0} provisionally from the documentation of {1} and form USt 1 A {2}: until ERiC and the BMF publish those of {0}, the return is not ready. Explain in the remarks why it is filed nonetheless."
 			).format(cint(self.year), forms["documentation"], forms["form_year"])
+		if any(row.code == plausibility.Code.PERIOD_NOT_ENDED for row in self.hints):
+			period = self._chosen_period(cint(self.year))
+			return _(
+				"{0} ends on {1}, and the return was calculated before: it is not ready. Calculate it again after that day, or explain in the remarks why it is filed nonetheless."
+			).format(period.label, formatdate(period.end))
 		return _(
 			"The return is not ready: a Verprobung deviates or a watched account has a balance. Explain in the remarks why it is filed nonetheless."
 		)
