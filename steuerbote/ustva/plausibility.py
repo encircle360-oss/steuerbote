@@ -403,7 +403,7 @@ def derived_base_hints(derived: Iterable[DerivedBase], figures: Figures) -> list
 			f"Kz {base.kennzahl}: {books} {figures.money(base.tax)} Steuer auf „{base.label}“, {booked}, und {lines} "
 			"die Bemessungsgrundlage nicht eindeutig. Steuerbote hat sie aus der Steuer zurückgerechnet "
 			f"({figures.money(base.tax)} zu {figures.percent(base.rate)}) und meldet {figures.money(base.base)}; "
-			"bitte prüfe sie am Beleg."
+			"bitte prüfen Sie sie am Beleg."
 		)
 		voucher_type, _, voucher_no = (base.voucher or "").partition(":")
 		found.append(Hint(Code.BASE_FROM_TAX, text, voucher_type, voucher_no))
@@ -487,14 +487,14 @@ def _residence_text(finding: Finding) -> str:
 		case Problem.ADDRESS_ELSEWHERE:
 			return (
 				f"Kz {kz}: Beim Lieferanten {supplier} steht als Land {facts[0]}, seine Anschrift liegt aber in "
-				f"{facts[1]}. Steuerbote folgt dem Land; bitte prüfe, wo der Lieferant ansässig ist"
+				f"{facts[1]}. Steuerbote folgt dem Land; bitte prüfen Sie, wo der Lieferant ansässig ist"
 			)
 		case Problem.VAT_ID_PREFIX:
 			return (
 				f"Kz {kz}: Der Lieferant {supplier} hat das Land {facts[0]}, seine USt-IdNr. beginnt aber mit "
 				f"{facts[1]}. Steuerbote folgt dem Land, denn ansässig ist ein Unternehmer, wo er Sitz, "
 				"Geschäftsleitung oder eine Betriebsstätte hat (§ 13b Abs. 7 UStG), nicht wo er registriert ist; "
-				"bitte prüfe den Sitz am Beleg"
+				"bitte prüfen Sie den Sitz am Beleg"
 			)
 		case Problem.TEMPLATE_OTHER_FROM_MEMBER_STATE:
 			return (
@@ -506,7 +506,7 @@ def _residence_text(finding: Finding) -> str:
 			return (
 				f"Kz {kz}: {STATED_BY[facts[0]]} als sonstige Leistung aus dem übrigen Gemeinschaftsgebiet eingeordnet, "
 				f"der Lieferant {supplier} ist laut Stammdaten aber {RESIDENCES[facts[1]]} ansässig. Kz {kz} setzt einen "
-				"im übrigen Gemeinschaftsgebiet ansässigen Unternehmer voraus (§ 13b Abs. 1 UStG); bitte prüfe die "
+				"im übrigen Gemeinschaftsgebiet ansässigen Unternehmer voraus (§ 13b Abs. 1 UStG); bitte prüfen Sie die "
 				"Einordnung"
 			)
 		case Problem.EU_SERVICE_ACCOUNT_OUTSIDE:
