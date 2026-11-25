@@ -11,6 +11,7 @@ from steuerbote import ustjahr_sources
 from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for
 from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import execute
 from steuerbote.tests.helpers import (
+	ensure_fiscal_year,
 	make_account,
 	make_company,
 	make_mapping,
@@ -136,6 +137,7 @@ class TestPeriodAssignment(IntegrationTestCase):
 	def reverse_charge(self, posting: str):
 		"""A service under § 13b UStG booked on an expense account: its base is derived from its tax."""
 		a = self.account
+		ensure_fiscal_year(COMPANY, posting)
 		return post_journal_entry(
 			COMPANY,
 			posting,

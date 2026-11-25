@@ -9,6 +9,7 @@ from frappe.tests import IntegrationTestCase
 from steuerbote.ledger import load_bookings, load_lines
 from steuerbote.patches import set_the_assignment_to_the_voranmeldungszeitraum as patch
 from steuerbote.tests.helpers import (
+	ensure_fiscal_year,
 	make_account,
 	make_company,
 	make_mapping,
@@ -134,11 +135,16 @@ class VatPeriodsTest(IntegrationTestCase):
 			revenue="8125",
 		)
 		ledger = VatLedger.for_period(COMPANY, AUGUST)
-		self.assertIn(voucher, self.vouchers(ledger.lines(AUGUST)))
-		self.assertNotIn(voucher, self.vouchers(ledger.lines(JULY)))
+
+		def revenue_of(period: Period) -> list[str]:
+			return [line.voucher for line in ledger.lines(period) if line.account_number == "8125"]
+
+		self.assertEqual(revenue_of(AUGUST), [voucher])
+		self.assertEqual(revenue_of(JULY), [])
 
 	def test_a_journal_entry_counts_on_its_posting_date(self):
 		a = self.account
+		ensure_fiscal_year(COMPANY, "2026-08-31")
 		entry = post_journal_entry(
 			COMPANY, "2026-08-31", [(a["1200"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)]
 		)
