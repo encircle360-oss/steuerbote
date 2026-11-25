@@ -1,6 +1,7 @@
 {#-
 	E-Bilanz with the labels of the HGB-Taxonomie: the Bilanz in Kontoform, a row of each side beside the other, so that
-	the pages break between rows, the GuV, the steuerlicher Betriebsvermögensvergleich, the Anlagenspiegel (brutto), the
+	the pages break between rows, the GuV, the steuerlicher Betriebsvermögensvergleich, the Anlagenspiegel (brutto) with
+	each position on a line of its own above its amounts, so that eight columns of amounts fit the page, the
 	Kontennachweis and, for a Handelsbilanz, the Überleitungsrechnung with the amounts of the Steuerbilanz beside the
 	Bilanz and the GuV, as e_bilanz_print() of the document gives them from its tables (layout.print_sections); then the
 	corrections, the findings and the remarks. Each table carries its heading as the first row of its head, which repeats
@@ -66,6 +67,14 @@
 			<td>{{ account.label | e }}</td>
 			<td class="sb-num">{{ account.amount }}</td>
 		</tr>
+{%- endmacro -%}
+{%- macro asset_columns(columns) -%}
+		<colgroup>
+			<col>
+			{%- for column in columns %}
+			<col class="sb-num">
+			{%- endfor %}
+		</colgroup>
 {%- endmacro -%}
 {% include "steuerbote/templates/includes/print/style.html" %}
 {%- set running_title = "E-Bilanz " ~ doc.year -%}
@@ -144,48 +153,48 @@
 
 	{%- if form.anlagenspiegel.rows %}
 	{%- for part, title, columns in [("cost", "Anschaffungs- und Herstellungskosten", form.anlagenspiegel.cost_columns), ("depreciation", "Abschreibungen und Buchwert", form.anlagenspiegel.depreciation_columns)] %}
+	{%- set width = 1 + columns | length %}
 	<div class="sb-block">
 	<table class="sb-lines sb-recon">
-		<colgroup>
-			<col>
-			<col class="sb-kind">
-			{%- for column in columns %}
-			<col class="sb-num">
-			{%- endfor %}
-		</colgroup>
+		{{- asset_columns(columns) }}
 		<thead>
 			<tr class="sb-caption">
-				<th colspan="{{ 2 + columns | length }}">
+				<th colspan="{{ width }}">
 					{%- if loop.first %}<h2>Anlagenspiegel (brutto)</h2>{% endif %}
 					<h3>{{ title }}</h3>
 				</th>
 			</tr>
 			<tr>
-				<th>Position</th>
-				<th class="sb-kind">Wertart</th>
+				<th>Position und Wertart</th>
 				{%- for column in columns %}
-				<th class="sb-num">{{ column | e }}</th>
+				<th class="sb-num">{{ column | e | replace("schreibungen", "schrei&shy;bungen") | replace("buchungen", "bu&shy;chungen") }}</th>
 				{%- endfor %}
 			</tr>
 		</thead>
 		<tbody>
 			{%- for row in form.anlagenspiegel.rows %}
-			<tr>
-				<td>{{ row.label | e }}{% if row.source %} ({{ row.source | e }}){% endif %}{% if row.reason and part == "depreciation" %}; {{ row.reason | e }}{% endif %}</td>
-				<td class="sb-kind">{{ row.value_type | e }}</td>
-				{%- for value in row[part] %}
-				<td class="sb-num">{{ value }}</td>
-				{%- endfor %}
-			</tr>
+			<tr><td class="sb-nest" colspan="{{ width }}"><table class="sb-lines sb-recon">
+				{{- asset_columns(columns) }}
+				<tr class="sb-asset"><td colspan="{{ width }}">{{ row.label | e }}{% if row.source %} ({{ row.source | e }}){% endif %}{% if row.reason and part == "depreciation" %}; {{ row.reason | e }}{% endif %} · {{ row.value_type | e }}</td></tr>
+				<tr>
+					<td></td>
+					{%- for value in row[part] %}
+					<td class="sb-num">{{ value }}</td>
+					{%- endfor %}
+				</tr>
+			</table></td></tr>
 			{%- endfor %}
 			{%- for total in form.anlagenspiegel.totals %}
-			<tr class="sb-sum">
-				<td>Summe Anlagevermögen</td>
-				<td class="sb-kind">{{ total.value_type | e }}</td>
-				{%- for value in total[part] %}
-				<td class="sb-num">{{ value }}</td>
-				{%- endfor %}
-			</tr>
+			<tr><td class="sb-nest" colspan="{{ width }}"><table class="sb-lines sb-recon">
+				{{- asset_columns(columns) }}
+				<tr class="sb-asset sb-sum"><td colspan="{{ width }}">Summe Anlagevermögen · {{ total.value_type | e }}</td></tr>
+				<tr class="sb-sum-values">
+					<td></td>
+					{%- for value in total[part] %}
+					<td class="sb-num">{{ value }}</td>
+					{%- endfor %}
+				</tr>
+			</table></td></tr>
 			{%- endfor %}
 		</tbody>
 	</table>
