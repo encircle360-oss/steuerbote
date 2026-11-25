@@ -151,6 +151,11 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 		self.assertEqual(detect.call_args.kwargs["log_dir"], eric_log_root() / "steuernummer")
 		checked.assert_called_once()
 
+	def test_refuses_recipients_of_the_reminder_that_are_no_text(self):
+		"""Through the API a list instead of the lines of the field is refused with a message, not a traceback."""
+		with self.assertRaisesRegex(frappe.ValidationError, "one address per line"):
+			self.make_settings(deadline_recipients=["buchhaltung@example.org"]).insert()
+
 	def test_derives_the_elster_tax_number_and_keeps_the_defaults(self):
 		self.make_settings(elster_tax_number="0000000000000").insert()
 		settings = frappe.get_doc("VAT Return Settings", COMPANY)
