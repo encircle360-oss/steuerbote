@@ -183,7 +183,13 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		sondervorauszahlung: DF.Currency
 		statutory_tax: DF.Literal["", "From the Base in Full Euros", "As Booked"]
 		status: DF.Literal["Entwurf", "Berechnet", "Bereit", "Abgegeben", "Ersetzt"]
-		supplementary_code: DF.Literal["", "1", "2", "3", "4"]
+		supplementary_code: DF.Literal[
+			"",
+			"1 = Facts relevant to the tax could not be explained.",
+			"2 = A legal view deliberately deviating from the view of the administration is taken.",
+			"3 = Facts are to be examined in depth by a person.",
+			"4 = Several of the reasons above apply (multiple choice).",
+		]
 		to_date: DF.Date | None
 		transmission_in_progress: DF.Check
 		unmapped: DF.Table[VATReturnUnmappedAccount]
@@ -854,11 +860,15 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 				).format(self.name)
 			)
 
+	def kz500(self) -> str | None:
+		"""The code of Kz 500 that the form shows and the Nutzdaten carry, for the key the return keeps."""
+		return bridge.supplementary_code(self.supplementary_code)
+
 	def _check_supplementary_details(self) -> None:
 		"""Kz 500 and its Begründung go together, the Begründung on one line ELSTER takes, and the date of the
 		switch to the Regelbesteuerung in Kz 70 lies in the year of the return."""
 		with xml_errors(_("VAT Return")):
-			ustva_xml.supplementary_details(self.supplementary_code, self.kz500_begruendung)
+			ustva_xml.supplementary_details(self.kz500(), self.kz500_begruendung)
 			ustva_xml.regelbesteuerung_details(bridge.to_date(self.regelbesteuerung_from), cint(self.year))
 
 	def _require_import_file(self) -> None:

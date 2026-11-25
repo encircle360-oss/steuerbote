@@ -516,6 +516,30 @@ def hint_rows(hints: Iterable[plausibility.Hint]) -> list[dict[str, Any]]:
 	]
 
 
+# Kz 500: the keys the select field keeps, each the text of line 55 of USt 1 A 2026 and line 12 of USt 1 H 2026 (BMF-
+# Schreiben „Muster der Vordrucke im Umsatzsteuer-Voranmeldungs- und -Vorauszahlungsverfahren für das Kalenderjahr
+# 2026“ of 29 December 2025) in English, which de.csv gives in the wording of the form, and the code the Nutzdaten carry
+# (Enum_Anmeldungssteuern_Steuerfall_Umsatzsteuervoranmeldung_Kz500_SType of UStVA-2026.xsd).
+SUPPLEMENTARY_INFORMATION: ReadOnlyMapping[str, str] = MappingProxyType(
+	{
+		"1 = Facts relevant to the tax could not be explained.": "1",
+		"2 = A legal view deliberately deviating from the view of the administration is taken.": "2",
+		"3 = Facts are to be examined in depth by a person.": "3",
+		"4 = Several of the reasons above apply (multiple choice).": "4",
+	}
+)
+
+
+def supplementary_code(
+	value: object, keys: ReadOnlyMapping[str, str] = SUPPLEMENTARY_INFORMATION
+) -> str | None:
+	"""The code of Kz 500 for the key a document keeps, or nothing without one; any other value as it is, which
+	ustva_xml.supplementary_details refuses unless it is a code."""
+	if not value:
+		return None
+	return keys.get(str(value), str(value))
+
+
 # The field of the VAT Return Settings that holds each part of the Datenlieferant (ustva_xml.DATENLIEFERANT).
 DATENLIEFERANT_FIELDS: ReadOnlyMapping[str, str] = MappingProxyType(
 	{
@@ -589,7 +613,7 @@ def voranmeldung(return_: Row, period: Period, reported_before: Iterable[str] = 
 		attachments=_checked(return_.get("attachments")),
 		no_sepa_mandate=_checked(return_.get("no_sepa_mandate")),
 		offset_requested=_checked(return_.get("offset_requested")),
-		supplementary_code=return_.get("supplementary_code") or None,
+		supplementary_code=supplementary_code(return_.get("supplementary_code")),
 		begruendung=return_.get("kz500_begruendung") or None,
 		regelbesteuerung_from=to_date(return_.get("regelbesteuerung_from")),
 		reported_before=frozenset(reported_before) if corrected else frozenset(),

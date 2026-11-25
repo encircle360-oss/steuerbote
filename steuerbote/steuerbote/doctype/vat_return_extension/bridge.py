@@ -18,7 +18,11 @@ from typing import Any
 from steuerbote import dauerfrist
 from steuerbote.dauerfrist import Context, Ust1H
 from steuerbote.setup import start
-from steuerbote.steuerbote.doctype.vat_return.bridge import Row, to_amount
+from steuerbote.steuerbote.doctype.vat_return.bridge import (
+	Row,
+	supplementary_code,
+	to_amount,
+)
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
 from steuerbote.ustva import Period
 from steuerbote.ustva.rounding import ZERO
@@ -250,7 +254,7 @@ def form(doc: Row) -> Ust1H:
 		corrected=_checked(doc.get("is_correction")),
 		no_sepa_mandate=_checked(doc.get("no_sepa_mandate")),
 		offset_requested=_checked(doc.get("offset_requested")),
-		supplementary_code=doc.get("supplementary_code") or None,
+		supplementary_code=supplementary_code(doc.get("supplementary_code")),
 		begruendung=doc.get("kz500_begruendung") or None,
 	)
 
