@@ -374,7 +374,11 @@ class IntegrationTestPartyBalances(IntegrationTestCase):
 			(found["1200"].kind, [(item.party, item.amount) for item in found["1200"].parties]),
 			(
 				AccountKind.RECEIVABLE,
-				[("", Decimal("-50.00")), ("Kunde Süd", Decimal("1000.00")), ("Kunde West", Decimal("-300.00"))],
+				[
+					("", Decimal("-50.00")),
+					("Kunde Süd", Decimal("1000.00")),
+					("Kunde West", Decimal("-300.00")),
+				],
 			),
 		)
 		self.assertEqual(

@@ -27,6 +27,10 @@ currency, each account with its name, number, label and part, debit and credit i
   Entries“); without one, only the entries without a finance book.
 - An account without an account number keeps an empty number, so that the mapping can name its balance as one it
   cannot place.
+- An account of type Receivable or Payable comes with the balance of each party, as every GL Entry on it carries its
+  party_type and party, and postings without a party as a party of their own; a customer and a supplier that a Party
+  Link of ERPNext joins (erpnext/accounts/doctype/party_link) share the name of the primary party as their key. The
+  mapping places each party on the side of its balance (steuerbote.xbrl.mapping).
 
 books() reads a fiscal year, opening_books() the Eröffnungsbilanz of the day a company begins: the accounts of the
 Bilanz with every entry before the day and the opening entries up to it, and no account of the GuV.
@@ -48,7 +52,7 @@ from frappe.query_builder.functions import Sum
 from frappe.utils import getdate
 
 from steuerbote.ustva.rounding import CENT
-from steuerbote.xbrl.mapping import ZERO, AccountBalance, Books, Part
+from steuerbote.xbrl.mapping import ZERO, AccountBalance, AccountKind, Books, Part, PartyBalance
 
 PERIOD_CLOSING_VOUCHER = "Period Closing Voucher"
 BALANCE_SHEET = "Balance Sheet"
@@ -188,6 +192,7 @@ def _balances(
 			account.name,
 			account.account_number,
 			account.account_name,
+			account.account_type,
 			Sum(gl_entry.debit).as_("debit"),
 			Sum(gl_entry.credit).as_("credit"),
 		)
@@ -196,10 +201,13 @@ def _balances(
 		.where(account.report_type == report_type)
 		.where(gl_entry.finance_book.isin([book, ""]) | gl_entry.finance_book.isnull())
 		.where(condition)
-		.groupby(account.name, account.account_number, account.account_name)
+		.groupby(account.name, account.account_number, account.account_name, account.account_type)
 		.run(as_dict=True)
 	)
 	part = Part.of_report_type(report_type)
+	kinds = {kind.value: kind for kind in AccountKind}
+	with_parties = [row.name for row in rows if row.account_type in kinds]
+	parties = _parties(company, book, condition, with_parties) if with_parties else {}
 	return [
 		AccountBalance(
 			row.name,
@@ -208,9 +216,56 @@ def _balances(
 			part,
 			_cents(row.debit),
 			_cents(row.credit),
+			kind=kinds.get(row.account_type),
+			parties=parties.get(row.name, ()),
 		)
 		for row in rows
 	]
+
+
+def _parties(
+	company: str, book: str, condition: Criterion, accounts: list[str]
+) -> dict[str, tuple[PartyBalance, ...]]:
+	"""The balance of each party of the accounts, by account; postings without a party are one party without a name."""
+	gl_entry = frappe.qb.DocType("GL Entry")
+	rows = (
+		frappe.qb.from_(gl_entry)
+		.select(
+			gl_entry.account,
+			gl_entry.party_type,
+			gl_entry.party,
+			Sum(gl_entry.debit).as_("debit"),
+			Sum(gl_entry.credit).as_("credit"),
+		)
+		.where(gl_entry.company == company)
+		.where(gl_entry.is_cancelled == 0)
+		.where(gl_entry.account.isin(accounts))
+		.where(gl_entry.finance_book.isin([book, ""]) | gl_entry.finance_book.isnull())
+		.where(condition)
+		.groupby(gl_entry.account, gl_entry.party_type, gl_entry.party)
+		.run(as_dict=True)
+	)
+	links = _party_links()
+	found: dict[str, list[PartyBalance]] = {}
+	for row in sorted(rows, key=lambda row: (row.account, row.party_type or "", row.party or "")):
+		party_type, party = row.party_type or "", row.party or ""
+		found.setdefault(row.account, []).append(
+			PartyBalance(
+				party_type, party, _cents(row.debit), _cents(row.credit), links.get((party_type, party), "")
+			)
+		)
+	return {account: tuple(items) for account, items in found.items()}
+
+
+def _party_links() -> dict[tuple[str, str], str]:
+	"""The customers and suppliers a Party Link joins, each with the name of the primary party as the key."""
+	links: dict[tuple[str, str], str] = {}
+	for link in frappe.get_all(
+		"Party Link", fields=["primary_role", "primary_party", "secondary_role", "secondary_party"]
+	):
+		links[(link.primary_role, link.primary_party)] = link.primary_party
+		links[(link.secondary_role, link.secondary_party)] = link.primary_party
+	return links
 
 
 def _without_entries(name: str) -> AccountBalance:
