@@ -130,7 +130,13 @@ class VATReturnExtension(Filing, Transmittable, Document):
 		rhythm: DF.Literal["", "monthly", "quarterly"]
 		sondervorauszahlung: DF.Currency
 		status: DF.Literal["Entwurf", "Berechnet", "Bereit", "Abgegeben"]
-		supplementary_code: DF.Literal["", "1", "2", "3", "4"]
+		supplementary_code: DF.Literal[
+			"",
+			"1 = Facts relevant to the tax could not be explained.",
+			"2 = A legal view deliberately deviating from the view of the administration is taken.",
+			"3 = Facts are to be examined in depth by a person.",
+			"4 = Several of the reasons above apply (multiple choice).",
+		]
 		transferticket: DF.Data | None
 		transmission_in_progress: DF.Check
 		year: DF.Int
@@ -142,6 +148,10 @@ class VATReturnExtension(Filing, Transmittable, Document):
 		self._discard_calculation()
 		for field in FILING_FIELDS:
 			self.set(field, None)
+
+	def kz500(self) -> str | None:
+		"""The code of Kz 500 that the form shows and the Nutzdaten carry, for the key the document keeps."""
+		return vat_return_bridge.supplementary_code(self.supplementary_code)
 
 	def onload(self) -> None:
 		self.set_onload("elster", self.elster_state())

@@ -415,7 +415,7 @@
    "fieldname": "supplementary_code",
    "fieldtype": "Select",
    "label": "Supplementary Information (Kz 500)",
-   "options": "\n1\n2\n3\n4"
+   "options": "\n1 = Facts relevant to the tax could not be explained.\n2 = A legal view deliberately deviating from the view of the administration is taken.\n3 = Facts are to be examined in depth by a person.\n4 = Several of the reasons above apply (multiple choice)."
   },
   {
    "description": "Required with Kz 500: at most 180 characters on one line.",
@@ -438,7 +438,7 @@
    "link_fieldname": "vat_return"
   }
  ],
- "modified": "2026-11-25 18:00:00.000000",
+ "modified": "2026-11-25 20:30:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return",

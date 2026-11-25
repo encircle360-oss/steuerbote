@@ -6,6 +6,7 @@ the supply, in the report „UStVA Kennzahlen“ and in the run over the year.""
 from decimal import Decimal
 
 import frappe
+from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
 from erpnext.assets.doctype.asset.asset import make_sales_invoice
 from erpnext.assets.doctype.asset.depreciation import scrap_asset
 from frappe.tests import IntegrationTestCase
@@ -116,8 +117,9 @@ class TestAssetSale(IntegrationTestCase):
 		asset.submit()
 		return asset.name
 
-	def sell(self, asset: str, posting_date: str, **fields) -> str:
-		"""The Sales Invoice ERPNext makes for the asset („Verkaufen“ on the asset), for 800.00 and 19 % tax."""
+	def sell(self, asset: str, posting_date: str, taxed: bool = True, **fields) -> str:
+		"""The Sales Invoice ERPNext makes for the asset („Verkaufen“ on the asset), for 800.00 and 19 % tax, or
+		without tax."""
 		invoice = make_sales_invoice(asset, ASSET_ITEM, COMPANY, 1)
 		invoice.update(
 			{
@@ -137,15 +139,16 @@ class TestAssetSale(IntegrationTestCase):
 			}
 		)
 		invoice.items[0].rate = 800
-		invoice.append(
-			"taxes",
-			{
-				"charge_type": "On Net Total",
-				"account_head": self.account["1776"],
-				"rate": 19,
-				"description": "Umsatzsteuer 19 %",
-			},
-		)
+		if taxed:
+			invoice.append(
+				"taxes",
+				{
+					"charge_type": "On Net Total",
+					"account_head": self.account["1776"],
+					"rate": 19,
+					"description": "Umsatzsteuer 19 %",
+				},
+			)
 		invoice.insert(ignore_permissions=True)
 		invoice.submit()
 		return invoice.name
@@ -192,6 +195,29 @@ class TestAssetSale(IntegrationTestCase):
 		invoice = self.sell(self.asset("Testanlage USt-IdNr"), "2026-03-10")
 		self.assertEqual(frappe.db.get_value("Sales Invoice", invoice, "docstatus"), 1)
 		self.assertEqual(invoice_kennzahlen(frappe.get_doc("Sales Invoice", invoice)), ())
+
+	def test_a_tax_free_sale_through_the_asset_row_is_named_with_the_kennzahl_it_belongs_in(self):
+		"""An intra-Community supply of the asset books no tax and no account of Kz 41: the return warns and adds
+		nothing."""
+		frappe.db.set_value("Customer", CUSTOMER, "tax_id", "ATU12345678")
+		invoice = self.sell(self.asset("Testanlage EU"), "2026-04-10", taxed=False)
+		doc = self.calculated(4)
+		(hint,) = [row for row in doc.hints if row.code == "ANLAGENVERKAUF-STEUERFREI"]
+		self.assertEqual(
+			(hint.severity, hint.voucher_type, hint.voucher_no), ("Warnung", "Sales Invoice", invoice)
+		)
+		self.assertTrue(hint.text.startswith("Kz 41: "))
+		self.assertNotIn("41", self.amounts(doc))
+
+	def test_a_credit_note_to_an_asset_sale_deviates_with_a_note_that_says_why(self):
+		invoice = self.sell(self.asset("Testanlage Gutschrift"), "2026-03-10")
+		credit_note = make_sales_return(invoice)
+		credit_note.update({"posting_date": "2026-05-12", "set_posting_time": 1, "due_date": "2026-05-12"})
+		credit_note.insert(ignore_permissions=True)
+		credit_note.submit()
+		doc = self.calculated(5)
+		(row,) = [row for row in doc.deviations if row.voucher_no == credit_note.name]
+		self.assertTrue(row.note.startswith(f"Gutschrift zum Anlagenverkauf {invoice}: "), row.note)
 
 	def test_the_sale_through_the_invoice_goes_to_kz_81_with_a_hint(self):
 		invoice = self.sell(self.asset("Testanlage Rechnung"), "2026-03-10")

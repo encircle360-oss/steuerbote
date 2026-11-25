@@ -490,7 +490,7 @@
    "fieldname": "kz500",
    "fieldtype": "Select",
    "label": "Supplementary Information in the Return (Kz 500)",
-   "options": "\n1\n2\n3\n4"
+   "options": "\n1 = Facts relevant to the tax could not be explained.\n2 = A legal view deliberately deviating from the opinion of the administration is taken.\n3 = Facts are to be examined in depth by a person.\n4 = Several of the reasons above apply (multiple choice)."
   },
   {
    "description": "Line 23: the Ergänzende Angaben zur Steuererklärung that Kz 500 announces.",
@@ -704,7 +704,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-25 18:00:00.000000",
+ "modified": "2026-11-25 20:30:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Annual VAT Return",

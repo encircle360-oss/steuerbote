@@ -381,4 +381,15 @@ class TranslationFilesTest(TestCase):
 		german = translations()
 		self.assertEqual(sorted(texts - german.keys() - FRAMEWORK), [])
 		self.assertEqual(german["VAT ID"], "USt-IdNr.")
-		self.assertEqual(german["Open VAT IDs"], "Offene USt-IdNrn.")
+		self.assertEqual(
+			{
+				label: german.get(label)
+				for label in ("Open VAT ID Confirmations", "All VAT ID Confirmations", REPORT_NAME)
+			},
+			{
+				"Open VAT ID Confirmations": "Offene Bestätigungen",
+				"All VAT ID Confirmations": "Alle Bestätigungen",
+				REPORT_NAME: "Offene USt-IdNr.-Bestätigungen",
+			},
+			"the worklist and the list of all confirmations, and the title of the worklist",
+		)

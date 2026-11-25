@@ -180,11 +180,11 @@
 				<td class="sb-line">55</td>
 				<td>
 					Ergänzende Angaben zur Steueranmeldung (1 bis 4)
-					{%- if doc.supplementary_code in supplementary %}<br><span class="sb-note">In dieser Steueranmeldung {{ supplementary[doc.supplementary_code] }}</span>{% endif %}
+					{%- if doc.kz500() in supplementary %}<br><span class="sb-note">In dieser Steueranmeldung {{ supplementary[doc.kz500()] }}</span>{% endif %}
 					{%- if doc.kz500_begruendung %}<br><span class="sb-note">Begründung: {{ doc.get_formatted("kz500_begruendung") }}</span>{% endif %}
 				</td>
 				<td class="sb-kz">500</td>
-				<td class="sb-flag" colspan="3">{{ doc.supplementary_code or "" }}</td>
+				<td class="sb-flag" colspan="3">{{ doc.kz500() or "" }}</td>
 			</tr>
 			</table></td></tr>
 		</tbody>

@@ -13,12 +13,15 @@ from steuerbote.ustva.plausibility import (
 	SEVERITIES,
 	VAT_ID_CODES,
 	VAT_ID_KENNZAHLEN,
+	AssetSale,
+	AssetSaleCorrection,
 	Code,
 	EarlierPeriod,
 	Hint,
 	InvoiceLine,
 	LatestConfirmation,
 	Severity,
+	asset_sale_deviation_note,
 	compare,
 	comparison_hints,
 	confirmable,
@@ -32,6 +35,7 @@ from steuerbote.ustva.plausibility import (
 	reconciliation_hints,
 	residence_hints,
 	sales_accounts,
+	tax_free_asset_sale_hints,
 	vat_id_hints,
 	watched_account_hints,
 )
@@ -481,6 +485,73 @@ class OutputTaxWithoutRevenueAccountHintsTest(TestCase):
 		)
 
 
+class TaxFreeAssetSaleHintsTest(TestCase):
+	"""A tax-free sale of a fixed asset through the row with the Asset books nothing a Kennzahl reads (Anleitung USt 1 E
+	2026 zu Zeile 19 und 20, Kz 41 und 43): the return names the invoice and where its price belongs, and adds nothing."""
+
+	def sale(self, country: str | None, tax_id: str | None = None, voucher: str = "ACC-SINV-2026-00007"):
+		return AssetSale(voucher, "Beispiel Abnehmer GmbH", country, tax_id, d("12000.00"))
+
+	def test_an_intra_community_supply_belongs_in_kz_41_and_an_export_in_kz_43(self):
+		found = tax_free_asset_sale_hints(
+			[
+				self.sale("Austria", "ATU12345678"),
+				self.sale("United States", voucher="ACC-SINV-2026-00008"),
+				self.sale(None, "FR12345678901", voucher="ACC-SINV-2026-00009"),
+			],
+			FIGURES,
+		)
+		self.assertEqual(
+			[(hint.code, hint.severity, hint.voucher_type, hint.voucher_no) for hint in found],
+			[
+				(Code.ASSET_SALE_TAX_FREE, Severity.WARNING, "Sales Invoice", "ACC-SINV-2026-00007"),
+				(Code.ASSET_SALE_TAX_FREE, Severity.WARNING, "Sales Invoice", "ACC-SINV-2026-00008"),
+				(Code.ASSET_SALE_TAX_FREE, Severity.WARNING, "Sales Invoice", "ACC-SINV-2026-00009"),
+			],
+		)
+		self.assertEqual(
+			found[0].text,
+			"Kz 41: Die Rechnung ACC-SINV-2026-00007 an Beispiel Abnehmer GmbH verkauft ein Anlagegut über die Position "
+			"mit Vermögensgegenstand ohne Umsatzsteuer für 12.000,00 €, als innergemeinschaftliche Lieferung. ERPNext "
+			"bucht dabei kein Konto der Kz 41, und Steuerbote meldet den Verkauf nicht. Buchen Sie ihn mit einem Artikel "
+			"ohne Anlagegut auf das Erlöskonto der Kz 41 und verschrotten Sie den Vermögensgegenstand, oder tragen Sie "
+			"den Betrag mit Begründung als Korrektur in Kz 41 ein.",
+		)
+		self.assertTrue(found[1].text.startswith("Kz 43: "))
+		self.assertIn("als Ausfuhrlieferung", found[1].text)
+		self.assertTrue(
+			found[2].text.startswith("Kz 41: "), "the USt-IdNr. of a member state shows the country"
+		)
+
+	def test_a_sale_in_germany_or_without_a_country_is_left_alone(self):
+		"""A number from outside the EU without an address does not tell where the goods went."""
+		sales = [self.sale("Germany"), self.sale(None), self.sale(None, "CHE123456789")]
+		self.assertEqual(tax_free_asset_sale_hints(sales, FIGURES), [])
+		(greek,) = tax_free_asset_sale_hints([self.sale(None, "EL123456789")], FIGURES)
+		self.assertTrue(greek.text.startswith("Kz 41: "))
+
+
+class AssetSaleDeviationNoteTest(TestCase):
+	"""A credit note or a later cancellation of an asset sale whose base Steuerbote derived from its tax
+	(UMSATZ-OHNE-ERLOESKONTO) books the tax back without a base: the Verprobung deviates, as accepted in 0.15.0, and
+	the row says why."""
+
+	def test_a_credit_note_names_the_asset_sale_it_corrects(self):
+		self.assertEqual(
+			asset_sale_deviation_note(AssetSaleCorrection("ACC-SINV-2026-00012", "ACC-SINV-2026-00007")),
+			"Gutschrift zum Anlagenverkauf ACC-SINV-2026-00007: Für die Gutschrift oder Stornierung eines Anlagenverkaufs "
+			"über die Position mit Vermögensgegenstand leitet Steuerbote keine Bemessungsgrundlage aus der Steuer ab, "
+			"deshalb weicht die Verprobung ab. Tragen Sie die Minderung der Bemessungsgrundlage mit Begründung als "
+			"Korrektur der Kennzahl ein, oder begründen Sie die Abweichung in den Anmerkungen.",
+		)
+
+	def test_a_cancellation_in_a_later_period_names_the_sale(self):
+		note = asset_sale_deviation_note(AssetSaleCorrection("ACC-SINV-2026-00007", None))
+		self.assertTrue(
+			note.startswith("Stornierung des Anlagenverkaufs ACC-SINV-2026-00007: Für die Gutschrift")
+		)
+
+
 class ResidenceHintsTest(TestCase):
 	"""The decisions on the suppliers of sections C and D, as the person who files reads them."""
 
@@ -906,6 +977,7 @@ class HintsTest(TestCase):
 				Code.ACQUISITION_OUTSIDE_EU,
 				Code.PERIOD_NOT_ENDED,
 				Code.ZM_WITHOUT_RHYTHM,
+				Code.ASSET_SALE_TAX_FREE,
 			},
 		)
 
@@ -949,6 +1021,7 @@ class HintsTest(TestCase):
 				"ZM-OHNE-RHYTHMUS",
 				"BERICHTIGUNG-OHNE-AENDERUNG",
 				"UMSATZ-OHNE-ERLOESKONTO",
+				"ANLAGENVERKAUF-STEUERFREI",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung", "Fehler"])

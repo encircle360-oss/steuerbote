@@ -6,9 +6,11 @@ from unittest.mock import patch
 
 import frappe
 from frappe import _
+from frappe.model.document import get_document_cache_key
 from frappe.tests import IntegrationTestCase
-from frappe.utils import fmt_money, formatdate
+from frappe.utils import background_jobs, fmt_money, formatdate
 
+from steuerbote import hooks
 from steuerbote.setup.steps import Note, Outcome, StepResult
 from steuerbote.steuerbote import setup
 from steuerbote.tests.helpers import (
@@ -108,6 +110,35 @@ def failing_step(context: setup.SetupContext) -> StepResult:
 
 def broken_step(context: setup.SetupContext) -> StepResult:
 	raise RuntimeError("a bug in a step")
+
+
+def queue_on_commit() -> None:
+	"""What a step leaves for the commit of the transaction: a background job, a realtime message and a callback."""
+	frappe.enqueue("frappe.ping", enqueue_after_commit=True)
+	frappe.publish_realtime("steuerbote_test_setup", {"done": True}, after_commit=True)
+	frappe.db.after_commit.add(frappe.ping)
+
+
+def queuing_step(context: setup.SetupContext) -> StepResult:
+	queue_on_commit()
+	return StepResult(Outcome.CREATED, ())
+
+
+def queuing_failing_step(context: setup.SetupContext) -> StepResult:
+	queue_on_commit()
+	frappe.throw(_("The step needs the settings first."))
+
+
+CALLBACKS = ("before_commit", "after_commit", "before_rollback", "after_rollback")
+
+
+def pending() -> tuple:
+	"""What the transaction holds for its commit or rollback, and the realtime messages and webhooks waiting for it."""
+	return (
+		{name: tuple(getattr(frappe.db, name)._functions) for name in CALLBACKS},
+		list(getattr(frappe.local, "_realtime_log", None) or ()),
+		list(getattr(frappe.local, "_webhook_queue", None) or ()),
+	)
 
 
 class hooked:
@@ -282,6 +313,57 @@ class CompanySetupTest(IntegrationTestCase):
 			[(step["key"], step["outcome"]) for step in after["steps"]][:2],
 			[("vat_return_settings", "skipped"), ("vat_return_mapping", "skipped")],
 		)
+
+	def test_the_status_leaves_no_job_message_callback_document_or_cache_entry(self):
+		"""The status runs every step of the hook and rolls the run back; what Frappe and a step queue for the commit
+		of the transaction, what they cache or clear from the cache and the documents they write go back with it, so
+		that the commit of the request does nothing the user did not ask for."""
+		frappe.get_doc({"doctype": MAPPING, "company": SET_UP_COMPANY, "chart": "SKR03"}).insert()
+		with patch.object(background_jobs.Queue, "enqueue_call"), patch("frappe.realtime.emit_via_redis"):
+			frappe.db.after_commit.run()
+		modified = frappe.db.get_value(MAPPING, SET_UP_COMPANY, "modified")
+		cached = frappe.get_cached_doc(MAPPING, SET_UP_COMPANY).as_dict()
+		keys = set(frappe.cache.get_keys("document_cache::"))
+		before = pending()
+		queuing = {"key": "queuing", "label": "Queuing", "order": 99, "run": f"{__name__}.queuing_step"}
+		with (
+			hooked([*hooks.steuerbote_setup_steps, queuing]),
+			patch.object(background_jobs.Queue, "enqueue_call") as enqueued,
+			patch("frappe.realtime.emit_via_redis") as emitted,
+		):
+			status = setup.setup_status(SET_UP_COMPANY)
+			self.assertEqual(pending(), before)
+			frappe.db.after_commit.run()
+		steps = {step["key"]: step["outcome"] for step in status["steps"]}
+		self.assertEqual(
+			(steps["vat_return_settings"], steps["vat_return_mapping"], steps["queuing"]),
+			("created", "created", "created"),
+			"the steps would act",
+		)
+		enqueued.assert_not_called()
+		emitted.assert_not_called()
+		self.assertFalse(frappe.db.exists(SETTINGS, SET_UP_COMPANY))
+		self.assertEqual(frappe.db.get_value(MAPPING, SET_UP_COMPANY, "modified"), modified)
+		self.assertFalse(frappe.get_all("VAT Return Mapping Rule", filters={"parent": SET_UP_COMPANY}))
+		self.assertEqual(set(frappe.cache.get_keys("document_cache::")), keys)
+		self.assertEqual(
+			frappe.cache.get_value(get_document_cache_key(MAPPING, SET_UP_COMPANY)).as_dict(), cached
+		)
+
+	def test_a_failing_step_takes_back_what_it_queued_for_the_commit(self):
+		"""A step that stops is rolled back to its savepoint, and with it goes what it left for the commit."""
+		failing = {
+			"key": "failing",
+			"label": "Failing",
+			"order": 1,
+			"run": f"{__name__}.queuing_failing_step",
+		}
+		with hooked([failing]):
+			setup.run(HOOK_COMPANY, TODAY)
+			before = pending()
+			done = setup.run(HOOK_COMPANY, TODAY)
+		self.assertEqual(outcomes(done)["failing"], Outcome.FAILED)
+		self.assertEqual(pending(), before)
 
 	def test_the_status_needs_a_company(self):
 		with self.assertRaisesRegex(frappe.ValidationError, "There is no company"):

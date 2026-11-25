@@ -19,8 +19,8 @@ WORKSPACE_SECTIONS = {
 	"Zusammenfassende Meldung": (
 		"Neue ZM",
 		"Zusammenf. Meldungen",
-		"USt-IdNr.-Prüfungen",
-		"Offene USt-IdNrn.",
+		"Offene Bestätigungen",
+		"Alle Bestätigungen",
 	),
 	"Jahresmeldungen": (
 		"Neue USt-Erklärung",
@@ -46,8 +46,8 @@ SIDEBAR = {
 	"Voranmeldungen": (),
 	"Dauerfristanträge": (),
 	"Zusammenf. Meldungen": (),
-	"USt-IdNr.-Prüfungen": (),
-	"Offene USt-IdNrn.": (),
+	"Offene Bestätigungen": (),
+	"Alle Bestätigungen": (),
 	"Jahresmeldungen": (
 		"USt-Erklärungen",
 		"E-Bilanzen",

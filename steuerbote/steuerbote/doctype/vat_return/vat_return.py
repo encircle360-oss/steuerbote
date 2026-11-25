@@ -183,7 +183,13 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		sondervorauszahlung: DF.Currency
 		statutory_tax: DF.Literal["", "From the Base in Full Euros", "As Booked"]
 		status: DF.Literal["Entwurf", "Berechnet", "Bereit", "Abgegeben", "Ersetzt"]
-		supplementary_code: DF.Literal["", "1", "2", "3", "4"]
+		supplementary_code: DF.Literal[
+			"",
+			"1 = Facts relevant to the tax could not be explained.",
+			"2 = A legal view deliberately deviating from the view of the administration is taken.",
+			"3 = Facts are to be examined in depth by a person.",
+			"4 = Several of the reasons above apply (multiple choice).",
+		]
 		to_date: DF.Date | None
 		transmission_in_progress: DF.Check
 		unmapped: DF.Table[VATReturnUnmappedAccount]
@@ -318,7 +324,7 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		self.statutory_tax = statutory_tax_of(settings).value
 		self.set("kennzahlen", bridge.kennzahl_rows(result, catalogue, overrides))
 		self.set("checks", bridge.check_rows(result))
-		self.set("deviations", bridge.deviation_rows(result))
+		self.set("deviations", bridge.deviation_rows(result, asset_sale_notes(result)))
 		self.set(
 			"unmapped", bridge.unmapped_rows(result, lines, account_names(self.company, result.unmapped))
 		)
@@ -854,11 +860,15 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 				).format(self.name)
 			)
 
+	def kz500(self) -> str | None:
+		"""The code of Kz 500 that the form shows and the Nutzdaten carry, for the key the return keeps."""
+		return bridge.supplementary_code(self.supplementary_code)
+
 	def _check_supplementary_details(self) -> None:
 		"""Kz 500 and its Begründung go together, the Begründung on one line ELSTER takes, and the date of the
 		switch to the Regelbesteuerung in Kz 70 lies in the year of the return."""
 		with xml_errors(_("VAT Return")):
-			ustva_xml.supplementary_details(self.supplementary_code, self.kz500_begruendung)
+			ustva_xml.supplementary_details(self.kz500(), self.kz500_begruendung)
 			ustva_xml.regelbesteuerung_details(bridge.to_date(self.regelbesteuerung_from), cint(self.year))
 
 	def _require_import_file(self) -> None:
@@ -1118,8 +1128,8 @@ def build_hints(
 	"""Hinweise: the invoices of the period, their reconciliation with the ledger, the balances on the accounts
 	watched for a hint, the bases taken from the tax of a voucher without base account, the suppliers of the vouchers of
 	sections C and D, the Vorperiodenvergleich, the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21, the
-	accounts of the tax templates without a place in the mapping and the differences of the reconciliation with the
-	registers.
+	accounts of the tax templates without a place in the mapping, the asset sales without tax that no Kennzahl sees and
+	the differences of the reconciliation with the registers.
 
 	A hint informs and never holds the return; whether it is ready follows the Verprobung and the accounts
 	watched at the blocking level alone. ``invoices_of_the_period`` names the Sales Invoices whose bookings the
@@ -1154,6 +1164,10 @@ def build_hints(
 		found,
 		vat_id_hints(doc.company, period, vat_ids.amounts),
 		_tax_template_hints(doc.company, period, mapping, figures),
+		plausibility.tax_free_asset_sale_hints(
+			invoices.asset_sales_without_tax(doc.company, period.start, period.end, invoices_of_the_period),
+			figures,
+		),
 		registers.hints(
 			reconciliation,
 			account_labels(doc.company, (row.account_number for row in reconciliation if row.account_number)),
@@ -1182,6 +1196,24 @@ def return_hints(
 		*obligations.period_hints(period, getdate()),
 		*obligations.zm_rhythm_hints(amounts, months_without_zm_rhythm(settings, period), figures),
 	]
+
+
+def asset_sale_notes(result: ustva.UstvaResult) -> dict[str, str]:
+	"""The note of each deviating voucher that books back the tax of an asset sale through the row with the Asset, by
+	voucher (plausibility.asset_sale_deviation_note)."""
+	vouchers = {
+		deviation.voucher for check in result.checks for deviation in check.deviations if deviation.voucher
+	}
+	return {
+		f"{invoices.SALES.doctype}:{correction.voucher_no}": plausibility.asset_sale_deviation_note(
+			correction
+		)
+		for correction in invoices.asset_sale_corrections(
+			voucher.removeprefix(f"{invoices.SALES.doctype}:")
+			for voucher in vouchers
+			if voucher.startswith(f"{invoices.SALES.doctype}:")
+		)
+	}
 
 
 def months_without_zm_rhythm(settings: Document, period: ustva.Period) -> list[str]:
