@@ -15,6 +15,7 @@ SIDEBAR_LINKS = [
 	("DocType", "VAT Return Extension", "VAT Return Extensions"),
 	("DocType", "Recapitulative Statement", "Recapitulative Statements"),
 	("DocType", "VAT ID Confirmation", "VAT ID Confirmations"),
+	("Report", "Partner ohne aktuelle USt-IdNr-Bestätigung", "Open VAT IDs"),
 	("DocType", "Annual VAT Return", "Annual VAT Returns"),
 	("DocType", "Electronic Balance Sheet", "Electronic Balance Sheets"),
 	("DocType", "Corporate Income Tax Return", "Corporate Income Tax Returns"),
@@ -96,6 +97,7 @@ class WorkspaceTest(IntegrationTestCase):
 				("DocType", "VAT Return Settings"),
 				("Page", "steuerbote-setup"),
 				("Report", "Offene Fristen"),
+				("Report", "Partner ohne aktuelle USt-IdNr-Bestätigung"),
 				("Report", "UStVA Kennzahlen"),
 			],
 		)
