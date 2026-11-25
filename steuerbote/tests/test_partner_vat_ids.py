@@ -40,6 +40,8 @@ SETTINGS = "VAT Return Settings"
 CONFIRMATION = "VAT ID Confirmation"
 COMPANY = "Steuerbote Test Partner USt-IdNr. GmbH"
 OTHER = "Steuerbote Test Partner ohne USt-IdNr. GmbH"
+# A second company of the group that asks under the same own USt-IdNr., as a copy of a company does.
+TWIN = "Steuerbote Test Partner Zwilling GmbH"
 # The example numbers of the OpenAPI document of the eVatR API and invented ones.
 OWN_VAT_ID = "DE123456788"
 AUSTRIAN = "ATU12345678"
@@ -103,6 +105,8 @@ class TestPartnerVatIds(IntegrationTestCase):
 			vat_id_check_german=0,
 		)
 		make_settings(OTHER, [(2026, "monthly", 1)])
+		make_company(TWIN, "STPZ")
+		make_settings(TWIN, [(2026, "monthly", 1)], ust_idnr=OWN_VAT_ID, vat_id_check_german=0)
 		make_mapping(COMPANY)
 		make_customer(ALPEN, "Austria", AUSTRIAN, city="Wien")
 		make_customer(PARIS, "France", FRENCH, city="Paris")
@@ -296,6 +300,11 @@ class TestPartnerVatIds(IntegrationTestCase):
 		self.assertEqual(
 			[(row["company"], row["automatic"]) for row in state["companies"]], [(COMPANY, False)]
 		)
+		self.assertEqual(
+			[row["standing_label"] for row in state["companies"]],
+			["Not Checked"],
+			"the form says what the field Stand der USt-IdNr. says",
+		)
 		_columns, _rows, message = worklist_report.execute({"company": COMPANY})
 		self.assertIn("automatic check is off", message)
 
@@ -423,6 +432,39 @@ class TestPartnerVatIds(IntegrationTestCase):
 		self.run_job(service, party_type="Customer", party=ALPEN, trigger="Manual")
 		self.assertEqual(service.requests, [])
 		self.assertEqual(frappe.db.count(CONFIRMATION, {"requested": AUSTRIAN, "company": COMPANY}), 2)
+
+	def test_companies_with_the_same_own_vat_id_ask_once_and_share_the_answer(self):
+		"""VIES and the BZSt count the same question asked again on one day as misuse: the companies of a group that ask
+		under the same own USt-IdNr. send it once, and each keeps the answer as its proof."""
+		deals_with("Customer", ALPEN, TWIN)
+		service = FakeBzst({AUSTRIAN: [bzst("evatr-0000"), bzst("evatr-0000", **QUALIFIED)]})
+		self.run_job(service, party_type="Customer", party=ALPEN, trigger="Manual")
+		self.assertEqual(
+			[
+				(query["anfragendeUstid"], query["angefragteUstid"], query.get("firmenname"))
+				for query in service.requests
+			],
+			[(OWN_VAT_ID, AUSTRIAN, None), (OWN_VAT_ID, AUSTRIAN, ALPEN)],
+		)
+		records = frappe.get_all(
+			CONFIRMATION,
+			filters={"requested": AUSTRIAN},
+			fields=["company", "qualified", "result", "requester", "consultation_id"],
+			order_by="company asc, creation asc",
+		)
+		self.assertEqual(
+			[(row.company, row.qualified, row.result, row.requester) for row in records],
+			[
+				(COMPANY, 0, "valid", OWN_VAT_ID),
+				(COMPANY, 1, "valid", OWN_VAT_ID),
+				(TWIN, 0, "valid", OWN_VAT_ID),
+				(TWIN, 1, "valid", OWN_VAT_ID),
+			],
+		)
+		self.assertEqual(records[0].consultation_id, records[2].consultation_id, "the same query")
+		later = FakeBzst({})
+		self.run_job(later, party_type="Customer", party=ALPEN, trigger="Manual")
+		self.assertEqual(later.requests, [], "not again on the same day")
 
 	def test_an_answer_of_another_day_or_without_the_address_is_asked_again(self):
 		self.stored(
@@ -745,9 +787,9 @@ class TestPartnerVatIds(IntegrationTestCase):
 
 	def test_the_setup_offers_to_relabel_the_tax_id_and_leaves_a_label_of_its_own(self):
 		context = SimpleNamespace(company=COMPANY)
-		for doctype in vat_id_setup.LABELLED_DOCTYPES:
+		for doctype, fieldname, _label in vat_id_setup.LABELLED_FIELDS:
 			frappe.db.delete(
-				"Property Setter", {"doc_type": doctype, "field_name": "tax_id", "property": "label"}
+				"Property Setter", {"doc_type": doctype, "field_name": fieldname, "property": "label"}
 			)
 		self.addCleanup(self.forget_labels)
 		result = vat_id_setup.check_tax_id_label(context)
@@ -757,12 +799,32 @@ class TestPartnerVatIds(IntegrationTestCase):
 		)
 		vat_id_setup.relabel_tax_id()
 		self.assertEqual(frappe.get_meta("Customer").get_label("tax_id"), "VAT ID")
+		self.assertEqual(
+			{
+				(doctype, fieldname): frappe.get_meta(doctype).get_label(fieldname)
+				for doctype, fieldname in (
+					("Sales Invoice", "tax_id"),
+					("Sales Invoice", "company_tax_id"),
+					("Purchase Invoice", "tax_id"),
+					("Sales Order", "tax_id"),
+					("Delivery Note", "tax_id"),
+				)
+			},
+			{
+				("Sales Invoice", "tax_id"): "VAT ID",
+				("Sales Invoice", "company_tax_id"): "Own VAT ID",
+				("Purchase Invoice", "tax_id"): "VAT ID",
+				("Sales Order", "tax_id"): "VAT ID",
+				("Delivery Note", "tax_id"): "VAT ID",
+			},
+			"the copies of the USt-IdNr. on the documents read as on the partner",
+		)
 		self.assertEqual(vat_id_setup.check_tax_id_label(context).outcome, Outcome.SKIPPED)
 
 	def forget_labels(self):
 		"""Undo the Property Setters before the cache of the DocTypes is cleared, so that it does not keep them."""
 		frappe.db.rollback(save_point="partner_vat_id_test")
-		for doctype in vat_id_setup.LABELLED_DOCTYPES:
+		for doctype, _fieldname, _label in vat_id_setup.LABELLED_FIELDS:
 			frappe.clear_cache(doctype=doctype)
 
 	def test_the_setup_offers_to_switch_on_the_automatic_check_of_the_company(self):

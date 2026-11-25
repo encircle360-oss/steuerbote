@@ -120,7 +120,7 @@ function annual_findings_note(frm, texts) {
 		);
 	} else if (errors.length) {
 		frm.$findings_note = frm.dashboard.set_headline_alert(
-			__("Every error of the findings is acknowledged; the document is filed nonetheless."),
+			__("Every error of the findings is acknowledged with a reason; the document can be filed nonetheless."),
 			"orange"
 		);
 	}

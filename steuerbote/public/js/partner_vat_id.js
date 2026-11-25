@@ -22,14 +22,15 @@ if (!window.steuerbote_partner_vat_id) {
 			}
 			for (const row of state.companies) {
 				const simple = state.kind === "german" ? ` ${__("(valid at VIES, without comparison of name)")}` : "";
+				// Without an answer the label says „Nicht geprüft“ as the field Stand der USt-IdNr. does.
 				const answered = row.asked_on
-					? __("latest answer of {0}", [frappe.datetime.str_to_user(row.asked_on)])
-					: __("no answer yet");
+					? ` (${__("latest answer of {0}", [frappe.datetime.str_to_user(row.asked_on)])})`
+					: "";
 				const color = INDICATORS[row.standing] || "orange";
 				lines.push(
 					`<span class="indicator ${color}">${escape(row.company)}: ${escape(row.standing_label)}${escape(
 						row.standing === "Current" ? simple : ""
-					)} (${escape(answered)})</span>`
+					)}${escape(answered)}</span>`
 				);
 			}
 			if (!state.assigned && state.companies.length) {

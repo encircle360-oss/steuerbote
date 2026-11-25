@@ -357,7 +357,7 @@
    "label": "Hints"
   },
   {
-   "description": "Hints on the invoices, the ledger and the comparison, filled by Calculate. They never hold the return.",
+   "description": "Hints on the invoices, the ledger and the comparison, filled by Calculate. A hint and a warning inform; an error holds the return until it is corrected or a reason is given in the remarks.",
    "fieldname": "hints",
    "fieldtype": "Table",
    "label": "Hints",
@@ -438,7 +438,7 @@
    "link_fieldname": "vat_return"
   }
  ],
- "modified": "2026-11-25 20:30:00.000000",
+ "modified": "2026-11-25 21:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return",
