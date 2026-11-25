@@ -110,7 +110,13 @@ def run(directory: str) -> None:
 	report, failed = ["# Ausdrucke als PDF", ""], False
 	for doctype, (print_format, together) in FORMATS.items():
 		name = sample(doctype)
-		for variant, doc in variants(doctype, name):
+		for variant, make in variants(doctype, name):
+			try:
+				doc = make()
+			except Exception as error:
+				failed = True
+				report.append(f"- {slug(print_format)}__{variant}: nicht angelegt: {error!r}")
+				continue
 			for bundle in (False, True) if variant == "kurz" else (False,):
 				stem = f"{slug(print_format)}__{variant}{'__mit-druckstil' if bundle else ''}"
 				problems, pages = proof(out, stem, doc, print_format, together, bundle)
@@ -123,22 +129,31 @@ def run(directory: str) -> None:
 
 
 def sample(doctype: str) -> str:
-	"""The document of the seed to print: a calculated one where there is one."""
+	"""The document of the seed to print: of the calculated ones the one with the most rows, else any."""
 	for filters in ({"status": ("in", ("Berechnet", "Bereit", "Abgegeben"))}, {}):
-		names = frappe.get_all(doctype, filters=filters, order_by="modified desc", limit=1, pluck="name")
+		names = frappe.get_all(doctype, filters=filters, order_by="modified desc", limit=20, pluck="name")
 		if names:
-			return names[0]
+			return max(names, key=lambda name: rows(frappe.get_doc(doctype, name)))
 	raise SystemExit(f"Kein Beleg „{doctype}“ auf der Site")
 
 
+def rows(doc) -> int:
+	return sum(len(doc.get(field.fieldname) or ()) for field in doc.meta.get_table_fields())
+
+
 def variants(doctype: str, name: str):
-	yield "kurz", frappe.get_doc(doctype, name)
-	yield "lang", lengthened(frappe.get_doc(doctype, name))
-	yield "namen", renamed(frappe.get_doc(doctype, name))
+	"""Each variant by its name with what makes it, so that one that fails costs only itself."""
+	yield "kurz", lambda: frappe.get_doc(doctype, name)
+	yield "lang", lambda: lengthened(frappe.get_doc(doctype, name))
+	yield "namen", lambda: renamed(frappe.get_doc(doctype, name))
 	if doctype == "Annual Accounts":
-		doc = frappe.get_doc(doctype, name)
-		doc.flags.offenlegung = True
-		yield "offenlegung", doc
+		yield "offenlegung", lambda: disclosed(frappe.get_doc(doctype, name))
+
+
+def disclosed(doc):
+	"""The Jahresabschluss as its Vorschau der Offenlegung prints it."""
+	doc.flags.offenlegung = True
+	return doc
 
 
 def frozen(doc, change):
@@ -219,8 +234,9 @@ def renamed(doc):
 	for row in doc.get("kennzahlen") or ():
 		row.final = -9876543.21
 		row.label = (row.label or "") + LONGER
-	for row in doc.get("lines") or ():
-		row.party = (row.party or "") + LONGER
+	if doc.doctype == "Recapitulative Statement":
+		for row in doc.lines:
+			row.party = (row.party or "") + LONGER
 	if doc.meta.has_field("is_correction"):
 		doc.is_correction = 1
 	if doc.meta.has_field("corrects"):
@@ -243,6 +259,7 @@ def proof(out: Path, stem: str, doc, print_format: str, together, bundle: bool) 
 	pages = printouts.read_bbox(words.stdout)
 	expected = printouts.Expectations(
 		pages=(1, 60),
+		last_page_lines=8,
 		on_every_page=(doc.name,),
 		headings=HEADINGS,
 		together=together,
