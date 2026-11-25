@@ -55,9 +55,11 @@ Company (genInfo.company):
   Filing Settings who holds shares on the Bilanzstichtag: the name, the Rechtsform des Gesellschafters [legalStatus]
   KOER for a corporation and PG for a partnership, and the Beteiligungsschlüssel [ShareDivideKey] as Zähler and Nenner
   in lowest terms, both digits only (de-gcd-2025-04-01.xsd). The Rechtsform of a natural person tells Privatvermögen
-  (NPP) from Betriebsvermögen (NPB), which the settings do not record, so it stays NIL. Steuernummer, IdNr. and W-IdNr.
-  of a shareholder are kept for the KSt 1 (§ 139b Abs. 2 AO for the IdNr.) and are NIL here; the Gesellschafterschlüssel
-  [id] is for a partnership (B.14.3.1.19) and NIL as well. Without shareholders in the settings one Gesellschafter is
+  (NPP) from Betriebsvermögen (NPB), which the settings do not record, so it stays NIL. The „13stellige Steuernummer des
+  Gesellschafters“ [taxnumber] and its W-IdNr. [WID] go where the settings hold them (decision of the owner; B.14.3.1.19,
+  B.14.8, whose check digits ERiC checks), NIL otherwise; the IdNr. [taxid] of a natural person stays NIL (§ 139b
+  Abs. 2 AO), and so does the Gesellschafterschlüssel [id], which is for a partnership (B.14.3.1.19). The GCD takes the
+  W-IdNr. with its Unterscheidungsmerkmal only, the „17stellige steuerliche W-IdNr.“; one of eleven characters goes NIL. Without shareholders in the settings one Gesellschafter is
   NIL, as the GmbH example HandelsbilanzLandwirt_GmbH.xml reports it.
 
 Every other Mussfeld of the GCD of the legal form (steuerbote.xbrl.checks.required(); B.14.2.1, B.14.2.3) is NIL, and
@@ -130,6 +132,9 @@ SHAREHOLDER_LEGAL_STATUS = {
 	ShareholderKind.PARTNERSHIP: "legalStatus.PG",
 }
 SHARE_DIVIDE_KEY = gcd("genInfo.company.id.shareholder.ShareDivideKey")
+# „17stellige steuerliche W-IdNr.“ (label of genInfo.company.id.shareholder.WID): with its Unterscheidungsmerkmal, which
+# ERiC 44.3.6.0 demands (ungueltigeWirtschaftsIdentifikationsnummerU for DE and nine digits alone).
+GCD_WID_LENGTH = 17
 NIL_CHOICES = {
 	gcd("genInfo.company.id.entityWithTaxablePurposeBusiness"): gcd(
 		"genInfo.company.id.entityWithTaxablePurposeBusiness.merchantVesselsInInternationalTraffic"
@@ -146,17 +151,26 @@ CHOICE = "choice"
 
 @dataclass(frozen=True, slots=True)
 class Gesellschafter:
-	"""A shareholder as the GCD reports it: the name, the kind of the Annual Filing Settings and the share in percent."""
+	"""A shareholder as the GCD reports it: the name, the kind of the Annual Filing Settings, the share in percent and,
+	where the settings hold them, its Steuernummer in the 13 digits of ELSTER and its W-IdNr."""
 
 	name: str
 	kind: ShareholderKind
 	percent: Decimal
+	steuernummer: str | None = None
+	wid: str | None = None
 
 
 def gesellschafter(shareholders: Iterable[Shareholder], day: date) -> tuple[Gesellschafter, ...]:
 	"""The shareholders of the settings who hold shares on the day, the Bilanzstichtag."""
 	return tuple(
-		Gesellschafter(shareholder.name, shareholder.kind, shareholder.percent)
+		Gesellschafter(
+			shareholder.name,
+			shareholder.kind,
+			shareholder.percent,
+			shareholder.tax_number or None,
+			shareholder.wid_nr if shareholder.wid_nr and len(shareholder.wid_nr) == GCD_WID_LENGTH else None,
+		)
 		for shareholder in shareholders_on(shareholders, day)
 	)
 
@@ -447,10 +461,10 @@ def _shareholder(shareholder: Gesellschafter) -> Tuple:
 		SHAREHOLDER,
 		(
 			_item(SHAREHOLDER_NAME, _text(shareholder.name)),
-			*(
-				_item(gcd(f"genInfo.company.id.shareholder.{part}"), None)
-				for part in ("id", "taxnumber", "taxid", "WID")
-			),
+			_item(gcd("genInfo.company.id.shareholder.id"), None),
+			_item(gcd("genInfo.company.id.shareholder.taxnumber"), shareholder.steuernummer),
+			_item(gcd("genInfo.company.id.shareholder.taxid"), None),
+			_item(gcd("genInfo.company.id.shareholder.WID"), shareholder.wid),
 			_choice(SHAREHOLDER_STATUS, status)
 			if status
 			else Tuple(

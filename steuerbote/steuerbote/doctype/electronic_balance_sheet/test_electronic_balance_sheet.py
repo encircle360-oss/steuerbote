@@ -154,6 +154,25 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 			(doc.revision_status, doc.accounting_standard, doc.taxonomy_version), ("E", "HAOE", "6.9")
 		)
 
+	def test_capital_paid_in_during_the_founding_year_is_an_einlage_as_in_every_year(self):
+		"""§ 4 Abs. 1 Satz 1 und 8 EStG with § 8 Abs. 1 KStG: Stammkapital paid in after the first day of the founding year,
+		booked as an ordinary entry, is an Einlage like the capital of the opening entry and like a capital increase of a
+		later year; the Jahresüberschuss stays 35,280 euros, and nothing has to be entered by hand."""
+		post_for_the_test(
+			self, self.account, "STEB-KAPITALERHOEHUNG", "2026-06-01", (("1800", 5000, 0), ("2900", 0, 5000))
+		)
+		doc = self.calculated()
+		self.assertEqual(
+			(
+				money(doc.bvv_founding_contribution),
+				money(doc.bvv_booked_contributions),
+				money(doc.bvv_contributions),
+			),
+			(d("25000.00"), d("5000.00"), d("0.00")),
+		)
+		self.assertNotIn("170405109", finding_codes(doc))
+		self.assertEqual((doc.status, doc.ready), ("Bereit", 1))
+
 	def test_a_conflict_with_a_berechnen_of_the_same_moment_starts_berechnen_again(self):
 		"""Two Berechnen of one E-Bilanz at the same instant: MariaDB refuses the later save of the positions with
 		QueryDeadlockError (1020). Berechnen rolls back, reads the document anew and calculates again; when it keeps

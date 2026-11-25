@@ -1205,6 +1205,13 @@ class Kst1Test(TestCase):
 		)
 		self.assertEqual(bridge.IDENTIFIERS, {"E8122109", "E8122110", "E8122112", "E8122113"})
 
+	def test_the_kst_1_takes_the_w_idnr_without_its_unterscheidungsmerkmal(self):
+		"""KSt 1 line 23b holds the W-IdNr. in eleven characters (E30-2025.xsd, E8122112); the settings may hold it with
+		the Unterscheidungsmerkmal the GCD of the E-Bilanz takes."""
+		person = shareholder(wid_nr="DE123456788-00001")
+		found = {entry.feldkennung: entry.value for entry in bridge.shareholder_entries(RETURN, (person,))}
+		self.assertEqual(found["E8122112"], "DE123456788")
+
 
 class KSt1FTest(TestCase):
 	"""KSt 1 F: the Leistungen of the Wirtschaftsjahr and the Einlagen, with the steuerliches Einlagekonto (§ 27 KStG)."""

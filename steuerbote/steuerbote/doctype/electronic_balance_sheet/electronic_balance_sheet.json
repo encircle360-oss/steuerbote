@@ -46,6 +46,7 @@
   "bvv_previous_equity_reason",
   "column_break_bvv",
   "bvv_founding_contribution",
+  "bvv_booked_contributions",
   "bvv_contributions",
   "bvv_withdrawals",
   "bvv_capital_adjustments",
@@ -365,7 +366,15 @@
    "read_only": 1
   },
   {
-   "description": "Einlagen and Kapitalzuführungen of the Wirtschaftsjahr beyond those at the founding.",
+   "description": "Calculated: the capital the entries of the Wirtschaftsjahr pay into the gezeichnetes Kapital or the Kapitalrücklage from outside the Eigenkapital, in every year, the founding year among them.",
+   "fieldname": "bvv_booked_contributions",
+   "fieldtype": "Currency",
+   "label": "Einlagen Booked in the Year",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "Einlagen and Kapitalzuführungen of the Wirtschaftsjahr that the books do not show as capital paid in, such as a verdeckte Einlage or a Sacheinlage at another value.",
    "fieldname": "bvv_contributions",
    "fieldtype": "Currency",
    "label": "Further Einlagen",
@@ -483,7 +492,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-25 18:00:00.000000",
+ "modified": "2026-11-26 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Electronic Balance Sheet",

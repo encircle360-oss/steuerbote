@@ -119,6 +119,46 @@ def opening_books(company: str, day: date | str, *, finance_book: str | None = N
 	)
 
 
+def year_lines(
+	company: str, from_date: date | str, to_date: date | str, finance_book: str | None = None
+) -> list[tuple[str, str, Decimal, Decimal]]:
+	"""What each voucher of the year books on each account with a number, as (voucher, account number, debit, credit):
+	no opening entry, which the Eröffnungsbilanz holds, no Period Closing Voucher and nothing cancelled."""
+	gl_entry = frappe.qb.DocType("GL Entry")
+	account = frappe.qb.DocType("Account")
+	book = finance_book or ""
+	rows = (
+		frappe.qb.from_(gl_entry)
+		.inner_join(account)
+		.on(account.name == gl_entry.account)
+		.select(
+			gl_entry.voucher_type,
+			gl_entry.voucher_no,
+			account.account_number,
+			Sum(gl_entry.debit).as_("debit"),
+			Sum(gl_entry.credit).as_("credit"),
+		)
+		.where(gl_entry.company == company)
+		.where(gl_entry.is_cancelled == 0)
+		.where(gl_entry.is_opening != "Yes")
+		.where(gl_entry.voucher_type != PERIOD_CLOSING_VOUCHER)
+		.where(gl_entry.posting_date.between(getdate(from_date), getdate(to_date)))
+		.where(gl_entry.finance_book.isin([book, ""]) | gl_entry.finance_book.isnull())
+		.groupby(gl_entry.voucher_type, gl_entry.voucher_no, account.account_number)
+		.run(as_dict=True)
+	)
+	return [
+		(
+			f"{row.voucher_type}:{row.voucher_no}",
+			(row.account_number or "").strip(),
+			_cents(row.debit),
+			_cents(row.credit),
+		)
+		for row in rows
+		if (row.account_number or "").strip()
+	]
+
+
 def fiscal_year_books(
 	company: str,
 	fiscal_year: str,

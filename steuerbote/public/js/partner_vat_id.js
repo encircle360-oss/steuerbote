@@ -32,6 +32,15 @@ if (!window.steuerbote_partner_vat_id) {
 					)} (${escape(answered)})</span>`
 				);
 			}
+			if (!state.assigned && state.companies.length) {
+				lines.push(
+					escape(
+						__(
+							"Not assigned to any company yet: the automatic check asks about it only once it has an account, a quotation, an order or an invoice of a company; until then, check it with the button."
+						)
+					)
+				);
+			}
 			const manual = state.companies.filter((row) => !row.automatic).map((row) => row.company);
 			if (manual.length) {
 				lines.push(
