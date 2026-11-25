@@ -1,7 +1,8 @@
 """Partner ohne aktuelle USt-IdNr-Bestätigung: the worklist of a company, every customer and supplier it deals with
 whose USt-IdNr. lacks a current confirmation, with where it stands (steuerbote.vatid.partners.Standing): no
 confirmation, too old, invalid, no answer, a number the BZSt does not confirm or a malformed one, only a simple
-confirmation for want of an address or although one is known, or another name or address registered.
+confirmation for want of an address or although one is known, or another name or address registered. Below them the
+partners with a number that deal with no company yet, which no company asks about by itself.
 
 steuerbote.steuerbote.partner_vat_ids reads the partners and their confirmations; this module only makes the rows.
 """
@@ -27,6 +28,7 @@ STANDING_NOTES = {
 	"Not Qualified": "Only a simple confirmation, although name and town are known now.",
 	"Details Differ": "The member state has another name or address registered.",
 	"German VAT ID, Not Checked": "Not checked yet. VIES checks a German USt-IdNr. for its validity alone, without name or address; it is not the confirmation of § 18e UStG.",
+	"Not Assigned": "Deals with no company yet, so no company asks about the number by itself. Press „Confirm VAT ID“ on the partner, or „Confirm VAT ID of the Customer“ on its first invoice.",
 }
 
 

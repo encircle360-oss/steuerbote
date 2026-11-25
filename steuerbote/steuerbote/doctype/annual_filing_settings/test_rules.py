@@ -484,17 +484,19 @@ class IdentifierTest(TestCase):
 			)
 			self.assertNotIn(value, str(raised.exception))
 
-	def test_a_wirtschafts_identifikationsnummer_is_de_and_nine_digits(self):
+	def test_a_wirtschafts_identifikationsnummer_is_de_and_nine_digits_with_or_without_its_suffix(self):
+		"""The E-Bilanz takes the W-IdNr. of a shareholder with its five-digit Unterscheidungsmerkmal, the KSt 1 without."""
 		self.assertEqual(normalized_wid_nr(" de 123 456 789 ", 1), WID_NR)
+		self.assertEqual(normalized_wid_nr("de123456789 - 00001", 1), "DE123456789-00001")
 		self.assertIsNone(normalized_wid_nr(None, 1))
-		for value in ("DE12345678", "AT123456789", "DE123456789-00001"):
+		for value in ("DE12345678", "AT123456789", "DE123456789-0001", "DE123456789-000010"):
 			with self.subTest(value=value), self.assertRaises(SettingsError) as raised:
 				normalized_wid_nr(value, 2)
 			self.assertNotIn(value, str(raised.exception))
 		self.assertEqual(
 			str(raised.exception),
-			"Row 2 of the shareholders: a Wirtschafts-Identifikationsnummer is DE and nine digits, without the "
-			"five-digit suffix.",
+			"Row 2 of the shareholders: a Wirtschafts-Identifikationsnummer is DE and nine digits, for the E-Bilanz "
+			"with a hyphen and its five-digit Unterscheidungsmerkmal.",
 		)
 
 	def test_the_steuernummer_of_a_shareholder_in_the_13_digit_form_for_elster(self):

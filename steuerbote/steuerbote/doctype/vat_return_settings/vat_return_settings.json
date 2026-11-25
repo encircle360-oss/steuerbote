@@ -227,14 +227,14 @@
   },
   {
    "default": "0",
-   "description": "Off by default. Confirm the USt-IdNr. of a partner in the background when the partner is created or its USt-IdNr., name or address changes; this sends the data of the partner to the BZSt, and to VIES when the BZSt cannot answer. It asks about the enabled customers with a USt-IdNr. that the company deals with, by an account of its own on the partner or a submitted invoice, and with „Confirm Suppliers“ about such suppliers; a partner that deals with no company counts for the default company of the site.",
+   "description": "Off by default. Confirm the USt-IdNr. of a partner in the background when the partner is created or its USt-IdNr., name or address changes; this sends the data of the partner to the BZSt, and to VIES when the BZSt cannot answer. It asks about the enabled customers with a USt-IdNr. that the company deals with, by an account of its own on the partner or a submitted invoice, quotation or order, and with „Confirm Suppliers“ about such suppliers; a partner that deals with no company is asked about only by the button, for the company of the user.",
    "fieldname": "vat_id_check_on_change",
    "fieldtype": "Check",
    "label": "Confirm When a Partner Changes"
   },
   {
    "default": "0",
-   "description": "Off by default. Every morning ask again about each partner whose latest confirmation is as old as the maximum age above or older, one after the other, at most 25 a day. It asks about the enabled customers with a USt-IdNr. that the company deals with, by an account of its own on the partner or a submitted invoice, and with „Confirm Suppliers“ about such suppliers; a partner that deals with no company counts for the default company of the site.",
+   "description": "Off by default. Every morning ask again about each partner whose latest confirmation is as old as the maximum age above or older, one after the other, at most 25 a day. It asks about the enabled customers with a USt-IdNr. that the company deals with, by an account of its own on the partner or a submitted invoice, quotation or order, and with „Confirm Suppliers“ about such suppliers; a partner that deals with no company is asked about only by the button, for the company of the user.",
    "fieldname": "vat_id_renewal",
    "fieldtype": "Check",
    "label": "Renew Confirmations Daily"

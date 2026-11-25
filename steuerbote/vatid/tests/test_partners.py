@@ -99,6 +99,11 @@ class AnswerTest(TestCase):
 
 
 class StandingTest(TestCase):
+	def test_a_partner_no_company_deals_with_is_on_the_worklist_as_not_assigned(self):
+		"""Not a standing of the number: the partner deals with no company, so no company asks about it by itself."""
+		self.assertEqual(Standing.NOT_ASSIGNED.value, "Not Assigned")
+		self.assertTrue(Standing.NOT_ASSIGNED.work)
+
 	def standing(self, value="ATU12345678", last=None, asked=None, max_age=90, details=True):
 		return standing(
 			kind(value), last, last is not None if asked is None else asked, TODAY, max_age, details

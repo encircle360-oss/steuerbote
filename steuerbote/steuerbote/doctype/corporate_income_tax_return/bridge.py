@@ -232,6 +232,8 @@ WJ_FROM, WJ_TO, FOUNDED = "E8002606", "E8002607", "E8000703"
 TRADING_BOOK, SECTION_8_9, SHAREHOLDERS_CHANGED = "E8001008", "E8001007", "E8122601"
 SHAREHOLDER_NAME, SHAREHOLDER_STREET, SHAREHOLDER_TOWN = "E8122101", "E8122102", "E8122103"
 SHAREHOLDER_DATA_CHANGED = "E8122111"
+# E8122112 holds the W-IdNr. without its Unterscheidungsmerkmal: eleven characters (E30-2025.xsd).
+WID_NR_LENGTH = 11
 SHAREHOLDER_TAX_NUMBER, SHAREHOLDER_IDNR, SHAREHOLDER_WID_NR, SHAREHOLDER_FOREIGN_ID = (
 	"E8122109",
 	"E8122110",
@@ -1018,7 +1020,7 @@ def shareholder_entries(ret: Return, shareholders: Iterable[rules.Shareholder]) 
 		for feldkennung, value in (
 			(SHAREHOLDER_TAX_NUMBER, first.tax_number),
 			(SHAREHOLDER_IDNR, first.idnr),
-			(SHAREHOLDER_WID_NR, first.wid_nr),
+			(SHAREHOLDER_WID_NR, (first.wid_nr or "")[:WID_NR_LENGTH] or None),
 			(SHAREHOLDER_FOREIGN_ID, first.foreign_id),
 			(SHAREHOLDER_NAME, first.name),
 			(SHAREHOLDER_STREET, first.street),

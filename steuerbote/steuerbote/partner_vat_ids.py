@@ -54,6 +54,18 @@ PARTY_TYPES = (CUSTOMER, SUPPLIER)
 NAME_FIELDS = {CUSTOMER: "customer_name", SUPPLIER: "supplier_name"}
 ADDRESS_FIELDS = {CUSTOMER: "customer_primary_address", SUPPLIER: "supplier_primary_address"}
 INVOICES = {CUSTOMER: ("Sales Invoice", "customer"), SUPPLIER: ("Purchase Invoice", "supplier")}
+# The submitted documents that tie a partner to a company besides its invoices, as (DocType, field of the partner,
+# filters): a quotation, an order. A draft ties nothing.
+DEALINGS = {
+	CUSTOMER: (
+		("Quotation", "party_name", {"quotation_to": CUSTOMER}),
+		("Sales Order", "customer", {}),
+	),
+	SUPPLIER: (
+		("Supplier Quotation", "supplier", {}),
+		("Purchase Order", "supplier", {}),
+	),
+}
 # What the qualified query sends, and so what makes a partner worth asking again when it changes.
 WATCHED_PARTY_FIELDS = ("tax_id", "disabled")
 WATCHED_ADDRESS_FIELDS = ("address_line1", "pincode", "city", "country", "disabled")
@@ -349,7 +361,8 @@ def policies() -> list[CompanyPolicy]:
 
 
 def dealings(party_type: str, parties: Collection[str] | None = None) -> dict[str, set[str]]:
-	"""The companies each partner deals with: those of its Party Accounts and of its submitted invoices."""
+	"""The companies each partner deals with: those of its Party Accounts and of its submitted invoices, quotations
+	and orders (DEALINGS)."""
 	filters = {"parenttype": party_type}
 	if parties is not None:
 		filters["parent"] = ["in", sorted(parties) or [""]]
@@ -357,19 +370,25 @@ def dealings(party_type: str, parties: Collection[str] | None = None) -> dict[st
 	for row in frappe.get_all("Party Account", filters=filters, fields=["parent", "company"]):
 		if row.company:
 			found.setdefault(row.parent, set()).add(row.company)
-	doctype, field = INVOICES[party_type]
-	invoice_filters = {"docstatus": 1}
-	if parties is not None:
-		invoice_filters[field] = ["in", sorted(parties) or [""]]
-	for row in frappe.get_all(
-		doctype, filters=invoice_filters, fields=[f"{field} as party", "company"], distinct=True
-	):
-		found.setdefault(row.party, set()).add(row.company)
+	for doctype, field, extra in (INVOICES[party_type] + ({},), *DEALINGS[party_type]):
+		document_filters = {"docstatus": 1, **extra}
+		if parties is not None:
+			document_filters[field] = ["in", sorted(parties) or [""]]
+		for row in frappe.get_all(
+			doctype, filters=document_filters, fields=[f"{field} as party", "company"], distinct=True
+		):
+			if row.party and row.company:
+				found.setdefault(row.party, set()).add(row.company)
 	return found
 
 
 def default_company() -> str | None:
 	return frappe.db.get_single_value("Global Defaults", "default_company") or None
+
+
+def user_company() -> str | None:
+	"""The company the user works in: the default of the user, else the default company of the site."""
+	return frappe.defaults.get_user_default("Company") or default_company()
 
 
 def companies_asking(
@@ -387,11 +406,12 @@ def companies_asking(
 def companies_for(
 	party_type: str, party: str, trigger: str, number: Kind = Kind.CONFIRMABLE
 ) -> list[CompanyPolicy]:
-	"""The companies that confirm the partner's number for the trigger: those it deals with, or the default company
-	when it deals with none, each with its own German USt-IdNr.; a change asks only where the settings confirm on a
-	change, and a supplier only where they confirm suppliers, unless someone pressed the button; a German number only
-	where the company checks German numbers, whatever the trigger."""
-	companies = dealings(party_type, [party]).get(party) or {default_company()}
+	"""The companies that confirm the partner's number for the trigger: those it deals with, each with its own German
+	USt-IdNr. (decision of the owner); a partner that deals with none is asked about only by the button, for the
+	company of the user. A change asks only where the settings confirm on a change, and a supplier only where they
+	confirm suppliers, unless someone pressed the button; a German number only where the company checks German
+	numbers, whatever the trigger."""
+	companies = dealings(party_type, [party]).get(party) or ({user_company()} if trigger == MANUAL else set())
 	chosen = []
 	for company in sorted(name for name in companies if name):
 		policy = company_policy(company)
@@ -664,9 +684,8 @@ def renew_confirmations() -> None:
 
 
 def partners_of(policy: CompanyPolicy) -> list[tuple[str, str, str]]:
-	"""The enabled partners with a number whose confirmation the company renews, as (party type, party, number)."""
+	"""The enabled partners with a number that deal with the company, as (party type, party, number)."""
 	types = PARTY_TYPES if policy.suppliers else (CUSTOMER,)
-	fallback = default_company()
 	found = []
 	for party_type in types:
 		rows = frappe.get_all(
@@ -679,9 +698,24 @@ def partners_of(policy: CompanyPolicy) -> list[tuple[str, str, str]]:
 			continue
 		companies = dealings(party_type, [row.name for row in rows])
 		for row in rows:
-			dealt = companies.get(row.name)
-			if (policy.company in dealt) if dealt else policy.company == fallback:
+			if policy.company in companies.get(row.name, ()):
 				found.append((party_type, row.name, row.tax_id))
+	return found
+
+
+def unassigned(policy: CompanyPolicy) -> list[tuple[str, str, str]]:
+	"""The enabled partners with a number that deal with no company at all, as (party type, party, number)."""
+	types = PARTY_TYPES if policy.suppliers else (CUSTOMER,)
+	found = []
+	for party_type in types:
+		rows = frappe.get_all(
+			party_type,
+			filters={"disabled": 0, "tax_id": ["is", "set"]},
+			fields=["name", "tax_id"],
+			order_by="name asc",
+		)
+		companies = dealings(party_type, [row.name for row in rows]) if rows else {}
+		found.extend((party_type, row.name, row.tax_id) for row in rows if row.name not in companies)
 	return found
 
 
@@ -897,6 +931,7 @@ def vat_id_state(party_type: str, party: str) -> dict:
 		"problem": partners.reason(tax_id) if number_kind in (Kind.NOT_CONFIRMABLE, Kind.MALFORMED) else None,
 		"has_details": has_details and number_kind is Kind.CONFIRMABLE,
 		"companies": rows,
+		"assigned": bool(dealings(party_type, [party]).get(party)),
 		"can_ask": bool(rows) and may_ask(party_type, party),
 		"queued": is_job_enqueued(party_job_id(party_type, party)),
 	}
@@ -904,7 +939,8 @@ def vat_id_state(party_type: str, party: str) -> dict:
 
 def worklist(company: str, party_types: Iterable[str] = PARTY_TYPES, today: date | None = None) -> list[dict]:
 	"""The partners of the company whose confirmation is not current, for the report: per partner its number, where
-	its confirmation stands, and its latest answer."""
+	its confirmation stands, and its latest answer; then the partners that deal with no company (Standing.NOT_ASSIGNED),
+	which only the button confirms."""
 	policy = company_policy(company)
 	if policy is None:
 		return []
@@ -936,6 +972,20 @@ def worklist(company: str, party_types: Iterable[str] = PARTY_TYPES, today: date
 				else None,
 			}
 		)
+	for party_type, party, tax_id in unassigned(replace(policy, suppliers=SUPPLIER in party_types)):
+		if party_type in party_types and partners.kind(tax_id).checked(policy.german):
+			rows.append(
+				{
+					"party_type": party_type,
+					"party": party,
+					"tax_id": tax_id,
+					"standing": Standing.NOT_ASSIGNED,
+					"answer": None,
+					"record": None,
+					"age": None,
+					"problem": None,
+				}
+			)
 	return rows
 
 
