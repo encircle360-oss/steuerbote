@@ -116,7 +116,7 @@ REPEAT = 3
 LANGUAGE = "de"
 # A source text of Steuerbote and the words a printout must not hold, which only an English one does.
 PROBE = "Steuerbote has the forms of {0} provisionally from the Jahresdokumentation {1}: until ELSTER publishes those of {0}, the return is not ready. A filing needs remarks that say why it goes nonetheless."
-ENGLISH = (" the ", " has ", " with ")
+ENGLISH = ("the", "has", "with")
 # German texts that the printouts of the documents of the seed hold, so that a fallback to English fails the run.
 GERMAN = {
 	"Corporate Income Tax Return": ("Steuerbote hat die Vordrucke für",),

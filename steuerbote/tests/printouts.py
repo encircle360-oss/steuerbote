@@ -200,12 +200,13 @@ def somewhere(pages, texts) -> list[str]:
 
 
 def nowhere(pages, texts) -> list[str]:
-	"""No text stands on any page, such as one of the source language a missing translation falls back to."""
+	"""No text stands on any page as whole words, such as a word of the source language a missing translation falls
+	back to."""
 	return [
 		f"Seite {number}: „{text}“ im Ausdruck"
 		for text in texts
 		for number, page in enumerate(pages, start=1)
-		if " ".join(text.split()) in page_text(page)
+		if f" {' '.join(text.split())} " in f" {page_text(page)} "
 	]
 
 
