@@ -4,7 +4,7 @@ Bevor ein Unternehmen seine erste Umsatzsteuer-Voranmeldung berechnet, braucht e
 
 ## Steuerbote einrichten
 
-Die Seite „Steuerbote einrichten“ öffnet die Verknüpfung „Einrichten“ im Abschnitt „Einrichtung“ des Arbeitsbereichs „Steuern“, oder die Adresse `/desk/steuerbote-setup`; `?company=` in der Adresse wählt das Unternehmen. Öffnen und ausführen dürfen sie System Manager und Accounts Manager (Rollen der Seite und `frappe.only_for` in `set_up`), und jedes Dokument entsteht mit den Rechten des Benutzers. Ein Benutzer, der nur die Rolle Accounts User hat, sieht die Verknüpfung nicht.
+Die Seite „Steuerbote einrichten“ öffnet die Verknüpfung „Einrichten“ im Abschnitt „Einrichtung“ des Arbeitsbereichs „Steuern“, oder die Adresse `/desk/steuerbote-setup`; `?company=` in der Adresse wählt das Unternehmen; ohne sie beginnt die Seite ohne Unternehmen, denn „Einrichten“ schreibt. Öffnen und ausführen dürfen sie System Manager und Accounts Manager (Rollen der Seite und `frappe.only_for` in `set_up`), und jedes Dokument entsteht mit den Rechten des Benutzers. Ein Benutzer, der nur die Rolle Accounts User hat, sieht die Verknüpfung nicht.
 
 „Einrichten“ führt für das gewählte Unternehmen jeden Schritt aus und zeigt danach je Schritt das Ergebnis, die Hinweise und das Dokument:
 
