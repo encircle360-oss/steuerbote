@@ -12,7 +12,8 @@
   "opposite_concept",
   "purpose",
   "shareholder",
-  "remaining_term"
+  "remaining_term",
+  "netting_group"
  ],
  "fields": [
   {
@@ -83,11 +84,17 @@
    "in_list_view": 1,
    "label": "Remaining Term",
    "options": "\nup to one year\none to five years\nover five years"
+  },
+  {
+   "description": "Accounts of the same netting group, such as Vorsteuer and Umsatzsteuer towards the Finanzamt, are netted: their combined balance decides whether all of them go to the position or to the position for the opposite balance (§ 246 Abs. 2 Satz 1 HGB, § 387 BGB, § 226 AO). Empty: the account keeps its own sign.",
+   "fieldname": "netting_group",
+   "fieldtype": "Data",
+   "label": "Netting Group"
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-23 23:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Balance Sheet Mapping Rule",
