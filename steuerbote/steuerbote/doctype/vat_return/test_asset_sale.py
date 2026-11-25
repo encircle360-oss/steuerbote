@@ -12,6 +12,7 @@ from frappe.tests import IntegrationTestCase
 
 from steuerbote import ustjahr_sources
 from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for
+from steuerbote.steuerbote.partner_vat_ids import invoice_kennzahlen
 from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import execute
 from steuerbote.tests.helpers import (
 	ensure_fiscal_year,
@@ -81,7 +82,8 @@ class TestAssetSale(IntegrationTestCase):
 			},
 		)
 		make_masters(cls.account)
-		make_settings(COMPANY, [(2026, "monthly", 1)])
+		# With an own USt-IdNr., the check of the customer's USt-IdNr. runs when an invoice is submitted.
+		make_settings(COMPANY, [(2026, "monthly", 1)], ust_idnr="DE123456789")
 		make_mapping(COMPANY)
 		ensure_fiscal_year(COMPANY, "2026-01-01")
 		frappe.cache.delete_value("fiscal_years")
@@ -183,6 +185,13 @@ class TestAssetSale(IntegrationTestCase):
 				("2310", money(180), money(0)),
 			],
 		)
+
+	def test_the_check_of_the_vat_id_on_submit_lets_the_asset_row_pass(self):
+		"""The row of the asset books on the disposal account, which feeds no Kz 41, 42 or 21, so the check of the
+		customer's USt-IdNr. (partner_vat_ids.check_invoice) neither holds the invoice nor asks for a confirmation."""
+		invoice = self.sell(self.asset("Testanlage USt-IdNr"), "2026-03-10")
+		self.assertEqual(frappe.db.get_value("Sales Invoice", invoice, "docstatus"), 1)
+		self.assertEqual(invoice_kennzahlen(frappe.get_doc("Sales Invoice", invoice)), ())
 
 	def test_the_sale_through_the_invoice_goes_to_kz_81_with_a_hint(self):
 		invoice = self.sell(self.asset("Testanlage Rechnung"), "2026-03-10")
