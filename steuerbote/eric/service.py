@@ -158,6 +158,20 @@ def library_versions(runtime: RuntimeInfo, timeout_seconds: int = 60) -> dict[st
 	return dict(libraries)
 
 
+def steuernummer_valid(runtime: RuntimeInfo | None, number: str, timeout_seconds: int = 30) -> bool | None:
+	"""Whether ERiC takes the 13-digit Steuernummer of ELSTER, by EricPruefeSteuernummer in the worker; None without a
+	runtime, without the confirmed privacy notices or when the worker gives no answer, as then nothing says."""
+	if runtime is None or not runtime.confirmed_privacy_notice:
+		return None
+	request = {"command": "steuernummer", "runtime": runtime.to_dict(), "steuernummer": number}
+	try:
+		data = answer(call_worker(request, timeout_seconds))
+	except WorkerError:
+		return None
+	valid = data.get("valid") if isinstance(data, Mapping) else None
+	return valid if isinstance(valid, bool) else None
+
+
 def call_worker(request: Mapping[str, object], timeout_seconds: int) -> WorkerOutput:
 	"""Run the worker on the request and end its process group after timeout_seconds without an answer."""
 	return wait_for(start_worker(), Sealed(json.dumps(request).encode()), timeout_seconds)

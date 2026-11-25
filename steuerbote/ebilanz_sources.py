@@ -33,7 +33,7 @@ from frappe.query_builder.functions import IfNull
 from frappe.utils import cint, cstr, getdate
 
 from steuerbote import balances
-from steuerbote.ebilanz.gcd import MasterData
+from steuerbote.ebilanz.gcd import MasterData, gesellschafter
 from steuerbote.hgb.size import SizeClass
 from steuerbote.jahresmeldung.corrections import RevisionStatus
 from steuerbote.jahresmeldung.lifecycle import Status
@@ -190,10 +190,11 @@ def master_data(
 	revision_status: str | None,
 	previous_fiscal_year: tuple[date, date] | None,
 	generated: date,
+	stichtag: date,
 ) -> MasterData:
 	"""The GCD of the company from the Annual Filing Settings: its name, the address with the house number and its
-	suffix, the Steuernummer for the income taxes in the 13 digits of ELSTER and the Gegenstand des Unternehmens; the
-	Status des Berichts of the document, erstmalig without one."""
+	suffix, the Steuernummer for the income taxes in the 13 digits of ELSTER, the Gegenstand des Unternehmens and the
+	shareholders on the Bilanzstichtag; the Status des Berichts of the document, erstmalig without one."""
 	address = settings.get_address()
 	return MasterData(
 		name=frappe.db.get_value("Company", company, "company_name") or company,
@@ -206,6 +207,7 @@ def master_data(
 		revision_status=RevisionStatus(revision_status or RevisionStatus.FIRST),
 		previous_fiscal_year=previous_fiscal_year,
 		generated=generated,
+		shareholders=gesellschafter(settings.get_shareholders(), stichtag),
 	)
 
 

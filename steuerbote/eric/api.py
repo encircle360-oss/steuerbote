@@ -55,6 +55,7 @@ ENCRYPTION_PARAMETERS_VERSION = 3
 ERIC_OK = 0
 GLOBAL_PRUEF_FEHLER = 610001002
 GLOBAL_HINWEISE = 610001003
+GLOBAL_STEUERNUMMER_UNGUELTIG = 610001034
 GLOBAL_NICHT_GENUEGEND_ARBEITSSPEICHER = 610001013
 TRANSFER_ERR_XML_THEADER = 610101210
 TRANSFER_ERR_XML_NHEADER = 610101292
@@ -116,6 +117,7 @@ PROTOTYPES = MappingProxyType(
 		),
 		"EricGetErrormessagesFromXMLAnswer": (c_int, (c_char_p, _BUFFER, _BUFFER, _BUFFER, _BUFFER)),
 		"EricCheckXML": (c_int, (c_char_p, c_char_p, _BUFFER)),
+		"EricPruefeSteuernummer": (c_int, (c_char_p,)),
 	}
 )
 """Return and argument types of each function steuerbote calls, as ericapi.h declares them."""
@@ -183,6 +185,15 @@ class EricLibrary:
 			if self._library.EricHoleFehlerText(code, buffer) != ERIC_OK:
 				return f"ERiC hat keinen Text zum Fehlercode {code}."
 			return self._text(buffer)
+
+	def steuernummer_valid(self, steuernummer: str) -> bool:
+		"""EricPruefeSteuernummer: whether the 13-digit Steuernummer of ELSTER and its Bundesfinanzamtsnummer are
+		formally right, its check digit among it (API-Referenz; Entwicklerhandbuch, Kap. 6.3.3)."""
+		code = self._library.EricPruefeSteuernummer(steuernummer.encode())
+		if code == GLOBAL_STEUERNUMMER_UNGUELTIG:
+			return False
+		self._check(code)
+		return True
 
 	def version(self) -> str:
 		"""The EricVersion XML: product and file version of each library."""

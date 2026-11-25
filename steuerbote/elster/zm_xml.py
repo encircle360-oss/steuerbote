@@ -104,6 +104,7 @@ _COUNTRY_CODES = (
 COUNTRIES = frozenset(_COUNTRY_CODES.split())
 
 NOT_A_GERMAN_VAT_ID = "{0} is not a German USt-IdNr.: the Zusammenfassende Meldung takes DE and nine digits."
+WRONG_CHECK_DIGIT = "{0} is not a valid German USt-IdNr.: its check digit, the last digit, is wrong."
 NOT_A_TEILNEHMERNUMMER = "{0} is not a Teilnehmernummer of the BZSt: seven or eight digits from 0300000 on."
 NOT_A_GERMAN_POSTAL_CODE = "{0} is not a German postal code: ELSTER takes five digits from 01001 to 99999."
 NOT_A_POSTAL_CODE = "The postal code {0} may hold letters without umlauts, digits and blanks only."
@@ -128,6 +129,7 @@ TWO_MONTHS_TOO_EARLY = (
 TOO_OLD = "ERiC takes Zusammenfassende Meldungen for {1} and later years, not for {0}."
 MESSAGES = (
 	NOT_A_GERMAN_VAT_ID,
+	WRONG_CHECK_DIGIT,
 	NOT_A_TEILNEHMERNUMMER,
 	NOT_A_GERMAN_POSTAL_CODE,
 	NOT_A_POSTAL_CODE,
@@ -347,6 +349,8 @@ def _german_vat_id(value: object) -> str:
 	number = vat_ids.normalize(value) if isinstance(value, str) else ""
 	if not vat_ids.GERMAN.fullmatch(number):
 		raise XmlError(NOT_A_GERMAN_VAT_ID, value)
+	if not vat_ids.has_german_check_digit(number):
+		raise XmlError(WRONG_CHECK_DIGIT, value)
 	return number
 
 

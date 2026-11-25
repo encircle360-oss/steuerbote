@@ -3,6 +3,7 @@
 import re
 from dataclasses import replace
 from decimal import Decimal
+from types import MappingProxyType
 from unittest import TestCase
 
 from steuerbote.elster.erklaerung import FORMATS, Form, python_pattern
@@ -138,6 +139,7 @@ class VordruckeTest(TestCase):
 				"E4003502": Decimal("6000"),
 				"E4003602": Decimal("24000"),
 				"E4003703": Decimal("10000"),
+				"E4004103": Decimal("0"),
 				"E4006601": Decimal("11400"),
 				"E4003403": Decimal("1000"),
 			},
@@ -149,9 +151,27 @@ class VordruckeTest(TestCase):
 				"E4050201": "Beta GmbH",
 				"E4050601": Decimal("12000"),
 				"E4051201": Decimal("12000"),
+				"E4051401": Decimal("0"),
 				"E4051501": Decimal("11400"),
 			},
 		)
+
+	def test_line_56_goes_with_line_57_and_line_12_with_line_14(self):
+		"""ERiC refuses line 56 of GewSt 1 A without line 57 (rule 40260, „FelderNichtGemeinsamAngegeben(E4003703,
+		E4004103)“) and, for a Körperschaft, line 12 of Anlage BEG without line 14 (rule 40944), Jahresdokumentation
+		GewSt 2025; validation of the worked example with ERiC 44.3.6.0. Line 57 holds the part of line 56 paid to
+		beschränkt Steuerpflichtige (§ 50a Absatz 1 Nummer 3 EStG), which the books do not tell apart: zero, a limit
+		docs/ertragsteuern.md names."""
+		(gewst_1a, beg) = vordrucke(gewerbesteuer(koerperschaftsteuer()))
+		self.assertEqual(
+			(gewst_1a.value("E4003703"), gewst_1a.value("E4004103")), (Decimal("10000"), Decimal("0"))
+		)
+		self.assertEqual((beg.value("E4051201"), beg.value("E4051401")), (Decimal("12000"), Decimal("0")))
+		result = gewerbesteuer(koerperschaftsteuer())
+		lines = dict(result.lines)
+		lines["licences"] = replace(lines["licences"], declared=Decimal("0"))
+		(without, _) = vordrucke(replace(result, lines=MappingProxyType(lines)))
+		self.assertEqual((without.value("E4003703"), without.value("E4004103")), (None, None))
 
 	def test_a_holding_of_at_least_15_percent_cuts_its_dividends_with_the_costs_beside_them(self):
 		"""§ 8b Absatz 7 KStG taxes the dividends in full, so § 9 Nummer 2a GewStG cuts them: lines 7, 8, 9, 14 and 16
@@ -165,7 +185,7 @@ class VordruckeTest(TestCase):
 		taxed = HoldingDividends(holding, Exemption.TRADING_BOOK, acquisition_counts=False)
 		result = koerperschaftsteuer()
 		kst = replace(result, p8b=replace(result.p8b, holdings=(*result.p8b.holdings, taxed)))
-		(_, *begs) = vordrucke(chain.compute(kst, chain.GewstInputs(Decimal("400")), FIGURES))
+		(gewst_1a, *begs) = vordrucke(chain.compute(kst, chain.GewstInputs(Decimal("400")), FIGURES))
 		delta = next(beg for beg in begs if beg.value("E4050201") == "Delta GmbH")
 		self.assertEqual(
 			amounts(delta),
@@ -181,8 +201,35 @@ class VordruckeTest(TestCase):
 				"E4051701": Decimal("1000"),
 				"E4051801": Decimal("500"),
 				"E4051901": Decimal("8500"),
+				"E4052001": Decimal("1000"),
 			},
 		)
+		self.assertEqual(
+			(gewst_1a.value("E4006701"), gewst_1a.value("E4006801")), (Decimal("1000"), Decimal("8500"))
+		)
+
+	def test_a_schachtel_whose_dividends_are_exempt_files_its_lines_at_zero(self):
+		"""Line 12 with line 14, beside line 7 line 16, beside it line 19, and line 81 of GewSt 1 A summing line 19:
+		rules 40944, 40946, 40949 and 40491 of the Jahresdokumentation GewSt 2025 want them at zero as well
+		(validation with ERiC 44.3.6.0)."""
+		holding = HoldingResult(Holding("Theta GmbH", Decimal("40"), Decimal("40")), Decimal("6000.00"))
+		exempt = HoldingDividends(holding, Exemption.EXEMPT, acquisition_counts=False)
+		result = koerperschaftsteuer()
+		kst = replace(result, p8b=replace(result.p8b, holdings=(exempt,)))
+		(gewst_1a, theta) = vordrucke(chain.compute(kst, chain.GewstInputs(Decimal("400")), FIGURES))
+		self.assertEqual(
+			amounts(theta),
+			{
+				"E4050201": "Theta GmbH",
+				"E4050601": Decimal("6000"),
+				"E4050701": "1",
+				"E4051201": Decimal("6000"),
+				"E4051401": Decimal("0"),
+				"E4051601": Decimal("0"),
+				"E4051901": Decimal("0"),
+			},
+		)
+		self.assertEqual((gewst_1a.value("E4006701"), gewst_1a.value("E4006801")), (None, Decimal("0")))
 
 	def test_a_holding_of_at_least_15_percent_without_dividends_or_costs_files_lines_2_6_and_7(self):
 		holding = HoldingResult(Holding("Eta GmbH", Decimal("30"), Decimal("30")), Decimal("0.40"))

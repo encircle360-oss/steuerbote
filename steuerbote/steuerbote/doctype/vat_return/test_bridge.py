@@ -600,14 +600,14 @@ SETTINGS = {
 class FilerTest(TestCase):
 	def test_takes_the_steuernummer_and_the_datenlieferant_from_the_settings(self):
 		filer = bridge.filer(
-			{**SETTINGS, "phone": "089 1234567", "email": "erika@example.org", "wid_nr": "DE123456789"}
+			{**SETTINGS, "phone": "089 1234567", "email": "erika@example.org", "wid_nr": "DE123456788"}
 		)
 		self.assertEqual(
 			(filer.steuernummer, filer.name, filer.street, filer.postal_code, filer.city),
 			("9123045678901", "Beispiel GmbH", "Hauptstraße 1", "80331", "München"),
 		)
 		self.assertEqual(
-			(filer.phone, filer.email, filer.wid_nr), ("089 1234567", "erika@example.org", "DE123456789")
+			(filer.phone, filer.email, filer.wid_nr), ("089 1234567", "erika@example.org", "DE123456788")
 		)
 
 	def test_without_a_name_of_its_own_the_datenlieferant_is_the_company(self):
@@ -628,7 +628,7 @@ class FilerTest(TestCase):
 		for attribute, fieldname in bridge.DATENLIEFERANT_FIELDS.items():
 			with self.subTest(field=fieldname):
 				self.assertEqual(lengths[fieldname], ustva_xml.DATENLIEFERANT[attribute].length)
-		self.assertEqual(lengths["wid_nr"], len("DE123456789"))
+		self.assertEqual(lengths["wid_nr"], len("DE123456788"))
 
 
 # The company, its address and its contact as datenlieferant_defaults takes them, invented.

@@ -55,7 +55,7 @@ QUARTERLY_COMPANY = "Steuerbote Test ZM Schwelle GmbH"
 # Files like COMPANY and confirms the USt-IdNrn. of its customers, which are kept per company.
 CONFIRMING_COMPANY = "Steuerbote Test USt-IdNr.-Prüfung GmbH"
 # The example numbers of the OpenAPI document of the eVatR API and an invented French number.
-OWN_VAT_ID = "DE123456789"
+OWN_VAT_ID = "DE123456788"
 AUSTRIAN = "ATU12345678"
 FRENCH = "FR12345678901"
 ALPEN = "Alpen Handel GmbH (ZM)"

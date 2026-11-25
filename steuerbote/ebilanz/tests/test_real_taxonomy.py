@@ -240,6 +240,37 @@ class GcdExampleTest(TestCase):
 		self.assertEqual(sorted(required - self.example), [])
 		self.assertEqual(sorted(required - self.ours), [])
 
+	def test_a_choice_without_a_value_names_the_auswahlwert_of_the_example(self):
+		"""Rule 170155092 of ERiC 44.3.6.0 takes no choice NIL as a whole; the example reports one Auswahlwert NIL."""
+		for name in (
+			"genInfo.company.id.entityWithTaxablePurposeBusiness",
+			"genInfo.company.id.domesticBranchOfForeignCompany",
+			"genInfo.company.id.shareholder.legalStatus",
+		):
+			with self.subTest(name=name):
+				reported = {concept for concept in self.ours if concept.startswith(f"de-gcd:{name}.")}
+				in_example = {concept for concept in self.example if concept.startswith(f"de-gcd:{name}.")}
+				self.assertEqual(reported, in_example)
+				self.assertEqual(len(reported), 1)
+
+
+class NilTest(TestCase):
+	def test_every_nil_of_the_invented_gmbh_has_its_context(self):
+		"""A fact of a Mussfeld counts only in a context of the current year (rule 170155092 of ERiC 44.3.6.0), so
+		every NIL the E-Bilanz writes is an item with a context and no tuple is NIL as a whole."""
+		nil = "{http://www.w3.org/2001/XMLSchema-instance}nil"
+		for name, ebilanz in invented(real.view()):
+			with self.subTest(name=name):
+				root = etree.fromstring(ebilanz.xml())
+				self.assertEqual(
+					[
+						etree.QName(element).localname
+						for element in root.iter()
+						if element.get(nil) == "true" and element.get("contextRef") is None
+					],
+					[],
+				)
+
 
 class Structure610Test(TestCase):
 	"""The Mussfelder of a GmbH with the Gesamtkostenverfahren on the package 6.10: those of 6.9 with the new Mussfeld

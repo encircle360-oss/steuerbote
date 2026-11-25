@@ -48,7 +48,7 @@ class TestZusammenfassendeMeldung(IntegrationTestCase):
 		make_settings(
 			COMPANY,
 			[(2026, "monthly", 1)],
-			ust_idnr="DE123456789",
+			ust_idnr="DE123456788",
 			zm_rules=[{"year": 2026, "valid_from_month": 1, "rhythm": "monthly", "services_monthly": 1}],
 		)
 		make_mapping(COMPANY)
@@ -102,7 +102,7 @@ class TestZusammenfassendeMeldung(IntegrationTestCase):
 		for expected in (
 			"Zusammenfassende Meldung März 2026",
 			f"Unternehmen | {COMPANY} |",
-			"USt-IdNr. | DE123456789 |",
+			"USt-IdNr. | DE123456788 |",
 			"Meldezeitraum | März 2026 |",
 			"Fällig am | 27.04.2026 |",
 			"Meldeart | Erstmeldung |",

@@ -23,6 +23,7 @@ enum {
 	OK = 0,
 	GLOBAL_PRUEF_FEHLER = 610001002,
 	GLOBAL_HINWEISE = 610001003,
+	GLOBAL_STEUERNUMMER_UNGUELTIG = 610001034,
 	GLOBAL_FEHLERMELDUNG_NICHT_VORHANDEN = 610001007,
 	GLOBAL_VERSCHLUESSELUNGS_PARAMETER_NICHT_ERLAUBT = 610001027,
 	GLOBAL_DATENARTVERSION_UNBEKANNT = 610001042,
@@ -399,6 +400,20 @@ EXPORT int EricHoleFehlerText(int fehlerkode, struct EricReturnBufferApi *rueckg
 	if (!text)
 		return GLOBAL_FEHLERMELDUNG_NICHT_VORHANDEN;
 	fill_text(rueckgabePuffer, text);
+	return OK;
+}
+
+/* Takes every Steuernummer of 13 digits but one that ends in 9, so the tests can name a valid and an invalid one. */
+EXPORT int EricPruefeSteuernummer(const char *steuernummer)
+{
+	if (!initialised)
+		return GLOBAL_NICHT_INITIALISIERT;
+	if (!steuernummer || !*steuernummer)
+		return GLOBAL_NULL_PARAMETER;
+	record("steuernummer", steuernummer);
+	size_t length = strlen(steuernummer);
+	if (length != 13 || steuernummer[length - 1] == '9')
+		return GLOBAL_STEUERNUMMER_UNGUELTIG;
 	return OK;
 }
 
@@ -812,6 +827,10 @@ EXPORT int EricBearbeiteVorgang(const char *datenpuffer, const char *datenartVer
 		return IO_READER_SCHEMA_VALIDIERUNGSFEHLER;
 	if (contains(datenpuffer, "STUB-PRUEF-FEHLER")) {
 		fill_text(rueckgabeXmlPuffer, rule_errors);
+		return GLOBAL_PRUEF_FEHLER;
+	}
+	if (contains(datenpuffer, "STUB-PRUEF-OHNE-REGELN")) {
+		fill_text(rueckgabeXmlPuffer, "<EricBearbeiteVorgang/>");
 		return GLOBAL_PRUEF_FEHLER;
 	}
 	if (contains(datenpuffer, "STUB-BROKEN-RETURN")) {

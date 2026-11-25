@@ -145,7 +145,7 @@ class ValidateTest(WorkerTestCase):
 		self.assertEqual(self.stub.recorded("datenart_version"), "UStVA_2026")
 
 	def test_passes_the_datenlieferant_of_the_nutzdaten_header_to_eric(self):
-		datenlieferant = "Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; Deutschland; ; "
+		datenlieferant = "Beispiel GmbH; Hauptstraße; 1; ; ; 80331; München; Deutschland; ;"
 		header = replace(HEADER, nutzdaten_datenlieferant=datenlieferant)
 		self.run_operation(Operation.VALIDATE, header=asdict(header))
 		self.assertIn(
@@ -163,8 +163,8 @@ class ValidateTest(WorkerTestCase):
 	def test_hints_keep_the_data_valid(self):
 		result = self.run_operation(Operation.VALIDATE, "STUB-HINWEIS")
 		self.assertIs(result.outcome, Outcome.VALID)
-		self.assertEqual(self.messages(result), [("610001003", HINT, None), ("11085155", HINT, "Kz26")])
-		self.assertEqual(result.messages[1].text, "Bitte prüfen Sie die Kennzahl 26.")
+		self.assertEqual(self.messages(result), [("11085155", HINT, "Kz26")])
+		self.assertEqual(result.messages[0].text, "Bitte prüfen Sie die Kennzahl 26.")
 		self.assertIsNotNone(result.protocol_pdf)
 
 	def test_rule_errors_make_the_data_invalid(self):
@@ -173,13 +173,19 @@ class ValidateTest(WorkerTestCase):
 		self.assertEqual(
 			self.messages(result),
 			[
-				("610001002", ERROR, None),
 				("110085064", ERROR, "Kz83"),
 				("stubRegelOhneId", ERROR, None),
 				("11085155", HINT, "Kz26"),
 			],
 		)
-		self.assertEqual(result.messages[1].text, "Die Kennzahl 83 muss angegeben werden.")
+		self.assertEqual(result.messages[0].text, "Die Kennzahl 83 muss angegeben werden.")
+
+	def test_the_text_of_the_return_code_only_without_rule_messages(self):
+		"""The text of 610001002 and 610001003 says to read the return buffer, which the worker has read: with rule
+		messages it is no message of its own, without them it is the only explanation."""
+		result = self.run_operation(Operation.VALIDATE, "STUB-PRUEF-OHNE-REGELN")
+		self.assertIs(result.outcome, Outcome.INVALID)
+		self.assertEqual(self.messages(result), [("610001002", ERROR, None)])
 
 	def test_an_unreadable_return_buffer_still_fails_with_the_code(self):
 		result = self.run_operation(Operation.VALIDATE, "STUB-BROKEN-RETURN")
@@ -480,7 +486,7 @@ class BilanzTest(AnnualTestCase):
 	def test_hints_keep_the_bilanz_valid_without_a_preview(self):
 		result = self.run_kind(bilanz("6.9"), Operation.VALIDATE, "STUB-HINWEIS")
 		self.assertIs(result.outcome, Outcome.VALID)
-		self.assertEqual(self.messages(result), [("610001003", HINT, None), ("11085155", HINT, "Kz26")])
+		self.assertEqual(self.messages(result), [("11085155", HINT, "Kz26")])
 		self.assertIsNone(result.protocol_pdf)
 
 	def test_a_send_keeps_the_uebertragungsprotokoll(self):
@@ -629,6 +635,35 @@ class ProtocolTest(WorkerTestCase):
 		library.EricInitialisiere(None, None)
 		code, stdout, _ = self.serve({"command": "version", "runtime": self.runtime.to_dict()})
 		self.assertIn("610001082", json.loads(stdout)["error"])
+
+
+class SteuernummerTest(WorkerTestCase):
+	def test_checks_a_steuernummer_with_eric(self):
+		"""EricPruefeSteuernummer, in a worker of its own like every call of ERiC."""
+		for number, valid in (("9198011310010", True), ("9198011310019", False)):
+			with self.subTest(number=number):
+				code, stdout, _ = self.serve(
+					{"command": "steuernummer", "runtime": self.runtime.to_dict(), "steuernummer": number}
+				)
+				self.assertEqual((code, json.loads(stdout)), (0, {"valid": valid}))
+		self.assertFalse(self.stub.initialised)
+
+	def test_says_why_it_could_not_check(self):
+		code, stdout, _ = self.serve(
+			{"command": "steuernummer", "runtime": self.runtime.to_dict(), "steuernummer": ""}
+		)
+		self.assertEqual(code, 0)
+		self.assertIn("610001526", json.loads(stdout)["error"])
+		runtime = replace(self.runtime, lib_dir=self.directory / "nowhere")
+		code, stdout, _ = self.serve(
+			{"command": "steuernummer", "runtime": runtime.to_dict(), "steuernummer": "1"}
+		)
+		self.assertIn("libericapi.so", json.loads(stdout)["error"])
+		code, stdout, stderr = self.serve(
+			{"command": "steuernummer", "runtime": self.runtime.to_dict(), "steuernummer": 4}
+		)
+		self.assertEqual((code, stdout), (worker.EXIT_INVALID_REQUEST, b""))
+		self.assertEqual(stderr, "steuerbote.eric.worker: invalid request: steuernummer\n")
 
 
 class OutcomeTest(TestCase):

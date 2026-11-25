@@ -406,9 +406,12 @@ def components(report: Report, taxonomy: Taxonomy, facets: Facets) -> tuple[Find
 
 
 def mussfelder(report: Report, taxonomy: Taxonomy, facets: Facets) -> tuple[Finding, ...]:
-	"""Each Mussfeld of required() reported for the current year (Leitfaden B.14.2)."""
-	items = {item.concept for item, _ in report.items() if not item.period.prior and not item.dimensions}
-	tuples = {fact.concept for fact, _ in report.tuples()}
+	"""Each Mussfeld of required() reported for the current year (Leitfaden B.14.2). A tuple has no context, so it
+	counts by an item of the current year inside it, NIL or not: ERiC 44.3.6.0 refuses a tuple NIL as a whole, „kein
+	Fakt zum Mussfeld“ in the contexts of the current year (rule 170155092, validation of Bilanz_6.9)."""
+	current = [(item, around) for item, around in report.items() if not item.period.prior]
+	items = {item.concept for item, _ in current if not item.dimensions}
+	tuples = {fact.concept for _, around in current for fact in around}
 	findings = []
 	for name in required(taxonomy, facets, report.periods):
 		concept = taxonomy.concepts[name]

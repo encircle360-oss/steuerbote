@@ -103,7 +103,7 @@ class ImportFileSchemaTest(SchemaTestCase):
 			regelbesteuerung_from=date(2026, 12, 31),
 		)
 		longest = filer(
-			wid_nr="DE123456789",
+			wid_nr="DE123456788",
 			**{attribute: "x" * field.length for attribute, field in DATENLIEFERANT.items()},
 		)
 		self.assert_valid(self.nutzdaten, to_import_file(longest, full, CREATED))
@@ -152,7 +152,7 @@ class ImportFileSchemaTest(SchemaTestCase):
 				"<Kz83>95.00</Kz83>\n<Kz90>10</Kz90>\n<Kz93>10</Kz93>",
 			),
 			"Kz 09 of four digits": ("<Kz21>", "<Kz09>1234</Kz09><Kz21>"),
-			"W-IdNr with its suffix": ("<Kz21>", "<WIdNr>DE123456789-00001</WIdNr><Kz21>"),
+			"W-IdNr with its suffix": ("<Kz21>", "<WIdNr>DE123456788-00001</WIdNr><Kz21>"),
 		}
 		for case, (old, new) in mutations.items():
 			with self.subTest(case):
@@ -265,7 +265,7 @@ class Ust1HSchemaTest(SchemaTestCase):
 
 	def test_every_element_follows_the_schema(self):
 		longest = {
-			"wid_nr": "DE123456789",
+			"wid_nr": "DE123456788",
 			**{attribute: "x" * field.length for attribute, field in DATENLIEFERANT.items()},
 		}
 		for filing in (

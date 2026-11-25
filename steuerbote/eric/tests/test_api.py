@@ -160,6 +160,18 @@ class TextTest(StubTestCase):
 	def test_version_lists_the_libraries(self):
 		self.assertIn("<Name>libericapi.so</Name>", self.eric.version())
 
+	def test_checks_a_steuernummer_with_eric(self):
+		"""EricPruefeSteuernummer (API-Referenz 44.3.6.0): ERIC_OK or ERIC_GLOBAL_STEUERNUMMER_UNGUELTIG; the stub takes
+		every 13-digit number but those that end in 9."""
+		self.assertTrue(self.eric.steuernummer_valid("9198011310010"))
+		self.assertFalse(self.eric.steuernummer_valid("9198011310019"))
+		self.assertEqual(self.stub.recorded("steuernummer"), "9198011310019")
+
+	def test_another_code_of_the_check_is_an_error(self):
+		with self.assertRaises(EricError) as raised:
+			self.eric.steuernummer_valid("")
+		self.assertEqual(raised.exception.code, 610001526)
+
 	def test_a_buffer_eric_cannot_create_is_an_error(self):
 		self.stub.fail_buffer()
 		with self.assertRaises(EricError) as raised:

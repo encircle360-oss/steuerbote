@@ -43,7 +43,7 @@ UNNUMBERED = "Erlöse ohne Kontonummer"
 # The Finanzbuch of the Handelsbilanz, whose entries count where the settings name it, and one of another book.
 COMMERCIAL_BOOK = "Steuerbote Test Handelsbilanz"
 OTHER_BOOK = "Steuerbote Test Steuerbilanz"
-WID_NR = "DE123456789"
+WID_NR = "DE123456788"
 FROM, TO = date(2026, 1, 1), date(2026, 12, 31)
 SKR03 = PROVISION_ACCOUNTS["SKR03"]
 

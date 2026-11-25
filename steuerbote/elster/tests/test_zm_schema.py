@@ -106,7 +106,7 @@ class NutzdatenSchemaTest(SchemaTestCase):
 		cls.schema = eric_schema.zm_schema()
 
 	def test_a_minimal_statement_follows_the_schema(self):
-		filer = Unternehmer(ust_idnr="DE123456789", name="B", street="S", postal_code="01001", city="O")
+		filer = Unternehmer(ust_idnr="DE123456788", name="B", street="S", postal_code="01001", city="O")
 		self.assert_valid(self.schema, to_nutzdaten(filer, zm([line(AUSTRIA, Art.L, "1")]), CREATED))
 
 	def test_the_statement_of_october_follows_the_schema(self):
@@ -165,7 +165,7 @@ class NutzdatenSchemaTest(SchemaTestCase):
 			"another version": ('version="000005"', 'version="000004"'),
 			"another Paginierbuchstabe": ("<zulnr1>N</zulnr1>", "<zulnr1>X</zulnr1>"),
 			"a Teilnehmernummer below 0300000": ("<zulnr2>1111111</zulnr2>", "<zulnr2>0299999</zulnr2>"),
-			"a foreign knri": ("<knri>DE123456789</knri>", "<knri>ATU12345678</knri>"),
+			"a foreign knri": ("<knri>DE123456788</knri>", "<knri>ATU12345678</knri>"),
 			"an empty name": ("<name>Beispiel GmbH</name>", "<name></name>"),
 			"a name of 101 characters": ("<name>Beispiel GmbH</name>", f"<name>{'x' * 101}</name>"),
 			"a state of three letters": ("<staat>DE</staat>", "<staat>DEU</staat>"),

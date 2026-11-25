@@ -110,6 +110,17 @@
 	</de-gcd:genInfo.company.id.idNo>
 	<de-gcd:genInfo.company.id.shareholder>
 		<de-gcd:genInfo.company.id.shareholder.name contextRef="D-AKTJAHR" xsi:nil="true"/>
+		<de-gcd:genInfo.company.id.shareholder.id contextRef="D-AKTJAHR" xsi:nil="true"/>
+		<de-gcd:genInfo.company.id.shareholder.taxnumber contextRef="D-AKTJAHR" xsi:nil="true"/>
+		<de-gcd:genInfo.company.id.shareholder.taxid contextRef="D-AKTJAHR" xsi:nil="true"/>
+		<de-gcd:genInfo.company.id.shareholder.WID contextRef="D-AKTJAHR" xsi:nil="true"/>
+		<de-gcd:genInfo.company.id.shareholder.legalStatus>
+			<de-gcd:genInfo.company.id.shareholder.legalStatus.legalStatus.NPP contextRef="D-AKTJAHR" xsi:nil="true"/>
+		</de-gcd:genInfo.company.id.shareholder.legalStatus>
+		<de-gcd:genInfo.company.id.shareholder.ShareDivideKey>
+			<de-gcd:genInfo.company.id.shareholder.ShareDivideKey.numerator contextRef="D-AKTJAHR" xsi:nil="true"/>
+			<de-gcd:genInfo.company.id.shareholder.ShareDivideKey.denominator contextRef="D-AKTJAHR" xsi:nil="true"/>
+		</de-gcd:genInfo.company.id.shareholder.ShareDivideKey>
 	</de-gcd:genInfo.company.id.shareholder>
 	<de-gcd:genInfo.report.id.revisionStatus>
 		<de-gcd:genInfo.report.id.revisionStatus.revisionStatus.E contextRef="D-AKTJAHR"/>
@@ -133,7 +144,12 @@
 	<de-gcd:genInfo.company.id.incomeClassification>
 		<de-gcd:genInfo.company.id.incomeClassification.trade contextRef="D-AKTJAHR"/>
 	</de-gcd:genInfo.company.id.incomeClassification>
-	<de-gcd:genInfo.company.id.domesticBranchOfForeignCompany xsi:nil="true"/>
+	<de-gcd:genInfo.company.id.domesticBranchOfForeignCompany>
+		<de-gcd:genInfo.company.id.domesticBranchOfForeignCompany.other contextRef="D-AKTJAHR" xsi:nil="true"/>
+	</de-gcd:genInfo.company.id.domesticBranchOfForeignCompany>
+	<de-gcd:genInfo.company.id.entityWithTaxablePurposeBusiness>
+		<de-gcd:genInfo.company.id.entityWithTaxablePurposeBusiness.merchantVesselsInInternationalTraffic contextRef="D-AKTJAHR" xsi:nil="true"/>
+	</de-gcd:genInfo.company.id.entityWithTaxablePurposeBusiness>
 	<de-gaap-ci:bs.ass contextRef="I-AKTJAHR" unitRef="EUR" decimals="2">110500.00</de-gaap-ci:bs.ass>
 	<de-gaap-ci:bs.ass.fixAss contextRef="I-AKTJAHR" unitRef="EUR" decimals="2">42000.00</de-gaap-ci:bs.ass.fixAss>
 	<de-gaap-ci:bs.ass.fixAss.intan contextRef="I-AKTJAHR" unitRef="EUR" decimals="2">12000.00</de-gaap-ci:bs.ass.fixAss.intan>

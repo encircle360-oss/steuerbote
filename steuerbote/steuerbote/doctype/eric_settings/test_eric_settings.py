@@ -1239,6 +1239,48 @@ class TestAnnualFilings(IntegrationTestCase):
 			self.assertFalse(eric_settings.has_annual_filings())
 
 
+class TestCopyrightNotice(IntegrationTestCase):
+	"""The copyright notice every Erklärung over ERiC carries, named before the first run: by „Laufzeitumgebung prüfen“
+	on a site with annual filings, and by Steuerbote einrichten."""
+
+	@classmethod
+	def setUpClass(cls) -> None:
+		super().setUpClass()
+		make_company(ANNUAL_FILINGS_COMPANY, "STEJ")
+
+	def setUp(self) -> None:
+		super().setUp()
+		frappe.db.savepoint("copyright_test")
+		self.addCleanup(frappe.db.rollback, save_point="copyright_test")
+
+	def test_the_runtime_check_names_the_copyright_notice_of_a_site_with_annual_filings(self):
+		frappe.db.set_single_value(SETTINGS, "copyright", "")
+		frappe.db.delete(ANNUAL_FILING_SETTINGS)
+		settings = frappe.get_single(SETTINGS)
+		self.assertNotIn("copyright", {check["name"] for check in settings.check_runtime()})
+		frappe.get_doc(
+			{"doctype": ANNUAL_FILING_SETTINGS, "company": ANNUAL_FILINGS_COMPANY, "legal_form": "GmbH"}
+		).insert()
+		checks = {check["name"]: check for check in settings.check_runtime()}
+		self.assertFalse(checks["copyright"]["ok"])
+		frappe.db.set_single_value(SETTINGS, "copyright", "(c) 2026 Beispiel GmbH, München")
+		checks = {check["name"]: check for check in settings.check_runtime()}
+		self.assertTrue(checks["copyright"]["ok"])
+
+	def test_steuerbote_einrichten_asks_for_the_copyright_notice(self):
+		from steuerbote.setup.steps import Outcome
+		from steuerbote.steuerbote.doctype.eric_settings import setup as eric_setup
+
+		context = type("Context", (), {"company": ANNUAL_FILINGS_COMPANY})()
+		frappe.db.set_single_value(SETTINGS, "copyright", "")
+		result = eric_setup.run(context)
+		self.assertEqual((result.outcome, [note.open for note in result.notes]), (Outcome.UNDECIDED, [True]))
+		frappe.db.set_single_value(SETTINGS, "copyright", "(c) 2026 Beispiel GmbH, München")
+		result = eric_setup.run(context)
+		self.assertEqual((result.outcome, result.document), (Outcome.SKIPPED, (SETTINGS, SETTINGS)))
+		self.assertEqual(result.notes[0].values, ("(c) 2026 Beispiel GmbH, München",))
+
+
 class TestTaxonomy(IntegrationTestCase):
 	"""Taxonomie einrichten: the HGB-Taxonomie whose package the operator names in common_site_config.json, installed
 	outside every site. The package of the mini taxonomy (steuerbote/xbrl/tests/mini.py) stands in for the one of

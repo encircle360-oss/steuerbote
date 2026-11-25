@@ -197,6 +197,24 @@ def is_german(value: str | None) -> bool:
 	return isinstance(value, str) and GERMAN.fullmatch(normalize(value)) is not None
 
 
+def has_german_check_digit(value: str | None) -> bool:
+	"""True for a German USt-IdNr. or W-IdNr. whose ninth digit is the check digit of the eight before it.
+
+	„Die letzte der neun Ziffern ist eine Prüfziffer.“ (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 6.3.5, with the
+	example DE123456788.) The check digit follows ISO/IEC 7064, MOD 11,10; this function gave the same answer as
+	EricPruefeWIdNr of ERiC 44.3.6.0 for 20,000 random numbers, and ERiC refused DE123456789 as the own USt-IdNr. of
+	a Zusammenfassende Meldung (ungueltigeUStIDNr) and accepted DE123456788 (validation on 25 November 2026).
+	"""
+	if not is_german(value):
+		return False
+	number = normalize(value)
+	product = 10
+	for digit in number[2:10]:
+		total = (int(digit) + product) % 10 or 10
+		product = 2 * total % 11
+	return (11 - product) % 10 == int(number[10])
+
+
 def checked_pair(requested: str, requester: str) -> tuple[str, str]:
 	"""Both numbers of a query, normalized; ValueError unless requested is plausible and requester German.
 

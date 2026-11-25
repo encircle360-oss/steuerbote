@@ -81,7 +81,7 @@ MONTH_LABEL = "Oktober 2026"
 FILED_MONTH = 9
 
 # The examples of the OpenAPI document of the eVatR API, as in steuerbote/vatid/tests/fakes.py.
-OWN_VAT_ID = "DE123456789"
+OWN_VAT_ID = "DE123456788"
 EU_VAT_ID = "ATU12345678"
 
 DOMESTIC_CUSTOMER = "Musterkunde GmbH (E2E)"

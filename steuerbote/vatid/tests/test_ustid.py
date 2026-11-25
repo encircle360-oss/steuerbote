@@ -14,6 +14,7 @@ from steuerbote.vatid.ustid import (
 	MIN_LENGTH,
 	REFUSED,
 	checked_pair,
+	has_german_check_digit,
 	is_german,
 	is_plausible,
 	normalize,
@@ -225,6 +226,40 @@ class GermanNumberTest(TestCase):
 		for value in ("DE12345678", "DE1234567890", "DEU12345678", "ATU12345678", "", None, 123456789):
 			with self.subTest(value=value):
 				self.assertFalse(is_german(value))
+
+
+class GermanCheckDigitTest(TestCase):
+	"""The ninth digit of a German USt-IdNr. or W-IdNr. is a check digit (ERiC-Entwicklerhandbuch 44.3.6.0,
+	Kap. 6.3.5: „DE123456788 … Nur mit der Prüfziffer 8 als neunter Ziffer ist diese W-IdNr. gültig.“). The numbers
+	below were checked with EricPruefeWIdNr of ERiC 44.3.6.0, the knri of ZMDO_5_send-Auth.xml among them."""
+
+	def test_takes_the_check_digit_eric_takes(self):
+		for value in (
+			"DE123456788",
+			"de 123 456 788",
+			"DE554367942",
+			"DE100000008",
+			"DE999999995",
+			"DE000000003",
+			"DE123456704",
+			"DE314159262",
+			"DE271828180",
+		):
+			with self.subTest(value=value):
+				self.assertTrue(has_german_check_digit(value))
+
+	def test_refuses_any_other(self):
+		for value in (
+			"DE123456789",
+			"DE554367941",
+			"DE271828181",
+			"DE000000000",
+			"DE12345678",
+			"ATU12345678",
+			None,
+		):
+			with self.subTest(value=value):
+				self.assertFalse(has_german_check_digit(value))
 
 
 class CheckedPairTest(TestCase):

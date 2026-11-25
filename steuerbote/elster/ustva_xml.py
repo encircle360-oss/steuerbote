@@ -61,6 +61,7 @@ from steuerbote.elster.charset import CharsetError, describe, transliterate
 from steuerbote.ustva import Kennzahl, Kind, Mapping, Period, StatutoryTax, calculate, catalogue_for
 from steuerbote.ustva.kennzahlen import BALANCE_KENNZAHL
 from steuerbote.ustva.rounding import ZERO, require_decimal, to_cents, to_full_euros
+from steuerbote.vatid.ustid import has_german_check_digit
 
 IMPORT_DECLARATION = b'<?xml version="1.0" encoding="ISO-8859-15" standalone="no"?>\n'
 IMPORT_ENCODING = "iso-8859-15"
@@ -94,6 +95,9 @@ NOT_A_WID_NR = (
 	"{0} is not a Wirtschafts-Identifikationsnummer: ELSTER takes DE and nine digits, without the "
 	"five-digit suffix."
 )
+WRONG_WID_NR_CHECK_DIGIT = (
+	"The W-IdNr. {0} is not valid: its check digit, the last of the nine digits, is wrong."
+)
 NOT_A_HERSTELLER_ID = "{0} is not a Hersteller-ID of five digits."
 ILLUSTRATION_HERSTELLER_ID = "74931 only illustrates the ERiC documentation and is no Hersteller-ID."
 TEXT_MISSING = "{label} is missing."
@@ -114,6 +118,7 @@ MESSAGES = (
 	SWITCH_IN_ANOTHER_YEAR,
 	NOT_A_STEUERNUMMER,
 	NOT_A_WID_NR,
+	WRONG_WID_NR_CHECK_DIGIT,
 	NOT_A_HERSTELLER_ID,
 	ILLUSTRATION_HERSTELLER_ID,
 	TEXT_MISSING,
@@ -261,6 +266,8 @@ def normalized_wid_nr(value: str | None) -> str | None:
 		return None
 	if not WID_NR_PATTERN.fullmatch(compact):
 		raise XmlError(NOT_A_WID_NR, value)
+	if not has_german_check_digit(compact):
+		raise XmlError(WRONG_WID_NR_CHECK_DIGIT, value)
 	return compact
 
 

@@ -51,6 +51,7 @@ from steuerbote.eric.header import EnvelopeHeader, problems, without_declaration
 from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Message, Operation, Outcome, TransmissionResult
 from steuerbote.eric.runtime import Check
 from steuerbote.eric.simulation import Checks, Structure, bilanz, gewst, kst, ust
+from steuerbote.vatid.ustid import has_german_check_digit
 
 DOCUMENTATION_VARIABLE = "STEUERBOTE_ERIC_DOC_DIR"
 SIMULATED_VERSION = "simulation"
@@ -430,6 +431,38 @@ def _ustva_hints(context: ElementTree.Element, kind: Datenart) -> tuple[Message,
 	)
 
 
+def _wid_nr_check_digit(
+	context: ElementTree.Element, kind: Datenart, header: EnvelopeHeader
+) -> Message | None:
+	"""ERiC refuses a W-IdNr. whose check digit is wrong (ungueltigeWirtschaftsIdentifikationsnummer, validation of a
+	Voranmeldung 2026 with ERiC 44.3.6.0)."""
+	wid_nr = context.findtext(f"{{{kind.namespace}}}WIdNr", default="").strip()
+	if not wid_nr or has_german_check_digit(wid_nr):
+		return None
+	return Message(
+		"ungueltigeWirtschaftsIdentifikationsnummer",
+		f"Die W-IdNr. {wid_nr} ist ungültig: Ihre Prüfziffer, die letzte der neun Ziffern, stimmt nicht.",
+		ERROR,
+		"WIdNr",
+	)
+
+
+def _own_vat_id_check_digit(
+	root: ElementTree.Element, kind: Datenart, header: EnvelopeHeader
+) -> Message | None:
+	"""ERiC refuses an own USt-IdNr. whose check digit is wrong (ungueltigeUStIDNr, validation of a Zusammenfassende
+	Meldung with ERiC 44.3.6.0)."""
+	vat_id = _zm_value(root, "unternehmer/knri", kind)
+	if has_german_check_digit(vat_id):
+		return None
+	return Message(
+		"ungueltigeUStIDNr",
+		f"Die USt-IdNr. {vat_id} des Unternehmers ist ungültig: Ihre Prüfziffer, die letzte Ziffer, stimmt nicht.",
+		ERROR,
+		"knri",
+	)
+
+
 def _ustva_structure_only(kind: Datenart, reason: str) -> str:
 	return STRUCTURE_ONLY.format(year=kind.year, reason=reason)
 
@@ -484,8 +517,14 @@ def _zm_structure_only(kind: Datenart, reason: str) -> str:
 
 CHECKS: MappingProxyType[str, Checks] = MappingProxyType(
 	{
-		"UStVA": Checks(_anmeldungssteuern, _ustva_filing, _ustva_structure_only, hints=_ustva_hints),
-		"ZMDO": Checks(_zm, _zm_filing, _zm_structure_only),
+		"UStVA": Checks(
+			_anmeldungssteuern,
+			_ustva_filing,
+			_ustva_structure_only,
+			rules=(_wid_nr_check_digit,),
+			hints=_ustva_hints,
+		),
+		"ZMDO": Checks(_zm, _zm_filing, _zm_structure_only, rules=(_own_vat_id_check_digit,)),
 		"USt": ust.CHECKS,
 		"KSt": kst.CHECKS,
 		"GewSt": gewst.CHECKS,

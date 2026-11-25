@@ -419,7 +419,42 @@ class MussfelderTest(TestCase):
 		)
 		self.assertEqual(
 			codes(checks.mussfelder(nil_tuple, mini.view(), Facets.of(nil_tuple))),
-			[(Code.MUSSFELD, f"{G}company.id.shareholder.name")],
+			[
+				(Code.MUSSFELD, f"{G}company.id.shareholder"),
+				(Code.MUSSFELD, f"{G}company.id.shareholder.name"),
+			],
+		)
+
+	def test_a_tuple_counts_by_an_item_of_the_current_year(self):
+		"""ERiC 44.3.6.0 reports a Mussfeld it finds no fact of in the contexts of the current year (rule 170155092,
+		validation of Bilanz_6.9); a tuple has no context of its own, so it counts by an item inside it, NIL or not."""
+		legal_status = f"{G}company.id.legalStatus"
+		as_a_whole = replace(
+			without(complete(), legal_status),
+			facts=(*without(complete(), legal_status).facts, Tuple(legal_status, nil=True)),
+		)
+		self.assertEqual(
+			codes(checks.mussfelder(as_a_whole, mini.view(), Facets.of(complete()))),
+			[(Code.MUSSFELD, legal_status)],
+		)
+		one_nil = replace(
+			as_a_whole,
+			facts=(
+				*without(complete(), legal_status).facts,
+				Tuple(legal_status, (nil(f"{legal_status}.legalStatus.GMBH", Period.WIRTSCHAFTSJAHR),)),
+			),
+		)
+		self.assertEqual(checks.mussfelder(one_nil, mini.view(), Facets.of(complete())), ())
+		prior_only = replace(
+			as_a_whole,
+			facts=(
+				*without(complete(), legal_status).facts,
+				Tuple(legal_status, (nil(f"{legal_status}.legalStatus.GMBH", Period.VORJAHR),)),
+			),
+		)
+		self.assertEqual(
+			codes(checks.mussfelder(prior_only, mini.view(), Facets.of(complete()))),
+			[(Code.MUSSFELD, legal_status)],
 		)
 
 	def test_the_mussfelder_of_the_legal_form_and_the_format(self):

@@ -11,7 +11,7 @@ from frappe.utils import cint, escape_html, flt, getdate
 from steuerbote import prior_filings
 from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster, ustva_xml, zm_xml
 from steuerbote.setup import start
-from steuerbote.steuerbote.doctype.vat_return import bridge
+from steuerbote.steuerbote.doctype.vat_return import bridge, transmission_adapter
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
 from steuerbote.ustva import Rhythm
 from steuerbote.zm.rhythm import Rule as ZmRule
@@ -177,6 +177,8 @@ class VATReturnSettings(Document):
 				),
 				title=_("Invalid Steuernummer"),
 			)
+		if self.has_value_changed("elster_tax_number"):
+			transmission_adapter.require_valid_steuernummer(self.elster_tax_number, self.tax_number)
 
 	def set_datenlieferant(self) -> None:
 		"""Fill an empty part of the Datenlieferant from the company and its address; what the user entered stays."""

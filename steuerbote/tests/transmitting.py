@@ -117,6 +117,8 @@ class Transmitting:
 		settings.save()
 
 	def use_runtime(self, **values):
+		"""ERiC Settings with a runtime; transmit, which refuses a run without one at the button, finds the runtime
+		of the bench or, where the bench has none, the stand-in RUNTIME, which a FakeEric then serves."""
 		self.eric_settings(
 			**{
 				"hersteller_id": "12345",
@@ -128,6 +130,16 @@ class Transmitting:
 				**values,
 			}
 		)
+		detect = transmission_adapter.detect_runtime
+
+		def found(datenart, operation, hersteller_id, log_dir):
+			return detect(datenart, operation, hersteller_id, log_dir) or replace(
+				RUNTIME, hersteller_id=hersteller_id, log_dir=log_dir
+			)
+
+		patcher = patch.object(transmission_adapter, "detect_runtime", side_effect=found)
+		patcher.start()
+		self.addCleanup(patcher.stop)
 
 	def stash(self, doc) -> str:
 		"""Certificate and password, entered by the current user for the document."""

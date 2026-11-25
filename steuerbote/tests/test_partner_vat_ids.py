@@ -40,7 +40,7 @@ CONFIRMATION = "VAT ID Confirmation"
 COMPANY = "Steuerbote Test Partner USt-IdNr. GmbH"
 OTHER = "Steuerbote Test Partner ohne USt-IdNr. GmbH"
 # The example numbers of the OpenAPI document of the eVatR API and invented ones.
-OWN_VAT_ID = "DE123456789"
+OWN_VAT_ID = "DE123456788"
 AUSTRIAN = "ATU12345678"
 FRENCH = "FR12345678901"
 ITALIAN = "IT12345678901"
@@ -641,6 +641,6 @@ class TestPartnerVatIds(IntegrationTestCase):
 			self.assertEqual(frappe.db.get_value("Scheduled Job Type", job, "stopped"), 1)
 			self.assertEqual(vat_id_setup.check_erpnext_germany(context).outcome, Outcome.SKIPPED)
 		self.assertEqual(
-			[step["key"] for step in frappe.get_hooks("steuerbote_setup_steps", app_name="steuerbote")][-3:],
-			["vat_id_label", "erpnext_germany_vat_id_check", "vat_id_automatic_check"],
+			[step["key"] for step in frappe.get_hooks("steuerbote_setup_steps", app_name="steuerbote")][-4:],
+			["vat_id_label", "erpnext_germany_vat_id_check", "vat_id_automatic_check", "eric_settings"],
 		)
