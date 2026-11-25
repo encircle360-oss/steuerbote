@@ -1359,6 +1359,59 @@ TIMING_ACCOUNTS = MappingProxyType({"SKR03": SKR03_WATCHED[:2], "SKR04": SKR04_W
 DATEV_EDITION = 2026
 REVISION = 3
 
+# The purchase accounts whose name states the rate of their Vorsteuer, as the DATEV-Kontenrahmen „Gültig für 2026“ name
+# them: SKR 03 3010 „Einkauf Roh-, Hilfs- und Betriebsstoffe 7 % Vorsteuer“ and 3030 of 19 %, 3091 and 3092
+# „Energiestoffe (Fertigung) 7 % VSt“ and „19 % VSt“, 3300 and 3347 „Wareneingang 7 % Vorsteuer“, 3400 and 3418
+# „Wareneingang 19 % Vorsteuer“; SKR 04 5110, 5130, 5191, 5192, 5300, 5347, 5400 and 5418 of the same names. The Voranmeldung
+# gives them no Kennzahl; the hint on the input tax of a voucher compares their rate with the Vorsteuer it books
+# (steuerbote/ustva/input_tax.py).
+SKR03_PURCHASE_RATES = {
+	"3010": 7,
+	"3030": 19,
+	"3091": 7,
+	"3092": 19,
+	"3300": 7,
+	"3347": 7,
+	"3400": 19,
+	"3418": 19,
+}
+SKR04_PURCHASE_RATES = {
+	"5110": 7,
+	"5130": 19,
+	"5191": 7,
+	"5192": 19,
+	"5300": 7,
+	"5347": 7,
+	"5400": 19,
+	"5418": 19,
+}
+
+
+def _purchase_rates(
+	rates: ReadOnlyMapping[str, int], ranges: ReadOnlyMapping[str, str]
+) -> MappingProxyType[str, Decimal]:
+	return MappingProxyType(
+		{
+			member: Decimal(rate)
+			for account, rate in rates.items()
+			for member in with_ranges((account,), ranges)
+		}
+	)
+
+
+_PURCHASE_RATES = MappingProxyType(
+	{
+		"SKR03": _purchase_rates(SKR03_PURCHASE_RATES, SKR03_RANGES),
+		"SKR04": _purchase_rates(SKR04_PURCHASE_RATES, SKR04_RANGES),
+	}
+)
+
+
+def purchase_rates(chart: str) -> ReadOnlyMapping[str, Decimal]:
+	"""The rate of the Vorsteuer that each purchase account of a chart names; none for a chart without defaults."""
+	return _PURCHASE_RATES.get(chart, MappingProxyType({}))
+
+
 # The ignored accounts of each chart with the members of their ranges, which take the place of their first account.
 _DELIBERATELY_WITHOUT_KENNZAHL = MappingProxyType(
 	{

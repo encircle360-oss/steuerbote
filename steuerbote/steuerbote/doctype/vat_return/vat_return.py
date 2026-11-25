@@ -77,9 +77,9 @@ from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings impor
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
 from steuerbote.suppliers import load_vouchers
 from steuerbote.tax_templates import template_accounts
-from steuerbote.ustva import carried, plausibility, registers, tax_templates
+from steuerbote.ustva import carried, input_tax, plausibility, registers, tax_templates
 from steuerbote.ustva.assignment import changes
-from steuerbote.ustva.defaults import TIMING_ACCOUNTS, deliberately_without_kennzahl
+from steuerbote.ustva.defaults import TIMING_ACCOUNTS, deliberately_without_kennzahl, purchase_rates
 from steuerbote.vat_periods import VatLedger, filed_amounts
 from steuerbote.vatid import Details, UrllibFetch
 from steuerbote.zm.lines import VoucherAmount
@@ -298,7 +298,10 @@ class VATReturn(Confirming, Transmittable, Document):
 			),
 		)
 		hints = build_hints(self, period, mapping, result, comparison, reconciliation, sales_invoices(lines))
-		self.set("hints", bridge.hint_rows((*hints, *release_hints)))
+		hints = plausibility.merged(
+			hints, release_hints, return_hints(self.company, mapping, lines, settings)
+		)
+		self.set("hints", bridge.hint_rows(hints))
 		self.ready = int(result.ready and bridge.provisional_forms(year) is None)
 		self.status = READY if self.ready else CALCULATED
 		self.accounts_without_number = len(accounts_without_number(self.company))
@@ -1020,6 +1023,21 @@ def build_hints(
 			account_labels(doc.company, (row.account_number for row in reconciliation if row.account_number)),
 			figures,
 		),
+	)
+
+
+def return_hints(
+	company: str, mapping: ustva.Mapping, lines: list[ustva.LedgerLine], settings: Document
+) -> list[plausibility.Hint]:
+	"""The hints on the input tax of the vouchers of the period (steuerbote.ustva.input_tax), with the tolerance per
+	voucher of the Verprobung."""
+	currency = frappe.get_cached_value("Company", company, "default_currency")
+	return input_tax.input_tax_hints(
+		lines,
+		mapping,
+		purchase_rates(mapping.chart),
+		bridge.to_amount(settings.tolerance),
+		SiteFigures(currency),
 	)
 
 
