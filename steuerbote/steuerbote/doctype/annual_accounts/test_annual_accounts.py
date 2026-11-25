@@ -182,6 +182,14 @@ class TestAnnualAccounts(IntegrationTestCase):
 		self.assertEqual(blocking(doc), [])
 		self.assertEqual(doc.ready, 1)
 
+	def test_without_a_class_in_the_settings_the_feststellung_is_due_by_the_class_berechnen_applies(self):
+		"""A small company has eleven months for the Feststellung (§ 42a Abs. 2 Satz 1 GmbHG); where the settings name no
+		class for the Abschlussstichtag, the class the Jahresabschluss applies gives the deadline, not eight months."""
+		doc = data.calculated(KLEINST)
+		self.assertEqual(doc.size_class, "Kleinst")
+		self.assertIn("JA-GROESSE-EINSTELLUNGEN", codes(doc))
+		self.assertEqual(getdate(doc.deadline), date(2027, 11, 30))
+
 	def test_the_size_class_and_the_arbeitnehmer_by_hand_count_with_their_reason(self):
 		doc = data.calculated(KLEINST)
 		doc.size_class_override = "Klein"
