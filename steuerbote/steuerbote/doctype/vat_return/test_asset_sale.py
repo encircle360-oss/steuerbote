@@ -271,11 +271,13 @@ class TestAssetSale(IntegrationTestCase):
 
 def make_masters(account: dict[str, str]) -> None:
 	"""The records ERPNext needs to sell an asset, without its setup wizard: a unit, an item group, a location, an asset
-	category with the accounts of the company, a selling price list, the item of the asset, an item for asset sales and a customer without address."""
+	category with the accounts of the company, the party type of a customer, a selling price list, the item of the asset, an item for asset sales and a customer without address."""
 	if not frappe.db.exists("UOM", UOM):
 		insert_record("UOM", name=UOM, uom_name=UOM, must_be_whole_number=1, enabled=1)
 	if not frappe.db.exists("Item Group", ITEM_GROUP):
 		insert_record("Item Group", name=ITEM_GROUP, item_group_name=ITEM_GROUP, is_group=0)
+	if not frappe.db.exists("Party Type", "Customer"):
+		insert_record("Party Type", name="Customer", party_type="Customer", account_type="Receivable")
 	if not frappe.db.exists("Price List", PRICE_LIST):
 		insert_record(
 			"Price List", name=PRICE_LIST, price_list_name=PRICE_LIST, currency="EUR", selling=1, enabled=1
