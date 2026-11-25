@@ -432,6 +432,7 @@ Auffällig ist eine Kennzahl, wenn ihre Änderung gegenüber der Vorperiode beid
 | `VORSTEUER-ABWEICHUNG` | Warnung | Ein Beleg bucht auf ein Wareneingangs- oder Einkaufskonto, das den Satz seiner Vorsteuer nennt, und auf den Konten der Kz 66 eine andere Vorsteuer, als der Satz ergibt, mehr als die Toleranz je Beleg; nur die gesetzlich geschuldete Steuer ist abziehbar (§ 15 Abs. 1 Satz 1 Nr. 1 UStG), siehe [Vorsteuer und der Satz des Wareneingangskontos](ustva-kennzahlen.md#vorsteuer-und-der-satz-des-wareneingangskontos). |
 | `ZEITRAUM-NICHT-ABGELAUFEN` | Warnung | Der letzte Tag des Zeitraums ist noch nicht vorbei; die Meldung ist nicht bereit, bis „Berechnen“ nach dem Ende des Zeitraums erneut läuft (§ 13 Abs. 1 Nr. 1 Buchst. a, § 18 Abs. 1 UStG). Anders als die übrigen Hinweise hält diese Warnung die Meldung an. |
 | `ZM-OHNE-RHYTHMUS` | Warnung | Kz 41, 42 oder 21 melden Umsätze, aber die Einstellungen nennen für einen Monat des Zeitraums keinen Rhythmus der Zusammenfassenden Meldung (§ 18a Abs. 1 und 2 UStG). |
+| `BERICHTIGUNG-OHNE-AENDERUNG` | Hinweis | Eine berichtigte Anmeldung (Kz 10) meldet dieselben Beträge wie die abgegebene Meldung, die sie ersetzen würde; sie ändert nichts. |
 | `REGISTER-ABWEICHUNG` | Hinweis | Eine Kennzahl oder ein Steuerkonto weicht im Abgleich mit Registern vom Bericht ab; die Differenz braucht vor der Abgabe eine Erklärung, siehe [Abgleich mit Sales Register und Purchase Register](#abgleich-mit-sales-register-und-purchase-register). |
 
 ## Abgleich mit Sales Register und Purchase Register

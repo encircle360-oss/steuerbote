@@ -1383,7 +1383,7 @@ Eine Buchung für einen abgegebenen Zeitraum macht dessen Anmeldung unvollständ
 - jede Stornierung nach der Abgabe des Zeitraums ihres Belegs, mit der Art „Nach der Abgabe storniert“, siehe [Stornierte Belege](#stornierte-belege), und
 - jede Kennzahl eines abgegebenen Zeitraums vor dieser Meldung, deren Betrag laut Hauptbuch heute von dem abweicht, den die abgegebene Meldung genommen hat („Kz 81: abgegeben 1.000,00 €, jetzt 1.500,00 €.“). Kz 83 und Kz 39 folgen aus den anderen und aus den Einstellungen und werden nicht verglichen. Dieser Vergleich findet auch, was keine nachträgliche Buchung erklärt, etwa einen gelöschten Beleg oder eine geänderte Kontenzuordnung.
 
-Die abgegebene Meldung selbst nennt beim Öffnen über dem Formular, was sich in ihrem Zeitraum seit der Abgabe geändert hat und wo eine nachträgliche Buchung gemeldet ist. „Berichtigung anlegen“ an ihr legt die berichtigte Anmeldung (Kz 10) des Zeitraums als Entwurf an oder öffnet den Entwurf, den es schon gibt.
+Eine berichtigte Anmeldung (Kz 10) nennt in derselben Tabelle die nachträglichen Buchungen ihres eigenen Zeitraums, die sie meldet („… in dieser berichtigten Anmeldung gemeldet.“), und meldet sie dieselben Beträge wie die abgegebene Meldung, sagt das der Hinweis `BERICHTIGUNG-OHNE-AENDERUNG`. Die abgegebene Meldung selbst nennt beim Öffnen über dem Formular, was sich in ihrem Zeitraum seit der Abgabe geändert hat und wo eine nachträgliche Buchung gemeldet ist. „Berichtigung anlegen“ an ihr legt die berichtigte Anmeldung (Kz 10) des Zeitraums als Entwurf an oder öffnet den Entwurf, den es schon gibt.
 
 ### Stornierte Belege
 
