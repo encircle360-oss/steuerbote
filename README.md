@@ -197,13 +197,13 @@ Wer dauerhaft Verantwortung übernehmen möchte, zeigt das am einfachsten durch 
 
 ### Professioneller Support
 
-Für Einführung, Anpassung an eigene Kontenrahmen, Betrieb, Schulung oder die Begleitung der Einrichtung zusammen mit deiner Steuerberatung: **hello@encircle360.com**
+Für Einführung, Anpassung an eigene Kontenrahmen, Betrieb, Schulung oder die Begleitung der Einrichtung zusammen mit Ihrer Steuerberatung: **hello@encircle360.com**
 
 ## Haftungsausschluss
 
 Steuerbote wird ohne jede Gewährleistung und, soweit das Gesetz es erlaubt, ohne Haftung bereitgestellt (Abschnitte 15 und 16 der [Lizenz](LICENSE)). Steuerbote ist Software, keine Steuer- oder Rechtsberatung, und ersetzt keine Steuerberatung. Wer eine Meldung abgibt, bleibt für ihren Inhalt verantwortlich und prüft die Zahlen vor der Abgabe. Was das im Einzelnen heißt, steht im [Haftungsausschluss](docs/haftungsausschluss.md).
 
-Für den Einsatz mit zugesichertem Support und Reaktionszeiten sprich uns an: **hello@encircle360.com**
+Für den Einsatz mit zugesichertem Support und Reaktionszeiten sprechen Sie uns an: **hello@encircle360.com**
 
 ## Lizenz
 
