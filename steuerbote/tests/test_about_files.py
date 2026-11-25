@@ -227,5 +227,13 @@ class CreatedWithTest(TestCase):
 		)
 
 	def test_the_version_comes_from_the_app(self):
-		self.assertEqual(hooks.jinja, {"methods": ["steuerbote.steuerbote.about.steuerbote_version"]})
+		self.assertEqual(
+			hooks.jinja,
+			{
+				"methods": [
+					"steuerbote.steuerbote.about.steuerbote_version",
+					"steuerbote.steuerbote.about.steuerbote_pdf_generator",
+				]
+			},
+		)
 		self.assertEqual(about.steuerbote_version(), __version__)
