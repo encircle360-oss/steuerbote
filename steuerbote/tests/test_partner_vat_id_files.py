@@ -393,3 +393,16 @@ class TranslationFilesTest(TestCase):
 			},
 			"the worklist and the list of all confirmations, and the title of the worklist",
 		)
+
+
+class WorklistColumnsTest(TestCase):
+	def test_each_column_is_wide_enough_for_its_german_heading(self):
+		"""A heading the grid cuts off, such as „Stand der Bestätigu…“, says nothing: each column is at least as wide
+		as its German heading in the font of the desk, about 8 pixels a character, and the padding of the cell."""
+		source = (REPORT / f"{REPORT.name}.py").read_text(encoding="utf-8")
+		columns = re.findall(r'"label": _\("([^"]+)"\),[^}]*?"width": (\d+)', source, re.DOTALL)
+		self.assertEqual(len(columns), 9)
+		german = translations()
+		for label, width in columns:
+			with self.subTest(label=label):
+				self.assertGreaterEqual(int(width), 8 * len(german.get(label, label)) + 24)
