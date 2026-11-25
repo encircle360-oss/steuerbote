@@ -23,6 +23,8 @@ import sys
 from pathlib import Path
 
 import frappe
+from frappe import _
+from frappe.translate import print_language
 from frappe.utils.pdf import get_pdf
 
 from steuerbote.tests import printouts
@@ -111,12 +113,37 @@ AMOUNT_KEYS = {
 }
 TEXT_KEYS = {"label", "value", "text", "party", "title"}
 REPEAT = 3
+LANGUAGE = "de"
+# A source text of Steuerbote and the words a printout must not hold, which only an English one does.
+PROBE = "Steuerbote has the forms of {0} provisionally from the Jahresdokumentation {1}: until ELSTER publishes those of {0}, the return is not ready. A filing needs remarks that say why it goes nonetheless."
+ENGLISH = (" the ", " has ", " with ")
+# German texts that the printouts of the documents of the seed hold, so that a fallback to English fails the run.
+GERMAN = {
+	"Corporate Income Tax Return": ("Steuerbote hat die Vordrucke für",),
+	"Trade Tax Return": ("Steuerbote hat die Vordrucke für",),
+}
 LINK = re.compile(r'<link[^>]*rel="stylesheet"[^>]*>')
 SCRIPT = re.compile(r"<script[^>]*\bsrc=[^>]*>\s*</script>")
 BUNDLE = re.compile(r'href="(/assets/[^"]*print\.bundle[^"]*\.css)"')
 
 
 def run(directory: str) -> None:
+	"""Every printout in German, the language of the sites Steuerbote serves: German texts run longer than their
+	English source, and the checks of margins and page breaks are only worth what the texts they measure are."""
+	with print_language(LANGUAGE):
+		if (
+			_(
+				"Steuerbote has the forms of {0} provisionally from the Jahresdokumentation {1}: until ELSTER publishes those of {0}, the return is not ready. A filing needs remarks that say why it goes nonetheless."
+			)
+			== PROBE
+		):
+			raise SystemExit(
+				"Die deutschen Übersetzungen von Steuerbote fehlen, die Ausdrucke wären englisch."
+			)
+		proof_all(directory)
+
+
+def proof_all(directory: str) -> None:
 	out = Path(directory)
 	out.mkdir(parents=True, exist_ok=True)
 	report, failed = ["# Ausdrucke als PDF", ""], False
@@ -262,6 +289,20 @@ def stretched(value, key=None):
 	return value
 
 
+FINDING_CODES = ("JA-RESTLAUFZEIT-FEHLT", "BILANZ-OHNE-PLATZ", "JOURNALBUCHUNG-STEUERKONTO", "ZEITRAUM-FEHLT")
+FINDING_TEXTS = (
+	"Für „{account} - Verbindlichkeiten aus Lieferungen und Leistungen gegenüber verbundenen Unternehmen“ fehlt die"
+	" Restlaufzeit, die der Vermerk „davon mit einer Restlaufzeit bis zu einem Jahr“ bei „Verbindlichkeiten“"
+	" braucht; die Zuordnung nennt sie. (§ 268 Abs. 5 Satz 1 HGB)",
+	"Konto {account} hat einen Saldo, aber keinen Platz in der Bilanzzuordnung: Ordnen Sie es einer Position zu"
+	" oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt.",
+	"Die Journalbuchung ACC-JV-2026-{account} bewegt das Steuerkonto 1776 um -1.900,00 Euro, ohne das Kennzeichen"
+	" „Nicht in der Umsatzsteuer-Voranmeldung“: Eine Verrechnung der Steuerkonten braucht das Kennzeichen, eine"
+	" Korrektur nicht.",
+	"Keine abgegebene Voranmeldung deckt Dezember 2026 ab: sie abgeben oder mit Begründung darauf verzichten.",
+)
+
+
 def lengthened(doc):
 	"""Many findings, long remarks and every table of the print three times."""
 	if doc.meta.has_field("findings") and doc.meta.get_field("findings").fieldtype == "Table":
@@ -270,16 +311,22 @@ def lengthened(doc):
 				"findings",
 				{
 					"severity": "Fehler" if index % 3 == 0 else "Hinweis",
-					"code": f"SB-BEFUND-MIT-LANGEM-CODE-{index:02d}",
-					"text": f"Befund {index + 1}: Das Konto 1{index:03d} hat einen Saldo, der in keine Zeile eingeht."
-					" Ordnen Sie es einer Position zu oder sagen Sie, warum es außerhalb bleibt.",
+					"code": FINDING_CODES[index % len(FINDING_CODES)],
+					"text": FINDING_TEXTS[index % len(FINDING_TEXTS)].format(account=1500 + index),
 					"reference": f"bs.ass.currAss.receiv.other.vat.{index:02d}",
 				},
 			)
 	elif doc.meta.has_field("findings"):
-		doc.findings = "Offener Punkt mit einer langen Erklärung. " * 12
+		doc.findings = (
+			"Die Sondervorauszahlung des Vorjahres ist noch nicht verrechnet; die Grundlage nimmt die Voranmeldungen,"
+			" die vor Steuerbote abgegeben wurden, mit den Beträgen laut Bescheid. "
+		) * 4
 	if doc.meta.has_field("remarks"):
-		doc.remarks = "Anmerkung zum Ausdruck mit einem längeren Text für die Steuerberatung. " * 10
+		doc.remarks = (
+			"Mit der Steuerberatung am 12.03.2027 abgestimmt: Die Abweichung der Umsatzerlöse gegenüber der E-Bilanz"
+			" beruht auf Anzahlungen, die erst im Folgejahr als Umsatz gebucht werden. Die Hinweise zu den"
+			" Journalbuchungen betreffen die monatliche Verrechnung der Steuerkonten und sind geprüft. "
+		) * 3
 	for row in doc.get("kennzahlen") or ():
 		row.override_reason = "Korrektur von Hand mit Begründung für die Akte und die Steuerberatung."
 	if doc.doctype == "Recapitulative Statement":
@@ -334,6 +381,8 @@ def proof(out: Path, stem: str, doc, print_format: str, together, bundle: bool) 
 		on_every_page=(doc.name,),
 		headings=HEADINGS,
 		together=together,
+		somewhere=GERMAN.get(doc.doctype, ()),
+		nowhere=ENGLISH,
 	)
 	return printouts.check(pages, expected), len(pages)
 
