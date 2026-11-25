@@ -399,3 +399,23 @@ class ClosingTest(TestCase):
 				closing = template[template.rindex('<div class="sb-keep">') :]
 				self.assertRegex(closing, r"<h2>(Anmerkungen|Bemerkungen)</h2>")
 				self.assertIn('<div class="sb-footer">', closing)
+
+
+class FindingsTest(TestCase):
+	def test_each_table_of_findings_begins_with_its_heading_its_head_and_first_row_in_one_row(self):
+		"""wkhtmltopdf leaves a repeated table head alone at the foot of a page when the first row of the table no
+		longer fits, Chromium carries it over; a row is kept together by both. The heading, the head and the first
+		row of each table of findings stand in a table of their own inside its first row (sb-nest), the further rows
+		follow without a repeated head."""
+		findings = JINJA_COMMENT.sub("", read("steuerbote/templates/includes/annual_filing/findings.html"))
+		self.assertNotIn("<thead>", findings)
+		for heading in ("<h2>Befunde</h2>", "<h3>Hinweise nach Art</h3>", "<h3>Anhang: alle Hinweise</h3>"):
+			with self.subTest(heading=heading):
+				nest = findings.rindex('<td class="sb-nest"', 0, findings.index(heading))
+				self.assertLess(
+					findings.index("</table>", findings.index(heading)), findings.index("</td></tr>", nest)
+				)
+				between = findings[
+					findings.index(heading) : findings.index("</table>", findings.index(heading))
+				]
+				self.assertIn("first_row(", between)
