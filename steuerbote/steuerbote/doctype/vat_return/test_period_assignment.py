@@ -373,7 +373,8 @@ class TestSupplierOfAnotherMemberState(IntegrationTestCase):
 		_columns, rows = execute(
 			{"company": SUPPLIER_COMPANY, "year": 2026, "rhythm": "monthly", "period_index": 8}
 		)
-		self.assertEqual({row["parent_kennzahl"] for row in rows if row.get("voucher_no") == voucher}, {"46"})
+		under = {row["parent_kennzahl"] for row in rows if row.get("voucher_no") == voucher}
+		self.assertEqual(under, {"46", "47", "67"})
 
 	def test_by_service_date_the_service_from_another_member_state_stays_on_kz_46(self):
 		self.assert_kz_46_in_august(self.post(), Decimal(0))
