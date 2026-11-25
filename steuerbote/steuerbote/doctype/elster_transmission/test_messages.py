@@ -42,3 +42,46 @@ class SummaryTest(TestCase):
 		fields = json.loads(MESSAGE_DOCTYPE.read_text(encoding="utf-8"))["fields"]
 		(severity,) = (field for field in fields if field["fieldname"] == "severity")
 		self.assertEqual(severity["options"].split("\n"), [ERROR, HINT])
+
+
+class ReadableTest(TestCase):
+	"""ERiC names a field by its path in the Nutzdaten; the form names it as the Vordruck does."""
+
+	def test_a_kennzahl_of_the_voranmeldung(self):
+		text, field = messages.readable(
+			"Es wurde Vorsteuer in Feld '$/Elster[1]/DatenTeil[1]/Nutzdatenblock[1]/Nutzdaten[1]/Anmeldungssteuern[1]"
+			"/Steuerfall[1]/Umsatzsteuervoranmeldung[1]/Kz61[1]$' eingetragen.",
+			"/Anmeldungssteuern[1]/Steuerfall[1]/Umsatzsteuervoranmeldung[1]/Kz61[1]",
+			"UStVA",
+			2026,
+		)
+		self.assertEqual((text, field), ("Es wurde Vorsteuer in Feld 'Kz 61' eingetragen.", "Kz 61"))
+
+	def test_a_field_of_an_erklaerung_by_its_line(self):
+		for datenart, path, expected in (
+			("USt", "/E50[1]/USt2A[1]/Allg[1]/Dauer_Unt_Eig[1]/E3001401[1]", "Zeile 19 (E3001401)"),
+			("KSt", "/KSt1[1]/AE[1]/Einzel[1]/E8122101[1]", "KSt1 Zeile 22c (E8122101)"),
+			("GewSt", "/GewSt1A[1]/Hinz[1]/P_8_Nr_1_Wj1[1]/E4003703[1]", "GewSt1A Zeile 56 (E4003703)"),
+		):
+			with self.subTest(datenart=datenart):
+				self.assertEqual(
+					messages.readable(f"Feld '${path}$' fehlt.", path, datenart, 2026),
+					(f"Feld '{expected}' fehlt.", expected),
+				)
+
+	def test_keeps_what_it_does_not_know(self):
+		for datenart, year, path in (
+			("Bilanz", None, "/Kontext[1]/gaap:bs.ass[1]"),
+			("KSt", 2026, "/KSt1[1]/E9999999[1]"),
+			("ZMDO", None, "/Header[1]/ndh:DatenLieferant[1]"),
+		):
+			with self.subTest(path=path):
+				name = path.rpartition("/")[2].partition("[")[0]
+				self.assertEqual(
+					messages.readable(f"Feld '${path}$'.", path, datenart, year), (f"Feld '{name}'.", name)
+				)
+		self.assertEqual(messages.readable("Ohne Feld.", None, "UStVA", 2026), ("Ohne Feld.", None))
+		self.assertEqual(
+			messages.readable("Mussfeld.", "gcd:genInfo.company.id.name", "Bilanz", None),
+			("Mussfeld.", "gcd:genInfo.company.id.name"),
+		)

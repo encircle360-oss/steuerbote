@@ -750,6 +750,15 @@ class TestTransmission(TransmissionTestCase):
 		accepted.run_method("onload")
 		self.assertIsNone(accepted.get_onload("elster")["locked"])
 
+	def test_the_messages_name_the_kennzahl_eric_names_by_its_path(self):
+		self.use_runtime()
+		doc = self.calculated(3)
+		path = "/Anmeldungssteuern[1]/Steuerfall[1]/Umsatzsteuervoranmeldung[1]/Kz61[1]"
+		hint = Message("11085152", f"Vorsteuer in Feld '$/Elster[1]{path}$' ohne Erwerb.", HINT, path)
+		transmission, _, _ = self.transmitted(doc, "validate", FakeEric(messages=(hint,)))
+		(row,) = transmission.messages
+		self.assertEqual((row.text, row.field), ("Vorsteuer in Feld 'Kz 61' ohne Erwerb.", "Kz 61"))
+
 	def test_the_form_names_the_errors_and_hints_of_the_latest_run(self):
 		"""ERiC's hints never stop a check (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.2.4.1), so the form of the
 		return counts them with the errors of its latest finished run and shows the first of each kind."""
