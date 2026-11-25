@@ -21,7 +21,7 @@ class SetupStepTest(TestCase):
 			(
 				"eric_settings",
 				"ERiC Settings",
-				60,
+				80,
 				"steuerbote.steuerbote.doctype.eric_settings.setup.run",
 				(),
 			),

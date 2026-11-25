@@ -88,6 +88,7 @@ class IntegrationTestIncomeTaxSetup(IntegrationTestCase):
 				"vat_id_label",
 				"erpnext_germany_vat_id_check",
 				"vat_id_automatic_check",
+				"eric_settings",
 			],
 		)
 

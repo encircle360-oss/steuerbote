@@ -641,6 +641,6 @@ class TestPartnerVatIds(IntegrationTestCase):
 			self.assertEqual(frappe.db.get_value("Scheduled Job Type", job, "stopped"), 1)
 			self.assertEqual(vat_id_setup.check_erpnext_germany(context).outcome, Outcome.SKIPPED)
 		self.assertEqual(
-			[step["key"] for step in frappe.get_hooks("steuerbote_setup_steps", app_name="steuerbote")][-3:],
-			["vat_id_label", "erpnext_germany_vat_id_check", "vat_id_automatic_check"],
+			[step["key"] for step in frappe.get_hooks("steuerbote_setup_steps", app_name="steuerbote")][-4:],
+			["vat_id_label", "erpnext_germany_vat_id_check", "vat_id_automatic_check", "eric_settings"],
 		)
