@@ -136,6 +136,8 @@ class SimulationNoteTest(TestCase):
 	def test_the_note_is_a_permanent_message(self):
 		script = (MODULE / "doctype/eric_settings/eric_settings.js").read_text(encoding="utf-8")
 		self.assertNotIn("frm.set_intro(", script)
-		call = re.search(r"frm\.\$simulation_note = frm\.dashboard\.set_headline_alert\((.*?)\);\n", script, re.S)
+		call = re.search(
+			r"frm\.\$simulation_note = frm\.dashboard\.set_headline_alert\((.*?)\);\n", script, re.S
+		)
 		self.assertIsNotNone(call)
 		self.assertRegex(call.group(1), r'"orange",\s*true\s*$')
