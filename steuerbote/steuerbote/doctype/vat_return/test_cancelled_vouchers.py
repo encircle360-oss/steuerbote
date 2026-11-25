@@ -10,14 +10,17 @@ from steuerbote.tests.helpers import (
 	ensure_fiscal_year,
 	make_account,
 	make_company,
+	make_customer,
 	make_mapping,
 	make_settings,
 	post_journal_entry,
+	post_sales_invoice,
 )
 
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
 
 COMPANY = "Steuerbote Test Stornierte Belege GmbH"
+CUSTOMER = "Steuerbote Test Storno Kunde"
 ACCOUNTS = {
 	"8400": ("Erlöse 19 % USt", "Income"),
 	"1776": ("Umsatzsteuer 19 %", "Liability"),
@@ -243,3 +246,54 @@ class TestCancellationPeriod(IntegrationTestCase):
 					if row.get("voucher_no") == entry.name and row.get("account") == self.account["8400"]
 				]
 				self.assertEqual((shown["print_link"], float(shown["amount"])), ("Cancelled voucher", -100.0))
+
+
+class TestCancellationInTheReconciliation(IntegrationTestCase):
+	"""The reconciliation with the registers compares the ledger with ERPNext's Sales Register, which lists no
+	cancelled invoice. The return counts a cancellation on the day of the voucher it reverses, so a cancelled voucher
+	and its reversal leave neither its month nor the month of the cancellation with a difference of its own, with the
+	immutable ledger, which posts the reversal on the day of the cancellation, and without it."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.account = set_up_company()
+		if not frappe.db.exists("Customer", CUSTOMER):
+			make_customer(CUSTOMER, "Germany")
+
+	def setUp(self):
+		frappe.db.savepoint("cancellation_reconciliation_test")
+		self.addCleanup(frappe.db.rollback, save_point="cancellation_reconciliation_test")
+
+	calculated = TestCancelledVouchers.calculated
+	cancel = TestCancelledVouchers.cancel
+
+	def differences(self, doc) -> list[tuple[str, float]]:
+		return [
+			(row.account or row.kennzahl, row.difference)
+			for row in doc.register_reconciliation
+			if row.compared and row.difference
+		]
+
+	def check(self, immutable: int, month: int) -> None:
+		a = self.account
+		post_sales_invoice(
+			COMPANY,
+			f"SINV-STSB-{month:02d}-1",
+			CUSTOMER,
+			f"2026-{month:02d}-05",
+			[(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)],
+			items=[(a["8400"], 100)],
+			taxes=[(a["1776"], 19)],
+		)
+		self.assertEqual(self.differences(self.calculated(month)), [])
+		entry = post_journal_entry(COMPANY, f"2026-{month:02d}-28", [(a["1776"], 19, 0), (a["1200"], 0, 19)])
+		self.cancel(entry, immutable, f"2026-{month + 1:02d}-04")
+		self.assertEqual(self.differences(self.calculated(month)), [])
+		self.assertEqual(self.differences(self.calculated(month + 1)), [])
+
+	def test_without_the_immutable_ledger(self):
+		self.check(0, 10)
+
+	def test_with_the_immutable_ledger(self):
+		self.check(1, 11)
