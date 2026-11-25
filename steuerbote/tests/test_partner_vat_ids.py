@@ -29,6 +29,7 @@ from steuerbote.tests.helpers import (
 	make_customer,
 	make_mapping,
 	make_settings,
+	make_user,
 )
 from steuerbote.vatid.service import confirm
 from steuerbote.vatid.tests.fakes import FakeBzst, FakeFetch, bzst
@@ -257,6 +258,20 @@ class TestPartnerVatIds(IntegrationTestCase):
 		allowed.assert_called_with("Customer", "write", ALPEN, throw=False)
 		with self.assertRaisesRegex(frappe.ValidationError, "customer or a supplier"):
 			partner_module.confirm_vat_id("Company", COMPANY)
+
+	def test_only_who_may_send_data_off_the_site_asks(self):
+		"""An Accounts User may change a customer, but only who may submit a VAT Return sends data to the BZSt."""
+		user = make_user("steuerbote-partner-buchhaltung@example.com", "Accounts User")
+		self.addCleanup(frappe.set_user, frappe.session.user)
+		frappe.set_user(user)
+		self.assertFalse(partner_module.may_ask("Customer", ALPEN))
+		with patch("frappe.enqueue") as enqueue:
+			self.assertFalse(partner_module.request("Customer", ALPEN, "Partner Changed"))
+			with self.assertRaisesRegex(frappe.PermissionError, "permission to submit a VAT Return"):
+				partner_module.confirm_vat_id("Customer", ALPEN)
+		enqueue.assert_not_called()
+		frappe.set_user("Administrator")
+		self.assertTrue(partner_module.may_ask("Customer", ALPEN))
 
 	# The job
 
