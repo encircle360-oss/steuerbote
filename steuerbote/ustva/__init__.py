@@ -6,11 +6,13 @@ This package is pure Python. It never imports Frappe, so it can be tested withou
 from steuerbote.ustva.calculation import (
 	AccountBalance,
 	CheckResult,
+	DerivedBase,
 	Deviation,
 	KennzahlValue,
 	LedgerLine,
 	UstvaResult,
 	calculate,
+	derive_bases,
 )
 from steuerbote.ustva.defaults import DEFAULTS, SKR03, SKR04, default_mapping
 from steuerbote.ustva.kennzahlen import (
@@ -45,6 +47,7 @@ __all__ = [
 	"AccountBalance",
 	"AccountRule",
 	"CheckResult",
+	"DerivedBase",
 	"Deviation",
 	"Effect",
 	"Kennzahl",
@@ -64,6 +67,7 @@ __all__ = [
 	"calculate",
 	"catalogue_for",
 	"default_mapping",
+	"derive_bases",
 	"tax_from_base",
 	"to_cents",
 	"to_full_euros",

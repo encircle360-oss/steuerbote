@@ -3,6 +3,7 @@ from unittest import TestCase
 
 from steuerbote.ustva.rounding import (
 	apportion_full_euros,
+	base_from_tax,
 	ceil_cents,
 	ceil_euro,
 	floor_euro,
@@ -69,6 +70,36 @@ class TaxFromBaseTest(TestCase):
 	def test_rejects_float_rate(self):
 		with self.assertRaises(TypeError):
 			tax_from_base(Decimal("100"), 19.0)
+
+
+class BaseFromTaxTest(TestCase):
+	"""The base whose tax a voucher books, where no line of the voucher shows it: tax / rate, to cents."""
+
+	def test_nineteen_percent(self):
+		self.assertEqual(base_from_tax(Decimal("190.00"), Decimal("19")), Decimal("1000.00"))
+
+	def test_rounds_the_base_half_up_to_cents(self):
+		self.assertEqual(base_from_tax(Decimal("11.98"), Decimal("19")), Decimal("63.05"))
+		self.assertEqual(base_from_tax(Decimal("0.01"), Decimal("7")), Decimal("0.14"))
+
+	def test_the_tax_of_the_base_is_the_tax_again(self):
+		for cents in range(-1000, 1001, 7):
+			tax = Decimal(cents) / 100
+			for rate in (Decimal("19"), Decimal("7"), Decimal("10.7")):
+				with self.subTest(tax=tax, rate=rate):
+					self.assertEqual(tax_from_base(base_from_tax(tax, rate), rate), tax)
+
+	def test_negative_tax_gives_a_negative_base(self):
+		self.assertEqual(base_from_tax(Decimal("-31.31"), Decimal("19")), Decimal("-164.79"))
+
+	def test_never_returns_negative_zero(self):
+		self.assertEqual(str(base_from_tax(Decimal("-0.00"), Decimal("19"))), "0.00")
+
+	def test_rejects_floats(self):
+		with self.assertRaises(TypeError):
+			base_from_tax(19.0, Decimal("19"))  # type: ignore[arg-type]
+		with self.assertRaises(TypeError):
+			base_from_tax(Decimal("19"), 19.0)  # type: ignore[arg-type]
 
 
 class RequireDecimalTest(TestCase):

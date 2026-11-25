@@ -4,7 +4,7 @@ from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.ustva import KENNZAHLEN, Period
-from steuerbote.ustva.calculation import AccountBalance
+from steuerbote.ustva.calculation import AccountBalance, DerivedBase
 from steuerbote.ustva.defaults import SKR03
 from steuerbote.ustva.plausibility import (
 	DEFAULT_CONFIRMATION_AGE,
@@ -21,6 +21,7 @@ from steuerbote.ustva.plausibility import (
 	compare,
 	comparison_hints,
 	confirmable,
+	derived_base_hints,
 	hints,
 	invoice_hints,
 	member_state,
@@ -342,6 +343,78 @@ class ReconciliationTest(TestCase):
 		self.assertEqual([hint.text[:5] for hint in found], ["Kz 81", "Kz 86", "Kz 84", "Kz 21"])
 
 
+REVERSE_CHARGE_19 = "Umsatzsteuer nach § 13b UStG 19 %"
+
+
+def derived(voucher: str | None, base: str, tax: str, accounts: tuple[str, ...] = ()) -> DerivedBase:
+	return DerivedBase(REVERSE_CHARGE_19, voucher, "84", d("19"), d(tax), d(base), accounts)
+
+
+class DerivedBaseReconciliationTest(TestCase):
+	def test_a_base_derived_from_a_voucher_is_no_difference_to_the_invoices(self):
+		"""The invoices count the accounts of a Kennzahl's rules; a derived base sits on none of them."""
+		lines = [invoice("3125", "300", voucher_type="Purchase Invoice")]
+		ledger = {"84": d("1300")}
+		found = reconciliation_hints(
+			lines, ledger, SKR03, FIGURES, derived=(derived("V1", "1000.00", "190.00", ("4980",)),)
+		)
+		self.assertEqual(found, [])
+		self.assertEqual(
+			codes(reconciliation_hints(lines, ledger, SKR03, FIGURES)), [Code.INVOICES_AND_LEDGER]
+		)
+
+
+class DerivedBaseHintsTest(TestCase):
+	"""A base taken from the tax, because the lines of the voucher did not show it, is named for a check."""
+
+	def test_names_the_voucher_the_tax_the_rate_and_the_base(self):
+		(hint,) = derived_base_hints([derived("Journal Entry:ACC-JV-2026-00012", "63.05", "11.98")], FIGURES)
+		self.assertEqual((hint.code, hint.severity), (Code.BASE_FROM_TAX, Severity.HINT))
+		self.assertEqual(
+			hint.text,
+			"Kz 84: Der Beleg bucht 11,98 € Steuer auf „Umsatzsteuer nach § 13b UStG 19 %“, aber nichts auf ein "
+			"Grundlagenkonto, und seine übrigen Buchungszeilen ergeben die Bemessungsgrundlage nicht eindeutig. "
+			"Steuerbote hat sie aus der Steuer zurückgerechnet (11,98 € zu 19,0 %) und meldet 63,05 €; "
+			"bitte prüfe sie am Beleg.",
+		)
+		self.assertEqual(
+			(hint.voucher_type, hint.voucher_no, hint.party), ("Journal Entry", "ACC-JV-2026-00012", "")
+		)
+
+	def test_lines_without_voucher(self):
+		(hint,) = derived_base_hints([derived(None, "1000.00", "190.00")], FIGURES)
+		self.assertTrue(hint.text.startswith("Kz 84: Die Buchungen ohne Beleg buchen 190,00 € Steuer"))
+		self.assertEqual((hint.voucher_type, hint.voucher_no), ("", ""))
+
+	def test_a_base_read_from_the_lines_of_its_voucher_gets_no_hint(self):
+		self.assertEqual(derived_base_hints([derived("V1", "1000.00", "190.00", ("4980",))], FIGURES), [])
+
+	def test_the_hints_follow_the_order_given(self):
+		found = derived_base_hints(
+			[derived("Journal Entry:B", "1.00", "0.19"), derived("Journal Entry:A", "2.00", "0.38")], FIGURES
+		)
+		self.assertEqual([hint.voucher_no for hint in found], ["B", "A"])
+
+	def test_hints_name_them_after_the_watched_accounts(self):
+		comparison = compare(
+			{},
+			EarlierPeriod(Period.month(2026, 10), {}),
+			EarlierPeriod(Period.month(2025, 11), {}),
+			KENNZAHLEN,
+			report_rule,
+		)
+		found = hints(
+			comparison,
+			[],
+			{"84": d("63.05")},
+			SKR03,
+			FIGURES,
+			watched=(AccountBalance("8605", d("0"), d("80")),),
+			derived=(derived("Journal Entry:J1", "63.05", "11.98"),),
+		)
+		self.assertEqual(codes(found), [Code.WATCHED_ACCOUNT, Code.BASE_FROM_TAX])
+
+
 class WatchedAccountHintsTest(TestCase):
 	"""A balance on an account watched for a hint is named with its debits and credits and holds nothing."""
 
@@ -596,6 +669,7 @@ class HintsTest(TestCase):
 				"USTIDNR-UNGUELTIG",
 				"STEUERVORLAGE-OHNE-KENNZAHL",
 				"REGISTER-ABWEICHUNG",
+				"GRUNDLAGE-AUS-STEUER",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung"])

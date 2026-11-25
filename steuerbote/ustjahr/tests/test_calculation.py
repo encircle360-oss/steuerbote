@@ -24,7 +24,15 @@ from steuerbote.ustjahr.form import CATALOGUES, SOLL, Finding, Severity
 from steuerbote.ustjahr.split import AnnualRule, Choice, split
 from steuerbote.ustva import calculate as calculate_ustva
 from steuerbote.ustva.calculation import AccountBalance, LedgerLine
-from steuerbote.ustva.mapping import AccountRule, Mapping, Side, TaxCheck, WatchedAccount, WatchLevel
+from steuerbote.ustva.mapping import (
+	DERIVED_BASE_KENNZAHLEN,
+	AccountRule,
+	Mapping,
+	Side,
+	TaxCheck,
+	WatchedAccount,
+	WatchLevel,
+)
 from steuerbote.ustva.rounding import ZERO, tax_from_base, to_full_euros
 
 CATALOGUE = CATALOGUES[2026]
@@ -237,6 +245,73 @@ class KennzahlenOfTheYearTest(TestCase):
 					ZERO,
 				)
 				self.assertEqual(total, value.amount)
+
+
+DERIVING = Mapping(
+	"test",
+	(
+		AccountRule("3425", "89", Side.DEBIT),
+		AccountRule("3125", "84", Side.DEBIT, RATE_19),
+		AccountRule("1574", "61", Side.DEBIT),
+		AccountRule("1577", "67", Side.DEBIT),
+	),
+	checks=(
+		TaxCheck(
+			"Umsatzsteuer aus innergemeinschaftlichem Erwerb 19 %", ("3425",), ("1774",), derived_base="89"
+		),
+		TaxCheck("Umsatzsteuer nach § 13b UStG 19 %", ("3125",), ("1787",), derived_base="84"),
+	),
+	year=2026,
+)
+
+
+class DerivedBaseTest(TestCase):
+	"""A base the Voranmeldung derives from a voucher without base account goes to the line of its Kennzahl."""
+
+	lines = (
+		line("4980", debit="1000.00", voucher="J1"),
+		line("1577", debit="190.00", voucher="J1"),
+		line("1787", credit="190.00", voucher="J1"),
+		*[line("4980", debit="33.33", voucher=f"J{number}") for number in range(2, 5)],
+		*[line("1787", credit="6.33", voucher=f"J{number}") for number in range(2, 5)],
+		*[line("1577", debit="6.33", voucher=f"J{number}") for number in range(2, 5)],
+		line("3125", debit="500.00", voucher="J5"),
+		line("1787", credit="95.00", voucher="J5"),
+		line("1577", debit="95.00", voucher="J5"),
+		line("4930", debit="200.00", voucher="J6"),
+		line("1574", debit="38.00", voucher="J6"),
+		line("1774", credit="38.00", voucher="J6"),
+	)
+
+	def test_the_lines_of_each_kennzahl_add_up_to_its_amount_over_the_year(self):
+		result = calculate(self.lines, split(DERIVING))
+		year = calculate_ustva(self.lines, DERIVING)
+		self.assertEqual(result.ustva, year)
+		self.assertEqual(
+			{number: value.amount for number, value in year.values.items() if number != "83"},
+			{
+				"84": Decimal("1599.99"),
+				"85": Decimal("303.99"),
+				"89": Decimal("200.00"),
+				"61": Decimal("38.00"),
+				"67": Decimal("303.99"),
+			},
+		)
+		for number, value in year.values.items():
+			if number == "83":
+				continue
+			with self.subTest(kennzahl=number):
+				child = CATALOGUE.default_child(number)
+				self.assertEqual(result.values[child.element].ledger, value.amount)
+
+	def test_every_kennzahl_that_takes_a_derived_base_has_a_line_for_it_and_its_tax(self):
+		mapping_catalogue = DERIVING.catalogue
+		for number in DERIVED_BASE_KENNZAHLEN:
+			with self.subTest(kennzahl=number):
+				self.assertIsNotNone(CATALOGUE.default_child(number))
+				tax = mapping_catalogue[number].tax_kennzahl
+				if tax is not None:
+					self.assertIsNotNone(CATALOGUE.default_child(tax))
 
 
 class VerprobungTest(TestCase):

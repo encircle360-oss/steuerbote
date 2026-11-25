@@ -42,6 +42,15 @@ def tax_from_base(base: Decimal, rate_percent: Decimal) -> Decimal:
 	return to_cents(require_decimal(base) * require_decimal(rate_percent) / HUNDRED)
 
 
+def base_from_tax(tax: Decimal, rate_percent: Decimal) -> Decimal:
+	"""The base whose tax at the rate is ``tax``: tax / rate, rounded to cents half up.
+
+	Only for a voucher that books a tax but does not show its base, see steuerbote.ustva.calculation. At any rate up to
+	100 % the tax of this base is ``tax`` again, since a cent of base moves the tax by less than a cent.
+	"""
+	return to_cents(require_decimal(tax) * HUNDRED / require_decimal(rate_percent))
+
+
 def floor_euro(amount: Decimal) -> Decimal:
 	"""Round down to whole euros: the Körperschaftsteuer and the Steuermessbetrag.
 

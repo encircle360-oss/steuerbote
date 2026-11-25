@@ -36,7 +36,7 @@ from enum import Enum, StrEnum
 from types import MappingProxyType
 from typing import Protocol
 
-from steuerbote.ustva.calculation import AccountBalance, require_cents
+from steuerbote.ustva.calculation import AccountBalance, DerivedBase, require_cents
 from steuerbote.ustva.kennzahlen import Kennzahl
 from steuerbote.ustva.mapping import AccountRule, Mapping, is_account_number
 from steuerbote.ustva.period import Period, day_label
@@ -65,6 +65,7 @@ class Code(StrEnum):
 	VAT_ID_INVALID = "USTIDNR-UNGUELTIG"
 	TAX_TEMPLATE_WITHOUT_PLACE = "STEUERVORLAGE-OHNE-KENNZAHL"
 	REGISTER_DEVIATION = "REGISTER-ABWEICHUNG"
+	BASE_FROM_TAX = "GRUNDLAGE-AUS-STEUER"
 
 
 # A wrong invoice is a warning; a difference that may well be explained, such as a journal entry on a
@@ -85,6 +86,7 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.VAT_ID_INVALID: Severity.WARNING,
 		Code.TAX_TEMPLATE_WITHOUT_PLACE: Severity.HINT,
 		Code.REGISTER_DEVIATION: Severity.HINT,
+		Code.BASE_FROM_TAX: Severity.HINT,
 	}
 )
 
@@ -303,14 +305,22 @@ def _sentence(text: str) -> str:
 
 
 def reconciliation_hints(
-	lines: Iterable[InvoiceLine], ledger: ReadOnlyMapping[str, Decimal], mapping: Mapping, figures: Figures
+	lines: Iterable[InvoiceLine],
+	ledger: ReadOnlyMapping[str, Decimal],
+	mapping: Mapping,
+	figures: Figures,
+	derived: Iterable[DerivedBase] = (),
 ) -> list[Hint]:
 	"""Invoices against the ledger: per base an invoice books, the net of the invoices and the ledger amount.
 
 	``ledger`` holds the exact amounts the ledger gives each Kennzahl, before rounding. A difference of
 	more than a euro gets a hint, in the order of the form: a journal entry on a revenue account or an
-	invoice on an account of another Kennzahl explains one as well as a missing invoice.
+	invoice on an account of another Kennzahl explains one as well as a missing invoice. The invoices count the
+	accounts of a Kennzahl's rules, so the ``derived`` bases, which sit on none of them, leave the ledger amount.
 	"""
+	ledger = dict(ledger)
+	for base in derived:
+		ledger[base.kennzahl] = ledger.get(base.kennzahl, ZERO) - base.base
 	rules = _rules(mapping)
 	invoiced = dict.fromkeys((*SALES_KENNZAHLEN, *PURCHASE_KENNZAHLEN), ZERO)
 	for line in lines:
@@ -348,6 +358,37 @@ def watched_account_hints(
 			"geht aber in keine Kennzahl ein."
 		)
 		found.append(Hint(Code.WATCHED_ACCOUNT, text))
+	return found
+
+
+def derived_base_hints(derived: Iterable[DerivedBase], figures: Figures) -> list[Hint]:
+	"""A hint per base taken from the tax, because the lines of its voucher did not tell it, in the order given.
+
+	The ledger keys a voucher as "<voucher type>:<voucher name>" (steuerbote.ledger), and the hint names both.
+	"""
+	found: list[Hint] = []
+	for base in derived:
+		if not base.from_tax:
+			continue
+		books = "Der Beleg bucht" if base.voucher is not None else "Die Buchungen ohne Beleg buchen"
+		booked = (
+			"aber nichts auf ein Grundlagenkonto"
+			if base.voucher is not None
+			else "aber nichts auf Grundlagenkonten"
+		)
+		lines = (
+			"seine übrigen Buchungszeilen ergeben"
+			if base.voucher is not None
+			else "ihre übrigen Buchungszeilen ergeben"
+		)
+		text = (
+			f"Kz {base.kennzahl}: {books} {figures.money(base.tax)} Steuer auf „{base.label}“, {booked}, und {lines} "
+			"die Bemessungsgrundlage nicht eindeutig. Steuerbote hat sie aus der Steuer zurückgerechnet "
+			f"({figures.money(base.tax)} zu {figures.percent(base.rate)}) und meldet {figures.money(base.base)}; "
+			"bitte prüfe sie am Beleg."
+		)
+		voucher_type, _, voucher_no = (base.voucher or "").partition(":")
+		found.append(Hint(Code.BASE_FROM_TAX, text, voucher_type, voucher_no))
 	return found
 
 
@@ -483,16 +524,20 @@ def hints(
 	figures: Figures,
 	watched: Iterable[AccountBalance] = (),
 	names: ReadOnlyMapping[str, str] = MappingProxyType({}),
+	derived: Iterable[DerivedBase] = (),
 ) -> tuple[Hint, ...]:
 	"""Every hint of a return: the warnings first, then the hints; each kind in the order it is found.
 
 	The invoices come first, then their reconciliation with the ledger, then the balances of the accounts
-	watched at the hint level (``watched``, named after ``names``), then the comparison.
+	watched at the hint level (``watched``, named after ``names``), then the bases taken from the tax of their
+	voucher (``derived``, calculation.derive_bases), then the comparison.
 	"""
+	derived = tuple(derived)
 	found = [
 		*invoice_hints(lines, mapping, figures),
-		*reconciliation_hints(lines, ledger, mapping, figures),
+		*reconciliation_hints(lines, ledger, mapping, figures, derived),
 		*watched_account_hints(watched, names, figures),
+		*derived_base_hints(derived, figures),
 		*comparison_hints(comparison, figures),
 	]
 	return tuple(sorted(found, key=lambda hint: hint.severity is not Severity.WARNING))

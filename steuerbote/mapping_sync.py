@@ -71,12 +71,15 @@ WATCHED = "watched"
 ANNUAL_FIELD = "annual_field"
 ANNUAL_RULE = "annual_rule"
 RULE_FIELDS = ("kennzahl", "side", "tax_rate", "also_kennzahl", "also_side")
-CHECK_FIELDS = ("base_accounts", "tax_accounts", "side")
+CHECK_FIELDS = ("base_accounts", "tax_accounts", "side", "derived_base")
+# A check holds derived_base only when it names one, as item, as row of the defaults and in the body, so that the
+# items, the stored defaults and the files of a mapping without one read as they did before it.
+OPTIONAL_CHECK_FIELDS = ("derived_base",)
 CHOICE_FIELDS = ("annual_field", "paragraph")
 ANNUAL_RULE_FIELDS = ("annual_field", "side", "paragraph")
 BODY_PARTS = {
 	"rules": ("account_number", *RULE_FIELDS),
-	"checks": ("label", *CHECK_FIELDS),
+	"checks": ("label", *(name for name in CHECK_FIELDS if name not in OPTIONAL_CHECK_FIELDS)),
 	"watched": ("account_number", "level"),
 }
 ANNUAL_BODY_PARTS = {
@@ -208,6 +211,7 @@ def items_of_mapping(mapping: Mapping) -> dict[Key, Fields]:
 				"base_accounts": ", ".join(check.base_accounts),
 				"tax_accounts": ", ".join(check.tax_accounts),
 				"side": check.side.value,
+				"derived_base": check.derived_base,
 			}
 			for check in mapping.checks
 		],
@@ -388,8 +392,9 @@ def items_of_body(body: Any) -> dict[Key, Fields]:
 		rows = body.get(part, [])
 		if not isinstance(rows, list):
 			raise MappingError(f"{part} must be a list")
+		optional = set(OPTIONAL_CHECK_FIELDS) if part == "checks" else set()
 		for row in rows:
-			if not isinstance(row, dict) or set(row) != set(fields):
+			if not isinstance(row, dict) or not set(fields) <= set(row) <= {*fields, *optional}:
 				raise MappingError(f"each of the {part} holds {', '.join(fields)}")
 			for name, value in row.items():
 				if not _plain(
@@ -457,7 +462,9 @@ def _parts_of_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]
 	}
 	for (kind, key), fields in items.items():
 		if kind == CHECK:
-			parts["checks"].append({"label": key, **{name: fields[name] for name in CHECK_FIELDS}})
+			parts["checks"].append(
+				{"label": key, **{name: fields[name] for name in CHECK_FIELDS if name in fields}}
+			)
 		elif kind == ANNUAL_FIELD:
 			parts["annual_fields"].append(
 				{"account_number": key, **{name: fields[name] for name in CHOICE_FIELDS}}
@@ -504,11 +511,14 @@ def _rule_fields(rule: AccountRule) -> Fields:
 
 
 def _check_fields(check: TaxCheck) -> Fields:
-	return {
+	fields: Fields = {
 		"base_accounts": ", ".join(sorted(check.base_accounts)),
 		"tax_accounts": ", ".join(sorted(check.tax_accounts)),
 		"side": check.side.value,
 	}
+	if check.derived_base is not None:
+		fields["derived_base"] = check.derived_base
+	return fields
 
 
 def _rate_text(rate: Decimal | None) -> str | None:
@@ -555,6 +565,7 @@ def _check(row: Row) -> TaxCheck:
 		base_accounts=_account_numbers(row.get("base_accounts")),
 		tax_accounts=_account_numbers(row.get("tax_accounts")),
 		side=_side(row.get("side") or Side.CREDIT, f"check {label!r}"),
+		derived_base=_text(row.get("derived_base")) or None,
 	)
 
 
@@ -615,12 +626,15 @@ def _check_row(check: TaxCheck, existing_numbers: Set[str]) -> dict[str, Any] | 
 	tax_accounts = [number for number in check.tax_accounts if number in existing_numbers]
 	if not base_accounts or not tax_accounts:
 		return None
-	return {
+	row = {
 		"label": check.label,
 		"base_accounts": ", ".join(base_accounts),
 		"tax_accounts": ", ".join(tax_accounts),
 		"side": check.side.value,
 	}
+	if check.derived_base is not None:
+		row["derived_base"] = check.derived_base
+	return row
 
 
 def _accounts_of(mapping: Mapping) -> set[str]:

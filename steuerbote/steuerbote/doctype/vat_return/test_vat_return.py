@@ -450,6 +450,42 @@ class TestVATReturn(IntegrationTestCase):
 		self.assertEqual([(row.severity, row.text) for row in watched], [("Hinweis", text)])
 		self.assertFalse(any(row.voucher_type or row.voucher_no or row.party for row in watched))
 
+	def test_a_purchase_on_an_expense_account_with_reverse_charge_tax_fills_kz_84_and_85(self):
+		self.roll_back_afterwards()
+		a = self.account
+		expense = make_account(COMPANY, "4980", "Betriebsbedarf", "Expense")
+		fee = make_account(COMPANY, "4970", "Nebenkosten des Geldverkehrs", "Expense")
+		post_journal_entry(
+			COMPANY,
+			"2026-05-12",
+			[(expense, 1000, 0), (a["1577"], 190, 0), (a["1787"], 0, 190), (a["1200"], 0, 1000)],
+		)
+		unclear = post_journal_entry(
+			COMPANY,
+			"2026-05-13",
+			[
+				(expense, 100, 0),
+				(fee, 0.02, 0),
+				(a["1577"], 19, 0),
+				(a["1787"], 0, 19),
+				(a["1200"], 0, 100.02),
+			],
+		)
+		doc = self.calculated(5)
+		self.assertEqual(
+			self.amounts(doc), {"84": money(1100), "85": money(209), "67": money(209), "83": money(0)}
+		)
+		self.assertEqual((doc.ready, doc.status), (1, "Bereit"))
+		check = next(row for row in doc.checks if row.label == "Umsatzsteuer nach § 13b UStG 19 %")
+		self.assertEqual((money(check.derived_base), check.passed), (money(1100), 1))
+		from_tax = [row for row in doc.hints if row.code == "GRUNDLAGE-AUS-STEUER"]
+		self.assertEqual(
+			[(row.severity, row.voucher_type, row.voucher_no) for row in from_tax],
+			[("Hinweis", "Journal Entry", unclear.name)],
+		)
+		self.assertIn(f"meldet {euros('100')}", from_tax[0].text)
+		self.assertNotIn("ABGLEICH-RECHNUNGEN", [row.code for row in doc.hints])
+
 	def test_a_second_return_for_a_filed_period_must_be_a_correction(self):
 		first = self.calculated(4)
 		first.mark_filed_outside(FILED_IN_MEIN_ELSTER)

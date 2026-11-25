@@ -91,12 +91,21 @@ class DocTablesTest(TestCase):
 	def test_check_table_shows_every_check(self):
 		((header, rows),) = tables(section("### Verprobungen"))
 		self.assertEqual(
-			header[:4], ["Verprobung", "Grundlagen SKR03", "Grundlagen SKR04", "Steuerkonto SKR03 / SKR04"]
+			header[:5],
+			[
+				"Verprobung",
+				"Grundlagen SKR03",
+				"Grundlagen SKR04",
+				"Steuerkonto SKR03 / SKR04",
+				"Grundlage ohne Grundlagenkonto",
+			],
 		)
 		self.assertEqual(len(rows), len(SKR03.checks))
 		for row, skr03, skr04 in zip(rows, SKR03.checks, SKR04.checks, strict=True):
-			label, bases03, bases04, taxes = row[:4]
+			label, bases03, bases04, taxes, derived = row[:5]
 			with self.subTest(check=label):
+				self.assertEqual(derived, f"Kz {skr03.derived_base}" if skr03.derived_base else "—")
+				self.assertEqual(skr04.derived_base, skr03.derived_base)
 				self.assertEqual(label, skr03.label)
 				self.assertEqual(label, skr04.label)
 				self.assertEqual(self.account_list(bases03, SKR03_RANGES), skr03.base_accounts)

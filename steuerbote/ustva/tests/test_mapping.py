@@ -4,6 +4,7 @@ from unittest import TestCase
 
 from steuerbote.ustva.kennzahlen import LATEST_YEAR, UnknownYearError, catalogue_for
 from steuerbote.ustva.mapping import (
+	DERIVED_BASE_KENNZAHLEN,
 	AccountRule,
 	Mapping,
 	MappingError,
@@ -270,6 +271,108 @@ class CheckValidationTest(TestCase):
 	def test_base_account_cannot_be_its_own_tax_account(self):
 		with self.assertRaisesRegex(MappingError, "tax account 8400 is also mapped to Kennzahl 81"):
 			Mapping("test", (rule("8400", "81"),), (TaxCheck("x", ("8400",), ("8400",)),))
+
+
+class DerivedBaseValidationTest(TestCase):
+	"""A Verprobung may name the Kennzahl that takes the base of a voucher booking its tax but none of its bases."""
+
+	rules: ClassVar[tuple[AccountRule, ...]] = (
+		rule("3123", "46", Side.DEBIT, "19"),
+		rule("3125", "84", Side.DEBIT, "19"),
+		rule("3115", "84", Side.DEBIT, "7"),
+		rule("3425", "89", Side.DEBIT),
+		rule("3420", "93", Side.DEBIT),
+		rule("8400", "81"),
+	)
+
+	def mapping(self, *checks: TaxCheck) -> Mapping:
+		return Mapping("test", self.rules, checks)
+
+	def test_no_check_derives_a_base_by_default(self):
+		self.assertIsNone(TaxCheck("x", ("8400",), ("1776",)).derived_base)
+
+	def test_the_kennzahlen_are_those_of_sections_c_and_d_of_the_form_with_a_tax(self):
+		self.assertEqual(DERIVED_BASE_KENNZAHLEN, frozenset({"89", "93", "95", "94", "46", "73", "84"}))
+		catalogue = catalogue_for(LATEST_YEAR)
+		for number in DERIVED_BASE_KENNZAHLEN:
+			with self.subTest(kennzahl=number):
+				kennzahl = catalogue[number]
+				self.assertIn(kennzahl.line, range(24, 33))
+				self.assertTrue(kennzahl.rate is not None or kennzahl.tax_kennzahl is not None)
+
+	def test_a_kennzahl_of_one_of_its_bases_is_accepted_with_its_rate_and_side(self):
+		check = TaxCheck("13b", ("3123", "3125"), ("1787",), derived_base="84")
+		mapping = self.mapping(check)
+		self.assertEqual(mapping.checks[0].derived_base, "84")
+		self.assertEqual(mapping.derived_rate(check), Decimal("19"))
+		self.assertIs(mapping.base_side(check), Side.DEBIT)
+
+	def test_the_statutory_rate_of_an_acquisition_is_its_rate(self):
+		check = TaxCheck("Erwerb", ("3425",), ("1774",), derived_base="89")
+		self.assertEqual(self.mapping(check).derived_rate(check), Decimal("19"))
+
+	def test_kennzahl_must_be_given_as_text(self):
+		with self.assertRaisesRegex(MappingError, "derived_base must be a Kennzahl or None"):
+			TaxCheck("x", ("3425",), ("1774",), derived_base=89)  # type: ignore[arg-type]
+		with self.assertRaisesRegex(MappingError, "derived_base must be a Kennzahl or None"):
+			TaxCheck("x", ("3425",), ("1774",), derived_base="")
+
+	def test_turnover_takes_no_derived_base(self):
+		with self.assertRaisesRegex(
+			MappingError, "check 'x': Kennzahl 81 takes no base derived from the tax of a voucher"
+		):
+			self.mapping(TaxCheck("x", ("8400",), ("1776",), derived_base="81"))
+
+	def test_a_check_of_turnover_derives_no_base_whatever_the_kennzahl(self):
+		with self.assertRaisesRegex(
+			MappingError,
+			"check 'x': base account 8400 feeds Kennzahl 81, which is no purchase whose tax the company owes",
+		):
+			self.mapping(TaxCheck("x", ("8400",), ("1776",), derived_base="84"))
+
+	def test_unknown_kennzahl_is_rejected(self):
+		with self.assertRaisesRegex(MappingError, "check 'x': Kennzahl 12 takes no base derived"):
+			self.mapping(TaxCheck("x", ("3425",), ("1774",), derived_base="12"))
+
+	def test_a_kennzahl_no_base_of_the_check_feeds_is_accepted_at_the_rate_of_the_bases(self):
+		check = TaxCheck("13b", ("3123",), ("1787",), derived_base="84")
+		self.assertEqual(self.mapping(check).derived_rate(check), Decimal("19"))
+
+	def test_the_statutory_rate_of_the_kennzahl_must_be_the_rate_of_the_bases(self):
+		with self.assertRaisesRegex(
+			MappingError, "check 'x': Kennzahl 93 carries 7 %, the base accounts of the check 19 %"
+		):
+			self.mapping(TaxCheck("x", ("3425",), ("1774",), derived_base="93"))
+
+	def test_a_tax_kennzahl_mapped_from_a_tax_account_takes_no_derived_tax(self):
+		rules = (rule("3123", "46", Side.DEBIT, "19"), rule("1787", "85", Side.CREDIT))
+		with self.assertRaisesRegex(
+			MappingError,
+			"check 'x': Kennzahl 85 is mapped from account 1787, so Kennzahl 84 takes no derived base",
+		):
+			Mapping("test", rules, (TaxCheck("x", ("3123",), ("1788",), derived_base="84"),))
+
+	def test_bases_at_two_rates_leave_the_rate_open(self):
+		with self.assertRaisesRegex(
+			MappingError, "check 'x': its base accounts carry two rates, so no base can be derived"
+		):
+			self.mapping(TaxCheck("x", ("3125", "3115"), ("1787",), derived_base="84"))
+
+	def test_bases_on_two_sides_leave_the_side_open(self):
+		rules = (rule("3425", "89", Side.DEBIT), rule("3426", "89", Side.CREDIT))
+		check = TaxCheck("x", ("3425", "3426"), ("1774",), derived_base="89")
+		with self.assertRaisesRegex(
+			MappingError, "check 'x': its base accounts carry their balance on two sides"
+		):
+			Mapping("test", rules, (check,))
+
+	def test_rate_and_side_are_asked_only_of_a_check_that_derives(self):
+		check = TaxCheck("x", ("3125", "3115"), ("1787",))
+		mapping = self.mapping(check)
+		with self.assertRaisesRegex(MappingError, "check 'x' derives no base"):
+			mapping.derived_rate(check)
+		with self.assertRaisesRegex(MappingError, "check 'x' derives no base"):
+			mapping.base_side(check)
 
 
 class WatchedValidationTest(TestCase):

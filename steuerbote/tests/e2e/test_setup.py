@@ -165,7 +165,7 @@ def test_vorgaben_aktualisieren_proposes_the_changes_of_the_defaults_and_keeps_y
 	button = dialog.locator(".btn-modal-primary")
 	expect(button).to_have_text("1 Unterschied übernehmen")
 	dialog.locator('input.steuerbote-difference[value="account:8400"]').uncheck()
-	expect(button).to_have_text("Keinen übernehmen und die Vorgaben SKR03 2026.1 als gesehen vermerken")
+	expect(button).to_have_text("Keinen übernehmen und die Vorgaben SKR03 2026.2 als gesehen vermerken")
 	dialog.locator("input.steuerbote-all-differences").check()
 	expect(button).to_have_text("2 Unterschiede übernehmen")
 	dialog.locator('input.steuerbote-difference[value="account:1548"]').uncheck()
@@ -179,7 +179,7 @@ def test_vorgaben_aktualisieren_proposes_the_changes_of_the_defaults_and_keeps_y
 			cur_frm.doc.watched.find((row) => row.account_number === "1548").level,
 			cur_frm.doc.defaults_version,
 		]"""
-	) == ["81", "hint", "SKR03 2026.1"]
+	) == ["81", "hint", "SKR03 2026.2"]
 
 
 def save(desk) -> None:

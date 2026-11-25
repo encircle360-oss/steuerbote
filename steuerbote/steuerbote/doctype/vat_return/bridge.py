@@ -275,6 +275,7 @@ def check_rows(result: UstvaResult) -> list[dict[str, Any]]:
 			"difference": check.difference,
 			"deviations": len(check.deviations),
 			"passed": int(check.passed),
+			"derived_base": check.derived_base,
 		}
 		for check in result.checks
 	]

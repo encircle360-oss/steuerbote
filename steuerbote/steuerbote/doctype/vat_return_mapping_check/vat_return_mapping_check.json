@@ -8,11 +8,12 @@
   "label",
   "base_accounts",
   "tax_accounts",
-  "side"
+  "side",
+  "derived_base"
  ],
  "fields": [
   {
-   "columns": 3,
+   "columns": 2,
    "fieldname": "label",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -45,11 +46,19 @@
    "in_list_view": 1,
    "label": "Balance Side",
    "options": "credit\ndebit"
+  },
+  {
+   "columns": 1,
+   "description": "Kennzahl that takes the base of a voucher booking tax on the tax accounts of this check but nothing on its base accounts. Steuerbote reads the base from the other lines of the voucher, or from the tax when they do not show it. Empty: such a voucher fails the check.",
+   "fieldname": "derived_base",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kz of the Base Without Base Account"
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-18 02:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Mapping Check",

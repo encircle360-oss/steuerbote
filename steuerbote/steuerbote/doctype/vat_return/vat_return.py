@@ -779,7 +779,7 @@ def build_hints(
 	reconciliation: tuple[registers.Row, ...] = (),
 ) -> tuple[plausibility.Hint, ...]:
 	"""Hinweise: the invoices of the period, their reconciliation with the ledger, the balances on the accounts
-	watched for a hint, the Vorperiodenvergleich, the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21, the
+	watched for a hint, the bases taken from the tax of a voucher without base account, the Vorperiodenvergleich, the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21, the
 	accounts of the tax templates without a place in the mapping and the differences of the reconciliation with the
 	registers.
 
@@ -797,7 +797,9 @@ def build_hints(
 	currency = frappe.get_cached_value("Company", doc.company, "default_currency")
 	names = account_labels(doc.company, (balance.account_number for balance in result.hinted))
 	figures = SiteFigures(currency)
-	found = plausibility.hints(comparison, lines, ledger, mapping, figures, result.hinted, names)
+	found = plausibility.hints(
+		comparison, lines, ledger, mapping, figures, result.hinted, names, derived=result.derived
+	)
 	vat_ids = period_vat_ids(doc.company, period, mapping)
 	return plausibility.merged(
 		found,

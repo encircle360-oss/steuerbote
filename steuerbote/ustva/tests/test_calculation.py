@@ -6,10 +6,12 @@ from steuerbote.ustva.calculation import (
 	TOLERANCE_PER_VOUCHER,
 	AccountBalance,
 	CheckResult,
+	DerivedBase,
 	Deviation,
 	LedgerLine,
 	UstvaResult,
 	calculate,
+	derive_bases,
 	require_cents,
 )
 from steuerbote.ustva.defaults import SKR03, SKR04
@@ -254,6 +256,325 @@ class AcquisitionTest(TestCase):
 		self.assertEqual(result.output_tax, d("105.00"))
 		self.assertEqual(result.kz83, d("70.00"))
 		self.assertTrue(result.ready)
+
+
+REVERSE_CHARGE_19 = "Umsatzsteuer nach § 13b UStG 19 %"
+ACQUISITION_19 = "Umsatzsteuer aus innergemeinschaftlichem Erwerb 19 %"
+
+
+def purchase(voucher: str | None, *postings: tuple[str, str, str]) -> list[LedgerLine]:
+	"""The lines of one voucher, each posting as account, debit and credit."""
+	return [line(account, debit, credit, voucher) for account, debit, credit in postings]
+
+
+class DerivedBaseTest(TestCase):
+	"""A voucher that books the tax of a Verprobung but nothing on its base accounts, as a purchase on an ordinary
+	expense account with a reverse-charge or acquisition tax template does: the base is read from the voucher."""
+
+	def test_reverse_charge_on_an_expense_account_goes_to_84_and_85(self):
+		lines = purchase(
+			"V1",
+			("4980", "1000.00", "0"),
+			("1577", "190.00", "0"),
+			("1787", "0", "190.00"),
+			("1600", "0", "1000.00"),
+		)
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("84"), d("1000"))
+		self.assertEqual(result.reported("85"), d("190.00"))
+		self.assertEqual(result.reported("67"), d("190.00"))
+		self.assertEqual(result.output_tax, d("190.00"))
+		self.assertEqual(result.kz83, d("0.00"))
+		check = check_of(result, "1787")
+		self.assertEqual(
+			check.derived,
+			(DerivedBase(REVERSE_CHARGE_19, "V1", "84", d("19"), d("190.00"), d("1000.00"), ("4980",)),),
+		)
+		self.assertEqual(check.derived_base, d("1000.00"))
+		self.assertEqual((check.computed_tax, check.booked_tax), (d("190.00"), d("190.00")))
+		self.assertTrue(check.passed)
+		self.assertTrue(result.ready)
+
+	def test_acquisition_on_an_expense_account_goes_to_89_and_its_tax_to_line_37(self):
+		lines = purchase(
+			"V1",
+			("4930", "500.00", "0"),
+			("1574", "95.00", "0"),
+			("1774", "0", "95.00"),
+			("1600", "0", "500.00"),
+		)
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("89"), d("500"))
+		self.assertEqual(result.reported("61"), d("95.00"))
+		self.assertEqual(result.output_tax, d("95.00"))
+		self.assertEqual(result.kz83, d("0.00"))
+		self.assertEqual(check_of(result, "1774").derived[0].label, ACQUISITION_19)
+		self.assertTrue(result.ready)
+
+	def test_acquisition_at_7_percent_goes_to_93(self):
+		lines = purchase("V1", ("3200", "300.00", "0"), ("1572", "21.00", "0"), ("1772", "0", "21.00"))
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("93"), d("300"))
+		self.assertEqual(result.output_tax, d("21.00"))
+		self.assertTrue(result.ready)
+
+	def test_reverse_charge_at_7_percent_goes_to_84_at_7_percent(self):
+		lines = purchase("V1", ("4900", "100.00", "0"), ("1578", "7.00", "0"), ("1785", "0", "7.00"))
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("84"), d("100"))
+		self.assertEqual(result.reported("85"), d("7.00"))
+		self.assertEqual(check_of(result, "1785").derived[0].rate, d("7"))
+
+	def test_skr04_derives_as_skr03(self):
+		lines = purchase("V1", ("6300", "1000.00", "0"), ("1407", "190.00", "0"), ("3837", "0", "190.00"))
+		result = calculate(lines, SKR04)
+		self.assertEqual(result.reported("84"), d("1000"))
+		self.assertEqual(result.reported("85"), d("190.00"))
+		self.assertTrue(result.ready)
+
+	def test_a_line_of_another_purpose_in_the_voucher_stays_out_of_the_base(self):
+		lines = purchase(
+			"V1",
+			("4980", "250.00", "0"),
+			("4970", "1.50", "0"),
+			("1577", "47.50", "0"),
+			("1787", "0", "47.50"),
+			("1200", "0", "251.50"),
+		)
+		check = check_of(calculate(lines, SKR03), "1787")
+		self.assertEqual(check.derived[0].base, d("250.00"))
+		self.assertEqual(check.derived[0].accounts, ("4980",))
+
+	def test_several_lines_of_one_voucher_make_its_base(self):
+		lines = purchase(
+			"V1",
+			("4980", "100.00", "0"),
+			("4930", "50.00", "0"),
+			("1577", "28.50", "0"),
+			("1787", "0", "28.50"),
+			("1600", "0", "150.00"),
+		)
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("84"), d("150"))
+		self.assertEqual(check_of(result, "1787").derived[0].accounts, ("4980", "4930"))
+
+	def test_a_tax_rounded_per_item_matches_within_a_cent(self):
+		lines = purchase(
+			"V1",
+			("4980", "33.33", "0"),
+			("4930", "33.33", "0"),
+			("4900", "33.33", "0"),
+			("1577", "18.99", "0"),
+			("1787", "0", "18.99"),
+		)
+		result = calculate(lines, SKR03)
+		check = check_of(result, "1787")
+		self.assertEqual(check.derived[0].base, d("99.99"))
+		self.assertFalse(check.derived[0].from_tax)
+		self.assertEqual(result.reported("85"), d("19.00"))
+		self.assertEqual(check.difference, d("-0.01"))
+		self.assertTrue(check.passed)
+
+	def test_two_readings_of_the_voucher_take_the_base_from_the_tax(self):
+		lines = purchase(
+			"V1",
+			("4980", "100.00", "0"),
+			("4970", "0.02", "0"),
+			("1577", "19.00", "0"),
+			("1787", "0", "19.00"),
+		)
+		result = calculate(lines, SKR03)
+		derived = check_of(result, "1787").derived[0]
+		self.assertEqual(
+			derived, DerivedBase(REVERSE_CHARGE_19, "V1", "84", d("19"), d("19.00"), d("100.00"), ())
+		)
+		self.assertTrue(derived.from_tax)
+		self.assertEqual(result.reported("84"), d("100"))
+		self.assertTrue(result.ready)
+
+	def test_no_reading_of_the_voucher_takes_the_base_from_the_tax(self):
+		lines = purchase(
+			"V1",
+			("4980", "150.00", "0"),
+			("1576", "9.50", "0"),
+			("1577", "19.00", "0"),
+			("1787", "0", "19.00"),
+			("1600", "0", "178.50"),
+		)
+		derived = check_of(calculate(lines, SKR03), "1787").derived[0]
+		self.assertEqual((derived.base, derived.accounts), (d("100.00"), ()))
+
+	def test_a_voucher_with_too_many_lines_takes_the_base_from_the_tax(self):
+		accounts = [f"49{number:02d}" for number in range(13)]
+		lines = [
+			*purchase("V1", *((account, "10.00", "0") for account in accounts)),
+			line("1787", "0", "1.90", "V1"),
+		]
+		derived = check_of(calculate(lines, SKR03), "1787").derived[0]
+		self.assertEqual((derived.base, derived.accounts), (d("10.00"), ()))
+
+	def test_lines_without_voucher_take_the_base_from_the_tax(self):
+		lines = purchase(None, ("4980", "1000.00", "0"), ("1577", "190.00", "0"), ("1787", "0", "190.00"))
+		result = calculate(lines, SKR03)
+		self.assertEqual(
+			check_of(result, "1787").derived,
+			(DerivedBase(REVERSE_CHARGE_19, None, "84", d("19"), d("190.00"), d("1000.00"), ()),),
+		)
+		self.assertEqual(result.reported("84"), d("1000"))
+
+	def test_credit_note_reduces_the_base_and_its_tax(self):
+		lines = purchase(
+			"V1",
+			("4980", "0", "200.00"),
+			("1577", "0", "38.00"),
+			("1787", "38.00", "0"),
+			("1600", "200.00", "0"),
+		)
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("84"), d("-200"))
+		self.assertEqual(result.reported("85"), d("-38.00"))
+		self.assertEqual(result.kz83, d("0.00"))
+		self.assertTrue(result.ready)
+
+	def test_negative_acquisition_drops_its_cents_towards_zero(self):
+		lines = purchase("V1", ("4930", "0", "164.79"), ("1574", "0", "31.31"), ("1774", "31.31", "0"))
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("89"), d("-164"))
+		self.assertEqual(result.output_tax, d("-31.16"))
+
+	def test_a_reversal_and_its_rebooking_in_one_voucher_derive_nothing(self):
+		lines = purchase(
+			"V1",
+			("4260", "0", "72.40"),
+			("4980", "72.40", "0"),
+			("1577", "13.76", "13.76"),
+			("1787", "13.76", "13.76"),
+		)
+		result = calculate(lines, SKR03)
+		self.assertEqual(check_of(result, "1787").derived, ())
+		self.assertNotIn("84", result.values)
+
+	def test_a_voucher_with_a_base_account_of_the_check_keeps_its_verprobung(self):
+		lines = purchase(
+			"V1",
+			("3125", "1000.00", "0"),
+			("4980", "500.00", "0"),
+			("1577", "285.00", "0"),
+			("1787", "0", "285.00"),
+		)
+		result = calculate(lines, SKR03)
+		check = check_of(result, "1787")
+		self.assertEqual(check.derived, ())
+		self.assertEqual(result.reported("84"), d("1000"))
+		self.assertEqual(check.deviations, (Deviation("V1", d("190.00"), d("285.00")),))
+		self.assertFalse(result.ready)
+
+	def test_a_base_account_and_its_tax_are_never_counted_twice(self):
+		lines = [
+			*purchase("V1", ("3425", "1000.00", "0"), ("1574", "190.00", "0"), ("1774", "0", "190.00")),
+			*purchase("V2", ("4930", "200.00", "0"), ("1574", "38.00", "0"), ("1774", "0", "38.00")),
+		]
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("89"), d("1200"))
+		self.assertEqual(result.output_tax, d("228.00"))
+		check = check_of(result, "1774")
+		self.assertEqual([derived.voucher for derived in check.derived], ["V2"])
+		self.assertEqual((check.computed_tax, check.booked_tax), (d("228.00"), d("228.00")))
+
+	def test_taxes_of_two_checks_in_one_voucher_find_their_own_lines(self):
+		lines = purchase(
+			"V1",
+			("4930", "100.00", "0"),
+			("4980", "50.00", "0"),
+			("1574", "19.00", "0"),
+			("1774", "0", "19.00"),
+			("1577", "9.50", "0"),
+			("1787", "0", "9.50"),
+		)
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("89"), d("100"))
+		self.assertEqual(result.reported("84"), d("50"))
+		self.assertEqual(result.reported("85"), d("9.50"))
+		self.assertTrue(result.ready)
+
+	def test_the_tax_of_derived_bases_is_rounded_per_voucher(self):
+		lines = [
+			posting
+			for number in range(3)
+			for posting in purchase(
+				f"V{number}", ("4980", "33.33", "0"), ("1787", "0", "6.33"), ("1577", "6.33", "0")
+			)
+		]
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("84"), d("99"))
+		self.assertEqual(result.reported("85"), d("18.99"))
+		self.assertEqual(result.kz83, d("0.00"))
+
+	def test_a_check_without_derived_base_keeps_failing(self):
+		mapping = Mapping(
+			"SKR03 without derived bases",
+			(AccountRule("3125", "84", Side.DEBIT, d("19")), AccountRule("1577", "67", Side.DEBIT)),
+			(TaxCheck(REVERSE_CHARGE_19, ("3125",), ("1787",)),),
+		)
+		lines = purchase("V1", ("4980", "1000.00", "0"), ("1577", "190.00", "0"), ("1787", "0", "190.00"))
+		result = calculate(lines, mapping)
+		check = check_of(result, "1787")
+		self.assertEqual(check.derived, ())
+		self.assertEqual(check.deviations, (Deviation("V1", d("0.00"), d("190.00")),))
+		self.assertNotIn("84", result.values)
+		self.assertFalse(result.ready)
+
+	def test_an_own_mapping_may_report_the_derived_base_in_46(self):
+		mapping = Mapping(
+			"own",
+			(
+				AccountRule("3123", "46", Side.DEBIT, d("19")),
+				AccountRule("3125", "84", Side.DEBIT, d("19")),
+				AccountRule("1577", "67", Side.DEBIT),
+			),
+			(TaxCheck(REVERSE_CHARGE_19, ("3123", "3125"), ("1787",), derived_base="46"),),
+		)
+		lines = purchase("V1", ("4980", "1000.00", "0"), ("1577", "190.00", "0"), ("1787", "0", "190.00"))
+		result = calculate(lines, mapping)
+		self.assertEqual(result.reported("46"), d("1000"))
+		self.assertEqual(result.reported("47"), d("190.00"))
+		self.assertNotIn("84", result.values)
+
+	def test_watched_and_mapped_accounts_are_no_part_of_a_base(self):
+		lines = purchase(
+			"V1",
+			("1548", "1000.00", "0"),
+			("8400", "0", "1000.00"),
+			("4980", "1000.00", "0"),
+			("1787", "0", "190.00"),
+			("1577", "190.00", "0"),
+			("1776", "0", "190.00"),
+			("1576", "0", "0"),
+		)
+		derived = check_of(calculate(lines, SKR03), "1787").derived[0]
+		self.assertEqual(derived.accounts, ("4980",))
+
+	def test_the_result_sums_the_derived_bases_by_kennzahl(self):
+		lines = [
+			*purchase("V1", ("4980", "100.00", "0"), ("1787", "0", "19.00"), ("1577", "19.00", "0")),
+			*purchase("V2", ("4930", "40.00", "0"), ("1774", "0", "7.60"), ("1574", "7.60", "0")),
+			*purchase("V3", ("4900", "10.00", "0"), ("1787", "0", "1.90"), ("1577", "1.90", "0")),
+		]
+		result = calculate(lines, SKR03)
+		self.assertEqual(dict(result.derived_bases), {"84": d("110.00"), "89": d("40.00")})
+		self.assertEqual([derived.voucher for derived in result.derived], ["V2", "V1", "V3"])
+
+	def test_derive_bases_gives_what_calculate_derives(self):
+		lines = [
+			*purchase("V1", ("4980", "100.00", "0"), ("1787", "0", "19.00"), ("1577", "19.00", "0")),
+			*purchase("V2", ("4930", "40.00", "0"), ("1774", "0", "7.60"), ("1574", "7.60", "0")),
+		]
+		self.assertEqual(derive_bases(lines, SKR03), calculate(lines, SKR03).derived)
+
+	def test_derived_base_is_immutable(self):
+		derived = DerivedBase(REVERSE_CHARGE_19, "V1", "84", d("19"), d("19.00"), d("100.00"), ("4980",))
+		with self.assertRaises(AttributeError):
+			derived.base = d("0")  # type: ignore[misc]
 
 
 class VoucherRoundingTest(TestCase):

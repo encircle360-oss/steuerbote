@@ -16,6 +16,8 @@ VAT account of ERPNext's template and every such number in circulation has one p
 - Checked: the output-tax account of a base is never mapped. The tax of a base is derived from the
   base account, at the statutory rate of its Kennzahl or at the rate the account carries for
   § 13b UStG and new vehicles, and the tax booked on the output-tax account is checked against it.
+  The Verprobungen of the acquisitions and of § 13b UStG name the Kennzahl that takes the base of a
+  voucher booking their tax without a base account (DERIVED).
 - Watched: an account of the Voranmeldung whose Kennzahl is not decided yet. A balance on it blocks
   the filing until the company has added a mapping. An account whose balance belongs in the
   Voranmeldung in some cases only is watched at the hint level: a balance on it adds a hint.
@@ -386,6 +388,23 @@ _CHECKS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
 )
 
 
+# The Kennzahl that takes the base of a voucher booking the tax of a Verprobung but none of its base accounts, as a
+# DATEV tax key on an expense account or an ERPNext tax template does. Acquisitions go to the Kennzahl of their rate
+# (§ 1a UStG, lines 25, 26 and 29). § 13b UStG goes to Kz 84, the Leistungen of § 13b Absatz 2 Nummer 1, 2 and 4 to 12
+# UStG: Nummer 1 takes every Werklieferung and sonstige Leistung of a business established abroad, while Kz 46 takes
+# only the sonstigen Leistungen of § 3a Absatz 2 UStG of one established in another member state (§ 13b Absatz 1
+# UStG), which the ledger cannot tell. A company whose purchases are of Kz 46 books them on its base accounts or names
+# Kz 46 in its mapping. The acquisitions without Vorsteuerabzug book 7 and 19 % on one tax account, so their rate is
+# open; turnover always has a revenue account of its own.
+DERIVED: dict[str, str] = {
+	"Umsatzsteuer aus innergemeinschaftlichem Erwerb 19 %": "89",
+	"Umsatzsteuer aus innergemeinschaftlichem Erwerb 7 %": "93",
+	"Umsatzsteuer aus innergemeinschaftlichem Erwerb von Neufahrzeugen": "94",
+	"Umsatzsteuer nach § 13b UStG 19 %": "84",
+	"Umsatzsteuer nach § 13b UStG 7 %": "84",
+}
+
+
 def with_ranges(accounts: Iterable[str], ranges: ReadOnlyMapping[str, str]) -> tuple[str, ...]:
 	"""The accounts, each followed by the members of the DATEV range it is the first account of."""
 	return tuple(member for account in accounts for member in _members(account, ranges.get(account)))
@@ -417,7 +436,10 @@ def _mapping(
 			if (number := a[role]) is not None
 			for member in with_ranges((number,), ranges)
 		),
-		checks=tuple(TaxCheck(label, numbers(bases), numbers(taxes)) for label, bases, taxes in _CHECKS),
+		checks=tuple(
+			TaxCheck(label, numbers(bases), numbers(taxes), derived_base=DERIVED.get(label))
+			for label, bases, taxes in _CHECKS
+		),
 		watched=(
 			*with_ranges(watched, ranges),
 			*(WatchedAccount(number, WatchLevel.HINT) for number in with_ranges(watched_for_hints, ranges)),
@@ -1317,7 +1339,7 @@ DEFAULTS = MappingProxyType({"SKR03": SKR03, "SKR04": SKR04})
 # again, so that a VAT Return Mapping can name the defaults it took over (its defaults_version) and the same version
 # always means the same defaults: test_defaults.py pins the content of each version.
 DATEV_EDITION = 2026
-REVISION = 1
+REVISION = 2
 
 # The ignored accounts of each chart with the members of their ranges, which take the place of their first account.
 _DELIBERATELY_WITHOUT_KENNZAHL = MappingProxyType(

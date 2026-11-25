@@ -4,8 +4,10 @@ contributions() splits the core's calculate() by voucher with the core's own rul
 Kennzahl add up to the amount calculate() computes for it. An account with a rule gives its balance on the
 rule's side to the rule's Kennzahl and, with an additional Kennzahl, its balance on that side to it. A rule
 with a tax rate adds the tax derived from the bases of a voucher: per voucher, tax Kennzahl and rate, the
-bases of all accounts are summed and the tax is rounded once, as in calculate(). Lines without a voucher
-count as one voucher.
+bases of all accounts are summed and the tax is rounded once, as in calculate(). A base the core derives for a
+voucher without base account (derive_bases) contributes to its Kennzahl with the accounts whose lines make it, or the
+tax accounts of its Verprobung when it was taken from the tax, and to the derived tax of its voucher. Lines without a
+voucher count as one voucher.
 
 report_rows() turns the result and the contributions into the rows of the report in the order of the form:
 a row per Kennzahl, followed by its vouchers one level deeper, and the sums the form computes itself in
@@ -25,7 +27,7 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from steuerbote.steuerbote.doctype.vat_return.bridge import split_voucher
-from steuerbote.ustva import Kennzahl, LedgerLine, Mapping, Side, UstvaResult, tax_from_base
+from steuerbote.ustva import Kennzahl, LedgerLine, Mapping, Side, UstvaResult, derive_bases, tax_from_base
 from steuerbote.ustva.rounding import ZERO
 
 COLUMNS = (
@@ -92,6 +94,7 @@ class _DerivedBase:
 
 def contributions(lines: Iterable[LedgerLine], mapping: Mapping) -> dict[str, list[Contribution]]:
 	"""The contributions of the lines to each Kennzahl, vouchers in the order of their first line."""
+	lines = tuple(lines)
 	postings: dict[tuple[str, str | None], _Postings] = {}
 	first_line: dict[str | None, int] = {}
 	for ledger_line in lines:
@@ -122,6 +125,24 @@ def contributions(lines: Iterable[LedgerLine], mapping: Mapping) -> dict[str, li
 			base.postings.debit += total.debit
 			base.postings.credit += total.credit
 			base.base += total.balance(rule.side)
+	checks = {check.label: check for check in mapping.checks}
+	for found_base in derive_bases(lines, mapping):
+		accounts = found_base.accounts or checks[found_base.label].tax_accounts
+		shown = [account for account in accounts if (account, found_base.voucher) in postings]
+		debit = sum((postings[(account, found_base.voucher)].debit for account in shown), ZERO)
+		credit = sum((postings[(account, found_base.voucher)].credit for account in shown), ZERO)
+		found.setdefault(found_base.kennzahl, []).append(
+			Contribution(
+				found_base.kennzahl, found_base.voucher, tuple(shown), debit, credit, found_base.base
+			)
+		)
+		tax_kennzahl = mapping.catalogue[found_base.kennzahl].tax_kennzahl
+		if tax_kennzahl is not None:
+			base = derived.setdefault((tax_kennzahl, found_base.rate, found_base.voucher), _DerivedBase())
+			base.accounts.extend(shown)
+			base.postings.debit += debit
+			base.postings.credit += credit
+			base.base += found_base.base
 	for (tax_kennzahl, rate, voucher), base in derived.items():
 		found.setdefault(tax_kennzahl, []).append(
 			Contribution(

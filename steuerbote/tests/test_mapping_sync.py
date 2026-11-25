@@ -260,6 +260,109 @@ class CheckRowTest(TestCase):
 			mapping_of([rule_row("8400")], [check_row(base="8400, 8300")])
 
 
+class DerivedBaseRowTest(TestCase):
+	"""The Kennzahl a check gives the base of a voucher that books its tax but none of its bases."""
+
+	rules = (rule_row("3125", "84", "debit", tax_rate=19.0),)
+
+	def check(self, **fields: Any) -> TaxCheck:
+		(check,) = mapping_of(self.rules, [check_row("13b", "3125", "1787", **fields)]).checks
+		return check
+
+	def test_the_kennzahl_of_the_row_is_taken_without_blanks(self):
+		self.assertEqual(self.check(derived_base="84").derived_base, "84")
+		self.assertEqual(self.check(derived_base=" 84 ").derived_base, "84")
+
+	def test_an_empty_field_derives_nothing(self):
+		for empty in (None, "", " "):
+			with self.subTest(empty=empty):
+				self.assertIsNone(self.check(derived_base=empty).derived_base)
+		self.assertIsNone(self.check().derived_base)
+
+	def test_the_core_refuses_a_kennzahl_that_takes_no_derived_base(self):
+		with self.assertRaisesRegex(MappingError, "check '13b': Kennzahl 81 takes no base derived"):
+			self.check(derived_base="81")
+
+	def test_an_item_names_the_kennzahl_only_when_there_is_one(self):
+		items = items_of_rows(
+			self.rules,
+			[check_row("13b", "3125", "1787", derived_base="84"), check_row("other", "3125", "1785")],
+			[],
+		)
+		self.assertEqual(
+			items[(CHECK, "13b")],
+			{"base_accounts": "3125", "tax_accounts": "1787", "side": "credit", "derived_base": "84"},
+		)
+		self.assertEqual(
+			items[(CHECK, "other")], {"base_accounts": "3125", "tax_accounts": "1785", "side": "credit"}
+		)
+
+	def test_the_rows_of_items_give_it_back(self):
+		items = items_of_rows(self.rules, [check_row("13b", "3125", "1787", derived_base="84")], [])
+		self.assertEqual(rows_of_items(items).check_rows[0]["derived_base"], "84")
+		self.assertEqual(items_of_rows(*rows_of_items(items)), items)
+
+	def test_the_body_holds_it_only_when_there_is_one(self):
+		items = items_of_rows(
+			self.rules,
+			[check_row("13b", "3125", "1787", derived_base="84"), check_row("other", "3125", "1785")],
+			[],
+		)
+		first, second = body_of_items(items)["checks"]
+		self.assertEqual(first["derived_base"], "84")
+		self.assertNotIn("derived_base", second)
+		self.assertEqual(items_of_body(body_of_items(items)), items)
+
+	def test_a_body_of_an_earlier_version_without_it_is_read(self):
+		body = {
+			"rules": [
+				{
+					"account_number": "3125",
+					"kennzahl": "84",
+					"side": "debit",
+					"tax_rate": "19",
+					"also_kennzahl": None,
+					"also_side": None,
+				}
+			],
+			"checks": [
+				{"label": "13b", "base_accounts": ["3125"], "tax_accounts": ["1787"], "side": "credit"}
+			],
+			"watched": [],
+		}
+		self.assertEqual(
+			items_of_body(body)[(CHECK, "13b")],
+			{"base_accounts": "3125", "tax_accounts": "1787", "side": "credit"},
+		)
+
+	def test_a_body_with_a_kennzahl_of_another_shape_is_refused(self):
+		body = body_of_items(
+			items_of_rows(self.rules, [check_row("13b", "3125", "1787", derived_base="84")], [])
+		)
+		body["checks"][0]["derived_base"] = 84
+		with self.assertRaisesRegex(MappingError, "checks: derived_base cannot be 84"):
+			items_of_body(body)
+
+	def test_the_defaults_give_it_to_the_checks_the_company_keeps(self):
+		_, check_rows, _, _ = defaults_for_accounts(
+			"SKR03", LATEST_YEAR, frozenset({"3123", "1787", "8400", "1776", "3425", "1774"})
+		)
+		self.assertEqual(
+			[(row["label"], row.get("derived_base")) for row in check_rows],
+			[
+				("Umsatzsteuer 19 %", None),
+				("Umsatzsteuer aus innergemeinschaftlichem Erwerb 19 %", "89"),
+				("Umsatzsteuer nach § 13b UStG 19 %", "84"),
+			],
+		)
+		mapping = rows_to_mapping(
+			"SKR03",
+			*defaults_for_accounts("SKR03", LATEST_YEAR, frozenset({"3123", "1787"}))[:3],
+			LATEST_YEAR,
+		)
+		self.assertEqual(mapping.checks[0].derived_base, "84")
+
+
 class WatchedRowTest(TestCase):
 	def test_watched_accounts_are_taken_by_number(self):
 		watched = [{"account_number": "1548", "account": "1548 - Vorsteuer - X"}, {"account_number": "1725"}]
@@ -330,7 +433,9 @@ class DefaultsForAccountsTest(TestCase):
 			self.check_rows,
 			[
 				check_row("Umsatzsteuer 19 %", "8400", "1776", side="credit"),
-				check_row("Umsatzsteuer nach § 13b UStG 19 %", "3123", "1787", side="credit"),
+				check_row(
+					"Umsatzsteuer nach § 13b UStG 19 %", "3123", "1787", side="credit", derived_base="84"
+				),
 			],
 		)
 
