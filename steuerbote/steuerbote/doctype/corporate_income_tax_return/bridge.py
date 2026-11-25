@@ -1411,7 +1411,7 @@ def _inputs(
 			text = translate(UNKNOWN_HOLDING_TEXT).format(row.get("holding_name"), ret.year)
 			found.append(_error(UNKNOWN_HOLDING, text, "§ 8b Absatz 4 Satz 1 KStG"))
 			continue
-		if registered.percent_on_1_january is None and registered.percent_at_start_of_ez is None:
+		if not registered.percent_on_1_january and not registered.percent_at_start_of_ez:
 			text = translate(HOLDING_WITHOUT_SHARE_TEXT).format(
 				registered.name, ret.year, figures.money(to_amount(row.get("amount")))
 			)
