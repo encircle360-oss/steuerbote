@@ -54,6 +54,7 @@ MAPPING = "VAT Return Mapping"
 OWN_CHART = "Eigener Kontenrahmen"
 EXISTING_COMPANY = "Existing Company"
 SAVEPOINT = "steuerbote_setup_step"
+STATUS_SAVEPOINT = "steuerbote_setup_status"
 # The parts of the Datenlieferant that saving the settings fills from the company, with their labels.
 DATENLIEFERANT_LABELS = (
 	("filer_name", "Name"),
@@ -197,11 +198,31 @@ class SetupContext:
 @frappe.whitelist(methods=["POST"])
 def set_up(company: str | None = None) -> dict:
 	"""Steuerbote einrichten for the company: run every step and report what each did."""
+	_require_company(company)
+	return report(company, run(company, getdate()))
+
+
+@frappe.whitelist(methods=["POST"])
+def setup_status(company: str | None = None) -> dict:
+	"""What Steuerbote einrichten would do for the company, which the page shows before the setup runs: every step runs
+	as in set_up, and the run is rolled back, so that nothing it makes stays and its messages are not shown. A step that
+	would make its document reports it as made, ``before`` tells the page that nothing was made."""
+	_require_company(company)
+	shown = len(frappe.local.message_log)
+	frappe.db.savepoint(STATUS_SAVEPOINT)
+	try:
+		done = run(company, getdate())
+	finally:
+		frappe.db.rollback(save_point=STATUS_SAVEPOINT)
+		del frappe.local.message_log[shown:]
+	return {**report(company, done), "before": True}
+
+
+def _require_company(company: str | None) -> None:
 	frappe.only_for(ROLES, message=True)
 	if not company or not frappe.db.exists("Company", company):
 		frappe.throw(_(NOT_A_COMPANY).format(frappe.bold(escape_html(company or ""))))
 	frappe.has_permission("Company", "read", company, throw=True)
-	return report(company, run(company, getdate()))
 
 
 def setup_steps() -> tuple[Step, ...]:
@@ -262,6 +283,9 @@ def report(company: str, done: list[tuple[Step, StepResult]]) -> dict:
 				"doctype": result.document[0] if result.document else None,
 				"document_label": _(result.document[0]) if result.document else None,
 				"name": result.document[1] if result.document else None,
+				"action": {"label": _(result.action.label), "method": result.action.method}
+				if result.action
+				else None,
 			}
 			for step, result in done
 		],

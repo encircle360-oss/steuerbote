@@ -79,6 +79,12 @@ class VATReturnSettings(Document):
 		teilnehmernummer: DF.Data | None
 		tolerance: DF.Currency
 		ust_idnr: DF.Data | None
+		vat_id_check_on_change: DF.Check
+		vat_id_check_suppliers: DF.Check
+		vat_id_goods_max_age: DF.Int
+		vat_id_invoice_goods: DF.Literal["Block", "Warn", "Off"]
+		vat_id_invoice_services: DF.Literal["Block", "Warn", "Off"]
+		vat_id_renewal: DF.Check
 		wid_nr: DF.Data | None
 		zm_rules: DF.Table[ZMRule]
 	# end: auto-generated types
@@ -99,6 +105,27 @@ class VATReturnSettings(Document):
 			rules.check_prepayments(self.get_prepayments())
 			rules.check_zm_rules(self.get_zm_rules())
 		self.check_books_start()
+		self.check_reminder()
+
+	def check_reminder(self) -> None:
+		"""Every line of the recipients of the reminder is an e-mail address, so that a typo does not silently mean no
+		reminder; without a default outgoing e-mail account the reminder reaches nobody, which the save says."""
+		from steuerbote.steuerbote import deadlines
+
+		invalid = deadlines.invalid_recipients(self.deadline_recipients)
+		if invalid:
+			frappe.throw(
+				_(
+					"These lines of the recipients of the reminder are no e-mail addresses: {0}. Enter one address per line."
+				).format(escape_html(", ".join(invalid)))
+			)
+		if (self.deadline_recipients or "").strip() and not deadlines.outgoing_account():
+			frappe.msgprint(
+				_(
+					"The site has no default outgoing e-mail account, so the reminder of the deadlines reaches nobody. Set one up as an Email Account, and review the Email Queue before: every mail waiting there goes out with it."
+				),
+				indicator="orange",
+			)
 
 	def check_books_start(self) -> None:
 		"""The books start on the first day of a month (steuerbote/setup/start.py), after no period a VAT Return filed

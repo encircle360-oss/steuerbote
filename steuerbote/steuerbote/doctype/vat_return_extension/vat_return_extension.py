@@ -146,6 +146,16 @@ class VATReturnExtension(Filing, Transmittable, Document):
 	def onload(self) -> None:
 		self.set_onload("elster", self.elster_state())
 		self.set_onload("elster_run", self.latest_run())
+		self.set_onload("overdue", self._overdue_note())
+
+	def _overdue_note(self) -> str | None:
+		"""What the form says above its fields while a draft is past its due date; it holds nothing."""
+		deadline = getdate(self.deadline) if self.deadline else None
+		if not bridge.overdue(deadline, getdate(), cint(self.docstatus)):
+			return None
+		return _(
+			"This form was due on {0} and is not filed yet. File it as soon as possible; whether the Finanzamt still grants the Dauerfristverlängerung for the year and whether a Verspätungszuschlag (§ 152 AO) or Säumniszuschläge on the Sondervorauszahlung (§ 240 AO) arise, clarify with your Steuerberatung."
+		).format(formatdate(deadline))
 
 	def validate(self) -> None:
 		self.refuse_changes_while_transmitting()

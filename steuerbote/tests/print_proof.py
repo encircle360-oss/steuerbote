@@ -94,6 +94,8 @@ PRINT_METHODS = (
 	"annual_accounts_print",
 	"statutory_taxes",
 	"provisional_forms",
+	"left_out_lines",
+	"open_errors",
 )
 LONG_COMPANY = (
 	"Holzbau und Innenausbau Rheinisch-Bergisches Land Beteiligungsgesellschaft mbH & Co. KG (Musterfall)"
@@ -351,9 +353,50 @@ def lengthened(doc):
 					"in_file": 1,
 					"reported": 1000 * (index + 1),
 					"filed_amount": 900 * (index + 1),
+					"acceptance_reason": RELEASE_REASON if index % 10 == 0 else None,
 				},
 			)
-	return frozen(doc, repeated)
+	if doc.doctype == "VAT Return":
+		for index in range(12):
+			doc.append(
+				"hints",
+				{
+					"severity": "Fehler",
+					"code": "JOURNALBUCHUNG-STEUERKONTO",
+					"text": FINDING_TEXTS[2].format(account=11200 + index),
+				},
+			)
+	# The annex with every hint, which the print of an annual document holds only on request.
+	frappe.form_dict["all_hints"] = 1
+	try:
+		frozen(doc, repeated)
+	finally:
+		frappe.form_dict.pop("all_hints", None)
+	if doc.doctype == "Recapitulative Statement":
+		doc.left_out_lines = lambda: LEFT_OUT
+		doc.open_errors = lambda: OPEN_ERRORS
+	return doc
+
+
+RELEASE_REASON = (
+	"Bestätigung der USt-IdNr. vom Liefertag (qualifizierte Abfrage beim BZSt) liegt in der Akte."
+)
+LEFT_OUT = [
+	{
+		"vat_id": f"FR{12345678900 + index}",
+		"party": f"Société d'exemple numéro {index + 1} SARL",
+		"art": "LDS"[index % 3],
+		"amount": 1234.56 * (index + 1),
+	}
+	for index in range(8)
+]
+OPEN_ERRORS = [
+	{
+		"code": "ZM-USTID-UNBESTAETIGT",
+		"text": f"Die USt-IdNr. ATU{10000000 + index} ist nicht bestätigt: vor der Abgabe beim BZSt bestätigen oder mit Begründung freigeben.",
+	}
+	for index in range(10)
+]
 
 
 def renamed(doc):

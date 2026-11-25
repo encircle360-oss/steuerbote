@@ -222,6 +222,18 @@
 	</div>
 	{%- endif %}
 
+	{%- set errors = (doc.hints or []) | selectattr("severity", "equalto", "Fehler") | list %}
+	{%- if errors %}
+	<div class="sb-block">
+	<h2>Offene Fehler</h2>
+	<ul class="sb-errors">
+		{%- for row in errors %}
+		<li>{{ row.code | e }}: {{ (row.text or "") | e }}</li>
+		{%- endfor %}
+	</ul>
+	</div>
+	{%- endif %}
+
 	<div class="sb-keep">
 	{%- if doc.remarks %}
 	<div class="sb-block sb-keep">

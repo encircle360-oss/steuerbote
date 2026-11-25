@@ -115,6 +115,7 @@ class ReminderFilesTest(TestCase):
 				("period_label", "Data"),
 				("due_date", "Date"),
 				("sent_on", "Date"),
+				("recipients", "Small Text"),
 			],
 		)
 		self.assertEqual(self.doctype["field_order"], list(self.fields))
@@ -175,3 +176,17 @@ class SchedulerTest(TestCase):
 		path = APP.parent.joinpath(*module.split(".")).with_suffix(".py")
 		jobs = {node.name: node for node in module_body(path) if isinstance(node, ast.FunctionDef)}
 		self.assertEqual(jobs[function].args.args, [])
+
+
+class ReminderMailFilesTest(TestCase):
+	"""The reminder goes out as HTML with a text part of its own, so that a mail client without HTML shows the
+	addresses of the links too; Frappe takes both from the templates of the e-mail (get_email_from_template)."""
+
+	def test_the_e_mail_has_an_html_and_a_text_template(self):
+		emails = Path(__file__).resolve().parents[2] / "templates" / "emails"
+		self.assertEqual(
+			(emails / "steuerbote_deadline_reminder.html").read_text(encoding="utf-8").strip(), "{{ html }}"
+		)
+		self.assertEqual(
+			(emails / "steuerbote_deadline_reminder.txt").read_text(encoding="utf-8").strip(), "{{ text }}"
+		)

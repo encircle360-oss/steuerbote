@@ -45,6 +45,8 @@ DOCUMENT_TYPES = MappingProxyType(
 	}
 )
 KIND_ORDER = MappingProxyType({kind: index for index, kind in enumerate(Kind)})
+# The days of the Jahresabschluss stay on a weekend or a holiday (steuerbote.deadlines.annual, Note.ON_WEEKEND).
+UNMOVED = frozenset({Kind.FESTSTELLUNG, Kind.OFFENLEGUNG})
 
 
 class Status(Enum):
@@ -122,6 +124,7 @@ def upcoming(
 	holidays: Collection[date] = (),
 	reportable: Callable[[zm_rhythm.Coverage], bool] | None = None,
 	document_types: Mapping[Kind, str] = DOCUMENT_TYPES,
+	holidays_complete: bool = True,
 ) -> list[Deadline]:
 	"""The deadlines of the company due on or before ``horizon_days`` days after ``today``, by due date.
 
@@ -131,7 +134,8 @@ def upcoming(
 	first: the first one filed files its period, else the first one keeps it open. ``reportable`` tells for the
 	coverage of a Meldezeitraum without a document whether it has anything to report; without it, every Meldezeitraum
 	counts. ``document_types`` names the DocType of each kind on the site; a kind without one is left out. Deadlines
-	due on the same day follow the order of Kind.
+	due on the same day follow the order of Kind. Without ``holidays_complete`` the holidays are those of every state
+	only (steuerbote.deadlines.holidays), and each deadline that § 108 Abs. 3 AO moves says so.
 	"""
 	if not isinstance(horizon_days, int) or isinstance(horizon_days, bool) or horizon_days < 0:
 		raise ValueError(f"the horizon is a whole number of days from 0 on, not {horizon_days!r}")
@@ -171,7 +175,8 @@ def upcoming(
 				status,
 				owed.period,
 				document.document_status if document else None,
-				owed.notes,
+				owed.notes
+				+ ((Note.NATIONWIDE_HOLIDAYS,) if not holidays_complete and owed.kind not in UNMOVED else ()),
 			)
 		)
 	return sorted(found, key=lambda item: (item.due, KIND_ORDER[item.kind]))

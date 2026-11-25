@@ -9,6 +9,9 @@
   "year",
   "advisor_prepares",
   "kleinunternehmer",
+  "no_vat_return",
+  "no_vat_return_reason",
+  "no_vat_return_note",
   "early_request_ust",
   "early_request_kst",
   "early_request_gewst",
@@ -39,6 +42,28 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Kleinunternehmer"
+  },
+  {
+   "default": "0",
+   "description": "The company states, as agreed with its Steuerberatung, that it owes no Umsatzsteuererklärung for the year. Steuerbote takes the statement as given and does not judge the status for VAT.",
+   "fieldname": "no_vat_return",
+   "fieldtype": "Check",
+   "label": "No Umsatzsteuererklärung Owed"
+  },
+  {
+   "depends_on": "eval:doc.no_vat_return",
+   "fieldname": "no_vat_return_reason",
+   "fieldtype": "Select",
+   "label": "Reason Why None Is Owed",
+   "mandatory_depends_on": "eval:doc.no_vat_return",
+   "options": "\nNot an Unternehmer (§ 2 UStG)\nReleased by the Finanzamt\nOther Reason"
+  },
+  {
+   "depends_on": "eval:doc.no_vat_return",
+   "description": "The reference of the statement of the Finanzamt, such as its letter and date; for Other Reason what the reason is.",
+   "fieldname": "no_vat_return_note",
+   "fieldtype": "Small Text",
+   "label": "Reference and Note"
   },
   {
    "description": "The day the Finanzamt set for the Erklärung under § 149 Abs. 4 AO, instead of the deadline.",
@@ -81,7 +106,7 @@
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-23 12:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Annual Filing Year",

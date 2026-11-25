@@ -270,6 +270,7 @@ class WorkspaceFilesTest(TestCase):
 				("DocType", "Recapitulative Statement", "New"),
 				("DocType", "Recapitulative Statement", "List"),
 				("DocType", "VAT ID Confirmation", "List"),
+				("Report", "Partner ohne aktuelle USt-IdNr-Bestätigung", ""),
 				("DocType", "VAT Return Settings", "List"),
 				("DocType", "VAT Return Mapping", "List"),
 				("Report", "UStVA Kennzahlen", ""),
@@ -344,6 +345,7 @@ class WorkspaceFilesTest(TestCase):
 				("Recapitulative Statement", "New"): "Neue ZM",
 				("Recapitulative Statement", "List"): "Zusammenf. Meldungen",
 				("VAT ID Confirmation", "List"): "USt-IdNr.-Prüfungen",
+				("Partner ohne aktuelle USt-IdNr-Bestätigung", ""): "Offene USt-IdNrn.",
 				("VAT Return Settings", "List"): "Einstellungen",
 				("VAT Return Mapping", "List"): "Kontenzuordnung",
 				("Offene Fristen", ""): "Offene Fristen",
@@ -382,7 +384,10 @@ class WorkspaceFilesTest(TestCase):
 					"Umsatzsteuer-Voranmeldung",
 					["Neue Voranmeldung", "Voranmeldungen", "Kennzahlen (Bericht)", "Dauerfristanträge"],
 				),
-				("Zusammenfassende Meldung", ["Neue ZM", "Zusammenf. Meldungen", "USt-IdNr.-Prüfungen"]),
+				(
+					"Zusammenfassende Meldung",
+					["Neue ZM", "Zusammenf. Meldungen", "USt-IdNr.-Prüfungen", "Offene USt-IdNrn."],
+				),
 				(
 					"Jahresmeldungen",
 					[
@@ -437,6 +442,7 @@ class SidebarFilesTest(TestCase):
 				"Dauerfristanträge",
 				"Zusammenf. Meldungen",
 				"USt-IdNr.-Prüfungen",
+				"Offene USt-IdNrn.",
 				"Jahresmeldungen",
 				"USt-Erklärungen",
 				"E-Bilanzen",

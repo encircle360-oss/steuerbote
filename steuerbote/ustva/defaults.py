@@ -16,9 +16,9 @@ VAT account of ERPNext's template and every such number in circulation has one p
 - Checked: the output-tax account of a base is never mapped. The tax of a base is derived from the
   base account, at the statutory rate of its Kennzahl or at the rate the account carries for
   § 13b UStG and new vehicles, and the tax booked on the output-tax account is checked against it.
-  The Verprobungen of the acquisitions and of § 13b UStG name the Kennzahl that takes the base of a
-  voucher booking their tax without a base account (DERIVED), those of § 13b UStG another one for the
-  services of a business established in another member state (DERIVED_EU).
+  The Verprobungen of the acquisitions, of § 13b UStG and of the output tax at 19 and 7 % name the
+  Kennzahl that takes the base of a voucher booking their tax without a base account (DERIVED), those of
+  § 13b UStG another one for the services of a business established in another member state (DERIVED_EU).
 - Watched: an account of the Voranmeldung whose Kennzahl is not decided yet. A balance on it blocks
   the filing until the company has added a mapping. An account whose balance belongs in the
   Voranmeldung in some cases only is watched at the hint level: a balance on it adds a hint.
@@ -394,8 +394,14 @@ _CHECKS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
 # (§ 1a UStG, lines 25, 26 and 29). § 13b UStG goes to Kz 84, the Leistungen of § 13b Absatz 2 Nummer 1, 2 and 4 to 12
 # UStG: Nummer 1 takes every Werklieferung and sonstige Leistung of a business established abroad that is no service of
 # Absatz 1, and the other Nummern the domestic cases such as Bauleistungen. The acquisitions without Vorsteuerabzug
-# book 7 and 19 % on one tax account, so their rate is open; turnover always has a revenue account of its own.
+# book 7 and 19 % on one tax account, so their rate is open. Output tax at 19 and 7 % goes to Kz 81 and 86 (lines 13
+# and 14) when a voucher books more of it than its revenue accounts carry, as ERPNext's sale of a fixed asset through a
+# Sales Invoice does; its lines give the base, never its tax alone (calculation.py).
 DERIVED: dict[str, str] = {
+	"Umsatzsteuer 19 %": "81",
+	"Umsatzsteuer aus im Inland steuerpflichtigen EU-Lieferungen 19 %": "81",
+	"Umsatzsteuer 7 %": "86",
+	"Umsatzsteuer aus im Inland steuerpflichtigen EU-Lieferungen 7 %": "86",
 	"Umsatzsteuer aus innergemeinschaftlichem Erwerb 19 %": "89",
 	"Umsatzsteuer aus innergemeinschaftlichem Erwerb 7 %": "93",
 	"Umsatzsteuer aus innergemeinschaftlichem Erwerb von Neufahrzeugen": "94",
@@ -1357,7 +1363,7 @@ TIMING_ACCOUNTS = MappingProxyType({"SKR03": SKR03_WATCHED[:2], "SKR04": SKR04_W
 # again, so that a VAT Return Mapping can name the defaults it took over (its defaults_version) and the same version
 # always means the same defaults: test_defaults.py pins the content of each version.
 DATEV_EDITION = 2026
-REVISION = 3
+REVISION = 4
 
 # The purchase accounts whose name states the rate of their Vorsteuer, as the Standardkontenrahmen SKR 03 and SKR 04 „Gültig für 2026“ name
 # them: SKR 03 3010 „Einkauf Roh-, Hilfs- und Betriebsstoffe 7 % Vorsteuer“ and 3030 of 19 %, 3091 and 3092

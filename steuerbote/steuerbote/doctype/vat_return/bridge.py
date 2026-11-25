@@ -66,10 +66,12 @@ def provisional_forms(year: int) -> dict[str, Any] | None:
 
 @dataclass(frozen=True, slots=True)
 class Override:
-	"""An amount the user files instead of the computed one, with the reason why."""
+	"""An amount the user files instead of the computed one, with the reason why, and the exact ledger amount of the
+	Kennzahl it was made against; None for an override Berechnen meets for the first time."""
 
 	amount: Decimal
 	reason: str
+	basis: Decimal | None = None
 
 
 class RowProblem(Enum):
@@ -127,7 +129,8 @@ def _entries(rows: Iterable[Row], catalogue: ReadOnlyMapping[str, Kennzahl]) -> 
 			raise RowError(RowProblem.NO_AMOUNT, number)
 		if amount and not reason:
 			raise RowError(RowProblem.MISSING_REASON, number)
-		override = Override(amount, reason) if reason else None
+		basis = row.get("override_basis")
+		override = Override(amount, reason, None if basis is None else to_amount(basis)) if reason else None
 		entries.append(_Entry(kennzahl, to_amount(row.get("reported")), override, to_amount(row.get("tax"))))
 	return entries
 
@@ -170,17 +173,80 @@ def kennzahl_rows(
 		kennzahl = catalogue[number]
 		value = result.values.get(number)
 		override = overrides.get(number)
+		amount = value.amount if value else ZERO
 		rows.append(
 			{
 				**_description(kennzahl),
-				"amount": value.amount if value else ZERO,
+				"amount": amount,
 				"reported": value.reported if value else ZERO,
 				"tax": value.tax if value and value.tax is not None else ZERO,
 				"override": override.amount if override else ZERO,
 				"override_reason": override.reason if override else "",
+				"override_basis": _basis(override, amount),
 			}
 		)
 	return rows
+
+
+def _basis(override: Override | None, amount: Decimal) -> Decimal:
+	if override is None:
+		return ZERO
+	return amount if override.basis is None else override.basis
+
+
+def override_bases(stored: Iterable[Row], rows: Iterable[Row]) -> list[Decimal | None]:
+	"""The ledger amount each override of ``rows`` was made against, from the Kennzahlen as ``stored`` holds them.
+
+	An override the stored row holds as it is keeps its basis; a new or changed one takes the ledger amount the stored
+	row showed when the user entered it. A Kennzahl the return did not hold gets None, and so does a row without an
+	override. Frappe keeps no read-only field from a save through its API, so the basis never comes from ``rows``.
+	"""
+	by_number = {_number(row): row for row in stored}
+	bases: list[Decimal | None] = []
+	for row in rows:
+		before = by_number.get(_number(row))
+		if not str(row.get("override_reason") or "").strip() or before is None:
+			bases.append(None)
+		elif _override(before) == _override(row):
+			bases.append(to_amount(before.get("override_basis")))
+		else:
+			bases.append(to_amount(before.get("amount")))
+	return bases
+
+
+def _override(row: Row) -> tuple[Decimal, str]:
+	return to_amount(row.get("override")), str(row.get("override_reason") or "").strip()
+
+
+def stale_override_hints(rows: Iterable[Row], figures: plausibility.Figures) -> list[plausibility.Hint]:
+	"""An error per override whose Kennzahl the ledger books at another amount than the one it was made against, in
+	the order of the rows: the override would hide the change from the return."""
+	found = []
+	for row in rows:
+		if not str(row.get("override_reason") or "").strip():
+			continue
+		basis, amount = to_amount(row.get("override_basis")), to_amount(row.get("amount"))
+		if basis == amount:
+			continue
+		text = (
+			f"Kz {_number(row)}: Die Korrektur auf {figures.money(to_amount(row.get('override')))} wurde bei "
+			f"{figures.money(basis)} im Hauptbuch eingetragen; das Hauptbuch bucht jetzt {figures.money(amount)}. Die "
+			"Voranmeldung ist nicht bereit, bis die Korrektur bestätigt ist: Passe Betrag oder Begründung an, oder "
+			"lösche die Korrektur."
+		)
+		found.append(plausibility.Hint(plausibility.Code.OVERRIDE_STALE, text))
+	return found
+
+
+def ready_of(checks: Iterable[Row], unmapped: Iterable[Row], hints: Iterable[Row], provisional: bool) -> bool:
+	"""Whether a return is ready by what it stores: every Verprobung passes, no account watched at the blocking level
+	has a balance, no error among its hints holds it (plausibility.holds) and its forms are final."""
+	return (
+		not provisional
+		and all(int(row.get("passed") or 0) for row in checks)
+		and not list(unmapped)
+		and not any(row.get("severity") == plausibility.Severity.ERROR.value for row in hints)
+	)
 
 
 @dataclass(frozen=True, slots=True)
@@ -557,12 +623,13 @@ def max_confirmation_age(value: object) -> int:
 def replaced_hints(
 	rows: Iterable[Row], hints: Iterable[plausibility.Hint], codes: Collection[str]
 ) -> list[dict[str, Any]]:
-	"""The stored hints without those of ``codes``, with ``hints`` in their place: the warnings first, then the hints,
-	each kind with the stored rows before the new ones, as plausibility.merged orders them."""
+	"""The stored hints without those of ``codes``, with ``hints`` in their place: the errors first, then the warnings,
+	then the hints, each kind with the stored rows before the new ones, as plausibility.merged orders them."""
 	kept = [{name: row.get(name) for name in HINT_FIELDS} for row in rows if row.get("code") not in codes]
-	return sorted(
-		[*kept, *hint_rows(hints)], key=lambda row: row["severity"] != plausibility.Severity.WARNING.value
-	)
+	return sorted([*kept, *hint_rows(hints)], key=lambda row: _SEVERITY_RANK.get(row["severity"], 2))
+
+
+_SEVERITY_RANK = {severity.value: rank for severity, rank in plausibility.SEVERITY_ORDER.items()}
 
 
 def reconciliation_rows(

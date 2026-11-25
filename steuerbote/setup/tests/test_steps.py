@@ -10,9 +10,11 @@ from steuerbote.setup.steps import (
 	NOT_A_FUNCTION,
 	NOT_A_KEY,
 	NOT_A_STEP,
+	NOT_AN_ACTION,
 	NOT_AN_ORDER,
 	UNKNOWN_FIELDS,
 	UNKNOWN_NEED,
+	Action,
 	Note,
 	Outcome,
 	SetupError,
@@ -194,6 +196,19 @@ class ResultTest(TestCase):
 		self.assertEqual(result.notes, (Note("{0} made.", ("X",), True),))
 		self.assertEqual(result.document, ("VAT Return Settings", "X GmbH"))
 		self.assertEqual(StepResult(Outcome.SKIPPED).notes, ())
+		self.assertIsNone(StepResult(Outcome.SKIPPED).action)
+
+	def test_a_result_may_offer_an_action_the_user_starts_from_the_page(self):
+		action = Action("Relabel the Field", "steuerbote.steuerbote.vat_id_setup.relabel_tax_id")
+		result = StepResult(Outcome.UNDECIDED, (Note("Open.", open=True),), action=action)
+		self.assertEqual(result.action, action)
+
+	def test_an_action_has_a_label_and_calls_a_function(self):
+		for label, method in (("", "a.b"), (" ", "a.b"), ("Relabel", "relabel"), ("Relabel", None)):
+			with self.subTest(label=label, method=method), self.assertRaises(SetupError) as raised:
+				Action(label, method)  # type: ignore[arg-type]
+			self.assertEqual(raised.exception.template, NOT_AN_ACTION)
+		self.assertIn(NOT_AN_ACTION, MESSAGES)
 
 	def test_a_step_misses_the_needs_whose_documents_are_missing(self):
 		filing_period = step("filing_period", 30, ("settings", "mapping"))
@@ -217,7 +232,7 @@ class ResultTest(TestCase):
 		self.assertTrue(changed([StepResult(Outcome.SKIPPED), StepResult(Outcome.CREATED)]))
 
 	def test_every_message_is_an_english_template(self):
-		self.assertEqual(len(set(MESSAGES)), 11)
+		self.assertEqual(len(set(MESSAGES)), 12)
 		for message in MESSAGES:
 			with self.subTest(message=message):
 				self.assertTrue(message.endswith("."))

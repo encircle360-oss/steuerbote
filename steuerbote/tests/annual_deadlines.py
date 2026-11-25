@@ -93,13 +93,30 @@ def use_test_doctypes() -> Iterator[None]:
 
 
 def make_annual_company(company: str, abbr: str, since: str, **fields: Any) -> str:
-	"""A company with Annual Filing Settings made on the day ``since``; ``fields`` go to the settings."""
+	"""A company with Annual Filing Settings made on the day ``since``; ``fields`` go to the settings. Its Holiday
+	List has no holidays, so that its deadlines fall on the days of the rules alone."""
 	make_company(company, abbr)
+	frappe.db.set_value("Company", company, "default_holiday_list", holiday_list_without_holidays())
 	frappe.get_doc(
 		{"doctype": "Annual Filing Settings", "company": company, "legal_form": "GmbH", **ADDRESS, **fields}
 	).insert(ignore_permissions=True)
 	frappe.db.set_value("Annual Filing Settings", company, "creation", since, update_modified=False)
 	return company
+
+
+def holiday_list_without_holidays() -> str:
+	"""A Holiday List with no holidays, made once."""
+	name = "Steuerbote Test ohne Feiertage"
+	if not frappe.db.exists("Holiday List", name):
+		frappe.get_doc(
+			{
+				"doctype": "Holiday List",
+				"holiday_list_name": name,
+				"from_date": "2026-01-01",
+				"to_date": "2028-12-31",
+			}
+		).insert(ignore_permissions=True)
+	return name
 
 
 def insert_annual(

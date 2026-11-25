@@ -9,8 +9,11 @@ once it has a reason, and the totals and Kz 83 always follow the amounts as file
 field from a save through its API, so a save keeps what Berechnen stored and takes only what the form lets the
 user change, a new return starts as a draft, and before the return is transmitted, made into a file or filed, its
 amounts are computed again from the stored Kennzahlen. "Berechnen" also fills the
-Vorperiodenvergleich (build_comparison) and the hints (build_hints) of steuerbote.ustva.plausibility, which
-inform and never change an amount or whether the return is ready, and the reconciliation with the reports Sales
+Vorperiodenvergleich (build_comparison) and the hints (build_hints) of steuerbote.ustva.plausibility, which never
+change an amount; an error among them holds the return back from „Bereit“ (bridge.ready_of): a customer without a valid
+USt-IdNr. behind Kz 41, 42 or 21, which the Zusammenfassende Meldung holds the same way, and an override whose ledger
+amount changed since it was made (bridge.stale_override_hints). An override keeps that amount (bridge.override_bases),
+from the stored return and never from the rows a save sends. The reconciliation with the reports Sales
 Register and Purchase Register (build_reconciliation, steuerbote.ustva.registers): a difference there needs an
 explanation in its row, or the remarks, before the return is transmitted, made into a file or filed, as a return
 that is not ready needs the remarks. A return of a year whose forms are provisional (steuerbote/ustva/years.py) is not
@@ -301,6 +304,7 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		year = cint(self.year)
 		period, settings = self._set_period()
 		catalogue = ustva.catalogue_for(year)
+		self._take_bases(self._stored_kennzahlen())
 		overrides = _read_rows(bridge.overrides_of, self.kennzahlen, catalogue)
 		mapping = mapping_for(self.company, year)
 		ledger = VatLedger.for_period(self.company, period)
@@ -323,7 +327,7 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		self.set("late_changes", late_rows)
 		self.update({"period_basis": ledger.basis.value, "late_treatment": ledger.treatment.value})
 		reconciliation = build_reconciliation(
-			self.company, period, mapping, load_lines(self.company, period.start, period.end)
+			self.company, period, mapping, load_lines(self.company, period.start, period.end), lines
 		)
 		numbers = [row.account_number for row in reconciliation if row.account_number]
 		self.set(
@@ -337,19 +341,16 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 			),
 		)
 		hints = build_hints(self, period, mapping, result, comparison, reconciliation, sales_invoices(lines))
+		stale = bridge.stale_override_hints(self.kennzahlen, _figures(self.company))
 		hints = plausibility.merged(
+			stale,
 			hints,
 			release_hints,
 			return_hints(self.company, period, mapping, lines, settings, result),
 			self._correction_hints(),
 		)
 		self.set("hints", bridge.hint_rows(hints))
-		self.ready = int(
-			result.ready
-			and bridge.provisional_forms(year) is None
-			and obligations.has_ended(period, getdate())
-		)
-		self.status = READY if self.ready else CALCULATED
+		self._set_ready()
 		self.accounts_without_number = len(accounts_without_number(self.company))
 		self.flags.calculating = True
 		try:
@@ -431,7 +432,11 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 
 	def details_for(self, vat_id: str) -> Details | None:
 		"""Name and address of the customer of the first voucher of the number that names one, as the ZM reads them."""
-		return zm_sources.customer_details(zm_bridge.customer_of(self._vat_ids().vouchers, vat_id))
+		return zm_sources.customer_details(self.party_for(vat_id))
+
+	def party_for(self, vat_id: str) -> str | None:
+		"""The customer of the first voucher of the number that names one."""
+		return zm_bridge.customer_of(self._vat_ids().vouchers, vat_id)
 
 	def take_in_confirmations(self) -> None:
 		"""The hints on the USt-IdNrn. follow the confirmations the job stored; every other hint stays as Berechnen
@@ -441,6 +446,26 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		self.set("hints", bridge.replaced_hints(self.hints, hints, plausibility.VAT_ID_CODES))
 		self.flags.confirming = True
 		self.save()
+
+	def _set_ready(self) -> None:
+		"""Bereit or Berechnet, from the Verprobung, the watched accounts, the errors among the hints and the forms of
+		the year, as the return stores them; a period that has not ended is never ready."""
+		provisional = bridge.provisional_forms(cint(self.year)) is not None
+		ended = obligations.has_ended(self._chosen_period(cint(self.year)), getdate())
+		self.ready = int(ended and bridge.ready_of(self.checks, self.unmapped, self.hints, provisional))
+		self.status = READY if self.ready else CALCULATED
+
+	def _stored_kennzahlen(self) -> list[Document]:
+		"""The Kennzahlen of the return as the database holds them, none before its first save."""
+		if self.is_new() or not frappe.db.exists(DOCTYPE, self.name):
+			return []
+		return frappe.get_doc(DOCTYPE, self.name).kennzahlen
+
+	def _take_bases(self, stored: Iterable[Document]) -> None:
+		"""Give each override the ledger amount it was made against (bridge.override_bases); a Kennzahl the stored return
+		did not hold has no ledger amount yet but the one Berechnen finds."""
+		for row, basis in zip(self.kennzahlen, bridge.override_bases(stored, self.kennzahlen), strict=True):
+			row.override_basis = basis
 
 	def _vat_ids(self) -> PeriodVatIds:
 		"""The vouchers behind Kz 41, 42 and 21 of the period with their customers, read once for the document."""
@@ -509,6 +534,7 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		self._refuse_second_filing()
 		self.flags.filed_outside = True
 		self.submit()
+		self._warn_filed_before_the_end(filed_date or getdate())
 		return self.new_transmission(
 			EXTERN,
 			simulated=False,
@@ -518,6 +544,17 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 			transferticket=ticket or None,
 			filed_on=filed_date,
 		).name
+
+	def _warn_filed_before_the_end(self, filed_on: date) -> None:
+		"""A return noted as filed before its period has ended may miss bookings made later in it, which a corrected
+		return then has to report (§ 18 Absatz 1 UStG: the Voranmeldung follows the end of the period)."""
+		if filed_on <= getdate(self.to_date):
+			frappe.msgprint(
+				_(
+					"{0} was noted as filed on {1}, before the period ends on {2}. A booking made for it later needs a corrected return (Kz 10)."
+				).format(self.period_label, formatdate(filed_on), formatdate(self.to_date)),
+				indicator="orange",
+			)
 
 	def _check_fit_for_filing(self) -> None:
 		if self.status not in (CALCULATED, READY):
@@ -540,7 +577,7 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 				"{0} ends on {1}, and the return was calculated before: it is not ready. Calculate it again after that day, or explain in the remarks why it is filed nonetheless."
 			).format(period.label, formatdate(period.end))
 		return _(
-			"The return is not ready: a Verprobung deviates or a watched account has a balance. Explain in the remarks why it is filed nonetheless."
+			"The return is not ready: a Verprobung deviates, a watched account has a balance, or an error among the hints holds it, such as a customer without a valid USt-IdNr. or an override whose ledger amount changed. Explain in the remarks why it is filed nonetheless."
 		)
 
 	def provisional_forms(self) -> dict | None:
@@ -744,11 +781,18 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		if before is None or self.flags.calculating:
 			return
 		computed = _read_rows(bridge.restored, before.kennzahlen, self.kennzahlen)
+		self._take_bases(before.kennzahlen)
 		for row, values in zip(self.kennzahlen, computed, strict=True):
 			row.update(values)
+			if row.override_basis is None:
+				row.override_basis = row.amount
 		for table in FINDINGS:
 			if not (table == "hints" and self.flags.confirming):
 				self.set(table, [row.as_dict() for row in before.get(table)])
+		stale = bridge.stale_override_hints(self.kennzahlen, _figures(self.company))
+		code = plausibility.Code.OVERRIDE_STALE
+		if [row.text for row in self.hints if row.code == code] != [hint.text for hint in stale]:
+			self.set("hints", bridge.replaced_hints(self.hints, stale, frozenset({code})))
 		self.set(
 			RECONCILIATION,
 			bridge.explanations_kept(
@@ -756,6 +800,8 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 			),
 		)
 		self.update({field: before.get(field) for field in CALCULATED_FIELDS})
+		if self.status in (CALCULATED, READY):
+			self._set_ready()
 
 	def statutory_tax_of_the_return(self) -> ustva.StatutoryTax:
 		"""The setting „Steuer zu Umsätzen mit festem Steuersatz“ the return was calculated with."""
@@ -1147,15 +1193,21 @@ def sales_invoices(lines: Iterable[ustva.LedgerLine]) -> list[str]:
 
 
 def build_reconciliation(
-	company: str, period: ustva.Period, mapping: ustva.Mapping, lines: list[ustva.LedgerLine]
+	company: str,
+	period: ustva.Period,
+	mapping: ustva.Mapping,
+	lines: list[ustva.LedgerLine],
+	reported: list[ustva.LedgerLine] | None = None,
 ) -> tuple[registers.Row, ...]:
 	"""Abgleich mit Registern: the reports Sales Register and Purchase Register of the period against the ledger lines
-	the return is computed from, see steuerbote.ustva.registers."""
+	posted in it, and an information row on the vouchers the return, computed from ``reported``, takes from another
+	period or leaves to one, see steuerbote.ustva.registers."""
 	return registers.reconcile(
 		register_lines(company, period.start, period.end),
 		lines,
 		mapping,
 		deliberately_without_kennzahl(mapping.chart),
+		reported,
 	)
 
 
@@ -1170,6 +1222,10 @@ def _tax_template_hints(
 	numbers = [account.account_number for account in unplaced if account.account_number]
 	lines = load_lines(company, period.start, period.end, numbers) if numbers else []
 	return tax_templates.hints(unplaced, tax_templates.balances(lines, numbers), figures)
+
+
+def _figures(company: str) -> SiteFigures:
+	return SiteFigures(frappe.get_cached_value("Company", company, "default_currency"))
 
 
 class SiteFigures:

@@ -280,7 +280,12 @@ class DerivedBaseRowTest(TestCase):
 		self.assertIsNone(self.check().derived_base)
 
 	def test_the_core_refuses_a_kennzahl_that_takes_no_derived_base(self):
-		with self.assertRaisesRegex(MappingError, "check '13b': Kennzahl 81 takes no base derived"):
+		with self.assertRaisesRegex(MappingError, "check '13b': Kennzahl 48 takes no base derived"):
+			self.check(derived_base="48")
+		with self.assertRaisesRegex(
+			MappingError,
+			"check '13b': base account 3125 feeds Kennzahl 84, which is no turnover at a statutory rate",
+		):
 			self.check(derived_base="81")
 
 	def test_an_item_names_the_kennzahl_only_when_there_is_one(self):
@@ -350,7 +355,7 @@ class DerivedBaseRowTest(TestCase):
 		self.assertEqual(
 			[(row["label"], row.get("derived_base")) for row in check_rows],
 			[
-				("Umsatzsteuer 19 %", None),
+				("Umsatzsteuer 19 %", "81"),
 				("Umsatzsteuer aus innergemeinschaftlichem Erwerb 19 %", "89"),
 				("Umsatzsteuer nach § 13b UStG 19 %", "84"),
 			],
@@ -481,7 +486,7 @@ class DefaultsForAccountsTest(TestCase):
 		self.assertEqual(
 			self.check_rows,
 			[
-				check_row("Umsatzsteuer 19 %", "8400", "1776", side="credit"),
+				check_row("Umsatzsteuer 19 %", "8400", "1776", side="credit", derived_base="81"),
 				check_row(
 					"Umsatzsteuer nach § 13b UStG 19 %",
 					"3123",
@@ -516,7 +521,8 @@ class ReducingTheDefaultsTest(TestCase):
 	def test_a_check_keeps_every_base_and_tax_account_that_exists(self):
 		_, check_rows, _, _ = self.reduce({"8400", "8410", "2406", "1776"})
 		self.assertEqual(
-			check_rows, [check_row("Umsatzsteuer 19 %", "8400, 8410, 2406", "1776", side="credit")]
+			check_rows,
+			[check_row("Umsatzsteuer 19 %", "8400, 8410, 2406", "1776", side="credit", derived_base="81")],
 		)
 
 	def test_a_check_without_a_base_account_is_dropped(self):
@@ -757,6 +763,7 @@ class DefaultItemsTest(TestCase):
 					"base_accounts": "8400",
 					"tax_accounts": "1776",
 					"side": "credit",
+					"derived_base": "81",
 				},
 			},
 		)

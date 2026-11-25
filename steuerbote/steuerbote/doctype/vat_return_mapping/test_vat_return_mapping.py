@@ -133,7 +133,7 @@ class IntegrationTestVATReturnMapping(IntegrationTestCase):
 				for row in self.mapping_with_defaults().checks
 			],
 			[
-				("Umsatzsteuer 19 %", "8400", "1776", "credit", None, None),
+				("Umsatzsteuer 19 %", "8400", "1776", "credit", "81", None),
 				("Umsatzsteuer nach § 13b UStG 19 %", "3123", "1787", "credit", "84", "46"),
 			],
 		)
@@ -164,7 +164,7 @@ class IntegrationTestVATReturnMapping(IntegrationTestCase):
 					AccountRule("1576", "66", Side.DEBIT),
 				),
 				(
-					TaxCheck("Umsatzsteuer 19 %", ("8400",), ("1776",)),
+					TaxCheck("Umsatzsteuer 19 %", ("8400",), ("1776",), derived_base="81"),
 					TaxCheck(
 						"Umsatzsteuer nach § 13b UStG 19 %",
 						("3123",),

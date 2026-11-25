@@ -40,6 +40,7 @@ class DeadlineReminder(Document):
 			"Offenlegung Jahresabschluss",
 		]
 		period_label: DF.Data
+		recipients: DF.SmallText
 		sent_on: DF.Date
 	# end: auto-generated types
 

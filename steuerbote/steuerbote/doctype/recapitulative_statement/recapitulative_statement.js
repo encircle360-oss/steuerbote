@@ -15,6 +15,10 @@ frappe.ui.form.on("Recapitulative Statement", {
 		release_stale_transmission(frm);
 		offer_buchen_only_for_an_accepted_send(frm);
 		remove_discard_when_locked_as_sent(frm);
+		if (frm.doc.docstatus === 1) {
+			// A filed statement is never cancelled (before_cancel): a change goes to the BZSt as a Berichtigung.
+			frm.page.clear_secondary_action();
+		}
 		const draft = frm.doc.docstatus === 0 && !frm.is_new();
 		const calculated = ["Berechnet", "Bereit"].includes(frm.doc.status);
 		const free = draft && !frm.doc.confirmation_in_progress && !transmission_blocked(frm);
@@ -22,7 +26,7 @@ frappe.ui.form.on("Recapitulative Statement", {
 		if (changeable) {
 			frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
 		}
-		if (changeable && calculated && may_send(frm)) {
+		if (changeable && calculated && may_send(frm) && has_vat_ids_to_confirm(frm)) {
 			frm.add_custom_button(__("Confirm VAT IDs"), () =>
 				confirm_vat_ids(
 					frm,
@@ -133,7 +137,7 @@ function ask_for_filing_note(frm, filed_via) {
 		return;
 	}
 	const in_mein_elster = filed_via === "mein_elster";
-	frappe.prompt(
+	prompt_until_filed(
 		[
 			{
 				fieldtype: "Data",
@@ -169,6 +173,20 @@ function ask_for_filing_note(frm, filed_via) {
 		in_mein_elster ? __("Filed in Mein ELSTER") : __("Mark as Filed Outside"),
 		__("Mark as Filed")
 	);
+}
+
+// frappe.prompt closes its dialog before the call, so a note the server refuses, such as a mistyped Transferticket,
+// would lose what was entered; this dialog closes only once the filing is noted.
+function prompt_until_filed(fields, file, title, primary_action_label) {
+	const dialog = new frappe.ui.Dialog({
+		title,
+		fields,
+		primary_action_label,
+		primary_action(values) {
+			file(values).then(() => dialog.hide());
+		},
+	});
+	dialog.show();
 }
 
 // Without the immutable ledger of the Accounts Settings, a cancellation changes the ledger of a month filed already.

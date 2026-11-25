@@ -77,7 +77,9 @@ ignore_links_on_delete = [
 # The records of what Steuerbote did, which only Steuerbote writes and nobody renames (steuerbote/steuerbote/guards.py).
 _RECORDS = ("ELSTER Transmission", "VAT ID Confirmation", "Deadline Reminder")
 
-# The files of an ELSTER Transmission and the answer kept with a VAT ID Confirmation stay as they were stored.
+# The files of an ELSTER Transmission and the answer kept with a VAT ID Confirmation stay as they were stored. A
+# customer or supplier whose USt-IdNr., name or address changes is confirmed in the background, and a Sales Invoice
+# behind Kz 41, 42 or 21 needs a current confirmation of its customer on submit (steuerbote/steuerbote/partner_vat_ids.py).
 doc_events = {
 	"File": {
 		"before_validate": "steuerbote.steuerbote.record_files.keep_unchanged",
@@ -91,21 +93,47 @@ doc_events = {
 		}
 		for doctype in _RECORDS
 	},
+	"Customer": {"on_update": "steuerbote.steuerbote.partner_vat_ids.on_party_update"},
+	"Supplier": {"on_update": "steuerbote.steuerbote.partner_vat_ids.on_party_update"},
+	"Address": {"on_update": "steuerbote.steuerbote.partner_vat_ids.on_address_update"},
+	"Sales Invoice": {"before_submit": "steuerbote.steuerbote.partner_vat_ids.check_invoice"},
+}
+
+# The form of a customer or supplier confirms its USt-IdNr. and shows where its confirmations stand; a draft Sales
+# Invoice confirms that of its customer.
+doctype_js = {
+	"Customer": "public/js/partner_vat_id.js",
+	"Supplier": "public/js/partner_vat_id.js",
+	"Sales Invoice": "public/js/sales_invoice_vat_id.js",
+}
+
+# The connections of a customer and a supplier list the confirmations of its USt-IdNr.
+override_doctype_dashboards = {
+	"Customer": "steuerbote.steuerbote.partner_vat_ids.customer_dashboard",
+	"Supplier": "steuerbote.steuerbote.partner_vat_ids.supplier_dashboard",
 }
 
 # Every day the recipients in the VAT Return Settings of each company hear of its deadlines not filed. Every week
 # Steuerbote loads the Mindestversionsliste of ERiC and tells the System Managers of what the installed runtimes
-# lack, as the ERiC licence asks the Softwarehersteller to check regularly for new versions (§ 5 Abs. 4).
+# lack, as the ERiC licence asks the Softwarehersteller to check regularly for new versions (§ 5 Abs. 4). Every
+# morning, after the maintenance window of the BZSt from 23:00 to 05:00, the confirmations of USt-IdNrn. that are
+# due are renewed.
 scheduler_events = {
 	"daily": ["steuerbote.steuerbote.deadlines.send_reminders"],
 	"weekly": ["steuerbote.steuerbote.doctype.eric_settings.eric_settings.check_versions"],
+	"cron": {"30 6 * * *": ["steuerbote.steuerbote.partner_vat_ids.renew_confirmations"]},
 }
 
-# bench migrate runs after every update of the app; the ERiC Settings then show the version it brings.
-after_migrate = ["steuerbote.steuerbote.doctype.eric_settings.eric_settings.refresh_produkt_version"]
+# bench migrate runs after every update of the app; the ERiC Settings then show the version it brings, and each
+# customer and supplier with a USt-IdNr. gets the status of its confirmation once.
+after_migrate = [
+	"steuerbote.steuerbote.doctype.eric_settings.eric_settings.refresh_produkt_version",
+	"steuerbote.steuerbote.partner_vat_ids.fill_statuses",
+]
 
-# The steps Steuerbote einrichten runs besides its own (steuerbote/steuerbote/setup.py): the Kontenzuordnung
-# Ertragsteuern and the Bilanzzuordnung, each with the defaults of SKR03 or SKR04.
+# The steps Steuerbote einrichten runs besides its own (steuerbote/steuerbote/setup.py): the start in Steuerbote, the
+# check of the deadlines and the reminder, the Kontenzuordnung Ertragsteuern and the Bilanzzuordnung, each with the
+# defaults of SKR03 or SKR04.
 steuerbote_setup_steps = [
 	{
 		"key": "books_start",
@@ -113,6 +141,13 @@ steuerbote_setup_steps = [
 		"order": 35,
 		"needs": ["vat_return_settings", "vat_return_mapping"],
 		"run": "steuerbote.steuerbote.setup.check_books_start",
+	},
+	{
+		"key": "deadlines",
+		"label": "Deadlines and Reminder",
+		"order": 36,
+		"needs": ["vat_return_settings"],
+		"run": "steuerbote.steuerbote.deadlines.check_setup",
 	},
 	{
 		"key": "income_tax_mapping",
@@ -125,5 +160,24 @@ steuerbote_setup_steps = [
 		"label": "Balance Sheet Mapping",
 		"order": 50,
 		"run": "steuerbote.steuerbote.doctype.balance_sheet_mapping.setup.run",
+	},
+	{
+		"key": "vat_id_label",
+		"label": "Label of the VAT ID",
+		"order": 60,
+		"run": "steuerbote.steuerbote.vat_id_setup.check_tax_id_label",
+	},
+	{
+		"key": "erpnext_germany_vat_id_check",
+		"label": "VAT ID Check of erpnext_germany",
+		"order": 70,
+		"run": "steuerbote.steuerbote.vat_id_setup.check_erpnext_germany",
+	},
+	{
+		"key": "vat_id_automatic_check",
+		"label": "Automatic VAT ID Check",
+		"order": 75,
+		"needs": ["vat_return_settings"],
+		"run": "steuerbote.steuerbote.vat_id_setup.check_automatic_check",
 	},
 ]

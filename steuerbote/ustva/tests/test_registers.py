@@ -294,6 +294,70 @@ class ReconcileTest(TestCase):
 NAMES = MappingProxyType({"1776": "Umsatzsteuer 19 %"})
 
 
+class ReportedElsewhereTest(TestCase):
+	"""The registers and the ledger lines of the reconciliation go by posting date; the return reports a Sales Invoice
+	in the period of its supply and a late voucher in the period open when it was booked. An information row per
+	Kennzahl names the vouchers the return reports in another period than they are posted in, with their amount."""
+
+	JULY_INVOICE = (
+		booked("1400", debit="1190.00", voucher="Sales Invoice:SINV-7"),
+		booked("8400", credit="1000.00", voucher="Sales Invoice:SINV-7"),
+		booked("1776", credit="190.00", voucher="Sales Invoice:SINV-7"),
+	)
+
+	def test_a_voucher_posted_here_and_reported_in_another_period(self):
+		rows = reconcile(INVOICED, (*LEDGER, *self.JULY_INVOICE), SKR03, IGNORED, reported=LEDGER)
+		(row,) = [row for row in rows if row.reason is Reason.REPORTED_ELSEWHERE]
+		self.assertEqual(
+			(row.register, row.kennzahl, row.register_amount, row.accounts, row.compared),
+			(SALES, "81", d("-1000.00"), ("SINV-7",), False),
+		)
+		self.assertIsNone(row.difference)
+
+	def test_a_voucher_posted_in_another_period_and_reported_here(self):
+		rows = reconcile(INVOICED, LEDGER, SKR03, IGNORED, reported=(*LEDGER, *self.JULY_INVOICE))
+		(row,) = [row for row in rows if row.reason is Reason.REPORTED_HERE]
+		self.assertEqual((row.kennzahl, row.register_amount, row.accounts), ("81", d("1000.00"), ("SINV-7",)))
+
+	def test_the_rows_follow_the_compared_rows_of_their_register(self):
+		purchase = (
+			booked("3123", debit="100.00", voucher="Purchase Invoice:PINV-9"),
+			booked("1577", debit="19.00", voucher="Purchase Invoice:PINV-9"),
+			booked("1787", credit="19.00", voucher="Purchase Invoice:PINV-9"),
+		)
+		rows = reconcile(INVOICED, LEDGER, SKR03, IGNORED, reported=(*LEDGER, *self.JULY_INVOICE, *purchase))
+		self.assertEqual(
+			[(row.register, row.reason, row.kennzahl) for row in rows if not row.compared],
+			[
+				(SALES, Reason.REPORTED_HERE, "81"),
+				(PURCHASES, Reason.REPORTED_HERE, "46"),
+				(PURCHASES, Reason.NO_PLACE, ""),
+			],
+		)
+		self.assertEqual(compared(rows), compared(reconcile(INVOICED, LEDGER, SKR03, IGNORED)))
+
+	def test_the_same_lines_give_no_row(self):
+		self.assertEqual(
+			reconcile(INVOICED, LEDGER, SKR03, IGNORED, reported=LEDGER),
+			reconcile(INVOICED, LEDGER, SKR03, IGNORED),
+		)
+
+	def test_a_voucher_in_both_with_another_amount_counts_by_the_difference(self):
+		cancelled = (*LEDGER, booked("8400", debit="1000.00", voucher="Sales Invoice:A"))
+		rows = reconcile(INVOICED, LEDGER, SKR03, IGNORED, reported=cancelled)
+		(row,) = [row for row in rows if row.reason in (Reason.REPORTED_HERE, Reason.REPORTED_ELSEWHERE)]
+		self.assertEqual(
+			(row.reason, row.register_amount, row.accounts),
+			(Reason.REPORTED_ELSEWHERE, d("-1000.00"), ("A",)),
+		)
+
+	def test_its_subject_names_the_kennzahl_and_the_vouchers(self):
+		row = Row(SALES, d("1000"), reason=Reason.REPORTED_HERE, kennzahl="81", accounts=("SINV-7", "SINV-8"))
+		self.assertEqual(
+			subject(row, KENNZAHLEN, NAMES), f"{Reason.REPORTED_HERE.value} (Kz 81): SINV-7, SINV-8"
+		)
+
+
 class SubjectTest(TestCase):
 	def test_a_kennzahl_with_its_label(self):
 		row = Row(SALES, d("1"), d("1"), kennzahl="81")

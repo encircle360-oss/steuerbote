@@ -320,6 +320,20 @@ EARLY_REQUEST_KLEINUNTERNEHMER = (
 	"cannot ask for it early."
 )
 EXEMPTION_WITHOUT_REASON = "The exemption of {0} under § 264 Abs. 3 HGB needs its reason."
+EARLY_REQUEST_NO_VAT_RETURN = (
+	"The settings state that the company owes no Umsatzsteuererklärung for {0}, so the Finanzamt cannot ask for it "
+	"early."
+)
+NO_VAT_RETURN_WITHOUT_REASON = (
+	"The statement that no Umsatzsteuererklärung is owed for {0} needs one of the reasons: {1}."
+)
+NO_VAT_RETURN_WITHOUT_NOTE = "The reason „Other Reason“ for {0} needs a note that says what it is."
+REASON_WITHOUT_STATEMENT = "A reason is given for {0}, but the year states no Umsatzsteuererklärung owed: set the mark or remove the reason."
+# Why a company owes no Umsatzsteuererklärung for a year, as it states it with its Steuerberatung: it is no Unternehmer
+# within § 2 UStG, such as a holding that only holds and sells shares, the Finanzamt released it, or another reason
+# it names in the note. Steuerbote takes the statement as given and does not judge the status for VAT.
+NO_VAT_RETURN_REASONS = ("Not an Unternehmer (§ 2 UStG)", "Released by the Finanzamt", "Other Reason")
+OTHER_REASON = NO_VAT_RETURN_REASONS[-1]
 
 UMSATZSTEUERERKLAERUNG = "Umsatzsteuererklärung"
 KOERPERSCHAFTSTEUERERKLAERUNG = "Körperschaftsteuererklärung"
@@ -350,11 +364,15 @@ class YearSettings:
 	adopted_on: date | None = None
 	exempt_264_3: bool = False
 	exempt_264_3_reason: str | None = None
+	no_vat_return: bool = False
+	no_vat_return_reason: str | None = None
+	no_vat_return_note: str | None = None
 
 	def __post_init__(self) -> None:
 		_require_year(self.year)
 		if self.early_request_ust and self.kleinunternehmer:
 			raise SettingsError(EARLY_REQUEST_KLEINUNTERNEHMER, self.year)
+		self._check_no_vat_return()
 		first, last = early_request_window(self.year)
 		for erklaerung, requested in self.early_requests.items():
 			if requested is None:
@@ -372,6 +390,18 @@ class YearSettings:
 				)
 		if self.exempt_264_3 and not (self.exempt_264_3_reason or "").strip():
 			raise SettingsError(EXEMPTION_WITHOUT_REASON, self.year)
+
+	def _check_no_vat_return(self) -> None:
+		if not self.no_vat_return:
+			if self.no_vat_return_reason:
+				raise SettingsError(REASON_WITHOUT_STATEMENT, self.year)
+			return
+		if self.no_vat_return_reason not in NO_VAT_RETURN_REASONS:
+			raise SettingsError(NO_VAT_RETURN_WITHOUT_REASON, self.year, ", ".join(NO_VAT_RETURN_REASONS))
+		if self.no_vat_return_reason == OTHER_REASON and not (self.no_vat_return_note or "").strip():
+			raise SettingsError(NO_VAT_RETURN_WITHOUT_NOTE, self.year)
+		if self.early_request_ust:
+			raise SettingsError(EARLY_REQUEST_NO_VAT_RETURN, self.year)
 
 	@property
 	def early_requests(self) -> dict[str, date | None]:
@@ -930,6 +960,10 @@ MESSAGES = (
 	EARLY_REQUEST_WITHOUT_ADVISOR,
 	EARLY_REQUEST_OUTSIDE,
 	EARLY_REQUEST_KLEINUNTERNEHMER,
+	EARLY_REQUEST_NO_VAT_RETURN,
+	NO_VAT_RETURN_WITHOUT_REASON,
+	NO_VAT_RETURN_WITHOUT_NOTE,
+	REASON_WITHOUT_STATEMENT,
 	EXEMPTION_WITHOUT_REASON,
 	NOT_A_SHAREHOLDER_KIND,
 	SHAREHOLDER_ENDS_BEFORE_START,

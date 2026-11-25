@@ -63,6 +63,19 @@ that does not fit stays a deviation and nothing is counted twice. The derived ba
 base with a tax Kennzahl of its own, its tax is derived per voucher with the bases of the base accounts; the
 Verprobung counts it as computed tax.
 
+Turnover is the mirror case. A Verprobung of output tax at a statutory rate that names its own Kennzahl, 81 or 86
+(mapping.DERIVED_TURNOVER_KENNZAHLEN), takes the base of a voucher that books more output tax on its tax accounts than
+its base accounts carry, as ERPNext's sale of a fixed asset through a Sales Invoice does: it books no revenue, but the
+receivable, the cost of the asset, its accumulated depreciation, the gain or loss on the company's disposal account and
+the tax (erpnext/assets/doctype/asset/depreciation.py, get_gl_entries_on_asset_disposal); the lines on the asset, the
+depreciation and the disposal account add up to the price. For such a check derive_bases() takes the remaining tax of
+every voucher, the booked tax less the tax of its base accounts rounded to cents, when it is output tax of more than a
+cent, and finds its base in the lines of the voucher as above. It never takes a base from the tax alone: a voucher
+whose lines do not explain the remaining tax, a negative remaining tax such as input tax booked on the output-tax
+account, a correction of the tax account or a credit note, and the lines without voucher stay a deviation of the
+Verprobung, for a person to look at. The base keeps the statutory tax of its Kennzahl, from the base in full euros or
+as booked like every other part of its voucher (StatutoryTax).
+
 A balance on a watched account never enters a Kennzahl. At the blocking level it holds the return
 (``unmapped``); at the hint level the result carries the account's debits and credits (``hinted``) for a
 hint, and the return stays ready.
@@ -198,8 +211,8 @@ class Deviation:
 class DerivedBase:
 	"""The base of a voucher that books the tax of a Verprobung but nothing on its base accounts.
 
-	``label`` names the Verprobung, ``tax`` the tax the voucher books on its tax accounts and ``base`` the exact base
-	that goes to ``kennzahl`` at ``rate``. ``accounts`` are the accounts of the voucher whose balances make up the base;
+	``label`` names the Verprobung, ``tax`` the tax the voucher books on its tax accounts, for turnover the part beyond
+	the tax of its base accounts, and ``base`` the exact base that goes to ``kennzahl`` at ``rate``. ``accounts`` are the accounts of the voucher whose balances make up the base;
 	none when the base was taken from the tax. ``voucher`` is None for the lines without voucher. ``placement`` is the
 	decision of residence.place() for a Verprobung with a ``derived_base_eu``, None for every other.
 	"""
@@ -617,6 +630,9 @@ def _derive(
 	for check in mapping.checks:
 		if check.derived_base is None:
 			continue
+		if mapping.derives_turnover(check):
+			found[check.label] = _turnover(check, ledger, mapping)
+			continue
 		kennzahl, rate, side = check.derived_base, mapping.derived_rate(check), mapping.base_side(check)
 		booked: dict[str | None, Decimal] = {}
 		for account_number in check.tax_accounts:
@@ -629,6 +645,32 @@ def _derive(
 			if tax and voucher not in with_bases
 		)
 	return found
+
+
+def _turnover(check: TaxCheck, ledger: _Ledger, mapping: Mapping) -> tuple[DerivedBase, ...]:
+	"""The bases of the output tax the vouchers book beyond the tax of their base accounts, see the module."""
+	rate, side = mapping.derived_rate(check), mapping.base_side(check)
+	booked: dict[str | None, Decimal] = {}
+	for account_number in check.tax_accounts:
+		for voucher, total in ledger.vouchers(account_number).items():
+			_add(booked, voucher, total.balance(check.side))
+	carried: dict[str | None, Decimal] = {}
+	for account_number in check.base_accounts:
+		rule = mapping.rule_for(account_number)
+		for voucher, total in ledger.vouchers(account_number).items():
+			_add(carried, voucher, total.balance(rule.side) * mapping.rate_for(rule) / HUNDRED)
+	found: list[DerivedBase] = []
+	for voucher in sorted(booked, key=ledger.first_line):
+		remaining = booked[voucher] - to_cents(carried.get(voucher, ZERO))
+		if voucher is None or remaining <= DERIVATION_TOLERANCE:
+			continue
+		accounts = _lines_of_the_base(voucher, remaining, rate, side, ledger, mapping)
+		if accounts:
+			base = sum((ledger.vouchers(account)[voucher].balance(side) for account in accounts), ZERO)
+			found.append(
+				DerivedBase(check.label, voucher, check.derived_base, rate, remaining, base, accounts)
+			)
+	return tuple(found)
 
 
 def _placement(

@@ -7,9 +7,11 @@ from frappe.modules.patch_handler import PatchType, get_patches_from_app
 from frappe.tests import IntegrationTestCase
 
 from steuerbote.patches import link_transmissions_to_their_document as transmissions
+from steuerbote.patches import set_the_basis_of_overrides as bases
 
 TRANSMISSION = "ELSTER Transmission"
 PATCH = "steuerbote.patches.link_transmissions_to_their_document"
+BASES_PATCH = "steuerbote.patches.set_the_basis_of_overrides"
 
 
 class TestLinkTransmissionsToTheirDocument(IntegrationTestCase):
@@ -79,3 +81,75 @@ class TestLinkTransmissionsToTheirDocument(IntegrationTestCase):
 		with patch.object(transmissions, "OLD_FIELD", "vat_return_of_no_site"):
 			transmissions.execute()
 		self.assertEqual(self.linked(name), (None, None))
+
+
+class TestSetTheLedgerBasisOfOverrides(IntegrationTestCase):
+	"""Overrides and corrections made before they kept the amount they were made against take the amount their row
+	holds: the one the ledger or Berechnen gave at their last calculation, which is what they were confirmed against."""
+
+	def row(self, doctype: str, name: str, **fields) -> str:
+		frappe.get_doc(
+			{
+				"doctype": doctype,
+				"name": name,
+				"parent": "PATCH-PARENT",
+				"parentfield": "x",
+				"parenttype": "x",
+				**fields,
+			}
+		).db_insert()
+		return name
+
+	def test_runs_after_the_doctypes_are_migrated(self):
+		self.assertIn(BASES_PATCH, get_patches_from_app("steuerbote", PatchType.post_model_sync))
+
+	def test_an_override_with_a_reason_takes_the_amount_of_its_row_once(self):
+		line = "Recapitulative Statement Line"
+		overridden = self.row(
+			line,
+			"PATCH-ZM-1",
+			vat_id="ATU12345678",
+			art="L",
+			amount=55000.99,
+			override=55000,
+			override_reason="Nachweis",
+		)
+		plain = self.row(line, "PATCH-ZM-2", vat_id="FR12345678901", art="S", amount=300)
+		kept = self.row(
+			line,
+			"PATCH-ZM-3",
+			vat_id="ESX1234567X",
+			art="L",
+			amount=10,
+			override=8,
+			override_reason="x",
+			override_basis=9,
+		)
+		kennzahl = self.row(
+			"VAT Return Kennzahl",
+			"PATCH-KZ-1",
+			kennzahl="81",
+			amount=1000,
+			override=1100,
+			override_reason="Spät",
+		)
+		annual = self.row(
+			"Annual VAT Return Line",
+			"PATCH-JA-1",
+			feldkennung="E3003303",
+			form_amount=1200,
+			correction=1100,
+			correction_reason="Spät",
+		)
+		bases.execute()
+		bases.execute()
+		self.assertEqual(
+			[
+				frappe.db.get_value(line, overridden, "override_basis"),
+				frappe.db.get_value(line, plain, "override_basis"),
+				frappe.db.get_value(line, kept, "override_basis"),
+				frappe.db.get_value("VAT Return Kennzahl", kennzahl, "override_basis"),
+				frappe.db.get_value("Annual VAT Return Line", annual, "correction_basis"),
+			],
+			[55000.99, 0, 9, 1000, 1200],
+		)

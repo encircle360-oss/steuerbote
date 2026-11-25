@@ -43,7 +43,7 @@ from typing import Any
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, cstr, escape_html, getdate, now_datetime
+from frappe.utils import cint, cstr, escape_html, fmt_money, getdate, now_datetime
 
 from steuerbote.elster import vorsatz as elster_vorsatz
 from steuerbote.eric import header as eric_header
@@ -89,6 +89,9 @@ SETTINGS_DOCTYPE = "VAT Return Settings"
 INCOME_TAX_DATENARTEN = frozenset({"KSt", "GewSt", "Bilanz"})
 GERMANY_IN_GERMAN = "Deutschland"
 RECALCULATE = "SB-NEU-BERECHNEN"
+# A correction whose line Berechnen now computes at another amount than the one it was made against
+# (jahresmeldung.overrides.stale).
+STALE_CORRECTION = "SB-KORREKTUR-UEBERHOLT"
 
 
 @dataclass(frozen=True)
@@ -272,7 +275,7 @@ class AnnualFiling(Filing):
 		for table, rows in calculation.tables.items():
 			self.set(table, [dict(row) for row in rows])
 		self.update(dict(calculation.values))
-		found = (*calculation.findings, *self.check_reported(lines))
+		found = (*calculation.findings, *self.check_reported(lines), *self._stale_corrections(lines))
 		before = _rows(self.get(FINDINGS_TABLE))
 		self.set(FINDINGS_TABLE, acknowledgements.carried(findings.rows(found), before))
 		ready = findings.ready(found, calculation.passed)
@@ -283,6 +286,24 @@ class AnnualFiling(Filing):
 			self.save()
 		finally:
 			self.flags.calculating = False
+
+	def _stale_corrections(self, lines: Sequence[Mapping[str, Any]]) -> tuple[Finding, ...]:
+		"""An error per correction whose line Berechnen computes at another amount than the one it was made against: the
+		correction would hide the change, also in a Berichtigung, which takes the corrections with their bases."""
+		if not self.LINES:
+			return ()
+		currency = frappe.get_cached_value("Company", self.company, "default_currency")
+		return tuple(
+			Finding(
+				STALE_CORRECTION,
+				Severity.ERROR,
+				_(
+					"The correction of line {0} was entered when Berechnen computed {1}; Berechnen computes {2} now. Change the amount or the reason of the correction to confirm it, or remove it."
+				).format(key, fmt_money(basis, currency=currency), fmt_money(amount, currency=currency)),
+				key,
+			)
+			for key, basis, amount in self._lines(overrides.stale, lines, self.LINE_COLUMNS)
+		)
 
 	@frappe.whitelist(methods=["POST"])
 	@guards.on_stored("write")

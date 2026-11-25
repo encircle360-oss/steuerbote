@@ -90,7 +90,7 @@ Beide Erklärungen rechnen mit den Vorauszahlungen der Bescheide, wie die Einste
 
 ## Zeilen, Korrekturen und Zeilen von Hand
 
-Die Tabelle „Zeilen der Erklärung“ der Körperschaftsteuererklärung hält jeden Betrag der Vordrucke Anlage GK, Anlage ZVE, Anlage Z, Anlage Verluste, Anlage WA und KSt 1 F, der nicht zu einem Kontext gehört, der sich wiederholt, in der Reihenfolge der Vordrucke. Ihre Spalten: „Vordruck“ (`form`), „Zeile im Vordruck“ (`line`), „Feldkennung“ (`feldkennung`), die Beschreibung des Felds in der Jahresdokumentation (`label`), „Betrag laut Hauptbuch“ (`ledger_amount`, nur für eine Zeile der Bücher, auf den Cent), „Betrag laut Vordruck“ (`form_amount`), „Korrigierter Betrag“ (`correction`) mit „Begründung der Korrektur“ (`correction_reason`), „Gemeldeter Betrag“ (`reported`) und „Zeile von Hand“ (`manual`). Was sich wiederholt, etwa jede Veräußerung von Anteilen oder jede Zuwendungsbestätigung, kommt aus den Tabellen des Belegs, KSt 1 aus den Einstellungen.
+Die Tabelle „Zeilen der Erklärung“ der Körperschaftsteuererklärung hält jeden Betrag der Vordrucke Anlage GK, Anlage ZVE, Anlage Z, Anlage Verluste, Anlage WA und KSt 1 F, der nicht zu einem Kontext gehört, der sich wiederholt, in der Reihenfolge der Vordrucke. Ihre Spalten: „Vordruck“ (`form`), „Zeile im Vordruck“ (`line`), „Feldkennung“ (`feldkennung`), die Beschreibung des Felds in der Jahresdokumentation (`label`), „Betrag laut Hauptbuch“ (`ledger_amount`, nur für eine Zeile der Bücher, auf den Cent), „Betrag laut Vordruck“ (`form_amount`), „Korrigierter Betrag“ (`correction`) mit „Begründung der Korrektur“ (`correction_reason`), „Berechnet bei der Korrektur“ (`correction_basis`, der Betrag, den „Berechnen“ ergab, als die Korrektur eingetragen wurde; siehe [Jahresmeldungen](jahresmeldungen.md)), „Gemeldeter Betrag“ (`reported`) und „Zeile von Hand“ (`manual`). Was sich wiederholt, etwa jede Veräußerung von Anteilen oder jede Zuwendungsbestätigung, kommt aus den Tabellen des Belegs, KSt 1 aus den Einstellungen.
 
 - **Korrektur:** meldet einen anderen Betrag und braucht eine Begründung, wie an jeder Jahresmeldung. „Berechnen“ gibt sie dem Kern als Zeile von Hand des Unterschieds zu den Büchern, damit die Summen der Vordrucke sie mitnehmen. Eine Korrektur nimmt nur eine Zeile der Bücher oder eine, die die Rechnung der Hand überlässt; jede andere Zeile folgt aus ihnen, aus den Tabellen oder aus den Einstellungen, und das Speichern lehnt eine Korrektur dort ab. Das sind die Zeilen der Anlage GK:
 
@@ -236,6 +236,7 @@ An der Gewerbesteuererklärung dazu: genau eine Betriebsstätte im Erhebungszeit
 | `GEWST-BEG-FINANZIERUNGSANTEILE` | Hinweis | Aufwendungen nach § 8 Nr. 1 GewStG mindern die Kürzung einer Beteiligung; die Hinzurechnung der Anlage BEG Zeile 20 rechnet Steuerbote nicht |
 | `KST-NUTZDATEN`, `GEWST-NUTZDATEN` | Fehler | die Vordrucke lassen sich nicht so schreiben, wie ELSTER sie nimmt |
 | `SB-NEU-BERECHNEN` | Fehler | seit dem Berechnen hat sich etwas geändert, das „Berechnen“ liest |
+| `SB-KORREKTUR-UEBERHOLT` | Fehler | eine Korrektur wurde gegen einen anderen Betrag eingetragen, als „Berechnen“ jetzt für ihre Zeile ergibt, siehe [Jahresmeldungen](jahresmeldungen.md) |
 | Fehlercode der Jahresdokumentation, etwa `8906062` oder `40000` | Fehler | eine der Regeln, die Steuerbote selbst prüft |
 
 ## Vorläufige Vordrucke 2026
