@@ -723,7 +723,7 @@ def _record_result(transmission: Document, result, nutzdaten: str, kind: Datenar
 			"finished_at": now_datetime(),
 		}
 	)
-	transmission.set("messages", _message_rows(result))
+	transmission.set("messages", _message_rows(result, kind))
 	response = result.server_response_xml
 	files = {
 		"xml": ("nutzdaten.xml", nutzdaten.encode()),
@@ -741,11 +741,15 @@ def printout_file(kind: Datenart) -> str:
 	return "freizeichnungsdokument.pdf" if kind.printout == FREIZEICHNUNGSDOKUMENT else "protokoll.pdf"
 
 
-def _message_rows(result) -> list[dict]:
-	return [
-		{"severity": message.severity, "code": message.code, "text": message.text, "field": message.field}
-		for message in result.messages
-	]
+def _message_rows(result, kind: Datenart | None = None) -> list[dict]:
+	"""The messages of the run, each field ERiC names by its path named as the Vordruck names it (messages.readable)."""
+	rows = []
+	for message in result.messages:
+		text, field = message.text, message.field
+		if kind is not None:
+			text, field = messages.readable(text or "", field, kind.name, kind.year)
+		rows.append({"severity": message.severity, "code": message.code, "text": text, "field": field})
+	return rows
 
 
 def _attach_to_transmission(

@@ -73,6 +73,8 @@ class ReadableTest(TestCase):
 		for datenart, year, path in (
 			("Bilanz", None, "/Kontext[1]/gaap:bs.ass[1]"),
 			("KSt", 2026, "/KSt1[1]/E9999999[1]"),
+			("USt", 2026, "/E50[1]/USt2A[1]/E9999999[1]"),
+			("KSt", 2020, "/KSt1[1]/AE[1]/Einzel[1]/E8122101[1]"),
 			("ZMDO", None, "/Header[1]/ndh:DatenLieferant[1]"),
 		):
 			with self.subTest(path=path):
