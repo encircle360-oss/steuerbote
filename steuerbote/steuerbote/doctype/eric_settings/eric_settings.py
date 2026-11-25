@@ -66,9 +66,12 @@ from frappe.utils.user import get_system_managers
 
 import steuerbote
 from steuerbote.elster import ustva_xml, vorsatz
+from steuerbote.eric import datenart as eric_datenart
 from steuerbote.eric import proxy, releases, runtime
+from steuerbote.eric.fake import Simulation
 from steuerbote.eric.releases import MinimumList, MinimumListError
 from steuerbote.eric.runtime import Check, RuntimeInstallError, UnsupportedPlatform
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.xbrl import taxonomy
@@ -286,6 +289,7 @@ class ERiCSettings(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def install_runtime(self) -> None:
 		"""Laufzeitumgebung installieren: unpack the ERiC archive that common_site_config.json names in a background
 		job, which reads the archive there itself."""
@@ -303,6 +307,7 @@ class ERiCSettings(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def install_taxonomy(self) -> None:
 		"""Taxonomie einrichten: install each version of the HGB-Taxonomie whose package common_site_config.json names,
 		in a background job, which reads the packages there itself."""
@@ -320,6 +325,7 @@ class ERiCSettings(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read")
 	def check_runtime(self) -> list[dict]:
 		"""Laufzeitumgebung prüfen: the checks of the status page for the runtimes installed, among them whether one
 		holds the plugin of the current year and the plugin checkZMDO of the Zusammenfassende Meldung, then whether
@@ -331,6 +337,7 @@ class ERiCSettings(Document):
 			*transmission_adapter.runtime_status(self.hersteller_id or ""),
 			*releases.checks(installed, stored_minimum_list(self.minimum_versions), getdate()),
 			*taxonomy_status(),
+			*simulation_status(),
 		)
 		return [{"name": check.name, "ok": check.ok, "detail": check.detail} for check in checks]
 
@@ -467,6 +474,12 @@ def taxonomy_root() -> Path:
 	"""
 	configured = transmission_adapter.common_site_config().get(TAXONOMY_ROOT)
 	return Path(configured) if configured else Path(get_bench_path(), "sites", "taxonomy")
+
+
+def simulation_status() -> tuple[Check, ...]:
+	"""Whether Prüfen in the simulation checks the Voranmeldung of the current year against its schema, which the
+	ERiC documentation that STEUERBOTE_ERIC_DOC_DIR names holds."""
+	return (Simulation().schema_check(eric_datenart.ustva(getdate().year)),)
 
 
 def taxonomy_status() -> tuple[Check, ...]:

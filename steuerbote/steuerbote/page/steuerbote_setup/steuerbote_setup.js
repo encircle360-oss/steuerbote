@@ -24,7 +24,6 @@ frappe.pages["steuerbote-setup"].on_page_load = function (wrapper) {
 		fieldtype: "Link",
 		options: "Company",
 		reqd: 1,
-		default: frappe.defaults.get_user_default("Company"),
 	});
 	const report = $('<div class="steuerbote-setup-report"></div>');
 	const about = $('<div class="steuerbote-about-block" style="margin-top: var(--margin-xl, 2rem);"></div>');

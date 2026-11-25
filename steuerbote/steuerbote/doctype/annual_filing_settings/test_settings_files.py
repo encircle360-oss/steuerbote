@@ -160,7 +160,10 @@ class SettingsFilesTest(TestCase):
 		self.assertEqual(methods, ["fill_address"])
 		for method in methods:
 			with self.subTest(method=method):
-				self.assertRegex(source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+				self.assertRegex(
+					source,
+					rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\t@guards\.on_stored\([^\n]*\)\n\tdef {method}\(',
+				)
 
 	def test_the_architecture_describes_every_field_of_the_settings(self):
 		text = ARCHITECTURE.read_text(encoding="utf-8")

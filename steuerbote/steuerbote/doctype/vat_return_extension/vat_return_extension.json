@@ -70,7 +70,8 @@
    "label": "Company",
    "options": "Company",
    "remember_last_selected_value": 1,
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1
   },
   {
    "description": "The calendar year the form is filed for.",
@@ -79,7 +80,8 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Year",
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1
   },
   {
    "default": "0",
@@ -202,7 +204,7 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.missing_periods",
+   "depends_on": "eval:doc.missing_periods && !(doc.base_override_reason || '').trim()",
    "description": "Voranmeldungszeiträume of the previous year without a filed VAT Return or without a filing period in the VAT Return Settings.",
    "fieldname": "missing_periods",
    "fieldtype": "Small Text",
@@ -382,7 +384,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-23 22:00:00.000000",
+ "modified": "2026-11-25 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Extension",

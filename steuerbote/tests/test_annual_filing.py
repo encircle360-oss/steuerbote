@@ -25,6 +25,7 @@ from steuerbote.tests.annual_document import (
 	NEGATIVE,
 	source,
 )
+from steuerbote.tests.helpers import make_company
 from steuerbote.tests.transmitting import TICKET, TRANSMISSION, Transmitting
 
 # The form of TransferTicketSType in headerbasis_datentypen.xsd, invented.
@@ -258,15 +259,19 @@ class TestSave(AnnualFilingTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "comes from Berechnen"):
 			doc.save()
 
-	def test_another_year_discards_the_calculation(self):
+	def test_the_key_of_a_saved_document_stays_with_its_calculation(self):
 		doc = self.calculated()
-		doc.year = 2027
-		doc.save()
-		doc.reload()
+		before = (doc.status, doc.ready, doc.lines_read, len(doc.lines), getdate(doc.to_date))
+		other = make_company("Steuerbote Test Andere Jahresmeldung GmbH", "STAJ")
+		for field, value in (("year", 2027), ("company", other)):
+			with self.subTest(field=field):
+				doc.set(field, value)
+				with self.assertRaises(frappe.CannotChangeConstantError):
+					doc.save()
+				doc.reload()
 		self.assertEqual(
-			(doc.status, doc.ready, doc.lines_read, doc.lines, doc.findings), ("Entwurf", 0, 0, [], [])
+			(doc.status, doc.ready, doc.lines_read, len(doc.lines), getdate(doc.to_date)), before
 		)
-		self.assertEqual(getdate(doc.to_date), date(2027, 12, 31))
 
 	def test_the_fields_of_a_berichtigung_are_set_when_it_is_made(self):
 		first = self.filed(self.calculated())

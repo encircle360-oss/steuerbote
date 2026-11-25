@@ -49,6 +49,7 @@ from xml.etree import ElementTree
 from steuerbote.eric.datenart import Datenart, of_version
 from steuerbote.eric.header import EnvelopeHeader, problems, without_declaration
 from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Message, Operation, Outcome, TransmissionResult
+from steuerbote.eric.runtime import Check
 from steuerbote.eric.simulation import Checks, Structure, bilanz, gewst, kst, ust
 
 DOCUMENTATION_VARIABLE = "STEUERBOTE_ERIC_DOC_DIR"
@@ -267,8 +268,7 @@ class Simulation:
 		"""The errors against the XSD of the Datenart, and why the check did not run, if it did not."""
 		schema_path = self._schema(kind)
 		if schema_path is None:
-			name = Path(kind.schema).name
-			return [], f"Die ERiC-Dokumentation mit {name} fehlt ({DOCUMENTATION_VARIABLE})."
+			return [], f"Die Prüfung gegen das Schema wurde übersprungen, {self._missing(kind)}"
 		try:
 			from lxml import etree
 		except ImportError:
@@ -282,6 +282,27 @@ class Simulation:
 			Message("SIM-005", f"{schema_path.name}, Zeile {error.line}: {error.message}", ERROR)
 			for error in schema.error_log
 		], None
+
+	def schema_check(self, kind: Datenart) -> Check:
+		"""For „Laufzeitumgebung prüfen“: whether Prüfen in the simulation checks the Nutzdaten of the Datenart against
+		its schema, and from where, or why not."""
+		schema_path = self._schema(kind)
+		if schema_path is None:
+			return Check("schema", False, f"Die Simulation prüft ohne Schema, {self._missing(kind)}")
+		return Check(
+			"schema",
+			True,
+			f"Die Simulation prüft „Prüfen“ gegen {schema_path.name} aus {schema_path.parents[len(Path(kind.schema).parts) - 1]}.",
+		)
+
+	def _missing(self, kind: Datenart) -> str:
+		name = Path(kind.schema).name
+		if self._documentation is None:
+			return (
+				f"weil die Umgebungsvariable {DOCUMENTATION_VARIABLE} nicht gesetzt ist; sie nennt die entpackte "
+				f"ERiC-Dokumentation mit {name}."
+			)
+		return f"weil {DOCUMENTATION_VARIABLE} auf {self._documentation} zeigt und dort {name} fehlt."
 
 	def _schema(self, kind: Datenart) -> Path | None:
 		if self._documentation is None:

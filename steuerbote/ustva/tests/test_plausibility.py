@@ -378,7 +378,7 @@ class DerivedBaseHintsTest(TestCase):
 			"Kz 84: Der Beleg bucht 11,98 € Steuer auf „Umsatzsteuer nach § 13b UStG 19 %“, aber nichts auf ein "
 			"Grundlagenkonto, und seine übrigen Buchungszeilen ergeben die Bemessungsgrundlage nicht eindeutig. "
 			"Steuerbote hat sie aus der Steuer zurückgerechnet (11,98 € zu 19,0 %) und meldet 63,05 €; "
-			"bitte prüfe sie am Beleg.",
+			"bitte prüfen Sie sie am Beleg.",
 		)
 		self.assertEqual(
 			(hint.voucher_type, hint.voucher_no, hint.party), ("Journal Entry", "ACC-JV-2026-00012", "")
@@ -484,7 +484,7 @@ class ResidenceHintsTest(TestCase):
 		self.assertEqual(
 			hint.text,
 			"Kz 84: Beim Lieferanten Harbor Analytics Inc. steht als Land United States, seine Anschrift liegt aber "
-			"in Ireland. Steuerbote folgt dem Land; bitte prüfe, wo der Lieferant ansässig ist.",
+			"in Ireland. Steuerbote folgt dem Land; bitte prüfen Sie, wo der Lieferant ansässig ist.",
 		)
 
 	def test_a_vat_id_of_another_place(self):
@@ -494,7 +494,7 @@ class ResidenceHintsTest(TestCase):
 			hint.text,
 			"Kz 84: Der Lieferant Harbor Analytics Inc. hat das Land United States, seine USt-IdNr. beginnt aber mit "
 			"IE. Steuerbote folgt dem Land, denn ansässig ist ein Unternehmer, wo er Sitz, Geschäftsleitung oder eine "
-			"Betriebsstätte hat (§ 13b Abs. 7 UStG), nicht wo er registriert ist; bitte prüfe den Sitz am Beleg.",
+			"Betriebsstätte hat (§ 13b Abs. 7 UStG), nicht wo er registriert ist; bitte prüfen Sie den Sitz am Beleg.",
 		)
 
 	def test_a_template_of_another_reverse_charge_for_a_supplier_of_a_member_state(self):
@@ -517,7 +517,7 @@ class ResidenceHintsTest(TestCase):
 			hint.text,
 			"Kz 46: Der Lieferant ist als sonstige Leistung aus dem übrigen Gemeinschaftsgebiet eingeordnet, der "
 			"Lieferant Harbor Analytics Inc. ist laut Stammdaten aber im Drittlandsgebiet ansässig. Kz 46 setzt einen "
-			"im übrigen Gemeinschaftsgebiet ansässigen Unternehmer voraus (§ 13b Abs. 1 UStG); bitte prüfe die "
+			"im übrigen Gemeinschaftsgebiet ansässigen Unternehmer voraus (§ 13b Abs. 1 UStG); bitte prüfen Sie die "
 			"Einordnung.",
 		)
 		for source, start in (
@@ -839,9 +839,12 @@ class HintsTest(TestCase):
 				Code.EU_ADDRESS,
 				Code.ZERO_TAX,
 				Code.TAX_DEVIATION,
+				Code.INPUT_TAX_DEVIATION,
 				Code.VAT_ID_INVALID,
 				Code.EU_SERVICE_OUTSIDE,
 				Code.ACQUISITION_OUTSIDE_EU,
+				Code.PERIOD_NOT_ENDED,
+				Code.ZM_WITHOUT_RHYTHM,
 			},
 		)
 
@@ -853,6 +856,7 @@ class HintsTest(TestCase):
 				"EU-VORLAGE-ADRESSE",
 				"NULLSATZ-OHNE-GRUND",
 				"STEUER-ABWEICHUNG",
+				"VORSTEUER-ABWEICHUNG",
 				"ABGLEICH-RECHNUNGEN",
 				"KONTO-BEOBACHTET",
 				"ABWEICHUNG-VORPERIODE",
@@ -869,6 +873,9 @@ class HintsTest(TestCase):
 				"SITZ-WIDERSPRUCH",
 				"KZ46-OHNE-EU-SITZ",
 				"ERWERB-AUS-DRITTLAND",
+				"ZEITRAUM-NICHT-ABGELAUFEN",
+				"ZM-OHNE-RHYTHMUS",
+				"BERICHTIGUNG-OHNE-AENDERUNG",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung"])

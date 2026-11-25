@@ -151,6 +151,11 @@ class TestRegisterReconciliation(IntegrationTestCase):
 			COMPANY, "2026-09-10", [(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)]
 		)
 
+	def setUp(self):
+		"""November has ended, so its return can be ready."""
+		super().setUp()
+		self.enterContext(self.freeze_time("2026-12-15 09:00:00", tick=True))
+
 	def roll_back_afterwards(self) -> None:
 		frappe.db.savepoint("register_test")
 		self.addCleanup(frappe.db.rollback, save_point="register_test")
@@ -425,10 +430,13 @@ class TestRegisterReconciliation(IntegrationTestCase):
 		self.assertEqual([row.code for row in doc.hints if row.code == DEVIATION], [])
 		self.assertTrue(doc.make_import_file())
 
-	def test_a_new_return_and_another_period_start_without_a_reconciliation(self):
+	def test_a_new_return_starts_without_a_reconciliation_and_a_saved_one_keeps_its_period(self):
 		doc = self.calculated(11)
 		copy = frappe.copy_doc(doc).insert()
 		self.assertEqual(copy.register_reconciliation, [])
+		rows = len(doc.register_reconciliation)
 		doc.period_index = 10
-		doc.save()
-		self.assertEqual((doc.register_reconciliation, doc.status), ([], "Entwurf"))
+		with self.assertRaises(frappe.CannotChangeConstantError):
+			doc.save()
+		doc.reload()
+		self.assertEqual((len(doc.register_reconciliation), doc.period_index), (rows, 11))
