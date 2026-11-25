@@ -1066,6 +1066,7 @@ class HintsTest(TestCase):
 				"BERICHTIGUNG-OHNE-AENDERUNG",
 				"UMSATZ-OHNE-ERLOESKONTO",
 				"ANLAGENVERKAUF-STEUERFREI",
+				"KONTO-OHNE-STEUERSATZ",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung", "Fehler"])
