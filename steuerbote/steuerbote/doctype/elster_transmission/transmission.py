@@ -72,6 +72,7 @@ TRANSMISSION_JOB = "steuerbote.steuerbote.doctype.elster_transmission.transmissi
 TRANSMISSION_EVENT = "steuerbote_elster_transmission"
 # The worker of steuerbote.eric is ended after two minutes; the job keeps time to record the result.
 TRANSMISSION_TIMEOUT = 300
+TRANSMIT_ATTEMPTS = 3
 # One case per delivery, so its NutzdatenTicket is 1 (ERiC-Entwicklerhandbuch 44.3.6.0, p. 95).
 NUTZDATEN_TICKET = "1"
 # Kz 09 and the header of the simulation: five digits as ELSTER wants them, and no Hersteller-ID anyone has.
@@ -139,6 +140,21 @@ class Transmittable:
 			frappe.throw(_("Steuerbote knows no ELSTER procedure {0}.").format(escape_html(str(operation))))
 		if operation != VALIDATE:
 			guards.require_permission_to_send(self)
+		for _attempt in range(TRANSMIT_ATTEMPTS):
+			try:
+				return self._transmit(operation, token)
+			except frappe.QueryDeadlockError:
+				# MariaDB refuses a transaction whose snapshot predates a concurrent update of the naming series
+				# of the ELSTER Transmission; only a new transaction gets past it.
+				frappe.db.rollback()
+		frappe.throw(
+			_("Another transmission of {0} was being recorded at the same moment. Start {1} again.").format(
+				escape_html(self.company), self.name
+			),
+			title=_("ELSTER Transmission"),
+		)
+
+	def _transmit(self, operation: str, token: str | None) -> str:
 		self.lock_for_transmission()
 		self.check_transmittable()
 		self._close_stale_transmission()
@@ -156,10 +172,12 @@ class Transmittable:
 			self.check_can_be_sent()
 		if operation != VALIDATE and not simulation and not token:
 			frappe.throw(_("Choose the certificate file and enter its password."))
+		if not simulation:
+			self._require_runtime(Operation(operation), settings.hersteller_id or "")
 		transmission = self.new_transmission(operation, simulated=simulation)
 		if operation != VALIDATE and not simulation:
 			self.hand_over_certificate(token, transmission.name)
-		self.db_set(LOCK_FIELD, 1)
+		self.db_set(LOCK_FIELD, 1, update_modified=False)
 		frappe.enqueue(
 			TRANSMISSION_JOB,
 			queue="long",
@@ -171,6 +189,17 @@ class Transmittable:
 			transmission=transmission.name,
 		)
 		return transmission.name
+
+	def _require_runtime(self, operation: Operation, hersteller_id: str) -> None:
+		"""Refuse at the button what the job would refuse for want of a runtime, so that no failed record is left; a
+		runtime whose files differ from its manifest is left to the job, which records why it does not load it."""
+		kind = self.datenart()
+		try:
+			found = transmission_adapter.detect_runtime(kind, operation, hersteller_id, eric_log_root())
+		except RuntimeIntegrityError:
+			return
+		if found is None:
+			no_runtime(kind)
 
 	def hand_over_certificate(self, token: str, transmission: str) -> None:
 		"""Give the certificate that the user entered for this document to the transmission, under whose name its
@@ -224,7 +253,7 @@ class Transmittable:
 			frappe.throw(_("A transmission of {0} is running. Wait for its result.").format(self.name))
 		for name in running:
 			close_stale_transmission(frappe.get_doc(TRANSMISSION, name))
-		self.db_set(LOCK_FIELD, 0)
+		self.db_set(LOCK_FIELD, 0, update_modified=False)
 
 	def _has_stale_transmission(self) -> bool:
 		if not cint(self.get(LOCK_FIELD)):
@@ -546,7 +575,7 @@ def run_transmission(name: str, operation: str, transmission: str) -> None:
 		frappe.db.rollback(save_point="elster_transmission")
 		_record_failure(transmission, _failure_text(error), result)
 	finally:
-		frappe.db.set_value(doctype, name, LOCK_FIELD, 0)
+		frappe.db.set_value(doctype, name, LOCK_FIELD, 0, update_modified=False)
 	frappe.publish_realtime(
 		TRANSMISSION_EVENT,
 		{
@@ -639,29 +668,28 @@ def _take_certificate(doc: Document, transmission: Document) -> tuple[bytes | No
 def _installed_runtime(doc: Document, operation: Operation, hersteller_id: str, transmission: Document):
 	"""The runtime with the plugin of the Datenart of the document; ERiC writes its eric.log beside the site, one
 	per run."""
-	log_dir = eric_log_root() / transmission.name
 	kind = doc.datenart()
 	try:
-		runtime_info = transmission_adapter.detect_runtime(kind, operation, hersteller_id, log_dir)
+		runtime_info = transmission_adapter.detect_runtime(
+			kind, operation, hersteller_id, eric_log_root() / transmission.name
+		)
 	except RuntimeIntegrityError as error:
 		frappe.throw(
 			_(
 				"The libraries of the installed ERiC {0} differ from its manifest: {1}. Steuerbote does not load them; remove the directory of the version and install it again."
 			).format(error.version, ", ".join(error.problems))
 		)
-	if runtime_info is None and kind.year is None:
-		frappe.throw(
-			_(
-				"No installed ERiC runtime has the plugin {0} of the Datenart {1}. Install a runtime with it in the ERiC Settings; a beta serves Prüfen and Testsenden only."
-			).format(kind.plugin, kind.name)
-		)
 	if runtime_info is None:
-		frappe.throw(
-			_(
-				"No installed ERiC runtime serves {0}. Install the runtime for this year in the ERiC Settings; a beta serves Testsenden only."
-			).format(kind.year)
-		)
+		no_runtime(kind)
 	return runtime_info
+
+
+def no_runtime(kind: Datenart) -> None:
+	frappe.throw(
+		_(
+			"No installed ERiC runtime has the plugin {0} of the Datenart {1}. Install a runtime with it in the ERiC Settings; a beta serves Prüfen and Testsenden only."
+		).format(kind.plugin, kind.version)
+	)
 
 
 def certificate_gone() -> None:

@@ -250,6 +250,7 @@
 "Annual VAT Return Property","Grundstück nach § 15a UStG"
 "Annual VAT Return Reconciliation","Abgleich je Kennzahl"
 "Annual VAT Returns","USt-Erklärungen"
+"Another transmission of {0} was being recorded at the same moment. Start {1} again.","Im selben Augenblick wurde eine andere Übermittlung von {0} angelegt. Bitte {1} erneut starten."
 "Answer","Antwort (Nachweis)"
 "Answered At","Beantwortet am"
 "Anzeige of Monthly Filing","Anzeige der monatlichen Abgabe"
