@@ -30,7 +30,10 @@ The balances placed on their positions (steuerbote.xbrl.mapping.place) feed both
 
 - the Jahresabschluss (steuerbote/hgb/statement.py) takes statement_balances(): a Balance per account with the
   position its rule gives it, debit minus credit, the shareholder flag and the remaining term of the rule, and the
-  account as its source. A „davon“ position goes as it is, which the statement notes as its Vermerk where one names
+  account as its source; the part of the parties of an account on the other side of its position, such as customers
+  with a credit balance, is due within a year: „Ist eine Zeit für die Leistung weder bestimmt noch aus den Umständen
+  zu entnehmen, so kann der Gläubiger die Leistung sofort verlangen“ (§ 271 Abs. 1 BGB). A „davon“ position goes as
+  it is, which the statement notes as its Vermerk where one names
   it; the Restlaufzeiten and the shareholders come from the flags.
 - the E-Bilanz (steuerbote/ebilanz/calculation.py) takes ebilanz_balances(): an AccountBalance per account with
   its number, its label, the position its value counts in and debit minus credit, from which calculate() gives each
@@ -53,7 +56,7 @@ from typing import Any, NamedTuple
 from steuerbote.ebilanz.calculation import AccountBalance as EBilanzBalance
 from steuerbote.ebilanz.calculation import Adjustment
 from steuerbote.ebilanz.defaults import defaults_for
-from steuerbote.hgb.statement import Balance
+from steuerbote.hgb.statement import Balance, RemainingTerm
 from steuerbote.mappings.transfer import canonical_json
 from steuerbote.ustva.mapping import WatchLevel
 from steuerbote.xbrl import changes
@@ -307,7 +310,11 @@ def statement_balances(placement: Placement) -> tuple[Balance, ...]:
 	"""The placed balances as the Balance rows of the Jahresabschluss, in the order of the books."""
 	return tuple(
 		Balance(
-			item.concept, item.amount, item.rule.shareholder, item.rule.remaining_term, item.balance.account
+			item.concept,
+			item.amount,
+			item.rule.shareholder,
+			RemainingTerm.UP_TO_ONE_YEAR if item.reclassified else item.rule.remaining_term,
+			item.balance.account,
 		)
 		for item in placement.placed
 	)
