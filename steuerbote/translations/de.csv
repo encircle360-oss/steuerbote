@@ -2078,6 +2078,7 @@
 "without account number","ohne Kontonummer"
 "year","Kalenderjahr"
 "yearly","jährlich"
+"{0} (ERiC rule {1}; condition: {2})","{0} (ERiC-Regel {1}; Prüfbedingung: {2})"
 "{0} (Simulation)","{0} (Simulation)"
 "{0} Enter them in the Annual Filing Settings and calculate again.","{0} Tragen Sie sie in den Einstellungen Jahresmeldungen ein und berechnen Sie erneut."
 "{0} Journal Entries of {1} move tax accounts without the flag Exclude from VAT Return, such as {2}: a clearing of the tax accounts needs the flag, a correction does not. The report UStVA Kennzahlen shows the vouchers of each Kennzahl.","{0} Journalbuchungen aus {1} bewegen Steuerkonten ohne das Kennzeichen „Nicht in der Umsatzsteuer-Voranmeldung“, etwa {2}: Eine Umbuchung zwischen den Steuerkonten braucht das Kennzeichen, eine Korrektur nicht. Der Bericht „UStVA Kennzahlen“ zeigt die Belege jeder Kennzahl."

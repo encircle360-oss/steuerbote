@@ -42,6 +42,7 @@ from steuerbote.jahresmeldung.overrides import Columns, correction_of, reported,
 from steuerbote.setup.start import PriorPayment
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import Address
 from steuerbote.steuerbote.doctype.vat_return_settings import rules as settings_rules
+from steuerbote.ustjahr import rules
 from steuerbote.ustjahr.calculation import (
 	MANUAL_NO_PARAGRAPH,
 	MANUAL_NOT_FED,
@@ -685,18 +686,45 @@ def switch_findings(year: int, switch: date | None, kz136: date | None) -> tuple
 	return (Finding("SB-KZ136", Severity.HINT, SWITCH_OTHER, values),)
 
 
-def findings(found: Iterable[Finding], translate: Callable[[str], str]) -> list[AnnualFinding]:
+OFFICIAL_RULE = "{0} (ERiC rule {1}; condition: {2})"
+"""A rule of the Jahresdokumentation with its official text first and its condition as the detail."""
+RULE_TEXT = "Fehler- /Hinweistext"
+"""The column of the official text of a rule in the sheets „<Vordruck> - Regeln“ of a Jahresdokumentation."""
+
+
+def rule_texts(found: Iterable[tuple[str, Mapping[str, Any]]]) -> dict[str, str]:
+	"""The official text of each rule by its Fehlercode, from the rules of a Jahresdokumentation as
+	steuerbote.jahresmeldung.documentation reads them; a rule without code or text has none."""
+	texts: dict[str, str] = {}
+	for _vordruck, row in found:
+		code, text = str(row.get("Fehlercode") or "").strip(), _text(row.get(RULE_TEXT))
+		if code and text:
+			texts.setdefault(code, text)
+	return texts
+
+
+def findings(
+	found: Iterable[Finding], translate: Callable[[str], str], texts: Mapping[str, str] | None = None
+) -> list[AnnualFinding]:
 	"""The findings of the core as the table Befunde keeps them: code and severity of the rule, the message in the
-	words ``translate`` gives the template, and the fields it names as the reference."""
-	return [
-		AnnualFinding(
-			finding.code,
-			AnnualSeverity.of(finding.severity),
-			translate(finding.template).format(*finding.values),
-			reference(finding.fields),
+	words ``translate`` gives the template, and the fields it names as the reference. A rule the core names only by
+	its code and condition (rules.RULE) shows the official text ``texts`` holds for its code first, where the
+	Jahresdokumentation is installed, and the condition as the detail."""
+	rows = []
+	for finding in found:
+		template, values = finding.template, finding.values
+		official = (texts or {}).get(finding.code)
+		if template == rules.RULE and official:
+			template, values = OFFICIAL_RULE, (official, *values)
+		rows.append(
+			AnnualFinding(
+				finding.code,
+				AnnualSeverity.of(finding.severity),
+				translate(template).format(*values),
+				reference(finding.fields),
+			)
 		)
-		for finding in found
-	]
+	return rows
 
 
 def reference(fields: Iterable[str]) -> str:
