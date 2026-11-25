@@ -293,7 +293,7 @@ Eine Meldung gilt einem Unternehmen und einem Meldezeitraum: Jahr, Art des Melde
 
 | Status | Bedeutung |
 |---|---|
-| Entwurf | angelegt und noch nicht berechnet, oder Unternehmen, Jahr oder Meldezeitraum haben sich geändert; das verwirft die Berechnung |
+| Entwurf | angelegt und noch nicht berechnet; Unternehmen, Jahr und Meldezeitraum bleiben, wie die Meldung angelegt wurde |
 | Berechnet | berechnet, aber ein Fehler der Befunde hält die Meldung an |
 | Bereit | berechnet, kein Fehler hält die Meldung an |
 | Abgegeben | nach einem Senden, das ELSTER angenommen hat, oder mit dem Vermerk der Abgabe eingereicht |

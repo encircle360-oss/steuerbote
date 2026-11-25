@@ -10,7 +10,7 @@ frappe.ui.form.on("Sales Invoice", {
 		}
 		frm.add_custom_button(__("Confirm VAT ID of the Customer"), () => {
 			const question = __(
-				"Steuerbote asks the BZSt in the background with the own USt-IdNr. of the company about the USt-IdNr. {0} and, where they are known, the name, street, postal code and town of the customer. Only when the BZSt cannot answer does the same go to VIES of the European Commission. Every answer is kept as a USt-IdNr.-Bestätigung that names this invoice.",
+				"Steuerbote asks the BZSt in the background with the own USt-IdNr. of the company about the USt-IdNr. {0} and, where they are known, the name, street, postal code and town of the customer. Only when the BZSt cannot answer does the same go to VIES of the European Commission. Every answer is kept as a USt-IdNr.-Bestätigung that names this invoice. The query goes out also while ERiC runs as a simulation: the simulation stands in for ELSTER only.",
 				[frappe.utils.escape_html(number)]
 			);
 			frappe.confirm(question, () =>

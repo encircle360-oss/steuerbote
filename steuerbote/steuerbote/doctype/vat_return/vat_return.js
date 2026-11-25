@@ -76,7 +76,7 @@ function return_texts() {
 }
 
 // The conditions of confirm_vat_ids in vat_return.py: a calculated draft whose USt-IdNrn. are not being confirmed,
-// which is not being transmitted and which no Senden of its own keeps as it was sent.
+// which is not being transmitted and which no Senden of its own keeps as it was sent, for a user who may submit it.
 function can_confirm_vat_ids(frm) {
 	const calculated = ["Berechnet", "Bereit"].includes(frm.doc.status);
 	return (
@@ -86,6 +86,7 @@ function can_confirm_vat_ids(frm) {
 		!frm.doc.confirmation_in_progress &&
 		!transmission_blocked(frm) &&
 		!locked_as_sent(frm) &&
+		may_send(frm) &&
 		has_vat_ids_to_confirm(frm)
 	);
 }

@@ -19,6 +19,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils.data import convert_utc_to_system_timezone
 
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.vat_id_confirmation import records
 from steuerbote.vatid.result import Confirmation
 
@@ -129,17 +130,19 @@ def store(
 		origin["started_by"] = started_by
 	previous = None
 	for query, values in zip(confirmation.queries(), records.records(confirmation), strict=True):
-		record = frappe.get_doc(
-			{
-				"doctype": DOCTYPE,
-				**values,
-				**{name: _site_time(values[name]) for name in records.TIME_FIELDS},
-				"company": company,
-				**origin,
-				"user": frappe.session.user,
-				"previous": previous,
-			}
-		).insert(ignore_permissions=True)
+		record = guards.insert_record(
+			frappe.get_doc(
+				{
+					"doctype": DOCTYPE,
+					**values,
+					**{name: _site_time(values[name]) for name in records.TIME_FIELDS},
+					"company": company,
+					**origin,
+					"user": frappe.session.user,
+					"previous": previous,
+				}
+			)
+		)
 		if query.response_text:
 			file = frappe.get_doc(
 				{

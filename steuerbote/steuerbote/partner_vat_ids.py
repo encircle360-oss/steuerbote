@@ -99,12 +99,30 @@ CONFIRMATION_FIELDS = (
 )
 MATCH_FIELDS = ("name_match", "street_match", "postcode_match", "city_match")
 SAVEPOINT = "steuerbote_partner_vat_id"
+# Who may submit a VAT Return may send data off the site (steuerbote.steuerbote.guards.require_permission_to_send).
+SEND_RIGHT = "VAT Return"
 
 
 def may_ask(doctype: str, name: str, throw: bool = False) -> bool:
-	"""Whether the user may make Steuerbote ask the BZSt or VIES about the USt-IdNr. of the document: whoever may change
-	it, as for „USt-IdNrn. prüfen“ at the Zusammenfassende Meldung and the Voranmeldung. Every trigger asks here."""
-	return bool(frappe.has_permission(doctype, "write", name, throw=throw))
+	"""Whether the user may make Steuerbote ask the BZSt or VIES about the USt-IdNr. of the document. A confirmation
+	sends data off the site, so the rule of steuerbote.steuerbote.guards for that holds: at a document that is booked,
+	such as a Sales Invoice, whoever may submit it; at a customer or supplier, which is never submitted, whoever may
+	change it and may submit a VAT Return, the right that sends data off the site at the Voranmeldung. Every trigger
+	asks here."""
+	if frappe.get_meta(doctype).is_submittable:
+		allowed = frappe.has_permission(doctype, "submit", name, throw=False)
+	else:
+		allowed = frappe.has_permission(doctype, "write", name, throw=False) and frappe.has_permission(
+			SEND_RIGHT, "submit", throw=False
+		)
+	if not allowed and throw:
+		frappe.throw(
+			_(
+				"A confirmation sends the USt-IdNr. of {0} off the site, to the BZSt or VIES: it needs the permission to submit a VAT Return, which Accounts Manager and System Manager have by default."
+			).format(name),
+			frappe.PermissionError,
+		)
+	return bool(allowed)
 
 
 # What the site knows about a number

@@ -10,7 +10,7 @@ Die offenen fachlichen Punkte aller Jahresmeldungen, die eine Steuerberatung vor
 
 | Status | Erklärungen und E-Bilanz | Jahresabschluss | Bedeutung |
 |---|---|---|---|
-| Entwurf | ja | ja | angelegt und noch nicht berechnet, oder ein anderer Schlüssel hat die Berechnung verworfen |
+| Entwurf | ja | ja | angelegt und noch nicht berechnet |
 | Berechnet | ja | ja | berechnet, aber nicht bereit: Ein Fehler der Befunde hält den Beleg an, eine Prüfung des Moduls geht nicht auf, oder eine Korrektur oder Zeile von Hand hat sich seit dem Berechnen geändert. Der Jahresabschluss bleibt nach dem Berechnen immer hier; ob ein Fehler ihn anhält, sagt „Bereit zur Abgabe“ |
 | Bereit | ja | nein | berechnet, kein Fehler der Befunde, und die Prüfungen des Moduls gehen auf |
 | Abgegeben | ja | nein | gebucht nach einem Senden, das ELSTER angenommen hat, oder mit dem Vermerk der Abgabe in Mein ELSTER oder auf anderem Weg |
@@ -22,12 +22,12 @@ Die offenen fachlichen Punkte aller Jahresmeldungen, die eine Steuerberatung vor
 - **Den Status setzt nur Steuerbote**, mit den Schritten des Lebenslaufs aus `steuerbote/jahresmeldung/lifecycle.py`: `FILING` für Erklärungen und E-Bilanz, `ACCOUNTS` für den Jahresabschluss. Ein Speichern behält ihn, wie er gespeichert ist.
 - **Berechnen** geht aus „Entwurf“, „Berechnet“ und „Bereit“ nach „Bereit“, wenn weder ein Fehler der Befunde noch eine Prüfung des Moduls den Beleg anhält, sonst nach „Berechnet“. Der Jahresabschluss kennt kein „Bereit“.
 - **Ein Speichern, das ändert, was eine Zeile meldet**, eine Korrektur oder eine Zeile von Hand, stellt einen berechneten Beleg auf „Berechnet“, mit dem Befund `SB-NEU-BERECHNEN`, bis „Berechnen“ ihn wieder prüft. Eine neue Begründung für denselben Betrag ändert nichts.
-- **Ein anderer Schlüssel verwirft die Berechnung.** Der Schlüssel ist das Unternehmen und das Jahr, mit dem, was ein Modul dazunimmt, etwa die Bilanzart der E-Bilanz (`KEY_FIELDS`). Ändert ein Speichern ihn, steht der Beleg wieder im Entwurf, ohne Zeilen, Tabellen und Befunde der Berechnung; auch die Korrekturen und Zeilen von Hand des alten Schlüssels gehen.
+- **Der Schlüssel bleibt, wie der Beleg angelegt wurde.** Der Schlüssel ist das Unternehmen und das Jahr, mit dem, was ein Modul dazunimmt, etwa die Bilanzart der E-Bilanz (`KEY_FIELDS`). Seine Felder sind in der DocType-Datei `set_only_once`, im Formular eines gespeicherten Belegs also schreibgeschützt, und `steuerbote.steuerbote.guards.Filing`, von dem `AnnualFiling` erbt, lehnt jedes Speichern ab, das einen von ihnen ändert, auch über die API, bevor der Controller den Beleg prüft. Für ein anderes Unternehmen oder Jahr legt man einen neuen Beleg an und löscht den Entwurf. Umbenennen und Zusammenführen lehnt Steuerbote ebenso ab, denn ELSTER-Übermittlungen und Berichtigungen nennen den Beleg beim Namen, siehe [Architektur](architektur.md#schutz-der-belege-und-rechte).
 - **Nach der Feststellung** geht der Jahresabschluss über `move_on` weiter: mit `Event.TRANSMIT` auf „Übermittelt“, mit `Event.PUBLISH` danach auf „Eingestellt“. Jeden anderen Schritt lehnt Steuerbote ab, ebenso jeden an einem Beleg, der nicht gebucht ist.
 
 ## Felder jedes Belegs
 
-Jeder Beleg einer Jahresmeldung hat diese Felder mit diesen Feldnamen, Typen und Bezeichnungen (`lifecycle.standard_fields`). Schreibgeschützt sind alle außer Unternehmen, Jahr und Anmerkungen. `lifecycle.field_problems(definition, lifecycle, transmits=…)` vergleicht die Definition eines DocTypes mit ihnen; der Test jedes Moduls ruft sie für seine DocType-Datei auf.
+Jeder Beleg einer Jahresmeldung hat diese Felder mit diesen Feldnamen, Typen und Bezeichnungen (`lifecycle.standard_fields`). Schreibgeschützt sind alle außer Unternehmen, Jahr und Anmerkungen; Unternehmen und Jahr werden einmal gesetzt, beim Anlegen (`set_only_once`). `lifecycle.field_problems(definition, lifecycle, transmits=…)` vergleicht die Definition eines DocTypes mit ihnen; der Test jedes Moduls ruft sie für seine DocType-Datei auf.
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|

@@ -47,6 +47,7 @@ from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import TESTMERKER, Operation, Outcome
 from steuerbote.eric.runtime import RuntimeIntegrityError
 from steuerbote.eric.service import PIN
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.elster_transmission import messages
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	DOCUMENT_TYPES,
@@ -125,16 +126,19 @@ class Transmittable:
 		return None
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def transmit(self, operation: str, token: str | None = None) -> str:
 		"""Prüfen, Testsenden or Senden: check that the document can go, then run it in a background job.
 
 		Testsenden and Senden take certificate and password as ``token`` from stash_certificate(), which this
-		request hands over to its transmission; the job is given the transmission only. Returns the name of the
-		ELSTER Transmission that records the run.
+		request hands over to its transmission; the job is given the transmission only. They send the data of the
+		document to ELSTER, also as a test, so they need the permission to submit it; Prüfen needs the permission to
+		change it. Returns the name of the ELSTER Transmission that records the run.
 		"""
 		if operation not in OPERATIONS:
 			frappe.throw(_("Steuerbote knows no ELSTER procedure {0}.").format(escape_html(str(operation))))
-		self.check_permission("submit" if operation == SEND else "write")
+		if operation != VALIDATE:
+			guards.require_permission_to_send(self)
 		self.lock_for_transmission()
 		self.check_transmittable()
 		self._close_stale_transmission()
@@ -185,10 +189,10 @@ class Transmittable:
 			certificate_gone()
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def release_stale_transmission(self) -> None:
 		"""Close the run whose background job is gone, a worker that stopped for instance, and lift its lock,
 		so that the document can be used again; the form calls this when it finds such a lock."""
-		self.check_permission("write")
 		self.lock_for_transmission()
 		self._close_stale_transmission()
 
@@ -325,24 +329,26 @@ class Transmittable:
 		filed_on=None,
 	) -> Document:
 		now = now_datetime()
-		return frappe.get_doc(
-			{
-				"doctype": TRANSMISSION,
-				"document_type": self.doctype,
-				"document": self.name,
-				"company": self.company,
-				"operation": operation,
-				"status": status,
-				"simulated": int(simulated),
-				"user": frappe.session.user,
-				"started_at": now,
-				"finished_at": None if status == RUNNING else now,
-				"remarks": remarks,
-				"filed_via": filed_via,
-				"transferticket": transferticket,
-				"filed_on": filed_on,
-			}
-		).insert(ignore_permissions=True)
+		return guards.insert_record(
+			frappe.get_doc(
+				{
+					"doctype": TRANSMISSION,
+					"document_type": self.doctype,
+					"document": self.name,
+					"company": self.company,
+					"operation": operation,
+					"status": status,
+					"simulated": int(simulated),
+					"user": frappe.session.user,
+					"started_at": now,
+					"finished_at": None if status == RUNNING else now,
+					"remarks": remarks,
+					"filed_via": filed_via,
+					"transferticket": transferticket,
+					"filed_on": filed_on,
+				}
+			)
+		)
 
 
 def dashboard(doctype: str) -> dict:
@@ -442,9 +448,8 @@ def require_privacy_notice(settings: Document) -> None:
 
 
 def record(transmission: Document) -> None:
-	"""Save an ELSTER Transmission, which only the server may change."""
-	transmission.flags.recording = True
-	transmission.save(ignore_permissions=True)
+	"""Save an ELSTER Transmission, which only Steuerbote changes."""
+	guards.save_record(transmission)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -488,8 +493,9 @@ def _stash(
 		frappe.throw(
 			_("Steuerbote transmits no document of type {0} to ELSTER.").format(_(document_type or ""))
 		)
-	if not frappe.has_permission(document_type, "write", doc=document):
+	if not frappe.db.exists(document_type, document):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
+	guards.require_permission_to_send(frappe.get_doc(document_type, document))
 	if len(password_protected_certificate or "") > MAX_ENCODED_CERTIFICATE:
 		frappe.throw(
 			_("Steuerbote takes certificate files of at most {0} KiB.").format(MAX_CERTIFICATE_BYTES >> 10)

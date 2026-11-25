@@ -24,7 +24,7 @@ from frappe.utils import cint, getdate, strip_html
 from frappe.utils.background_jobs import is_job_enqueued
 
 from steuerbote import vatid
-from steuerbote.steuerbote import partner_vat_ids
+from steuerbote.steuerbote import guards, partner_vat_ids
 from steuerbote.steuerbote.doctype.vat_id_confirmation import vat_id_confirmation
 from steuerbote.vatid.partners import covered_today
 from steuerbote.vatid.transport import Clock, Fetch
@@ -70,10 +70,10 @@ class Confirming:
 		]
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def release_stale_confirmation(self) -> None:
 		"""Lift the lock of a confirmation whose background job is gone; the form calls this when it finds one.
 		What the job stored before it stopped stays, and the next confirmation or Berechnen shows it."""
-		self.check_permission("write")
 		self.lock_for_confirmation()
 		self._close_stale_confirmation()
 

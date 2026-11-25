@@ -298,7 +298,9 @@ class FormFilesTest(TestCase):
 		self,
 	):
 		shared = read(SHARED_SCRIPT)
-		self.assertIn("frappe.confirm(`${question}<br><br>${what_leaves_the_site(frm)}`", shared)
+		self.assertIn(
+			"frappe.confirm(`${question}<br><br>${what_leaves_the_site(frm)}<br><br>${live}`", shared
+		)
 		for script in (
 			DOCTYPES / "vat_return" / "vat_return.js",
 			DOCTYPES / "recapitulative_statement" / "recapitulative_statement.js",

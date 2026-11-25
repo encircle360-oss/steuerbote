@@ -64,6 +64,9 @@ company_data_to_be_ignored = [
 	*(name for name in _ANNUAL_DOCUMENTS if (_DOCTYPES / name.lower().replace(" ", "_")).is_dir()),
 ]
 
+# The records of what Steuerbote did, which only Steuerbote writes and nobody renames (steuerbote/steuerbote/guards.py).
+_RECORDS = ("ELSTER Transmission", "VAT ID Confirmation", "Deadline Reminder")
+
 # The files of an ELSTER Transmission and the answer kept with a VAT ID Confirmation stay as they were stored. A
 # customer or supplier whose USt-IdNr., name or address changes is confirmed in the background, and a Sales Invoice
 # behind Kz 41, 42 or 21 needs a current confirmation of its customer on submit (steuerbote/steuerbote/partner_vat_ids.py).
@@ -72,6 +75,13 @@ doc_events = {
 		"before_validate": "steuerbote.steuerbote.record_files.keep_unchanged",
 		"on_trash": "steuerbote.steuerbote.record_files.keep_while_recorded",
 		"before_rename": "steuerbote.steuerbote.record_files.keep_name",
+	},
+	**{
+		doctype: {
+			"before_insert": "steuerbote.steuerbote.guards.refuse_unless_recorded",
+			"before_rename": "steuerbote.steuerbote.guards.refuse_rename",
+		}
+		for doctype in _RECORDS
 	},
 	"Customer": {"on_update": "steuerbote.steuerbote.partner_vat_ids.on_party_update"},
 	"Supplier": {"on_update": "steuerbote.steuerbote.partner_vat_ids.on_party_update"},

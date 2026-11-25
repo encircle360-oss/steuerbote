@@ -28,7 +28,8 @@ or unknown, cancelled or not, since the Finanzamt has it or may have it (docs/ar
 Meldung“).
 
 STANDARD_FIELDS describes the fields every annual document carries (contract of stage 3, 2.5), which the Frappe layer
-reads and writes; field_problems compares the definition of a DocType with them.
+reads and writes; company and year say what a document is for and are set once, when it is created.
+field_problems compares the definition of a DocType with them.
 
 This module is pure Python and never imports Frappe.
 """
@@ -231,6 +232,7 @@ class StandardField:
 	options: str | None = None
 	read_only: bool = True
 	reqd: bool = False
+	set_only_once: bool = False
 
 
 def standard_fields(lifecycle: Lifecycle, doctype: str, *, transmits: bool) -> tuple[StandardField, ...]:
@@ -238,8 +240,10 @@ def standard_fields(lifecycle: Lifecycle, doctype: str, *, transmits: bool) -> t
 	also has the lock of its transmissions."""
 	lock = (StandardField("transmission_in_progress", "Check", "Transmission Running"),) if transmits else ()
 	return (
-		StandardField("company", "Link", "Company", "Company", read_only=False, reqd=True),
-		StandardField("year", "Int", "Year", read_only=False, reqd=True),
+		StandardField(
+			"company", "Link", "Company", "Company", read_only=False, reqd=True, set_only_once=True
+		),
+		StandardField("year", "Int", "Year", read_only=False, reqd=True, set_only_once=True),
 		StandardField("fiscal_year", "Link", "Fiscal Year", "Fiscal Year"),
 		StandardField("from_date", "Date", "From Date"),
 		StandardField("to_date", "Date", "To Date"),
@@ -274,8 +278,9 @@ def field_problems(definition: Mapping[str, Any], lifecycle: Lifecycle, *, trans
 			("options", expected.options or None),
 			("read_only", int(expected.read_only)),
 			("reqd", int(expected.reqd)),
+			("set_only_once", int(expected.set_only_once)),
 		):
-			actual = field.get(key) or (0 if key in ("read_only", "reqd") else None)
+			actual = field.get(key) or (0 if key in ("read_only", "reqd", "set_only_once") else None)
 			if actual != value:
 				problems.append(f"{expected.fieldname}: {key} {actual!r}, not {value!r}")
 	return problems

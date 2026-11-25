@@ -37,11 +37,16 @@ function what_leaves_the_site(frm) {
 	);
 }
 
+// The confirmation asks the BZSt or VIES at once, whether or not ERiC runs as a simulation: the simulation stands in
+// for ELSTER alone, and a confirmation is only proof when the service answered it.
 function confirm_vat_ids(frm, question, texts) {
 	if (!saved(frm, texts)) {
 		return;
 	}
-	frappe.confirm(`${question}<br><br>${what_leaves_the_site(frm)}`, () =>
+	const live = __(
+		"The query goes to the BZSt or VIES at once, also while ERiC runs as a simulation: the simulation stands in for ELSTER only."
+	);
+	frappe.confirm(`${question}<br><br>${what_leaves_the_site(frm)}<br><br>${live}`, () =>
 		frm.call("confirm_vat_ids").then((response) => {
 			frappe.show_alert(
 				{

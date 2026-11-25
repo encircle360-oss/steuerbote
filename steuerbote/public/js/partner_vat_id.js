@@ -48,7 +48,7 @@ if (!window.steuerbote_partner_vat_id) {
 			  ])
 			: __("its own USt-IdNr. and the USt-IdNr. {0}", [escape(frm.doc.tax_id)]);
 		const question = __(
-			"Steuerbote asks the BZSt in the background for {0}, with {1}. Only when the BZSt cannot answer does the same go to VIES of the European Commission. Every answer is kept as a USt-IdNr.-Bestätigung.",
+			"Steuerbote asks the BZSt in the background for {0}, with {1}. Only when the BZSt cannot answer does the same go to VIES of the European Commission. Every answer is kept as a USt-IdNr.-Bestätigung. The query goes out also while ERiC runs as a simulation: the simulation stands in for ELSTER only.",
 			[companies, sent]
 		);
 		frappe.confirm(question, () =>
