@@ -953,6 +953,32 @@ class OpenErrorsTest(TestCase):
 		self.assertIn(FRANCE, found[0][1])
 
 
+class SettledHintsTest(TestCase):
+	def test_a_berichtigung_shows_the_finding_of_a_line_it_repeats_unchanged_as_a_hint(self):
+		lines = build(
+			(invoice("SINV-1", "10000.00"), invoice("SINV-2", "4000.00", kennzahl="21", vat_id=FRANCE)),
+			FIGURES,
+			validity={AUSTRIA: Validity.UNCONFIRMED, FRANCE: Validity.UNCONFIRMED},
+		)
+		held = {(AUSTRIA, Art.L): d("10000"), (FRANCE, Art.S): d("2500")}
+		rows = bridge.hint_rows(lines.findings, lines.settled(held))
+		austria, france = (row for row in rows if row["code"] == "ZM-USTID-UNBESTAETIGT")
+		self.assertEqual((austria["severity"], france["severity"]), ("Hinweis", "Fehler"))
+		self.assertTrue(
+			austria["text"].endswith(
+				"Die Zeile geht unverändert nicht in die Berichtigung; ihre Bestätigung hält die Berichtigung nicht an."
+			)
+		)
+		self.assertEqual(
+			[
+				row["severity"]
+				for row in bridge.merged_hints(lines, [], held)
+				if row["code"] == "ZM-USTID-UNBESTAETIGT"
+			],
+			["Hinweis", "Fehler"],
+		)
+
+
 class AcceptancesTest(TestCase):
 	def test_the_release_of_each_line_with_its_reason(self):
 		self.assertEqual(

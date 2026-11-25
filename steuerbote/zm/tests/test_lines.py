@@ -594,6 +594,20 @@ class CorrectionReadinessTest(TestCase):
 		self.assertEqual([line.vat_id for line in result.holding(None)], [AUSTRIA])
 		self.assertFalse(result.ready_against(None))
 
+	def test_the_findings_of_an_unchanged_line_are_settled_for_the_berichtigung(self):
+		"""The finding of the unconfirmed number of a line the Berichtigung repeats unchanged holds nothing; it is
+		settled, so that the statement shows it as such and not as an error beside the one that holds it."""
+		result = statement(
+			invoice("1", "10000.00"),
+			invoice("2", "4000.00", kennzahl="21", vat_id=FRANCE),
+			validity={AUSTRIA: Validity.UNCONFIRMED, FRANCE: Validity.UNCONFIRMED},
+		)
+		held = {(AUSTRIA, Art.L): d("10000"), (FRANCE, Art.S): d("2500")}
+		(settled,) = result.settled(held)
+		self.assertEqual((settled.code, settled.text.split(" ")[2]), (Code.UNCONFIRMED_VAT_ID, AUSTRIA))
+		self.assertEqual([line.vat_id for line in result.holding(held)], [FRANCE])
+		self.assertEqual(result.settled(None), ())
+
 	def test_a_changed_line_holds_it(self):
 		result = statement(invoice("1", "12000.00"), validity={AUSTRIA: Validity.UNCONFIRMED})
 		self.assertFalse(result.ready_against({(AUSTRIA, Art.L): d("10000")}))
