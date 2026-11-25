@@ -32,6 +32,7 @@ ASSET_ITEM = "STB-TEST-ANLAGE"
 SALE_ITEM = "STB-TEST-ANLAGENVERKAUF"
 ITEM_GROUP = "Steuerbote Testartikel"
 LOCATION = "Steuerbote Teststandort"
+PRICE_LIST = "Steuerbote Test Verkauf"
 UOM = "Nos"
 # SKR03 numbers; ERPNext needs the account types of an asset category and of an invoice.
 ACCOUNTS = {
@@ -125,6 +126,7 @@ class TestAssetSale(IntegrationTestCase):
 				"debit_to": self.account["1400"],
 				"currency": "EUR",
 				"conversion_rate": 1,
+				"selling_price_list": PRICE_LIST,
 				"price_list_currency": "EUR",
 				"plc_conversion_rate": 1,
 				"ignore_pricing_rule": 1,
@@ -234,6 +236,7 @@ class TestAssetSale(IntegrationTestCase):
 				"debit_to": self.account["1400"],
 				"currency": "EUR",
 				"conversion_rate": 1,
+				"selling_price_list": PRICE_LIST,
 				"price_list_currency": "EUR",
 				"plc_conversion_rate": 1,
 				"ignore_pricing_rule": 1,
@@ -268,11 +271,15 @@ class TestAssetSale(IntegrationTestCase):
 
 def make_masters(account: dict[str, str]) -> None:
 	"""The records ERPNext needs to sell an asset, without its setup wizard: a unit, an item group, a location, an asset
-	category with the accounts of the company, the item of the asset, an item for asset sales and a customer without address."""
+	category with the accounts of the company, a selling price list, the item of the asset, an item for asset sales and a customer without address."""
 	if not frappe.db.exists("UOM", UOM):
 		insert_record("UOM", name=UOM, uom_name=UOM, must_be_whole_number=1, enabled=1)
 	if not frappe.db.exists("Item Group", ITEM_GROUP):
 		insert_record("Item Group", name=ITEM_GROUP, item_group_name=ITEM_GROUP, is_group=0)
+	if not frappe.db.exists("Price List", PRICE_LIST):
+		insert_record(
+			"Price List", name=PRICE_LIST, price_list_name=PRICE_LIST, currency="EUR", selling=1, enabled=1
+		)
 	if not frappe.db.exists("Location", LOCATION):
 		insert_record("Location", name=LOCATION, location_name=LOCATION, is_group=0)
 	if not frappe.db.exists("Asset Category", CATEGORY):
