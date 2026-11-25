@@ -182,8 +182,8 @@ class ValuesTest(TestCase):
 		"""The key of the Rechtsform as the Anleitungen to KSt 1 and GewSt 1 A list it: 350 for the GmbH, 370 for the
 		UG (haftungsbeschränkt)."""
 		for feldkennung, key, text in (
-			("E8001105", "350", "350 – Gesellschaft mit beschränkter Haftung"),
-			("E4000501", "370", "370 – Unternehmergesellschaft (haftungsbeschränkt)"),
+			("E8001105", "350", "350 (Gesellschaft mit beschränkter Haftung)"),
+			("E4000501", "370", "370 (Unternehmergesellschaft (haftungsbeschränkt))"),
 			("E8001105", "999", "999"),
 		):
 			with self.subTest(feldkennung=feldkennung, key=key):
