@@ -195,9 +195,22 @@ class HeadingsTest(TestCase):
 
 	def test_a_table_whose_head_starts_with_its_heading_sets_its_columns(self):
 		"""A table with table-layout: fixed takes the widths of its columns from the first row, which the heading
-		spans; the colgroup sets them instead."""
+		spans; the colgroup sets them instead, written out or by a macro of the template."""
 		for name, template in templates().items():
 			for table in re.findall(r"<table[^>]*>.*?</table>", template, re.DOTALL):
 				if 'class="sb-caption"' in table:
 					with self.subTest(template=name):
-						self.assertLess(table.index("<colgroup>"), table.index('class="sb-caption"'))
+						head = table[: table.index('class="sb-caption"')]
+						self.assertRegex(head, r"<colgroup>|_columns\(\) \}\}")
+
+	def test_a_section_of_a_form_keeps_its_heading_with_its_first_rows(self):
+		"""wkhtmltopdf keeps a row together but not a group of rows: the heading of a section and its first rows stand
+		in a table of their own inside one row of the form, so that a section never starts with its heading alone at
+		the foot of a page."""
+		for name, template in templates().items():
+			for group in template.split('<tbody class="sb-group">')[1:]:
+				group = group[: group.index("</tbody>")]
+				for heading in ('class="sb-section"', 'class="sb-group-head"'):
+					if heading in group:
+						with self.subTest(template=name, heading=heading):
+							self.assertLess(group.index('<td class="sb-nest"'), group.index(heading))
