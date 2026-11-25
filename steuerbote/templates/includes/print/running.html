@@ -9,16 +9,18 @@
 {%- set running_created = frappe.utils.format_datetime(frappe.utils.now_datetime(), "dd.MM.yyyy HH:mm") -%}
 <div id="header-html" class="visible-pdf">
 	<div class="sb-running sb-running-head">
-		<table>
-			<tr>
-				<td><span class="sb-title">{{ running_title | default("") | e }}</span> · {{ doc.company | e }}</td>
-				<td class="sb-right">{{ doc.name | e }} · {{ (doc.status or "") | e }}</td>
-			</tr>
-			<tr>
-				<td>{% if running_number | default("") %}{{ running_number_label | default("") | e }} {{ running_number | e }}{% endif %}</td>
-				<td class="sb-right">{{ running_period | default("") | e }}</td>
-			</tr>
-		</table>
+		<div class="sb-running-rule">
+			<table>
+				<tr>
+					<td><span class="sb-title">{{ running_title | default("") | e }}</span> · {{ doc.company | e }}</td>
+					<td class="sb-right">{{ doc.name | e }} · {{ (doc.status or "") | e }}</td>
+				</tr>
+				<tr>
+					<td>{% if running_number | default("") %}{{ running_number_label | default("") | e }} {{ running_number | e }}{% endif %}</td>
+					<td class="sb-right">{{ running_period | default("") | e }}</td>
+				</tr>
+			</table>
+		</div>
 	</div>
 </div>
 <div id="footer-html" class="visible-pdf">
