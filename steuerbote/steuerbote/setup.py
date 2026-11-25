@@ -195,7 +195,7 @@ class SetupContext:
 
 
 @frappe.whitelist(methods=["POST"])
-def set_up(company: str) -> dict:
+def set_up(company: str | None = None) -> dict:
 	"""Steuerbote einrichten for the company: run every step and report what each did."""
 	frappe.only_for(ROLES, message=True)
 	if not company or not frappe.db.exists("Company", company):

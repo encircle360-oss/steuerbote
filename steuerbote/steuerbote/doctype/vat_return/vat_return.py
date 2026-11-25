@@ -249,6 +249,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		self.refuse_changes_after_sending()
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
+		self._require_known_rhythm_and_year()
 		self._refuse_a_period_before_the_start()
 		self._require_catalogue()
 		self.provisional = int(bridge.provisional_forms(cint(self.year)) is not None)
@@ -635,6 +636,17 @@ class VATReturn(Confirming, Transmittable, Document):
 			or self.period_index is None
 			or any(not row.kennzahl for row in self.kennzahlen)
 		)
+
+	def _require_known_rhythm_and_year(self) -> None:
+		"""A rhythm and a year as the form offers them, named as given where they are not."""
+		if self.rhythm not in {rhythm.value for rhythm in ustva.Rhythm}:
+			frappe.throw(
+				_("Steuerbote knows no rhythm {0}: a Voranmeldung is filed monthly or quarterly.").format(
+					escape_html(str(self.rhythm))
+				)
+			)
+		if not str(self.year).strip().isdigit() or not 1000 <= cint(self.year) <= 9999:
+			frappe.throw(_("{0} is no year.").format(escape_html(str(self.year))))
 
 	def _require_catalogue(self) -> None:
 		try:
