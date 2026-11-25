@@ -94,12 +94,19 @@ class OneStylesheetTest(TestCase):
 				"margin-bottom": "18mm",
 				"margin-left": "20mm",
 				"margin-right": "15mm",
-				"header-spacing": "4",
 			},
 		)
 		self.assertIn(
 			"margin: 0 !important", style[".print-format-gutter > .print-format, body > .print-format"]
 		)
+
+	def test_sets_no_spacing_of_head_or_foot_and_keeps_the_gap_inside_the_running_head(self):
+		"""Frappe 16.60 hands header-spacing from the print CSS to its Chromium-based generator as text, which adds it
+		to a number and fails every printout with a running head. Both generators measure the height of the head
+		itself, so a gap at the bottom of the head lies between it and the content in either of them."""
+		style = read(STYLE)
+		self.assertNotRegex(style, r"(header|footer)-spacing")
+		self.assertIn("padding-bottom: 4mm;", rules(style)[".sb-running-head"])
 
 	def test_sets_a_font_with_the_metrics_of_helvetica_that_the_server_has(self):
 		style = rules(read(STYLE))

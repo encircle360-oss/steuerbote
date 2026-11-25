@@ -233,3 +233,26 @@ class BrowserTestsJobTest(TestCase):
 		self.assertIn("name: browser-tests", upload)
 		self.assertIn("path: ${{ runner.temp }}/browser-results", upload)
 		self.assertIn("if: always()", upload)
+
+
+class PrintoutsOfTheImageJobTest(TestCase):
+	"""The image of a site ships releases of Frappe and ERPNext, while the Frappe site job builds the head of
+	version-16; the PDF generators of Frappe read the page options of the print CSS differently from one release to
+	the next, so the printouts are proven against the releases of the image as well."""
+
+	def setUp(self):
+		self.job = jobs((WORKFLOWS / "tests.yml").read_text(encoding="utf-8"))["printouts-image"]
+
+	def test_builds_the_bench_from_the_releases_of_the_image(self):
+		self.assertIn("FRAPPE_VERSION: v16.60.2", self.job)
+		self.assertIn("ERPNEXT_VERSION: v16.60.0", self.job)
+		self.assertIn('--frappe-branch "$FRAPPE_VERSION"', self.job)
+		self.assertIn('bench get-app erpnext --branch "$ERPNEXT_VERSION"', self.job)
+
+	def test_prints_every_print_format_with_both_generators_and_keeps_the_printouts(self):
+		self.assertIn("steuerbote.tests.e2e.seed.run", self.job)
+		self.assertIn('chromium_path "$(command -v google-chrome)"', self.job)
+		self.assertIn("steuerbote.tests.print_proof.run", self.job)
+		upload = self.job[self.job.index("uses: actions/upload-artifact@") :]
+		self.assertIn("name: printouts-image", upload)
+		self.assertIn("if: always()", upload)

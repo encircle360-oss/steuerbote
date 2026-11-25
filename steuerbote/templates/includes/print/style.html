@@ -4,7 +4,10 @@
 	label. The PDFs come from wkhtmltopdf, which takes its page margins from a rule on .print-format alone, ignores
 	@page margins and page-break-after, and keeps rows and blocks with page-break-inside: avoid. The sheet does not rely
 	on Frappe's print bundle, which a site may fail to load into wkhtmltopdf. A print format includes it first, then
-	the running head and foot, and wraps its content in <div class="sb-print">.
+	the running head and foot, and wraps its content in <div class="sb-print">. The gap between the running head and
+	the content is padding at the bottom of the head, not the page option for the spacing of the header: Frappe 16.60
+	hands that option to its Chromium-based generator as text and fails, while both generators measure the head with
+	its padding.
 -#}
 <style>
 	@page {
@@ -17,7 +20,6 @@
 		margin-bottom: 18mm;
 		margin-left: 20mm;
 		margin-right: 15mm;
-		header-spacing: 4;
 	}
 
 	.print-format-gutter > .print-format,
@@ -411,6 +413,10 @@
 	}
 
 	.sb-running-head {
+		padding-bottom: 4mm;
+	}
+
+	.sb-running-rule {
 		border-bottom: 0.3mm solid #777;
 		padding: 7mm 0 1.2mm;
 	}
