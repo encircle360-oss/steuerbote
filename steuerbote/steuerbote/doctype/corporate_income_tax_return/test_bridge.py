@@ -22,6 +22,7 @@ from steuerbote.steuerbote.doctype.corporate_income_tax_return.bridge import (
 	CARRY_BACK_WITHOUT_LOSS,
 	CONTRACTS,
 	DETAILS_MISSING,
+	HOLDING_WITHOUT_SHARE,
 	NO_RECEIPTS,
 	NO_SETTINGS,
 	NO_SINGLE_VALUES,
@@ -33,6 +34,7 @@ from steuerbote.steuerbote.doctype.corporate_income_tax_return.bridge import (
 	RECEIPTS_DIFFER,
 	SHARES,
 	UNCONFIRMED,
+	UNKNOWN,
 	UNKNOWN_HOLDING,
 	UNMAPPED,
 	UNNUMBERED,
@@ -592,6 +594,24 @@ class HoldingsTest(TestCase):
 		self.assertIn("The dividends of Omega AG name no holding", finding.text)
 		self.assertEqual(len(computation.result.p8b.holdings), 2)
 
+	def test_a_holding_whose_register_names_no_share_holds_the_return_back(self):
+		"""Without a share the holding would be Streubesitz and its dividends taxed in full (§ 8b Abs. 4 Satz 1 KStG,
+		§ 9 Nr. 2a GewStG), though the register names it."""
+		settings = replace(SETTINGS, holdings=(*SETTINGS.holdings, rules.Holding("Omega AG", YEAR)))
+		results = (
+			*HOLDING_RESULTS,
+			{"idx": 6, "kind": "Dividends", "holding_name": "Omega AG", "amount": 500},
+		)
+		computation = compute(replace(RETURN, holding_results=results), settings=settings)
+		(finding,) = (item for item in computation.findings if item.code == HOLDING_WITHOUT_SHARE)
+		self.assertEqual(finding.severity, Severity.ERROR)
+		self.assertEqual(
+			finding.text,
+			"The holding Omega AG of the Annual Filing Settings for 2026 names no share, so § 8b Absatz 4 KStG takes "
+			"its dividends of 500,00 € as Streubesitz and taxes them in full; enter its share at the start of the "
+			"calendar year and of the Erhebungszeitraum there.",
+		)
+
 	def test_anlage_gk_names_each_exempt_holding_and_each_single_value(self):
 		filed = entries(bridge.filed_vordrucke(RETURN, reported(compute().lines), SETTINGS), "GK")
 		self.assertEqual(
@@ -916,6 +936,25 @@ class LedgerFindingsTest(TestCase):
 		):
 			with self.subTest(extra=extra):
 				self.assertNotIn(UNMAPPED, [item.code for item in self.findings(*extra, mapping=mapping)])
+
+	def test_an_account_the_datev_chart_does_not_know_is_pointed_out_with_its_balance(self):
+		"""An account outside the DATEV chart the defaults follow, such as one of an older edition for the sale of shares
+		of a Kapitalgesellschaft, gets no default and counts only in the Jahresüberschuss; the hint names it, so that a
+		result under § 8b KStG does not stay taxed in full unseen. An account of the chart without a mark gets none."""
+		(finding,) = [
+			item for item in self.findings(credit("2723", "8000.00", "JV-9")) if item.code == UNKNOWN
+		]
+		self.assertEqual(
+			(finding.severity, finding.reference), (Severity.HINT, "Kontenzuordnung Ertragsteuern")
+		)
+		self.assertEqual(
+			finding.text,
+			"Account 2723 has a balance (debit 0,00 €, credit 8.000,00 €) but is no account of the DATEV chart SKR03 "
+			"2026 the defaults follow, so it counts in the Jahresüberschuss alone. If it holds Bezüge, Gewinne or "
+			"Gewinnminderungen aus Anteilen (§ 8b KStG) or another amount the taxes on income treat apart, give it its "
+			"category in the Income Tax Mapping.",
+		)
+		self.assertNotIn(UNKNOWN, [item.code for item in self.findings(credit("4400", "8000.00", "JV-9"))])
 
 	def test_a_chart_of_its_own_has_no_defaults_to_compare_with(self):
 		mapping = Mapping("Eigener Kontenrahmen", MAPPING.rules)
