@@ -31,6 +31,8 @@ SCRIPT = DIRECTORY / "annual_vat_return.js"
 SOURCES = APP / "ustjahr_sources.py"
 PRINT_FORMAT = MODULE / "print_format" / "umsatzsteuererklärung"
 INCLUDES = APP / "templates" / "includes" / "annual_filing"
+# The one stylesheet of every print format of the app.
+PRINT_STYLE = APP / "templates" / "includes" / "print" / "style.html"
 TRANSLATIONS = APP / "translations" / "de.csv"
 CHILDREN = (
 	"annual_vat_return_line",
@@ -323,12 +325,14 @@ class PrintFormatFilesTest(TestCase):
 		includes = re.findall(
 			r'\{% include "steuerbote/templates/includes/annual_filing/(\w+)\.html" %\}', self.template
 		)
-		self.assertEqual(includes, ["style", "head", "corrections", "findings", "remarks", "footer"])
+		self.assertEqual(includes, ["head", "corrections", "findings", "remarks", "footer"])
+		self.assertIn('{% include "steuerbote/templates/includes/print/style.html" %}', self.template)
 		self.assertIn("{%- set annual = doc.annual_print() -%}", self.template)
 		self.assertIn("{%- set form = doc.annual_vat_print() -%}", self.template)
 
 	def test_prints_in_black_and_grey(self):
-		for text in (self.template, self.record["css"]):
+		self.assertEqual(self.record["css"], "")
+		for text in (self.template,):
 			for colour in HEX_COLOUR.findall(text):
 				with self.subTest(colour=colour):
 					channels = colour if len(colour) == 3 else (colour[0:2], colour[2:4], colour[4:6])
@@ -337,7 +341,7 @@ class PrintFormatFilesTest(TestCase):
 
 	def test_keeps_to_classes_of_its_own_and_styles_each_it_uses(self):
 		used = {name for value in CLASS_ATTRIBUTE.findall(self.template) for name in value.split()}
-		style = (INCLUDES / "style.html").read_text(encoding="utf-8") + self.record["css"]
+		style = PRINT_STYLE.read_text(encoding="utf-8")
 		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", style)))
 		self.assertEqual(sorted(name for name in used if not name.startswith("sb-")), [])
 		self.assertEqual(sorted(used - styled), [])

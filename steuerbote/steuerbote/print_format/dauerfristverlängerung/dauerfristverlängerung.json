@@ -1,7 +1,7 @@
 {
  "align_labels_right": 0,
  "creation": "2026-11-20 18:00:00.000000",
- "css": "@page {\n\tsize: A4 portrait;\n\tmargin: 15mm 15mm 15mm 20mm;\n}\n\n.sb-dfv {\n\tcolor: #000;\n\tfont-size: 9pt;\n\tline-height: 1.35;\n}\n\n.sb-dfv h1 {\n\tfont-size: 15pt;\n\tfont-weight: 600;\n\tmargin: 0 0 1mm;\n}\n\n.sb-dfv h2 {\n\tfont-size: 10.5pt;\n\tfont-weight: 600;\n\tmargin: 6mm 0 2mm;\n}\n\n.sb-dfv .sb-subtitle {\n\tcolor: #444;\n\tfont-weight: 600;\n\tmargin: 0 0 3mm;\n}\n\n.sb-dfv table {\n\twidth: 100%;\n\tborder-collapse: collapse;\n}\n\n.sb-dfv thead {\n\tdisplay: table-header-group;\n}\n\n.sb-dfv tr,\n.sb-dfv .sb-group {\n\tbreak-inside: avoid;\n\tpage-break-inside: avoid;\n}\n\n.sb-dfv .sb-form {\n\ttable-layout: fixed;\n}\n\n.sb-dfv .sb-head {\n\tmargin: 3mm 0 5mm;\n}\n\n.sb-dfv .sb-label,\n.sb-dfv .sb-value {\n\tpadding: 0.8mm 2mm 0.8mm 0;\n\ttext-align: left;\n\tvertical-align: top;\n}\n\n.sb-dfv .sb-label {\n\tcolor: #555;\n\twhite-space: nowrap;\n\twidth: 58mm;\n}\n\n.sb-dfv .sb-form th {\n\tborder-bottom: 0.4mm solid #000;\n\tfont-size: 8pt;\n\tfont-weight: 600;\n\tpadding: 1mm 1.5mm;\n\ttext-align: left;\n\tvertical-align: bottom;\n}\n\n.sb-dfv .sb-form td {\n\tborder-bottom: 0.2mm solid #bbb;\n\tpadding: 1mm 1.5mm;\n\tvertical-align: top;\n}\n\n.sb-dfv .sb-form .sb-section td {\n\tbackground: #ececec;\n\tborder-bottom: 0.3mm solid #888;\n\tfont-weight: 600;\n\tpadding-top: 1.8mm;\n}\n\n.sb-dfv .sb-form .sb-sum td {\n\tborder-top: 0.3mm solid #000;\n\tfont-weight: 600;\n}\n\n.sb-dfv .sb-form .sb-empty td {\n\tcolor: #666;\n}\n\n.sb-dfv col.sb-line,\n.sb-dfv col.sb-kz {\n\twidth: 10mm;\n}\n\n.sb-dfv col.sb-num {\n\twidth: 31mm;\n}\n\n.sb-dfv .sb-line {\n\tcolor: #555;\n}\n\n.sb-dfv .sb-kz {\n\ttext-align: center;\n}\n\n.sb-dfv .sb-num,\n.sb-dfv .sb-form th.sb-num {\n\ttext-align: right;\n}\n\n.sb-dfv td.sb-num {\n\twhite-space: nowrap;\n}\n\n.sb-dfv .sb-note {\n\tcolor: #444;\n}\n\n.sb-dfv .sb-footer {\n\tborder-top: 0.3mm solid #888;\n\tcolor: #444;\n\tfont-size: 8pt;\n\tmargin-top: 6mm;\n\tpadding-top: 2mm;\n}\n\n.sb-dfv .sb-footer p {\n\tmargin: 0 0 1mm;\n}",
+ "css": "",
  "custom_format": 0,
  "default_print_language": "de",
  "disabled": 0,
@@ -10,7 +10,7 @@
  "doctype": "Print Format",
  "idx": 0,
  "line_breaks": 0,
- "modified": "2026-11-20 18:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Dauerfristverlängerung",

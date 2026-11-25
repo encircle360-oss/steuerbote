@@ -102,7 +102,7 @@ class TestUmsatzsteuerVoranmeldung(IntegrationTestCase):
 
 	def test_the_header_keeps_to_classes_the_print_stylesheet_leaves_alone(self):
 		markup = self.printed(self.calculated_return(3))
-		form = markup[markup.index('<div class="sb-ustva">') :]
+		form = markup[markup.index('<div class="sb-print">') :]
 		self.assertEqual(form.count('<td class="sb-label">'), 7)
 		self.assertEqual(form.count('<td class="sb-value">'), 7)
 		classes = {name for value in re.findall(r'\bclass="([^"]*)"', form) for name in value.split()}

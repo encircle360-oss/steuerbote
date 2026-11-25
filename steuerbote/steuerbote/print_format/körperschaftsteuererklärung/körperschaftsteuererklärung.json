@@ -1,7 +1,7 @@
 {
  "align_labels_right": 0,
  "creation": "2026-11-23 22:00:00.000000",
- "css": ".sb-annual col.sb-line,\n.sb-annual col.sb-instance {\n\twidth: 12mm;\n}\n\n.sb-annual .sb-line,\n.sb-annual .sb-instance {\n\tcolor: #555;\n\twhite-space: nowrap;\n}",
+ "css": "",
  "custom_format": 0,
  "default_print_language": "de",
  "disabled": 0,
@@ -10,7 +10,7 @@
  "doctype": "Print Format",
  "idx": 0,
  "line_breaks": 0,
- "modified": "2026-11-23 22:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Körperschaftsteuererklärung",
