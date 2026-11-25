@@ -209,6 +209,19 @@ Mit `--version 6.10` prüft das Skript dieselben Instanzen gegen das Paket 6.10,
 STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc python -m steuerbote.xbrl.tests.arelle_validation /tmp/taxonomy-6.10.zip --version 6.10 --keep /tmp/xbrl-6.10
 ```
 
+### Prüfen mit dem echten ERiC
+
+Die CI prüft gegen einen Stub der Bibliothek (`steuerbote/eric/tests/stub/ericapi_stub.c`); ERiC selbst kommt weder ins Repository noch in die CI (siehe [ERiC, Lizenz und Voraussetzungen](eric.md#lizenz-und-voraussetzungen)). Wer als Maintainer eine eigene Hersteller-ID hat, prüft lokal mit dem echten ERiC, was Steuerbote schreibt, nur mit „Prüfen“ (Validierung und Hinweisprüfung), ohne Zertifikat und ohne Senden: `steuerbote/eric/tests/real_validation.py` prüft die E-Bilanz der erfundenen GmbH der Tests als Einheitsbilanz mit und ohne Anlagevermögen, als Handelsbilanz mit Überleitung, mit Vorjahr, als Eröffnungsbilanz, als UG und mit Gesellschaftern, dazu die Körperschaft- und die Gewerbesteuererklärung der erfundenen Muster IT GmbH, die Gewerbesteuer auch mit einer Beteiligung von 20 %. Solange ERiC Körperschaft- und Gewerbesteuer nur bis 2025 kennt, schreibt das Skript die Nutzdaten von 2026 in Namensraum, Version, Daten und Zeitraum von 2025 um und prüft sie als `KSt_30_2025` und `GewSt_2025`.
+
+```bash
+mkdir -p /tmp/eric && cd /tmp/eric && unzip -q ERiC-44.3.6.0-Linux-x86_64.jar 'ERiC-44.3.6.0/Linux-x86_64/lib/*'
+cd ~/src/steuerbote
+export STEUERBOTE_ERIC_DOC_DIR=/tmp/eric-doc STEUERBOTE_TAXONOMY_6_9=/tmp/taxonomy-6.9.zip
+STEUERBOTE_HERSTELLER_ID=<eigene Hersteller-ID> python -m steuerbote.eric.tests.real_validation /tmp/eric/ERiC-44.3.6.0/Linux-x86_64/lib --keep /tmp/eric-checked
+```
+
+Die Hersteller-ID nimmt das Skript nur aus der Umgebung; es gibt sie nicht aus und schreibt sie nirgends hin, auch nicht in die Nutzdaten unter `--keep` (die Datenarten des Skripts tragen sie nur im TransferHeader). Sie gehört in keinen Commit, kein Issue und keine Datei des Repositories; wer sie in einem Geheimnisspeicher hält, startet das Skript über dessen Werkzeug, das sie als Umgebungsvariable übergibt. Jede Lieferung geht in einen eigenen Worker-Prozess, wie in der App. Das Skript nennt je Lieferung das Ergebnis und die Meldungen von ERiC und endet mit 1, sobald ERiC einen Fehler findet, mit 2 ohne Hersteller-ID, Dokumentation oder Taxonomie. Am 25. November 2026 nahm ERiC 44.3.6.0 alle Lieferungen ohne Fehler; als Hinweis blieb 40922 der Gewerbesteuer, siehe [Körperschaft- und Gewerbesteuer, Geprüft mit ERiC 2025](ertragsteuern.md#geprüft-mit-eric-2025) und [E-Bilanz, GCD](ebilanz.md#gcd).
+
 ### Frappe-Tests
 
 Auf einer Site mit ERPNext und Steuerbote:
