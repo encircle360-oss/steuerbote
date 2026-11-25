@@ -685,7 +685,7 @@ class CheckTest(TestCase):
 		"""A separate item on the revenue account for asset sales goes to Kz 81 through its rule, and the scrap entry
 		of the asset books the residual book value on an account without a place. ERPNext's asset row on a Sales
 		Invoice books the residual book value and the gain or loss instead of revenue; these accounts must have no
-		place either, so that the lines of the voucher can give the base (DATEV-Kontenrahmen 2026: SKR 03 8801, 8820,
+		place either, so that the lines of the voucher can give the base (Kontenrahmen 2026: SKR 03 8801, 8820,
 		2310 „Anlagenabgänge Sachanlagen (Restbuchwert bei Buchverlust)“ and 2315 „… bei Buchgewinn“, SKR 04 6885,
 		4845, 6895 and 4855)."""
 		for mapping, revenue, residual in (

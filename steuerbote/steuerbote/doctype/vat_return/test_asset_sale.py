@@ -34,7 +34,7 @@ SALE_ITEM = "STB-TEST-ANLAGENVERKAUF"
 ITEM_GROUP = "Steuerbote Testartikel"
 LOCATION = "Steuerbote Teststandort"
 UOM = "Nos"
-# SKR03 numbers of the DATEV-Kontenrahmen 2026; ERPNext needs the account types of an asset category and of an invoice.
+# SKR03 numbers; ERPNext needs the account types of an asset category and of an invoice.
 ACCOUNTS = {
 	"0490": ("Sonstige Betriebs- und Geschäftsausstattung", "Asset", "Fixed Asset"),
 	"0499": (
