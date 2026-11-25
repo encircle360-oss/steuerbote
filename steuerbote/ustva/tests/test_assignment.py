@@ -12,11 +12,13 @@ from steuerbote.ustva.assignment import (
 	Filing,
 	LateTreatment,
 	PeriodBasis,
+	Placement,
 	changes,
 	filed_outside,
 	invoice_date_accounts,
 	periods_with_the_books,
 	service_date,
+	settled,
 )
 from steuerbote.ustva.calculation import LedgerLine
 from steuerbote.ustva.defaults import SKR03
@@ -35,6 +37,7 @@ def at(day: int, month: int, hour: int = 12) -> datetime:
 
 
 THIRD_OF_AUGUST = at(3, 8)
+FOURTH_OF_SEPTEMBER = at(4, 9)
 
 
 def booking(
@@ -437,6 +440,137 @@ class LateTest(TestCase):
 		)
 		(placement,) = assignment.late_vouchers(bookings)
 		self.assertEqual(placement.booking.voucher, "Sales Invoice:C")
+
+
+class CancellationTest(TestCase):
+	"""A cancelled voucher never was a supply or an invoice: its reversal counts on the day of the entries it reverses,
+	booked when the voucher was cancelled, so an open period never reports it, and in a filed period it is a change
+	after the filing, which the treatment of late bookings decides."""
+
+	ORIGINAL = Booking("1776", "Journal Entry:JV-1", date(2026, 7, 10), at(10, 7), credit=Decimal("95.00"))
+
+	def cancellation(self, booked: datetime = FOURTH_OF_SEPTEMBER, service: date | None = None) -> Booking:
+		return Booking(
+			"1776",
+			"Journal Entry:JV-1",
+			date(2026, 7, 10),
+			booked,
+			debit=Decimal("95.00"),
+			service_date=service,
+			cancellation=True,
+		)
+
+	def test_a_booking_is_no_cancellation_unless_it_says_so(self):
+		self.assertFalse(self.ORIGINAL.cancellation)
+		self.assertTrue(self.cancellation().cancellation)
+		self.assertEqual(
+			self.cancellation().line(),
+			LedgerLine("1776", Decimal("95.00"), Decimal("0.00"), "Journal Entry:JV-1"),
+		)
+
+	def test_in_an_open_period_the_voucher_and_its_cancellation_leave_no_line_under_every_setting(self):
+		for basis in PeriodBasis:
+			for treatment in LateTreatment:
+				with self.subTest(basis=basis, treatment=treatment):
+					assignment = Assignment(basis, treatment, MONTHS_2026, [filed(AUGUST, at(10, 9))])
+					for period in (JULY, AUGUST, SEPTEMBER):
+						self.assertEqual(assignment.lines([self.ORIGINAL, self.cancellation()], period), [])
+					self.assertEqual(assignment.late([self.ORIGINAL, self.cancellation()]), [])
+
+	def test_after_the_filing_with_the_corrected_return_it_stays_in_the_filed_period(self):
+		for basis in PeriodBasis:
+			with self.subTest(basis=basis):
+				assignment = Assignment(
+					basis, LateTreatment.CORRECTION, MONTHS_2026, [filed(JULY, at(10, 8))]
+				)
+				(late,) = assignment.late([self.ORIGINAL, self.cancellation()])
+				self.assertEqual((late.tax_period, late.period), (JULY, JULY))
+				self.assertTrue(late.needs_correction)
+				self.assertTrue(late.booking.cancellation)
+
+	def test_after_the_filing_in_the_current_period_it_goes_to_the_period_open_when_it_was_cancelled(self):
+		for basis in PeriodBasis:
+			with self.subTest(basis=basis):
+				assignment = Assignment(
+					basis,
+					LateTreatment.CURRENT_PERIOD,
+					MONTHS_2026,
+					[filed(JULY, at(10, 8)), filed(AUGUST, at(10, 9))],
+				)
+				(late,) = assignment.late([self.ORIGINAL, self.cancellation(at(4, 9))])
+				self.assertEqual((late.tax_period, late.period), (JULY, AUGUST))
+				(later,) = assignment.late([self.ORIGINAL, self.cancellation(at(14, 9))])
+				self.assertEqual(later.period, SEPTEMBER)
+				self.assertEqual(
+					assignment.lines([self.ORIGINAL, self.cancellation(at(14, 9))], JULY),
+					[self.ORIGINAL.line()],
+				)
+
+	def test_the_cancellation_of_a_sales_invoice_follows_its_supply(self):
+		original = booking(posting=date(2026, 8, 3), booked=at(3, 8), service=date(2026, 7, 31))
+		cancelled = Booking(
+			"8400",
+			original.voucher,
+			original.posting_date,
+			at(20, 8),
+			debit=Decimal("1000.00"),
+			service_date=date(2026, 7, 31),
+			cancellation=True,
+		)
+		assignment = Assignment(PeriodBasis.SERVICE_DATE, LateTreatment.CORRECTION, MONTHS_2026)
+		placements = [assignment.place(original), assignment.place(cancelled)]
+		self.assertEqual([placement.period for placement in placements], [JULY, JULY])
+		self.assertEqual(assignment.lines([original, cancelled], AUGUST), [])
+
+	def test_a_voucher_booked_late_and_cancelled_late_is_named_for_both(self):
+		late_original = Booking(
+			"1776", "Journal Entry:JV-1", date(2026, 7, 10), at(20, 8), credit=Decimal("95.00")
+		)
+		assignment = Assignment(
+			PeriodBasis.SERVICE_DATE, LateTreatment.CORRECTION, MONTHS_2026, [filed(JULY, at(10, 8))]
+		)
+		placements = assignment.late_vouchers([late_original, self.cancellation(at(4, 9))])
+		self.assertEqual([placement.booking.cancellation for placement in placements], [False, True])
+
+
+class SettledTest(TestCase):
+	"""A voucher and its cancellation reported in the same period leave no line there; what the cancellation does not
+	take back in that period stays."""
+
+	def placement(self, booking: Booking, period: Period = JULY) -> Placement:
+		return Placement(booking, date(2026, 7, 10), JULY, period, late=period != JULY)
+
+	def test_leaves_out_a_voucher_its_cancellation_takes_back_in_the_period(self):
+		original = CancellationTest.ORIGINAL
+		cancelled = CancellationTest().cancellation()
+		other = booking("Journal Entry:JV-2", date(2026, 7, 12), at(12, 7), account="1776", credit="10.00")
+		self.assertEqual(
+			settled([self.placement(original), self.placement(other), self.placement(cancelled)]),
+			[self.placement(other)],
+		)
+
+	def test_keeps_a_voucher_whose_cancellation_is_reported_elsewhere(self):
+		original = self.placement(CancellationTest.ORIGINAL)
+		self.assertEqual(settled([original]), [original])
+
+	def test_keeps_the_accounts_a_cancellation_does_not_take_back(self):
+		original = CancellationTest.ORIGINAL
+		partial = Booking(
+			"1776",
+			original.voucher,
+			original.posting_date,
+			at(4, 9),
+			debit=Decimal("90.00"),
+			cancellation=True,
+		)
+		placements = [self.placement(original), self.placement(partial)]
+		self.assertEqual(settled(placements), placements)
+
+	def test_a_voucher_without_a_cancellation_stays_even_if_it_sums_to_zero(self):
+		there = booking("Journal Entry:JV-3", date(2026, 7, 12), at(12, 7), account="1776", credit="10.00")
+		back = Booking("1776", "Journal Entry:JV-3", date(2026, 7, 12), at(12, 7), debit=Decimal("10.00"))
+		placements = [self.placement(there), self.placement(back)]
+		self.assertEqual(settled(placements), placements)
 
 
 class ChangesTest(TestCase):

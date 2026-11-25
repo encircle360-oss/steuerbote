@@ -162,7 +162,8 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 		)
 
 		# With the immutable ledger, ERPNext keeps the GL Entries of a cancelled voucher and posts their
-		# reversal on the day of the cancellation: in May for the first entry, in June for the second.
+		# reversal on the day of the cancellation: in May for the first entry, in June for the second. Both
+		# reversals count on the day of their entry, in May, which no return has filed.
 		cls.cancelled_in_may = post_journal_entry(
 			COMPANY, "2026-05-12", [(a["1400"], 238, 0), (a["8400"], 0, 200), (a["1776"], 0, 38)]
 		)
@@ -358,42 +359,17 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 		self.assertNotIn(self.cancelled.name, vouchers)
 		self.assertNotIn(self.settlement.name, vouchers)
 
-	def test_marks_a_cancelled_voucher_instead_of_linking_its_print_view(self):
-		row = next(row for row in self.rows(5) if row["voucher_no"] == self.cancelled_in_may.name)
-		self.assertEqual(
-			(
-				row["kennzahl"],
-				row["voucher_type"],
-				str(row["posting_date"]),
-				money(row["debit"]),
-				money(row["credit"]),
-				money(row["amount"]),
-				row["print_link"],
-			),
-			("81", "Journal Entry", "2026-05-12", money(200), money(200), money(0), "Cancelled voucher"),
-		)
-
-	def test_a_cancellation_in_a_later_period_reduces_that_period(self):
-		found = []
+	def test_a_voucher_cancelled_before_its_month_is_filed_shows_in_no_month(self):
+		"""With the immutable ledger, the reversal of a voucher cancelled in a later month counts on the voucher's day:
+		neither the month of the voucher nor that of the cancellation reports it."""
 		for period in (5, 6):
 			rows = self.rows(period)
-			kennzahl = next(row for row in rows if row["kennzahl"] == "81" and not row["indent"])
-			voucher = next(row for row in rows if row["voucher_no"] == self.cancelled_in_june.name)
-			found.append(
-				(
-					money(kennzahl["reported"]),
-					str(voucher["posting_date"]),
-					money(voucher["amount"]),
-					voucher["print_link"],
-				)
-			)
-		self.assertEqual(
-			found,
-			[
-				(money(300), "2026-05-14", money(300), "Cancelled voucher"),
-				(money(-300), "2026-06-03", money(-300), "Cancelled voucher"),
-			],
-		)
+			with self.subTest(period=period):
+				vouchers = {row["voucher_no"] for row in rows}
+				self.assertNotIn(self.cancelled_in_may.name, vouchers)
+				self.assertNotIn(self.cancelled_in_june.name, vouchers)
+				kennzahl = next((row for row in rows if row["kennzahl"] == "81" and not row["indent"]), {})
+				self.assertEqual(money(kennzahl.get("reported") or 0), money(0))
 
 	def test_december_deducts_the_sondervorauszahlung(self):
 		self.assertEqual(
