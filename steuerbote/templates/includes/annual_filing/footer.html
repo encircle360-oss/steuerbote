@@ -12,4 +12,5 @@
 	<p>{{ "Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER." if annual.mein_elster else "Zum Abgleich mit der Steuerberatung." }}</p>
 	<p>Dieser Ausdruck ist keine Abgabe. Abgegeben ist das Dokument erst, wenn es elektronisch an das Finanzamt übermittelt ist.</p>
 	{%- endif %}
+	{% include "steuerbote/templates/includes/created_with.html" %}
 </div>
