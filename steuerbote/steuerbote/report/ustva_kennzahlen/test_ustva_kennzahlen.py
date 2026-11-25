@@ -396,6 +396,14 @@ class TestUStVAKennzahlen(IntegrationTestCase):
 				self.assertEqual((columns, rows), (report.get_columns(), []))
 				self.assertIn(reason, message)
 
+	def test_a_rhythm_the_settings_do_not_prescribe_is_named_above_the_report(self):
+		_columns, rows = execute(filters(1, rhythm="quarterly"))
+		self.assertEqual(
+			rows[0]["label"],
+			"The VAT Return Settings prescribe filing monthly for month 1 of 2026, not quarterly: the report shows "
+			"I. Kalendervierteljahr 2026 all the same, but no return files it.",
+		)
+
 	def test_without_all_filters_the_report_is_empty(self):
 		columns, rows = execute({"company": COMPANY, "year": 2026, "rhythm": "monthly"})
 		self.assertEqual(
