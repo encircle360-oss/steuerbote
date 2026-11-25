@@ -88,9 +88,7 @@ NEEDS_STEPS = "Not run: it needs {0}, which did not create or find its document.
 STEP_FAILED = "The step stopped: {0}"
 STEP_BROKE = "The step stopped with an error; the Error Log names it."
 SETTINGS_EXIST = "The VAT Return Settings of {0} exist already; the setup leaves them as they are."
-SETTINGS_MADE = (
-	"Made the VAT Return Settings of {0} with the chart {1}, Soll-Versteuerung and no Dauerfristverlängerung."
-)
+SETTINGS_MADE = "Made the VAT Return Settings of {0} with the chart {1}, Soll-Versteuerung, the Voranmeldungszeitraum by service date, a corrected return for bookings of a filed period and no Dauerfristverlängerung."
 VAT_ID_TAKEN = "USt-IdNr. {0} taken from the Tax ID of the company."
 DATENLIEFERANT_TAKEN = "Datenlieferant taken from the company and its address: {0}."
 STATE_AND_TAX_NUMBER = "Enter the Bundesland and the Steuernummer the Finanzamt issued in the VAT Return Settings: Steuerbote cannot take them from the company."
@@ -292,7 +290,8 @@ def chart_template(company: str) -> str | None:
 
 def make_vat_return_settings(context: SetupContext) -> StepResult:
 	"""The VAT Return Settings, if the company has none: the chart of the company, Soll-Versteuerung and the
-	defaults of the DocType; saving fills the own USt-IdNr. from the Tax ID of the company and the Datenlieferant
+	defaults of the DocType, among them the assignment by service date and the corrected return for bookings of a
+	filed period (steuerbote.ustva.assignment); saving fills the own USt-IdNr. from the Tax ID of the company and the Datenlieferant
 	from the company and its address. The Bundesland and the Steuernummer stay for the user, and so does the
 	Voranmeldungszeitraum unless the step filing_period proposes one."""
 	company = context.company
