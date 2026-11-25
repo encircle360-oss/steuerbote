@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
-from frappe.utils import add_days, getdate, today
+from frappe.utils import add_days, formatdate, getdate, today
 
 from steuerbote import dauerfrist_sources
 from steuerbote.dauerfrist import form as dauerfrist_form
@@ -638,6 +638,18 @@ class TestVATReturnExtension(IntegrationTestCase):
 		self.assertEqual(
 			(money(december.sondervorauszahlung), money(december.kz83)), (money(4000), money(-4000))
 		)
+
+	def test_a_draft_after_its_due_date_says_that_it_is_overdue(self):
+		doc = self.calculated(
+			FILING_COMPANY, 2026, base_override=44000, base_override_reason="Voranmeldungen 2025 im Altsystem"
+		)
+		with self.freeze_time("2026-02-11"):
+			doc.run_method("onload")
+		self.assertIn(formatdate(date(2026, 2, 10)), doc.get_onload("overdue"))
+		with self.freeze_time("2026-02-10"):
+			doc.run_method("onload")
+		self.assertIsNone(doc.get_onload("overdue"))
+		self.assertEqual(doc.status, "Bereit")
 
 	def test_a_filing_outside_steuerbote_needs_a_note_a_day_not_to_come_and_a_true_transferticket(self):
 		doc = self.calculated(

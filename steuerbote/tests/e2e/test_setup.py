@@ -140,9 +140,10 @@ def remove_what_a_run_set_up(desk, company: str) -> None:
 
 def test_vorgaben_aktualisieren_proposes_the_changes_of_the_defaults_and_keeps_your_own(desk, expect):
 	"""Vorgaben laden sets the mapping of the fourth company back; then it looks as if older defaults had mapped 8400
-	to Kz 86 and the user had set 1548 to the level Hinweis. The dialog checks the change of the defaults and leaves
-	the user's own unchecked, its button says how many differences a click takes over, or with none checked that it
-	notes the defaults as seen, and taking over the checked one changes 8400 alone."""
+	to Kz 86, without Kz 81 for the base without revenue account of its Verprobung, and the user had set 1548 to the
+	level Hinweis. The dialog checks the changes of the defaults and leaves the user's own unchecked, its button says
+	how many differences a click takes over, or with none checked that it notes the defaults as seen, and taking over
+	the checked ones changes 8400 and the Verprobung alone."""
 	desk.open(f"/desk/vat-return-mapping/{quote(data.MAPPING_COMPANY)}")
 	expect(desk.grid_rows("rules").first).to_be_visible()
 	desk.button("Vorgaben laden").click()
@@ -154,8 +155,10 @@ def test_vorgaben_aktualisieren_proposes_the_changes_of_the_defaults_and_keeps_y
 		"""() => {
 			const rows = JSON.parse(cur_frm.doc.defaults_rows);
 			rows.rules.find((rule) => rule.account_number === "8400").kennzahl = "86";
+			delete rows.checks.find((check) => check.label === "Umsatzsteuer 19 %").derived_base;
 			cur_frm.doc.defaults_rows = JSON.stringify(rows);
 			cur_frm.doc.rules.find((rule) => rule.account_number === "8400").kennzahl = "86";
+			cur_frm.doc.checks.find((check) => check.label === "Umsatzsteuer 19 %").derived_base = "";
 			cur_frm.doc.watched.find((row) => row.account_number === "1548").level = "hint";
 			cur_frm.dirty();
 		}"""
@@ -164,19 +167,21 @@ def test_vorgaben_aktualisieren_proposes_the_changes_of_the_defaults_and_keeps_y
 	response = desk.run_doc_method("compare_with_defaults", desk.button("Vorgaben aktualisieren").click)
 	assert response.ok
 	dialog = desk.dialog()
-	expect(dialog.locator("tbody tr")).to_have_count(2)
+	expect(dialog.locator("tbody tr")).to_have_count(3)
 	expect(dialog.locator('input.steuerbote-difference[value="account:8400"]')).to_be_checked()
+	expect(dialog.locator('input.steuerbote-difference[value="check:Umsatzsteuer 19 %"]')).to_be_checked()
 	expect(dialog.locator('input.steuerbote-difference[value="account:1548"]')).not_to_be_checked()
 	expect(dialog).to_contain_text("Vorgabe geändert")
 	expect(dialog).to_contain_text("Eigene Änderung")
 	button = dialog.locator(".btn-modal-primary")
-	expect(button).to_have_text("1 Unterschied übernehmen")
-	dialog.locator('input.steuerbote-difference[value="account:8400"]').uncheck()
-	expect(button).to_have_text("Keinen übernehmen und die Vorgaben SKR03 2026.3 als gesehen vermerken")
-	dialog.locator("input.steuerbote-all-differences").check()
 	expect(button).to_have_text("2 Unterschiede übernehmen")
+	dialog.locator('input.steuerbote-difference[value="account:8400"]').uncheck()
+	dialog.locator('input.steuerbote-difference[value="check:Umsatzsteuer 19 %"]').uncheck()
+	expect(button).to_have_text("Keinen übernehmen und die Vorgaben SKR03 2026.4 als gesehen vermerken")
+	dialog.locator("input.steuerbote-all-differences").check()
+	expect(button).to_have_text("3 Unterschiede übernehmen")
 	dialog.locator('input.steuerbote-difference[value="account:1548"]').uncheck()
-	expect(button).to_have_text("1 Unterschied übernehmen")
+	expect(button).to_have_text("2 Unterschiede übernehmen")
 	assert desk.run_doc_method("update_from_defaults", lambda: desk.answer_dialog(yes=True)).ok
 	expect(dialog).to_have_count(0)
 	desk.settle()
@@ -184,9 +189,10 @@ def test_vorgaben_aktualisieren_proposes_the_changes_of_the_defaults_and_keeps_y
 		"""() => [
 			cur_frm.doc.rules.find((rule) => rule.account_number === "8400").kennzahl,
 			cur_frm.doc.watched.find((row) => row.account_number === "1548").level,
+			cur_frm.doc.checks.find((check) => check.label === "Umsatzsteuer 19 %").derived_base,
 			cur_frm.doc.defaults_version,
 		]"""
-	) == ["81", "hint", "SKR03 2026.3"]
+	) == ["81", "hint", "81", "SKR03 2026.4"]
 
 
 def save(desk) -> None:

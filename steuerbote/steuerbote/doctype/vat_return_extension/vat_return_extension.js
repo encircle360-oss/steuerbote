@@ -42,9 +42,13 @@ function form_texts() {
 }
 
 // Without ERiC, Senden is not possible, and Mein ELSTER takes no file for form USt 1 H. A form locked as sent is
-// neither calculated nor entered again.
+// neither calculated nor entered again. A draft past its due date says so (onload of the controller).
 function show_intro(frm) {
 	const notes = elster_notes(frm, form_texts());
+	const overdue = frm.doc.__onload && frm.doc.__onload.overdue;
+	if (overdue) {
+		notes.push(frappe.utils.escape_html(overdue));
+	}
 	if (!frm.is_new() && frm.doc.docstatus === 0 && eric_simulates(frm) && !locked_as_sent(frm)) {
 		notes.push(
 			__(

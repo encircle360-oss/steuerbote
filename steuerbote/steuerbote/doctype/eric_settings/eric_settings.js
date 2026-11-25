@@ -40,14 +40,7 @@ frappe.ui.form.on("ERiC Settings", {
 	},
 
 	refresh(frm) {
-		frm.set_intro(
-			frm.doc.simulation
-				? __(
-						"Simulation mode: until an ERiC runtime is installed and a Hersteller-ID is entered, Prüfen and Testsenden only simulate and nothing reaches the Finanzamt."
-				  )
-				: "",
-			"orange"
-		);
+		show_simulation_note(frm);
 		show_version_check(frm);
 		frm.add_custom_button(__("Install Runtime"), () => {
 			if (frm.is_dirty()) {
@@ -78,6 +71,23 @@ frappe.ui.form.on("ERiC Settings", {
 		);
 	},
 });
+
+// A permanent message: Frappe lays the close button of a message over the end of its text.
+function show_simulation_note(frm) {
+	if (frm.$simulation_note) {
+		frm.$simulation_note.remove();
+		frm.$simulation_note = null;
+	}
+	if (frm.doc.simulation) {
+		frm.$simulation_note = frm.dashboard.set_headline_alert(
+			__(
+				"Simulation mode: until an ERiC runtime is installed and a Hersteller-ID is entered, Prüfen and Testsenden only simulate and nothing reaches the Finanzamt."
+			),
+			"orange",
+			true
+		);
+	}
+}
 
 // The weekly check of the versions and the notice of its findings in the head of the form, each with its own
 // state; the next refresh replaces the message.

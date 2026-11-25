@@ -102,6 +102,36 @@ class TestPeriodAssignment(IntegrationTestCase):
 		}
 		self.assertNotIn("ABGLEICH-RECHNUNGEN", codes)
 
+	def test_the_reconciliation_with_the_registers_names_the_invoice_in_both_months(self):
+		self.invoice("SINV-NZ-0007", "2026-08-03", "2026-08-03 09:00:00", to_date="2026-07-31")
+		rows = {
+			month: [
+				(row.subject, Decimal(str(row.register_amount)), row.compared)
+				for row in self.calculated(month).register_reconciliation
+				if row.subject.startswith("In ")
+			]
+			for month in (7, 8)
+		}
+		self.assertEqual(
+			rows,
+			{
+				7: [
+					(
+						"In einem anderen Zeitraum gebucht, in dieser Meldung (Kz 81): SINV-NZ-0007",
+						Decimal("1000.00"),
+						0,
+					)
+				],
+				8: [
+					(
+						"In diesem Zeitraum gebucht, in der Meldung eines anderen Zeitraums (Kz 81): SINV-NZ-0007",
+						Decimal("-1000.00"),
+						0,
+					)
+				],
+			},
+		)
+
 	def test_the_report_shows_the_invoice_in_the_month_of_its_supply(self):
 		self.invoice("SINV-NZ-0003", "2026-08-03", "2026-08-03 09:00:00", to_date="2026-07-31")
 		_columns, rows = execute({"company": COMPANY, "year": 2026, "rhythm": "monthly", "period_index": 7})

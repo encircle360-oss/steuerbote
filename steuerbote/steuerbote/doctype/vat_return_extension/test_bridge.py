@@ -397,3 +397,18 @@ class FormTest(TestCase):
 			form.texts(),
 			{"Jahr": "2027", "Kz10": "1", "Kz38": "4000", "Kz500": "1", "Kz500_Begruendung": "Anlage"},
 		)
+
+
+class OverdueTest(TestCase):
+	"""A draft whose due date has passed: the Antrag is due by § 48 Abs. 1 Satz 1 UStDV, the Sondervorauszahlung by
+	§ 48 Abs. 1 Satz 5 and Abs. 2 Satz 1 UStDV."""
+
+	def test_a_draft_after_its_due_date_is_overdue(self):
+		self.assertTrue(bridge.overdue(date(2026, 2, 10), date(2026, 2, 11), docstatus=0))
+
+	def test_on_its_due_date_it_is_not(self):
+		self.assertFalse(bridge.overdue(date(2026, 2, 10), date(2026, 2, 10), docstatus=0))
+
+	def test_a_filed_form_or_one_without_due_date_is_not(self):
+		self.assertFalse(bridge.overdue(date(2026, 2, 10), date(2026, 11, 25), docstatus=1))
+		self.assertFalse(bridge.overdue(None, date(2026, 11, 25), docstatus=0))

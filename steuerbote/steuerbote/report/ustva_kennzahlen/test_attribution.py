@@ -265,6 +265,44 @@ class DerivedBaseContributionsTest(TestCase):
 		)
 
 
+def asset_sales() -> list[LedgerLine]:
+	"""A fixed asset sold through a Sales Invoice as ERPNext 16 posts it, without a revenue account, next to an item on
+	a revenue account in the same invoice."""
+	return [
+		line("1400", debit="1190.00", voucher="Sales Invoice:SI-1"),
+		line("0490", credit="1500.00", voucher="Sales Invoice:SI-1"),
+		line("0499", debit="520.00", voucher="Sales Invoice:SI-1"),
+		line("2310", debit="180.00", voucher="Sales Invoice:SI-1"),
+		line("8400", credit="200.00", voucher="Sales Invoice:SI-1"),
+		line("1776", credit="190.00", voucher="Sales Invoice:SI-1"),
+	]
+
+
+class AssetSaleContributionsTest(TestCase):
+	"""The base of an asset sale is a contribution of its invoice to Kz 81 with the accounts that make it."""
+
+	def test_the_invoice_contributes_its_revenue_and_its_asset_lines(self):
+		found = contributions(asset_sales(), SKR03)
+		self.assertEqual(
+			found["81"],
+			[
+				Contribution("81", "Sales Invoice:SI-1", ("8400",), d("0"), d("200.00"), d("200.00")),
+				Contribution(
+					"81",
+					"Sales Invoice:SI-1",
+					("0490", "0499", "2310"),
+					d("700.00"),
+					d("1500.00"),
+					d("800.00"),
+				),
+			],
+		)
+
+	def test_it_agrees_with_the_core(self):
+		total = sum((item.amount for item in contributions(asset_sales(), SKR03)["81"]), ZERO)
+		self.assertEqual(total, calculate(asset_sales(), SKR03).values["81"].amount)
+
+
 POSTING_DATES = {f"Journal Entry:JE-{number}": date(2026, 3, number) for number in range(1, 6)}
 ACCOUNT_NAMES = {
 	"8400": "8400 - Erlöse 19 % USt - STKZ",

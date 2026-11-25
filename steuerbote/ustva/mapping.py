@@ -11,7 +11,9 @@ account belongs, or may belong, to the Voranmeldung without a Kennzahl yet: at t
 balance on it holds the return, at the hint level it only adds a hint. A Verprobung of a purchase whose tax the
 company owes itself may name the Kennzahl that takes the base of a voucher booking its tax on none of its base
 accounts (``derived_base``, see calculation.py), and another one for a voucher of a supplier established in another
-member state (``derived_base_eu``, see residence.py). The defaults for the DATEV charts live in defaults.py; a company
+member state (``derived_base_eu``, see residence.py). A Verprobung of turnover at a statutory rate may name its own
+Kennzahl, 81 or 86, for the base of a voucher booking more output tax than its revenue accounts carry, such as the sale
+of a fixed asset (calculation.py). The defaults for the DATEV charts live in defaults.py; a company
 adjusts them in its settings. ``for_year`` re-validates the same
 rules against another year's form.
 """
@@ -124,9 +126,16 @@ def _watched(value: Iterable[str | WatchedAccount]) -> tuple[WatchedAccount, ...
 # Erwerbe (Kz 89, 93, 95 and 94) and the Leistungen whose recipient owes the tax (§ 13b Absatz 5 UStG; Kz 46, 73 and
 # 84). The company owes this tax on a purchase and deducts it again as Vorsteuer (§ 15 Absatz 1 Satz 1 Nummer 3 and 4
 # UStG), so its books carry the base on whatever account the purchase goes to, an expense, an asset or goods, and the
-# tax on the tax accounts of the Verprobung. Kz 90 and 91 carry no tax to derive a base from, and turnover always has a
-# revenue account of its own.
+# tax on the tax accounts of the Verprobung. Kz 90 and 91 carry no tax to derive a base from; turnover at a statutory
+# rate takes DERIVED_TURNOVER_KENNZAHLEN.
 DERIVED_BASE_KENNZAHLEN = frozenset({"89", "93", "95", "94", "46", "73", "84"})
+# The bases of form USt 1 A 2026 at a statutory rate, lines 13 and 14: Kz 81 at 19 % and Kz 86 at 7 %
+# (§ 12 Absatz 1 and 2 UStG). A taxable supply whose consideration ERPNext books on no revenue account still owes this
+# tax: the sale of a fixed asset through a Sales Invoice credits the asset account with its cost and books the gain or
+# loss on the company's disposal account (erpnext/assets/doctype/asset/depreciation.py,
+# get_gl_entries_on_asset_disposal), and a journal entry may book output tax against any account. Kz 35 takes the
+# other rates without one of its own, so no base can be derived for it, and the other turnover carries no tax.
+DERIVED_TURNOVER_KENNZAHLEN = frozenset({"81", "86"})
 # Sections C and D of the form: the purchases whose tax the company owes.
 PURCHASE_LINES = range(24, 33)
 # Section C of the form: the innergemeinschaftliche Erwerbe (lines 24 to 29).
@@ -138,7 +147,9 @@ class TaxCheck:
 	"""Verprobung: the tax booked on tax_accounts against the tax that belongs to base_accounts.
 
 	``derived_base`` names the Kennzahl that takes the base of a voucher which books tax on the tax accounts but
-	nothing on the base accounts, one of DERIVED_BASE_KENNZAHLEN; None leaves such a voucher a deviation.
+	nothing on the base accounts, one of DERIVED_BASE_KENNZAHLEN; None leaves such a voucher a deviation. A check of
+	turnover names its own Kennzahl, one of DERIVED_TURNOVER_KENNZAHLEN, for the base of a voucher that books more tax
+	than its base accounts carry (calculation.py).
 	``derived_base_eu`` names the Kennzahl that takes that base instead when the voucher is a sonstige Leistung of
 	§ 3a Absatz 2 UStG of a business established in another member state (§ 13b Absatz 1 UStG, residence.py); it
 	needs a ``derived_base`` for every other voucher.
@@ -237,6 +248,10 @@ class Mapping:
 		"""The side the base accounts of a check that derives a base carry their balance on."""
 		return self._rule_of(self._deriving(check).base_accounts[0]).side
 
+	def derives_turnover(self, check: TaxCheck) -> bool:
+		"""Whether the check derives the base of turnover at a statutory rate (DERIVED_TURNOVER_KENNZAHLEN)."""
+		return check.derived_base in DERIVED_TURNOVER_KENNZAHLEN
+
 	def is_purchase(self, check: TaxCheck) -> bool:
 		"""Whether every base account of the check feeds a purchase whose tax the company owes (sections C and D)."""
 		return self._in_lines(check, PURCHASE_LINES)
@@ -260,17 +275,26 @@ class Mapping:
 		"""The rule of a base account of a check, which _validate_checks requires before it asks for one."""
 		return next(rule for rule in self.rules if rule.account_number == account_number)
 
-	def _validate_derived_base(self, check: TaxCheck, where: str, number: str) -> None:
+	def _validate_derived_base(
+		self, check: TaxCheck, where: str, number: str, turnover: bool = False
+	) -> None:
 		"""The base a check derives needs one rate and one side, those of its base accounts, and a Kennzahl that takes
 		it: a purchase of DERIVED_BASE_KENNZAHLEN, at its statutory rate if it has one, whose tax is derived rather
-		than mapped from an account, which would report the tax a second time. The base accounts themselves must be
-		purchases too, so that a Verprobung of turnover never derives one."""
+		than mapped from an account, which would report the tax a second time; or, with ``turnover``, a Kennzahl of
+		DERIVED_TURNOVER_KENNZAHLEN. The base accounts are of the same kind, so that a Verprobung of turnover never
+		derives a purchase and the other way round."""
 		catalogue = self.catalogue
-		if number not in DERIVED_BASE_KENNZAHLEN or number not in catalogue:
+		allowed = DERIVED_TURNOVER_KENNZAHLEN if turnover else DERIVED_BASE_KENNZAHLEN
+		if number not in allowed or number not in catalogue:
 			raise MappingError(f"{where}: Kennzahl {number} takes no base derived from the tax of a voucher")
 		rules = [self._rule_of(account) for account in check.base_accounts]
 		for rule in rules:
-			if catalogue[rule.kennzahl].line not in PURCHASE_LINES:
+			if turnover and rule.kennzahl not in DERIVED_TURNOVER_KENNZAHLEN:
+				raise MappingError(
+					f"{where}: base account {rule.account_number} feeds Kennzahl {rule.kennzahl}, which is no "
+					"turnover at a statutory rate"
+				)
+			if not turnover and catalogue[rule.kennzahl].line not in PURCHASE_LINES:
 				raise MappingError(
 					f"{where}: base account {rule.account_number} feeds Kennzahl {rule.kennzahl}, which is no "
 					"purchase whose tax the company owes"
@@ -390,6 +414,13 @@ class Mapping:
 					raise MappingError(
 						f"{where}: tax account {account} is also mapped to Kennzahl {rule.kennzahl}"
 					)
+			if self.derives_turnover(check):
+				if check.derived_base_eu is not None:
+					raise MappingError(
+						f"{where}: derived_base_eu is only for a purchase whose tax the company owes"
+					)
+				self._validate_derived_base(check, where, check.derived_base, turnover=True)
+				continue
 			for number in dict.fromkeys((check.derived_base, check.derived_base_eu)):
 				if number is not None:
 					self._validate_derived_base(check, where, number)
