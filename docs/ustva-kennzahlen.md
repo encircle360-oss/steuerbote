@@ -1,6 +1,6 @@
 # Umsatzsteuer-Voranmeldung: Kennzahlen und Kontenzuordnung
 
-Diese Seite ist die fachliche Grundlage des Rechenkerns unter `steuerbote/ustva`: Quelle, Rundung, alle Kennzahlen des Katalogs, die Kontenzuordnung mit den Vorgaben für SKR03 und SKR04, ihre Zeilen für die [Umsatzsteuererklärung](#kontenzuordnung-der-umsatzsteuererklärung) sowie Zeiträume und Fristen. Sie ersetzt keine Steuerberatung. Lass die Einrichtung deiner Firma von deiner Steuerberatung bestätigen.
+Diese Seite ist die fachliche Grundlage des Rechenkerns unter `steuerbote/ustva`: Quelle, Rundung, alle Kennzahlen des Katalogs, die Kontenzuordnung mit den Vorgaben für SKR03 und SKR04, ihre Zeilen für die [Umsatzsteuererklärung](#kontenzuordnung-der-umsatzsteuererklärung) sowie Zeiträume und Fristen. Sie ersetzt keine Steuerberatung. Lassen Sie die Einrichtung Ihres Unternehmens von Ihrer Steuerberatung bestätigen.
 
 ## Quelle
 

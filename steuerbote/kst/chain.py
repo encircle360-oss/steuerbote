@@ -1000,7 +1000,8 @@ def _findings(
 				Code.FOREIGN_TAX,
 				error,
 				f"Auf ausländische Steuern sind {amount} gebucht. Ihre Anrechnung oder ihren Abzug mit der Anlage "
-				"AESt berechnet Steuerbote noch nicht.",
+				"AESt berechnet Steuerbote noch nicht. Die Erklärung mit Anlage AESt gibt dann die Steuerberatung ab; "
+				"vermerken Sie sie hier als außerhalb abgegeben.",
 				"§ 26 KStG, § 34c EStG",
 			)
 		)
@@ -1021,7 +1022,9 @@ def _findings(
 				Code.WATCHED,
 				error,
 				f"Konto {account.account_number} hat einen Saldo (Soll {money(account.debit)}, Haben "
-				f"{money(account.credit)}), aber keine Kategorie der Kontenzuordnung Ertragsteuern.",
+				f"{money(account.credit)}), aber keine Kategorie der Kontenzuordnung Ertragsteuern. Geben Sie dem Konto in "
+				"der Kontenzuordnung Ertragsteuern seine Kategorie, etwa „Bezüge aus Anteilen“ für Dividenden einer "
+				"Kapitalgesellschaft (§ 8b KStG), oder buchen Sie den Betrag auf ein Konto mit Kategorie.",
 				"Kontenzuordnung Ertragsteuern",
 			)
 		)
@@ -1031,7 +1034,9 @@ def _findings(
 				Code.WATCHED_HINT,
 				hint,
 				f"Konto {account.account_number} hat einen Saldo (Soll {money(account.debit)}, Haben "
-				f"{money(account.credit)}); die Kontenzuordnung Ertragsteuern beobachtet es.",
+				f"{money(account.credit)}); die Kontenzuordnung Ertragsteuern beobachtet es. Prüfen Sie, ob der Saldo in "
+				"eine Kategorie gehört, etwa Bezüge, Gewinne oder Gewinnminderungen aus Anteilen an Kapitalgesellschaften "
+				"(§ 8b KStG), und geben Sie dem Konto dann in der Kontenzuordnung Ertragsteuern seine Kategorie.",
 				"Kontenzuordnung Ertragsteuern",
 			)
 		)

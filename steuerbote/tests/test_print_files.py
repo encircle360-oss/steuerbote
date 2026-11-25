@@ -11,6 +11,7 @@ PRINT_FORMATS = APP / "steuerbote" / "print_format"
 INCLUDES = APP / "templates" / "includes"
 STYLE = "steuerbote/templates/includes/print/style.html"
 RUNNING = "steuerbote/templates/includes/print/running.html"
+CHROMIUM = "steuerbote/templates/includes/print/chromium.html"
 # The parts that include the running head and foot for the print formats that include them.
 RUNNING_FOR = (
 	"steuerbote/templates/includes/annual_filing/head.html",
@@ -54,8 +55,8 @@ def templates() -> dict[str, str]:
 
 
 def rules(style: str) -> dict[str, str]:
-	"""The rules of the stylesheet by their selector, without its comment and its @media blocks."""
-	sheet = re.sub(r"</?style>", "", JINJA_COMMENT.sub("", style))
+	"""The rules of the stylesheet by their selector, without its comments, its Jinja tags and its @media blocks."""
+	sheet = re.sub(r"</?style>", "", JINJA_TAG.sub("", JINJA_COMMENT.sub("", style)))
 	sheet = re.sub(r"@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}", "", sheet)
 	return {" ".join(selector.split()): body for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", sheet)}
 
@@ -106,7 +107,69 @@ class OneStylesheetTest(TestCase):
 		itself, so a gap at the bottom of the head lies between it and the content in either of them."""
 		style = read(STYLE)
 		self.assertNotRegex(style, r"(header|footer)-spacing")
-		self.assertIn("padding-bottom: 4mm;", rules(style)[".sb-running-head"])
+		self.assertIn("bottom: 4mm;", rules(style)[".sb-running-rule"])
+
+	def test_the_running_head_and_foot_fill_the_top_and_bottom_margins(self):
+		"""wkhtmltopdf sets the head into the top margin, its bottom on the content, and the foot into the bottom
+		margin, its top under the content. A head as high as the top margin and a foot as high as the bottom margin
+		stand at the same place with the Chromium-based generator, which stacks margin, head and content."""
+		style = rules(read(STYLE))
+		margins = dict(re.findall(r"([\w-]+):\s*([^;]+);", style[".print-format"]))
+		self.assertIn(f"height: {margins['margin-top']};", style[".sb-running-head"])
+		self.assertIn(f"height: {margins['margin-bottom']};", style[".sb-running-foot"])
+		self.assertIn("top: 4mm;", style[".sb-running-foot-rule"])
+
+	def test_the_chromium_based_generator_gets_no_top_and_bottom_margin(self):
+		"""Frappe's Chromium-based generator puts the head below the top margin and the foot above the bottom margin;
+		with both at 0 the head and foot, as high as the margins, take their place. Frappe sets pdf_generator in the
+		form_dict before it renders the print view for a PDF, and the jinja method reads it."""
+		include = f'{{% include "{CHROMIUM}" %}}'
+		self.assertRegex(
+			read(STYLE),
+			r'\{%-? if steuerbote_pdf_generator\(\) == "chrome" -?%\}\s*'
+			+ re.escape(include)
+			+ r"\s*\{%-? endif -?%\}",
+		)
+		self.assertEqual(
+			dict(re.findall(r"([\w-]+):\s*([^;]+);", rules(read(CHROMIUM))[".print-format"])),
+			{"margin-top": "0mm", "margin-bottom": "0mm"},
+		)
+		self.assertIn("steuerbote.steuerbote.about.steuerbote_pdf_generator", read("steuerbote/hooks.py"))
+
+	def test_rows_and_lines_are_whole_pixels_high(self):
+		"""wkhtmltopdf rounds a line height, the padding of a cell or a rule down to a whole pixel, Chromium keeps the
+		fraction; with fractions every row is higher with Chromium and the same document runs to more pages."""
+		vertical = re.compile(r"(line-height|padding(?:-top|-bottom)?|border(?:-top|-bottom)?):\s*([^;]+);")
+		for selector, body in rules(read(STYLE)).items():
+			cell = selector.endswith(("td", "th"))
+			for name, value in vertical.findall(body):
+				with self.subTest(selector=selector, property=name):
+					if name == "line-height":
+						self.assertRegex(value, r"^\d+px$")
+					elif cell:
+						self.assertNotIn("mm", value)
+
+	def test_a_line_of_text_holds_the_dots_of_its_umlauts(self):
+		"""Nimbus Sans rises 0.729 of its size above the baseline, the dots of Ä, Ö and Ü of the bold one 0.922. A line
+		lower than 1.39 times the size leaves the dots above its box, and Chromium paints what stands above the first
+		line of a page onto the foot of the page before. Cells have padding above their line, the Bilanz is a table of
+		cells, and the running head and foot are not broken."""
+		size = re.compile(r"font-size:\s*([\d.]+)pt;")
+		height = re.compile(r"line-height:\s*(\d+)px;")
+		style = rules(read(STYLE))
+		base = style[".sb-print, .sb-running"]
+		base_size, base_height = float(size.search(base)[1]), int(height.search(base)[1])
+		for selector, body in style.items():
+			cells = selector.endswith(("td", "th")) or selector == ".sb-print .sb-bilanz"
+			if cells or selector.startswith(".sb-running"):
+				continue
+			found_size, found_height = size.search(body), height.search(body)
+			if not (found_size or found_height):
+				continue
+			points = float(found_size[1]) if found_size else base_size
+			pixels = int(found_height[1]) if found_height else base_height
+			with self.subTest(selector=selector):
+				self.assertGreaterEqual(pixels / (points * 4 / 3), 1.39)
 
 	def test_sets_a_font_with_the_metrics_of_helvetica_that_the_server_has(self):
 		style = rules(read(STYLE))
@@ -135,9 +198,18 @@ class OneStylesheetTest(TestCase):
 		self.assertIn(
 			"page-break-inside: avoid",
 			style[
-				".sb-print .sb-keep, .sb-print .sb-group, .sb-print .sb-footer, .sb-print .sb-angabe, .sb-print tr, .sb-print .sb-steps li"
+				".sb-print .sb-keep, .sb-print .sb-footer, .sb-print .sb-angabe, .sb-print tr, .sb-print .sb-steps li"
 			],
 		)
+
+	def test_keeps_no_group_of_rows_together(self):
+		"""wkhtmltopdf breaks a group of rows anywhere between its rows, Chromium would move a whole group to the next
+		page and leave the rest of the page empty, so that the same document has more pages with Chromium. The heading
+		of a section stays with its first rows in a row of its own (sb-nest)."""
+		for selector, body in rules(read(STYLE)).items():
+			if "sb-group" in selector.replace("sb-group-head", ""):
+				with self.subTest(selector=selector):
+					self.assertNotIn("page-break-inside: avoid", body)
 
 	def test_hides_in_print_what_frappe_marks_for_the_screen(self):
 		self.assertRegex(read(STYLE), r"@media print \{\s*\.print-hide \{\s*display: none !important;")
@@ -175,7 +247,11 @@ class RunningHeadAndFootTest(TestCase):
 
 class ClassesTest(TestCase):
 	def test_every_class_is_one_of_its_own_and_styled_or_one_frappe_gives_a_meaning(self):
-		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", JINJA_COMMENT.sub("", read(STYLE)))))
+		styled = set(
+			CLASS_SELECTOR.findall(
+				re.sub(r"\d+\.\d+", "", JINJA_TAG.sub("", JINJA_COMMENT.sub("", read(STYLE))))
+			)
+		)
 		self.assertEqual(
 			sorted(name for name in styled if not name.startswith("sb-")),
 			sorted(FRAPPE_CLASSES - {"visible-pdf", "page", "topage"}),
@@ -216,6 +292,25 @@ class ColumnWidthsTest(TestCase):
 		template = print_formats()["umsatzsteuer_voranmeldung"][1]
 		self.assertIn('<col class="sb-num sb-base">', template)
 		self.assertIn('<th class="sb-num">Bemessungsgrundlage ohne Umsatzsteuer<br>EUR</th>', template)
+
+	def test_the_totals_of_the_voranmeldung_keep_their_line(self):
+		"""„Umsatzsteuer (Summe der Zeilen 13 bis 18 und 25 bis 32)“ is 86.5 mm long in bold Nimbus Sans of 9 pt and
+		needs 89.2 mm with the padding of its cell. The Kennzahlen have at most three digits and the tax at most
+		-9.876.543,21, 19.6 mm, so that their columns give the text what the wider Bemessungsgrundlage takes."""
+		template = print_formats()["umsatzsteuer_voranmeldung"][1]
+		colgroup = template[template.index("<colgroup>") : template.index("</colgroup>")]
+		widths = {
+			match[1]: float(width)
+			for selector, body in self.style.items()
+			for width in re.findall(r"^\s*width:\s*([\d.]+)mm;", body, re.MULTILINE)
+			for part in selector.split(",")
+			if (match := re.fullmatch(r"\.sb-print \.([\w-]+)", part.strip()))
+		}
+		used = 0.0
+		for classes in re.findall(r'<col(?: class="([^"]*)")?>', colgroup):
+			# The class named last is the more particular one, and the stylesheet sets it after the general one.
+			used += next((widths[name] for name in reversed(classes.split()) if name in widths), 0.0)
+		self.assertGreaterEqual(210 - 20 - 15 - used, 89.2)
 
 	def test_the_labels_of_the_bilanz_keep_their_words_whole(self):
 		"""Four columns of amounts in Kontoform leave the labels less than half the page each; the amounts give up the
@@ -304,3 +399,23 @@ class ClosingTest(TestCase):
 				closing = template[template.rindex('<div class="sb-keep">') :]
 				self.assertRegex(closing, r"<h2>(Anmerkungen|Bemerkungen)</h2>")
 				self.assertIn('<div class="sb-footer">', closing)
+
+
+class FindingsTest(TestCase):
+	def test_each_table_of_findings_begins_with_its_heading_its_head_and_first_row_in_one_row(self):
+		"""wkhtmltopdf leaves a repeated table head alone at the foot of a page when the first row of the table no
+		longer fits, Chromium carries it over; a row is kept together by both. The heading, the head and the first
+		row of each table of findings stand in a table of their own inside its first row (sb-nest), the further rows
+		follow without a repeated head."""
+		findings = JINJA_COMMENT.sub("", read("steuerbote/templates/includes/annual_filing/findings.html"))
+		self.assertNotIn("<thead>", findings)
+		for heading in ("<h2>Befunde</h2>", "<h3>Hinweise nach Art</h3>", "<h3>Anhang: alle Hinweise</h3>"):
+			with self.subTest(heading=heading):
+				nest = findings.rindex('<td class="sb-nest"', 0, findings.index(heading))
+				self.assertLess(
+					findings.index("</table>", findings.index(heading)), findings.index("</td></tr>", nest)
+				)
+				between = findings[
+					findings.index(heading) : findings.index("</table>", findings.index(heading))
+				]
+				self.assertIn("first_row(", between)

@@ -6,7 +6,7 @@ Die Bilanzzuordnung sagt für jedes Konto eines Unternehmens, in welche Position
 
 - **Kontenrahmen:** SKR03 und SKR04 in der Ausgabe „Gültig für 2026“, jedes Konto und jeder Kontenbereich, den DATEV beschriftet, auch die der Klasse 9, dazu jedes Konto der Vorlagen von ERPNext 16, das die DATEV-Ausgabe nicht hat. Ein Konto, das DATEV nicht beschriftet, bekommt keine Vorgabe, auch wenn es zwischen zwei beschrifteten liegt: Was ein Unternehmen dort anlegt, ordnet es selbst zu, „Konten prüfen“ nennt es. Das gilt auch für Konten, die ein Kontenplan aus einer früheren DATEV-Ausgabe oder aus einer Übernahme mitbringt und die die Ausgabe 2026 nicht mehr beschriftet, etwa die Wechsel und Besitzwechsel SKR03 1300 bis 1322: Sie stehen nach „Steuerbote einrichten“ ohne Platz, bis das Unternehmen sie zuordnet.
 - **Taxonomie:** HGB-Taxonomie 6.9, steuerliche Ansicht, für eine GmbH oder UG mit Gesamtkostenverfahren; für 6.10 dieselben Vorgaben bis auf die sonstigen Steuern, siehe [Taxonomie 6.10](#taxonomie-610).
-- **Stand:** „SKR03 Taxonomie 6.9 2026.2“ und „SKR04 Taxonomie 6.9 2026.2“. Revision 0 war die leere Tabelle vor den ersten Vorgaben, Revision 1 der Stand vor den [Verrechnungsgruppen](#verrechnungsgruppen) und den Restlaufzeiten kraft Gesetzes.
+- **Stand:** „SKR03 Taxonomie 6.9 2026.3“ und „SKR04 Taxonomie 6.9 2026.3“. Revision 0 war die leere Tabelle vor den ersten Vorgaben, Revision 1 der Stand vor den [Verrechnungsgruppen](#verrechnungsgruppen) und den Restlaufzeiten kraft Gesetzes, Revision 2 der Stand vor der Gegenposition der Währungsumrechnung.
 
 | Kontenrahmen | Einträge mit Position | beobachtet | außerhalb von Bilanz und GuV |
 |---|---|---|---|
@@ -88,6 +88,8 @@ Forderungen und Verbindlichkeiten aus Lieferungen und Leistungen bekommen keine 
 
 | SKR03 | SKR04 | Vorgabe | Warum |
 |---|---|---|---|
+| 2150, 2151 | 6880, 6881 | `is.netIncome.regular.operatingTC.otherCost.currLoss` | Die GuV weist Erträge und Aufwendungen aus der Währungsumrechnung gesondert aus (§ 277 Abs. 5 Satz 2 HGB). Die Wechselkursneubewertung von ERPNext bucht beide auf ein Konto des Unternehmens; ab Revision 3 nennt jedes Konto deshalb die Position der anderen Richtung als Gegenposition, und der Hinweis `BILANZ-WAEHRUNG-SALDIERT` nennt ein Konto, das im Jahr beide Richtungen bucht, denn ihre Verrechnung verbietet § 246 Abs. 2 Satz 1 HGB. „Vorgaben aktualisieren“ bringt die Gegenposition in eine bestehende Zuordnung. |
+| 2660 | 4840 | `is.netIncome.regular.operatingTC.otherOpRevenue.currGains` | Ebenso, mit den Aufwendungen aus der Währungsumrechnung als Gegenposition. |
 | 0050 | 0200 | `bs.ass.fixAss.tan.landBuildings.misc` | Grundstücke, grundstücksgleiche Rechte und Bauten in einem Konto teilt die Taxonomie in Mussfelder; die Auffangposition nimmt es. |
 | 0080 | 0230 | `bs.ass.fixAss.tan.landBuildings.buildingsOnOwnLand.buildings` | Den Grund und Boden bebauter Grundstücke hält DATEV auf eigenen Konten; das Konto der Bauten hält den Gebäudeanteil. |
 | 0410, 0420, 0430 | 0635, 0640, 0650 | `bs.ass.fixAss.tan.otherEquipm.office` | Geschäfts-, Laden- und Büroeinrichtung sind Geschäftsausstattung. |
@@ -175,7 +177,7 @@ Die Vorgaben für die HGB-Taxonomie 6.10 sind die von 6.9, durch die Änderungen
 | 4340, 4350, 4355, 4510, 2285, 2287 | 7650, 7675, 7678, 7685, 7690, 7692 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.other` |
 | 2289 | 7694 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.releaseTaxProvision` |
 
-Stand: „SKR03 Taxonomie 6.10 2026.2“ und „SKR04 Taxonomie 6.10 2026.2“. Eine Bilanzzuordnung, die „Auf neue Taxonomie heben“ von 6.9 auf 6.10 hebt, behält die übernommenen Vorgaben von 6.9; „Vorgaben aktualisieren“ schlägt ihr diese Zeilen dann als Änderungen der Vorgaben vor.
+Stand: „SKR03 Taxonomie 6.10 2026.3“ und „SKR04 Taxonomie 6.10 2026.3“. Eine Bilanzzuordnung, die „Auf neue Taxonomie heben“ von 6.9 auf 6.10 hebt, behält die übernommenen Vorgaben von 6.9; „Vorgaben aktualisieren“ schlägt ihr diese Zeilen dann als Änderungen der Vorgaben vor.
 
 Für die Steuerberatung zu prüfen:
 

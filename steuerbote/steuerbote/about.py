@@ -31,6 +31,14 @@ def steuerbote_version() -> str:
 	return __version__
 
 
+def steuerbote_pdf_generator() -> str:
+	"""The PDF generator a print format is rendered for, „chrome“ or „wkhtmltopdf“, which get_print of Frappe sets in
+	the form_dict before it renders the print view; empty for the preview in the browser."""
+	import frappe
+
+	return (getattr(frappe.local, "form_dict", None) or {}).get("pdf_generator") or ""
+
+
 def _link(text: str, url: str) -> str:
 	return f'<a href="{escape(url)}" target="_blank" rel="noopener noreferrer">{escape(text)}</a>'
 
