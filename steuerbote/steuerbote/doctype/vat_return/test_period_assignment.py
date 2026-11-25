@@ -40,6 +40,8 @@ class TestPeriodAssignment(IntegrationTestCase):
 		}
 		make_settings(COMPANY, [(2026, "monthly", 1)])
 		make_mapping(COMPANY)
+		ensure_fiscal_year(COMPANY, "2026-01-01")
+		frappe.cache.delete_value("fiscal_years")
 
 	def setUp(self):
 		frappe.db.savepoint("period_assignment_test")
@@ -137,7 +139,6 @@ class TestPeriodAssignment(IntegrationTestCase):
 	def reverse_charge(self, posting: str):
 		"""A service under § 13b UStG booked on an expense account: its base is derived from its tax."""
 		a = self.account
-		ensure_fiscal_year(COMPANY, posting)
 		return post_journal_entry(
 			COMPANY,
 			posting,
