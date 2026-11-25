@@ -176,9 +176,18 @@ class OneStylesheetTest(TestCase):
 		self.assertIn(
 			"page-break-inside: avoid",
 			style[
-				".sb-print .sb-keep, .sb-print .sb-group, .sb-print .sb-footer, .sb-print .sb-angabe, .sb-print tr, .sb-print .sb-steps li"
+				".sb-print .sb-keep, .sb-print .sb-footer, .sb-print .sb-angabe, .sb-print tr, .sb-print .sb-steps li"
 			],
 		)
+
+	def test_keeps_no_group_of_rows_together(self):
+		"""wkhtmltopdf breaks a group of rows anywhere between its rows, Chromium would move a whole group to the next
+		page and leave the rest of the page empty, so that the same document has more pages with Chromium. The heading
+		of a section stays with its first rows in a row of its own (sb-nest)."""
+		for selector, body in rules(read(STYLE)).items():
+			if "sb-group" in selector.replace("sb-group-head", ""):
+				with self.subTest(selector=selector):
+					self.assertNotIn("page-break-inside: avoid", body)
 
 	def test_hides_in_print_what_frappe_marks_for_the_screen(self):
 		self.assertRegex(read(STYLE), r"@media print \{\s*\.print-hide \{\s*display: none !important;")
