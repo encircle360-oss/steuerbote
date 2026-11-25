@@ -168,7 +168,7 @@
    "reqd": 1
   },
   {
-   "description": "As issued by the Finanzamt, in the format of the Bundesland.",
+   "description": "As issued by the Finanzamt, in the format of the Bundesland. When a changed number is saved, ERiC checks it if a runtime is installed and the ERiC Settings record the confirmation of the Datenschutzhinweise; otherwise a message says so, and the first Prüfen of a return checks it.",
    "fieldname": "tax_number",
    "fieldtype": "Data",
    "label": "Steuernummer",
@@ -227,14 +227,14 @@
   },
   {
    "default": "0",
-   "description": "Off by default. Confirm the USt-IdNr. of a partner in the background when the partner is created or its USt-IdNr., name or address changes; this sends the data of the partner to the BZSt, and to VIES when the BZSt cannot answer.",
+   "description": "Off by default. Confirm the USt-IdNr. of a partner in the background when the partner is created or its USt-IdNr., name or address changes; this sends the data of the partner to the BZSt, and to VIES when the BZSt cannot answer. It asks about the enabled customers with a USt-IdNr. that the company deals with, by an account of its own on the partner or a submitted invoice, and with „Confirm Suppliers“ about such suppliers; a partner that deals with no company counts for the default company of the site.",
    "fieldname": "vat_id_check_on_change",
    "fieldtype": "Check",
    "label": "Confirm When a Partner Changes"
   },
   {
    "default": "0",
-   "description": "Off by default. Every morning ask again about each partner whose latest confirmation is as old as the maximum age above or older, one after the other, at most 25 a day.",
+   "description": "Off by default. Every morning ask again about each partner whose latest confirmation is as old as the maximum age above or older, one after the other, at most 25 a day. It asks about the enabled customers with a USt-IdNr. that the company deals with, by an account of its own on the partner or a submitted invoice, and with „Confirm Suppliers“ about such suppliers; a partner that deals with no company counts for the default company of the site.",
    "fieldname": "vat_id_renewal",
    "fieldtype": "Check",
    "label": "Renew Confirmations Daily"
@@ -403,7 +403,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-25 22:00:00.000000",
+ "modified": "2026-11-26 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",

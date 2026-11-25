@@ -39,13 +39,13 @@ from steuerbote.ustva.residence import Finding, Problem
 from steuerbote.vatid.exemption import consequence
 from steuerbote.vatid.result import Outcome
 
-NO_VAT_ID_ADVICE = "Berichtige die Rechnung, oder begründe in den Anmerkungen, warum die Voranmeldung trotzdem so abgegeben wird."
+NO_VAT_ID_ADVICE = "Berichtigen Sie die Rechnung, oder begründen Sie in den Anmerkungen, warum die Voranmeldung trotzdem so abgegeben wird."
 INVALID_ADVICE = (
-	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, begründe das in den Anmerkungen; sonst "
-	"berichtige die Rechnung."
+	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, begründen Sie das in den Anmerkungen; sonst "
+	"berichtigen Sie die Rechnung."
 )
 MALFORMED_ADVICE = (
-	"Berichtige die USt-IdNr. in der Rechnung, oder begründe in den Anmerkungen, warum die Voranmeldung trotzdem so "
+	"Berichtigen Sie die USt-IdNr. in der Rechnung, oder begründen Sie in den Anmerkungen, warum die Voranmeldung trotzdem so "
 	"abgegeben wird."
 )
 
@@ -505,7 +505,7 @@ class ResidenceHintsTest(TestCase):
 			"Kz 84: Der Beleg bucht Steuer nach § 13b UStG ohne Grundlagenkonto und nennt keinen Lieferanten; "
 			"Steuerbote meldet die Bemessungsgrundlage in Kz 84, der Vorgabe der Verprobung. Ist es eine sonstige "
 			"Leistung nach § 3a Abs. 2 UStG eines im übrigen Gemeinschaftsgebiet ansässigen Unternehmers, gehört sie "
-			"in Kz 46: Ordne den Beleg oder den Lieferanten in der Kontenzuordnung unter „Einordnung nach § 13b UStG“ "
+			"in Kz 46: Ordnen Sie den Beleg oder den Lieferanten in der Kontenzuordnung unter „Einordnung nach § 13b UStG“ "
 			"ein.",
 		)
 
@@ -522,7 +522,7 @@ class ResidenceHintsTest(TestCase):
 			hint.text,
 			"Kz 84: Die Lieferanten des Belegs sind an verschiedenen Orten ansässig (Vltava Software s.r.o. im "
 			"übrigen Gemeinschaftsgebiet, Harbor Analytics Inc. im Drittlandsgebiet); Steuerbote meldet die "
-			"Bemessungsgrundlage in Kz 84. Ordne den Beleg oder den Lieferanten in der Kontenzuordnung unter "
+			"Bemessungsgrundlage in Kz 84. Ordnen Sie den Beleg oder den Lieferanten in der Kontenzuordnung unter "
 			"„Einordnung nach § 13b UStG“ ein.",
 		)
 
@@ -532,8 +532,8 @@ class ResidenceHintsTest(TestCase):
 		self.assertEqual(
 			hint.text,
 			"Kz 84: Beim Lieferanten Nebula Tools LLC ist weder ein Land noch eine Anschrift mit Land gepflegt. "
-			"Steuerbote meldet die Bemessungsgrundlage in Kz 84. Pflege das Land des Lieferanten, oder ordne den "
-			"Beleg oder den Lieferanten in der Kontenzuordnung unter „Einordnung nach § 13b UStG“ ein.",
+			"Steuerbote meldet die Bemessungsgrundlage in Kz 84. Pflegen Sie das Land des Lieferanten, oder ordnen Sie "
+			"den Beleg oder den Lieferanten in der Kontenzuordnung unter „Einordnung nach § 13b UStG“ ein.",
 		)
 		with_prefix = self.hint(Problem.NO_COUNTRY, "IE", supplier="Nebula Tools LLC")
 		self.assertIn(
@@ -569,7 +569,7 @@ class ResidenceHintsTest(TestCase):
 			hint.text,
 			"Kz 84: Die Steuervorlage Reverse Charge ist als andere Leistung nach § 13b Abs. 2 UStG eingeordnet, der "
 			"Lieferant Liffey Cloud Ltd ist aber im übrigen Gemeinschaftsgebiet ansässig. Ist es eine sonstige "
-			"Leistung nach § 3a Abs. 2 UStG, gehört sie in Kz 46: Ordne den Beleg oder den Lieferanten in der "
+			"Leistung nach § 3a Abs. 2 UStG, gehört sie in Kz 46: Ordnen Sie den Beleg oder den Lieferanten in der "
 			"Kontenzuordnung unter „Einordnung nach § 13b UStG“ ein.",
 		)
 
@@ -620,7 +620,7 @@ class ResidenceHintsTest(TestCase):
 			"Der Beleg bucht Umsatzsteuer aus innergemeinschaftlichem Erwerb, der Lieferant Harbor Analytics Inc. ist "
 			"laut Stammdaten aber im Drittlandsgebiet ansässig (United States). Ein innergemeinschaftlicher Erwerb "
 			"setzt voraus, dass der Gegenstand aus einem anderen Mitgliedstaat kommt (§ 1a Abs. 1 Nr. 1 UStG); kommt "
-			"er aus dem Drittlandsgebiet, ist es eine Einfuhr. Bitte prüfe den Beleg.",
+			"er aus dem Drittlandsgebiet, ist es eine Einfuhr. Bitte prüfen Sie den Beleg.",
 		)
 
 	def test_every_problem_has_a_code(self):

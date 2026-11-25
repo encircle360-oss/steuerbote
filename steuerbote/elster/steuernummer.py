@@ -12,7 +12,8 @@ The page explains the letters: „F = Ziffer der Finanzamtsnummer, B= Ziffer der
 aus der persönlichen Unterscheidungsnummer, P = Prüfziffer“, and warns that a Steuernummer from Hessen
 keeps its leading 0 in the Standardschema. Converting keeps the digits in the order of the letters and
 writes the fixed digits of the target schema. Only the shape is checked: the page does not say how the
-Prüfziffer is computed.
+Prüfziffer is computed. A number of nothing but zeros has the shape but names no Finanzamt, Bezirk or taxpayer, so it
+is refused here; whether a number is one the Finanzamt issued, EricPruefeSteuernummer says.
 
 The Standardschema separates the groups with slashes; a number typed with blanks between the groups,
 or without separators, is read as well. States are identified by their ISO 3166-2 codes.
@@ -30,6 +31,10 @@ SEPARATORS = frozenset(GROUP_SEPARATOR + " ")
 
 class SteuernummerError(ValueError):
 	pass
+
+
+class ZeroSteuernummerError(SteuernummerError):
+	"""A Steuernummer of nothing but zeros, a placeholder rather than a number."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +108,8 @@ def to_elster(state: str, tax_number: str) -> str:
 		raise SteuernummerError(
 			f"{tax_number!r} is not a Steuernummer of {STATES[state]}: expected {scheme.standard}"
 		)
+	if set(number) <= {"0"} | SEPARATORS:
+		raise ZeroSteuernummerError(f"{tax_number!r} is nothing but zeros")
 	return _fill(scheme.federal, letters)
 
 

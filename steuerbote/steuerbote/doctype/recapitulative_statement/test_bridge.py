@@ -911,6 +911,31 @@ class OverrideBasisTest(TestCase):
 		self.assertEqual(bridge.override_bases(self.STORED, [row]), [None])
 		self.assertEqual(bridge.override_bases((), [row]), [None])
 
+	def test_an_unknown_basis_stays_unknown_until_the_override_changes(self):
+		"""An override from before Steuerbote kept the basis is confirmed by changing its amount or reason, which
+		gives it the ledger amount the line shows."""
+		stored = (
+			line_row(
+				AUSTRIA,
+				"L",
+				amount="57000.99",
+				override="55000",
+				override_reason="Nachweis",
+				override_basis="57000.99",
+				override_basis_unknown=1,
+			),
+		)
+		kept = line_row(AUSTRIA, "L", override="55000", override_reason="Nachweis", override_basis_unknown=0)
+		changed = line_row(AUSTRIA, "L", override="55000", override_reason="Nachweis, geprüft")
+		new = line_row(FRANCE, "S", override="0", override_reason="Kein Unternehmer")
+		self.assertEqual(bridge.unknown_bases(stored, [kept, changed, new]), [1, 0, 0])
+		self.assertEqual(bridge.override_bases(stored, [changed]), [d("57000.99")])
+		overrides = bridge.overrides_of([stored[0]])
+		self.assertTrue(overrides[(AUSTRIA, Art.L)].basis_unknown)
+		lines = build((invoice("SINV-1", "57000.99"),), FIGURES, overrides=overrides)
+		(row,) = bridge.line_rows(lines, {}, MARCH)
+		self.assertEqual((row["override_basis_unknown"], row["blocked"]), (1, 1))
+
 
 class OpenErrorsTest(TestCase):
 	def test_the_errors_that_still_hold_the_statement(self):
@@ -926,6 +951,32 @@ class OpenErrorsTest(TestCase):
 		found = bridge.open_errors(bridge.statement_of(vouchers, lines, FIGURES), hints)
 		self.assertEqual([code for code, _text in found], ["ZM-USTID-UNBESTAETIGT", "ZM-SCHWELLE"])
 		self.assertIn(FRANCE, found[0][1])
+
+
+class SettledHintsTest(TestCase):
+	def test_a_berichtigung_shows_the_finding_of_a_line_it_repeats_unchanged_as_a_hint(self):
+		lines = build(
+			(invoice("SINV-1", "10000.00"), invoice("SINV-2", "4000.00", kennzahl="21", vat_id=FRANCE)),
+			FIGURES,
+			validity={AUSTRIA: Validity.UNCONFIRMED, FRANCE: Validity.UNCONFIRMED},
+		)
+		held = {(AUSTRIA, Art.L): d("10000"), (FRANCE, Art.S): d("2500")}
+		rows = bridge.hint_rows(lines.findings, lines.settled(held))
+		austria, france = (row for row in rows if row["code"] == "ZM-USTID-UNBESTAETIGT")
+		self.assertEqual((austria["severity"], france["severity"]), ("Hinweis", "Fehler"))
+		self.assertTrue(
+			austria["text"].endswith(
+				"Die Zeile geht unverändert nicht in die Berichtigung; ihre Bestätigung hält die Berichtigung nicht an."
+			)
+		)
+		self.assertEqual(
+			[
+				row["severity"]
+				for row in bridge.merged_hints(lines, [], held)
+				if row["code"] == "ZM-USTID-UNBESTAETIGT"
+			],
+			["Hinweis", "Fehler"],
+		)
 
 
 class AcceptancesTest(TestCase):

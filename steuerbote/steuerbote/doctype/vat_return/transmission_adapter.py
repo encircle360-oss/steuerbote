@@ -86,28 +86,64 @@ def detect_runtime(
 def steuernummer_valid(number: str) -> bool | None:
 	"""Whether ERiC takes the 13-digit Steuernummer of ELSTER, by EricPruefeSteuernummer of the newest installed runtime
 	(ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 6.3.3); None without a runtime, without the confirmed Datenschutzhinweise
-	or when the check gives no answer."""
+	or when the check gives no answer. ERiC writes its eric.log beside those of the transmissions of the site."""
 	try:
-		runtime_info = runtime.detect(
-			runtime_root(),
-			allow_beta=True,
-			confirmed_privacy_notice=bool(cint(frappe.get_single(ERIC_SETTINGS).privacy_notice_confirmed)),
-		)
+		runtime_info = _steuernummer_runtime()
 	except runtime.RuntimeIntegrityError:
 		return None
 	return service.steuernummer_valid(runtime_info, number)
 
 
+def _steuernummer_runtime() -> RuntimeInfo | None:
+	from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root
+
+	return runtime.detect(
+		runtime_root(),
+		allow_beta=True,
+		log_dir=eric_log_root() / "steuernummer",
+		confirmed_privacy_notice=bool(cint(frappe.get_single(ERIC_SETTINGS).privacy_notice_confirmed)),
+	)
+
+
+def zero_steuernummer(entered: str) -> str:
+	"""The message for a Steuernummer of nothing but zeros (steuerbote.elster.steuernummer)."""
+	return _(
+		"{0} is no Steuernummer: it is nothing but zeros. Enter the Steuernummer of the last notice of the Finanzamt."
+	).format(escape_html(entered))
+
+
 def require_valid_steuernummer(number: str, entered: str) -> None:
 	"""Refuse a Steuernummer whose check digit ERiC refuses, when the settings are saved rather than at the first
-	transmission; ``entered`` is the number as the user wrote it."""
-	if steuernummer_valid(number) is False:
+	transmission; ``entered`` is the number as the user wrote it. A check that gives no answer lets the save pass
+	and says why, since the first Prüfen of a return checks the number again."""
+	valid = steuernummer_valid(number)
+	if valid is False:
 		frappe.throw(
 			_(
 				"ERiC refuses the Steuernummer {0}: its check digit or its Finanzamt is wrong. Compare it with the last notice of the Finanzamt."
 			).format(escape_html(entered)),
 			title=_("Invalid Steuernummer"),
 		)
+	if valid is None:
+		frappe.msgprint(
+			_(
+				"ERiC has not checked the Steuernummer {0}: {1} The first Prüfen of a return checks it; until then, compare it with the last notice of the Finanzamt."
+			).format(escape_html(entered), _unchecked_reason()),
+			title=_("Steuernummer not checked"),
+			indicator="orange",
+		)
+
+
+def _unchecked_reason() -> str:
+	try:
+		runtime_info = _steuernummer_runtime()
+	except runtime.RuntimeIntegrityError:
+		return _("The libraries of the installed ERiC differ from its manifest.")
+	if runtime_info is None:
+		return _("No ERiC runtime is installed.")
+	if not runtime_info.confirmed_privacy_notice:
+		return _("The ERiC Settings do not record the confirmation of the Datenschutzhinweise.")
+	return _("ERiC gave no answer to the check.")
 
 
 def runtime_status(hersteller_id: str) -> tuple[runtime.Check, ...]:

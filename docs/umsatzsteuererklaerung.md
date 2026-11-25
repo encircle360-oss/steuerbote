@@ -124,7 +124,7 @@ Liegt die Differenz darüber, nennt der Hinweis `SB-UMSATZERLOESE` die Umsatzerl
 | `SB-KZ136` | Hinweis | eine abgegebene Voranmeldung datiert den Wechsel zur Regelbesteuerung in Kz 70 auf einen anderen Tag als Kz 136 der Erklärung |
 | `SB-UMSATZERLOESE` | Hinweis | die Bemessungsgrundlagen der Lieferungen und sonstigen Leistungen liegen über Rundung und Toleranz hinaus neben den Umsatzerlösen des festgestellten Jahresabschlusses oder der abgegebenen E-Bilanz, siehe [Abgleich mit den Umsatzerlösen](#abgleich-mit-den-umsatzerlösen) |
 | `SB-NEU-BERECHNEN` | Fehler | seit dem Berechnen hat sich etwas geändert, das „Berechnen“ liest |
-| `SB-KORREKTUR-UEBERHOLT` | Fehler | eine Korrektur wurde gegen einen anderen Betrag eingetragen, als „Berechnen“ jetzt für ihre Zeile ergibt, siehe [Jahresmeldungen](jahresmeldungen.md) |
+| `SB-KORREKTUR-UEBERHOLT` | Fehler | eine Korrektur wurde gegen einen anderen Betrag eingetragen, als „Berechnen“ jetzt für ihre Zeile ergibt, oder stammt aus der Zeit vor 0.15.0 („Grundlage unbekannt“), siehe [Jahresmeldungen](jahresmeldungen.md) |
 | `ZEITRAUM-FEHLT` | Fehler | ein fälliger Zeitraum ohne abgegebene Voranmeldung und ohne Begründung |
 | `SONDERVORAUSZAHLUNG-KZ39` | Hinweis | Kz 39 der Voranmeldungen weicht von der Sondervorauszahlung der Einstellungen ab |
 | `SOLL-UEBERSCHRIEBEN` | Hinweis | das Vorauszahlungssoll laut Finanzamt ersetzt das berechnete |
