@@ -301,6 +301,11 @@ class SecurityTest(TestCase):
 
 CHECKLIST = DOCS / "pruefliste-steuerberatung.md"
 FINDING_CODE = re.compile(r"`([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)`")
+POINT = re.compile(r"^\| (P-\d+) \|", re.MULTILINE)
+"""The number of a point of the checklist, the first cell of its row."""
+REFERENCE = re.compile(r"\b(P-\d+)\b")
+REFERRING = frozenset({".py", ".js", ".html", ".json", ".csv"})
+"""The files of the app whose texts may name a point of the checklist."""
 
 
 def code_of_the_app() -> str:
@@ -327,6 +332,27 @@ class ChecklistTest(TestCase):
 		for name in codes:
 			with self.subTest(code=name):
 				self.assertTrue(f'"{name}"' in code or f"'{name}'" in code)
+
+	def test_every_point_has_one_number(self):
+		"""The owner hands the list to the Steuerberatung, so each point is asked and answered under one number."""
+		numbers = POINT.findall(self.text)
+		self.assertTrue(numbers)
+		self.assertEqual(sorted({number for number in numbers if numbers.count(number) > 1}), [])
+
+	def test_every_point_a_text_names_is_on_the_list(self):
+		"""A page, a hint or a message of the app that names a point names one the list has."""
+		points = set(POINT.findall(self.text))
+		named: dict[str, set[str]] = {}
+		texts = [path for path in sorted(DOCS.glob("*.md")) if path != CHECKLIST]
+		texts += [
+			path
+			for path in sorted(APP.rglob("*"))
+			if path.suffix in REFERRING and "tests" not in path.parts and not path.name.startswith("test_")
+		]
+		for path in texts:
+			for number in REFERENCE.findall(read(path)):
+				named.setdefault(number, set()).add(path.name)
+		self.assertEqual({number: files for number, files in named.items() if number not in points}, {})
 
 	def test_every_page_it_links_exists(self):
 		pages = {
