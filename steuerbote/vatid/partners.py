@@ -146,6 +146,8 @@ class Standing(Enum):
 	"""Valid, but the member state has another name or address registered."""
 	GERMAN_UNCHECKED = "German VAT ID, Not Checked"
 	"""A German number the company checks, not asked about yet."""
+	NOT_ASSIGNED = "Not Assigned"
+	"""The partner deals with no company yet, so no company asks about its number by itself; only the button does."""
 
 	@property
 	def work(self) -> bool:
