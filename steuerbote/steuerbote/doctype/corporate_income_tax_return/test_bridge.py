@@ -597,7 +597,11 @@ class HoldingsTest(TestCase):
 	def test_a_holding_whose_register_names_no_share_holds_the_return_back(self):
 		"""Without a share the holding would be Streubesitz and its dividends taxed in full (§ 8b Abs. 4 Satz 1 KStG,
 		§ 9 Nr. 2a GewStG), though the register names it."""
-		settings = replace(SETTINGS, holdings=(*SETTINGS.holdings, rules.Holding("Omega AG", YEAR)))
+		# A row of the settings keeps an empty share as 0, as Frappe stores an empty Percent field.
+		settings = replace(
+			SETTINGS,
+			holdings=(*SETTINGS.holdings, rules.Holding("Omega AG", YEAR, Decimal("0"), Decimal("0"))),
+		)
 		results = (
 			*HOLDING_RESULTS,
 			{"idx": 6, "kind": "Dividends", "holding_name": "Omega AG", "amount": 500},
