@@ -5,6 +5,7 @@ from unittest import TestCase
 
 from steuerbote.vatid.bzst import STATUSES
 from steuerbote.vatid.result import Outcome
+from steuerbote.vatid.transport import UrllibFetch
 from steuerbote.vatid.ustid import MEMBER_STATES
 from steuerbote.vatid.vies import FAULTS
 
@@ -64,4 +65,16 @@ class MemberStateTableTest(TestCase):
 		)
 		self.assertEqual(
 			rows, [[state.code, state.name, state.structure] for state in MEMBER_STATES.values()]
+		)
+
+
+class TimeoutTest(TestCase):
+	def test_the_wait_is_described_as_urllib_counts_it(self):
+		"""urllib applies its timeout to the connection and to each wait for data, not to the whole answer; an answer
+		that comes in parts may take longer, which the docs say instead of promising 60 seconds per answer."""
+		text = DOC.read_text(encoding="utf-8")
+		seconds = int(UrllibFetch().timeout_seconds)
+		self.assertNotIn(f"bis zu {seconds} Sekunden auf jede Antwort", text)
+		self.assertIn(
+			f"{seconds} Sekunden auf den Aufbau der Verbindung und auf jedes Stück der Antwort", text
 		)
