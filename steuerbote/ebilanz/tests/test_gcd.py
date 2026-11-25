@@ -444,27 +444,64 @@ class GesellschafterTest(TestCase):
 		)
 		self.assertEqual([key(fact) for fact in found], [["3", "5"], ["2", "5"], ["333333", "1000000"]])
 
-	def test_keeps_the_numbers_of_the_shareholders_for_the_kst_1(self):
-		"""Steuernummer, IdNr. and W-IdNr. of a shareholder are kept for the KSt 1 (§ 139b Abs. 2 AO for the IdNr.), so
-		the E-Bilanz sends them NIL, with every part in the order of the tuple."""
-		(found,) = [
-			fact for fact in of(replace(MASTER, shareholders=(HOLDING,))) if fact.concept == SHAREHOLDER
+	def test_reports_the_steuernummer_and_the_w_idnr_of_a_shareholder_and_never_its_idnr(self):
+		"""Decision of the owner: the „13stellige Steuernummer des Gesellschafters“ [taxnumber] and its W-IdNr. [WID] go
+		into the GCD when the Annual Filing Settings hold them (Leitfaden 6.9, B.14.3.1.19, B.14.8); the personal IdNr.
+		[taxid] stays NIL (§ 139b Abs. 2 AO), and a shareholder without numbers sends NIL, with every part in the order
+		of the tuple."""
+		numbered = replace(HOLDING, steuernummer="5133081508159", wid="DE123456788-00001")
+		found = [
+			fact
+			for fact in of(replace(MASTER, shareholders=(numbered, PERSON)))
+			if fact.concept == SHAREHOLDER
 		]
 		self.assertEqual(
 			[
-				(child.concept.rpartition(".shareholder.")[2], getattr(child, "value", None))
-				for child in found.children
+				[
+					(child.concept.rpartition(".shareholder.")[2], getattr(child, "value", None))
+					for child in fact.children
+				]
+				for fact in found
 			],
 			[
-				("name", "Muster Beteiligungs GmbH"),
-				("id", None),
-				("taxnumber", None),
-				("taxid", None),
-				("WID", None),
-				("legalStatus", None),
-				("ShareDivideKey", None),
+				[
+					("name", "Muster Beteiligungs GmbH"),
+					("id", None),
+					("taxnumber", "5133081508159"),
+					("taxid", None),
+					("WID", "DE123456788-00001"),
+					("legalStatus", None),
+					("ShareDivideKey", None),
+				],
+				[
+					("name", "Erika Beispiel"),
+					("id", None),
+					("taxnumber", None),
+					("taxid", None),
+					("WID", None),
+					("legalStatus", None),
+					("ShareDivideKey", None),
+				],
 			],
 		)
+
+	def test_takes_the_numbers_of_the_settings_but_not_the_idnr(self):
+		"""The GCD takes the „17stellige steuerliche W-IdNr.“ with its Unterscheidungsmerkmal; ERiC 44.3.6.0 refuses one
+		without it (ungueltigeWirtschaftsIdentifikationsnummerU), so a W-IdNr. of eleven characters, all the KSt 1 takes,
+		goes NIL."""
+		holder = shareholder(
+			"Erika Beispiel",
+			ShareholderKind.NATURAL_PERSON,
+			"100",
+			tax_number="5133081508159",
+			idnr="12345678995",
+			wid_nr="DE123456788-00001",
+		)
+		(found,) = gesellschafter((holder,), date(2026, 12, 31))
+		self.assertEqual((found.steuernummer, found.wid), ("5133081508159", "DE123456788-00001"))
+		self.assertNotIn("12345678995", repr(found))
+		short = replace(holder, wid_nr="DE123456788")
+		self.assertIsNone(gesellschafter((short,), date(2026, 12, 31))[0].wid)
 
 	def test_without_shareholders_one_gesellschafter_nil(self):
 		self.assertEqual(by_concept(of())[SHAREHOLDER], nil_shareholder())

@@ -123,11 +123,11 @@
    "permlevel": 1
   },
   {
-   "description": "DE and nine digits, without the five-digit suffix.",
+   "description": "DE and nine digits; with the five-digit Unterscheidungsmerkmal, such as DE123456789-00001, it goes into the E-Bilanz as well. The KSt 1 takes the first eleven characters.",
    "fieldname": "wid_nr",
    "fieldtype": "Data",
    "label": "Wirtschafts-Identifikationsnummer",
-   "length": 11,
+   "length": 17,
    "permlevel": 1
   },
   {
@@ -139,7 +139,7 @@
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-23 12:00:00.000000",
+ "modified": "2026-11-26 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Annual Filing Shareholder",

@@ -441,8 +441,8 @@ IDNR_OF_A_NATURAL_PERSON = (
 )
 NOT_AN_IDNR = "Row {0} of the shareholders: an Identifikationsnummer has eleven digits."
 NOT_A_WID_NR = (
-	"Row {0} of the shareholders: a Wirtschafts-Identifikationsnummer is DE and nine digits, without the "
-	"five-digit suffix."
+	"Row {0} of the shareholders: a Wirtschafts-Identifikationsnummer is DE and nine digits, for the E-Bilanz with a hyphen "
+	"and its five-digit Unterscheidungsmerkmal."
 )
 NOT_A_STATE = "{0} is not a Bundesland."
 NOT_A_STEUERNUMMER = "Row {0} of the shareholders: the Steuernummer does not have the format {1} of {2}."
@@ -455,7 +455,7 @@ SHARES_NOT_COMPLETE = "On {0} the shares of the shareholders add up to {1} %; EL
 SHARE_TOTAL_RANGE = (Decimal(99), HUNDRED)
 SHARE_PLACES = Decimal("0.0001")
 IDNR = re.compile("[0-9]{11}")
-WID_NR = re.compile("DE[0-9]{9}")
+WID_NR = re.compile("DE[0-9]{9}(-[0-9]{5})?")
 ELSTER_STEUERNUMMER = re.compile("[0-9]{4}0[0-9]{8}")
 
 
@@ -476,7 +476,9 @@ def normalized_idnr(value: str | None, row: int) -> str | None:
 
 
 def normalized_wid_nr(value: str | None, row: int) -> str | None:
-	"""The Wirtschafts-Identifikationsnummer of a shareholder without blanks and in capitals, or None."""
+	"""The Wirtschafts-Identifikationsnummer of a shareholder without blanks and in capitals, or None: DE and nine
+	digits, with or without the five-digit Unterscheidungsmerkmal (§ 139c Abs. 1 AO), which the E-Bilanz takes and the
+	KSt 1 leaves out."""
 	compact = "".join((value or "").split()).upper()
 	if not compact:
 		return None
