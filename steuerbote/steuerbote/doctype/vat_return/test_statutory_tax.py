@@ -10,7 +10,9 @@ from pathlib import Path
 import frappe
 from frappe.tests import IntegrationTestCase
 
+from steuerbote import ustjahr_sources
 from steuerbote.patches import set_the_tax_on_turnover_at_a_statutory_rate as patch
+from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for
 from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import execute
 from steuerbote.tests.helpers import (
 	ensure_fiscal_year,
@@ -20,6 +22,7 @@ from steuerbote.tests.helpers import (
 	make_settings,
 )
 from steuerbote.tests.late_documents import ACCOUNTS, sales_invoice
+from steuerbote.ustva import Period, StatutoryTax
 
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
 
@@ -194,3 +197,13 @@ class TestStatutoryTax(IntegrationTestCase):
 			line_37 = next(row for row in rows if row.get("line") == 37 and row.get("kennzahl") is None)
 			with self.subTest(value=value):
 				self.assertEqual(money(line_37["reported"]), money(expected))
+
+	def test_the_runs_of_the_annual_return_take_the_tax_of_the_setting(self):
+		self.three_invoices(3)
+		march = Period.month(2026, 3)
+		for setting, expected in ((StatutoryTax.FROM_BASE, 18.81), (StatutoryTax.AS_BOOKED, 18.99)):
+			runs = ustjahr_sources.period_runs(
+				COMPANY, [march], mapping_for(COMPANY, 2026), Decimal("0.01"), setting
+			)
+			with self.subTest(setting=setting):
+				self.assertEqual(money(runs[march].kz83), money(expected))
