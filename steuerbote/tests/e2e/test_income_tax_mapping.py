@@ -26,7 +26,7 @@ def test_vorgaben_laden_names_the_datev_accounts_the_company_lacks(desk, expect)
 	expect(missing.filter(has_text="Körperschaftsteuer für Vorjahre")).to_contain_text("2203")
 	desk.close_dialog()
 	assert desk.page.evaluate("() => [cur_frm.doc.rules.length, cur_frm.doc.watched.length]") == [0, 0]
-	assert desk.page.evaluate("() => cur_frm.doc.defaults_version") == "SKR03 2026.3"
+	assert desk.page.evaluate("() => cur_frm.doc.defaults_version") == "SKR03 2026.4"
 
 
 def test_a_mapping_without_rows_names_the_defaults_until_vorgaben_laden_takes_them_over(desk, expect):
@@ -41,12 +41,12 @@ def test_a_mapping_without_rows_names_the_defaults_until_vorgaben_laden_takes_th
 		)
 		desk.open(f"/desk/income-tax-mapping/{quote(data.MAPPING_COMPANY)}")
 		hint = desk.message("Diese Zuordnung hat keine Zeilen.")
-		expect(hint).to_contain_text("„Vorgaben laden“ holt die Vorgaben SKR03 2026.3.")
+		expect(hint).to_contain_text("„Vorgaben laden“ holt die Vorgaben SKR03 2026.4.")
 		response = desk.run_doc_method("load_defaults", desk.button("Vorgaben laden").click)
 		assert response.ok, response.text()[:2000]
 		desk.close_dialog()
 		expect(hint).to_have_count(0)
-		assert desk.page.evaluate("() => cur_frm.doc.defaults_version") == "SKR03 2026.3"
+		assert desk.page.evaluate("() => cur_frm.doc.defaults_version") == "SKR03 2026.4"
 	finally:
 		remove_mapping(desk, data.MAPPING_COMPANY)
 

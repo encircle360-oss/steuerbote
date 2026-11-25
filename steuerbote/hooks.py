@@ -180,6 +180,12 @@ steuerbote_setup_steps = [
 		"run": "steuerbote.steuerbote.exchange_setup.check",
 	},
 	{
+		"key": "company_default_accounts",
+		"label": "Default Accounts of the Company",
+		"order": 56,
+		"run": "steuerbote.steuerbote.default_accounts_setup.check",
+	},
+	{
 		"key": "vat_id_label",
 		"label": "Label of the VAT ID",
 		"order": 60,

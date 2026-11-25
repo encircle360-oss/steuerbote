@@ -4,14 +4,14 @@ Die Bilanzzuordnung sagt für jedes Konto eines Unternehmens, in welche Position
 
 ## Umfang
 
-- **Kontenrahmen:** SKR03 und SKR04 in der Ausgabe „Gültig für 2026“, jedes Konto und jeder Kontenbereich, den DATEV beschriftet, auch die der Klasse 9, dazu jedes Konto der Vorlagen von ERPNext 16, das die DATEV-Ausgabe nicht hat, und die Konten SKR03 2723 und 2323 für Gewinne und Verluste aus der Veräußerung von Anteilen an Kapitalgesellschaften aus der Ausgabe „Gültig für 2020“ (Art.-Nr. 11174), deren Zwillinge SKR04 4901 und 6903 die Vorlage von ERPNext 16 hat. Ein Konto, das DATEV nicht beschriftet, bekommt keine Vorgabe, auch wenn es zwischen zwei beschrifteten liegt: Was ein Unternehmen dort anlegt, ordnet es selbst zu, „Konten prüfen“ nennt es. Das gilt auch für Konten, die ein Kontenplan aus einer früheren DATEV-Ausgabe oder aus einer Übernahme mitbringt und die die Ausgabe 2026 nicht mehr beschriftet, etwa die Wechsel und Besitzwechsel SKR03 1300 bis 1322: Sie stehen nach „Steuerbote einrichten“ ohne Platz, bis das Unternehmen sie zuordnet.
+- **Kontenrahmen:** SKR03 und SKR04 in der Ausgabe „Gültig für 2026“, jedes Konto und jeder Kontenbereich, den DATEV beschriftet, auch die der Klasse 9, dazu jedes Konto der Vorlagen von ERPNext 16, das die DATEV-Ausgabe nicht hat, und jedes Konto, das die Ausgabe „Gültig für 2020“ (SKR03 Art.-Nr. 11174, SKR04 Art.-Nr. 11175) beschriftet und die Ausgabe 2026 nicht mehr, außer der Klasse 9: Ein Kontenplan aus jener Ausgabe bucht darauf noch. Ein solches Konto bekommt den Platz seines Zwillings in SKR04, wo die Vorgaben einen haben, sonst den des Kontos, das heute dasselbe hält, etwa SKR03 2309 „Sonstige Aufwendungen unregelmäßig“ den von SKR04 6969 und die Skonti zu 10,7 % den der Skonti zu 9,0 %. Der Verschmelzungsmehrwert (SKR03 0040, SKR04 0160) und die Zinsen des Körperschaftsteuer-Erhöhungsbetrags nach § 38 KStG (SKR03 2106 und 2688, SKR04 7307 und 7128) haben keine Position, die die Taxonomie heute für eine GmbH nennt: Die Vorgaben beobachten sie, die Steuerberatung entscheidet. Ein Konto, das DATEV nicht beschriftet, bekommt keine Vorgabe, auch wenn es zwischen zwei beschrifteten liegt: Was ein Unternehmen dort anlegt, ordnet es selbst zu, „Konten prüfen“ nennt es. Das gilt auch für Konten, die ein Kontenplan aus einer früheren DATEV-Ausgabe oder aus einer Übernahme mitbringt und die die Ausgabe 2026 nicht mehr beschriftet, etwa die Wechsel und Besitzwechsel SKR03 1300 bis 1322: Sie stehen nach „Steuerbote einrichten“ ohne Platz, bis das Unternehmen sie zuordnet.
 - **Taxonomie:** HGB-Taxonomie 6.9, steuerliche Ansicht, für eine GmbH oder UG mit Gesamtkostenverfahren; für 6.10 dieselben Vorgaben bis auf die sonstigen Steuern, siehe [Taxonomie 6.10](#taxonomie-610).
-- **Stand:** „SKR03 Taxonomie 6.9 2026.4“ und „SKR04 Taxonomie 6.9 2026.4“. Revision 0 war die leere Tabelle vor den ersten Vorgaben, Revision 1 der Stand vor den [Verrechnungsgruppen](#verrechnungsgruppen) und den Restlaufzeiten kraft Gesetzes, Revision 2 der Stand vor der Gegenposition der Währungsumrechnung, Revision 3 der vor den Konten SKR03 2723 und 2323 der Ausgabe 2020.
+- **Stand:** „SKR03 Taxonomie 6.9 2026.5“ und „SKR04 Taxonomie 6.9 2026.5“. Revision 0 war die leere Tabelle vor den ersten Vorgaben, Revision 1 der Stand vor den [Verrechnungsgruppen](#verrechnungsgruppen) und den Restlaufzeiten kraft Gesetzes, Revision 2 der Stand vor der Gegenposition der Währungsumrechnung, Revision 3 der vor den Konten SKR03 2723 und 2323 der Ausgabe 2020, Revision 4 der vor den übrigen Konten der Ausgabe 2020.
 
 | Kontenrahmen | Einträge mit Position | beobachtet | außerhalb von Bilanz und GuV |
 |---|---|---|---|
-| SKR03 | 1129 | 240 | 170 |
-| SKR04 | 1203 | 311 | 178 |
+| SKR03 | 1170 | 246 | 170 |
+| SKR04 | 1206 | 316 | 178 |
 
 Ein Eintrag ist ein Konto oder ein Kontenbereich, wie der Kontenrahmen ihn druckt, etwa SKR04 1210-1214 „Forderungen aus Lieferungen und Leistungen ohne Kontokorrent“; jedes Konto des Unternehmens darin bekommt den Platz des Eintrags mit seiner eigenen Nummer. Von den Einträgen mit Position gehen 91 (SKR03) und 112 (SKR04) auf eine Auffangposition, 182 und 190 haben eine Position bei Gegensaldo, 49 und 51 gehören zur Verrechnungsgruppe „Umsatzsteuer“, 161 und 171 haben eine Restlaufzeit und 23 und 24 die Angabe „Gegenüber Gesellschaftern“; 35 und 39 gelten nur für die Handelsbilanz, 30 und 33 nur für die Steuerbilanz.
 
@@ -160,7 +160,7 @@ Jeder Stand der Vorgaben hat einen Namen aus Kontenrahmen, Version der Taxonomie
 
 ## Grenzen
 
-- Nur SKR03 und SKR04 der Ausgabe 2026, die Vorlagen von ERPNext 16 und SKR03 2723 und 2323 der Ausgabe 2020; ein eigener Kontenrahmen hat keine Vorgaben.
+- Nur SKR03 und SKR04 der Ausgaben 2026 und 2020 und die Vorlagen von ERPNext 16; ein eigener Kontenrahmen hat keine Vorgaben. Konten, die keine dieser Ausgaben beschriftet, etwa SKR03 1716 oder 2990, bekommen keine Vorgabe.
 - Nur die GmbH und die UG mit Gesamtkostenverfahren; Positionen anderer Rechtsformen und des Umsatzkostenverfahrens nennen die Vorgaben nicht.
 - Keine Ergebnisverwendung: Ihre Konten sind beobachtet.
 - Restlaufzeiten nur aus der Bezeichnung des Kontos und, mit „bis 1 Jahr“, aus der gesetzlichen Fälligkeit der Steuern, der Sozialversicherung und der Löhne.
@@ -177,7 +177,7 @@ Die Vorgaben für die HGB-Taxonomie 6.10 sind die von 6.9, durch die Änderungen
 | 4340, 4350, 4355, 4510, 2285, 2287 | 7650, 7675, 7678, 7685, 7690, 7692 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.other` |
 | 2289 | 7694 | `is.netIncome.otherTaxes` | `is.netIncome.otherTaxes.releaseTaxProvision` |
 
-Stand: „SKR03 Taxonomie 6.10 2026.4“ und „SKR04 Taxonomie 6.10 2026.4“. Eine Bilanzzuordnung, die „Auf neue Taxonomie heben“ von 6.9 auf 6.10 hebt, behält die übernommenen Vorgaben von 6.9; „Vorgaben aktualisieren“ schlägt ihr diese Zeilen dann als Änderungen der Vorgaben vor.
+Stand: „SKR03 Taxonomie 6.10 2026.5“ und „SKR04 Taxonomie 6.10 2026.5“. Eine Bilanzzuordnung, die „Auf neue Taxonomie heben“ von 6.9 auf 6.10 hebt, behält die übernommenen Vorgaben von 6.9; „Vorgaben aktualisieren“ schlägt ihr diese Zeilen dann als Änderungen der Vorgaben vor.
 
 Für die Steuerberatung zu prüfen:
 

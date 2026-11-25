@@ -57,7 +57,7 @@ BLOCKING, HINT = WatchLevel.BLOCKING, WatchLevel.HINT
 # the defaults raises REVISION, and a new edition starts it at 1 again, so that the same version always means the
 # same defaults: test_defaults.py pins the content of each version.
 DATEV_EDITION = 2026
-REVISION = 3
+REVISION = 4
 
 
 class Reason(StrEnum):
@@ -81,6 +81,7 @@ class Reason(StrEnum):
 	HOLDING_COSTS = "holding_costs"
 	HOLDING_INCOME = "holding_income"
 	SHARE_RESULTS = "share_results"
+	KST_INCREASE = "kst_increase"
 
 
 REASONS: MappingProxyType[Reason, str] = MappingProxyType(
@@ -151,6 +152,11 @@ REASONS: MappingProxyType[Reason, str] = MappingProxyType(
 			"Absatz 1 KStG and § 9 Nummer 2a GewStG only on an account of the category Bezüge aus Anteilen, while the "
 			"share of a Mitunternehmerschaft is taxed by its Feststellung; DATEV marks the account for neither, so its "
 			"balance would count in full. The company books it apart or gives the account its category."
+		),
+		Reason.KST_INCREASE: (
+			"Income and expenses of the Körperschaftsteuer-Erhöhungsbetrag belong to no Einkünfte (§ 38 Absatz 10 with "
+			"§ 37 Absatz 7 KStG): the Überleitung takes them out by hand. The account is one of the DATEV edition valid "
+			"for 2020; the edition for 2026 has none."
 		),
 		Reason.SHARE_RESULTS: (
 			"Income, gains, losses and write-downs of securities and Finanzanlagen that may be Bezüge, Gewinne or "
@@ -544,6 +550,7 @@ _ROWS: tuple[_Row, ...] = (
 		"Erträge aus anderen Wertpapieren und Ausleihungen des Umlaufvermögens",
 	),
 	_rule("2166", "6883", Category.TRADING_UNCLASSIFIED, "Aufwendungen aus Bewertung Finanzmittelfonds"),
+	_rule("2666", "4843", Category.TRADING_UNCLASSIFIED, "Erträge aus Bewertung Finanzmittelfonds"),
 	# § 7g EStG, Anlage GK lines 67 and 72, booked außerbilanziell; the Gegenkonten 9971 and 9973 have no category.
 	_rule(
 		"9970",
@@ -611,10 +618,21 @@ _ROWS: tuple[_Row, ...] = (
 		Category.INTEREST,
 		"Zinsaufwendungen für langfristige Verbindlichkeiten an verbundene Unternehmen",
 	),
-	# Diskontbeträge count as Entgelte für Schulden (§ 8 Nummer 1 Buchstabe a Satz 2 GewStG): older DATEV accounts of
-	# ERPNext's SKR04 template, reserved in the edition for 2026.
-	_rule(None, "7340", Category.INTEREST, "Diskontaufwendungen"),
-	_rule(None, "7349", Category.INTEREST, "Diskontaufwendungen an verb. Unternehmen"),
+	# Diskontbeträge count as Entgelte für Schulden (§ 8 Nummer 1 Buchstabe a Satz 2 GewStG): older DATEV accounts, SKR03
+	# 2130 and 2139 of the edition valid for 2020, 7340 and 7349 of ERPNext's SKR04 template, reserved in the edition for
+	# 2026.
+	_rule("2130", "7340", Category.INTEREST, "Diskontaufwendungen"),
+	_rule(
+		"2139",
+		"7349",
+		Category.INTEREST,
+		"Diskontaufwendungen an verbundene Unternehmen",
+		"Diskontaufwendungen an verb. Unternehmen",
+	),
+	# Zinsähnliche Aufwendungen are Entgelte für Schulden as well, the costs a lender charges for the credit itself (§ 8
+	# Nummer 1 Buchstabe a GewStG; H 8.1 (1) GewStH 2024).
+	_rule("2140", "7330", Category.INTEREST, "Zinsähnliche Aufwendungen"),
+	_rule("2149", "7339", Category.INTEREST, "Zinsähnliche Aufwendungen an verbundene Unternehmen"),
 	# Bauzeitzinsen that are capitalised are no Entgelte für Schulden (H 8.1 (1) GewStH 2024): they reduce the interest.
 	_rule(
 		"8994",
@@ -751,14 +769,40 @@ _ROWS: tuple[_Row, ...] = (
 		Reason.DEFERRED_TAXES,
 		"Erträge aus der Auflösung von Steuerrückstellungen für Steuerstundung (BStBK)",
 	),
-	# Older DATEV accounts of ERPNext's SKR04 template, whose numbers the edition for 2026 reserves.
-	_watch(None, "7464", BLOCKING, Reason.DEFERRED_TAXES, "Außerordentliche Erträge: latente Steuern"),
+	# Older DATEV accounts, SKR03 2594 and 2094 of the edition valid for 2020, 7464 and 7563 of ERPNext's SKR04 template,
+	# whose numbers the edition for 2026 reserves.
 	_watch(
-		None,
+		"2594",
+		"7464",
+		BLOCKING,
+		Reason.DEFERRED_TAXES,
+		"Erträge aus der Anwendung von Übergangsvorschriften (latente Steuern)",
+		"Außerordentliche Erträge: latente Steuern",
+	),
+	_watch(
+		"2094",
 		"7563",
 		BLOCKING,
 		Reason.DEFERRED_TAXES,
+		"Aufwendungen aus der Anwendung von Übergangsvorschriften (Latente Steuern)",
 		"Außerordentliche Aufwendungen aus der Anwendung von Übergangsvorschriften (Latente Steuern)",
+	),
+	# The interest of the Körperschaftsteuer-Erhöhungsbetrag of the DATEV edition valid for 2020.
+	_watch(
+		"2106",
+		"7307",
+		BLOCKING,
+		Reason.KST_INCREASE,
+		"Zinsen aus Abzinsung des KSt-Erhöhungsbetrages § 38 KStG",
+		"Zinsen aus Abzinsung des KSt-Erhöhungsbetrags § 38 KStG",
+	),
+	_watch(
+		"2688",
+		"7128",
+		BLOCKING,
+		Reason.KST_INCREASE,
+		"Zinsertrag aus vorzeitiger Rückzahlung des Körperschaftsteuer-Erhöhungsbetrages § 38 KStG",
+		"Zinsertrag aus vorzeitiger Rückzahlung des Körperschaftsteuer-Erhöhungsbetrags § 38 KStG",
 	),
 	_watch(
 		None,
@@ -808,6 +852,20 @@ _ROWS: tuple[_Row, ...] = (
 		"Erträge aus Beteiligungen an Personengesellschaften (verbundene Unternehmen), § 9 GewStG bzw. § 18 EStG",
 	),
 	_watch("2614", "7003", BLOCKING, Reason.PARTNERSHIP_SHARE, "Erträge aus atypisch stillen Beteiligungen"),
+	_watch(
+		"2623",
+		"7013",
+		BLOCKING,
+		Reason.PARTNERSHIP_SHARE,
+		"Erträge aus Anteilen an Personengesellschaften (Finanzanlagevermögen)",
+	),
+	_watch(
+		"2646",
+		"7016",
+		BLOCKING,
+		Reason.PARTNERSHIP_SHARE,
+		"Erträge aus Anteilen an Personengesellschaften (verbundene Unternehmen)",
+	),
 	_watch(
 		"2618",
 		"7008",
@@ -907,6 +965,20 @@ _ROWS: tuple[_Row, ...] = (
 	),
 	_watch("2640", "7020", HINT, Reason.SHARE_RESULTS, "Zins- und Dividendenerträge"),
 	_watch(
+		"2647",
+		"7017",
+		HINT,
+		Reason.SHARE_RESULTS,
+		"Erträge aus anderen Wertpapieren des Finanzanlagevermögens an Kapitalgesellschaften (verbundene Unternehmen)",
+	),
+	_watch(
+		"2649",
+		"7019",
+		HINT,
+		Reason.SHARE_RESULTS,
+		"Erträge aus anderen Wertpapieren und Ausleihungen des Finanzanlagevermögens aus verbundenen Unternehmen",
+	),
+	_watch(
 		"2725",
 		"4905",
 		HINT,
@@ -987,7 +1059,7 @@ OUTSIDE: MappingProxyType[str, MappingProxyType[Outside, tuple[str, ...]]] = Map
 					"4949",
 					"4959",
 				),
-				Outside.RESERVED: ("2130",),
+				Outside.RESERVED: (),
 			}
 		),
 		"SKR04": MappingProxyType(

@@ -392,8 +392,8 @@ FLAGGED = {
 # income from holdings of no named legal form holds the filing back, the others ask for a look.
 HOLDING_INCOME = {"SKR03": {"2600", "2619"}, "SKR04": {"7000", "7009"}}
 SHARE_RESULTS = {
-	"SKR03": {"2620", "2640", "2725", "2325", "4870", "4875", "4877", "4878"},
-	"SKR04": {"7010", "7020", "4905", "6905", "7200", "7210", "7207", "7217"},
+	"SKR03": {"2620", "2640", "2647", "2649", "2725", "2325", "4870", "4875", "4877", "4878"},
+	"SKR04": {"7010", "7020", "7017", "7019", "4905", "6905", "7200", "7210", "7207", "7217"},
 }
 UNMARKED = {
 	"SKR03": {
@@ -404,6 +404,16 @@ UNMARKED = {
 		"4665": Category.OTHER_NONDEDUCTIBLE,
 		"2723": Category.SHARE_GAIN,
 		"2323": Category.SHARE_LOSS,
+		"2139": Category.INTEREST,
+		"2140": Category.INTEREST,
+		"2149": Category.INTEREST,
+		"2666": Category.TRADING_UNCLASSIFIED,
+		"2094": None,
+		"2594": None,
+		"2106": None,
+		"2688": None,
+		"2623": None,
+		"2646": None,
 		**dict.fromkeys(HOLDING_INCOME["SKR03"] | SHARE_RESULTS["SKR03"]),
 	},
 	"SKR04": {
@@ -417,6 +427,13 @@ UNMARKED = {
 		"7007": Category.DIVIDENDS,
 		"7340": Category.INTEREST,
 		"7349": Category.INTEREST,
+		"7330": Category.INTEREST,
+		"7339": Category.INTEREST,
+		"4843": Category.TRADING_UNCLASSIFIED,
+		"7307": None,
+		"7128": None,
+		"7013": None,
+		"7016": None,
 		"4901": Category.SHARE_GAIN,
 		"6903": Category.SHARE_LOSS,
 		"7464": None,
@@ -433,6 +450,8 @@ DIGESTS = {
 	"SKR04 2026.2": "eff6e6e325ec06430bdfc93b8dd9c96d0f8db009ee07507ab7073a7d1b9b66ab",
 	"SKR03 2026.3": "3eb40f62030abbc7b50c02ea421233b66082c9eaeb30c5e0b55c778401896732",
 	"SKR04 2026.3": "eff6e6e325ec06430bdfc93b8dd9c96d0f8db009ee07507ab7073a7d1b9b66ab",
+	"SKR03 2026.4": "3f07d267b0c4287e2401f38a5326f1700bb907864a254087726d129d24d02c32",
+	"SKR04 2026.4": "bc0005c70d0c9aa52e4e61c4a9929605e8c1fd870ddd14394535fc5380af596e",
 }
 
 
@@ -489,32 +508,27 @@ class PlacesTest(TestCase):
 			"7644",
 			"6396",
 			"7007",
-			"7340",
-			"7349",
 			"4901",
 			"6903",
 			"2723",
 			"2323",
-			"7464",
-			"7563",
 			"7452",
 		}
 		self.assertEqual(count("SKR03", templates), count("SKR04", templates))
 		self.assertEqual(
-			{chart: len(default_accounts(chart)) for chart in CHARTS}, {"SKR03": 151, "SKR04": 159}
+			{chart: len(default_accounts(chart)) for chart in CHARTS}, {"SKR03": 164, "SKR04": 168}
 		)
 
 	def test_the_equity_is_left_to_kst_1_f_and_the_partnerships_and_the_reserved_range_are_left_out(self):
 		self.assertEqual(
 			{chart: {reason: len(numbers) for reason, numbers in OUTSIDE[chart].items()} for chart in CHARTS},
 			{
-				"SKR03": {Outside.EQUITY: 22, Outside.PARTNERSHIP: 17, Outside.RESERVED: 1},
+				"SKR03": {Outside.EQUITY: 22, Outside.PARTNERSHIP: 17, Outside.RESERVED: 0},
 				"SKR04": {Outside.EQUITY: 22, Outside.PARTNERSHIP: 17, Outside.RESERVED: 0},
 			},
 		)
 		self.assertIn("0800", OUTSIDE["SKR03"][Outside.EQUITY])
 		self.assertIn("2900", OUTSIDE["SKR04"][Outside.EQUITY])
-		self.assertEqual(OUTSIDE["SKR03"][Outside.RESERVED], ("2130",))
 		for chart in CHARTS:
 			with self.subTest(chart=chart):
 				self.assertIsNone(default_mapping(chart).rule_for(OUTSIDE[chart][Outside.EQUITY][0]))
@@ -623,6 +637,10 @@ class CategoriesTest(TestCase):
 					"2125",
 					"2126",
 					"2129",
+					"2130",
+					"2139",
+					"2140",
+					"2149",
 					"8994",
 				},
 				{
@@ -643,6 +661,8 @@ class CategoriesTest(TestCase):
 					"7329",
 					"7340",
 					"7349",
+					"7330",
+					"7339",
 					"4824",
 				},
 			),
@@ -666,7 +686,7 @@ class CategoriesTest(TestCase):
 				self.assertEqual(self.numbers("SKR04", category), skr04)
 
 	def test_the_trading_accounts_get_no_class(self):
-		for chart, numbers in (("SKR03", {"2654", "2166"}), ("SKR04", {"7115", "6883"})):
+		for chart, numbers in (("SKR03", {"2654", "2166", "2666"}), ("SKR04", {"7115", "6883", "4843"})):
 			with self.subTest(chart=chart):
 				self.assertEqual(self.numbers(chart, Category.TRADING_UNCLASSIFIED), numbers)
 				self.assertEqual(
@@ -723,6 +743,12 @@ class WatchedTest(TestCase):
 				"2618",
 				"4872",
 				"2745",
+				"2623",
+				"2646",
+				"2094",
+				"2594",
+				"2106",
+				"2688",
 				"9890",
 				"9906",
 				"9908",
@@ -765,6 +791,10 @@ class WatchedTest(TestCase):
 				"7464",
 				"7563",
 				"7452",
+				"7013",
+				"7016",
+				"7307",
+				"7128",
 			},
 		}
 		for chart in CHARTS:
@@ -841,8 +871,8 @@ class AccountTest(TestCase):
 
 class VersionTest(TestCase):
 	def test_the_version_names_the_chart_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, REVISION), (2026, 3))
-		self.assertEqual([defaults_version(chart) for chart in CHARTS], ["SKR03 2026.3", "SKR04 2026.3"])
+		self.assertEqual((DATEV_EDITION, REVISION), (2026, 4))
+		self.assertEqual([defaults_version(chart) for chart in CHARTS], ["SKR03 2026.4", "SKR04 2026.4"])
 
 	def test_a_chart_without_defaults_has_none(self):
 		for function in (defaults_version, default_mapping, default_accounts):

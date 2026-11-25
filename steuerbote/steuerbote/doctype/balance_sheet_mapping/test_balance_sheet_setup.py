@@ -105,13 +105,14 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		self.addCleanup(patcher.stop)
 
 	def test_the_setup_runs_the_step_of_the_hook_last(self):
-		"""Last of the steps that make a document; only the steps on the exchange accounts of the company, on the
+		"""Last of the steps that make a document; only the steps on the exchange and default accounts of the company, on the
 		USt-IdNrn. of partners and on the ERiC Settings follow it."""
 		self.assertEqual(
-			[found.key for found in setup.setup_steps()][-6:],
+			[found.key for found in setup.setup_steps()][-7:],
 			[
 				"balance_sheet_mapping",
 				"exchange_accounts",
+				"company_default_accounts",
 				"vat_id_label",
 				"erpnext_germany_vat_id_check",
 				"vat_id_automatic_check",
@@ -165,7 +166,7 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		self.assertEqual(
 			result.notes,
 			(
-				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.4", 5, 0, 0)),
+				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.5", 5, 0, 0)),
 				Note(step.CHECK_WITH_ADVISER, open=True),
 				Note(step.TAXONOMY_MISSING, ("6.9",), open=True),
 			),
@@ -188,7 +189,7 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		self.assertEqual(
 			result.notes,
 			(
-				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.4", 3, 1, 0)),
+				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.5", 3, 1, 0)),
 				Note(step.WITHOUT_PLACE, (1,), open=True),
 				Note(step.CHECK_WITH_ADVISER, open=True),
 			),
@@ -221,12 +222,12 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		mapping = frappe.get_doc(MAPPING, SKR04_COMPANY)
 		self.assertEqual(
 			(mapping.defaults_version, [row.account_number for row in mapping.rules]),
-			("SKR04 Taxonomie 6.9 2026.4", ["1406", "1800", "2900", "3806", "4400"]),
+			("SKR04 Taxonomie 6.9 2026.5", ["1406", "1800", "2900", "3806", "4400"]),
 		)
 		self.assertEqual(
 			result.notes,
 			(
-				Note(step.MAPPING_FILLED, (SKR04_COMPANY, "SKR04 Taxonomie 6.9 2026.4", 5, 0, 0)),
+				Note(step.MAPPING_FILLED, (SKR04_COMPANY, "SKR04 Taxonomie 6.9 2026.5", 5, 0, 0)),
 				Note(step.CHECK_WITH_ADVISER, open=True),
 				Note(step.TAXONOMY_MISSING, ("6.9",), open=True),
 			),
@@ -234,7 +235,7 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		self.assertEqual(
 			setup.text_of(result.notes[0]),
 			f"The Balance Sheet Mapping of {SKR04_COMPANY} had no rows and now holds the defaults SKR04 Taxonomie "
-			"6.9 2026.4: account rules 5, watched accounts 0, accounts outside the Bilanz and the GuV 0.",
+			"6.9 2026.5: account rules 5, watched accounts 0, accounts outside the Bilanz and the GuV 0.",
 		)
 		again = result_of(setup.run(SKR04_COMPANY, TODAY), "balance_sheet_mapping")
 		self.assertEqual(again.outcome, Outcome.SKIPPED)

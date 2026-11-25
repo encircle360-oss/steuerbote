@@ -79,6 +79,10 @@ DIGESTS = {
 	"SKR04 Taxonomie 6.9 2026.4": "1c2518fc04e9f59b49f99ea1108bbba5c2fb5c5bdebae2690411c36d559033d7",
 	"SKR03 Taxonomie 6.10 2026.4": "520a926c431fe347b38fc5c49747111377bd70cdcbba53018fec327a2e76c6f6",
 	"SKR04 Taxonomie 6.10 2026.4": "20e192acff328399ce94b09624802753eced4bbab08aa2635d9121ee77e6b9c5",
+	"SKR03 Taxonomie 6.9 2026.5": "fe7f17ad9b57903c5fec60ea430a1f0bba9de79436d500fa6bc362f06dd1a24c",
+	"SKR04 Taxonomie 6.9 2026.5": "a8fc294190837f901b83f09741fd1037dfb4e676d89bb869e95960e4426f4bd9",
+	"SKR03 Taxonomie 6.10 2026.5": "25c2c94e48ded488f9b71215dd38fff47dcc564586ce52e3f806f0578676de3a",
+	"SKR04 Taxonomie 6.10 2026.5": "e80113630fe0c0b3be0b63deabfff74452bfbedcd7da647a582a4dfda188ffc0",
 }
 """The SHA-256 of the canonical JSON of the rows of each version of the defaults."""
 
@@ -218,10 +222,10 @@ class DefaultsForTest(TestCase):
 
 class DefaultsVersionTest(TestCase):
 	def test_the_version_names_the_chart_the_taxonomy_the_datev_edition_and_the_revision(self):
-		self.assertEqual(dict(REVISIONS), {"6.9": 4, "6.10": 4})
+		self.assertEqual(dict(REVISIONS), {"6.9": 5, "6.10": 5})
 		self.assertEqual(
 			[defaults_version(chart, "6.9") for chart in sorted(CHARTS)],
-			["SKR03 Taxonomie 6.9 2026.4", "SKR04 Taxonomie 6.9 2026.4"],
+			["SKR03 Taxonomie 6.9 2026.5", "SKR04 Taxonomie 6.9 2026.5"],
 		)
 
 	def test_a_chart_without_defaults_has_no_version(self):
@@ -289,6 +293,104 @@ class CoverageTest(TestCase):
 					self.assertEqual(account.label, " ".join(account.label.split()))
 
 
+class EarlierEditionTest(TestCase):
+	"""The accounts of the DATEV edition valid for 2020 that the edition valid for 2026 no longer labels take the place
+	of the account of today's chart for the same thing, most of them that of their twin in SKR04."""
+
+	def place(self, chart: str, number: str) -> tuple[str, object]:
+		found = defaults_for(chart, "6.9")
+		for rule in found.rules:
+			if number in rule.accounts:
+				return ("position", rule.concept)
+		for watched in found.watched:
+			if number in watched.accounts:
+				return ("watched", watched.level)
+		raise AssertionError(f"{chart} {number} has no place")
+
+	def test_each_account_of_skr03_takes_the_place_of_its_model_in_skr04(self):
+		for number, model in (
+			("0583", "0964"),
+			("0978", "3098"),
+			("1300", "1235"),
+			("1305", "1235"),
+			("1310", "1266"),
+			("1315", "1269"),
+			("1320", "1286"),
+			("1325", "1289"),
+			("1327", "1520"),
+			("1330", "1550"),
+			("1583", "1484"),
+			("1587", "1484"),
+			("1660", "3350"),
+			("1788", "3850"),
+			("2006", "7552"),
+			("2008", "7554"),
+			("2010", "6967"),
+			("2090", "7560"),
+			("2091", "7561"),
+			("2094", "7563"),
+			("2130", "7340"),
+			("2139", "7349"),
+			("2307", "6967"),
+			("2309", "6969"),
+			("2508", "7454"),
+			("2590", "7460"),
+			("2594", "7464"),
+			("2670", "7130"),
+			("2679", "7139"),
+			("2705", "4835"),
+			("2707", "4837"),
+			("2720", "4900"),
+			("3788", "5787"),
+			("3796", "5795"),
+			("4905", "6304"),
+			("8195", "4185"),
+			("8196", "4186"),
+			("8516", "4566"),
+			("8574", "4574"),
+			("8575", "4575"),
+			("8576", "4576"),
+			("8579", "4579"),
+			("8600", "4835"),
+		):
+			with self.subTest(account=number):
+				self.assertEqual(self.place("SKR03", number), self.place("SKR04", model))
+
+	def test_each_account_of_skr04_takes_the_place_of_its_model(self):
+		for number, model in (("1230", "1235"), ("1483", "1484"), ("5788", "5787"), ("5796", "5795")):
+			with self.subTest(account=number):
+				self.assertEqual(self.place("SKR04", number), self.place("SKR04", model))
+
+	def test_the_round_off_accounts_of_skr03_take_the_other_operating_expenses(self):
+		"""A company that rounds on SKR03 2309 „Sonstige Aufwendungen unregelmäßig“ or 2307 books the cents of its
+		roundings there; they belong to the sonstige betriebliche Aufwendungen like SKR04 6969 and 6967."""
+		for number in ("2307", "2309"):
+			with self.subTest(account=number):
+				self.assertEqual(
+					self.place("SKR03", number),
+					("position", "is.netIncome.regular.operatingTC.otherCost.otherOrdinary"),
+				)
+
+	def test_an_account_no_edition_places_is_watched(self):
+		"""The Verschmelzungsmehrwert, the interest of the Körperschaftsteuer-Erhöhungsbetrag of § 38 KStG and the
+		receivables against Kommanditisten have no position the taxonomy of today names for a GmbH: the account holds
+		the E-Bilanz until the Steuerberatung gives it one."""
+		for chart, numbers in (
+			("SKR03", ("0040", "2106", "2688", "1373")),
+			("SKR04", ("0160", "7307", "7128", "1327")),
+		):
+			for number in numbers:
+				with self.subTest(chart=chart, account=number):
+					self.assertEqual(self.place(chart, number), ("watched", WatchLevel.BLOCKING))
+
+	def test_an_account_of_no_edition_has_no_place(self):
+		"""SKR03 1716 is labelled in neither edition, 2280, 2282 and 2284 are reserved in 2020 and gone in 2026, and 2990
+		is in neither: no default, so the account names itself as one without a place."""
+		for number in ("1716", "2280", "2282", "2284", "2990"):
+			with self.subTest(account=number), self.assertRaises(AssertionError):
+				self.place("SKR03", number)
+
+
 class SourcesTest(TestCase):
 	"""Every choice the labels of the account and the position do not tell alone carries its reason, and every reason
 	its source."""
@@ -352,7 +454,7 @@ class SourcesTest(TestCase):
 					self.assertIs(mark, Purpose.BOTH)
 					self.assertIs(reasons.get(group.reason), group.purpose)
 				departures[chart] += 1
-		self.assertEqual(departures, {"SKR03": 10, "SKR04": 17})
+		self.assertEqual(departures, {"SKR03": 13, "SKR04": 17})
 
 
 class PlacesTest(TestCase):

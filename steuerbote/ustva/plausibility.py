@@ -85,6 +85,7 @@ class Code(StrEnum):
 	CORRECTION_UNCHANGED = "BERICHTIGUNG-OHNE-AENDERUNG"
 	OUTPUT_TAX_WITHOUT_REVENUE = "UMSATZ-OHNE-ERLOESKONTO"
 	ASSET_SALE_TAX_FREE = "ANLAGENVERKAUF-STEUERFREI"
+	ACCOUNT_WITHOUT_RATE = "KONTO-OHNE-STEUERSATZ"
 
 
 # A turnover that loses its exemption without a valid USt-IdNr. of the customer and an override that hides a change of
@@ -119,6 +120,7 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.CORRECTION_UNCHANGED: Severity.HINT,
 		Code.OUTPUT_TAX_WITHOUT_REVENUE: Severity.HINT,
 		Code.ASSET_SALE_TAX_FREE: Severity.WARNING,
+		Code.ACCOUNT_WITHOUT_RATE: Severity.HINT,
 	}
 )
 # The order of the hints of a return: errors, then warnings, then hints.
@@ -406,6 +408,32 @@ def watched_account_hints(
 			"geht aber in keine Kennzahl ein."
 		)
 		found.append(Hint(Code.WATCHED_ACCOUNT, text))
+	return found
+
+
+def rate_account_hints(unmapped: Iterable[str], chart: str, names: ReadOnlyMapping[str, str]) -> list[Hint]:
+	"""A hint per account without a rate that holds the return (defaults.RATE_ACCOUNTS), in the order given: what the
+	company does instead, book on the accounts of the rates or give the account a row of its own."""
+	from steuerbote.ustva.defaults import RATE_ACCOUNTS
+
+	accounts = RATE_ACCOUNTS.get(chart, {})
+	found: list[Hint] = []
+	for number in unmapped:
+		rates = accounts.get(number)
+		if not rates:
+			continue
+		name = names.get(number)
+		account = f"Konto {number} {name}" if name else f"Konto {number}"
+		kennzahlen = [rate.kennzahl for rate in rates]
+		either = f"Kz {', '.join(kennzahlen[:-1])} oder {kennzahlen[-1]}"
+		listed = ", ".join(f"{rate.number} für {rate.rate}" for rate in rates)
+		text = (
+			f"{account} nennt keinen Steuersatz: Es sagt nicht, welche Kennzahl ein Betrag darauf mindert ({either}), "
+			f"deshalb hält sein Saldo die Voranmeldung an. Buchen Sie die Beträge auf die Konten mit Steuersatz "
+			f"({listed}), oder geben Sie dem Konto in der Kontenzuordnung eine Zeile mit seiner Kennzahl, wenn alle "
+			"Beträge darauf zu einem Steuersatz gehören."
+		)
+		found.append(Hint(Code.ACCOUNT_WITHOUT_RATE, text))
 	return found
 
 
@@ -789,11 +817,13 @@ def hints(
 	names: ReadOnlyMapping[str, str] = MappingProxyType({}),
 	derived: Iterable[DerivedBase] = (),
 	findings: Iterable[Finding] = (),
+	unmapped: Iterable[str] = (),
 ) -> tuple[Hint, ...]:
 	"""Every hint of a return: the errors first, then the warnings, then the hints; each kind in the order it is found.
 
 	The invoices come first, then their reconciliation with the ledger, then the balances of the accounts
-	watched at the hint level (``watched``, named after ``names``), then the bases taken from the tax of their
+	watched at the hint level (``watched``, named after ``names``), then what to do with the accounts without a rate
+	that hold the return (``unmapped``, UstvaResult.unmapped), then the bases taken from the tax of their
 	voucher (``derived``, calculation.derive_bases), then the findings on the suppliers of sections C and D
 	(``findings``, UstvaResult.findings), then the comparison.
 	"""
@@ -802,6 +832,7 @@ def hints(
 		*invoice_hints(lines, mapping, figures),
 		*reconciliation_hints(lines, ledger, mapping, figures, derived),
 		*watched_account_hints(watched, names, figures),
+		*rate_account_hints(unmapped, mapping.chart, names),
 		*derived_base_hints(derived, figures),
 		*residence_hints(findings),
 		*comparison_hints(comparison, figures),

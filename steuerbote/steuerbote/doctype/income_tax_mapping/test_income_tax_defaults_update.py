@@ -13,7 +13,7 @@ IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Account"]
 
 MAPPING = "Income Tax Mapping"
 COMPANY = "Steuerbote Test Ertragsteuern Vorgaben GmbH"
-VERSION = "SKR03 2026.3"
+VERSION = "SKR03 2026.4"
 # SKR03 accounts: the taxes on income, a trading account, a watched account at each level and a bank, which the
 # defaults leave out.
 ACCOUNTS = {
