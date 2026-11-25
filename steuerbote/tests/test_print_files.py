@@ -227,3 +227,20 @@ class AnlagenspiegelTest(TestCase):
 		self.assertEqual(template.count('<tr class="sb-asset">'), 1)
 		self.assertIn("· {{ row.value_type | e }}</td></tr>", template)
 		self.assertIn("· {{ total.value_type | e }}</td></tr>", template)
+
+
+CLOSING = '{%- if annual.findings | length <= 8 %}<div class="sb-keep">{% else %}<div>{% endif %}'
+
+
+class ClosingTest(TestCase):
+	def test_the_closing_note_of_an_annual_document_stays_with_few_findings_and_the_remarks(self):
+		"""Alone, the closing note of three lines can end up on a page of its own; with up to eight findings the
+		findings, the remarks and the note move to the next page together, with more the findings fill the pages."""
+		footer = '{% include "steuerbote/templates/includes/annual_filing/footer.html" %}'
+		findings = '{% include "steuerbote/templates/includes/annual_filing/findings.html" %}'
+		for name, (_, template) in print_formats().items():
+			if footer not in template:
+				continue
+			with self.subTest(print_format=name):
+				self.assertLess(template.index(CLOSING), template.index(findings))
+				self.assertRegex(template[template.index(footer) :], r"^\{% include [^%]+%\}\s*</div>")
