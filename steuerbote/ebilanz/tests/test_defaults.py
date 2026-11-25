@@ -911,3 +911,35 @@ class Taxonomy610Test(TestCase):
 			(D("600.00"), D("300.00"), D("900.00")),
 		)
 		self.assertEqual(found.amount("is.netIncome"), D("18520.00"))
+
+
+class CurrencyDefaultsTest(TestCase):
+	"""ERPNext's Wechselkursneubewertung books gains and losses onto one account; whichever side its balance takes, it
+	goes to the position of its direction (§ 277 Abs. 5 Satz 2 HGB)."""
+
+	LOSS = "is.netIncome.regular.operatingTC.otherCost.currLoss"
+	GAINS = "is.netIncome.regular.operatingTC.otherOpRevenue.currGains"
+
+	def test_the_accounts_of_the_currency_translation_name_the_position_of_the_other_direction(self):
+		expected = {
+			"SKR03": {
+				"2150": (self.LOSS, self.GAINS),
+				"2151": (self.LOSS, self.GAINS),
+				"2660": (self.GAINS, self.LOSS),
+			},
+			"SKR04": {
+				"6880": (self.LOSS, self.GAINS),
+				"6881": (self.LOSS, self.GAINS),
+				"4840": (self.GAINS, self.LOSS),
+			},
+		}
+		for version in TAXONOMIES:
+			for chart, accounts in expected.items():
+				rules = defaults_for(chart, version).rules
+				for number, positions in accounts.items():
+					with self.subTest(version=version, chart=chart, account=number):
+						(rule,) = [rule for rule in rules if number in rule.accounts]
+						self.assertEqual(
+							(rule.concept.rpartition(":")[2], (rule.opposite or "").rpartition(":")[2]),
+							positions,
+						)
