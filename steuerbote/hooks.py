@@ -101,6 +101,9 @@ doc_events = {
 	"Journal Entry": {"on_trash": "steuerbote.steuerbote.recorded_vouchers.forget_proposed_entry"},
 }
 
+# Drucken in the print view prints the PDF of the generator for the print formats of Steuerbote.
+page_js = {"print": "public/js/print_view.js"}
+
 # The form of a customer or supplier confirms its USt-IdNr. and shows where its confirmations stand; a draft Sales
 # Invoice confirms that of its customer.
 doctype_js = {
