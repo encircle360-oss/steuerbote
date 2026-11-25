@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 import frappe
 from frappe.model.document import Document
@@ -95,6 +96,22 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 				**values,
 			}
 		)
+
+	def test_refuses_a_steuernummer_whose_check_digit_eric_refuses(self):
+		"""EricPruefeSteuernummer of the installed ERiC (steuerbote.eric.service.steuernummer_valid); without a runtime
+		it cannot say, and the settings are saved."""
+		adapter = "steuerbote.steuerbote.doctype.vat_return.transmission_adapter.steuernummer_valid"
+		with patch(adapter, return_value=False) as checked:
+			with self.assertRaisesRegex(
+				frappe.ValidationError, "ERiC refuses the Steuernummer 123/456/78901"
+			):
+				self.make_settings().insert()
+		checked.assert_called_once_with("9123045678901")
+		with patch(adapter, return_value=None):
+			self.make_settings().insert()
+		with patch(adapter, return_value=False) as checked:
+			frappe.get_doc("VAT Return Settings", COMPANY).save()
+		checked.assert_not_called()
 
 	def test_derives_the_elster_tax_number_and_keeps_the_defaults(self):
 		self.make_settings(elster_tax_number="0000000000000").insert()

@@ -637,6 +637,30 @@ class ProtocolTest(WorkerTestCase):
 		self.assertIn("610001082", json.loads(stdout)["error"])
 
 
+class SteuernummerTest(WorkerTestCase):
+	def test_checks_a_steuernummer_with_eric(self):
+		"""EricPruefeSteuernummer, in a worker of its own like every call of ERiC."""
+		for number, valid in (("9198011310010", True), ("9198011310019", False)):
+			with self.subTest(number=number):
+				code, stdout, _ = self.serve(
+					{"command": "steuernummer", "runtime": self.runtime.to_dict(), "steuernummer": number}
+				)
+				self.assertEqual((code, json.loads(stdout)), (0, {"valid": valid}))
+		self.assertFalse(self.stub.initialised)
+
+	def test_says_why_it_could_not_check(self):
+		code, stdout, _ = self.serve(
+			{"command": "steuernummer", "runtime": self.runtime.to_dict(), "steuernummer": ""}
+		)
+		self.assertEqual(code, 0)
+		self.assertIn("610001526", json.loads(stdout)["error"])
+		code, stdout, stderr = self.serve(
+			{"command": "steuernummer", "runtime": self.runtime.to_dict(), "steuernummer": 4}
+		)
+		self.assertEqual((code, stdout), (worker.EXIT_INVALID_REQUEST, b""))
+		self.assertEqual(stderr, "steuerbote.eric.worker: invalid request: steuernummer\n")
+
+
 class OutcomeTest(TestCase):
 	"""What a return code of EricBearbeiteVorgang means for a check and for a send."""
 

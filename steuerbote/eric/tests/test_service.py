@@ -26,6 +26,7 @@ from steuerbote.eric.service import (
 	WorkerError,
 	WorkerOutput,
 	library_versions,
+	steuernummer_valid,
 	run,
 )
 from steuerbote.eric.tests import stub
@@ -176,6 +177,30 @@ class WorkerDispatchTest(ServiceTestCase):
 		)
 		self.assertIs(result.outcome, Outcome.FAILED)
 		self.assertEqual(self.codes(result), ["SB-HEADER"])
+
+
+class SteuernummerTest(ServiceTestCase):
+	"""The check of a Steuernummer with ERiC for the settings; None where it cannot say."""
+
+	def test_checks_with_the_runtime(self):
+		self.assertIs(steuernummer_valid(self.runtime, "9198011310010"), True)
+		self.assertIs(steuernummer_valid(self.runtime, "9198011310019"), False)
+
+	def test_cannot_say_without_a_runtime_or_the_confirmed_privacy_notice(self):
+		workers = self.started_workers()
+		self.assertIsNone(steuernummer_valid(None, "9198011310019"))
+		self.assertIsNone(
+			steuernummer_valid(replace(self.runtime, confirmed_privacy_notice=False), "9198011310019")
+		)
+		self.assertEqual(workers, [])
+
+	def test_cannot_say_when_the_worker_fails(self):
+		self.assertIsNone(
+			steuernummer_valid(replace(self.runtime, lib_dir=self.directory / "nowhere"), "9198011310019")
+		)
+		self.assertIsNone(steuernummer_valid(self.runtime, ""))
+		with mock.patch.object(service, "call_worker", side_effect=service.WorkerError("timeout")):
+			self.assertIsNone(steuernummer_valid(self.runtime, "9198011310019"))
 
 
 class PrivacyNoticeTest(ServiceTestCase):
