@@ -52,7 +52,7 @@ Die Vorgaben bilden eine Gruppe „Umsatzsteuer“ aus den Umsatzsteuerkonten ge
 
 Nicht in der Gruppe: die Vorsteuer, die erst in einer Folgeperiode abziehbar ist (SKR03 1548, SKR04 1434), und die noch nicht fällige Umsatzsteuer (SKR03 1760-1766, SKR04 3810-3816), weil gegen sie noch nicht aufgerechnet werden kann; die aufgeschobene Einfuhrumsatzsteuer (SKR04 3850), die dem Hauptzollamt geschuldet ist; und die Steuer anderer Mitgliedstaaten. Lohnsteuer, Körperschaft- und Gewerbesteuer verrechnet die Vorgabe nicht mit, obwohl § 226 AO auch das zuließe: Die übliche Darstellung trennt sie, und ob ein Unternehmen sie verrechnet, entscheidet es mit der Steuerberatung, indem es den Zeilen dieselbe Verrechnungsgruppe gibt.
 
-Eine Bank mit Guthaben und eine mit Überziehung, Forderungen an Kunden mit Habensaldo und Konten der Gesellschafter mit beiden Vorzeichen bleiben getrennt: Dort fehlt die Aufrechnungslage gegenüber demselben Gläubiger, oder die Bücher zeigen sie nicht. Ein Konto mit Gegensaldo geht wie bisher für sich auf die Gegenseite (Leitfaden A.13).
+Eine Verrechnungsgruppe ist für Konten gegenüber demselben Gläubiger gedacht. Eine Bank mit Guthaben und eine mit Überziehung bei verschiedenen Kreditinstituten oder die Konten verschiedener Gesellschafter gehören nicht in eine Gruppe: Zwischen ihnen fehlt die Aufrechnungslage. Ebenso wenig werden Kunden mit Habensaldo mit den übrigen Kunden oder Lieferanten mit Sollsaldo mit den übrigen Lieferanten verrechnet (§ 246 Abs. 2 Satz 1 HGB); das betrifft die Salden je Partei, nicht die Verrechnungsgruppe. Ein Konto mit Gegensaldo geht wie bisher für sich auf die Gegenseite (Leitfaden A.13).
 
 ## Restlaufzeit kraft Gesetzes
 
