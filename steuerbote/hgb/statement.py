@@ -688,23 +688,34 @@ def _unitemized(year: _Year, shown: tuple[Position, ...], reference: str) -> Ite
 
 
 def _without_term(sheet: _Year, balance_sheet: BalanceSheet) -> Iterator[Finding]:
-	"""Each balance whose remaining term a Vermerk the balance sheet notes would need, once."""
-	seen: dict[int, None] = {}
+	"""One finding per line of the balance sheet for the balances whose remaining term a Vermerk of the line needs,
+	each balance once: the accounts, their sum and where the remaining term is given."""
+	seen: set[int] = set()
 	for line in balance_sheet.aktiva + balance_sheet.passiva:
+		missing: list[_Placed] = []
+		reference = ""
 		for noted in line.vermerke:
 			for placed in sheet.without_term[(line.position.concept, noted.vermerk.kind)]:
 				if id(placed) in seen:
 					continue
-				seen[id(placed)] = None
-				yield Finding(
-					Code.REMAINING_TERM_UNKNOWN,
-					Severity.ERROR,
-					f"Für {_named(placed.balance)} fehlt die Restlaufzeit, die der Vermerk „{noted.vermerk.label}“ "
-					f"bei „{line.label}“ braucht; die Zuordnung nennt sie.",
-					noted.vermerk.reference,
-					placed.balance.concept,
-					placed.balance.amount,
-				)
+				seen.add(id(placed))
+				missing.append(placed)
+				reference = reference or noted.vermerk.reference
+		if not missing:
+			continue
+		named = ", ".join(_named(placed.balance) for placed in missing)
+		count = "1 Konto" if len(missing) == 1 else f"{len(missing)} Konten"
+		yield Finding(
+			Code.REMAINING_TERM_UNKNOWN,
+			Severity.ERROR,
+			f"Für {count} bei „{line.label}“ fehlt die Restlaufzeit, die die Vermerke nach § 268 Abs. 4 und 5 HGB "
+			f"brauchen: {named}. Tragen Sie sie in der Bilanzzuordnung in der Spalte „Restlaufzeit“ der Zeile des "
+			"Kontos ein; Steuern, Sozialversicherung und Löhne sind kraft Gesetzes binnen eines Jahres fällig, die "
+			"Vorgaben tragen für sie „bis 1 Jahr“ ein („Vorgaben aktualisieren“).",
+			reference,
+			line.position.concept,
+			sum((placed.balance.amount for placed in missing), ZERO),
+		)
 
 
 def _appropriated(balance: Balance) -> Finding:
