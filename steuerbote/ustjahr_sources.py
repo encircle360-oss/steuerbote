@@ -20,9 +20,11 @@
   Jahresabschluss, else those of the filed E-Bilanz.
 """
 
+import os
 from collections.abc import Collection, Iterable
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import frappe
 from frappe import _
@@ -30,6 +32,9 @@ from frappe.query_builder.functions import Sum
 from frappe.utils import cint, getdate
 
 from steuerbote import ebilanz_sources
+from steuerbote.eric import datenart
+from steuerbote.eric.fake import DOCUMENTATION_VARIABLE
+from steuerbote.jahresmeldung import documentation
 from steuerbote.jahresmeldung.lifecycle import Status
 from steuerbote.jahresmeldung.overrides import to_amount
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
@@ -254,3 +259,18 @@ def annual_revenue(company: str, year: int) -> revenue.Revenue | None:
 		POSITION, {"parent": name, "parenttype": ebilanz_sources.DOCTYPE, "concept": REVENUE}, "reported"
 	)
 	return revenue.Revenue(to_amount(reported), revenue.Source.EBILANZ, name)
+
+
+def rule_texts(year: int) -> dict[str, str]:
+	"""The official text of each rule of the Jahresdokumentation E50 of the year, by its Fehlercode, from the ERiC
+	documentation the site names in STEUERBOTE_ERIC_DOC_DIR; none where it names none or the file is missing, so that
+	the findings name the rule by its code and condition alone."""
+	configured = os.environ.get(DOCUMENTATION_VARIABLE)
+	if not configured:
+		return {}
+	try:
+		root = documentation.find(Path(configured))
+		path = documentation.jahresdokumentation_path(root, datenart.ust(year))
+		return bridge.rule_texts(documentation.read(path).rules)
+	except OSError, ValueError, documentation.DocumentationError:
+		return {}

@@ -178,6 +178,18 @@ class ValuesTest(TestCase):
 			with self.subTest(format=format, value=value):
 				self.assertEqual(layout.value_text(field(format), value), text)
 
+	def test_the_rechtsform_names_its_meaning_beside_its_key(self):
+		"""The key of the Rechtsform as the Anleitungen to KSt 1 and GewSt 1 A list it: 350 for the GmbH, 370 for the
+		UG (haftungsbeschränkt)."""
+		for feldkennung, key, text in (
+			("E8001105", "350", "350 (Gesellschaft mit beschränkter Haftung)"),
+			("E4000501", "370", "370 (Unternehmergesellschaft (haftungsbeschränkt))"),
+			("E8001105", "999", "999"),
+		):
+			with self.subTest(feldkennung=feldkennung, key=key):
+				item = Field("KSt1", "", feldkennung, "Rechtsform", "H", "14", options=("350", "370", "999"))
+				self.assertEqual(layout.value_text(item, key), text)
+
 	def test_days_and_texts(self):
 		self.assertEqual(layout.value_text(field("D"), date(2026, 3, 1)), "01.03.2026")
 		self.assertEqual(layout.value_text(field("T"), date(2026, 3, 1)), "01.03.")

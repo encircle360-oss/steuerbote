@@ -16,13 +16,13 @@ COLUMNS = [
 	"line",
 	"feldkennung",
 	"label",
+	"amount",
 	"account",
 	"posting_date",
 	"voucher_type",
 	"voucher_no",
 	"debit",
 	"credit",
-	"amount",
 	"currency",
 ]
 

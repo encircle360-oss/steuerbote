@@ -83,6 +83,17 @@ class TestAnnualAccounts(IntegrationTestCase):
 
 	# Berechnen.
 
+	def test_a_year_without_its_schemes_is_refused_when_it_is_made(self):
+		"""As the Erklärungen refuse a year without their forms: no draft that Berechnen could not calculate."""
+		for year in (2025, 2027):
+			with (
+				self.subTest(year=year),
+				self.assertRaisesRegex(
+					frappe.ValidationError, f"Steuerbote has no Jahresabschluss for {year} yet"
+				),
+			):
+				data.new_accounts(KLEINST, year=year)
+
 	def test_berechnen_decides_a_kleinstkapitalgesellschaft_and_builds_its_bilanz(self):
 		doc = data.calculated(KLEINST)
 		self.assertEqual(
@@ -170,6 +181,14 @@ class TestAnnualAccounts(IntegrationTestCase):
 		doc = data.adopted(doc)
 		self.assertEqual(blocking(doc), [])
 		self.assertEqual(doc.ready, 1)
+
+	def test_without_a_class_in_the_settings_the_feststellung_is_due_by_the_class_berechnen_applies(self):
+		"""A small company has eleven months for the Feststellung (§ 42a Abs. 2 Satz 1 GmbHG); where the settings name no
+		class for the Abschlussstichtag, the class the Jahresabschluss applies gives the deadline, not eight months."""
+		doc = data.calculated(KLEINST)
+		self.assertEqual(doc.size_class, "Kleinst")
+		self.assertIn("JA-GROESSE-EINSTELLUNGEN", codes(doc))
+		self.assertEqual(getdate(doc.deadline), date(2027, 11, 30))
 
 	def test_the_size_class_and_the_arbeitnehmer_by_hand_count_with_their_reason(self):
 		doc = data.calculated(KLEINST)

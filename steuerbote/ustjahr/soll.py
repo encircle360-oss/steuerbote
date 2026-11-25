@@ -36,6 +36,7 @@ from decimal import Decimal
 from enum import Enum
 from types import MappingProxyType
 
+from steuerbote.ustjahr import text
 from steuerbote.ustjahr.form import Finding, Severity
 from steuerbote.ustva.calculation import require_cents
 from steuerbote.ustva.period import Period, next_working_day
@@ -264,4 +265,4 @@ def _reason(reason: str, subject: str) -> str:
 
 
 def _euros(amount: Decimal) -> str:
-	return format(to_cents(amount), "f")
+	return text.euros(amount)

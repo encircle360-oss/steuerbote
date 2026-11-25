@@ -386,7 +386,7 @@ def size_findings(
 				Code.SIZE_HISTORY,
 				AnnualSeverity.HINT,
 				"Die Größenmerkmale der Einstellungen Jahresmeldungen nennen für den Abschlussstichtag nicht die "
-				"angewandte Größenklasse; die Frist der Feststellung rechnet nach ihnen, ohne Klasse mit acht Monaten.",
+				"angewandte Größenklasse; bis sie eine nennen, rechnet die Frist der Feststellung mit der angewandten.",
 				"§ 42a Abs. 2 Satz 1 GmbHG",
 			)
 		)

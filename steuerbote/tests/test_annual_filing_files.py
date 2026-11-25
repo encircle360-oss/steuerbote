@@ -283,6 +283,7 @@ class PrintIncludesFilesTest(TestCase):
 						set(re.findall(r"\brow\.(\w+)", text))
 						- provided
 						- {"severity", "code", "text", "reference", "get_formatted"}
+						- {"acknowledged", "acknowledgement_reason"}
 					),
 					[],
 				)

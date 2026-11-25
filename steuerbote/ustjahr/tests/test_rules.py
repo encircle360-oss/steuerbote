@@ -168,7 +168,7 @@ class SumsTest(TestCase):
 		)
 		self.assertEqual(
 			found,
-			(Finding("30314", Severity.ERROR, SUM_DIFFERS, ("E3006001", 41, "3.00", "2.00"), ("E3006001",)),),
+			(Finding("30314", Severity.ERROR, SUM_DIFFERS, ("E3006001", 41, "3,00", "2,00"), ("E3006001",)),),
 		)
 
 	def test_a_sum_missing_although_its_lines_are_given(self):
@@ -199,7 +199,7 @@ class SumsTest(TestCase):
 			found,
 			(
 				Finding(
-					"30636", Severity.ERROR, SUM_TOLERANCE, ("Kz 816", 124, "12.01", "2.00"), ("E3011101",)
+					"30636", Severity.ERROR, SUM_TOLERANCE, ("Kz 816", 124, "12,01", "2,00"), ("E3011101",)
 				),
 			),
 		)
@@ -253,12 +253,12 @@ class RateTest(TestCase):
 
 	def test_a_tax_more_than_one_euro_off_its_rate_fails(self):
 		(finding,) = check(2026, filing({"E3003303": D("10000"), "E3003304": D("1901.01")}))
-		expected = ("E3003304", 24, "19", "1901.01", "1900.00")
+		expected = ("E3003304", 24, "19", "1.901,01", "1.900,00")
 		self.assertEqual(finding, Finding("30639", Severity.ERROR, RATE, expected, ("E3003304", "E3003303")))
 		self.assertEqual(
 			finding.text,
-			"The tax E3003304 in line 24 is more than one euro away from 19 % of its base: 1901.01 instead of about "
-			"1900.00.",
+			"The tax E3003304 in line 24 is more than one euro away from 19 % of its base: 1.901,01 instead of about "
+			"1.900,00.",
 		)
 
 	def test_the_taxes_of_the_last_buyer_in_a_dreiecksgeschaeft_are_checked_too(self):

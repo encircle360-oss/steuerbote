@@ -81,13 +81,13 @@ class SollTest(TestCase):
 			soll.findings,
 			(
 				Finding(
-					"SONDERVORAUSZAHLUNG-KZ39", Severity.HINT, SONDERVORAUSZAHLUNG, ("0.00", "1100.00", 2026)
+					"SONDERVORAUSZAHLUNG-KZ39", Severity.HINT, SONDERVORAUSZAHLUNG, ("0,00", "1.100,00", 2026)
 				),
 			),
 		)
 		self.assertEqual(
 			soll.findings[0].text,
-			"The Voranmeldungen credited 0.00 euros of Sondervorauszahlung in Kz 39, the settings name 1100.00 euros "
+			"The Voranmeldungen credited 0,00 euros of Sondervorauszahlung in Kz 39, the settings name 1.100,00 euros "
 			"for 2026. The last Voranmeldung of the year deducts it (§ 48 Absatz 4 UStDV); the Vorauszahlungssoll "
 			"counts the Sondervorauszahlung of the settings.",
 		)
@@ -160,7 +160,7 @@ class CorrectionTest(TestCase):
 					"SOLL-UEBERSCHRIEBEN",
 					Severity.HINT,
 					OVERRIDDEN,
-					("12800.00", "12000.00", "Bescheid vom 1. Oktober 2027"),
+					("12.800,00", "12.000,00", "Bescheid vom 1. Oktober 2027"),
 				),
 			),
 		)
@@ -179,7 +179,7 @@ class PaymentsTest(TestCase):
 	def test_hints_when_the_payments_differ_from_the_soll(self):
 		soll = vorauszahlungssoll(2026, monthly(), MONTHS, SONDERVORAUSZAHLUNG_2026, paid=Decimal("11000.00"))
 		self.assertEqual(
-			soll.findings, (Finding("ZAHLUNGEN", Severity.HINT, PAYMENTS, ("11000.00", 2026, "12000.00")),)
+			soll.findings, (Finding("ZAHLUNGEN", Severity.HINT, PAYMENTS, ("11.000,00", 2026, "12.000,00")),)
 		)
 
 	def test_no_hint_when_the_payments_match_or_are_unknown(self):
