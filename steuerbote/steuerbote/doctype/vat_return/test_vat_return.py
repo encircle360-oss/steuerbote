@@ -698,6 +698,7 @@ class TestVATReturn(IntegrationTestCase):
 		self.assertEqual(kennzahlen(contents(doc.make_import_file())), {"Kz81": "1000", "Kz83": "190.00"})
 
 	def test_a_corrected_return_writes_zero_for_what_it_no_longer_reports(self):
+		self.enterContext(self.freeze_time(AFTER_2026, tick=True))
 		first = self.calculated(11)
 		first.append(
 			"kennzahlen",

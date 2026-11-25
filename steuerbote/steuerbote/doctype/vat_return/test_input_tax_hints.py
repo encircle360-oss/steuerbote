@@ -5,6 +5,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from steuerbote.tests.helpers import (
+	ensure_fiscal_year,
 	make_account,
 	make_company,
 	make_mapping,
@@ -35,6 +36,8 @@ class TestInputTaxHints(IntegrationTestCase):
 		}
 		make_settings(COMPANY, [(2026, "monthly", 1)])
 		make_mapping(COMPANY)
+		ensure_fiscal_year(COMPANY, "2026-01-01")
+		frappe.cache.delete_value("fiscal_years")
 		a = cls.account
 		cls.wrong = post_journal_entry(
 			COMPANY, "2026-06-15", [(a["3300"], 1000, 0), (a["1576"], 190, 0), (a["1600"], 0, 1190)]

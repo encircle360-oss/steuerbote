@@ -5,6 +5,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from steuerbote.tests.helpers import (
+	ensure_fiscal_year,
 	make_account,
 	make_company,
 	make_mapping,
@@ -35,6 +36,8 @@ class TestObligations(IntegrationTestCase):
 		}
 		make_settings(COMPANY, [(2026, "monthly", 1)])
 		make_mapping(COMPANY)
+		ensure_fiscal_year(COMPANY, "2026-01-01")
+		frappe.cache.delete_value("fiscal_years")
 
 	def setUp(self):
 		frappe.db.savepoint("obligations_test")

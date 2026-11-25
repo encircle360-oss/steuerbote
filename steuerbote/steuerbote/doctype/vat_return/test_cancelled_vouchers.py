@@ -7,6 +7,7 @@ from frappe.tests import IntegrationTestCase
 
 from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import execute
 from steuerbote.tests.helpers import (
+	ensure_fiscal_year,
 	make_account,
 	make_company,
 	make_mapping,
@@ -35,6 +36,8 @@ def set_up_company() -> dict[str, str]:
 			make_account(COMPANY, number, name, root_type)
 		make_settings(COMPANY, [(2026, "monthly", 1)])
 		make_mapping(COMPANY)
+	ensure_fiscal_year(COMPANY, "2026-01-01")
+	frappe.cache.delete_value("fiscal_years")
 	return {
 		number: frappe.db.get_value("Account", {"company": COMPANY, "account_number": number})
 		for number in ACCOUNTS

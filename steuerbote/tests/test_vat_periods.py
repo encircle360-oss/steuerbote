@@ -208,7 +208,7 @@ class VatPeriodsTest(IntegrationTestCase):
 				voucher = self.invoice(f"SINV-LD-002{index}", "2026-07-10", "2026-07-10 09:00:00")
 				cancel_voucher("Sales Invoice", f"SINV-LD-002{index}", immutable_on, "2026-09-04 10:00:00")
 				ledger = VatLedger.for_period(COMPANY, SEPTEMBER)
-				self.assertEqual(set(self.balances(ledger.lines(JULY), voucher).values()), {0})
+				self.assertEqual(self.balances(ledger.lines(JULY), voucher), {})
 				self.assertEqual(self.balances(ledger.lines(SEPTEMBER), voucher), {})
 				self.assertEqual(ledger.late(), [])
 
@@ -277,6 +277,4 @@ class VatPeriodsTest(IntegrationTestCase):
 		cancel_voucher("Journal Entry", "JV-LD-0060", "2026-11-25", "2026-11-25 10:00:00")
 		voucher = "Journal Entry:JV-LD-0060"
 		self.assertEqual(self.balances(VatLedger.for_period(COMPANY, NOVEMBER).lines(NOVEMBER), voucher), {})
-		self.assertEqual(
-			set(self.balances(VatLedger.for_period(COMPANY, DECEMBER).lines(DECEMBER), voucher).values()), {0}
-		)
+		self.assertEqual(self.balances(VatLedger.for_period(COMPANY, DECEMBER).lines(DECEMBER), voucher), {})
