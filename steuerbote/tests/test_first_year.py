@@ -125,7 +125,12 @@ class FirstYearTest(IntegrationTestCase):
 		self.assertEqual(amounts["66"], Decimal("1900"))
 		self.assertEqual(amounts["83"], Decimal("-1900"))
 		texts = [row.text for row in doc.hints]
-		self.assertTrue(any(text.startswith("Konto 1548 ") and "löst 1.900,00 €" in text for text in texts))
+		self.assertTrue(
+			any(
+				text.startswith("Konto 1548 ") and " des Saldos auf, den es aus der Zeit davor trägt" in text
+				for text in texts
+			)
+		)
 		self.assertTrue(
 			any(
 				text.startswith("Vor dem Start der Bücher in Steuerbote: Der Vergleich mit Dezember 2025")

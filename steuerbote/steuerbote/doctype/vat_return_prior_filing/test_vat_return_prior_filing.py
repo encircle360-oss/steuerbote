@@ -8,6 +8,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from steuerbote import prior_filings
+from steuerbote.setup import start
 from steuerbote.tests.helpers import make_company, make_mapping, make_settings
 
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "VAT Return"]
@@ -132,7 +133,10 @@ class TestVATReturnPriorFiling(IntegrationTestCase):
 		self.record(5, 100)
 		corrected = self.record(5, 150, filed_on="2026-09-01")
 		self.assertEqual(
-			next((filed.name, filed.kz83) for filed in prior_filings.prior_filings(COMPANY, {2026})),
+			next(
+				(filed.name, filed.kz83)
+				for filed in start.latest(prior_filings.prior_filings(COMPANY, {2026}))
+			),
 			(corrected.name, money(150)),
 		)
 

@@ -185,10 +185,10 @@ class VATReturn(Confirming, Transmittable, Document):
 		self.refuse_changes_after_sending()
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
+		self._refuse_a_period_before_the_start()
 		self._require_catalogue()
 		self.provisional = int(bridge.provisional_forms(cint(self.year)) is not None)
 		self._set_period()
-		self._refuse_a_period_before_the_start()
 		self._refuse_second_return()
 		self._keep_the_calculation()
 		self._set_final_amounts()
@@ -547,11 +547,12 @@ class VATReturn(Confirming, Transmittable, Document):
 		only the opening balances of that time (steuerbote/setup/start.py): a return computed from it would file
 		nothing, and as a corrected return replace what the Finanzamt has."""
 		books_start = prior_filings.books_start(self.company)
-		if before_start(getdate(self.from_date), books_start):
+		period = self._chosen_period(cint(self.year))
+		if before_start(period.start, books_start):
 			frappe.throw(
 				_(
 					"{0} begins before the start of the books in Steuerbote on {1}: its Voranmeldung was filed outside Steuerbote, and the ledger holds only the opening balances of that time. Enter it as a VAT Return Prior Filing; a corrected return of it goes where the books of that time are kept."
-				).format(self.period_label, formatdate(books_start))
+				).format(period.label, formatdate(books_start))
 			)
 
 	def _refuse_second_return(self) -> None:
