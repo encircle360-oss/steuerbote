@@ -20,8 +20,6 @@ from steuerbote.ustva import LedgerLine, Period
 from steuerbote.ustva.assignment import PeriodBasis
 from steuerbote.vat_periods import VatLedger, accounts_by_invoice_date, filings
 
-IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
-
 COMPANY = "Steuerbote Test Leistungsdatum GmbH"
 JULY = Period.month(2026, 7)
 AUGUST = Period.month(2026, 8)
