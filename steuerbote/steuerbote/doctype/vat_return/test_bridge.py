@@ -212,8 +212,8 @@ class OverrideBasisTest(TestCase):
 		self.assertEqual(
 			hint.text,
 			"Kz 81: Die Korrektur auf 1.100,00 € wurde bei 900,00 € im Hauptbuch eingetragen; das Hauptbuch bucht "
-			"jetzt 1.300,00 €. Die Voranmeldung ist nicht bereit, bis die Korrektur bestätigt ist: Passe Betrag oder "
-			"Begründung an, oder lösche die Korrektur.",
+			"jetzt 1.300,00 €. Die Voranmeldung ist nicht bereit, bis die Korrektur bestätigt ist: Passen Sie Betrag oder "
+			"Begründung an, oder löschen Sie die Korrektur.",
 		)
 
 	def test_an_override_whose_basis_is_unknown_holds_the_return_until_it_is_confirmed(self):

@@ -19,20 +19,18 @@ from steuerbote.zm.lines import (
 )
 from steuerbote.zm.tests.support import AUSTRIA, FIGURES, FRANCE, SPAIN, d, invoice
 
-NO_VAT_ID_ADVICE = (
-	"Berichtige die Rechnung, oder nimm die Zeile mit der Korrektur 0 und einer Begründung aus der ZM."
-)
+NO_VAT_ID_ADVICE = "Berichtigen Sie die Rechnung, oder nehmen Sie die Zeile mit der Korrektur 0 und einer Begründung aus der ZM."
 MALFORMED_ADVICE = (
-	"Berichtige die USt-IdNr. in der Rechnung, oder nimm die Zeile mit der Korrektur 0 und einer Begründung "
+	"Berichtigen Sie die USt-IdNr. in der Rechnung, oder nehmen Sie die Zeile mit der Korrektur 0 und einer Begründung "
 	"aus der ZM."
 )
 INVALID_ADVICE = (
-	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, gib die USt-IdNr. mit Begründung frei; "
-	"sonst berichtige die Rechnung."
+	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, geben Sie die USt-IdNr. mit Begründung frei; "
+	"sonst berichtigen Sie die Rechnung."
 )
 UNCONFIRMED_ADVICE = (
 	"Die Bestätigung soll spätestens zum Umsatz vorliegen (UStAE 6a.8 Abs. 6): „USt-IdNrn. prüfen“ fragt beim "
-	"BZSt an; liegt eine Bestätigung anders vor, gib die USt-IdNr. mit Begründung frei."
+	"BZSt an; liegt eine Bestätigung anders vor, geben Sie die USt-IdNr. mit Begründung frei."
 )
 
 
@@ -424,7 +422,7 @@ class OverrideBasisTest(TestCase):
 			line.findings[1].text,
 			f"Die Korrektur der Zeile {AUSTRIA} (L) auf 55.000,00 € wurde bei 55.000,99 € im Hauptbuch eingetragen; "
 			"das Hauptbuch bucht jetzt 57.000,99 €. Die Zeile hält die Meldung an, bis die Korrektur bestätigt ist: "
-			"Passe Betrag oder Begründung an, oder lösche die Korrektur, dann meldet die Zeile das Hauptbuch.",
+			"Passen Sie Betrag oder Begründung an, oder löschen Sie die Korrektur, dann meldet die Zeile das Hauptbuch.",
 		)
 		self.assertIs(line.findings[1].severity, Severity.ERROR)
 		self.assertEqual(line.override.basis, d("55000.99"))
