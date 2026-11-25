@@ -183,6 +183,12 @@ Jede Tabelle hat dieselben Spalten:
 |---|---|---|---|---|
 | P-114 | Wer berichtigt einen Zeitraum vor dem Start der Bücher in ERPNext, wenn dort nach dem Start noch ein Beleg für ihn gebucht wird, und darf er stattdessen im laufenden Zeitraum gemeldet werden? | Meldet ihn nicht im Zeitraum vor dem Start und legt dafür keine Meldung an; die Meldung, die gerade vorbereitet wird, nennt den Beleg und dass die Berichtigung abgibt, wer den Zeitraum abgegeben hat. Mit „im laufenden Zeitraum melden“ meldet sie ihn im ersten offenen Zeitraum der Bücher. | Einstellungen Umsatzsteuer-Voranmeldung → „Belege für abgegebene Zeiträume“ | [Belege für abgegebene Zeiträume](ustva-kennzahlen.md#belege-für-abgegebene-zeiträume) |
 
+## Steuer zu Umsätzen mit festem Steuersatz
+
+| Nr. | Punkt | Was Steuerbote bis zur Antwort tut | Wo die Antwort eingetragen wird | Quelle |
+|---|---|---|---|---|
+| P-115 | Soll die Steuer der Kz 81, 86, 89 und 93 aus der gemeldeten Bemessungsgrundlage in vollen Euro kommen, wie das amtliche Formular rechnet, oder wie auf den Belegen gebucht, so dass Kz 83 dem Saldo der Steuerkonten entspricht? Beides nimmt die Schnittstelle des Finanzamts an; die Umsatzsteuererklärung folgt der Wahl. | Rechnet aus der Bemessungsgrundlage in vollen Euro; wie gebucht nur, wenn die Einstellung es sagt. Liegt die gebuchte Steuer einer Zeile der Umsatzsteuererklärung mehr als einen Euro neben dem Satz auf die übermittelte Bemessungsgrundlage, nimmt die Zeile die Steuer der genauen Bemessungsgrundlage und gibt den Hinweis `STEUER-WIE-GEBUCHT`. | Einstellungen Umsatzsteuer-Voranmeldung → „Steuer zu Umsätzen mit festem Steuersatz“ | [Steuer zu Umsätzen mit festem Steuersatz](ustva-kennzahlen.md#steuer-zu-umsätzen-mit-festem-steuersatz) |
+
 ## So geben Sie die Antworten zurück
 
 Was die Steuerberatung entscheidet, gilt für das Unternehmen, sobald es dort steht, wo Steuerbote es liest: Einstellungen und Zuordnungen liest ein Beleg mit dem nächsten „Berechnen“. Ändert sich eine Korrektur oder Angabe an einem berechneten Beleg der Jahresmeldungen, steht er bis dahin mit dem Befund `SB-NEU-BERECHNEN` auf „Berechnet“.

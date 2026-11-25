@@ -18,7 +18,8 @@ The rules behind the hints on single invoices:
   names for them „die Umsatzsteuer-Identifikationsnummer jedes Leistungsempfängers, die ihm in einem
   anderen Mitgliedstaat erteilt worden ist“ (§ 18a Absatz 7 Satz 1 Nummer 3 Buchstabe a UStG).
 - Kz 81 and 86 hold taxable turnover at 19 % and 7 %, and the form derives their tax from the base (lines
-  13 and 14), so an invoice on their accounts charges that rate.
+  13 and 14), so an invoice on their accounts charges that rate. This holds whichever way the return takes the tax of
+  these lines (StatutoryTax in calculation.py): the hint checks the invoice, not the return.
 
 The hints on single invoices check a VAT id only for being there; the party's country is that of the address
 on the invoice. Whether the BZSt confirmed the USt-IdNr. of a customer behind Kz 41, 42 or 21, how long ago, and
