@@ -31,7 +31,7 @@ INVALID_ADVICE = (
 	"sonst berichtige die Rechnung."
 )
 UNCONFIRMED_ADVICE = (
-	"Die Bestätigung soll am Tag des Umsatzes vorliegen (UStAE 6a.8 Abs. 6): „USt-IdNrn. prüfen“ fragt beim "
+	"Die Bestätigung soll spätestens zum Umsatz vorliegen (UStAE 6a.8 Abs. 6): „USt-IdNrn. prüfen“ fragt beim "
 	"BZSt an; liegt eine Bestätigung anders vor, gib die USt-IdNr. mit Begründung frei."
 )
 
