@@ -222,18 +222,18 @@
    "fieldname": "vat_id_checks_section",
    "fieldtype": "Section Break",
    "label": "VAT ID Checks",
-   "description": "How Steuerbote confirms the USt-IdNrn. of customers and suppliers at the BZSt. Nothing is asked without the own USt-IdNr. above. Agree the ages with the tax adviser: no law names a number of days."
+   "description": "How Steuerbote confirms the USt-IdNrn. of customers and suppliers at the BZSt. Nothing is asked without the own USt-IdNr. above, and nothing by itself until a confirmation on a change or the daily renewal is switched on; the buttons on the partner and on the invoice work regardless. Agree the ages with the tax adviser: no law names a number of days."
   },
   {
-   "default": "1",
-   "description": "Confirm the USt-IdNr. of a partner in the background when the partner is created or its USt-IdNr., name or address changes.",
+   "default": "0",
+   "description": "Off by default. Confirm the USt-IdNr. of a partner in the background when the partner is created or its USt-IdNr., name or address changes; this sends the data of the partner to the BZSt, and to VIES when the BZSt cannot answer.",
    "fieldname": "vat_id_check_on_change",
    "fieldtype": "Check",
    "label": "Confirm When a Partner Changes"
   },
   {
-   "default": "1",
-   "description": "Every morning ask again about each partner whose latest confirmation is as old as the maximum age above or older, one after the other, at most 25 a day.",
+   "default": "0",
+   "description": "Off by default. Every morning ask again about each partner whose latest confirmation is as old as the maximum age above or older, one after the other, at most 25 a day.",
    "fieldname": "vat_id_renewal",
    "fieldtype": "Check",
    "label": "Renew Confirmations Daily"
@@ -395,7 +395,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-25 18:00:00.000000",
+ "modified": "2026-11-25 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",

@@ -694,7 +694,7 @@ def check_invoice(doc, method: str | None = None) -> None:
 		return
 	frappe.throw(
 		_(
-			"{0} Confirm the USt-IdNr. of the customer and submit again, or give a reason in VAT ID Override Reason to submit all the same."
+			"{0} Next: press „Confirm VAT ID of the Customer“ on this invoice, or „Confirm VAT ID“ on the customer, wait for the notice that the confirmation has finished, and submit again. To submit all the same, give the reason in „VAT ID Override Reason“."
 		).format(text),
 		title=_("USt-IdNr. of the Customer"),
 	)
@@ -800,6 +800,7 @@ def vat_id_state(party_type: str, party: str) -> dict:
 					"standing_label": _(standing.value) if standing else "",
 					"asked_on": fact.answer.asked_on if fact.answer else None,
 					"record": fact.record,
+					"automatic": policy.on_change or policy.renewal,
 				}
 			)
 	return {

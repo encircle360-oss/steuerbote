@@ -17,6 +17,7 @@ COMPANY = "company"
 PARTY_TYPE = "party_type"
 FILTERS = (COMPANY, PARTY_TYPE)
 NO_REQUESTER = "{0} has no own USt-IdNr. in its VAT Return Settings, so Steuerbote confirms nothing for it."
+AUTOMATIC_OFF = "The automatic check is off for {0}: Steuerbote confirms a partner only when someone presses „Confirm VAT ID“ on the partner or on an invoice. Switch it on in Set Up Steuerbote or in the VAT Return Settings."
 STANDING_NOTES = {
 	"Missing": "No confirmation yet.",
 	"Expired": "The latest confirmation is older than the settings allow.",
@@ -34,11 +35,13 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 	if not company:
 		frappe.throw(_("Choose the company."))
 	frappe.has_permission("Company", "read", doc=company, throw=True)
-	if partner_vat_ids.company_policy(company) is None:
+	policy = partner_vat_ids.company_policy(company)
+	if policy is None:
 		return get_columns(), [], _(NO_REQUESTER).format(company)
 	chosen = filters.get(PARTY_TYPE)
 	types = (chosen,) if chosen in partner_vat_ids.PARTY_TYPES else partner_vat_ids.PARTY_TYPES
-	return get_columns(), [_row(row) for row in partner_vat_ids.worklist(company, types)], None
+	message = None if policy.on_change or policy.renewal else _(AUTOMATIC_OFF).format(company)
+	return get_columns(), [_row(row) for row in partner_vat_ids.worklist(company, types)], message
 
 
 def get_columns() -> list[dict[str, Any]]:

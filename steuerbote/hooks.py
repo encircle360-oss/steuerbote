@@ -155,4 +155,11 @@ steuerbote_setup_steps = [
 		"order": 70,
 		"run": "steuerbote.steuerbote.vat_id_setup.check_erpnext_germany",
 	},
+	{
+		"key": "vat_id_automatic_check",
+		"label": "Automatic VAT ID Check",
+		"order": 75,
+		"needs": ["vat_return_settings"],
+		"run": "steuerbote.steuerbote.vat_id_setup.check_automatic_check",
+	},
 ]

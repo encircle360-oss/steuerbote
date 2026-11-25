@@ -28,6 +28,16 @@ if (!window.steuerbote_partner_vat_id) {
 					)})</span>`
 				);
 			}
+			const manual = state.companies.filter((row) => !row.automatic).map((row) => row.company);
+			if (manual.length) {
+				lines.push(
+					escape(
+						__("The automatic check is off for {0}: Steuerbote confirms only on the button.", [
+							manual.join(", "),
+						])
+					)
+				);
+			}
 			if (state.queued) {
 				lines.push(escape(__("A confirmation of the USt-IdNr. is waiting in the queue.")));
 			}

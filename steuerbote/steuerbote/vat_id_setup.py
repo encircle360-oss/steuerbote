@@ -1,6 +1,11 @@
-"""Two steps of Steuerbote einrichten for the USt-IdNrn. of partners (hook steuerbote_setup_steps): the label of
-ERPNext's Tax ID, and the VAT ID check of erpnext_germany beside Steuerbote's. Neither changes anything on its own:
-each says what it finds and offers its change as an action of the page, which only a System Manager runs.
+"""Three steps of Steuerbote einrichten for the USt-IdNrn. of partners (hook steuerbote_setup_steps): the label of
+ERPNext's Tax ID, the VAT ID check of erpnext_germany beside Steuerbote's, and the automatic check of the company.
+None changes anything on its own: each says what it finds and offers its change as an action of the page, which only
+a System Manager runs.
+
+The automatic check, a confirmation when a partner changes and the daily renewal, is off until the company switches
+it on here or in its VAT Return Settings: it sends the data of partners to the BZSt and VIES, which nothing may start
+merely because the app was installed or updated.
 
 ERPNext keeps one tax identifier per party and company, tax_id, and every app that reads it, Steuerbote included, takes
 it as the USt-IdNr.; ERPNext's German translation calls it „Steuernummer“, so users enter the Steuernummer there. The
@@ -18,6 +23,7 @@ import frappe
 from frappe import _
 from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 
+from steuerbote import vatid
 from steuerbote.setup.steps import Action, Note, Outcome, StepResult
 
 TAX_ID = "tax_id"
@@ -40,6 +46,13 @@ GERMANY_NO_JOB = "erpnext_germany is installed without its VAT ID job."
 GERMANY_STOPPED = "The VAT ID job of erpnext_germany is stopped; its VAT ID Check records stay as they are, and Steuerbote does not read them as proof."
 GERMANY_OVERLAP = "erpnext_germany checks every customer and supplier with a USt-IdNr. at VIES every few minutes, with the default company as requester, and keeps the results in VAT ID Check, which Steuerbote does not read as proof. Steuerbote confirms the same numbers at the BZSt. Stop the job of erpnext_germany so that each number is asked about once; the app stays installed for its other functions."
 STOP_GERMANY = "Stop the VAT ID Job of erpnext_germany"
+SETTINGS = "VAT Return Settings"
+AUTOMATIC_FIELDS = ("vat_id_check_on_change", "vat_id_renewal")
+AUTOMATIC_ON = "The automatic check of USt-IdNrn. is on for {0}: a changed partner and every partner whose confirmation is due are confirmed in the background."
+AUTOMATIC_OFF = "The automatic check of USt-IdNrn. is off for {0}: Steuerbote confirms a partner only when someone presses „Confirm VAT ID“ on the partner or on an invoice, so partners stay „Not Checked“ until then. Switched on, it confirms a partner in the background when it is created or changed and renews every confirmation that is due each morning: the own USt-IdNr. of the company, the USt-IdNr. of the partner and, where known, its name and address go to the BZSt, and to VIES of the European Commission when the BZSt cannot answer."
+AUTOMATIC_PARTLY = "Only one of „Confirm When a Partner Changes“ and „Renew Confirmations Daily“ is on for {0}; the action switches on both."
+AUTOMATIC_NEEDS_VAT_ID = "Enter the own USt-IdNr. of {0} in the VAT Return Settings first: without it Steuerbote confirms nothing for the company."
+SWITCH_ON = "Switch On the Automatic Check"
 MESSAGES = (
 	LABELLED,
 	LABEL_MISLEADS,
@@ -50,6 +63,11 @@ MESSAGES = (
 	GERMANY_STOPPED,
 	GERMANY_OVERLAP,
 	STOP_GERMANY,
+	AUTOMATIC_ON,
+	AUTOMATIC_OFF,
+	AUTOMATIC_PARTLY,
+	AUTOMATIC_NEEDS_VAT_ID,
+	SWITCH_ON,
 )
 
 
@@ -123,3 +141,32 @@ def stop_erpnext_germany_check(company: str | None = None) -> None:
 	doc = frappe.get_doc(JOB_TYPE, job.name)
 	doc.stopped = 1
 	doc.save()
+
+
+def check_automatic_check(context) -> StepResult:
+	"""The step vat_id_automatic_check: done when the company confirms on a change and renews daily; otherwise it says
+	what the automatic check sends and to whom, and offers to switch both on, once the company has its own USt-IdNr."""
+	company = context.company
+	values = frappe.db.get_value(SETTINGS, company, ["ust_idnr", *AUTOMATIC_FIELDS], as_dict=True)
+	document = (SETTINGS, company)
+	if not vatid.is_german(values.ust_idnr):
+		return StepResult(Outcome.UNDECIDED, (Note(AUTOMATIC_NEEDS_VAT_ID, (company,), open=True),), document)
+	switched = [bool(values.get(field)) for field in AUTOMATIC_FIELDS]
+	if all(switched):
+		return StepResult(Outcome.SKIPPED, (Note(AUTOMATIC_ON, (company,)),), document)
+	notes = [Note(AUTOMATIC_OFF, (company,), open=True)]
+	if any(switched):
+		notes.append(Note(AUTOMATIC_PARTLY, (company,)))
+	return StepResult(
+		Outcome.UNDECIDED, tuple(notes), document, Action(SWITCH_ON, f"{__name__}.enable_automatic_check")
+	)
+
+
+@frappe.whitelist(methods=["POST"])
+def enable_automatic_check(company: str | None = None) -> None:
+	"""The action of vat_id_automatic_check: switch on the confirmation on a change and the daily renewal of the
+	company."""
+	frappe.only_for(MANAGER, message=True)
+	if not company or not frappe.db.exists(SETTINGS, company):
+		frappe.throw(_("There is no company {0}.").format(company or ""))
+	frappe.db.set_value(SETTINGS, company, dict.fromkeys(AUTOMATIC_FIELDS, 1))
