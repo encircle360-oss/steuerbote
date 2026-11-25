@@ -183,7 +183,7 @@ class DocsTest(TestCase):
 	def test_names_the_fields_of_the_deadline_reminder(self):
 		self.assertEqual(
 			[row[0].strip("`") for row in rows("### Fristerinnerung (`Deadline Reminder`)")],
-			["company", "kind", "period_label", "due_date", "sent_on"],
+			["company", "kind", "period_label", "due_date", "sent_on", "recipients"],
 		)
 
 	def test_the_examples_fall_due_on_the_days_the_core_computes(self):

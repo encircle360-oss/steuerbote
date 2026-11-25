@@ -5,6 +5,7 @@ weekends and the holidays of the company."""
 from datetime import date
 from unittest import TestCase
 
+from steuerbote.deadlines.annual import Note
 from steuerbote.deadlines.obligations import (
 	Kind,
 	Obligation,
@@ -103,6 +104,33 @@ class VoranmeldungenTest(TestCase):
 		self.assertEqual(list(voranmeldungen((), (), until=date(2026, 12, 31))), [])
 
 
+class CarriedDauerfristTest(TestCase):
+	"""Without a row for a year the Voranmeldungen keep the day without the extension, which is never late, and say
+	that the extension of the year before may still hold."""
+
+	def test_the_voranmeldungen_of_a_year_without_a_row_say_so(self):
+		found = list(voranmeldungen(MONTHLY, DAUERFRIST_2026, until=date(2027, 3, 10)))
+		self.assertEqual(
+			[(item.label, item.due, item.notes) for item in found[-3:]],
+			[
+				("Dezember 2026", date(2027, 2, 10), ()),
+				("Januar 2027", date(2027, 2, 10), (Note.DAUERFRIST_NOT_RECORDED,)),
+				("Februar 2027", date(2027, 3, 10), (Note.DAUERFRIST_NOT_RECORDED,)),
+			],
+		)
+
+	def test_a_quarterly_filer_gets_the_note_and_no_sondervorauszahlung(self):
+		found = list(voranmeldungen(QUARTERLY, DAUERFRIST_2026, until=date(2027, 4, 10)))
+		self.assertEqual(found[-1].notes, (Note.DAUERFRIST_NOT_RECORDED,))
+		self.assertEqual(
+			[
+				item.period
+				for item in sondervorauszahlungen(QUARTERLY, DAUERFRIST_2026, until=date(2027, 12, 31))
+			],
+			[],
+		)
+
+
 class ZusammenfassendeMeldungenTest(TestCase):
 	def test_owes_one_for_each_meldezeitraum_due_on_the_25th_day_after_it(self):
 		found = list(zusammenfassende_meldungen(ZM_MONTHLY, until=date(2026, 3, 25)))
@@ -192,7 +220,43 @@ class SondervorauszahlungenTest(TestCase):
 
 	def test_a_year_without_a_voranmeldungszeitraum_owes_none(self):
 		rules = (PeriodRule(2027, "monthly"),)
-		self.assertEqual(list(sondervorauszahlungen(rules, DAUERFRIST_2026, until=date(2027, 12, 31))), [])
+		self.assertEqual(list(sondervorauszahlungen(rules, DAUERFRIST_2026, until=date(2026, 12, 31))), [])
+		self.assertEqual(
+			[item.period for item in sondervorauszahlungen(rules, DAUERFRIST_2026, until=date(2027, 12, 31))],
+			[2027],
+		)
+
+	def test_an_extension_without_a_row_for_the_next_year_still_owes_its_sondervorauszahlung(self):
+		"""A granted Dauerfristverlängerung stays until the company gives it up or the Finanzamt revokes it (§ 46
+		UStDV; Anleitung USt 5 E), and a monthly filer pays the Sondervorauszahlung of every year by the day of the first
+		Voranmeldung (§ 47 Abs. 1, § 48 Abs. 2 UStDV). Without a row for the new year the deadline stays, with a note."""
+		self.assertEqual(
+			list(sondervorauszahlungen(MONTHLY, DAUERFRIST_2026, until=date(2028, 12, 31))),
+			[
+				Obligation(Kind.SONDERVORAUSZAHLUNG, 2026, "2026", date(2026, 2, 10)),
+				Obligation(
+					Kind.SONDERVORAUSZAHLUNG,
+					2027,
+					"2027",
+					date(2027, 2, 10),
+					notes=(Note.DAUERFRIST_NOT_RECORDED,),
+				),
+				Obligation(
+					Kind.SONDERVORAUSZAHLUNG,
+					2028,
+					"2028",
+					date(2028, 2, 10),
+					notes=(Note.DAUERFRIST_NOT_RECORDED,),
+				),
+			],
+		)
+
+	def test_a_row_without_the_extension_ends_it(self):
+		prepayments = (*DAUERFRIST_2026, Prepayment(2027))
+		self.assertEqual(
+			labels(sondervorauszahlungen(MONTHLY, prepayments, until=date(2028, 12, 31))),
+			[("2026", date(2026, 2, 10))],
+		)
 
 	def test_a_company_whose_voranmeldungen_begin_later_in_the_year_pays_with_its_first(self):
 		rules = (PeriodRule(2026, "none"), PeriodRule(2026, "monthly", 4))
