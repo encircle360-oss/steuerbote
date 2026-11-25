@@ -201,7 +201,7 @@ class HeadingsTest(TestCase):
 				if 'class="sb-caption"' in table:
 					with self.subTest(template=name):
 						head = table[: table.index('class="sb-caption"')]
-						self.assertRegex(head, r"<colgroup>|_columns\(\) \}\}")
+						self.assertRegex(head, r"<colgroup>|_columns\(\w*\) \}\}")
 
 	def test_a_section_of_a_form_keeps_its_heading_with_its_first_rows(self):
 		"""wkhtmltopdf keeps a row together but not a group of rows: the heading of a section and its first rows stand
@@ -214,3 +214,16 @@ class HeadingsTest(TestCase):
 					if heading in group:
 						with self.subTest(template=name, heading=heading):
 							self.assertLess(group.index('<td class="sb-nest"'), group.index(heading))
+
+
+class AnlagenspiegelTest(TestCase):
+	def test_puts_each_position_on_a_line_above_its_amounts_so_that_eight_columns_fit_a4(self):
+		"""Abschreibungen und Buchwert has eight columns of amounts (layout.DEPRECIATION_COLUMNS): beside a column for
+		the position and one for the Wertart they ran off a portrait page."""
+		_, template = print_formats()["e_bilanz"]
+		(macro,) = re.findall(r"macro asset_columns\(columns\).*?endmacro", template, re.DOTALL)
+		self.assertEqual(macro.count("<col"), 3)
+		self.assertIn("{%- for column in columns %}", macro)
+		self.assertEqual(template.count('<tr class="sb-asset">'), 1)
+		self.assertIn("· {{ row.value_type | e }}</td></tr>", template)
+		self.assertIn("· {{ total.value_type | e }}</td></tr>", template)
