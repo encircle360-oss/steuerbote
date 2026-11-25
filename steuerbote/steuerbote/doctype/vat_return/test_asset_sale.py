@@ -18,7 +18,6 @@ from steuerbote.tests.helpers import (
 	insert_record,
 	make_account,
 	make_company,
-	make_customer,
 	make_mapping,
 	make_settings,
 )
@@ -269,7 +268,7 @@ class TestAssetSale(IntegrationTestCase):
 
 def make_masters(account: dict[str, str]) -> None:
 	"""The records ERPNext needs to sell an asset, without its setup wizard: a unit, an item group, a location, an asset
-	category with the accounts of the company, the item of the asset, an item for asset sales and a customer."""
+	category with the accounts of the company, the item of the asset, an item for asset sales and a customer without address."""
 	if not frappe.db.exists("UOM", UOM):
 		insert_record("UOM", name=UOM, uom_name=UOM, must_be_whole_number=1, enabled=1)
 	if not frappe.db.exists("Item Group", ITEM_GROUP):
@@ -315,4 +314,5 @@ def make_masters(account: dict[str, str]) -> None:
 				has_variants=0,
 			)
 	if not frappe.db.exists("Customer", CUSTOMER):
-		make_customer(CUSTOMER, "Germany")
+		# Without an address: the site has no Address Template to show one on the invoice.
+		insert_record("Customer", name=CUSTOMER, customer_name=CUSTOMER, customer_type="Company")
