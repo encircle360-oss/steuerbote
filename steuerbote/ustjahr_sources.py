@@ -157,13 +157,29 @@ def sondervorauszahlung(settings, year: int) -> Decimal:
 	return to_amount(settings.sondervorauszahlung(year)) if settings.has_dauerfrist(year) else ZERO
 
 
-def payment_lines(company: str, year: int, accounts: Collection[str]) -> list[LedgerLine]:
+def payment_lines(
+	company: str, year: int, accounts: Collection[str], settlement: Collection[str] = ()
+) -> list[LedgerLine]:
 	"""The postings of the year on the accounts of the payments to the Finanzamt, per voucher and account, without
-	cancelled entries, opening entries and Period Closing Vouchers."""
+	cancelled entries, opening entries and Period Closing Vouchers, and without the vouchers that book only on these
+	accounts and those of the Umsatzsteuer of a year (``settlement``): such a voucher reclassifies, it pays nothing."""
 	if not accounts:
 		return []
 	gl_entry = frappe.qb.DocType("GL Entry")
 	account = frappe.qb.DocType("Account")
+	other_gl_entry = frappe.qb.DocType("GL Entry").as_("other_gl_entry")
+	other_account = frappe.qb.DocType("Account").as_("other_account")
+	tax_accounts = [*accounts, *settlement]
+	paying = (
+		frappe.qb.from_(other_gl_entry)
+		.inner_join(other_account)
+		.on(other_account.name == other_gl_entry.account)
+		.select(other_gl_entry.voucher_no)
+		.where(other_gl_entry.company == company)
+		.where(other_gl_entry.is_cancelled == 0)
+		.where(other_gl_entry.posting_date.between(date(year, 1, 1), date(year, DECEMBER, LAST_OF_DECEMBER)))
+		.where(other_account.account_number.isnull() | other_account.account_number.notin(tax_accounts))
+	)
 	rows = (
 		frappe.qb.from_(gl_entry)
 		.inner_join(account)
@@ -181,6 +197,7 @@ def payment_lines(company: str, year: int, accounts: Collection[str]) -> list[Le
 		.where(gl_entry.is_opening == "No")
 		.where(gl_entry.voucher_type != "Period Closing Voucher")
 		.where(account.account_number.isin(list(accounts)))
+		.where(gl_entry.voucher_no.isin(paying))
 		.groupby(account.account_number, gl_entry.voucher_type, gl_entry.voucher_no)
 		.run(as_dict=True)
 	)
@@ -261,16 +278,29 @@ def annual_revenue(company: str, year: int) -> revenue.Revenue | None:
 	return revenue.Revenue(to_amount(reported), revenue.Source.EBILANZ, name)
 
 
-def rule_texts(year: int) -> dict[str, str]:
-	"""The official text of each rule of the Jahresdokumentation E50 of the year, by its Fehlercode, from the ERiC
-	documentation the site names in STEUERBOTE_ERIC_DOC_DIR; none where it names none or the file is missing, so that
-	the findings name the rule by its code and condition alone."""
+def rule_text_source(year: int) -> Path | None:
+	"""The Jahresdokumentation E50 of the year in the ERiC documentation the site names in STEUERBOTE_ERIC_DOC_DIR, None
+	where it names none or the file is missing."""
 	configured = os.environ.get(DOCUMENTATION_VARIABLE)
 	if not configured:
-		return {}
+		return None
 	try:
-		root = documentation.find(Path(configured))
-		path = documentation.jahresdokumentation_path(root, datenart.ust(year))
+		path = documentation.jahresdokumentation_path(
+			documentation.find(Path(configured)), datenart.ust(year)
+		)
+	except OSError, ValueError, documentation.DocumentationError:
+		return None
+	return path if path.is_file() else None
+
+
+def rule_texts(year: int) -> dict[str, str] | None:
+	"""The official text of each rule of the Jahresdokumentation E50 of the year, by its Fehlercode, from the ERiC
+	documentation the site names in STEUERBOTE_ERIC_DOC_DIR; None where the site has no such documentation, so that
+	the findings name the rule by its code and condition and say where its text would come from."""
+	path = rule_text_source(year)
+	if path is None:
+		return None
+	try:
 		return bridge.rule_texts(documentation.read(path).rules)
 	except OSError, ValueError, documentation.DocumentationError:
-		return {}
+		return None

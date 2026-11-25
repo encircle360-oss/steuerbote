@@ -117,7 +117,8 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 			reasons = bridge.waivers_of(self._rows(PERIODS))
 			previous = self._previous_kz816()
 			accounts = tuple(account_names(self.company, bridge.payment_accounts(mapping.chart)))
-			payments = ustjahr_sources.payment_lines(self.company, year, accounts)
+			settlement = tuple(account_names(self.company, bridge.settlement_accounts(mapping.chart)))
+			payments = ustjahr_sources.payment_lines(self.company, year, accounts, settlement)
 			paid_before = start.prior_payments(
 				payments, prior_filings.prior_filings(self.company, {year - 1})
 			)

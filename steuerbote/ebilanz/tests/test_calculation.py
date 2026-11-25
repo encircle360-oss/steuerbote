@@ -361,6 +361,17 @@ class BetriebsvermoegensvergleichTest(TestCase):
 		self.assertIn("65.000,00 €", finding.text)
 		self.assertIn("25.000,00 €", finding.text)
 
+	def test_the_finding_says_in_which_direction_the_betriebsvermoegen_lacks_a_change(self):
+		"""An Eigenkapital that grew beyond the Jahresüberschuss lacks Einlagen, one that shrank lacks Entnahmen or
+		Ausschüttungen; the amount is named without a sign."""
+		(missing_einlage,) = self.compare(EquityChanges(previous_equity=D("2500.00"))).findings
+		self.assertIn("Es fehlen Einlagen von 25.000,00 €", missing_einlage.text)
+		self.assertIn("„Weitere Einlagen“", missing_einlage.text)
+		(missing_ausschuettung,) = self.compare(EquityChanges(previous_equity=D("37500.00"))).findings
+		self.assertIn("Es fehlen Entnahmen oder Ausschüttungen von 10.000,00 €", missing_ausschuettung.text)
+		self.assertIn("„Entnahmen und Ausschüttungen“", missing_ausschuettung.text)
+		self.assertNotIn("-", missing_ausschuettung.text.split("Es fehlen")[1])
+
 	def test_takes_amounts_in_cents(self):
 		with self.assertRaises(ValueError):
 			EquityChanges(withdrawals=D("0.001"))

@@ -331,12 +331,19 @@ def betriebsvermoegensvergleich(
 	net_income = amounts.get((NET_INCOME, Period.WIRTSCHAFTSJAHR))
 	compared = result.get(BVV_RESULT) or ZERO
 	if net_income is not None and net_income != compared:
+		# The comparison is the Betriebsvermögen at the end less that of the previous year, plus Entnahmen, less
+		# Einlagen (§ 4 Abs. 1 Satz 1 EStG): above the Jahresüberschuss it lacks Einlagen, below it Entnahmen.
+		gap = compared - net_income
+		missing = (
+			f"Es fehlen Einlagen von {euro(gap)} (Feld „Weitere Einlagen“)"
+			if gap > ZERO
+			else f"Es fehlen Entnahmen oder Ausschüttungen von {euro(-gap)} (Feld „Entnahmen und Ausschüttungen“)"
+		)
 		findings.append(
 			Finding(
 				"170405109",
 				f"Der Betriebsvermögensvergleich ergibt {euro(compared)}, der Jahresüberschuss der GuV ist "
-				f"{euro(net_income)}: Es fehlen Einlagen oder Ausschüttungen von {euro(compared - net_income)}, "
-				"oder das Betriebsvermögen des Vorjahres stimmt nicht.",
+				f"{euro(net_income)}: {missing}, oder das Betriebsvermögen des Vorjahres stimmt nicht.",
 				f"{leitfaden(taxonomy, 'B.14.3.2.12')}; {rule(taxonomy, '170405109')}",
 				unqualified(BVV_RESULT),
 			)

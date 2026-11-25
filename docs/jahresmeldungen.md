@@ -45,7 +45,7 @@ Jeder Beleg einer Jahresmeldung hat diese Felder mit diesen Feldnamen, Typen und
 
 ## Berechnen
 
-„Berechnen“ (`calculate`) geht nur an einem Entwurf, nicht während einer Übermittlung und nicht nach einem eigenen Senden, das ELSTER angenommen hat oder dessen Ergebnis unbekannt ist.
+„Berechnen“ (`calculate`) geht nur an einem Entwurf, nicht während einer Übermittlung und nicht nach einem eigenen Senden, das ELSTER angenommen hat oder dessen Ergebnis unbekannt ist. Starten zwei „Berechnen“ desselben Belegs im selben Moment, weist die Datenbank das spätere Speichern der Zeilen ab; „Berechnen“ liest den Beleg dann neu und rechnet noch einmal, bis zu dreimal, und sagt danach, dass es erneut zu starten ist, statt mit einem Serverfehler zu enden.
 
 1. `set_period` setzt Geschäftsjahr, Von-Datum, Bis-Datum und Fälligkeitsdatum.
 2. `compute()` des Moduls liest die Quellen und rechnet mit dem Kern des Moduls. Es gibt eine `Calculation` zurück: `lines`, die Zeilen, die es berechnet hat, mit den Spalten von `LINE_COLUMNS`; `tables`, die Zeilen weiterer Tabellen; `values`, die Werte seiner Felder; `findings`, die Befunde aus den Quellen; und `passed`, ob die weiteren Prüfungen des Moduls aufgehen.

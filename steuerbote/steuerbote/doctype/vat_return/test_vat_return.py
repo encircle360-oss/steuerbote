@@ -819,6 +819,13 @@ class TestVATReturn2027(IntegrationTestCase):
 		self.assertTrue(all(row.passed for row in doc.checks))
 		self.assertEqual((doc.status, doc.ready, doc.provisional), ("Berechnet", 0, 1))
 
+	def test_the_form_of_a_draft_says_that_the_forms_of_its_year_are_provisional(self):
+		"""Not only the filing: the form of the draft names the provisional forms, as the Dauerfristverlängerung does in
+		its findings, so that „Berechnet“ is no puzzle."""
+		doc = self.calculated(1)
+		doc.run_method("onload")
+		self.assertRegex(doc.get_onload().get("provisional_forms") or "", PROVISIONAL_2027)
+
 	def test_a_return_of_the_provisional_year_is_filed_with_remarks(self):
 		frappe.db.savepoint("vat_return_2027_test")
 		self.addCleanup(frappe.db.rollback, save_point="vat_return_2027_test")
