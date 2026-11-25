@@ -75,6 +75,10 @@ DIGESTS = {
 	"SKR04 Taxonomie 6.9 2026.3": "1c2518fc04e9f59b49f99ea1108bbba5c2fb5c5bdebae2690411c36d559033d7",
 	"SKR03 Taxonomie 6.10 2026.3": "b2577e60834ba4389024764bdd5fe6f7b9f442e3694bd5d428c13ae2ba414e41",
 	"SKR04 Taxonomie 6.10 2026.3": "20e192acff328399ce94b09624802753eced4bbab08aa2635d9121ee77e6b9c5",
+	"SKR03 Taxonomie 6.9 2026.4": "e36dbf82eee35a0a2d03921233022bd89730af346f7896cd7b35f13d404af952",
+	"SKR04 Taxonomie 6.9 2026.4": "1c2518fc04e9f59b49f99ea1108bbba5c2fb5c5bdebae2690411c36d559033d7",
+	"SKR03 Taxonomie 6.10 2026.4": "520a926c431fe347b38fc5c49747111377bd70cdcbba53018fec327a2e76c6f6",
+	"SKR04 Taxonomie 6.10 2026.4": "20e192acff328399ce94b09624802753eced4bbab08aa2635d9121ee77e6b9c5",
 }
 """The SHA-256 of the canonical JSON of the rows of each version of the defaults."""
 
@@ -214,10 +218,10 @@ class DefaultsForTest(TestCase):
 
 class DefaultsVersionTest(TestCase):
 	def test_the_version_names_the_chart_the_taxonomy_the_datev_edition_and_the_revision(self):
-		self.assertEqual(dict(REVISIONS), {"6.9": 3, "6.10": 3})
+		self.assertEqual(dict(REVISIONS), {"6.9": 4, "6.10": 4})
 		self.assertEqual(
 			[defaults_version(chart, "6.9") for chart in sorted(CHARTS)],
-			["SKR03 Taxonomie 6.9 2026.3", "SKR04 Taxonomie 6.9 2026.3"],
+			["SKR03 Taxonomie 6.9 2026.4", "SKR04 Taxonomie 6.9 2026.4"],
 		)
 
 	def test_a_chart_without_defaults_has_no_version(self):
