@@ -22,8 +22,6 @@ from steuerbote.tests.helpers import (
 	post_journal_entry,
 )
 
-IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "VAT Return"]
-
 # Starts on 1 January 2026 and names the start in its settings; files the Voranmeldung and the ZM monthly.
 COMPANY = "Steuerbote Test Erstes Jahr GmbH"
 # Starts the same way, but has not set up Steuerbote yet.

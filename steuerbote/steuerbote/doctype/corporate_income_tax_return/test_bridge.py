@@ -853,12 +853,8 @@ class CarryForwardsTest(TestCase):
 		self.assertEqual(
 			[item.text for item in missing],
 			[
-				"Loss Carried Forward (§ 10d EStG) has no amount as of 31.12.2025 in the Annual Filing Settings. In its "
-				"first year in Steuerbote the return takes the carry-forwards of the last notice: enter it, 0 as well, "
-				"and confirm it against the notice.",
-				"Einlagekonto (§ 27 KStG) has no amount as of 31.12.2025 in the Annual Filing Settings. In its first "
-				"year in Steuerbote the return takes the carry-forwards of the last notice: enter it, 0 as well, and "
-				"confirm it against the notice.",
+				bridge.CARRY_FORWARD_MISSING_TEXT.format(kind, "31.12.2025")
+				for kind in ("Loss Carried Forward (§ 10d EStG)", "Einlagekonto (§ 27 KStG)")
 			],
 		)
 		self.assertTrue(all(item.blocking for item in missing))

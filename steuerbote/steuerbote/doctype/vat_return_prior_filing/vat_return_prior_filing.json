@@ -172,11 +172,11 @@
    "fieldtype": "Column Break"
   },
   {
+   "description": "The user who entered the record.",
    "fieldname": "entered_by",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "label": "Entered By",
    "no_copy": 1,
-   "options": "User",
    "read_only": 1
   },
   {

@@ -66,7 +66,7 @@ class PriorFilingDocTypeTest(TestCase):
 		for name in ("entered_by", "entered_on", "period_label"):
 			with self.subTest(field=name):
 				self.assertEqual(self.fields[name]["read_only"], 1)
-		self.assertEqual(self.fields["entered_by"]["options"], "User")
+		self.assertEqual(self.fields["entered_by"]["fieldtype"], "Data")
 
 	def test_an_accounts_user_reads_it_and_changes_nothing(self):
 		(user,) = (row for row in self.definition["permissions"] if row["role"] == "Accounts User")

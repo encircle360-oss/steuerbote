@@ -1710,6 +1710,7 @@
 "The transmission did not finish and its result is unknown. Before sending again, check in Mein ELSTER whether the return arrived.","Die Übermittlung wurde nicht beendet, ihr Ergebnis ist unbekannt. Vor einem erneuten Senden bitte in Mein ELSTER prüfen, ob die Meldung angekommen ist."
 "The transmission did not finish and its result is unknown. Before sending again, check in Mein ELSTER whether {0} arrived.","Die Übermittlung wurde nicht beendet, ihr Ergebnis ist unbekannt. Vor einem erneuten Senden bitte in Mein ELSTER prüfen, ob {0} angekommen ist."
 "The transmission runs in the background. A notice follows when it has finished.","Die Übermittlung läuft im Hintergrund. Sobald sie beendet ist, erscheint ein Hinweis."
+"The user who entered the record.","Der Benutzer, der den Eintrag angelegt hat."
 "The version of the HGB-Taxonomie whose positions the E-Bilanz reports; the Balance Sheet Mapping names the same.","Die Version der HGB-Taxonomie, deren Positionen die E-Bilanz meldet; die Bilanzzuordnung nennt dieselbe."
 "The version of the HGB-Taxonomie whose positions the rules name.","Die Version der HGB-Taxonomie, deren Positionen die Zuordnungen nennen."
 "The version of the HGB-Taxonomie whose positions the rules named before Auf neue Taxonomie heben; Export Mapping before the Lift gives them as a file.","Die Version der HGB-Taxonomie, deren Positionen die Zuordnungen vor „Auf neue Taxonomie heben“ nannten; „Zuordnung vor dem Heben exportieren“ gibt sie als Datei."

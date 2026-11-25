@@ -38,7 +38,7 @@ class VATReturnPriorFiling(Document):
 		amended_from: DF.Link | None
 		attachment: DF.Attach | None
 		company: DF.Link
-		entered_by: DF.Link | None
+		entered_by: DF.Data | None
 		entered_on: DF.Datetime | None
 		filed_on: DF.Date
 		kz21: DF.Currency
