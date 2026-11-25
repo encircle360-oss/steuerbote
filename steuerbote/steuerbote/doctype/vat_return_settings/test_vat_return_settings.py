@@ -1,4 +1,5 @@
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import patch
 
 import frappe
@@ -6,6 +7,8 @@ from frappe.model.document import Document
 from frappe.tests import IntegrationTestCase
 from frappe.translate import clear_cache as clear_translation_cache
 
+from steuerbote.eric.runtime import RuntimeInfo
+from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root
 from steuerbote.tests.helpers import insert_record, make_user
 from steuerbote.ustva import Rhythm
 from steuerbote.zm.rhythm import Rhythm as ZmRhythm
@@ -112,6 +115,41 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 		with patch(adapter, return_value=False) as checked:
 			frappe.get_doc("VAT Return Settings", COMPANY).save()
 		checked.assert_not_called()
+
+	def test_says_at_the_save_when_eric_did_not_check_the_steuernummer_and_why(self):
+		"""A check that gives no answer does not pass silently: the save goes through and names why ERiC did not
+		check the number, which the first Prüfen of a return then does."""
+		adapter = "steuerbote.steuerbote.doctype.vat_return.transmission_adapter"
+		frappe.clear_messages()
+		with (
+			patch(f"{adapter}.steuernummer_valid", return_value=None),
+			patch(f"{adapter}.runtime.detect", return_value=None),
+		):
+			self.make_settings().insert()
+		self.assertIn("ERiC has not checked the Steuernummer 123/456/78901", str(frappe.message_log))
+		self.assertIn("No ERiC runtime is installed", str(frappe.message_log))
+
+	def test_refuses_a_steuernummer_of_nothing_but_zeros_without_eric(self):
+		adapter = "steuerbote.steuerbote.doctype.vat_return.transmission_adapter.steuernummer_valid"
+		with (
+			patch(adapter, return_value=None) as checked,
+			self.assertRaisesRegex(frappe.ValidationError, "000/000/00000 is no Steuernummer"),
+		):
+			self.make_settings(tax_number="000/000/00000").insert()
+		checked.assert_not_called()
+
+	def test_eric_checks_the_steuernummer_with_a_directory_for_its_log_in_the_site(self):
+		"""ERiC does not start without a directory for eric.log; the check writes it beside the logs of the
+		transmissions of the site, which the worker makes."""
+		adapter = "steuerbote.steuerbote.doctype.vat_return.transmission_adapter"
+		runtime = RuntimeInfo("44.3.6.0", Path("/lib"), Path("/lib"), Path("/nowhere/log"), "", True)
+		with (
+			patch(f"{adapter}.runtime.detect", return_value=runtime) as detect,
+			patch(f"{adapter}.service.steuernummer_valid", return_value=True) as checked,
+		):
+			self.make_settings().insert()
+		self.assertEqual(detect.call_args.kwargs["log_dir"], eric_log_root() / "steuernummer")
+		checked.assert_called_once()
 
 	def test_derives_the_elster_tax_number_and_keeps_the_defaults(self):
 		self.make_settings(elster_tax_number="0000000000000").insert()

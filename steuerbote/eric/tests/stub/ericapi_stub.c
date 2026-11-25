@@ -30,6 +30,7 @@ enum {
 	GLOBAL_UNGUELTIGE_FLAG_KOMBINATION = 610001218,
 	GLOBAL_NICHT_INITIALISIERT = 610001081,
 	GLOBAL_MEHRFACHE_INITIALISIERUNG = 610001082,
+	GLOBAL_FEHLER_INITIALISIERUNG = 610001083,
 	GLOBAL_VERSCHLUESSELUNGS_PARAMETER_NICHT_ANGEGEBEN = 610001206,
 	GLOBAL_UNGUELTIGER_PARAMETER = 610001222,
 	GLOBAL_UNGUELTIGE_PARAMETER_VERSION = 610001226,
@@ -300,13 +301,14 @@ EXPORT int EricInitialisiere(const char *pluginPfad, const char *logPfad)
 	record("plugin_path", pluginPfad);
 	record("log_path", logPfad);
 	if (logPfad) {
+		/* ERiC 44.3.6.0 refuses to start when it cannot create eric.log, as in a directory that does not exist. */
 		char path[4096];
 		snprintf(path, sizeof path, "%s/eric.log", logPfad);
 		FILE *log = fopen(path, "a");
-		if (log) {
-			fputs("stub: EricInitialisiere\n", log);
-			fclose(log);
-		}
+		if (!log)
+			return GLOBAL_FEHLER_INITIALISIERUNG;
+		fputs("stub: EricInitialisiere\n", log);
+		fclose(log);
 	}
 	initialised = 1;
 	return OK;
