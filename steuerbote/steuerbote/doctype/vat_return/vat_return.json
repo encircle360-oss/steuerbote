@@ -221,6 +221,7 @@
    "label": "Kennzahlen"
   },
   {
+   "description": "Enter a Kennzahl without postings as a row by hand: choose the Kennzahl and give the amount as an override with its reason. Calculate fills the other rows.",
    "fieldname": "kennzahlen",
    "fieldtype": "Table",
    "label": "Kennzahlen",
@@ -438,7 +439,7 @@
    "link_fieldname": "vat_return"
   }
  ],
- "modified": "2026-11-25 21:00:00.000000",
+ "modified": "2026-11-25 21:30:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return",

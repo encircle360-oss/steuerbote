@@ -127,7 +127,7 @@ bench --site <site> install-app steuerbote
 
 ### Wo finde ich Steuerbote?
 
-<a href="docs/bilder/seitenleiste.png"><img src="docs/bilder/seitenleiste.png" align="right" width="150" alt="Seitenleiste Steuerbote mit Steuern, Voranmeldungen, Dauerfristanträgen, Zusammenfassenden Meldungen und USt-IdNr.-Prüfungen und den geöffneten Gruppen Jahresmeldungen, Übermittlung, Berichte und Einrichtung"></a>
+<a href="docs/bilder/seitenleiste.png"><img src="docs/bilder/seitenleiste.png" align="right" width="150" alt="Seitenleiste Steuerbote mit Steuern, Voranmeldungen, Dauerfristanträgen, Zusammenfassenden Meldungen, offenen und allen USt-IdNr.-Bestätigungen und den geöffneten Gruppen Jahresmeldungen, Übermittlung, Berichte und Einrichtung"></a>
 
 In der Leiste links, bei den Bereichen von ERPNext wie Rechnungswesen und Vertrieb, steht „Steuern“. Der Eintrag öffnet den Arbeitsbereich „Steuern“ mit den offenen Fristen, den Voranmeldungen, den Dauerfristverlängerungen, den Zusammenfassenden Meldungen, den Jahresmeldungen und der Einrichtung. Daneben führt die Seitenleiste zu jeder Liste, jedem Bericht und zu „Steuerbote einrichten“: oben die Voranmeldungen, Dauerfristanträge, Zusammenfassenden Meldungen, die offenen und alle USt-IdNr.-Bestätigungen („Offene Bestätigungen“, „Alle Bestätigungen“), darunter die Gruppen „Jahresmeldungen“, „Übermittlung“, „Berichte“ und „Einrichtung“. Den Eintrag sehen Benutzer mit einer der Rollen Accounts User, Accounts Manager oder System Manager.
 

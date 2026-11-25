@@ -66,3 +66,27 @@ class FormTextsTest(TestCase):
 			self.german.get(text),
 			"Die USt-IdNr. mit Länderkennzeichen, etwa ATU12345678. Die Steuernummer hat ein eigenes Feld.",
 		)
+
+
+class KennzahlenTableTest(TestCase):
+	def test_the_kennzahlen_say_that_a_kennzahl_without_postings_is_a_row_by_hand(self):
+		"""The table offers „Zeile hinzufügen“ on purpose: a Kennzahl the ledger does not fill is entered as a row by
+		hand with a correction and its reason (bridge.kennzahl_rows)."""
+		text = german()[description("vat_return", "kennzahlen")]
+		self.assertEqual(
+			text,
+			"Eine Kennzahl ohne Buchungen tragen Sie als Zeile von Hand ein: Kennzahl wählen und den Betrag als "
+			"Korrektur mit Begründung angeben. Die übrigen Zeilen füllt „Berechnen“.",
+		)
+
+
+class KontennachweisFormatterTest(TestCase):
+	def test_a_line_of_the_form_shows_no_debit_and_credit_it_does_not_have(self):
+		"""The rows of the lines carry their amount alone; Frappe would show an empty debit and credit as 0,00 €."""
+		script = (
+			APP / "steuerbote" / "report" / "ertragsteuer_kontennachweis" / "ertragsteuer_kontennachweis.js"
+		).read_text(encoding="utf-8")
+		self.assertIn(
+			'if (data && ["debit", "credit"].includes(column.fieldname) && data[column.fieldname] == null) {\n\t\t\treturn "";',
+			script,
+		)

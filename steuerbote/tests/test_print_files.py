@@ -265,6 +265,16 @@ class BrowserPrintTest(TestCase):
 			r'\{%-? if steuerbote_print_medium\(\) != "pdf" -?%\}\s*<style>\s*#header-html,\s*#footer-html \{\s*display: none !important;',
 		)
 
+	def test_the_preview_on_the_screen_keeps_the_margins_of_the_page(self):
+		"""Frappe 16.61 shows the preview in a frame as .print-format-gutter > .print-format, whose margins the sheet
+		sets to 0 for the generators; on the screen the sheet gives it the margins of the page as padding, so that the
+		form does not touch the edges (R2-F-21)."""
+		self.assertRegex(
+			self.running,
+			r'\{%-? if steuerbote_print_medium\(\) == "screen" -?%\}\s*<style>\s*\.print-format-gutter > \.print-format \{'
+			r"\s*box-sizing: border-box;\s*max-width: 210mm;\s*padding: 15mm 15mm 18mm 20mm !important;",
+		)
+
 	def test_the_jinja_methods_are_hooked(self):
 		hooks = read("steuerbote/hooks.py")
 		for method in ("steuerbote_print_medium", "steuerbote_browser_page"):

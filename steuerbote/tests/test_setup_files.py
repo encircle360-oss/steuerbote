@@ -102,6 +102,22 @@ class SetupPageFilesTest(TestCase):
 			self.script,
 		)
 
+	def test_the_intro_names_every_document_the_setup_makes_and_what_it_checks(self):
+		"""The setup makes the mappings of the Jahresmeldungen too and checks what only the company settles; the intro
+		says so, not the parts of the Voranmeldung alone."""
+		(intro,) = re.findall(r'steuerbote-setup-intro"></p>\'\)\.text\(\s*__\(\s*"([^"]+)"', self.script)
+		german = translations()[intro]
+		for name in (
+			"Einstellungen Umsatzsteuer-Voranmeldung",
+			"Kontenzuordnung Umsatzsteuer",
+			"Kontenzuordnung Ertragsteuern",
+			"Bilanzzuordnung",
+			"Start in Steuerbote",
+			"ERiC-Einstellungen",
+		):
+			with self.subTest(name=name):
+				self.assertIn(name, german)
+
 	def test_the_outcomes_before_the_setup_are_those_of_the_core(self):
 		block = re.search(r"const STATUS_OUTCOMES = \{\n(?P<body>.*?)\n\};", self.script, re.DOTALL)
 		self.assertIsNotNone(block)

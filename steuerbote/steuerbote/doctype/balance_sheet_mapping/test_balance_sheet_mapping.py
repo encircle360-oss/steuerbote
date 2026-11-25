@@ -399,7 +399,11 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 		)
 		self.assertEqual(
 			(bank["subject"], bank["proposed"]),
-			("Account 1800", f"Position {BANK}, opposite balance {BANK_LIABILITY}, both"),
+			(
+				"Account 1800",
+				f"Position Guthaben bei Kreditinstituten ({BANK}), opposite balance Verbindlichkeiten gegenüber "
+				f"Kreditinstituten ({BANK_LIABILITY}), both",
+			),
 		)
 		chosen = [difference["id"] for difference in comparison["differences"]]
 		self.assertEqual(mapping.update_from_defaults(chosen), 6)

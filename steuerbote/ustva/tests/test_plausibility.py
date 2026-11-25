@@ -933,6 +933,14 @@ class ComparisonHintsTest(TestCase):
 		(hint,) = self.hints_for({"21": d("2000")}, EarlierPeriod(Period.month(2026, 10), {}))
 		self.assertEqual(hint.text, "Kz 21 liegt mit 2.000,00 € über der Vorperiode Oktober 2026 (0,00 €).")
 
+	def test_a_share_of_a_negative_amount_of_the_previous_period_is_left_out(self):
+		"""Against a surplus of the previous period a share says nothing, such as „um 800,0 % über“ for 7,000 € after
+		-1,000 €; the hint names both amounts."""
+		(hint,) = self.hints_for({"83": d("7000")}, EarlierPeriod(Period.month(2026, 10), {"83": d("-1000")}))
+		self.assertEqual(
+			hint.text, "Kz 83 liegt mit 7.000,00 € über der Vorperiode Oktober 2026 (-1.000,00 €)."
+		)
+
 	def test_nothing_conspicuous_gives_no_hint(self):
 		self.assertEqual(
 			self.hints_for({"81": d("1100")}, EarlierPeriod(Period.month(2026, 10), {"81": d("1000")})), []

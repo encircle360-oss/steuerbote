@@ -23,6 +23,10 @@ frappe.query_reports["Ertragsteuer-Kontennachweis"] = {
 	parent_field: "parent_node",
 	initial_depth: 0,
 	formatter(value, row, column, data, default_formatter) {
+		// A line of the form and the accounts without a number carry their amount alone, no debit and credit.
+		if (data && ["debit", "credit"].includes(column.fieldname) && data[column.fieldname] == null) {
+			return "";
+		}
 		// Frappe writes a Data cell into the page as HTML; the labels and field codes are text.
 		value = default_formatter(column.fieldtype === "Data" ? frappe.utils.escape_html(value) : value, row, column, data);
 		return data && data.bold ? `<strong>${value}</strong>` : value;

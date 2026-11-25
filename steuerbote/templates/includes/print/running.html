@@ -5,7 +5,9 @@
 	back and its state told. The print format sets running_title, running_number_label, running_number and
 	running_period before it includes the part, each of them may be missing; the spans page and topage are the ones
 	wkhtmltopdf fills in. The preview on the screen and the page /printview, which a browser prints itself, hide both;
-	the browser gets them from the margin boxes of @page instead, with its own page numbers (print_medium.py).
+	the browser gets them from the margin boxes of @page instead, with its own page numbers (print_medium.py). The
+	preview, which style.html leaves without margins for the generators, gets the side and bottom margins of the page
+	as padding, so that the form keeps off the edges of the frame.
 -#}
 {%- set running_created = frappe.utils.format_datetime(frappe.utils.now_datetime(), "dd.MM.yyyy HH:mm") -%}
 {%- set running_number_line = (running_number_label | default("")) ~ " " ~ (running_number | default("")) if running_number | default("") else "" -%}
@@ -14,6 +16,15 @@
 	#header-html,
 	#footer-html {
 		display: none !important;
+	}
+</style>
+{%- endif %}
+{%- if steuerbote_print_medium() == "screen" %}
+<style>
+	.print-format-gutter > .print-format {
+		box-sizing: border-box;
+		max-width: 210mm;
+		padding: 15mm 15mm 18mm 20mm !important;
 	}
 </style>
 {%- endif %}
