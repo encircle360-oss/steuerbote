@@ -200,6 +200,8 @@ class TestDeadlineReminder(IntegrationTestCase):
 		sendmail.assert_not_called()
 
 	def test_an_entry_that_is_no_address_gets_no_reminder(self):
+		"""The Error Log is written in the language of the site, whatever the context of the daily job."""
+		frappe.db.set_single_value("System Settings", "language", "de")
 		entries = "buchhaltung@example.com\nkeine Adresse\n\n steuerberatung@example.com "
 		logged = self.error_logs(COMPANY)
 		self.assertEqual(
@@ -208,6 +210,10 @@ class TestDeadlineReminder(IntegrationTestCase):
 		)
 		(log,) = self.error_logs(COMPANY) - logged
 		self.assertIn("keine Adresse", frappe.db.get_value("Error Log", log, "error"))
+		self.assertEqual(
+			frappe.db.get_value("Error Log", log, "method"),
+			f"Die Erinnerung an die Fristen von {COMPANY} übergeht Adressen",
+		)
 
 	def test_a_company_whose_reminder_fails_leaves_the_others(self):
 		frappe.db.set_value(SETTINGS, SILENT_COMPANY, "deadline_recipients", RECIPIENTS)
