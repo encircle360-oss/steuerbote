@@ -1,7 +1,12 @@
 {% include "steuerbote/public/js/elster_transmission.js" %}
 {% include "steuerbote/public/js/vat_id_confirmation.js" %}
+{% include "steuerbote/public/js/timeline_values.js" %}
 
 frappe.ui.form.on("VAT Return", {
+	timeline_refresh(frm) {
+		translate_select_values_in_timeline(frm);
+	},
+
 	setup(frm) {
 		listen_for_transmissions(frm);
 		listen_for_confirmations(frm);

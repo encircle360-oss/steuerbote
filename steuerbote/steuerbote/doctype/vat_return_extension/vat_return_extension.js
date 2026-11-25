@@ -1,6 +1,11 @@
 {% include "steuerbote/public/js/elster_transmission.js" %}
+{% include "steuerbote/public/js/timeline_values.js" %}
 
 frappe.ui.form.on("VAT Return Extension", {
+	timeline_refresh(frm) {
+		translate_select_values_in_timeline(frm);
+	},
+
 	setup(frm) {
 		listen_for_transmissions(frm);
 		// Frappe asks to submit a draft, but Buchen alone files nothing: show_ready_note says how to file.
