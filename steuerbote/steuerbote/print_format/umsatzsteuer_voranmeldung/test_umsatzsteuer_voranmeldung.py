@@ -204,4 +204,5 @@ class TestUmsatzsteuerVoranmeldung(IntegrationTestCase):
 
 	def test_the_footer_names_the_version_of_steuerbote_that_printed_it(self):
 		text = cells(self.printed(self.calculated_return(7)))
-		self.assertTrue(text.rstrip().endswith(f"Erstellt mit Steuerbote {__version__}"), text[-200:])
+		line = f"Dieser Ausdruck ist keine Abgabe. Abgegeben ist die Umsatzsteuer-Voranmeldung erst, wenn sie elektronisch an das Finanzamt übermittelt ist. Erstellt mit Steuerbote {__version__}"
+		self.assertIn(line, text)

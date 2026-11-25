@@ -209,8 +209,9 @@ class CreatedWithTest(TestCase):
 				if name in OWN_FOOTER:
 					self.assertRegex(
 						markup,
-						rf'<div class="sb-footer">.*?\{{% include "{CREATED_WITH}" %\}}\n\t</div>',
-						re.S,
+						re.compile(
+							rf'<div class="sb-footer">.*?\{{% include "{CREATED_WITH}" %\}}\n\t</div>', re.S
+						),
 					)
 				else:
 					self.assertIn(f'{{% include "{ANNUAL_FOOTER}" %}}', markup)
