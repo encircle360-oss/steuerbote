@@ -97,12 +97,15 @@
 	}
 
 	.sb-print .sb-keep,
-	.sb-print .sb-group,
 	.sb-print .sb-footer,
 	.sb-print .sb-angabe,
 	.sb-print tr,
 	.sb-print .sb-steps li {
 		page-break-inside: avoid;
+	}
+
+	.sb-print .sb-group {
+		page-break-inside: auto;
 	}
 
 	.sb-print table {
