@@ -61,6 +61,7 @@ from steuerbote.ledger import (
 	accounts_without_number,
 	closing_balances,
 	load_lines,
+	load_lines_without_cancelled,
 )
 from steuerbote.registers import register_lines
 from steuerbote.setup.start import before_start
@@ -196,6 +197,8 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		if self.docstatus == 1 and self.status == FILED:
 			self.set_onload("changes_since_filing", self.changes_since_filing())
 		self.set_onload("cancellable", self.cancellable())
+		if self.docstatus == 0 and bridge.provisional_forms(cint(self.year)) is not None:
+			self.set_onload("provisional_forms", self._not_ready())
 
 	def cancellable(self) -> bool:
 		"""Whether the form offers Stornieren: only a submitted return without a record that files it, which a version
@@ -327,7 +330,11 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		self.set("late_changes", late_rows)
 		self.update({"period_basis": ledger.basis.value, "late_treatment": ledger.treatment.value})
 		reconciliation = build_reconciliation(
-			self.company, period, mapping, load_lines(self.company, period.start, period.end), lines
+			self.company,
+			period,
+			mapping,
+			load_lines_without_cancelled(self.company, period.start, period.end),
+			lines,
 		)
 		numbers = [row.account_number for row in reconciliation if row.account_number]
 		self.set(
@@ -463,9 +470,14 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 
 	def _take_bases(self, stored: Iterable[Document]) -> None:
 		"""Give each override the ledger amount it was made against (bridge.override_bases); a Kennzahl the stored return
-		did not hold has no ledger amount yet but the one Berechnen finds."""
-		for row, basis in zip(self.kennzahlen, bridge.override_bases(stored, self.kennzahlen), strict=True):
+		did not hold has no ledger amount yet but the one Berechnen finds. An override from before Steuerbote kept the
+		basis keeps its mark until it changes (bridge.unknown_bases)."""
+		stored = list(stored)
+		bases = bridge.override_bases(stored, self.kennzahlen)
+		unknown = bridge.unknown_bases(stored, self.kennzahlen)
+		for row, basis, mark in zip(self.kennzahlen, bases, unknown, strict=True):
 			row.override_basis = basis
+			row.override_basis_unknown = mark
 
 	def _vat_ids(self) -> PeriodVatIds:
 		"""The vouchers behind Kz 41, 42 and 21 of the period with their customers, read once for the document."""
@@ -1200,7 +1212,7 @@ def build_reconciliation(
 	reported: list[ustva.LedgerLine] | None = None,
 ) -> tuple[registers.Row, ...]:
 	"""Abgleich mit Registern: the reports Sales Register and Purchase Register of the period against the ledger lines
-	posted in it, and an information row on the vouchers the return, computed from ``reported``, takes from another
+	posted in it without those of cancelled vouchers (ledger.load_lines_without_cancelled), and an information row on the vouchers the return, computed from ``reported``, takes from another
 	period or leaves to one, see steuerbote.ustva.registers."""
 	return registers.reconcile(
 		register_lines(company, period.start, period.end),

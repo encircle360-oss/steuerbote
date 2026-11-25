@@ -746,7 +746,14 @@ def check_invoice(doc, method: str | None = None) -> None:
 		text = f"{text} {consequence(finding.kennzahlen[0])}"
 	title = _("USt-IdNr. of the Customer")
 	if finding.level is Level.WARN:
-		frappe.msgprint(text, title=title, indicator="orange")
+		next_step = (
+			_(
+				"The invoice is submitted all the same. Next: press „Confirm VAT ID“ on the customer; for a service the qualified confirmation, with name and address, shows the customer a Unternehmer (UStAE 3a.2 Abs. 9)."
+			)
+			if finding.releasable
+			else _("The invoice is submitted all the same. Correct the USt-IdNr. of the customer.")
+		)
+		frappe.msgprint(f"{text} {next_step}", title=title, indicator="orange")
 		return
 	reason = (doc.get(RELEASE_FIELD) or "").strip()
 	if finding.releasable and reason:
@@ -810,7 +817,9 @@ def finding_text(finding: Finding, vat_id: str | None, customer: str, answer: An
 				subject, kennzahlen
 			)
 		case Problem.NOT_CONFIRMABLE | Problem.MALFORMED:
-			return _("{0} cannot be confirmed: {1}").format(subject, escape_html(vatid.problem(vat_id) or ""))
+			return _("{0} cannot be confirmed: {1}").format(
+				subject, escape_html(partners.reason(vat_id) or "")
+			)
 		case Problem.UNCONFIRMED:
 			return _("{0} has no confirmation.").format(subject)
 		case Problem.NO_ANSWER:

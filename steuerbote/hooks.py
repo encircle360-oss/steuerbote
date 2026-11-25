@@ -85,6 +85,7 @@ _RECORDS = ("ELSTER Transmission", "VAT ID Confirmation", "Deadline Reminder")
 # The files of an ELSTER Transmission and the answer kept with a VAT ID Confirmation stay as they were stored. A
 # customer or supplier whose USt-IdNr., name or address changes is confirmed in the background, and a Sales Invoice
 # behind Kz 41, 42 or 21 needs a current confirmation of its customer on submit (steuerbote/steuerbote/partner_vat_ids.py).
+# A deleted Journal Entry that an annual filing proposed is forgotten by it (steuerbote/steuerbote/recorded_vouchers.py).
 doc_events = {
 	"File": {
 		"before_validate": "steuerbote.steuerbote.record_files.keep_unchanged",
@@ -102,7 +103,11 @@ doc_events = {
 	"Supplier": {"on_update": "steuerbote.steuerbote.partner_vat_ids.on_party_update"},
 	"Address": {"on_update": "steuerbote.steuerbote.partner_vat_ids.on_address_update"},
 	"Sales Invoice": {"before_submit": "steuerbote.steuerbote.partner_vat_ids.check_invoice"},
+	"Journal Entry": {"on_trash": "steuerbote.steuerbote.recorded_vouchers.forget_proposed_entry"},
 }
+
+# Drucken in the print view prints the PDF of the generator for the print formats of Steuerbote.
+page_js = {"print": "public/js/print_view.js"}
 
 # The form of a customer or supplier confirms its USt-IdNr. and shows where its confirmations stand; a draft Sales
 # Invoice confirms that of its customer.

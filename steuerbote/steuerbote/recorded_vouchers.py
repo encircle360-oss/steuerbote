@@ -11,8 +11,17 @@ in a filed period shows as a change after its filing.
 
 The Journal Entries an annual filing proposes, the Rückstellungen of the Körperschaftsteuererklärung and the
 Ergebnisverwendung of the Jahresabschluss, are the company's to check, submit, cancel or delete; the filing keeps
-naming one that was cancelled, and forgets one that was deleted.
+naming one that was cancelled, and forgets one that was deleted: hooks.py runs forget_proposed_entry when a Journal
+Entry is deleted, before Frappe looks for the documents that link it.
 """
+
+import frappe
+
+PROPOSING = (
+	("Corporate Income Tax Return", "provisions_entry"),
+	("Annual Accounts", "appropriation_entry"),
+)
+"""The filings that propose Journal Entries, with the field that links the one proposed."""
 
 
 class RecordedVoucherRow:
@@ -33,3 +42,11 @@ class ProposedJournalEntries:
 			[link for link in invalid if link[0] not in self.PROPOSED_ENTRIES],
 			[link for link in cancelled if link[0] not in self.PROPOSED_ENTRIES],
 		)
+
+
+def forget_proposed_entry(doc, method: str | None = None) -> None:
+	"""Doc event on_trash of a Journal Entry: the filings that proposed it no longer name it, so that it can be deleted
+	and proposed again."""
+	for doctype, fieldname in PROPOSING:
+		for name in frappe.get_all(doctype, filters={fieldname: doc.name}, pluck="name"):
+			frappe.db.set_value(doctype, name, fieldname, None, update_modified=False)

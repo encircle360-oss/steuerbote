@@ -5,10 +5,11 @@ from unittest.mock import patch
 
 import frappe
 from frappe.tests import IntegrationTestCase
-from frappe.utils import fmt_money
+from frappe.utils import add_days, fmt_money
 from lxml import etree
 
 from steuerbote.elster.tests import eric_schema
+from steuerbote.patches import mark_the_bases_of_earlier_overrides_unknown as unknown_bases
 from steuerbote.tests.helpers import (
 	make_account,
 	make_company,
@@ -231,6 +232,35 @@ class TestVATReturn(IntegrationTestCase):
 			(money(row.override), row.override_reason), (money(600), "Second invoice to the third country")
 		)
 		self.assertEqual(money(row.final), money(600))
+
+	def test_an_override_from_before_the_basis_holds_the_return_until_it_is_confirmed(self):
+		"""The upgrade to 0.15.0 gave an override the ledger amount of the day of the update as its basis, which may
+		already include a late booking it hides; the patch after it marks the basis unknown, and the return is not ready
+		until a change of the override confirms it."""
+		self.roll_back_afterwards()
+		doc = self.calculated(3)
+		row = self.kennzahl(doc, "81")
+		row.override = 1100
+		row.override_reason = "Invoice of 31 March booked in April"
+		doc.save()
+		since = frappe.db.get_value("Patch Log", {"patch": unknown_bases.EARLIER_PATCH}, "creation")
+		frappe.db.set_value("VAT Return", doc.name, "creation", add_days(since, -1), update_modified=False)
+		unknown_bases.execute()
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		row = self.kennzahl(doc, "81")
+		self.assertEqual((money(row.override_basis), row.override_basis_unknown), (money(1000), 1))
+		(hint,) = (hint for hint in doc.hints if hint.code == "KORREKTUR-UEBERHOLT")
+		self.assertIn("stammt aus einer Version von Steuerbote, die nicht festhielt", hint.text)
+		self.assertTrue(hint.text.startswith("Kz 81: Die Korrektur auf "), hint.text)
+		self.assertEqual(doc.ready, 0)
+		row.override_reason = "Invoice of 31 March booked in April, checked against the ledger"
+		doc.save()
+		doc.reload()
+		row = self.kennzahl(doc, "81")
+		self.assertEqual((money(row.override_basis), row.override_basis_unknown), (money(1000), 0))
+		self.assertNotIn("KORREKTUR-UEBERHOLT", [hint.code for hint in doc.hints])
 
 	def test_a_save_keeps_the_amounts_berechnen_computed(self):
 		"""Frappe keeps no read-only field from a save through its API: Kz 81 sent with 10 euros instead of 1,000
@@ -788,6 +818,13 @@ class TestVATReturn2027(IntegrationTestCase):
 		)
 		self.assertTrue(all(row.passed for row in doc.checks))
 		self.assertEqual((doc.status, doc.ready, doc.provisional), ("Berechnet", 0, 1))
+
+	def test_the_form_of_a_draft_says_that_the_forms_of_its_year_are_provisional(self):
+		"""Not only the filing: the form of the draft names the provisional forms, as the Dauerfristverlängerung does in
+		its findings, so that „Berechnet“ is no puzzle."""
+		doc = self.calculated(1)
+		doc.run_method("onload")
+		self.assertRegex(doc.get_onload().get("provisional_forms") or "", PROVISIONAL_2027)
 
 	def test_a_return_of_the_provisional_year_is_filed_with_remarks(self):
 		frappe.db.savepoint("vat_return_2027_test")

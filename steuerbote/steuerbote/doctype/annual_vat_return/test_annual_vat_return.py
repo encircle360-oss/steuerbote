@@ -29,6 +29,7 @@ from steuerbote.tests.helpers import (
 	make_settings,
 	make_user,
 	post_journal_entry,
+	post_ledger,
 	post_purchase_invoice,
 	post_sales_invoice,
 )
@@ -331,6 +332,21 @@ class TestAnnualVATReturn(Transmitting, IntegrationTestCase):
 		self.assertIn(self.section_15a.name, journal.text)
 		self.assertTrue(all(row.severity == "Hinweis" for row in doc.findings))
 
+	def test_a_reclassification_of_the_vorauszahlungen_to_the_umsatzsteuer_of_a_year_is_no_payment(self):
+		"""Bringing the Vorauszahlungen of the year before to „Umsatzsteuer Vorjahr“ at the start of the year moves no
+		money to or from the Finanzamt, so the payments the hint ZAHLUNGEN names stay as they are."""
+		prior = make_account(COMPANY, "1790", "Umsatzsteuerverbindlichkeiten Vorjahr", "Liability")
+		self.addCleanup(frappe.db.delete, "GL Entry", {"voucher_no": "JV-STUE-VORTRAG"})
+		post_ledger(
+			COMPANY,
+			"Journal Entry",
+			"JV-STUE-VORTRAG",
+			"2026-01-01",
+			[(self.account["1780"], 0, 700), (self.account["1781"], 0, 300), (prior, 1000, 0)],
+		)
+		(payments,) = (row for row in self.calculated().findings if row.code == "ZAHLUNGEN")
+		self.assertIn("1.390,00", payments.text)
+
 	def test_the_verprobung_of_the_year_fills_its_table(self):
 		doc = self.calculated()
 		(check,) = doc.checks
@@ -458,6 +474,29 @@ class TestAnnualVATReturn(Transmitting, IntegrationTestCase):
 		doc.calculate()
 		doc.reload()
 		self.assertEqual(self.lines(doc)["E3101801"], (Decimal("1200.00"), Decimal("1300.00"), 0))
+
+	def test_a_correction_from_before_the_basis_holds_the_return_until_it_is_confirmed(self):
+		"""A correction from before Steuerbote kept the basis carries the mark of an unknown basis after the update; it
+		holds the return even where Berechnen computes the amount of its basis, until a change confirms it."""
+		doc = self.calculated()
+		row = next(row for row in doc.lines if row.feldkennung == "E3101801")
+		row.update({"correction": 1300, "correction_reason": REASON})
+		doc.save()
+		frappe.db.set_value("Annual VAT Return Line", row.name, "correction_basis_unknown", 1)
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		(finding,) = (row for row in doc.findings if row.code == "SB-KORREKTUR-UEBERHOLT")
+		self.assertIn("E3101801", finding.text)
+		self.assertEqual((doc.status, doc.ready), ("Berechnet", 0))
+		row = next(row for row in doc.lines if row.feldkennung == "E3101801")
+		row.correction_reason = f"{REASON}; gegen das Hauptbuch geprüft"
+		doc.save()
+		doc.calculate()
+		doc.reload()
+		row = next(row for row in doc.lines if row.feldkennung == "E3101801")
+		self.assertEqual((row.correction_basis_unknown, doc.status), (0, "Bereit"))
+		self.assertNotIn("SB-KORREKTUR-UEBERHOLT", self.codes(doc))
 
 	def test_grundstuecke_go_with_kz_370(self):
 		doc = self.calculated()

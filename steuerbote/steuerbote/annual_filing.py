@@ -92,6 +92,8 @@ RECALCULATE = "SB-NEU-BERECHNEN"
 # A correction whose line Berechnen now computes at another amount than the one it was made against
 # (jahresmeldung.overrides.stale).
 STALE_CORRECTION = "SB-KORREKTUR-UEBERHOLT"
+CALCULATE_ATTEMPTS = 3
+"""How often Berechnen starts again after a conflict with a Berechnen of the same document at the same moment."""
 
 
 @dataclass(frozen=True)
@@ -259,6 +261,22 @@ class AnnualFiling(Filing):
 		"""Berechnen: compute the document through its module and save it, with the corrections and the lines by hand it
 		held."""
 		self.check_permission("write")
+		for _attempt in range(CALCULATE_ATTEMPTS):
+			try:
+				return self._calculate()
+			except frappe.QueryDeadlockError:
+				# MariaDB refuses the save of the rows when another Berechnen of the document saved them since this
+				# transaction began; only a new transaction on the document as stored gets past it.
+				frappe.db.rollback()
+				self.reload()
+		frappe.throw(
+			_(
+				"{0} was being calculated by another request at the same moment. Start Berechnen again."
+			).format(self.name),
+			title=_(self.doctype),
+		)
+
+	def _calculate(self) -> None:
 		if self.docstatus != 0:
 			frappe.throw(_("{0} is no draft and cannot be calculated.").format(self.name))
 		if self.transmits:
@@ -289,11 +307,23 @@ class AnnualFiling(Filing):
 
 	def _stale_corrections(self, lines: Sequence[Mapping[str, Any]]) -> tuple[Finding, ...]:
 		"""An error per correction whose line Berechnen computes at another amount than the one it was made against: the
-		correction would hide the change, also in a Berichtigung, which takes the corrections with their bases."""
+		correction would hide the change, also in a Berichtigung, which takes the corrections with their bases. A correction
+		from before Steuerbote kept the basis holds its line the same way until it is confirmed (overrides.unconfirmed)."""
 		if not self.LINES:
 			return ()
 		currency = frappe.get_cached_value("Company", self.company, "default_currency")
-		return tuple(
+		unconfirmed = tuple(
+			Finding(
+				STALE_CORRECTION,
+				Severity.ERROR,
+				_(
+					"The correction of line {0} dates from a version of Steuerbote that did not keep the amount it was made against; Berechnen computes {1} now. Check the correction against it and change its amount or its reason to confirm it, or remove it."
+				).format(key, fmt_money(amount, currency=currency)),
+				key,
+			)
+			for key, amount in self._lines(overrides.unconfirmed, lines, self.LINE_COLUMNS)
+		)
+		return unconfirmed + tuple(
 			Finding(
 				STALE_CORRECTION,
 				Severity.ERROR,
@@ -780,10 +810,9 @@ class AnnualFiling(Filing):
 		kept = self._lines(
 			overrides.restored, stored, [row.as_dict() for row in self.get(self.LINES)], columns
 		)
+		taken = (*columns.filled, columns.manual, columns.reported, columns.basis, columns.basis_unknown)
 		for row, values in zip(self.get(self.LINES), kept, strict=True):
-			row.update(
-				{column: values[column] for column in (*columns.filled, columns.manual, columns.reported)}
-			)
+			row.update({column: values[column] for column in taken})
 		if self.status in self.LIFECYCLE.calculated and self._lines(overrides.changed, stored, kept, columns):
 			self.status = self._move(Event.CHANGE)
 			self.ready = 0

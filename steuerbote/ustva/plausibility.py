@@ -123,13 +123,13 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 SEVERITY_ORDER: MappingProxyType[Severity, int] = MappingProxyType(
 	{Severity.ERROR: 0, Severity.WARNING: 1, Severity.HINT: 2}
 )
-NO_VAT_ID_ADVICE = "Berichtige die Rechnung, oder begründe in den Anmerkungen, warum die Voranmeldung trotzdem so abgegeben wird."
+NO_VAT_ID_ADVICE = "Berichtigen Sie die Rechnung, oder begründen Sie in den Anmerkungen, warum die Voranmeldung trotzdem so abgegeben wird."
 INVALID_ADVICE = (
-	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, begründe das in den Anmerkungen; sonst "
-	"berichtige die Rechnung."
+	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, begründen Sie das in den Anmerkungen; sonst "
+	"berichtigen Sie die Rechnung."
 )
 MALFORMED_ADVICE = (
-	"Berichtige die USt-IdNr. in der Rechnung, oder begründe in den Anmerkungen, warum die Voranmeldung trotzdem so "
+	"Berichtigen Sie die USt-IdNr. in der Rechnung, oder begründen Sie in den Anmerkungen, warum die Voranmeldung trotzdem so "
 	"abgegeben wird."
 )
 
@@ -487,7 +487,7 @@ STATED_BY: MappingProxyType[str, str] = MappingProxyType(
 	}
 )
 CLASSIFY = (
-	"Ordne den Beleg oder den Lieferanten in der Kontenzuordnung unter „Einordnung nach § 13b UStG“ ein"
+	"Ordnen Sie den Beleg oder den Lieferanten in der Kontenzuordnung unter „Einordnung nach § 13b UStG“ ein"
 )
 
 
@@ -530,7 +530,7 @@ def _residence_text(finding: Finding) -> str:
 			)
 			return (
 				f"Kz {kz}: Beim Lieferanten {supplier} ist weder ein Land noch eine Anschrift mit Land gepflegt{prefix}. "
-				f"{went}. Pflege das Land des Lieferanten, oder {CLASSIFY[0].lower()}{CLASSIFY[1:]}"
+				f"{went}. Pflegen Sie das Land des Lieferanten, oder {CLASSIFY[0].lower()}{CLASSIFY[1:]}"
 			)
 		case Problem.ADDRESS_ELSEWHERE:
 			return (
@@ -572,7 +572,7 @@ def _residence_text(finding: Finding) -> str:
 		f"Der Beleg bucht Umsatzsteuer aus innergemeinschaftlichem Erwerb, der Lieferant {supplier} ist laut Stammdaten "
 		f"aber im Drittlandsgebiet ansässig ({facts[0]}). Ein innergemeinschaftlicher Erwerb setzt voraus, dass der "
 		"Gegenstand aus einem anderen Mitgliedstaat kommt (§ 1a Abs. 1 Nr. 1 UStG); kommt er aus dem Drittlandsgebiet, "
-		"ist es eine Einfuhr. Bitte prüfe den Beleg"
+		"ist es eine Einfuhr. Bitte prüfen Sie den Beleg"
 	)
 
 

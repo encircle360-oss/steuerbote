@@ -7,7 +7,7 @@ number and amount is invented.
 from frappe.tests import IntegrationTestCase
 
 from steuerbote.tests import annual_integration as data
-from steuerbote.tests.annual_integration import ABBR, ACCOUNTS_DOCTYPE, CORPORATE, EBILANZ, calculated
+from steuerbote.tests.annual_integration import ABBR, ACCOUNTS_DOCTYPE, CORPORATE, EBILANZ, TRADE, calculated
 from steuerbote.tests.ebilanz import configured, taxonomy_root
 
 HINT = "SB-RUECKSTELLUNG-ABWEICHUNG"
@@ -38,6 +38,22 @@ class TestAnnualProvisions(IntegrationTestCase):
 				self.assertEqual((hint.severity, hint.blocking), ("Hinweis", 0))
 				self.assertIn(corporate.name, hint.text)
 				self.assertIn("1.500,00 €", hint.text)
+
+	def test_the_gewerbesteuer_counts_as_the_books_give_it_now_whether_its_return_was_calculated_again_or_not(
+		self,
+	):
+		"""The Gewerbesteuererklärung calculated before the late sale still stores the old balance; the hint compares
+		the books with the taxes as Rückstellungen vorschlagen computes them today."""
+		corporate = calculated(CORPORATE)
+		calculated(TRADE)
+		data.submitted_provisions(corporate)
+		data.post_for_the_test(self, self.account, f"JV-{ABBR}-NACHTRAG", "2026-12-30", LATE_SALE)
+		for doctype in (EBILANZ, ACCOUNTS_DOCTYPE):
+			with self.subTest(doctype=doctype):
+				doc = calculated(doctype)
+				(hint,) = [row for row in doc.findings if row.code == HINT]
+				self.assertIn("Körperschaftsteuer 1.500,00 € mehr als gebucht", hint.text)
+				self.assertIn("Gewerbesteuer 1.400,00 € mehr als gebucht", hint.text)
 
 	def test_no_hint_while_the_books_hold_the_provisions_as_computed(self):
 		corporate = calculated(CORPORATE)

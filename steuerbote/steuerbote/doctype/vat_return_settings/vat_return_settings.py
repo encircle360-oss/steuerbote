@@ -9,7 +9,15 @@ from frappe.model.document import Document
 from frappe.utils import cint, escape_html, flt, getdate
 
 from steuerbote import prior_filings
-from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster, ustva_xml, zm_xml
+from steuerbote.elster import (
+	SCHEMES,
+	STATE_CODES,
+	SteuernummerError,
+	ZeroSteuernummerError,
+	to_elster,
+	ustva_xml,
+	zm_xml,
+)
 from steuerbote.setup import start
 from steuerbote.steuerbote.doctype.vat_return import bridge, transmission_adapter
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
@@ -113,6 +121,8 @@ class VATReturnSettings(Document):
 		reminder; without a default outgoing e-mail account the reminder reaches nobody, which the save says."""
 		from steuerbote.steuerbote import deadlines
 
+		if self.deadline_recipients is not None and not isinstance(self.deadline_recipients, str):
+			frappe.throw(_("The recipients of the reminder are text: one address per line."))
 		invalid = deadlines.invalid_recipients(self.deadline_recipients)
 		if invalid:
 			frappe.throw(
@@ -171,6 +181,10 @@ class VATReturnSettings(Document):
 			return
 		try:
 			self.elster_tax_number = to_elster(state, self.tax_number)
+		except ZeroSteuernummerError:
+			frappe.throw(
+				transmission_adapter.zero_steuernummer(self.tax_number), title=_("Invalid Steuernummer")
+			)
 		except SteuernummerError:
 			frappe.throw(
 				_("The Steuernummer {0} does not have the format {1} of {2}.").format(

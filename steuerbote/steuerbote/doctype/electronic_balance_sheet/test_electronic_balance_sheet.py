@@ -154,6 +154,51 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 			(doc.revision_status, doc.accounting_standard, doc.taxonomy_version), ("E", "HAOE", "6.9")
 		)
 
+	def test_a_conflict_with_a_berechnen_of_the_same_moment_starts_berechnen_again(self):
+		"""Two Berechnen of one E-Bilanz at the same instant: MariaDB refuses the later save of the positions with
+		QueryDeadlockError (1020). Berechnen rolls back, reads the document anew and calculates again; when it keeps
+		failing, it says so instead of a server error."""
+		doc = new_document()
+		real = doc.save
+		failures = [frappe.QueryDeadlockError("Record has changed since last read in table 'tabPosition'")]
+
+		def flaky(*args, **kwargs):
+			if failures:
+				raise failures.pop()
+			return real(*args, **kwargs)
+
+		with patch.object(frappe.db, "rollback") as rollback, patch.object(doc, "save", side_effect=flaky):
+			doc.calculate()
+		rollback.assert_called_once_with()
+		self.assertEqual(frappe.db.get_value(doc.doctype, doc.name, "status"), "Bereit")
+		with (
+			patch.object(frappe.db, "rollback") as rollback,
+			patch.object(doc, "save", side_effect=frappe.QueryDeadlockError("tabPosition")),
+			self.assertRaisesRegex(frappe.ValidationError, "at the same moment"),
+		):
+			doc.calculate()
+		self.assertEqual(rollback.call_count, 3)
+
+	def test_pruefen_refuses_an_e_bilanz_whose_wirtschaftsjahr_no_version_serves_any_longer(self):
+		"""An E-Bilanz calculated by an earlier release for a Wirtschaftsjahr Steuerbote no longer has a taxonomy for:
+		Berechnen refuses it, and so does Prüfen, before an ELSTER Transmission is recorded, instead of checking the
+		calculation of the earlier release."""
+		doc = self.calculated()
+		before = frappe.db.count("ELSTER Transmission", {"document": doc.name})
+		with (
+			patch(
+				"steuerbote.steuerbote.doctype.electronic_balance_sheet.electronic_balance_sheet.versions.allowed_for",
+				return_value=False,
+			),
+			patch("frappe.enqueue") as enqueue,
+			self.assertRaisesRegex(
+				frappe.ValidationError, "Steuerbote has no HGB-Taxonomie for the Wirtschaftsjahr"
+			),
+		):
+			doc.transmit("validate")
+		enqueue.assert_not_called()
+		self.assertEqual(frappe.db.count("ELSTER Transmission", {"document": doc.name}), before)
+
 	def test_is_due_with_the_koerperschaftsteuererklaerung_of_the_year(self):
 		"""FAQ zur E-Bilanz, Tz. 5: seven months after the year, moved to the next working day."""
 		self.assertEqual(getdate(new_document().deadline), date(2027, 8, 2))

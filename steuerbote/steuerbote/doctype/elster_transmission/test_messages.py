@@ -69,6 +69,25 @@ class ReadableTest(TestCase):
 					(f"Feld '{expected}' fehlt.", expected),
 				)
 
+	def test_a_rule_of_the_e_bilanz_names_the_position_without_namespace_and_place_in_the_instance(self):
+		"""ERiC begins a message of the XBRL rules with line and column of the instance, names the fact in Clark
+		notation and the hypercube of the dimensions as the field; the form names the position of the taxonomy."""
+		text, field = messages.readable(
+			"[12,34] Der für die Dimensionswertekombination  angegebene Wert (0.00) stimmt nicht mit dem Wert des "
+			"Fakts '{http://www.xbrl.de/taxonomies/de-gaap-ci-2025-04-01}bs.ass.fixAss' (1000.00) überein.",
+			"gaap:all",
+			"Bilanz",
+			None,
+		)
+		self.assertEqual(
+			(text, field),
+			(
+				"Der für die Dimensionswertekombination angegebene Wert (0.00) stimmt nicht mit dem Wert des Fakts "
+				"'bs.ass.fixAss' (1000.00) überein.",
+				"bs.ass.fixAss",
+			),
+		)
+
 	def test_keeps_what_it_does_not_know(self):
 		for datenart, year, path in (
 			("Bilanz", None, "/Kontext[1]/gaap:bs.ass[1]"),
