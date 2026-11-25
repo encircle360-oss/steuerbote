@@ -195,6 +195,38 @@ class ClassesTest(TestCase):
 				)
 
 
+class ColumnWidthsTest(TestCase):
+	"""Fixed table layouts break a word that does not fit its column in the middle; the columns are wide enough for
+	the words they hold, and the room comes from the columns of text, which wrap between words."""
+
+	def setUp(self):
+		self.style = rules(read(STYLE))
+
+	def test_a_finding_code_breaks_only_at_its_hyphens(self):
+		"""SB-PERIODENABSCHLUSS and GEWST-BEG-FINANZIERUNGSANTEILE: no part between hyphens is longer than 20
+		letters, which 40 mm hold at 8 pt."""
+		self.assertIn("width: 40mm;", self.style[".sb-print .sb-code"])
+
+	def test_the_period_column_holds_voranmeldungszeitraum_in_one_word(self):
+		self.assertIn("width: 36mm;", self.style[".sb-print .sb-period"])
+
+	def test_the_base_of_the_voranmeldung_reads_in_three_lines(self):
+		"""„Bemessungsgrundlage“, „ohne Umsatzsteuer“, „EUR“ instead of a word split over two lines."""
+		self.assertIn("width: 33mm;", self.style[".sb-print .sb-base"])
+		template = print_formats()["umsatzsteuer_voranmeldung"][1]
+		self.assertIn('<col class="sb-num sb-base">', template)
+		self.assertIn('<th class="sb-num">Bemessungsgrundlage ohne Umsatzsteuer<br>EUR</th>', template)
+
+	def test_the_labels_of_the_bilanz_keep_their_words_whole(self):
+		"""Four columns of amounts in Kontoform leave the labels less than half the page each; the amounts give up the
+		padding on their left, which a right-aligned number does not use, and still hold 9.999.999,99 at 8 pt, so
+		that „C. Rechnungsabgrenzungsposten“ stays one word. The right edge keeps the padding of every other table."""
+		amounts = self.style[".sb-print .sb-bilanz th.sb-num, .sb-print .sb-bilanz td.sb-num"]
+		self.assertIn("width: 20mm;", amounts)
+		self.assertIn("padding-left: 0;", amounts)
+		self.assertNotIn("padding-right", amounts)
+
+
 class HeadingsTest(TestCase):
 	def test_a_table_with_a_head_carries_its_heading_in_it(self):
 		"""wkhtmltopdf ignores page-break-after, so a heading before a table could end a page alone; as the first
