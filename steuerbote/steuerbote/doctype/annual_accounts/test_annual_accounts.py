@@ -83,6 +83,17 @@ class TestAnnualAccounts(IntegrationTestCase):
 
 	# Berechnen.
 
+	def test_a_year_without_its_schemes_is_refused_when_it_is_made(self):
+		"""As the Erklärungen refuse a year without their forms: no draft that Berechnen could not calculate."""
+		for year in (2025, 2027):
+			with (
+				self.subTest(year=year),
+				self.assertRaisesRegex(
+					frappe.ValidationError, f"Steuerbote has no Jahresabschluss for {year} yet"
+				),
+			):
+				data.new_accounts(KLEINST, year=year)
+
 	def test_berechnen_decides_a_kleinstkapitalgesellschaft_and_builds_its_bilanz(self):
 		doc = data.calculated(KLEINST)
 		self.assertEqual(
