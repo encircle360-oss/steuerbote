@@ -1,6 +1,6 @@
 # Abgabe über Mein ELSTER
 
-Ohne eigene Hersteller-ID geht eine Umsatzsteuer-Voranmeldung nicht über ERiC an das Finanzamt. Steuerbote schreibt sie deshalb als XML-Datei, die du in Mein ELSTER in das Formular der Umsatzsteuer-Voranmeldung importierst. Der Import füllt nur das Formular. Prüfen und absenden tust du selbst in Mein ELSTER.
+Ohne eigene Hersteller-ID geht eine Umsatzsteuer-Voranmeldung nicht über ERiC an das Finanzamt. Steuerbote schreibt sie deshalb als XML-Datei, die Sie in Mein ELSTER in das Formular der Umsatzsteuer-Voranmeldung importieren. Der Import füllt nur das Formular. Prüfen und senden Sie die Voranmeldung selbst in Mein ELSTER ab.
 
 ## Voraussetzungen
 
@@ -82,7 +82,7 @@ Texte aus ERPNext tragen oft typografische Zeichen. Steuerbote ersetzt die häuf
 | geschützte und schmale Leerzeichen, Tabulator, Zeilenumbruch | Leerzeichen |
 | weiches Trennzeichen, Zeichen ohne Breite | entfällt |
 
-Danach werden mehrere Leerzeichen zu einem, und Leerzeichen am Anfang und Ende entfallen. Jedes andere Zeichen außerhalb des Satzes lehnt Steuerbote ab und nennt es mit seinem Codepunkt, etwa ł (U+0142). Wie ein Name ohne dieses Zeichen geschrieben wird, entscheidest du, nicht Steuerbote.
+Danach werden mehrere Leerzeichen zu einem, und Leerzeichen am Anfang und Ende entfallen. Jedes andere Zeichen außerhalb des Satzes lehnt Steuerbote ab und nennt es mit seinem Codepunkt, etwa ł (U+0142). Wie ein Name ohne dieses Zeichen geschrieben wird, entscheiden Sie, nicht Steuerbote.
 
 ## Berichtigte Anmeldung
 

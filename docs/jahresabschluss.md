@@ -213,6 +213,7 @@ Die Umsatzerlöse des festgestellten Jahresabschlusses (`umsatzerloese`) stellt 
 
 ## Grenzen
 
+- **Währungsumrechnung:** Die GuV des Jahresabschlusses vermerkt die Erträge und Aufwendungen aus der Währungsumrechnung nicht gesondert (§ 277 Abs. 5 Satz 2 HGB); bucht ein Konto im Jahr beide Richtungen, nennt der Hinweis `BILANZ-WAEHRUNG-SALDIERT` es, siehe [Vorgaben der Bilanzzuordnung](ebilanz-zuordnung.md#auffällige-entscheidungen).
 - **Haftungsverhältnisse und Organkredite:** keine eigenen Tabellen; Text und Betrag der Angabe tragen sie, die XBRL-Datei schreibt sie so.
 - **Größenmerkmale:** „Berechnen“ schreibt die Merkmale und die Klasse nicht in die Einstellungen Jahresmeldungen; der Hinweis `JA-GROESSE-EINSTELLUNGEN` sagt, wann sie dort fehlen.
 - **Gesetzliche Rücklage der UG:** ob die Rücklage im Abschluss des Jahres oder erst mit der Ergebnisverwendung entsteht, prüft die Steuerberatung.

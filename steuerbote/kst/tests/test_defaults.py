@@ -388,6 +388,13 @@ FLAGGED = {
 }
 # The defaults beyond the marks: the Bewirtungskosten for the hint, the accounts of the trading results, and the
 # accounts of ERPNext's templates de_kontenplan_SKR03.json and de_kontenplan_SKR04.json (version 16).
+# Accounts DATEV does not mark K whose balance may hold Bezüge, Gewinne or Gewinnminderungen aus Anteilen of § 8b KStG:
+# income from holdings of no named legal form holds the filing back, the others ask for a look.
+HOLDING_INCOME = {"SKR03": {"2600", "2619"}, "SKR04": {"7000", "7009"}}
+SHARE_RESULTS = {
+	"SKR03": {"2620", "2640", "2725", "2325", "4870", "4875", "4877", "4878"},
+	"SKR04": {"7010", "7020", "4905", "6905", "7200", "7210", "7207", "7217"},
+}
 UNMARKED = {
 	"SKR03": {
 		"4650": Category.ENTERTAINMENT_DEDUCTIBLE,
@@ -395,6 +402,7 @@ UNMARKED = {
 		"2166": Category.TRADING_UNCLASSIFIED,
 		"2121": Category.INTEREST,
 		"4665": Category.OTHER_NONDEDUCTIBLE,
+		**dict.fromkeys(HOLDING_INCOME["SKR03"] | SHARE_RESULTS["SKR03"]),
 	},
 	"SKR04": {
 		"6640": Category.ENTERTAINMENT_DEDUCTIBLE,
@@ -412,12 +420,15 @@ UNMARKED = {
 		"7464": None,
 		"7563": None,
 		"7452": None,
+		**dict.fromkeys(HOLDING_INCOME["SKR04"] | SHARE_RESULTS["SKR04"]),
 	},
 }
 # The pin of the content of each version: a change of the defaults raises REVISION and pins the new digest here.
 DIGESTS = {
 	"SKR03 2026.1": "fdb7ce2ffaa9ecfe8e737d626d66cc2ddf85b4a078216b7af620552f3c8a9b98",
 	"SKR04 2026.1": "17da0b1384181b59cbbaf2e13c211f7edb7c230e002ed092da4496298bc23bb7",
+	"SKR03 2026.2": "376ec2feb66839740f67718bbb9df56cd2a18af31ca24d3d54810c5158d2ce25",
+	"SKR04 2026.2": "eff6e6e325ec06430bdfc93b8dd9c96d0f8db009ee07507ab7073a7d1b9b66ab",
 }
 
 
@@ -484,7 +495,7 @@ class PlacesTest(TestCase):
 		}
 		self.assertEqual(count("SKR03", templates), count("SKR04", templates))
 		self.assertEqual(
-			{chart: len(default_accounts(chart)) for chart in CHARTS}, {"SKR03": 139, "SKR04": 149}
+			{chart: len(default_accounts(chart)) for chart in CHARTS}, {"SKR03": 149, "SKR04": 159}
 		)
 
 	def test_the_equity_is_left_to_kst_1_f_and_the_partnerships_and_the_reserved_range_are_left_out(self):
@@ -752,11 +763,30 @@ class WatchedTest(TestCase):
 		}
 		for chart in CHARTS:
 			with self.subTest(chart=chart):
-				self.assertEqual(default_mapping(chart).watched_at(WatchLevel.BLOCKING), expected[chart])
+				self.assertEqual(
+					default_mapping(chart).watched_at(WatchLevel.BLOCKING),
+					expected[chart] | HOLDING_INCOME[chart],
+				)
 
 	def test_watches_at_the_level_hinweis_what_asks_for_a_look(self):
-		self.assertEqual(default_mapping("SKR03").watched_at(WatchLevel.HINT), {"4126", "4129", "4975"})
-		self.assertEqual(default_mapping("SKR04").watched_at(WatchLevel.HINT), {"6026", "6029", "6856"})
+		self.assertEqual(
+			default_mapping("SKR03").watched_at(WatchLevel.HINT),
+			{"4126", "4129", "4975"} | SHARE_RESULTS["SKR03"],
+		)
+		self.assertEqual(
+			default_mapping("SKR04").watched_at(WatchLevel.HINT),
+			{"6026", "6029", "6856"} | SHARE_RESULTS["SKR04"],
+		)
+
+	def test_holds_back_income_from_holdings_of_no_named_legal_form(self):
+		"""A dividend of a Kapitalgesellschaft is exempt under § 8b Abs. 1 KStG only on an account of its category; DATEV
+		marks Erträge aus Beteiligungen without the legal form not K, so its balance is fully taxed unless the company
+		books it apart or gives the account its category."""
+		for chart in CHARTS:
+			with self.subTest(chart=chart):
+				self.assertLessEqual(
+					HOLDING_INCOME[chart], default_mapping(chart).watched_at(WatchLevel.BLOCKING)
+				)
 
 	def test_every_reason_says_why(self):
 		self.assertEqual(set(REASONS), set(Reason))
@@ -805,8 +835,8 @@ class AccountTest(TestCase):
 
 class VersionTest(TestCase):
 	def test_the_version_names_the_chart_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, REVISION), (2026, 1))
-		self.assertEqual([defaults_version(chart) for chart in CHARTS], ["SKR03 2026.1", "SKR04 2026.1"])
+		self.assertEqual((DATEV_EDITION, REVISION), (2026, 2))
+		self.assertEqual([defaults_version(chart) for chart in CHARTS], ["SKR03 2026.2", "SKR04 2026.2"])
 
 	def test_a_chart_without_defaults_has_none(self):
 		for function in (defaults_version, default_mapping, default_accounts):

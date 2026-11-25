@@ -8,11 +8,11 @@ Steuerbote wird „wie besehen“ und ohne jede Gewährleistung bereitgestellt, 
 
 ## Keine Steuer- oder Rechtsberatung
 
-Steuerbote ist Software, keine Steuer- oder Rechtsberatung, und ersetzt keine Steuerberatung. Lass die Einrichtung, besonders Kontenzuordnung und Bilanzzuordnung, von deiner Steuerberatung bestätigen; die offenen fachlichen Punkte stehen in der [Prüfliste für die Steuerberatung](pruefliste-steuerberatung.md).
+Steuerbote ist Software, keine Steuer- oder Rechtsberatung, und ersetzt keine Steuerberatung. Lassen Sie die Einrichtung, besonders Kontenzuordnung und Bilanzzuordnung, von Ihrer Steuerberatung bestätigen; die offenen fachlichen Punkte stehen in der [Prüfliste für die Steuerberatung](pruefliste-steuerberatung.md).
 
 ## Verantwortung für jede Abgabe
 
-Wer eine Meldung oder Erklärung abgibt, ist für ihren Inhalt verantwortlich, für Richtigkeit, Vollständigkeit und fristgerechte Abgabe. Berechnungen, Kontenzuordnungen, Prüfungen und Übermittlungen können Fehler enthalten, auch wenn alle Prüfungen grün sind. Prüfe die Zahlen jeder Meldung vor der Abgabe. Gesetze, Vordrucke und ELSTER-Schnittstellen ändern sich, und Steuerbote kann dem hinterherhinken.
+Wer eine Meldung oder Erklärung abgibt, ist für ihren Inhalt verantwortlich, für Richtigkeit, Vollständigkeit und fristgerechte Abgabe. Berechnungen, Kontenzuordnungen, Prüfungen und Übermittlungen können Fehler enthalten, auch wenn alle Prüfungen grün sind. Prüfen Sie die Zahlen jeder Meldung vor der Abgabe. Gesetze, Vordrucke und ELSTER-Schnittstellen ändern sich, und Steuerbote kann dem hinterherhinken.
 
 ## Stand des Projekts
 

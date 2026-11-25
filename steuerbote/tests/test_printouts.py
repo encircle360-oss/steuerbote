@@ -233,3 +233,98 @@ class LanguageTest(TestCase):
 	def test_matches_whole_words_only(self):
 		found = pages(("Dombauhütte der Kathedrale",), ("Steuerbote has the forms",))
 		self.assertEqual(printouts.nowhere(found, ["the"]), ["Seite 2: „the“ im Ausdruck"])
+
+
+def framed(head: float, first: float, foot: float, number: int = 1, total: int = 1) -> Page:
+	"""A page with its running head ending at head, its first line of content at first and its running foot at
+	foot, all in millimetres from the top edge."""
+	words = [
+		*line("Umsatzsteuer-Voranmeldung 2026", head * MM),
+		*line("Unternehmen", first * MM + 8),
+		*line(f"Seite {number} von {total}", foot * MM + 8),
+	]
+	return Page(*A4, tuple(words))
+
+
+class FrameTest(TestCase):
+	def test_finds_the_end_of_the_head_the_first_line_and_the_foot(self):
+		found = printouts.frame(framed(22.5, 30, 284), MARGINS)
+		self.assertAlmostEqual(found.head / MM, 22.5)
+		self.assertAlmostEqual(found.first / MM, 30)
+		self.assertAlmostEqual(found.foot / MM, 284)
+
+	def test_a_page_without_a_head_in_the_top_margin_has_none(self):
+		self.assertIsNone(printouts.frame(framed(41, 49, 276), MARGINS).head)
+
+
+class AlikeTest(TestCase):
+	def test_accepts_the_same_pages_with_lines_less_than_a_millimetre_apart(self):
+		first = [framed(22.5, 30, 284, 1, 2), framed(22.5, 29, 284, 2, 2)]
+		second = [framed(22.9, 30.6, 283.3, 1, 2), framed(22.9, 29.4, 283.3, 2, 2)]
+		self.assertEqual(printouts.alike(first, second, MARGINS), [])
+
+	def test_a_later_page_may_begin_with_another_line(self):
+		"""Where a page breaks depends on the rows the generator keeps together; the head and the foot stay put."""
+		first = [framed(22.5, 30, 284, 1, 2), framed(22.5, 29, 284, 2, 2)]
+		second = [framed(22.5, 30, 284, 1, 2), framed(22.5, 33, 284, 2, 2)]
+		self.assertEqual(printouts.alike(first, second, MARGINS), [])
+
+	def test_names_a_different_number_of_pages(self):
+		self.assertEqual(
+			printouts.alike([framed(22.5, 30, 284)], [framed(22.5, 30, 284)] * 2, MARGINS),
+			["wkhtmltopdf 1 Seiten, Chromium 2 Seiten"],
+		)
+
+	def test_names_each_line_that_stands_elsewhere(self):
+		self.assertEqual(
+			printouts.alike([framed(22.5, 30, 284)], [framed(41, 49.5, 276.5)], MARGINS),
+			[
+				"Seite 1: Ende des Kopfs mit wkhtmltopdf 22,5 mm, mit Chromium keins",
+				"Seite 1: erste Zeile mit wkhtmltopdf 30,0 mm, mit Chromium 38,2 mm",
+				"Seite 1: Fuß mit wkhtmltopdf 284,0 mm, mit Chromium keins",
+			],
+		)
+
+
+class FootTest(TestCase):
+	def test_accepts_a_page_whose_foot_holds_only_its_line(self):
+		self.assertEqual(printouts.foot_fragments(pages(("Zeile",)), MARGINS), [])
+
+	def test_names_a_glyph_between_the_content_and_the_foot(self):
+		"""Chromium paints what reaches above the first line of a page, the dots of an Ü, onto the page before."""
+		found = page("Zeile")
+		found = Page(found.width, found.height, (*found.words, word("Ü", 190, 281.5 * MM)))
+		self.assertEqual(
+			printouts.foot_fragments([found], MARGINS), ["Seite 1: „Ü“ unter dem Inhalt über dem Fuß"]
+		)
+
+
+class TableHeadTest(TestCase):
+	def test_names_a_head_of_a_table_that_ends_a_page_and_opens_the_next(self):
+		found = pages(
+			("Zeile", "Anhang: alle Hinweise", "Code Nachricht Referenz"),
+			("Anhang: alle Hinweise", "Code Nachricht Referenz", "ZEITRAUM-FEHLT Keine Voranmeldung"),
+		)
+		self.assertEqual(
+			printouts.lonely_table_heads(found, MARGINS),
+			["Seite 1: Kopf der Tabelle „Code Nachricht Referenz“ allein am Seitenende"],
+		)
+
+	def test_accepts_a_head_repeated_over_rows(self):
+		found = pages(
+			("Anhang: alle Hinweise", "Code Nachricht Referenz", "ZEITRAUM-FEHLT Keine Voranmeldung"),
+			("Anhang: alle Hinweise", "Code Nachricht Referenz", "SB-JA-FEHLT Der Jahresabschluss"),
+		)
+		self.assertEqual(printouts.lonely_table_heads(found, MARGINS), [])
+
+
+class RepeatedRowsTest(TestCase):
+	def test_accepts_rows_whose_lines_repeat_further_down(self):
+		found = pages(
+			("Fehler Keine Voranmeldung deckt Mai ab: sie abgeben", "oder mit Begründung darauf verzichten."),
+			(
+				"Fehler Keine Voranmeldung deckt Juni ab: sie abgeben",
+				"oder mit Begründung darauf verzichten.",
+			),
+		)
+		self.assertEqual(printouts.lonely_table_heads(found, MARGINS), [])

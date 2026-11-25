@@ -72,6 +72,11 @@ class LaterTest(TestCase):
 		self.assertEqual((found.code, found.severity), (Code.FOREIGN_TAX, Severity.ERROR))
 		self.assertIn("120,00 €", found.text)
 		self.assertIn("§ 26 KStG", found.reference)
+		self.assertIn(
+			"Die Erklärung mit Anlage AESt gibt dann die Steuerberatung ab; vermerken Sie sie hier als außerhalb "
+			"abgegeben.",
+			found.text,
+		)
 
 	def test_investment_funds_block_until_the_invstg_is_computed(self):
 		(found,) = findings(credit("2650", "700.00"))
@@ -86,6 +91,25 @@ class WatchedTest(TestCase):
 			[(Code.WATCHED, Severity.ERROR), (Code.WATCHED_HINT, Severity.HINT)],
 		)
 		self.assertIn("Konto 4289", findings(debit("4289", "50.00"))[0].text)
+
+	def test_a_watched_account_says_what_to_do(self):
+		"""The company gives the account its category in the Kontenzuordnung Ertragsteuern or books the amount on an
+		account that has one; a dividend on an account without its category would lose § 8b KStG."""
+		blocking, hint = findings(debit("4289", "50.00"), debit("4672", "20.00"))
+		self.assertTrue(
+			blocking.text.endswith(
+				"Geben Sie dem Konto in der Kontenzuordnung Ertragsteuern seine Kategorie, etwa „Bezüge aus Anteilen“ "
+				"für Dividenden einer Kapitalgesellschaft (§ 8b KStG), oder buchen Sie den Betrag auf ein Konto mit "
+				"Kategorie."
+			)
+		)
+		self.assertTrue(
+			hint.text.endswith(
+				"Prüfen Sie, ob der Saldo in eine Kategorie gehört, etwa Bezüge, Gewinne oder Gewinnminderungen aus "
+				"Anteilen an Kapitalgesellschaften (§ 8b KStG), und geben Sie dem Konto dann in der Kontenzuordnung "
+				"Ertragsteuern seine Kategorie."
+			)
+		)
 
 
 class EntertainmentTest(TestCase):
