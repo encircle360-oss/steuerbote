@@ -38,6 +38,7 @@ from collections.abc import Iterable
 from collections.abc import Mapping as ReadOnlyMapping
 from decimal import Decimal
 from types import MappingProxyType
+from typing import NamedTuple
 
 from steuerbote.ustva.mapping import AccountRule, Mapping, Side, TaxCheck, WatchedAccount, WatchLevel
 
@@ -1443,6 +1444,46 @@ def defaults_version(chart: str) -> str:
 	if chart not in DEFAULTS:
 		raise KeyError(f"no default mapping for chart {chart!r}; known charts: {', '.join(DEFAULTS)}")
 	return f"{chart} {DATEV_EDITION}.{REVISION}"
+
+
+# The accounts without a rate the defaults watch at the blocking level, Gewährte Skonti and Forderungsverluste, with the
+# roles of the same kind for each rate: an amount on them names no Kennzahl, and the hint of the Voranmeldung names the
+# accounts of the rates instead (plausibility.rate_account_hints).
+_RATE_ROLES: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
+	("SKR03", "8730", (("cash_discount_19", "19 %"), ("cash_discount_7", "7 %"), ("cash_discount_0", "0 %"))),
+	("SKR03", "2400", (("bad_debt_19", "19 %"), ("bad_debt_7", "7 %"))),
+	("SKR03", "2430", (("bad_debt_unusual_19", "19 %"), ("bad_debt_unusual_7", "7 %"))),
+	("SKR04", "4730", (("cash_discount_19", "19 %"), ("cash_discount_7", "7 %"), ("cash_discount_0", "0 %"))),
+	("SKR04", "6930", (("bad_debt_19", "19 %"), ("bad_debt_7", "7 %"))),
+)
+_KENNZAHL_OF_ROLE = {role: kennzahl for role, kennzahl, _side, _rate in _RULES}
+_ACCOUNTS_OF_CHART = {"SKR03": SKR03_ACCOUNTS, "SKR04": SKR04_ACCOUNTS}
+
+
+class RateAccount(NamedTuple):
+	"""An account of one rate: its number, the rate and the Kennzahl it feeds."""
+
+	number: str
+	rate: str
+	kennzahl: str
+
+
+RATE_ACCOUNTS: ReadOnlyMapping[str, ReadOnlyMapping[str, tuple[RateAccount, ...]]] = MappingProxyType(
+	{
+		chart: MappingProxyType(
+			{
+				account: tuple(
+					RateAccount(_ACCOUNTS_OF_CHART[chart][role] or "", rate, _KENNZAHL_OF_ROLE[role])
+					for role, rate in roles
+				)
+				for row_chart, account, roles in _RATE_ROLES
+				if row_chart == chart
+			}
+		)
+		for chart in _ACCOUNTS_OF_CHART
+	}
+)
+"""By chart, each watched account without a rate with the accounts of its kind for each rate."""
 
 
 def deliberately_without_kennzahl(chart: str) -> frozenset[str]:

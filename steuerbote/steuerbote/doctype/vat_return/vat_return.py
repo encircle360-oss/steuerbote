@@ -1146,7 +1146,9 @@ def build_hints(
 	)
 	ledger = {number: value.amount for number, value in result.values.items()}
 	currency = frappe.get_cached_value("Company", doc.company, "default_currency")
-	names = account_labels(doc.company, (balance.account_number for balance in result.hinted))
+	names = account_labels(
+		doc.company, [*(balance.account_number for balance in result.hinted), *result.unmapped]
+	)
 	figures = SiteFigures(currency)
 	found = plausibility.hints(
 		comparison,
@@ -1158,6 +1160,7 @@ def build_hints(
 		names,
 		derived=result.derived,
 		findings=result.findings,
+		unmapped=result.unmapped,
 	)
 	vat_ids = period_vat_ids(doc.company, period, mapping)
 	return plausibility.merged(
