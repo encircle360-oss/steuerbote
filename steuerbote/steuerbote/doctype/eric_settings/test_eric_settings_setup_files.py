@@ -13,7 +13,7 @@ TRANSLATIONS = Path(hooks.__file__).resolve().parent / "translations" / "de.csv"
 
 
 class SetupStepTest(TestCase):
-	def test_the_hook_runs_the_step_of_the_eric_settings_after_the_mappings(self):
+	def test_the_hook_runs_the_step_of_the_eric_settings_last(self):
 		(entry,) = (entry for entry in hooks.steuerbote_setup_steps if entry["key"] == "eric_settings")
 		step = Step.from_hook(entry)
 		self.assertEqual(

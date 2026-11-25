@@ -16,7 +16,12 @@ WORKSPACE_SECTIONS = {
 		"Kennzahlen (Bericht)",
 		"Dauerfristanträge",
 	),
-	"Zusammenfassende Meldung": ("Neue ZM", "Zusammenf. Meldungen", "USt-IdNr.-Prüfungen"),
+	"Zusammenfassende Meldung": (
+		"Neue ZM",
+		"Zusammenf. Meldungen",
+		"USt-IdNr.-Prüfungen",
+		"Offene USt-IdNrn.",
+	),
 	"Jahresmeldungen": (
 		"Neue USt-Erklärung",
 		"Neue E-Bilanz",
@@ -42,6 +47,7 @@ SIDEBAR = {
 	"Dauerfristanträge": (),
 	"Zusammenf. Meldungen": (),
 	"USt-IdNr.-Prüfungen": (),
+	"Offene USt-IdNrn.": (),
 	"Jahresmeldungen": (
 		"USt-Erklärungen",
 		"E-Bilanzen",

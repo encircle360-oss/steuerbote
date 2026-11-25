@@ -21,6 +21,13 @@ invoice of the register, such as a journal entry on a revenue account, is a diff
 Abweichung muss erklärt sein, bevor die Meldung abgegeben wird“ (docs/roadmap.md, Grundsätze), and each difference gets
 a hint.
 
+The registers and the ledger lines compared go by posting date, the return by the period of the supply and of a late
+booking (steuerbote/ustva/assignment.py). Given the lines the return is computed from (``reported``), an information
+row per Kennzahl of a register names the vouchers the return reports in another period than the one they are posted
+in, with the amount by which they change the Kennzahl: those posted elsewhere and reported here, and those posted here
+and reported elsewhere. It is compared with nothing; a person sees why the Kennzahl of the return is not the amount of
+its row.
+
 What cannot be compared is named with its amount and compared with nothing: a register that books on no account in
 the period, whose every difference would only be the ledger amount; the opening invoices, which the register lists
 and the return leaves out with the opening entries (steuerbote.ledger); the accounts the defaults leave without
@@ -91,6 +98,8 @@ _KENNZAHLEN: MappingProxyType[Register, frozenset[str]] = MappingProxyType(
 class Reason(Enum):
 	"""Why amounts are not compared, as a row names it, in the order of the rows."""
 
+	REPORTED_HERE = "In einem anderen Zeitraum gebucht, in dieser Meldung"
+	REPORTED_ELSEWHERE = "In diesem Zeitraum gebucht, in der Meldung eines anderen Zeitraums"
 	NO_ACCOUNT = "Keine Rechnung des Zeitraums bucht auf ein Konto, nicht abgeglichen"
 	OPENING = "Eröffnungsrechnungen, die die Meldung auslässt"
 	DELIBERATELY_WITHOUT_KENNZAHL = "Konten bewusst ohne Kennzahl"
@@ -130,7 +139,8 @@ class Row:
 
 	A row compares the Bemessungsgrundlage of a Kennzahl (``kennzahl``) or the tax on a tax account
 	(``account_number``, with ``kennzahl`` when a rule maps it to one). A row not compared has the ``reason`` and the
-	``accounts`` behind its amount and no ledger amount.
+	``accounts`` behind its amount and no ledger amount; an information row on vouchers reported in another period
+	names their Kennzahl and, in ``accounts``, the vouchers.
 	"""
 
 	register: Register
@@ -223,24 +233,81 @@ def reconcile(
 	ledger: Iterable[LedgerLine],
 	mapping: Mapping,
 	deliberately_without_kennzahl: Collection[str] = frozenset(),
+	reported: Iterable[LedgerLine] | None = None,
 ) -> tuple[Row, ...]:
 	"""The rows of both registers, the Sales Register first.
 
-	``lines`` are what the registers show for the period, ``ledger`` the ledger lines the return is computed from,
+	``lines`` are what the registers show for the period, ``ledger`` the ledger lines of the period by posting date,
 	and ``deliberately_without_kennzahl`` the accounts the defaults of the chart leave without Kennzahl on purpose.
-	The compared rows of a register follow the form, each tax account after the Kennzahl of its rule or of the first
-	base of its Verprobung; the rows not compared follow, in the order of Reason.
+	``reported`` are the lines the return is computed from, which give the information rows on vouchers reported in
+	another period; without them there are none. The compared rows of a register follow the form, each tax account
+	after the Kennzahl of its rule or of the first base of its Verprobung; the rows not compared follow, in the order
+	of Reason.
 	"""
 	lines = tuple(lines)
+	ledger = tuple(ledger)
 	roles = _Roles(mapping)
 	balances = _Balances(ledger)
+	moved = _moved(roles, ledger, tuple(reported) if reported is not None else ledger)
 	rows: list[Row] = []
 	for register in Register:
 		of_register = [line for line in lines if line.register is register]
-		rows.extend(
-			_rows(register, of_register, roles, balances, mapping, frozenset(deliberately_without_kennzahl))
+		found = _rows(
+			register, of_register, roles, balances, mapping, frozenset(deliberately_without_kennzahl)
 		)
+		at = sum(1 for row in found if row.compared)
+		rows.extend([*found[:at], *moved[register], *found[at:]])
 	return tuple(rows)
+
+
+def _moved(
+	roles: _Roles, posted: tuple[LedgerLine, ...], reported: tuple[LedgerLine, ...]
+) -> dict[Register, list[Row]]:
+	"""The information rows of each register on the vouchers whose amount for a Kennzahl the return reports in another
+	period than the ledger posts it, in the order of the form: those reported here, then those reported elsewhere.
+
+	A voucher only the return has for the Kennzahl is reported here, one only the ledger has elsewhere; one both have
+	with another amount goes by the sign of the difference."""
+	found: dict[Register, list[Row]] = {register: [] for register in Register}
+	for register in Register:
+		for kennzahl, rules in sorted(
+			roles.bases[register].items(), key=lambda item: roles.position[item[0]]
+		):
+			sides = {rule.account_number: rule.side for rule in rules}
+			before, after = _by_voucher(posted, sides), _by_voucher(reported, sides)
+			moved: dict[Reason, dict[str, Decimal]] = {}
+			for voucher in dict.fromkeys((*before, *after)):
+				posting, reporting = before.get(voucher, ZERO), after.get(voucher, ZERO)
+				difference = reporting - posting
+				if not difference:
+					continue
+				here = difference > ZERO if posting and reporting else not posting
+				reason = Reason.REPORTED_HERE if here else Reason.REPORTED_ELSEWHERE
+				moved.setdefault(reason, {})[voucher] = difference
+			for reason in (Reason.REPORTED_HERE, Reason.REPORTED_ELSEWHERE):
+				if reason in moved:
+					amount = to_cents(sum(moved[reason].values(), ZERO))
+					vouchers = tuple(_name(voucher) for voucher in moved[reason])
+					found[register].append(
+						Row(register, amount, kennzahl=kennzahl, reason=reason, accounts=vouchers)
+					)
+	return found
+
+
+def _by_voucher(lines: Iterable[LedgerLine], sides: ReadOnlyMapping[str, Side]) -> dict[str, Decimal]:
+	"""The balance of the accounts on their sides per voucher, in the order of the lines; the assignment moves vouchers
+	only, so lines without voucher are left out."""
+	found: dict[str, Decimal] = {}
+	for line in lines:
+		side = sides.get(line.account_number)
+		if side is not None and line.voucher is not None:
+			found[line.voucher] = found.get(line.voucher, ZERO) + line.balance(side)
+	return found
+
+
+def _name(voucher: str) -> str:
+	"""The name of a voucher without its type, as the ledger keys it (steuerbote.ledger)."""
+	return voucher.partition(":")[2] or voucher
 
 
 def _rows(
@@ -346,6 +413,8 @@ def _listed(amounts: ReadOnlyMapping[str, Decimal]) -> tuple[str, ...]:
 def subject(row: Row, catalogue: ReadOnlyMapping[str, Kennzahl], names: ReadOnlyMapping[str, str]) -> str:
 	"""What a row is about, as its table shows it: the Kennzahl with its label, the account with its name as far as
 	``names`` holds it by number, or the reason with the accounts behind the amount."""
+	if row.reason is not None and row.kennzahl:
+		return f"{row.reason.value} (Kz {row.kennzahl}): {', '.join(row.accounts)}"
 	if row.reason is not None:
 		return f"{row.reason.value}: {', '.join(row.accounts)}" if row.accounts else row.reason.value
 	if row.account_number:

@@ -6,6 +6,7 @@ from steuerbote.ustva.defaults import SKR03
 from steuerbote.ustva.kennzahlen import LATEST_YEAR, UnknownYearError, catalogue_for
 from steuerbote.ustva.mapping import (
 	DERIVED_BASE_KENNZAHLEN,
+	DERIVED_TURNOVER_KENNZAHLEN,
 	AccountRule,
 	Mapping,
 	MappingError,
@@ -318,11 +319,45 @@ class DerivedBaseValidationTest(TestCase):
 		with self.assertRaisesRegex(MappingError, "derived_base must be a Kennzahl or None"):
 			TaxCheck("x", ("3425",), ("1774",), derived_base="")
 
-	def test_turnover_takes_no_derived_base(self):
+	def test_turnover_at_a_statutory_rate_takes_its_own_kennzahl(self):
+		check = TaxCheck("Umsatzsteuer 19 %", ("8400",), ("1776",), derived_base="81")
+		mapping = self.mapping(check)
+		self.assertEqual(mapping.checks[0].derived_base, "81")
+		self.assertEqual(mapping.derived_rate(check), Decimal("19"))
+		self.assertIs(mapping.base_side(check), Side.CREDIT)
+		self.assertTrue(mapping.derives_turnover(check))
+
+	def test_a_check_of_purchases_derives_no_turnover(self):
+		check = TaxCheck("13b", ("3123",), ("1787",), derived_base="84")
+		self.assertFalse(self.mapping(check).derives_turnover(check))
+		self.assertFalse(self.mapping().derives_turnover(TaxCheck("x", ("8400",), ("1776",))))
+
+	def test_the_turnover_kennzahlen_are_those_at_a_statutory_rate_of_section_a(self):
+		self.assertEqual(DERIVED_TURNOVER_KENNZAHLEN, frozenset({"81", "86"}))
+		catalogue = catalogue_for(LATEST_YEAR)
+		for number in DERIVED_TURNOVER_KENNZAHLEN:
+			with self.subTest(kennzahl=number):
+				self.assertIsNotNone(catalogue[number].rate)
+				self.assertTrue(catalogue[number].derives_tax)
+
+	def test_a_turnover_kennzahl_needs_turnover_bases(self):
 		with self.assertRaisesRegex(
-			MappingError, "check 'x': Kennzahl 81 takes no base derived from the tax of a voucher"
+			MappingError,
+			"check 'x': base account 3425 feeds Kennzahl 89, which is no turnover at a statutory rate",
 		):
-			self.mapping(TaxCheck("x", ("8400",), ("1776",), derived_base="81"))
+			self.mapping(TaxCheck("x", ("3425",), ("1774",), derived_base="81"))
+
+	def test_a_turnover_kennzahl_needs_the_rate_of_its_bases(self):
+		with self.assertRaisesRegex(
+			MappingError, "check 'x': Kennzahl 86 carries 7 %, the base accounts of the check 19 %"
+		):
+			self.mapping(TaxCheck("x", ("8400",), ("1776",), derived_base="86"))
+
+	def test_turnover_has_no_kennzahl_for_suppliers_of_other_member_states(self):
+		with self.assertRaisesRegex(
+			MappingError, "check 'x': derived_base_eu is only for a purchase whose tax the company owes"
+		):
+			self.mapping(TaxCheck("x", ("8400",), ("1776",), derived_base="81", derived_base_eu="81"))
 
 	def test_a_check_of_turnover_derives_no_base_whatever_the_kennzahl(self):
 		with self.assertRaisesRegex(

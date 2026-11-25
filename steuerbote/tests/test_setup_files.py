@@ -76,6 +76,26 @@ class SetupPageFilesTest(TestCase):
 		)
 		self.assertIn("frappe.only_for(ROLES, message=True)", self.source)
 
+	def test_the_page_shows_the_status_whitelisted_for_post_when_a_company_is_chosen(self):
+		(method,) = re.findall(r'const STATUS_METHOD = "([\w.]+)";', self.script)
+		self.assertEqual(method, "steuerbote.steuerbote.setup.setup_status")
+		self.assertRegex(
+			self.source,
+			r'@frappe\.whitelist\(methods=\["POST"\]\)\ndef setup_status\(company: str \| None = None\)',
+		)
+		(field,) = re.findall(r"page\.add_field\(\{.*?\}\);", self.script, re.DOTALL)
+		self.assertIn("change: () => show_status(", field)
+
+	def test_before_the_setup_the_report_offers_no_action_and_links_nothing_it_would_make(self):
+		self.assertIn("const action = step.action && !result.before", self.script)
+		self.assertIn('step.doctype && !(result.before && step.outcome === "created")', self.script)
+
+	def test_the_outcomes_before_the_setup_are_those_of_the_core(self):
+		block = re.search(r"const STATUS_OUTCOMES = \{\n(?P<body>.*?)\n\};", self.script, re.DOTALL)
+		self.assertIsNotNone(block)
+		shown = set(re.findall(r"\t(\w+): \{ label: __\(", block["body"]))
+		self.assertEqual(shown, {outcome.value for outcome in steps.Outcome})
+
 	def test_the_outcomes_of_the_page_are_those_of_the_core(self):
 		shown = set(re.findall(r"\n\t(\w+): \{ label: __\(", self.script))
 		self.assertEqual(shown, {outcome.value for outcome in steps.Outcome})

@@ -258,3 +258,11 @@ def form(doc: Row) -> Ust1H:
 def _checked(value: object) -> bool:
 	"""The value of a check field; Frappe hands out 0 and 1, or nothing."""
 	return bool(int(value or 0))
+
+
+def overdue(deadline: date | None, today: date, docstatus: int) -> bool:
+	"""Whether a draft is past its due date: the Antrag is due when the first Voranmeldung it covers is due without the
+	extension (§ 48 Abs. 1 Satz 1 UStDV), the Sondervorauszahlung with it or, in a later year, when the first
+	Voranmeldung of the year is due (§ 48 Abs. 1 Satz 5 and Abs. 2 Satz 1 UStDV). It holds nothing: whether the
+	Finanzamt still grants the extension for the year decides the Finanzamt."""
+	return docstatus == 0 and deadline is not None and today > deadline

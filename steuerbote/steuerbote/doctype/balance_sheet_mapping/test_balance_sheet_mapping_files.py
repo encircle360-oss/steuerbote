@@ -453,7 +453,9 @@ class SetupStepTest(TestCase):
 				(),
 			),
 		)
-		self.assertEqual([entry["order"] for entry in hooks.steuerbote_setup_steps], [35, 36, 40, 50, 60])
+		self.assertEqual(
+			[entry["order"] for entry in hooks.steuerbote_setup_steps], [35, 36, 40, 50, 60, 70, 75, 80]
+		)
 		self.assertRegex(
 			(FOLDER / "setup.py").read_text(encoding="utf-8"), r"\ndef run\(context: SetupContext\)"
 		)

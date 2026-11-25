@@ -15,7 +15,7 @@ IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Account"]
 
 COMPANY = "Steuerbote Test Vorgaben GmbH"
 MAPPING = "VAT Return Mapping"
-VERSION = "SKR03 2026.3"
+VERSION = "SKR03 2026.4"
 # SKR03 accounts: a sale at 19 % with its tax, a service under § 13b UStG with its taxes, the Vorsteuer, a watched
 # account at each level and a bank, which the defaults leave out.
 ACCOUNTS = {
@@ -39,6 +39,13 @@ def make_accounts(company: str) -> dict[str, str]:
 		or make_account(company, number, name, root_type)
 		for number, (name, root_type) in ACCOUNTS.items()
 	}
+
+
+def at_7_percent(items: dict) -> None:
+	"""8400 in Kz 86, as a user may map it: its Verprobung at 19 % then takes no derived base in Kz 81, which only a
+	base at 19 % allows (steuerbote.ustva.mapping)."""
+	items[(ACCOUNT, "8400")] = {**items[(ACCOUNT, "8400")], "kennzahl": "86"}
+	items[CHECK_19] = {name: value for name, value in items[CHECK_19].items() if name != "derived_base"}
 
 
 def ids(comparison: dict) -> list[tuple[str, bool]]:
@@ -128,7 +135,7 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 		stored = frappe.get_doc(MAPPING, COMPANY)
 		self.assertEqual(
 			[(row.label, row.derived_base or None, row.derived_base_eu or None) for row in stored.checks],
-			[("Umsatzsteuer 19 %", None, None), ("Umsatzsteuer nach § 13b UStG 19 %", "84", "46")],
+			[("Umsatzsteuer 19 %", "81", None), ("Umsatzsteuer nach § 13b UStG 19 %", "84", "46")],
 		)
 
 	def test_the_kennzahl_for_suppliers_of_other_member_states_is_proposed_to_a_mapping_of_revision_2(self):
@@ -142,6 +149,29 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 		self.mapping.update_from_defaults(chosen=["check:Umsatzsteuer nach § 13b UStG 19 %"])
 		stored = frappe.get_doc(MAPPING, COMPANY)
 		self.assertEqual(stored.checks[1].derived_base_eu, "46")
+
+	def test_the_kennzahl_of_output_tax_without_revenue_account_is_proposed_to_a_mapping_of_revision_3(self):
+		old = dict(self.defaults())
+		old[CHECK_19] = {name: value for name, value in old[CHECK_19].items() if name != "derived_base"}
+		self.as_if_built_from(old)
+		comparison = self.mapping.compare_with_defaults()
+		self.assertEqual(ids(comparison), [("check:Umsatzsteuer 19 %", True)])
+		(difference,) = comparison["differences"]
+		self.assertEqual(difference["fields"], "Kz of the Base Without Base Account")
+		self.assertTrue(difference["proposed"].endswith("; base without base account in Kz 81"))
+		self.mapping.update_from_defaults(chosen=["check:Umsatzsteuer 19 %"])
+		stored = frappe.get_doc(MAPPING, COMPANY)
+		self.assertEqual((stored.checks[0].label, stored.checks[0].derived_base), ("Umsatzsteuer 19 %", "81"))
+		self.assertEqual(stored.defaults_version, VERSION)
+
+	def test_a_mapping_that_declines_it_keeps_the_deviation(self):
+		old = dict(self.defaults())
+		old[CHECK_19] = {name: value for name, value in old[CHECK_19].items() if name != "derived_base"}
+		self.as_if_built_from(old)
+		self.mapping.update_from_defaults(acknowledge=1)
+		stored = frappe.get_doc(MAPPING, COMPANY)
+		self.assertFalse(stored.checks[0].derived_base)
+		self.assertEqual(ids(stored.compare_with_defaults()), [("check:Umsatzsteuer 19 %", False)])
 
 	def test_vorgaben_laden_keeps_the_classifications_under_13b(self):
 		supplier = "Steuerbote Test Lieferant Vorgaben"
@@ -167,7 +197,7 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 
 	def test_a_change_of_the_defaults_is_proposed_and_a_change_of_the_user_is_not(self):
 		old = dict(self.defaults())
-		old[(ACCOUNT, "8400")] = {**old[(ACCOUNT, "8400")], "kennzahl": "86"}
+		at_7_percent(old)
 		del old[(ACCOUNT, "8603")]
 		old[(ACCOUNT, "1200")] = {"place": "watched", "level": "blocking"}
 		mine = dict(old)
@@ -177,7 +207,13 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 		self.assertEqual(comparison["taken_over"], "SKR03 2025.4")
 		self.assertEqual(
 			ids(comparison),
-			[("account:8400", True), ("account:1548", False), ("account:1200", True), ("account:8603", True)],
+			[
+				("account:8400", True),
+				("account:1548", False),
+				("account:1200", True),
+				("check:Umsatzsteuer 19 %", True),
+				("account:8603", True),
+			],
 		)
 		(kennzahl,) = (
 			difference for difference in comparison["differences"] if difference["id"] == "account:8400"
@@ -196,7 +232,7 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 
 	def test_update_takes_over_what_is_chosen_and_keeps_everything_else(self):
 		old = dict(self.defaults())
-		old[(ACCOUNT, "8400")] = {**old[(ACCOUNT, "8400")], "kennzahl": "86"}
+		at_7_percent(old)
 		del old[(ACCOUNT, "8603")]
 		old[(ACCOUNT, "1200")] = {"place": "watched", "level": "blocking"}
 		mine = {**old, (ACCOUNT, "1548"): {"place": "watched", "level": "hint"}}
@@ -221,7 +257,8 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 		self.assertEqual(mapping.defaults_version, VERSION)
 		self.assertEqual(load_items(mapping.defaults_rows), self.defaults())
 		self.assertEqual(
-			ids(mapping.compare_with_defaults()), [("account:1548", False), ("account:1200", False)]
+			ids(mapping.compare_with_defaults()),
+			[("account:1548", False), ("account:1200", False), ("check:Umsatzsteuer 19 %", False)],
 		)
 
 	def test_update_with_nothing_chosen_only_notes_the_defaults_of_today(self):
@@ -234,7 +271,7 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 		"""As a client of the API calls it, without the dialog: neither the rows nor the defaults taken over change, so
 		the change of the defaults stays proposed."""
 		old = dict(self.defaults())
-		old[(ACCOUNT, "8400")] = {**old[(ACCOUNT, "8400")], "kennzahl": "86"}
+		at_7_percent(old)
 		self.as_if_built_from(old)
 		before = frappe.get_doc(MAPPING, COMPANY)
 		for chosen in (None, [], ["account:1548-not-a-difference"]):
@@ -247,21 +284,24 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 				)
 				self.assertEqual(stored.current_items(), old)
 		self.assertEqual(
-			ids(frappe.get_doc(MAPPING, COMPANY).compare_with_defaults()), [("account:8400", True)]
+			ids(frappe.get_doc(MAPPING, COMPANY).compare_with_defaults()),
+			[("account:8400", True), ("check:Umsatzsteuer 19 %", True)],
 		)
 
 	def test_update_with_nothing_chosen_and_the_word_of_the_user_declines_the_differences(self):
 		"""The dialog says so when the user takes over none: the defaults of today become the base, and the change of
 		the defaults left counts as the user's own from then on."""
 		old = dict(self.defaults())
-		old[(ACCOUNT, "8400")] = {**old[(ACCOUNT, "8400")], "kennzahl": "86"}
+		at_7_percent(old)
 		self.as_if_built_from(old)
 		self.assertEqual(self.mapping.update_from_defaults([], acknowledge=True), 0)
 		stored = frappe.get_doc(MAPPING, COMPANY)
 		self.assertEqual(stored.defaults_version, VERSION)
 		self.assertEqual(load_items(stored.defaults_rows), self.defaults())
 		self.assertEqual(stored.current_items(), old)
-		self.assertEqual(ids(stored.compare_with_defaults()), [("account:8400", False)])
+		self.assertEqual(
+			ids(stored.compare_with_defaults()), [("account:8400", False), ("check:Umsatzsteuer 19 %", False)]
+		)
 
 	def test_the_form_names_the_defaults_a_mapping_without_rows_waits_for(self):
 		"""A mapping without rows that has not taken over the defaults of today names them; one with rows, one that
@@ -315,7 +355,7 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 
 	def test_vorgaben_laden_stays_the_full_reset(self):
 		old = dict(self.defaults())
-		old[(ACCOUNT, "8400")] = {**old[(ACCOUNT, "8400")], "kennzahl": "86"}
+		at_7_percent(old)
 		self.as_if_built_from(old, {**old, (ACCOUNT, "1200"): {"place": "watched", "level": "blocking"}})
 		mapping = frappe.get_doc(MAPPING, COMPANY)
 		mapping.load_defaults()

@@ -204,7 +204,17 @@ class SetupPageTest(TestCase):
 		)
 		keys = [step["key"] for step in ast.literal_eval(assignment.value)]
 		self.assertEqual(
-			keys, ["books_start", "deadlines", "income_tax_mapping", "balance_sheet_mapping", "eric_settings"]
+			keys,
+			[
+				"books_start",
+				"deadlines",
+				"income_tax_mapping",
+				"balance_sheet_mapping",
+				"vat_id_label",
+				"erpnext_germany_vat_id_check",
+				"vat_id_automatic_check",
+				"eric_settings",
+			],
 		)
 		rows = [line for line in SETUP.read_text(encoding="utf-8").splitlines() if line.startswith("| ")]
 		for key in keys:

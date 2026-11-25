@@ -110,7 +110,7 @@ class IntegrationTestMappingFile(IntegrationTestCase):
 				"app_version": steuerbote.__version__,
 				"company": SOURCE,
 				"chart": "SKR03",
-				"defaults_version": "SKR03 2026.3",
+				"defaults_version": "SKR03 2026.4",
 				"exported_on": today.isoformat(),
 				"sha256": transfer.checksum(body),
 			},
@@ -129,7 +129,7 @@ class IntegrationTestMappingFile(IntegrationTestCase):
 		comparison = target.compare_with_file(content=self.text)
 		self.assertEqual(
 			(comparison["company"], comparison["chart"], comparison["defaults_version"]),
-			(SOURCE, "SKR03", "SKR03 2026.3"),
+			(SOURCE, "SKR03", "SKR03 2026.4"),
 		)
 		self.assertTrue(all(proposes for _id, _change, proposes in ids(comparison)))
 		chosen = [difference["id"] for difference in comparison["differences"]]
@@ -137,7 +137,7 @@ class IntegrationTestMappingFile(IntegrationTestCase):
 		target = frappe.get_doc(MAPPING, TARGET)
 		self.assertEqual(rows(target), rows(frappe.get_doc(MAPPING, SOURCE)))
 		self.assertEqual(target.current_items(), self.source.current_items())
-		self.assertEqual(target.defaults_version, "SKR03 2026.3")
+		self.assertEqual(target.defaults_version, "SKR03 2026.4")
 		self.assertEqual(target.defaults_taken_over(), self.source.defaults_taken_over())
 		self.assertEqual(target.compare_with_file(content=self.text)["differences"], [])
 

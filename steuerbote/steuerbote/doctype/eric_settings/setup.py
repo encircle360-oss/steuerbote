@@ -1,6 +1,6 @@
 """The step of Steuerbote einrichten that names what the ERiC Settings still need before an Erklärung goes over ERiC.
 
-hooks.py names it in steuerbote_setup_steps after the mappings. The Vorsatz of every Erklärung, USt, KSt and GewSt,
+hooks.py names it in steuerbote_setup_steps as the last step. The Vorsatz of every Erklärung, USt, KSt and GewSt,
 carries the copyright notice of the maker of the tax software (rules 10435 and 6; steuerbote/elster/vorsatz.py), which
 Steuerbote takes from the ERiC Settings and without which no Erklärung runs with ERiC (eric_settings.vorsatz_copyright).
 The step names it before the first run, which would otherwise be refused; it changes nothing.
