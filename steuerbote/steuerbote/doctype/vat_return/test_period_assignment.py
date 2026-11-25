@@ -8,7 +8,13 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import execute
-from steuerbote.tests.helpers import make_account, make_company, make_mapping, make_settings
+from steuerbote.tests.helpers import (
+	make_account,
+	make_company,
+	make_mapping,
+	make_settings,
+	post_sales_invoice,
+)
 from steuerbote.tests.late_documents import ACCOUNTS, filed_return, sales_invoice, set_rule
 from steuerbote.ustva import Period
 
@@ -69,6 +75,23 @@ class TestPeriodAssignment(IntegrationTestCase):
 		august = self.calculated(8)
 		self.assertEqual(self.amount(august, "81"), Decimal("1000.00"))
 		self.assertEqual(august.period_basis, "By Posting Date")
+
+	def test_the_hints_set_the_invoice_against_the_month_of_its_supply(self):
+		a = self.account
+		post_sales_invoice(
+			COMPANY,
+			"SINV-NZ-0006",
+			"Testkunde",
+			"2026-08-03",
+			[(a["1400"], 1190, 0), (a["8400"], 0, 1000), (a["1776"], 0, 190)],
+			items=[(a["8400"], 1000)],
+			taxes=[(a["1776"], 190)],
+			to_date="2026-07-31",
+		)
+		codes = {row.code for row in self.calculated(7).hints} | {
+			row.code for row in self.calculated(8).hints
+		}
+		self.assertNotIn("ABGLEICH-RECHNUNGEN", codes)
 
 	def test_the_report_shows_the_invoice_in_the_month_of_its_supply(self):
 		self.invoice("SINV-NZ-0003", "2026-08-03", "2026-08-03 09:00:00", to_date="2026-07-31")
