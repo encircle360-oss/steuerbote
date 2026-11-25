@@ -163,8 +163,8 @@ class ValidateTest(WorkerTestCase):
 	def test_hints_keep_the_data_valid(self):
 		result = self.run_operation(Operation.VALIDATE, "STUB-HINWEIS")
 		self.assertIs(result.outcome, Outcome.VALID)
-		self.assertEqual(self.messages(result), [("610001003", HINT, None), ("11085155", HINT, "Kz26")])
-		self.assertEqual(result.messages[1].text, "Bitte prüfen Sie die Kennzahl 26.")
+		self.assertEqual(self.messages(result), [("11085155", HINT, "Kz26")])
+		self.assertEqual(result.messages[0].text, "Bitte prüfen Sie die Kennzahl 26.")
 		self.assertIsNotNone(result.protocol_pdf)
 
 	def test_rule_errors_make_the_data_invalid(self):
@@ -173,13 +173,19 @@ class ValidateTest(WorkerTestCase):
 		self.assertEqual(
 			self.messages(result),
 			[
-				("610001002", ERROR, None),
 				("110085064", ERROR, "Kz83"),
 				("stubRegelOhneId", ERROR, None),
 				("11085155", HINT, "Kz26"),
 			],
 		)
-		self.assertEqual(result.messages[1].text, "Die Kennzahl 83 muss angegeben werden.")
+		self.assertEqual(result.messages[0].text, "Die Kennzahl 83 muss angegeben werden.")
+
+	def test_the_text_of_the_return_code_only_without_rule_messages(self):
+		"""The text of 610001002 and 610001003 says to read the return buffer, which the worker has read: with rule
+		messages it is no message of its own, without them it is the only explanation."""
+		result = self.run_operation(Operation.VALIDATE, "STUB-PRUEF-OHNE-REGELN")
+		self.assertIs(result.outcome, Outcome.INVALID)
+		self.assertEqual(self.messages(result), [("610001002", ERROR, None)])
 
 	def test_an_unreadable_return_buffer_still_fails_with_the_code(self):
 		result = self.run_operation(Operation.VALIDATE, "STUB-BROKEN-RETURN")
@@ -480,7 +486,7 @@ class BilanzTest(AnnualTestCase):
 	def test_hints_keep_the_bilanz_valid_without_a_preview(self):
 		result = self.run_kind(bilanz("6.9"), Operation.VALIDATE, "STUB-HINWEIS")
 		self.assertIs(result.outcome, Outcome.VALID)
-		self.assertEqual(self.messages(result), [("610001003", HINT, None), ("11085155", HINT, "Kz26")])
+		self.assertEqual(self.messages(result), [("11085155", HINT, "Kz26")])
 		self.assertIsNone(result.protocol_pdf)
 
 	def test_a_send_keeps_the_uebertragungsprotokoll(self):
