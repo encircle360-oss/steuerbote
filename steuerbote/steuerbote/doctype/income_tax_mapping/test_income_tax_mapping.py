@@ -76,7 +76,7 @@ class IntegrationTestIncomeTaxMapping(IntegrationTestCase):
 		self.assertIn({"account_number": "2203", "label": "Körperschaftsteuer für Vorjahre"}, missing)
 		self.mapping.insert()
 		stored = frappe.get_doc(MAPPING, COMPANY)
-		self.assertEqual(stored.defaults_version, "SKR03 2026.1")
+		self.assertEqual(stored.defaults_version, "SKR03 2026.2")
 		self.assertEqual(load_items(stored.defaults_rows), default_items("SKR03", set(ACCOUNTS)))
 		self.assertEqual(stored.current_items(), default_items("SKR03", set(ACCOUNTS)))
 

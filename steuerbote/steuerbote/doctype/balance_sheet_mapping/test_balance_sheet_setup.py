@@ -233,7 +233,7 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		self.assertEqual(
 			setup.text_of(result.notes[0]),
 			f"The Balance Sheet Mapping of {SKR04_COMPANY} had no rows and now holds the defaults SKR04 Taxonomie "
-			"6.9 2026.2: account rules 5, watched accounts 0, accounts outside the Bilanz and the GuV 0.",
+			"6.9 2026.3: account rules 5, watched accounts 0, accounts outside the Bilanz and the GuV 0.",
 		)
 		again = result_of(setup.run(SKR04_COMPANY, TODAY), "balance_sheet_mapping")
 		self.assertEqual(again.outcome, Outcome.SKIPPED)
