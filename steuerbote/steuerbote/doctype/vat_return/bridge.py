@@ -265,8 +265,8 @@ def stale_override_hints(rows: Iterable[Row], figures: plausibility.Figures) -> 
 		text = (
 			f"Kz {_number(row)}: Die Korrektur auf {figures.money(to_amount(row.get('override')))} wurde bei "
 			f"{figures.money(basis)} im Hauptbuch eingetragen; das Hauptbuch bucht jetzt {figures.money(amount)}. Die "
-			"Voranmeldung ist nicht bereit, bis die Korrektur bestätigt ist: Passe Betrag oder Begründung an, oder "
-			"lösche die Korrektur."
+			"Voranmeldung ist nicht bereit, bis die Korrektur bestätigt ist: Passen Sie Betrag oder Begründung an, "
+			"oder löschen Sie die Korrektur."
 		)
 		found.append(plausibility.Hint(plausibility.Code.OVERRIDE_STALE, text))
 	return found

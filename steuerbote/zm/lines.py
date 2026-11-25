@@ -336,21 +336,19 @@ class _Context:
 
 # The findings on the confirmation of a number, which a release of the number lifts (decision of the maintainer).
 RELEASABLE = frozenset({Code.INVALID_VAT_ID, Code.UNCONFIRMED_VAT_ID})
-NO_VAT_ID_ADVICE = (
-	"Berichtige die Rechnung, oder nimm die Zeile mit der Korrektur 0 und einer Begründung aus der ZM."
-)
+NO_VAT_ID_ADVICE = "Berichtigen Sie die Rechnung, oder nehmen Sie die Zeile mit der Korrektur 0 und einer Begründung aus der ZM."
 MALFORMED_ADVICE = (
-	"Berichtige die USt-IdNr. in der Rechnung, oder nimm die Zeile mit der Korrektur 0 und einer Begründung "
+	"Berichtigen Sie die USt-IdNr. in der Rechnung, oder nehmen Sie die Zeile mit der Korrektur 0 und einer Begründung "
 	"aus der ZM."
 )
 INVALID_ADVICE = (
-	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, gib die USt-IdNr. mit Begründung frei; "
-	"sonst berichtige die Rechnung."
+	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, geben Sie die USt-IdNr. mit Begründung frei; "
+	"sonst berichtigen Sie die Rechnung."
 )
 # The Sorgfalt of § 6a Absatz 4 UStG asks for the confirmation at the time of the supply (UStAE 6a.8 Abs. 6 Satz 1).
 UNCONFIRMED_ADVICE = (
 	"Die Bestätigung soll spätestens zum Umsatz vorliegen (UStAE 6a.8 Abs. 6): „USt-IdNrn. prüfen“ fragt beim "
-	"BZSt an; liegt eine Bestätigung anders vor, gib die USt-IdNr. mit Begründung frei."
+	"BZSt an; liegt eine Bestätigung anders vor, geben Sie die USt-IdNr. mit Begründung frei."
 )
 
 
@@ -439,8 +437,8 @@ def _stale(key: tuple[str, Art], override: Override, amount: Decimal, figures: F
 	return (
 		f"Die Korrektur der Zeile {line} auf {figures.money(override.amount)} wurde bei "
 		f"{figures.money(override.basis)} im Hauptbuch eingetragen; das Hauptbuch bucht jetzt {figures.money(amount)}. "
-		"Die Zeile hält die Meldung an, bis die Korrektur bestätigt ist: Passe Betrag oder Begründung an, oder lösche "
-		"die Korrektur, dann meldet die Zeile das Hauptbuch."
+		"Die Zeile hält die Meldung an, bis die Korrektur bestätigt ist: Passen Sie Betrag oder Begründung an, oder "
+		"löschen Sie die Korrektur, dann meldet die Zeile das Hauptbuch."
 	)
 
 
