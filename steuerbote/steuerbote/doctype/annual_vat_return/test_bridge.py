@@ -856,6 +856,11 @@ class LedgerTest(TestCase):
 		)
 		self.assertEqual(vouchers, frozenset({"ACC-JV-2026-00001"}))
 
+	def test_names_the_accounts_of_the_umsatzsteuer_of_a_year_of_the_chart(self):
+		self.assertEqual(bridge.settlement_accounts("SKR03"), ("1789", "1790", "1791"))
+		self.assertEqual(bridge.settlement_accounts("SKR04"), ("3840", "3841", "3845"))
+		self.assertEqual(bridge.settlement_accounts("Eigener Kontenrahmen"), ())
+
 	def test_reads_the_payments_on_the_accounts_of_the_chart(self):
 		self.assertEqual(bridge.payment_accounts("SKR03"), ("1780", "1781"))
 		self.assertEqual(bridge.payment_accounts("SKR04"), ("3820", "3830"))

@@ -176,6 +176,11 @@ FIRST_USE = "first_use"
 # 3830 of the same names. The defaults of the Voranmeldung leave them without Kennzahl for that reason
 # (steuerbote/ustva/defaults.py).
 PAYMENT_ACCOUNTS = MappingProxyType({"SKR03": ("1780", "1781"), "SKR04": ("3820", "3830")})
+# The accounts of the Umsatzsteuer of a year the Vorauszahlungen are settled against, DATEV Kontenrahmen 2026, SKR 03
+# „1789 Umsatzsteuer laufendes Jahr“, „1790 Umsatzsteuerverbindlichkeiten Vorjahr“ and „1791
+# Umsatzsteuerverbindlichkeiten frühere Jahre“, SKR 04 3840, 3841 and 3845 (steuerbote/ebilanz/defaults.py). A voucher
+# that moves the Vorauszahlungen only to these accounts, as at the start of a year, pays nothing to the Finanzamt.
+SETTLEMENT_ACCOUNTS = MappingProxyType({"SKR03": ("1789", "1790", "1791"), "SKR04": ("3840", "3841", "3845")})
 # The cause of the difference of a period, as the table Voranmeldungszeiträume names it.
 CAUSES = MappingProxyType(
 	{
@@ -882,6 +887,11 @@ def journal_entry_lines(lines: Iterable[LedgerLine]) -> tuple[tuple[LedgerLine, 
 def payment_accounts(chart: str) -> tuple[str, ...]:
 	"""The accounts of the payments to the Finanzamt in the chart, none for a chart of its own."""
 	return PAYMENT_ACCOUNTS.get(chart, ())
+
+
+def settlement_accounts(chart: str) -> tuple[str, ...]:
+	"""The accounts of the Umsatzsteuer of a year in the chart, none for a chart of its own."""
+	return SETTLEMENT_ACCOUNTS.get(chart, ())
 
 
 def paid(lines: Iterable[LedgerLine], accounts: Collection[str]) -> Decimal | None:

@@ -157,13 +157,29 @@ def sondervorauszahlung(settings, year: int) -> Decimal:
 	return to_amount(settings.sondervorauszahlung(year)) if settings.has_dauerfrist(year) else ZERO
 
 
-def payment_lines(company: str, year: int, accounts: Collection[str]) -> list[LedgerLine]:
+def payment_lines(
+	company: str, year: int, accounts: Collection[str], settlement: Collection[str] = ()
+) -> list[LedgerLine]:
 	"""The postings of the year on the accounts of the payments to the Finanzamt, per voucher and account, without
-	cancelled entries, opening entries and Period Closing Vouchers."""
+	cancelled entries, opening entries and Period Closing Vouchers, and without the vouchers that book only on these
+	accounts and those of the Umsatzsteuer of a year (``settlement``): such a voucher reclassifies, it pays nothing."""
 	if not accounts:
 		return []
 	gl_entry = frappe.qb.DocType("GL Entry")
 	account = frappe.qb.DocType("Account")
+	other_gl_entry = frappe.qb.DocType("GL Entry").as_("other_gl_entry")
+	other_account = frappe.qb.DocType("Account").as_("other_account")
+	tax_accounts = [*accounts, *settlement]
+	paying = (
+		frappe.qb.from_(other_gl_entry)
+		.inner_join(other_account)
+		.on(other_account.name == other_gl_entry.account)
+		.select(other_gl_entry.voucher_no)
+		.where(other_gl_entry.company == company)
+		.where(other_gl_entry.is_cancelled == 0)
+		.where(other_gl_entry.posting_date.between(date(year, 1, 1), date(year, DECEMBER, LAST_OF_DECEMBER)))
+		.where(other_account.account_number.isnull() | other_account.account_number.notin(tax_accounts))
+	)
 	rows = (
 		frappe.qb.from_(gl_entry)
 		.inner_join(account)
@@ -181,6 +197,7 @@ def payment_lines(company: str, year: int, accounts: Collection[str]) -> list[Le
 		.where(gl_entry.is_opening == "No")
 		.where(gl_entry.voucher_type != "Period Closing Voucher")
 		.where(account.account_number.isin(list(accounts)))
+		.where(gl_entry.voucher_no.isin(paying))
 		.groupby(account.account_number, gl_entry.voucher_type, gl_entry.voucher_no)
 		.run(as_dict=True)
 	)
