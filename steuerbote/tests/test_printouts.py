@@ -229,3 +229,7 @@ class LanguageTest(TestCase):
 	def test_check_reports_both(self):
 		expected = Expectations(pages=(1, 1), somewhere=("Seite",), nowhere=("Befunde",))
 		self.assertEqual(printouts.check(pages(("Befunde",)), expected), ["Seite 1: „Befunde“ im Ausdruck"])
+
+	def test_matches_whole_words_only(self):
+		found = pages(("Dombauhütte der Kathedrale",), ("Steuerbote has the forms",))
+		self.assertEqual(printouts.nowhere(found, ["the"]), ["Seite 2: „the“ im Ausdruck"])
