@@ -456,25 +456,23 @@ def proof(
 		nowhere=ENGLISH,
 		margins=MARGINS,
 	)
-	return printouts.check(pages, expected), pages, baselines(path, pages)
+	return printouts.check(pages, expected), pages, baselines(path)
 
 
-def baselines(path: Path, read: list[printouts.Page]) -> list[printouts.Page]:
+def baselines(path: Path) -> list[printouts.Page]:
 	"""The pages of a PDF with each piece of text as a word whose box is its baseline, in points from the top edge.
 	pdftotext boxes a word by the ascent and descent of its font, and the two generators embed the same font with
-	different ones; the baseline is where both set the text. Only text at the height of a word pdftotext reads on the
-	page counts: Chromium leaves a glyph of the first line of a page cut off at the foot of the page before, of which
-	pdftotext reads nothing."""
+	different ones; the baseline is where both set the text."""
 	from pypdf import PdfReader
 
 	pages = []
-	for page, seen in zip(PdfReader(path).pages, read, strict=True):
+	for page in PdfReader(path).pages:
 		height = float(page.mediabox.height)
 		words = []
 
-		def visit(text, cm, tm, _font, _size, words=words, height=height, seen=seen):
-			base = height - (tm[4] * cm[1] + tm[5] * cm[3] + cm[5])
-			if text.strip() and any(word.y0 - 2 <= base <= word.y1 + 2 for word in seen.words):
+		def visit(text, cm, tm, _font, _size, words=words, height=height):
+			if text.strip():
+				base = height - (tm[4] * cm[1] + tm[5] * cm[3] + cm[5])
 				words.append(printouts.Word(0.0, base, 0.0, base, text.strip()))
 
 		page.extract_text(visitor_text=visit)
