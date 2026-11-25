@@ -30,7 +30,13 @@
 </tr>
 {%- endmacro -%}
 
-<div class="sb-dfv">
+{% include "steuerbote/templates/includes/print/style.html" %}
+{%- set running_title = ("Anmeldung der Sondervorauszahlung " if with_sondervorauszahlung else "Antrag auf Dauerfristverlängerung ") ~ doc.year -%}
+{%- set running_number_label = "Steuernummer" -%}
+{%- set running_number = settings.tax_number -%}
+{%- set running_period = "Kalenderjahr " ~ doc.year -%}
+{% include "steuerbote/templates/includes/print/running.html" %}
+<div class="sb-print">
 	<h1>{{ "Anmeldung der Sondervorauszahlung" if with_sondervorauszahlung else "Antrag auf Dauerfristverlängerung" }} {{ doc.year }}</h1>
 	{%- set provisional = doc.provisional_forms() %}
 	{%- if provisional %}
@@ -61,15 +67,16 @@
 	</table>
 
 	{%- if with_sondervorauszahlung %}
-	<h2>Grundlage: abgegebene Voranmeldungen {{ previous_year }}</h2>
-	<table class="sb-form">
+	<div class="sb-block">
+	<table class="sb-lines">
 		<colgroup>
-			<col>
+			<col class="sb-period">
 			<col>
 			<col class="sb-num">
 			<col class="sb-num">
 		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="4"><h2>Grundlage: abgegebene Voranmeldungen {{ previous_year }}</h2></th></tr>
 			<tr>
 				<th>Voranmeldungszeitraum</th>
 				<th>Voranmeldung</th>
@@ -95,6 +102,7 @@
 			</tr>
 		</tbody>
 	</table>
+	</div>
 	{%- if doc.missing_periods %}
 	<p class="sb-note">Ohne abgegebene Voranmeldung: {{ doc.get_formatted("missing_periods") }}</p>
 	{%- endif %}
@@ -103,8 +111,8 @@
 	{%- endif %}
 	{%- endif %}
 
-	<h2>Vordruck USt 1 H</h2>
-	<table class="sb-form">
+	<div class="sb-block">
+	<table class="sb-lines">
 		<colgroup>
 			<col class="sb-line">
 			<col>
@@ -112,6 +120,7 @@
 			<col class="sb-num">
 		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="4"><h2>Vordruck USt 1 H</h2></th></tr>
 			<tr>
 				<th class="sb-line">Zeile</th>
 				<th></th>
@@ -165,16 +174,18 @@
 			</tr>
 		</tbody>
 	</table>
+	</div>
 
 	{%- if with_sondervorauszahlung and doc.base_override_reason %}
-	<h2>Grundlage von Hand</h2>
-	<table class="sb-form">
+	<div class="sb-block">
+	<table class="sb-lines">
 		<colgroup>
 			<col class="sb-num">
 			<col class="sb-num">
 			<col>
 		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="3"><h2>Grundlage von Hand</h2></th></tr>
 			<tr>
 				<th class="sb-num">Grundlage aus den Voranmeldungen</th>
 				<th class="sb-num">Grundlage von Hand</th>
@@ -189,19 +200,25 @@
 			</tr>
 		</tbody>
 	</table>
+	</div>
 	{%- endif %}
 
 	{%- if doc.findings %}
+	<div class="sb-block sb-keep">
 	<h2>Offene Punkte</h2>
 	<p>{{ doc.get_formatted("findings") }}</p>
+	</div>
 	{%- endif %}
 
 	{%- if doc.remarks %}
+	<div class="sb-block sb-keep">
 	<h2>Anmerkungen</h2>
 	<p>{{ doc.get_formatted("remarks") }}</p>
+	</div>
 	{%- endif %}
 
 	{%- if doc.filed_on %}
+	<div class="sb-block sb-keep">
 	<h2>Abgabe</h2>
 	<table class="sb-head">
 		<tr><td class="sb-label">Abgegeben über</td><td class="sb-value">{{ filed_via.get(doc.filed_via, "") }}</td></tr>
@@ -213,6 +230,7 @@
 		<tr><td class="sb-label">Wie und wann abgegeben</td><td class="sb-value">{{ doc.get_formatted("filing_note") }}</td></tr>
 		{%- endif %}
 	</table>
+	</div>
 	{%- endif %}
 
 	<div class="sb-footer">

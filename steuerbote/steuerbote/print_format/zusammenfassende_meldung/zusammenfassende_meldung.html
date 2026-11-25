@@ -17,7 +17,13 @@
 {%- macro euros(value) -%}{{ frappe.utils.fmt_money(value, 0, None, "#.###,##") }}{%- endmacro -%}
 {%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
 
-<div class="sb-zm">
+{% include "steuerbote/templates/includes/print/style.html" %}
+{%- set running_title = "Zusammenfassende Meldung" -%}
+{%- set running_number_label = "USt-IdNr." -%}
+{%- set running_number = settings.ust_idnr -%}
+{%- set running_period = "Meldezeitraum " ~ (doc.period_label or "") -%}
+{% include "steuerbote/templates/includes/print/running.html" %}
+<div class="sb-print">
 	<h1>Zusammenfassende Meldung {{ (doc.period_label or "") | e }}</h1>
 	{%- if correction %}
 	<p class="sb-subtitle">Berichtigte Meldung zu {{ (doc.corrects or "") | e }}</p>
@@ -94,7 +100,7 @@
 	</table>
 
 	{%- if overrides %}
-	<h2>Korrekturen gegenüber dem Hauptbuch</h2>
+	<div class="sb-block">
 	<table class="sb-lines">
 		<colgroup>
 			<col class="sb-id">
@@ -104,6 +110,7 @@
 			<col>
 		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="5"><h2>Korrekturen gegenüber dem Hauptbuch</h2></th></tr>
 			<tr>
 				<th class="sb-id">USt-IdNr.</th>
 				<th class="sb-art">Art</th>
@@ -124,11 +131,14 @@
 			{%- endfor %}
 		</tbody>
 	</table>
+	</div>
 	{%- endif %}
 
 	{%- if doc.remarks %}
+	<div class="sb-block sb-keep">
 	<h2>Bemerkungen</h2>
 	<p>{{ doc.get_formatted("remarks") }}</p>
+	</div>
 	{%- endif %}
 
 	<div class="sb-footer">

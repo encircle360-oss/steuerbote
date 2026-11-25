@@ -87,7 +87,13 @@
 </tr>
 {%- endmacro -%}
 
-<div class="sb-ustva">
+{% include "steuerbote/templates/includes/print/style.html" %}
+{%- set running_title = "Umsatzsteuer-Voranmeldung " ~ doc.year -%}
+{%- set running_number_label = "Steuernummer" -%}
+{%- set running_number = settings.tax_number -%}
+{%- set running_period = "Voranmeldungszeitraum " ~ (doc.period_label or "") -%}
+{% include "steuerbote/templates/includes/print/running.html" %}
+<div class="sb-print">
 	<h1>Umsatzsteuer-Voranmeldung {{ doc.year }}</h1>
 	{%- set provisional = doc.provisional_forms() %}
 	{%- if provisional %}
@@ -109,7 +115,7 @@
 		<tr><td class="sb-label">Meldung</td><td class="sb-value">{{ doc.name | e }}, {{ doc.status | e }}</td></tr>
 	</table>
 
-	<table class="sb-form">
+	<table class="sb-lines">
 		<colgroup>
 			<col class="sb-line">
 			<col>
@@ -123,7 +129,7 @@
 				<th class="sb-line">Zeile</th>
 				<th></th>
 				<th class="sb-kz">Kz</th>
-				<th class="sb-num">Bemessungsgrundlage ohne Umsatzsteuer<br>EUR</th>
+				<th class="sb-num">Bemessungs&shy;grundlage ohne Umsatzsteuer<br>EUR</th>
 				<th class="sb-kz">Kz</th>
 				<th class="sb-num">Steuer<br>EUR, Ct</th>
 			</tr>
@@ -175,8 +181,8 @@
 	</table>
 
 	{%- if overrides %}
-	<h2>Korrekturen gegenüber dem Hauptbuch</h2>
-	<table class="sb-form">
+	<div class="sb-block">
+	<table class="sb-lines">
 		<colgroup>
 			<col class="sb-kz">
 			<col class="sb-num">
@@ -184,6 +190,7 @@
 			<col>
 		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="4"><h2>Korrekturen gegenüber dem Hauptbuch</h2></th></tr>
 			<tr>
 				<th class="sb-kz">Kz</th>
 				<th class="sb-num">Betrag laut Hauptbuch</th>
@@ -202,11 +209,14 @@
 			{%- endfor %}
 		</tbody>
 	</table>
+	</div>
 	{%- endif %}
 
 	{%- if doc.remarks %}
+	<div class="sb-block sb-keep">
 	<h2>Bemerkungen</h2>
 	<p>{{ doc.get_formatted("remarks") }}</p>
+	</div>
 	{%- endif %}
 
 	<div class="sb-footer">

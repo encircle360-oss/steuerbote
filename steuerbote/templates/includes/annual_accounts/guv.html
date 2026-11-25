@@ -7,10 +7,22 @@
 {%- set accounts = accounts if accounts is defined else doc.annual_accounts_print() -%}
 {%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
 {%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
-<h2>Gewinn- und Verlustrechnung für die Zeit vom {{ day(doc.from_date) }} bis {{ day(doc.to_date) }}</h2>
-<p class="sb-note">Gesamtkostenverfahren (§ 275 Abs. 2 HGB)</p>
+<div class="sb-block">
 <table class="sb-lines">
+	<colgroup>
+		<col>
+		<col class="sb-num">
+		{%- if doc.has_prior %}
+		<col class="sb-num">
+		{%- endif %}
+	</colgroup>
 	<thead>
+		<tr class="sb-caption">
+			<th colspan="{{ 3 if doc.has_prior else 2 }}">
+				<h2>Gewinn- und Verlustrechnung für die Zeit vom {{ day(doc.from_date) }} bis {{ day(doc.to_date) }}</h2>
+				<p class="sb-note">Gesamtkostenverfahren (§ 275 Abs. 2 HGB)</p>
+			</th>
+		</tr>
 		<tr>
 			<th class="sb-account">Posten</th>
 			<th class="sb-num">{{ doc.year }}</th>
@@ -31,3 +43,4 @@
 		{%- endfor %}
 	</tbody>
 </table>
+</div>

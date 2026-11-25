@@ -1,0 +1,391 @@
+{#-
+	The one stylesheet of the print formats of Steuerbote: A4, black and grey, a font with the metrics of Helvetica that
+	the server has, classes of their own under .sb-print, since Frappe's print stylesheet styles bare classes such as
+	label. The PDFs come from wkhtmltopdf, which takes its page margins from a rule on .print-format alone, ignores
+	@page margins and page-break-after, and keeps rows and blocks with page-break-inside: avoid. The sheet does not rely
+	on Frappe's print bundle, which a site may fail to load into wkhtmltopdf. A print format includes it first, then
+	the running head and foot, and wraps its content in <div class="sb-print">.
+-#}
+<style>
+	@page {
+		size: A4 portrait;
+		margin: 28mm 15mm 18mm 20mm;
+	}
+
+	.print-format {
+		margin-top: 28mm;
+		margin-bottom: 18mm;
+		margin-left: 20mm;
+		margin-right: 15mm;
+		header-spacing: 4;
+	}
+
+	.print-format-gutter > .print-format,
+	body > .print-format {
+		margin: 0 !important;
+	}
+
+	body {
+		margin: 0 !important;
+		padding: 0 !important;
+	}
+
+	@media print {
+		.print-hide {
+			display: none !important;
+		}
+	}
+
+	.sb-print,
+	.sb-running {
+		color: #000;
+		font-family: "Nimbus Sans", "Liberation Sans", Arial, Helvetica, sans-serif;
+		font-size: 9pt;
+		line-height: 1.3;
+	}
+
+	.sb-print h1 {
+		font-size: 15pt;
+		font-weight: bold;
+		line-height: 1.2;
+		margin: 0 0 1mm;
+	}
+
+	.sb-print h2 {
+		font-size: 11pt;
+		font-weight: bold;
+		line-height: 1.2;
+		margin: 0 0 2mm;
+	}
+
+	.sb-print h3 {
+		font-size: 9.5pt;
+		font-weight: bold;
+		margin: 4mm 0 1.5mm;
+	}
+
+	.sb-print p {
+		margin: 0 0 1.5mm;
+	}
+
+	.sb-print .sb-subtitle {
+		color: #333;
+		font-weight: bold;
+		margin: 0 0 1mm;
+	}
+
+	.sb-print .sb-block {
+		margin: 6mm 0 0;
+	}
+
+	.sb-print .sb-keep,
+	.sb-print .sb-group,
+	.sb-print .sb-footer,
+	.sb-print .sb-angabe,
+	.sb-print tr,
+	.sb-print .sb-steps li {
+		page-break-inside: avoid;
+	}
+
+	.sb-print table {
+		border-collapse: collapse;
+		width: 100%;
+	}
+
+	.sb-print thead {
+		display: table-header-group;
+	}
+
+	.sb-print tfoot {
+		display: table-footer-group;
+	}
+
+	.sb-print td,
+	.sb-print th {
+		text-align: left;
+		vertical-align: top;
+		word-wrap: break-word;
+	}
+
+	.sb-print .sb-head {
+		margin: 4mm 0 6mm;
+		table-layout: fixed;
+	}
+
+	.sb-print .sb-head td {
+		border: 0;
+		padding: 0.6mm 2mm 0.6mm 0;
+	}
+
+	.sb-print .sb-head td.sb-value {
+		color: #000;
+	}
+
+	.sb-print .sb-head td.sb-label {
+		color: #555;
+		width: 55mm;
+	}
+
+	.sb-print .sb-lines {
+		margin: 0;
+		table-layout: fixed;
+	}
+
+	.sb-print .sb-lines th {
+		border-bottom: 0.4mm solid #000;
+		color: #000;
+		font-size: 7.5pt;
+		font-weight: bold;
+		padding: 0.8mm 1.2mm;
+		vertical-align: bottom;
+	}
+
+	.sb-print .sb-lines td {
+		border-bottom: 0.15mm solid #bbb;
+		padding: 0.9mm 1.2mm;
+	}
+
+	.sb-print .sb-lines tr.sb-caption th {
+		border-bottom: 0;
+		padding: 0 0 1mm;
+	}
+
+	.sb-print .sb-lines tr.sb-caption h2 {
+		margin: 0;
+	}
+
+	.sb-print .sb-lines tr.sb-caption .sb-note {
+		font-size: 9pt;
+		font-weight: normal;
+		margin: 1mm 0 0;
+	}
+
+	.sb-print .sb-lines .sb-section td {
+		background: #eee;
+		border-bottom: 0.3mm solid #777;
+		font-weight: bold;
+		padding-top: 1.2mm;
+	}
+
+	.sb-print .sb-lines .sb-sum td {
+		border-top: 0.3mm solid #000;
+		font-weight: bold;
+	}
+
+	.sb-print .sb-lines td.sb-strong {
+		font-weight: bold;
+	}
+
+	.sb-print .sb-lines .sb-group-head td {
+		font-weight: bold;
+		padding-top: 1.5mm;
+	}
+
+	.sb-print .sb-lines .sb-empty td,
+	.sb-print .sb-lines .sb-columns td,
+	.sb-print .sb-lines .sb-subheading td {
+		color: #555;
+	}
+
+	.sb-print .sb-lines .sb-subheading td {
+		font-style: italic;
+	}
+
+	.sb-print .sb-small {
+		font-size: 8pt;
+	}
+
+	.sb-print .sb-line,
+	.sb-print .sb-instance {
+		color: #555;
+		width: 10mm;
+	}
+
+	.sb-print .sb-kz,
+	.sb-print .sb-art {
+		text-align: center;
+		width: 10mm;
+	}
+
+	.sb-print .sb-lines th.sb-kz,
+	.sb-print .sb-lines th.sb-art {
+		text-align: center;
+	}
+
+	.sb-print .sb-num,
+	.sb-print .sb-lines th.sb-num {
+		text-align: right;
+		width: 26mm;
+	}
+
+	.sb-print td.sb-num {
+		white-space: nowrap;
+	}
+
+	.sb-print .sb-value-wide {
+		text-align: right;
+		width: 48mm;
+	}
+
+	.sb-print .sb-text,
+	.sb-print .sb-flag {
+		text-align: left;
+	}
+
+	.sb-print .sb-id {
+		width: 30mm;
+	}
+
+	.sb-print .sb-period {
+		width: 30mm;
+	}
+
+	.sb-print .sb-kind {
+		width: 15mm;
+	}
+
+	.sb-print .sb-code {
+		width: 33mm;
+	}
+
+	.sb-print .sb-ref {
+		width: 33mm;
+	}
+
+	.sb-print .sb-findings td {
+		font-size: 8pt;
+	}
+
+	.sb-print .sb-recon td,
+	.sb-print .sb-recon th {
+		font-size: 7.5pt;
+	}
+
+	.sb-print .sb-recon .sb-num {
+		width: 19mm;
+	}
+
+	.sb-print .sb-account,
+	.sb-print .sb-position {
+		text-align: left;
+	}
+
+	.sb-print .sb-lines td.sb-level-2 {
+		padding-left: 4mm;
+	}
+
+	.sb-print .sb-lines td.sb-level-3 {
+		padding-left: 7mm;
+	}
+
+	.sb-print .sb-lines td.sb-level-4 {
+		padding-left: 10mm;
+	}
+
+	.sb-print .sb-lines td.sb-vermerk {
+		color: #333;
+		font-style: italic;
+		padding-left: 4mm;
+	}
+
+	.sb-print .sb-bilanz th.sb-num,
+	.sb-print .sb-bilanz td.sb-num {
+		width: 21mm;
+	}
+
+	.sb-print .sb-bilanz {
+		font-size: 8pt;
+	}
+
+	.sb-print .sb-note {
+		color: #333;
+	}
+
+	.sb-print .sb-notice {
+		border: 0.3mm solid #777;
+		margin: 3mm 0;
+		padding: 2mm;
+	}
+
+	.sb-print .sb-angabe {
+		margin: 0 0 3mm;
+	}
+
+	.sb-print .sb-angabe-label {
+		font-weight: bold;
+		margin: 0 0 0.8mm;
+	}
+
+	.sb-print .sb-angabe-text {
+		margin: 0 0 0.8mm;
+		white-space: pre-line;
+	}
+
+	.sb-print .sb-signature {
+		margin: 0 0 1.5mm;
+	}
+
+	.sb-print .sb-steps {
+		margin: 0 0 3mm;
+		padding-left: 5mm;
+	}
+
+	.sb-print .sb-source,
+	.sb-print .sb-unverified {
+		color: #555;
+		font-size: 7.5pt;
+		margin: 0.5mm 0 1.5mm;
+	}
+
+	.sb-print .sb-unverified {
+		font-weight: bold;
+	}
+
+	.sb-print .sb-footer {
+		border-top: 0.3mm solid #777;
+		color: #333;
+		font-size: 7.5pt;
+		margin-top: 6mm;
+		padding-top: 1.5mm;
+	}
+
+	.sb-print .sb-footer p {
+		margin: 0 0 0.8mm;
+	}
+
+	.sb-running {
+		color: #333;
+		font-size: 7.5pt;
+	}
+
+	.sb-running table {
+		border-collapse: collapse;
+		width: 100%;
+	}
+
+	.sb-running td {
+		padding: 0;
+		vertical-align: bottom;
+	}
+
+	.sb-running .sb-right {
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.sb-running-head {
+		border-bottom: 0.3mm solid #777;
+		padding: 7mm 0 1.2mm;
+	}
+
+	.sb-running-head .sb-title {
+		color: #000;
+		font-weight: bold;
+	}
+
+	.sb-running-foot {
+		border-top: 0.3mm solid #777;
+		margin-top: 4mm;
+		padding-top: 1.2mm;
+	}
+</style>

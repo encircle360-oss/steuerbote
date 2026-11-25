@@ -1,28 +1,37 @@
 {#-
 	The findings of an annual document, the errors first: what holds it back from Bereit and what someone should look
-	at, as the table Befunde holds them.
+	at, as the table Befunde holds them. The heading is the first row of the table head, so that it stays with the
+	first finding and repeats on every page the table runs on.
 -#}
 {%- set annual = annual if annual is defined else doc.annual_print() -%}
 {%- if annual.findings %}
-<h2>Befunde</h2>
-<table class="sb-lines">
-	<thead>
-		<tr>
-			<th class="sb-kind">Art</th>
-			<th class="sb-code">Code</th>
-			<th>Nachricht</th>
-			<th class="sb-ref">Referenz</th>
-		</tr>
-	</thead>
-	<tbody>
-		{%- for row in annual.findings %}
-		<tr>
-			<td class="sb-kind">{{ (row.severity or "") | e }}</td>
-			<td class="sb-code">{{ (row.code or "") | e }}</td>
-			<td>{{ (row.text or "") | e }}</td>
-			<td class="sb-ref">{{ (row.reference or "") | e }}</td>
-		</tr>
-		{%- endfor %}
-	</tbody>
-</table>
+<div class="sb-block">
+	<table class="sb-lines sb-findings">
+		<colgroup>
+			<col class="sb-kind">
+			<col class="sb-code">
+			<col>
+			<col class="sb-ref">
+		</colgroup>
+		<thead>
+			<tr class="sb-caption"><th colspan="4"><h2>Befunde</h2></th></tr>
+			<tr>
+				<th class="sb-kind">Art</th>
+				<th class="sb-code">Code</th>
+				<th>Nachricht</th>
+				<th class="sb-ref">Referenz</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in annual.findings %}
+			<tr>
+				<td class="sb-kind">{{ (row.severity or "") | e }}</td>
+				<td class="sb-code">{{ (row.code or "") | e }}</td>
+				<td>{{ (row.text or "") | e }}</td>
+				<td class="sb-ref">{{ (row.reference or "") | e }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+</div>
 {%- endif %}

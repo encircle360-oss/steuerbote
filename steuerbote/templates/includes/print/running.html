@@ -1,0 +1,33 @@
+{#-
+	The running head and foot of every page of a printout, which Frappe hands wkhtmltopdf as its header and footer:
+	the head names the document, the company, its number at the tax office and the period, the foot when and with
+	which version of Steuerbote the printout was made and the page of how many. A page that comes loose can so be put
+	back and its state told. The print format sets running_title, running_number_label, running_number and
+	running_period before it includes the part, each of them may be missing; the spans page and topage are the ones
+	wkhtmltopdf fills in. The preview in the browser hides both (visible-pdf).
+-#}
+{%- set running_created = frappe.utils.format_datetime(frappe.utils.now_datetime(), "dd.MM.yyyy HH:mm") -%}
+<div id="header-html" class="visible-pdf">
+	<div class="sb-running sb-running-head">
+		<table>
+			<tr>
+				<td><span class="sb-title">{{ running_title | default("") | e }}</span> · {{ doc.company | e }}</td>
+				<td class="sb-right">{{ doc.name | e }} · {{ (doc.status or "") | e }}</td>
+			</tr>
+			<tr>
+				<td>{% if running_number | default("") %}{{ running_number_label | default("") | e }} {{ running_number | e }}{% endif %}</td>
+				<td class="sb-right">{{ running_period | default("") | e }}</td>
+			</tr>
+		</table>
+	</div>
+</div>
+<div id="footer-html" class="visible-pdf">
+	<div class="sb-running sb-running-foot">
+		<table>
+			<tr>
+				<td>Erstellt am {{ running_created }} mit Steuerbote {{ steuerbote_version() | e }}</td>
+				<td class="sb-right">Seite <span class="page"></span> von <span class="topage"></span></td>
+			</tr>
+		</table>
+	</div>
+</div>

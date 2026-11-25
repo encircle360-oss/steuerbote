@@ -23,9 +23,23 @@
 {%- endif %}
 {%- endmacro -%}
 {%- set with_prior = doc.has_prior -%}
-<h2>Bilanz zum {{ day(doc.to_date) }}</h2>
+{%- set bilanz_columns = 6 if with_prior else 4 -%}
+<div class="sb-block">
 <table class="sb-lines sb-bilanz">
+	<colgroup>
+		<col>
+		<col class="sb-num">
+		{%- if with_prior %}
+		<col class="sb-num">
+		{%- endif %}
+		<col>
+		<col class="sb-num">
+		{%- if with_prior %}
+		<col class="sb-num">
+		{%- endif %}
+	</colgroup>
 	<thead>
+		<tr class="sb-caption"><th colspan="{{ bilanz_columns }}"><h2>Bilanz zum {{ day(doc.to_date) }}</h2></th></tr>
 		<tr>
 			<th class="sb-account">Aktiva</th>
 			<th class="sb-num">{{ day(doc.to_date) }}</th>
@@ -48,3 +62,4 @@
 		{%- endfor %}
 	</tbody>
 </table>
+</div>

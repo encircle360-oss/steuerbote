@@ -97,7 +97,7 @@ steuerbote/                    Repository
 │   ├── translations/          deutsche Übersetzungen der Oberfläche (de.csv)
 │   ├── tests/                 Frappe-Integrationstests und Hilfen für Testdaten und Übermittlungen, unter e2e/ die Browsertests mit ihren Testdaten, in desk_symbols.txt die Symbole, die der Desk von Frappe und ERPNext hat
 │   ├── patches/               Patches, die bench migrate ausführt (patches.txt)
-│   └── config/, templates/    Standardverzeichnisse einer Frappe-App; templates/includes/annual_filing/ hält die Teile der Druckformate der Jahresmeldungen, templates/includes/annual_accounts/ die des Jahresabschlusses
+│   └── config/, templates/    Standardverzeichnisse einer Frappe-App; templates/includes/print/ hält das Stylesheet und Kopf- und Fußzeile aller Druckformate, templates/includes/annual_filing/ die Teile der Druckformate der Jahresmeldungen, templates/includes/annual_accounts/ die des Jahresabschlusses
 ├── docs/                      Dokumentation
 │   └── bilder/                Bildschirmfotos der Oberfläche mit Beispieldaten
 ├── .github/workflows/         CI: Tests, Linters, Security

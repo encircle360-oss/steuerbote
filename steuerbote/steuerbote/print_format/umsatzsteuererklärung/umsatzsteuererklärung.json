@@ -1,7 +1,7 @@
 {
  "align_labels_right": 0,
  "creation": "2026-11-23 20:00:00.000000",
- "css": ".sb-annual col.sb-line,\n.sb-annual col.sb-kz {\n\twidth: 10mm;\n}\n\n.sb-annual .sb-line {\n\tcolor: #555;\n}\n\n.sb-annual .sb-kz {\n\ttext-align: center;\n}\n\n.sb-annual .sb-columns td {\n\tcolor: #555;\n\tfont-size: 8pt;\n}\n\n.sb-annual .sb-subheading td {\n\tcolor: #444;\n\tfont-style: italic;\n}\n\n.sb-annual .sb-text {\n\ttext-align: left;\n}\n\n.sb-annual .sb-wide {\n\tfont-size: 7.5pt;\n\ttable-layout: auto;\n}\n\n.sb-annual .sb-wide .sb-num {\n\twidth: auto;\n}",
+ "css": "",
  "custom_format": 0,
  "default_print_language": "de",
  "disabled": 0,
@@ -11,7 +11,7 @@
  "html": "",
  "idx": 0,
  "line_breaks": 0,
- "modified": "2026-11-23 20:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Umsatzsteuererklärung",
