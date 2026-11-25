@@ -193,12 +193,12 @@ def foot_fragments(pages, margins: Margins) -> list[str]:
 
 
 def lonely_table_heads(pages, margins: Margins) -> list[str]:
-	"""No page ends with the head of a table whose rows begin on the next page, which opens with the head again."""
+	"""No page ends with the head of a table whose rows begin on the next page, which opens with the same lines."""
 	problems = []
 	for number, (page, following) in enumerate(itertools.pairwise(pages), start=1):
 		ending = [text_of(line) for line in lines(body(page, margins))]
 		opening = [text_of(line) for line in lines(body(following, margins))][:2]
-		if ending and ending[-1] in opening:
+		if ending and (ending[-1:] == opening[:1] or (len(ending) > 1 and ending[-2:] == opening)):
 			problems.append(f"Seite {number}: Kopf der Tabelle „{ending[-1]}“ allein am Seitenende")
 	return problems
 
