@@ -1026,7 +1026,8 @@ def _currency_netted(placed: Iterable[Placed]) -> Iterator[Finding]:
 				f"{euro(abs(balance.amount))}. Die GuV weist beide gesondert aus (§ 277 Abs. 5 Satz 2 HGB), verrechnet "
 				"werden dürfen sie nicht (§ 246 Abs. 2 Satz 1 HGB): Buchen Sie Erträge und Aufwendungen aus der "
 				"Währungsumrechnung auf getrennte Konten, auch wo die Wechselkursneubewertung von ERPNext beide auf ein "
-				"Konto bucht.",
+				"Konto bucht: Buchen Sie dann die Erträge vor dem Abschluss auf das Konto der Erträge um. Welche Konten "
+				"ERPNext dafür nimmt, sagt der Schritt „Konten der Wechselkursdifferenzen“ von „Steuerbote einrichten“.",
 				"§ 277 Abs. 5 Satz 2, § 246 Abs. 2 Satz 1 HGB",
 				balance.number,
 				item.concept,

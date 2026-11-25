@@ -12,8 +12,6 @@ from steuerbote.setup.steps import Outcome
 from steuerbote.steuerbote import exchange_setup
 from steuerbote.tests.helpers import make_account, make_company
 
-IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Account"]
-
 COMPANY = "Steuerbote Test Wechselkurs GmbH"
 BARE = "Steuerbote Test Wechselkurs ohne Konten GmbH"
 SKR03 = SimpleNamespace(company=COMPANY, chart=Detection("SKR03", Basis.ACCOUNTS))

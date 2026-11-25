@@ -20,5 +20,5 @@ class ExchangeSetupFilesTest(TestCase):
 
 	def test_every_text_reads_in_german(self):
 		texts = {*messages(MODULE), "Exchange Rate Accounts"}
-		self.assertEqual(len(texts), 5)
+		self.assertEqual(len(texts), 6)
 		self.assertEqual(sorted(texts - translations().keys()), [])
