@@ -147,6 +147,7 @@ testpaths = [
     "steuerbote/tests/test_guard_files.py",
     "steuerbote/tests/test_about_files.py",
     "steuerbote/tests/test_print_files.py",
+    "steuerbote/tests/test_print_medium.py",
     "steuerbote/tests/test_printouts.py",
 ]
 # The store of steuerbote/eric/secrets.py needs Redis and the encryption key of a site.
