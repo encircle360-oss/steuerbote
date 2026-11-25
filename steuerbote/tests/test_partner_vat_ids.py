@@ -205,7 +205,11 @@ class TestPartnerVatIds(IntegrationTestCase):
 		)
 		frappe.db.set_value("Customer", FORMFEHLER, "vat_id_status", None)
 		frappe.db.set_value("Customer", MUENCHEN, "vat_id_status", "Valid")
+		frappe.db.set_value("Customer", PRUEFZIFFER, "vat_id_status", "German VAT ID")
+		frappe.db.set_value("Customer", ZUERICH, "vat_id_status", "Not Checked")
 		partner_module.fill_statuses()
+		self.assertEqual(frappe.db.get_value("Customer", PRUEFZIFFER, "vat_id_status"), "Malformed")
+		self.assertEqual(frappe.db.get_value("Customer", ZUERICH, "vat_id_status"), "Not Confirmable")
 		self.assertEqual(frappe.db.get_value("Customer", FORMFEHLER, "vat_id_status"), "Malformed")
 		self.assertEqual(frappe.db.get_value("Customer", MUENCHEN, "vat_id_status"), "Valid")
 
