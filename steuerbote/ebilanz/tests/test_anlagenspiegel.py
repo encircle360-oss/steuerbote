@@ -227,11 +227,14 @@ class HandelsbilanzTest(TestCase):
 		self.assertEqual(lines[(gaap("bs.ass.fixAss.tan"), STB)].book_value, D("30000.00"))
 		self.assertEqual(found.findings, ())
 
-	def test_sends_no_steuerbilanzwert_of_a_position_steuerlich_not_permitted(self):
-		"""Structural error 170165096 of the Jahresdokumentation 6.9 refuses any."""
+	def test_sends_the_steuerbilanzwert_zero_of_a_position_steuerlich_not_permitted(self):
+		"""With Überleitungswerten the Anlagenspiegel holds Handels- and Steuerbilanzwerte of every position (Leitfaden
+		B.14.12.1 c), the Steuerbilanzwert of a position „steuerlich“ not permitted being zero (i). ERiC 44.3.6.0 refuses
+		it without the Steuerbilanzwert with structural error 170185133 (validation of Bilanz_6.9)."""
 		found = self.of(*self.rows())
 		self.assertIsNotNone(found.line("bs.ass.fixAss.intan.selfmade", HB))
-		self.assertIsNone(found.line("bs.ass.fixAss.intan.selfmade", STB))
+		self.assertEqual(found.line("bs.ass.fixAss.intan.selfmade", STB).book_value, D("0.00"))
+		self.assertEqual(found.findings, ())
 
 	def test_its_handelsbilanzwert_and_ueberleitungswert_add_up_to_zero(self):
 		found = self.of(*self.rows(transfer="-4000.00"))
