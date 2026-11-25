@@ -304,6 +304,10 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		super().set_period()
 		start, end = getdate(self.from_date), getdate(self.to_date)
 		self.stichtag = start if self._opening else end
+		self._require_a_taxonomy(start, end)
+		self.taxonomy_version = bridge.taxonomy_for(start, end, self.taxonomy_version)
+
+	def _require_a_taxonomy(self, start: date, end: date) -> None:
 		if not versions.allowed_for(start, end):
 			frappe.throw(
 				_(
@@ -314,9 +318,14 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 					", ".join(versions.TAXONOMIES),
 				)
 			)
-		self.taxonomy_version = bridge.taxonomy_for(start, end, self.taxonomy_version)
 
 	# Transmittable.
+
+	def check_transmittable(self) -> None:
+		"""Prüfen and every transmission check what Berechnen would check of the Wirtschaftsjahr first, so that an
+		E-Bilanz an earlier release calculated for a year no taxonomy of Steuerbote serves is not checked as it was."""
+		self._require_a_taxonomy(getdate(self.from_date), getdate(self.to_date))
+		super().check_transmittable()
 
 	def datenart(self) -> eric_datenart.Datenart:
 		"""The Datenart Bilanz of the taxonomy of the E-Bilanz, such as Bilanz_6.9."""

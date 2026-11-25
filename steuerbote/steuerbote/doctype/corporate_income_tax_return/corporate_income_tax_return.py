@@ -249,20 +249,10 @@ class CorporateIncomeTaxReturn(ProposedJournalEntries, AnnualFiling, Transmittab
 					"Steuerbote knows the accounts of the provisions of SKR03 and SKR04, not those of a chart of its own."
 				)
 			)
-		from_date, to_date = getdate(self.from_date), getdate(self.to_date)
+		to_date = getdate(self.to_date)
 		posted = self.posted_provisions() or {}
-		ledger, settings = self.sources(mapping)
-		computation = self.computation(mapping, ledger, settings)
-		trade_tax = trade_tax_bridge.compute(
-			trade_tax_bridge.Return(cint(self.year), from_date, to_date),
-			computation,
-			ledger,
-			settings,
-			self.figures(),
-			_,
-		).result
-		if trade_tax.hebesatz is None:
-			trade_tax = None
+		computation, trade_tax = self.current_taxes(mapping)
+		if trade_tax is None:
 			frappe.msgprint(
 				_(
 					"The Annual Filing Settings give no Hebesatz for {0}, so the proposal leaves out the Gewerbesteuer."
@@ -282,6 +272,22 @@ class CorporateIncomeTaxReturn(ProposedJournalEntries, AnnualFiling, Transmittab
 		entry = provision_entry(self.company, to_date, rows, self.name)
 		self.db_set("provisions_entry", entry)
 		return entry
+
+	def current_taxes(self, mapping: Mapping | None = None) -> tuple[bridge.Computation, Any]:
+		"""The Körperschaftsteuer of the return on the ledger of today and the Gewerbesteuer on it, as Rückstellungen
+		vorschlagen proposes them; the Gewerbesteuer is None where the Annual Filing Settings give no Hebesatz."""
+		mapping = mapping or income_tax_sources.mapping(self.company)
+		ledger, settings = self.sources(mapping)
+		computation = self.computation(mapping, ledger, settings)
+		trade_tax = trade_tax_bridge.compute(
+			trade_tax_bridge.Return(cint(self.year), getdate(self.from_date), getdate(self.to_date)),
+			computation,
+			ledger,
+			settings,
+			self.figures(),
+			_,
+		).result
+		return computation, (None if trade_tax.hebesatz is None else trade_tax)
 
 	# What the print format, the Trade Tax Return and the report read.
 
@@ -470,8 +476,10 @@ CALCULATED_STATUSES = ("Berechnet", "Bereit", "Abgegeben")
 
 def provision_differences(company: str, year: int) -> list[Finding]:
 	"""For the Jahresabschluss and the E-Bilanz, which would be filed with the provisions in the books: a hint where the
-	books hold provisions for the taxes on income of the year that differ from the balances of the latest calculated
-	Körperschaft- and Gewerbesteuererklärung, naming the return that proposes the difference (§ 249 Abs. 1 Satz 1 HGB).
+	books hold provisions for the taxes on income of the year that differ from the taxes the latest calculated
+	Körperschaftsteuererklärung computes on the ledger of today, with the Gewerbesteuer on it, as Rückstellungen
+	vorschlagen there proposes the difference (§ 249 Abs. 1 Satz 1 HGB). Read from the ledger of today, the hint does not
+	depend on whether the Körperschaft- or the Gewerbesteuererklärung was calculated again after a late posting.
 	Nothing without such a return or without provisions in the books."""
 	latest = frappe.get_all(
 		DOCTYPE,
@@ -481,53 +489,31 @@ def provision_differences(company: str, year: int) -> list[Finding]:
 			"docstatus": ["<", 2],
 			"status": ["in", CALCULATED_STATUSES],
 		},
-		fields=["name", "kst_balance", "solz_balance"],
+		pluck="name",
 		order_by="creation desc",
 		limit=1,
 	)
 	if not latest:
 		return []
-	corporate = latest[0]
-	posted = frappe.get_doc(DOCTYPE, corporate.name).posted_provisions()
+	corporate = frappe.get_doc(DOCTYPE, latest[0])
+	posted = corporate.posted_provisions()
 	if not posted or not any(posted.values()):
 		return []
-	balances = {
-		provisions.Tax.KST: Decimal(str(corporate.kst_balance or 0)),
-		provisions.Tax.SOLZ: Decimal(str(corporate.solz_balance or 0)),
-	}
-	trade = frappe.get_all(
-		"Trade Tax Return",
-		filters={
-			"company": company,
-			"year": year,
-			"docstatus": ["<", 2],
-			"status": ["in", CALCULATED_STATUSES],
-		},
-		fields=["name", "balance"],
-		order_by="creation desc",
-		limit=1,
-	)
-	if trade:
-		balances[provisions.Tax.GEWST] = Decimal(str(trade[0].balance or 0))
-	found = {
-		tax: (balance - posted.get(tax, Decimal(0))).quantize(Decimal("0.01"))
-		for tax, balance in balances.items()
-	}
-	found = {tax: difference for tax, difference in found.items() if difference}
+	computation, trade_tax = corporate.current_taxes()
+	found = provisions.differences(computation.result, trade_tax, posted)
 	if not found:
 		return []
 	parts = ", ".join(
 		f"{tax} {euro(abs(difference))} {'mehr' if difference > 0 else 'weniger'} als gebucht"
 		for tax, difference in found.items()
 	)
-	returns = ", ".join([corporate.name, *(row.name for row in trade)])
 	return [
 		Finding(
 			PROVISIONS_ELSEWHERE,
 			Severity.HINT,
 			_(
-				"The provisions for the taxes of {0} in the books differ from the returns {1}: {2}. This balance sheet would show them so; Rückstellungen vorschlagen at {3} proposes the difference (§ 249 Abs. 1 Satz 1 HGB)."
-			).format(year, returns, parts, corporate.name),
+				"The provisions for the taxes of {0} in the books differ from the taxes {1} computes on the books of today: {2}. This balance sheet would show them so; Rückstellungen vorschlagen at {1} proposes the difference (§ 249 Abs. 1 Satz 1 HGB)."
+			).format(year, corporate.name, parts),
 		)
 	]
 
