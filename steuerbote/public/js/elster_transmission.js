@@ -167,17 +167,27 @@ function message_line(kind, message) {
 	return `${kind} ${code}${frappe.utils.escape_html(message.text)}`;
 }
 
+// Testsenden and Senden send the data of the document off the site, so they need the permission to submit it, as
+// require_permission_to_send in guards.py checks; Prüfen needs the permission to change it.
+function may_send(frm) {
+	return Boolean(frm.perm[0] && frm.perm[0].submit);
+}
+
 function add_transmission_buttons(frm, group, texts) {
 	if (eric_simulates(frm)) {
 		frm.add_custom_button(__("Validate with ERiC (Simulation)"), () => start(frm, "validate", texts), group);
-		const label = __("Test Transmission (Simulation)");
-		frm.add_custom_button(label, () => ask_for_certificate(frm, "test_send", label, texts), group);
+		if (may_send(frm)) {
+			const label = __("Test Transmission (Simulation)");
+			frm.add_custom_button(label, () => ask_for_certificate(frm, "test_send", label, texts), group);
+		}
 	} else {
 		frm.add_custom_button(__("Validate with ERiC"), () => start(frm, "validate", texts), group);
-		const test_label = __("Test Transmission");
-		frm.add_custom_button(test_label, () => ask_for_certificate(frm, "test_send", test_label, texts), group);
-		const send_label = texts.send_label || __("Transmit to the Finanzamt");
-		frm.add_custom_button(send_label, () => ask_for_certificate(frm, "send", send_label, texts), group);
+		if (may_send(frm)) {
+			const test_label = __("Test Transmission");
+			frm.add_custom_button(test_label, () => ask_for_certificate(frm, "test_send", test_label, texts), group);
+			const send_label = texts.send_label || __("Transmit to the Finanzamt");
+			frm.add_custom_button(send_label, () => ask_for_certificate(frm, "send", send_label, texts), group);
+		}
 	}
 }
 

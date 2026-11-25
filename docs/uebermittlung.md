@@ -13,7 +13,7 @@ Ohne eigene Hersteller-ID oder ohne installierte ERiC-Laufzeitumgebung läuft St
 | Vorgang | Was passiert | Was es braucht | Folge für die Meldung |
 |---|---|---|---|
 | Prüfen | ERiC prüft die Meldung nach den Prüfregeln von ELSTER und liefert Fehler, Hinweise und ein Vorschau-PDF. Nichts geht an das Finanzamt. | berechnete Meldung im Entwurf, jede Differenz im Abgleich mit Registern erklärt oder Anmerkungen | keine |
-| Testsenden | Die Meldung geht als Testfall mit dem Testmerker 700000004 an den ELSTER-Server. Der löscht sie beim Eingang, ohne sie weiterzuleiten. | berechnete Meldung im Entwurf, jede Differenz im Abgleich mit Registern erklärt oder Anmerkungen, Zertifikatsdatei (.pfx) und Zertifikats-Passwort | keine, sie bleibt ein Entwurf |
+| Testsenden | Die Meldung geht als Testfall mit dem Testmerker 700000004 an den ELSTER-Server. Der löscht sie beim Eingang, ohne sie weiterzuleiten. | berechnete Meldung im Entwurf, jede Differenz im Abgleich mit Registern erklärt oder Anmerkungen, Zertifikatsdatei (.pfx) und Zertifikats-Passwort, Berechtigung zum Buchen | keine, sie bleibt ein Entwurf |
 | Senden | Die Meldung geht an das Finanzamt. ELSTER antwortet mit Transferticket und Übermittlungsprotokoll. | Meldung „Bereit“ oder mit Begründung in den Anmerkungen, jede Differenz im Abgleich mit Registern erklärt oder Anmerkungen, Zertifikatsdatei und Zertifikats-Passwort, Berechtigung zum Buchen, ERiC-Laufzeitumgebung, Hersteller-ID und bestätigte Datenschutzhinweise | wird gebucht, Status „Abgegeben“ |
 | In Mein ELSTER abgegeben | Kein ERiC. Steuerbote vermerkt, dass die Meldung in Mein ELSTER abgegeben wurde, etwa mit der [Datei für Mein ELSTER](abgabe-mein-elster.md). | Meldung wie zum Senden; Transferticket, Tag der Abgabe und Anmerkungen nach Wunsch | wird gebucht, Status „Abgegeben“ |
 | Als außerhalb abgegeben vermerken | Kein ERiC. Steuerbote vermerkt, dass die Meldung auf anderem Weg abgegeben wurde, etwa durch die Steuerberatung. | Meldung wie zum Senden, ein Vermerk, wie und wann sie abgegeben wurde; Transferticket und Tag der Abgabe nach Wunsch | wird gebucht, Status „Abgegeben“ |
@@ -28,7 +28,7 @@ Dabei gilt:
 - **Ein Entwurf je Zeitraum.** Ein zweiter Entwurf desselben Zeitraums lässt sich anlegen; die Meldung nennt dann den ersten, damit einer davon gelöscht wird, bevor der Zeitraum abgegeben ist. Die Liste der Voranmeldungen zeigt den Status, den Steuerbote setzt (Entwurf, Berechnet, Bereit, Abgegeben, Ersetzt), ebenso die Liste der Dauerfristverlängerungen.
 - **Der Vermerk einer Abgabe** prüft das Transferticket schon im Dialog; lehnt der Server den Vermerk ab, bleibt der Dialog mit allen Angaben offen.
 - **Eine Übermittlung zur Zeit.** Während ein Vorgang läuft, steht an der Meldung „Übermittlung läuft“. Bis zu seinem Ende lässt sie sich nicht berechnen, speichern oder buchen, damit genau das gebucht wird, was übermittelt wurde. Ist der Vorgang beendet, erscheint ein Hinweis, und das Formular lädt neu. Den Hinweis bringt die Echtzeitverbindung der Site (socket.io); kommt sie nicht zustande, etwa hinter einem Proxy, fragt das Formular alle vier Sekunden selbst nach, solange es die Meldung zeigt, und lädt neu, sobald der Vorgang beendet ist. Ebenso hält es die Voranmeldung während „USt-IdNrn. prüfen“.
-- **Berechtigungen.** Prüfen und Testsenden darf, wer die Meldung bearbeiten darf (Accounts User, Accounts Manager, System Manager). Senden und die Vermerke darf nur, wer buchen darf (Accounts Manager, System Manager).
+- **Berechtigungen.** Prüfen darf, wer die Meldung bearbeiten darf (Accounts User, Accounts Manager, System Manager). Testsenden, Senden und die Vermerke darf nur, wer sie buchen darf (Accounts Manager, System Manager): Testsenden schickt die Daten der Meldung ebenso an ELSTER wie Senden, nur mit Testmerker, auch die simulierte Probe gehört deshalb zu diesem Recht. Wer nicht buchen darf, sieht die Schaltflächen nicht, und Steuerbote lehnt die Vorgänge auch über die API ab. Geprüft wird das Recht am gespeicherten Beleg, mit den Benutzerberechtigungen auf sein Unternehmen, siehe [Schutz der Belege und Rechte](architektur.md#schutz-der-belege-und-rechte).
 - **Ein Zeitraum wird einmal abgegeben.** Ein Zeitraum gilt als abgegeben, sobald eine seiner Meldungen gebucht ist oder eine seiner Meldungen über Steuerbote gesendet wurde, mit Annahme durch ELSTER oder unbekanntem Ergebnis, auch wenn sie später storniert wurde. Danach lehnt Steuerbote für jede andere Meldung des Zeitraums Senden, die Vermerke und die Datei für Mein ELSTER ab, außer für eine berichtigte Anmeldung (Kz 10). Eine Meldung, die schon mit Transferticket übermittelt ist oder deren Senden ein unbekanntes Ergebnis hat, lässt sich nicht noch einmal senden, und Steuerbote schreibt für sie keine Datei für Mein ELSTER mehr, mit der sie ein zweites Mal abgegeben würde.
 - **Keine Stornierung einer abgegebenen Meldung.** Eine Meldung, die ELSTER angenommen hat oder die als abgegeben vermerkt ist, lässt sich nicht stornieren, denn das nähme beim Finanzamt nichts zurück. Das Formular bietet „Stornieren“ für sie gar nicht erst an. Eine Änderung geht als [berichtigte Anmeldung](#berichtigte-anmeldung-kz-10).
 
@@ -75,6 +75,7 @@ Solange in den ERiC-Einstellungen keine Laufzeitumgebung installiert oder keine 
 - Testsenden braucht weder Zertifikat noch Passwort. Das Ergebnis trägt ein Transferticket, das mit „SIM-“ beginnt und nie einem echten gleicht, und ein Platzhalter-PDF statt des Übermittlungsprotokolls. Ist keine Hersteller-ID eingetragen, steht 00000 an ihrer Stelle, im Kopf der Lieferung wie in Kz 09.
 - Senden gibt es nicht, und die Meldung bleibt, wie sie ist. Abgeben lässt sie sich von Hand oder per XML-Import in Mein ELSTER und danach mit „In Mein ELSTER abgegeben“ festhalten.
 - In der Liste der ELSTER-Übermittlungen trägt jeder simulierte Lauf zusätzlich zu seinem Status die Markierung „Simuliert“.
+- Der Simulationsmodus gilt nur für ELSTER. „USt-IdNrn. prüfen“ fragt auch dann sofort beim BZSt oder bei VIES an, und der Dialog sagt das vor der Abfrage, siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
 
 ## ERiC-Einstellungen
 
@@ -148,7 +149,56 @@ Jeder Vorgang und jeder Vermerk ist eine ELSTER-Übermittlung. Die Liste steht u
 | Nachrichten | Fehler und Hinweise von ERiC, von der Simulation oder von Steuerbote mit Code, Nachricht und Feld; über dem Formular steht, wie viele Fehler und Hinweise es sind |
 | Nutzdaten (XML), Protokoll oder Freizeichnungsdokument (PDF), Antwort des ELSTER-Servers (XML) | die Dateien des Laufs, siehe unten |
 
-Eine ELSTER-Übermittlung schreibt nur der Server, danach lässt sie sich nicht mehr ändern. Eine Übermittlung, die eine Abgabe festhält (ein erfolgreiches Senden außerhalb der Simulation oder ein Vermerk), lässt sich nicht löschen. Andere darf nur der System Manager löschen. Eine Meldung mit ELSTER-Übermittlungen lässt sich nicht löschen. „Transaktionen löschen“ am Unternehmen in ERPNext lässt Meldungen und Übermittlungen aus, solange niemand sie von Hand in die Liste der zu löschenden DocTypes einträgt, siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
+Eine ELSTER-Übermittlung schreibt nur Steuerbote, danach lässt sie sich nicht mehr ändern. Anlegen, Ändern, Duplizieren, Importieren, Wiederherstellen und Umbenennen lehnt Steuerbote für jeden Benutzer ab, auch für den Administrator und über die REST-API, siehe [Schutz der Belege und Rechte](architektur.md#schutz-der-belege-und-rechte). Eine Übermittlung, die eine Abgabe festhält (ein erfolgreiches Senden außerhalb der Simulation oder ein Vermerk), lässt sich nicht löschen. Andere darf nur der System Manager löschen. Eine Meldung mit ELSTER-Übermittlungen lässt sich nicht löschen. „Transaktionen löschen“ am Unternehmen in ERPNext lässt Meldungen und Übermittlungen aus, solange niemand sie von Hand in die Liste der zu löschenden DocTypes einträgt, siehe [Prüfung ausländischer USt-IdNrn.](ust-idnr-pruefung.md#in-erpnext).
+
+## Ein falscher Beleg auf einem Testsystem
+
+Eine ELSTER-Übermittlung, die eine Abgabe festhält, und eine USt-IdNr.-Bestätigung lassen sich über Steuerbote nicht löschen, von niemandem, und Steuerbote bietet dafür keine Schaltfläche und keine Methode der API. Steht auf einem Testsystem ein solcher Beleg, der nichts festhält, was beim Finanzamt oder beim BZSt geschehen ist, etwa aus einem Versuch mit Version 0.14 oder früher, die solche Belege noch über die API annahm, oder aus einer Kopie der Datenbank, entfernt ihn der Betreiber des Servers bewusst in der Konsole der Bench. Auf einem System mit echten Abgaben gilt: Eine Abgabe, die beim Finanzamt angekommen ist, wird nie gelöscht, sie wird berichtigt.
+
+1. **Entscheiden und festhalten.** Wer für die Buchhaltung verantwortlich ist, entscheidet, dass der Beleg falsch ist, und hält Name des Belegs, Grund und Entscheidung schriftlich fest. Bei einer Abgabe vorher in Mein ELSTER nachsehen, dass das Finanzamt unter diesem Zeitraum nichts mit dem Transferticket des Belegs hat.
+2. **Sichern.** `bench --site <site> backup --with-files`. Die Sicherung behält den Beleg und seine Dateien.
+3. **Ansehen und entfernen.** In `bench --site <site> console`:
+
+   ```python
+   name = "ELSTER-2026-00099"  # der Beleg aus Schritt 1
+   record = frappe.get_doc("ELSTER Transmission", name)
+   print(record.as_dict())  # ist es der Beleg, um den es geht?
+   files = frappe.get_all(
+   	"File", filters={"attached_to_doctype": "ELSTER Transmission", "attached_to_name": name}, pluck="name"
+   )
+   frappe.db.delete("ELSTER Transmission Message", {"parenttype": "ELSTER Transmission", "parent": name})
+   frappe.db.delete("ELSTER Transmission", name)
+   for file in files:
+   	frappe.delete_doc("File", file, ignore_permissions=True)
+   frappe.get_doc(
+   	{
+   		"doctype": "Comment",
+   		"comment_type": "Info",
+   		"reference_doctype": record.document_type,
+   		"reference_name": record.document,
+   		"content": f"{name} in der Konsole entfernt: <Grund und Entscheidung aus Schritt 1>",
+   	}
+   ).insert(ignore_permissions=True)
+   frappe.db.commit()
+   ```
+
+   Die Dateien gehen erst nach dem Beleg, denn solange es ihn gibt, lehnt Steuerbote das Löschen seiner Dateien ab. `frappe.db.delete` legt kein „Gelöschtes Dokument“ an; den Beleg hält nur die Sicherung, den Vorgang der Kommentar an der Meldung. Für eine USt-IdNr.-Bestätigung gilt dasselbe mit dem DocType `VAT ID Confirmation`, ohne Tabelle der Meldungen; die Abfragen einer Prüfung nennen ihre vorige unter „Vorherige Abfrage“ und gehen deshalb gemeinsam.
+4. **Prüfen.** Die Meldung neu laden: Ihre Verknüpfungen nennen den Beleg nicht mehr, und ist sie ein Entwurf, lässt sie sich wieder berechnen und abgeben.
+
+Nach dem Update von Version 0.14 oder früher findet diese Abfrage in der Konsole Sendevorgänge, die als angenommen gelten, aber kein Transferticket haben; ein Senden, das ELSTER annimmt, hat immer eines:
+
+```python
+frappe.get_all(
+	"ELSTER Transmission",
+	filters={
+		"operation": "send",
+		"status": "Erfolgreich",
+		"simulated": 0,
+		"transferticket": ["is", "not set"],
+	},
+	fields=["name", "document_type", "document", "company", "owner", "creation"],
+)
+```
 
 ## Wo XML und Protokoll liegen
 

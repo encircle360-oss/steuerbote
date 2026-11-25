@@ -41,6 +41,7 @@ from steuerbote import dauerfrist, dauerfrist_sources, holiday_list
 from steuerbote.dauerfrist import Context, FormError, layout_for
 from steuerbote.elster import ust1h_xml, ustva_xml
 from steuerbote.eric import datenart as eric_datenart
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
 	FILED_VIA,
@@ -54,6 +55,7 @@ from steuerbote.steuerbote.doctype.vat_return.vat_return import TRANSFERTICKET, 
 from steuerbote.steuerbote.doctype.vat_return_extension import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import settings_errors, xml_errors
+from steuerbote.steuerbote.guards import Filing
 from steuerbote.ustva import Period
 
 DOCTYPE = "VAT Return Extension"
@@ -83,7 +85,7 @@ FILING_FIELDS = ("filed_via", "filed_on", "transferticket", "filing_note")
 FILED_THROUGH_ERIC = "eric"
 
 
-class VATReturnExtension(Transmittable, Document):
+class VATReturnExtension(Filing, Transmittable, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -191,6 +193,7 @@ class VATReturnExtension(Transmittable, Document):
 			)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def calculate(self) -> None:
 		"""Berechnen: read the VAT Returns filed for the previous year and the start of the company, and save
 		the form with the base, Kz 38 and the deadline."""
@@ -210,6 +213,7 @@ class VATReturnExtension(Transmittable, Document):
 			self.flags.calculating = False
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("submit")
 	def mark_filed_outside(
 		self,
 		filed_via: str = OTHER_WAY,

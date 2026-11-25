@@ -54,6 +54,7 @@ from steuerbote.kst import provisions
 from steuerbote.kst.categories import Mapping
 from steuerbote.kst.form import catalogue_for
 from steuerbote.ledger import account_names
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, AnnualFiling, Calculation
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.doctype.corporate_income_tax_return import bridge, layout
@@ -180,6 +181,7 @@ class CorporateIncomeTaxReturn(ProposedJournalEntries, AnnualFiling, Transmittab
 	# Rückstellungen vorschlagen.
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def propose_provisions(self) -> str:
 		"""Rückstellungen vorschlagen: a draft Journal Entry of the balances of Körperschaftsteuer, Solidaritätszuschlag
 		and Gewerbesteuer at the end of the Wirtschaftsjahr, on the accounts of the chart (steuerbote.kst.provisions).

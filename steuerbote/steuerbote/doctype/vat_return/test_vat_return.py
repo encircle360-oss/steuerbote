@@ -521,11 +521,16 @@ class TestVATReturn(IntegrationTestCase):
 		first.reload()
 		self.assertEqual(first.status, "Abgegeben")
 
-	def test_changing_the_period_discards_the_calculation(self):
+	def test_the_period_of_a_saved_return_stays_with_its_calculation(self):
 		doc = self.calculated(3)
+		kennzahlen = [(row.kennzahl, row.amount) for row in doc.kennzahlen]
+		status = doc.status
 		doc.period_index = 9
-		doc.save()
-		self.assertEqual((doc.status, doc.period_code, doc.kennzahlen, doc.ready), ("Entwurf", "09", [], 0))
+		with self.assertRaises(frappe.CannotChangeConstantError):
+			doc.save()
+		doc.reload()
+		self.assertEqual((doc.period_index, doc.period_code, doc.status), (3, "03", status))
+		self.assertEqual([(row.kennzahl, row.amount) for row in doc.kennzahlen], kennzahlen)
 
 	def test_a_number_without_period_is_refused(self):
 		for number in (0, 13):

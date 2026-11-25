@@ -39,7 +39,10 @@ class SharedScriptTest(TestCase):
 		self.assertEqual(methods, {"transmit", "release_stale_transmission"})
 		for method in sorted(methods):
 			with self.subTest(method=method):
-				self.assertRegex(self.server, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+				self.assertRegex(
+					self.server,
+					rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\t@guards\.on_stored\([^\n]*\)\n\tdef {method}\(',
+				)
 
 	def test_the_certificate_goes_to_the_whitelisted_store_which_is_never_recorded(self):
 		module, _, function = constant(self.script, "STASH_CERTIFICATE").rpartition(".")

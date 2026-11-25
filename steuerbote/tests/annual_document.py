@@ -91,6 +91,7 @@ def _standard_fields(lifecycle: Lifecycle, doctype: str, *, transmits: bool) -> 
 			field.options,
 			read_only=int(field.read_only),
 			reqd=int(field.reqd),
+			set_only_once=int(field.set_only_once),
 		)
 		for field in standard_fields(lifecycle, doctype, transmits=transmits)
 	]

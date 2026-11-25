@@ -61,6 +61,7 @@ from steuerbote.ledger import (
 )
 from steuerbote.registers import register_lines
 from steuerbote.setup.start import before_start
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
 	FILED_VIA,
@@ -74,6 +75,7 @@ from steuerbote.steuerbote.doctype.vat_id_confirmation import confirming, vat_id
 from steuerbote.steuerbote.doctype.vat_id_confirmation.confirming import Confirming
 from steuerbote.steuerbote.doctype.vat_return import bridge, late
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
+from steuerbote.steuerbote.guards import Filing
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
 from steuerbote.suppliers import load_vouchers
 from steuerbote.tax_templates import template_accounts
@@ -96,13 +98,11 @@ READY = "Bereit"
 FILED = "Abgegeben"
 REPLACED = "Ersetzt"
 
-PERIOD_FIELDS = ("company", "year", "rhythm", "period_index")
 # What Berechnen finds besides the Kennzahlen: the Verprobung, the watched accounts, the hints, the comparison and
 # what changed after the filing of earlier periods.
 FINDINGS = ("checks", "deviations", "unmapped", "hints", "comparison", "late_changes")
 # The reconciliation with the registers, which Berechnen fills and whose explanations a save takes.
 RECONCILIATION = "register_reconciliation"
-CALCULATED_TABLES = ("kennzahlen", *FINDINGS, RECONCILIATION)
 CALCULATED_FIELDS = (
 	"status",
 	"ready",
@@ -117,7 +117,7 @@ TRANSFERTICKET = re.compile(r"[0-9a-km-z]{2}[0-9]{3}[0-9a-km-z]{27}")
 CONFIRMATION_JOB = "steuerbote.steuerbote.doctype.vat_return.vat_return.run_confirmation"
 
 
-class VATReturn(Confirming, Transmittable, Document):
+class VATReturn(Filing, Confirming, Transmittable, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -289,6 +289,7 @@ class VATReturn(Confirming, Transmittable, Document):
 			frappe.get_doc("VAT Return", latest[0]).db_set("status", FILED)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def calculate(self) -> None:
 		"""Berechnen: compute the return from the general ledger of the period and save it, together with the
 		Vorperiodenvergleich and the hints, which leave its amounts and whether it is ready as they are."""
@@ -389,6 +390,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		return [_late_row(row) for row in rows]
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read")
 	def make_correction(self) -> str:
 		"""Berichtigung anlegen: a draft corrected return (Kz 10) of the period of this filed return, or the draft
 		correction that exists already; returns its name."""
@@ -403,10 +405,12 @@ class VATReturn(Confirming, Transmittable, Document):
 		return frappe.get_doc({"doctype": DOCTYPE, **period, "is_correction": 1}).insert().name
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def confirm_vat_ids(self) -> int:
 		"""USt-IdNrn. prüfen: ask about the USt-IdNr. of each customer behind Kz 41, 42 and 21 of the period, in a
-		background job; returns how many numbers the job asks about."""
-		self.check_permission("write")
+		background job; returns how many numbers the job asks about. The query goes to the BZSt or VIES, so it needs
+		the permission to submit, also while ERiC runs as a simulation."""
+		guards.require_permission_to_send(self)
 		self.lock_for_confirmation()
 		if self.docstatus != 0:
 			frappe.throw(_("Only the USt-IdNrn. of a draft return are confirmed."))
@@ -448,6 +452,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		return self._period_vat_ids
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def make_import_file(self) -> str:
 		"""XML für Mein ELSTER: the return as saved, as a file to import into the form, attached privately.
 
@@ -464,6 +469,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		return saved._attach(ustva_xml.import_file_name(voranmeldung), content)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("submit")
 	def mark_filed_outside(
 		self,
 		remarks: str | None = None,
@@ -731,16 +737,11 @@ class VATReturn(Confirming, Transmittable, Document):
 	def _keep_the_calculation(self) -> None:
 		"""Frappe keeps no read-only field from a save through its API, so a save keeps what Berechnen stored and
 		takes only what the form lets the user change: the overrides with their reasons, the further details and the
-		remarks. Another company or period discards the calculation instead. A new return is a draft (before_insert),
-		so a calculated one was saved before. The job of USt-IdNrn. prüfen alone gives the hints anew
+		remarks. Company and period stay as the return was created (guards.Filing). A new return is a draft
+		(before_insert), so a calculated one was saved before. The job of USt-IdNrn. prüfen alone gives the hints anew
 		(take_in_confirmations)."""
 		before = self.get_doc_before_save()
 		if before is None or self.flags.calculating:
-			return
-		if any(str(before.get(field)) != str(self.get(field)) for field in PERIOD_FIELDS):
-			for table in CALCULATED_TABLES:
-				self.set(table, [])
-			self.update({"ready": 0, "status": DRAFT, "accounts_without_number": 0})
 			return
 		computed = _read_rows(bridge.restored, before.kennzahlen, self.kennzahlen)
 		for row, values in zip(self.kennzahlen, computed, strict=True):
