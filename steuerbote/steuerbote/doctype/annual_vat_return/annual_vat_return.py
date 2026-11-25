@@ -54,6 +54,7 @@ from steuerbote.jahresmeldung.findings import Finding, Severity
 from steuerbote.jahresmeldung.lifecycle import Event
 from steuerbote.jahresmeldung.overrides import to_amount
 from steuerbote.ledger import account_names, closing_balances
+from steuerbote.setup import start
 from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, AnnualFiling, Calculation
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
@@ -115,6 +116,10 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 			previous = self._previous_kz816()
 			accounts = tuple(account_names(self.company, bridge.payment_accounts(mapping.chart)))
 			payments = ustjahr_sources.payment_lines(self.company, year, accounts)
+			paid_before = start.prior_payments(
+				payments, prior_filings.prior_filings(self.company, {year - 1})
+			)
+			payments = bridge.without_prior_payments(payments, paid_before)
 			found_soll = soll.vorauszahlungssoll(
 				year,
 				filed,
@@ -156,6 +161,7 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 					*bridge.start_findings(year, prior_filings.books_start(self.company)),
 					*bridge.own_findings(result, annual_split, kleinunternehmer),
 					*bridge.release_findings(released, year),
+					*bridge.prior_payment_findings(paid_before, year),
 					*result.findings,
 					*found_soll.findings,
 					*found.findings,

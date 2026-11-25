@@ -239,7 +239,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		overrides = _read_rows(bridge.overrides_of, self.kennzahlen, catalogue)
 		mapping = mapping_for(self.company, year)
 		lines = load_lines(self.company, period.start, period.end)
-		result, released = _released(
+		result, release_hints = released(
 			self.company, _calculated(lines, mapping, period, settings), lines, mapping, period
 		)
 		self.set("kennzahlen", bridge.kennzahl_rows(result, catalogue, overrides))
@@ -263,7 +263,7 @@ class VATReturn(Confirming, Transmittable, Document):
 			),
 		)
 		hints = build_hints(self, period, mapping, result, comparison, reconciliation)
-		self.set("hints", bridge.hint_rows((*hints, *released)))
+		self.set("hints", bridge.hint_rows((*hints, *release_hints)))
 		self.ready = int(result.ready and bridge.provisional_forms(year) is None)
 		self.status = READY if self.ready else CALCULATED
 		self.accounts_without_number = len(accounts_without_number(self.company))
@@ -755,7 +755,7 @@ def _calculated(
 		frappe.throw(str(error))
 
 
-def _released(
+def released(
 	company: str,
 	result: ustva.UstvaResult,
 	lines: list[ustva.LedgerLine],

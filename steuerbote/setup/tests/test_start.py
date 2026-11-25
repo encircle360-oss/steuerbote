@@ -189,6 +189,7 @@ class ChecklistTest(TestCase):
 				Item.START,
 				Item.OPENING_ENTRIES,
 				Item.PRIOR_RETURNS,
+				Item.PRIOR_PAYMENTS,
 				Item.DAUERFRIST,
 				Item.CARRY_FORWARDS,
 				Item.PREPAYMENTS,
@@ -204,6 +205,7 @@ class ChecklistTest(TestCase):
 				Item.START: True,
 				Item.OPENING_ENTRIES: True,
 				Item.PRIOR_RETURNS: True,
+				Item.PRIOR_PAYMENTS: True,
 				Item.DAUERFRIST: None,
 				Item.CARRY_FORWARDS: True,
 				Item.PREPAYMENTS: None,
@@ -269,3 +271,68 @@ class ChecklistTest(TestCase):
 				with self.subTest(check=check):
 					self.assertIn(check.template, start.MESSAGES)
 					self.assertEqual(len(set(re.findall(r"\{(\d+)\}", check.template))), len(check.values))
+
+
+def payment(voucher: str, debit: str = "0", credit: str = "0", account: str = "1780"):
+	from steuerbote.ustva.calculation import LedgerLine
+
+	return LedgerLine(account, Decimal(debit), Decimal(credit), f"Journal Entry:{voucher}")
+
+
+class PriorPaymentsTest(TestCase):
+	"""A payment in the first year on the accounts of the Vorauszahlungen that pays Kz 83 of a Voranmeldung filed before
+	Steuerbote belongs to that return, not to the Vorauszahlungen of the new year."""
+
+	NOVEMBER = filing(Period.month(2026, 11), "900.00")
+	DECEMBER = filing(Period.month(2026, 12), "1200.00", kz39="2500.00")
+
+	def test_a_payment_of_kz_83_of_a_return_filed_before_belongs_to_it(self):
+		lines = [
+			payment("JV-1", debit="900.00"),
+			payment("JV-2", debit="1200.00"),
+			payment("JV-3", debit="2681.00", account="1781"),
+		]
+		found = start.prior_payments(lines, [self.DECEMBER, self.NOVEMBER])
+		self.assertEqual(
+			[(item.voucher, item.amount, item.filing.period.label) for item in found],
+			[
+				("Journal Entry:JV-1", Decimal("900.00"), "November 2026"),
+				("Journal Entry:JV-2", Decimal("1200.00"), "Dezember 2026"),
+			],
+		)
+
+	def test_a_refund_of_a_surplus_as_well(self):
+		surplus = filing(Period.month(2026, 12), "-400.00")
+		(found,) = start.prior_payments([payment("JV-1", credit="400.00")], [surplus])
+		self.assertEqual(found.amount, Decimal("-400.00"))
+
+	def test_a_voucher_counts_with_all_its_lines_and_once(self):
+		lines = [payment("JV-1", debit="1000.00"), payment("JV-1", debit="200.00", account="1781")]
+		(found,) = start.prior_payments(lines, [self.DECEMBER, filing(Period.month(2026, 10), "1200.00")])
+		self.assertEqual(found.filing, self.DECEMBER)
+
+	def test_each_return_is_paid_once_and_a_return_of_nothing_never(self):
+		lines = [payment("JV-1", debit="1200.00"), payment("JV-2", debit="1200.00")]
+		self.assertEqual(len(start.prior_payments(lines, [self.DECEMBER])), 1)
+		self.assertEqual(
+			start.prior_payments([payment("JV-1")], [filing(Period.month(2026, 12), "0.00")]), ()
+		)
+
+	def test_only_the_latest_filing_of_a_period_is_paid(self):
+		corrected = PriorFiling(
+			Period.month(2026, 12), "VVS-2026-00099", date(2027, 3, 1), Decimal("1300.00")
+		)
+		found = start.prior_payments([payment("JV-1", debit="1200.00")], [self.DECEMBER, corrected])
+		self.assertEqual(found, ())
+
+	def test_the_checklist_names_them(self):
+		checks = {
+			check.item: check
+			for check in start.checklist(Facts(START, annual_settings=True, prior_payments=("JV-1", "JV-2")))
+		}
+		self.assertEqual(
+			checks[Item.PRIOR_PAYMENTS],
+			Check(Item.PRIOR_PAYMENTS, False, start.PRIOR_PAYMENTS_FOUND, ("JV-1, JV-2",)),
+		)
+		self.assertIn(start.PRIOR_PAYMENTS_FOUND, start.MESSAGES)
+		self.assertIn(start.PRIOR_PAYMENTS_CLEAN, start.MESSAGES)

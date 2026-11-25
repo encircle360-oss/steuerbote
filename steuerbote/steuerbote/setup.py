@@ -32,13 +32,14 @@ import frappe
 from frappe import _
 from frappe.utils import escape_html, fmt_money, formatdate, getdate
 
-from steuerbote import dauerfrist_sources, ledger, prior_filings
+from steuerbote import dauerfrist_sources, ledger, prior_filings, ustjahr_sources
 from steuerbote.mapping_sync import rows_to_mapping
 from steuerbote.setup import chart as charts
 from steuerbote.setup import rhythm, steps
 from steuerbote.setup import start as first_year
 from steuerbote.setup.steps import Note, Outcome, Step, StepResult
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
+from steuerbote.steuerbote.doctype.annual_vat_return import bridge as annual_vat_return_bridge
 from steuerbote.ustva import CATALOGUES, DEFAULTS, MappingError, UnknownYearError, calculate
 from steuerbote.ustva.period import MONTH_NAMES
 
@@ -489,7 +490,20 @@ def start_facts(company: str, books_start: date) -> first_year.Facts:
 		missing_prior=first_year.missing_months(books_start, began, prior_filings.prior_filings(company)),
 		annual_settings=annual is not None,
 		missing_carry_forwards=missing,
+		prior_payments=paid_before_start(company, books_start),
 	)
+
+
+def paid_before_start(company: str, books_start: date) -> tuple[str, ...]:
+	"""The vouchers of the year of the start on the accounts of the Vorauszahlungen that pay a Voranmeldung filed
+	before Steuerbote (steuerbote/setup/start.py), by name."""
+	chart = frappe.db.get_value(MAPPING, company, "chart")
+	accounts = tuple(ledger.account_names(company, annual_vat_return_bridge.payment_accounts(chart or "")))
+	if not accounts:
+		return ()
+	lines = ustjahr_sources.payment_lines(company, books_start.year, accounts)
+	found = first_year.prior_payments(lines, prior_filings.prior_filings(company))
+	return tuple(payment.voucher.partition(":")[2] for payment in found)
 
 
 def unflagged_opening_entries(company: str, books_start: date) -> tuple[str, ...]:
