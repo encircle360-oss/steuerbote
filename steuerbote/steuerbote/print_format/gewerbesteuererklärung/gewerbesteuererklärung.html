@@ -10,8 +10,25 @@
 {%- set form = doc.income_tax_print() -%}
 {%- set tax_office = frappe.db.get_value("VAT Return Settings", doc.company, "tax_office") -%}
 {%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
-{% include "steuerbote/templates/includes/annual_filing/style.html" %}
-<div class="sb-annual">
+{%- macro form_columns() -%}
+		<colgroup>
+			<col class="sb-line">
+			<col>
+			<col class="sb-instance">
+			<col class="sb-value-wide">
+		</colgroup>
+{%- endmacro -%}
+{%- macro form_row(row) -%}
+			<tr>
+				<td class="sb-line">{{ row.line | e }}</td>
+				<td>{{ row.label | e }}</td>
+				<td class="sb-instance">{{ row.instance | e }}</td>
+				<td class="sb-value-wide">{{ row.value | e }}</td>
+			</tr>
+{%- endmacro -%}
+{% include "steuerbote/templates/includes/print/style.html" %}
+{%- set running_title = "Gewerbesteuererklärung " ~ doc.year -%}
+<div class="sb-print">
 	<h1>Gewerbesteuererklärung {{ doc.year }}</h1>
 	{%- if form.provisional %}
 	<p class="sb-subtitle">vorläufig (Jahresdokumentation {{ form.documentation_year }})</p>
@@ -25,51 +42,53 @@
 	{% include "steuerbote/templates/includes/annual_filing/head.html" %}
 
 	<table class="sb-lines">
-		<colgroup>
-			<col class="sb-line">
-			<col>
-			<col class="sb-instance">
-			<col class="sb-num">
-		</colgroup>
+		{{- form_columns() }}
 		<thead>
 			<tr>
 				<th class="sb-line">Zeile</th>
 				<th>Bezeichnung</th>
 				<th class="sb-instance">Nr.</th>
-				<th class="sb-num">Wert</th>
+				<th class="sb-value-wide">Wert</th>
 			</tr>
 		</thead>
 		{%- for section in form.sections %}
+		{%- set kept = section.rows if section.rows | length <= 15 else section.rows[:3] %}
 		<tbody class="sb-group">
-			<tr class="sb-section"><td colspan="4">{{ section.title | e }}</td></tr>
-			{%- for row in section.rows %}
-			<tr>
-				<td class="sb-line">{{ row.line | e }}</td>
-				<td>{{ row.label | e }}</td>
-				<td class="sb-instance">{{ row.instance | e }}</td>
-				<td class="sb-num">{{ row.value | e }}</td>
-			</tr>
-			{%- endfor %}
+			<tr><td class="sb-nest" colspan="4"><table class="sb-lines">
+				{{- form_columns() }}
+				<tr class="sb-section"><td colspan="4">{{ section.title | e }}</td></tr>
+				{%- for row in kept %}{{ form_row(row) }}{%- endfor %}
+			</table></td></tr>
+			{%- for row in section.rows[kept | length :] %}{{ form_row(row) }}{%- endfor %}
 		</tbody>
 		{%- endfor %}
 	</table>
 
-	<h2>Berechnung</h2>
-	<table class="sb-head">
-		<tr><td class="sb-label">Gewinn aus Gewerbebetrieb (Zeile 39)</td><td class="sb-value">{{ money(doc.profit) }}</td></tr>
-		<tr><td class="sb-label">Hinzurechnung nach § 8 Nr. 1 GewStG</td><td class="sb-value">{{ money(doc.financing_addback) }}</td></tr>
-		<tr><td class="sb-label">Gewerbeertrag, auf volle 100 Euro abgerundet</td><td class="sb-value">{{ money(doc.gewerbeertrag) }}</td></tr>
-		<tr><td class="sb-label">Steuermessbetrag</td><td class="sb-value">{{ money(doc.messbetrag) }}</td></tr>
-		<tr><td class="sb-label">Hebesatz</td><td class="sb-value">{%- set hebesatz = doc.hebesatz or 0 -%}{{ frappe.utils.fmt_money(hebesatz, 0 if hebesatz == (hebesatz | int) else 2, None, "#.###,##") }} %</td></tr>
-		<tr><td class="sb-label">Gewerbesteuer</td><td class="sb-value">{{ money(doc.gewst) }}</td></tr>
-		<tr><td class="sb-label">Vorauszahlungen</td><td class="sb-value">{{ money(doc.prepayments) }}</td></tr>
-		<tr><td class="sb-label">Abschlusszahlung oder Erstattung</td><td class="sb-value">{{ money(doc.balance) }}</td></tr>
-		{%- for row in doc.municipalities %}
-		<tr><td class="sb-label">Gemeinde</td><td class="sb-value">{{ (row.municipality or "") | e }}, {{ (row.ags or "") | e }}; Hebesatz nach {{ (row.hebesatz_source or "") | e }}</td></tr>
-		{%- endfor %}
-	</table>
+	<div class="sb-block sb-keep">
+		<h2>Berechnung</h2>
+		<table class="sb-lines">
+			<colgroup>
+				<col>
+				<col class="sb-value-wide">
+			</colgroup>
+			<tr><td>Gewinn aus Gewerbebetrieb (Zeile 39)</td><td class="sb-num">{{ money(doc.profit) }}</td></tr>
+			<tr><td>Hinzurechnung nach § 8 Nr. 1 GewStG</td><td class="sb-num">{{ money(doc.financing_addback) }}</td></tr>
+			<tr><td>Gewerbeertrag, auf volle 100 Euro abgerundet</td><td class="sb-num">{{ money(doc.gewerbeertrag) }}</td></tr>
+			<tr><td>Steuermessbetrag</td><td class="sb-num">{{ money(doc.messbetrag) }}</td></tr>
+			<tr><td>Hebesatz</td><td class="sb-num">{%- set hebesatz = doc.hebesatz or 0 -%}{{ frappe.utils.fmt_money(hebesatz, 0 if hebesatz == (hebesatz | int) else 2, None, "#.###,##") }} %</td></tr>
+			<tr><td>Gewerbesteuer</td><td class="sb-num">{{ money(doc.gewst) }}</td></tr>
+			<tr><td>Vorauszahlungen</td><td class="sb-num">{{ money(doc.prepayments) }}</td></tr>
+			<tr class="sb-sum"><td>Abschlusszahlung oder Erstattung</td><td class="sb-num">{{ money(doc.balance) }}</td></tr>
+			{%- for row in doc.municipalities %}
+			<tr><td colspan="2">Gemeinde {{ (row.municipality or "") | e }}, {{ (row.ags or "") | e }}; Hebesatz nach {{ (row.hebesatz_source or "") | e }}</td></tr>
+			{%- endfor %}
+		</table>
+	</div>
 
+	{%- if annual.findings | length <= 8 %}<div class="sb-keep">{% endif %}
 	{% include "steuerbote/templates/includes/annual_filing/findings.html" %}
+	{%- if annual.findings | length > 8 %}<div class="sb-keep">{% endif %}
 	{% include "steuerbote/templates/includes/annual_filing/remarks.html" %}
 	{% include "steuerbote/templates/includes/annual_filing/footer.html" %}
+	</div>
 </div>

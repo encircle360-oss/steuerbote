@@ -1,10 +1,16 @@
 {#-
-	The head of an annual document: label and value in two columns. A print format sets head_rows, a list of label
-	and value, for the lines of its own between the due date and the document; annual is doc.annual_print().
+	The head of an annual document: label and value in two columns, and the running head and foot of every page with
+	running_title, which the print format sets, the Steuernummer and the Geschäftsjahr. A print format sets head_rows,
+	a list of label and value, for the lines of its own between the due date and the document; annual is
+	doc.annual_print().
 -#}
 {%- set annual = annual if annual is defined else doc.annual_print() -%}
 {%- set ways = {"eric": "über ERiC", "mein_elster": "in Mein ELSTER", "other_way": "auf anderem Weg", "upload": "über den Upload ins Unternehmensregister"} -%}
 {%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
+{%- set running_number_label = "Steuernummer" -%}
+{%- set running_number = annual.tax_number -%}
+{%- set running_period = "Geschäftsjahr " ~ day(doc.from_date) ~ " bis " ~ day(doc.to_date) -%}
+{% include "steuerbote/templates/includes/print/running.html" %}
 <table class="sb-head">
 	<tr><td class="sb-label">Unternehmen</td><td class="sb-value">{{ doc.company | e }}</td></tr>
 	{%- if annual.tax_number %}

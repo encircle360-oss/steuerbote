@@ -1,73 +1,97 @@
 {#-
 	The findings of an annual document: each error with its text and, where it is acknowledged, the reason why the
 	document is filed nonetheless; the hints by kind with their number and the first of them; every hint in an annex
-	only when the print asks for it (all_hints). The table Befunde of the form holds every finding.
+	only when the print asks for it (all_hints). The table Befunde of the form holds every finding. Each heading is the
+	first row of its table's head, so that it stays with the first row and repeats on every page the table runs on.
 -#}
 {%- set annual = annual if annual is defined else doc.annual_print() -%}
 {%- if annual.findings %}
-<h2>Befunde</h2>
-{%- if annual.errors %}
-<table class="sb-lines">
-	<thead>
-		<tr>
-			<th class="sb-kind">Art</th>
-			<th class="sb-code">Code</th>
-			<th>Nachricht</th>
-			<th class="sb-ref">Referenz</th>
-		</tr>
-	</thead>
-	<tbody>
-		{%- for row in annual.errors %}
-		<tr>
-			<td class="sb-kind">{{ (row.severity or "") | e }}</td>
-			<td class="sb-code">{{ (row.code or "") | e }}</td>
-			<td>{{ (row.text or "") | e }}{% if row.acknowledged and row.acknowledgement_reason %}<br>Bestätigt: {{ row.acknowledgement_reason | e }}{% endif %}</td>
-			<td class="sb-ref">{{ (row.reference or "") | e }}</td>
-		</tr>
-		{%- endfor %}
-	</tbody>
-</table>
-{%- endif %}
-{%- if annual.hint_kinds %}
-<h3>Hinweise nach Art</h3>
-<table class="sb-lines">
-	<thead>
-		<tr>
-			<th class="sb-code">Code</th>
-			<th class="sb-kind">Anzahl</th>
-			<th>Beispiel</th>
-		</tr>
-	</thead>
-	<tbody>
-		{%- for kind in annual.hint_kinds %}
-		<tr>
-			<td class="sb-code">{{ (kind.code or "") | e }}</td>
-			<td class="sb-kind">{{ kind.count }}</td>
-			<td>{{ (kind.text or "") | e }}</td>
-		</tr>
-		{%- endfor %}
-	</tbody>
-</table>
-{%- endif %}
-{%- if annual.hints %}
-<h3>Anhang: alle Hinweise</h3>
-<table class="sb-lines">
-	<thead>
-		<tr>
-			<th class="sb-code">Code</th>
-			<th>Nachricht</th>
-			<th class="sb-ref">Referenz</th>
-		</tr>
-	</thead>
-	<tbody>
-		{%- for row in annual.hints %}
-		<tr>
-			<td class="sb-code">{{ (row.code or "") | e }}</td>
-			<td>{{ (row.text or "") | e }}</td>
-			<td class="sb-ref">{{ (row.reference or "") | e }}</td>
-		</tr>
-		{%- endfor %}
-	</tbody>
-</table>
-{%- endif %}
+<div class="sb-block">
+	{%- if annual.errors %}
+	<table class="sb-lines sb-findings">
+		<colgroup>
+			<col class="sb-kind">
+			<col class="sb-code">
+			<col>
+			<col class="sb-ref">
+		</colgroup>
+		<thead>
+			<tr class="sb-caption"><th colspan="4"><h2>Befunde</h2></th></tr>
+			<tr>
+				<th class="sb-kind">Art</th>
+				<th class="sb-code">Code</th>
+				<th>Nachricht</th>
+				<th class="sb-ref">Referenz</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in annual.errors %}
+			<tr>
+				<td class="sb-kind">{{ (row.severity or "") | e }}</td>
+				<td class="sb-code">{{ (row.code or "") | e }}</td>
+				<td>{{ (row.text or "") | e }}{% if row.acknowledged and row.acknowledgement_reason %}<br>Bestätigt: {{ row.acknowledgement_reason | e }}{% endif %}</td>
+				<td class="sb-ref">{{ (row.reference or "") | e }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+	{%- endif %}
+	{%- if annual.hint_kinds %}
+	<table class="sb-lines sb-findings">
+		<colgroup>
+			<col class="sb-code">
+			<col class="sb-kind">
+			<col>
+		</colgroup>
+		<thead>
+			<tr class="sb-caption">
+				<th colspan="3">
+					{%- if not annual.errors %}<h2>Befunde</h2>{% endif %}
+					<h3>Hinweise nach Art</h3>
+				</th>
+			</tr>
+			<tr>
+				<th class="sb-code">Code</th>
+				<th class="sb-kind">Anzahl</th>
+				<th>Beispiel</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for kind in annual.hint_kinds %}
+			<tr>
+				<td class="sb-code">{{ (kind.code or "") | e }}</td>
+				<td class="sb-kind">{{ kind.count }}</td>
+				<td>{{ (kind.text or "") | e }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+	{%- endif %}
+	{%- if annual.hints %}
+	<table class="sb-lines sb-findings">
+		<colgroup>
+			<col class="sb-code">
+			<col>
+			<col class="sb-ref">
+		</colgroup>
+		<thead>
+			<tr class="sb-caption"><th colspan="3"><h3>Anhang: alle Hinweise</h3></th></tr>
+			<tr>
+				<th class="sb-code">Code</th>
+				<th>Nachricht</th>
+				<th class="sb-ref">Referenz</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in annual.hints %}
+			<tr>
+				<td class="sb-code">{{ (row.code or "") | e }}</td>
+				<td>{{ (row.text or "") | e }}</td>
+				<td class="sb-ref">{{ (row.reference or "") | e }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+	{%- endif %}
+</div>
 {%- endif %}

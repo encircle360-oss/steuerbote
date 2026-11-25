@@ -3,11 +3,17 @@
 	steuerbote/hgb/disclosure.py for the class and the way it discloses: a Kleinstkapitalgesellschaft its Bilanz with
 	the Angaben under it, open only on request where it deposits (§ 326 Abs. 2, § 9 Abs. 6 Satz 3 HGB), a small company
 	its Bilanz and its Anhang without what concerns the GuV (§ 326 Abs. 1 HGB); then the day of the Feststellung, the
-	signatures and the upload. Nothing of the GuV is disclosed. accounts is doc.annual_accounts_print().
+	signatures and the upload, with the running head and foot of every page. Nothing of the GuV is disclosed. accounts
+	is doc.annual_accounts_print().
 -#}
 {%- set accounts = accounts if accounts is defined else doc.annual_accounts_print() -%}
 {%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
 {%- set visible = accounts.visibility -%}
+{%- set annual = annual if annual is defined else doc.annual_print() -%}
+{%- set running_number_label = "Steuernummer" -%}
+{%- set running_number = annual.tax_number -%}
+{%- set running_period = "Geschäftsjahr " ~ day(doc.from_date) ~ " bis " ~ day(doc.to_date) -%}
+{% include "steuerbote/templates/includes/print/running.html" %}
 <h1>Vorschau der Offenlegung</h1>
 <p class="sb-subtitle">Jahresabschluss zum {{ day(doc.to_date) }}, {{ doc.company | e }}</p>
 {%- if visible %}

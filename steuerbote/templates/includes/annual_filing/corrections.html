@@ -1,31 +1,40 @@
 {#-
 	The corrections and the lines by hand of an annual document with their reasons, in euros and cents: what
-	Berechnen computed and what the document reports instead.
+	Berechnen computed and what the document reports instead. The heading is the first row of the table head.
 -#}
 {%- set annual = annual if annual is defined else doc.annual_print() -%}
 {%- macro money(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
 {%- if annual.corrections %}
-<h2>Korrekturen und Zeilen von Hand</h2>
-<table class="sb-lines">
-	<thead>
-		<tr>
-			<th class="sb-code">Zeile</th>
-			<th>Bezeichnung</th>
-			<th class="sb-num">Berechnet</th>
-			<th class="sb-num">Gemeldet</th>
-			<th>Begründung</th>
-		</tr>
-	</thead>
-	<tbody>
-		{%- for row in annual.corrections %}
-		<tr>
-			<td class="sb-code">{{ (row.key or "") | e }}</td>
-			<td>{{ (row.label or ("Zeile von Hand" if row.manual else "")) | e }}</td>
-			<td class="sb-num">{{ "" if row.manual else money(row.computed) }}</td>
-			<td class="sb-num">{{ money(row.reported) }}</td>
-			<td>{{ (row.reason or "") | e }}</td>
-		</tr>
-		{%- endfor %}
-	</tbody>
-</table>
+<div class="sb-block">
+	<table class="sb-lines">
+		<colgroup>
+			<col class="sb-code">
+			<col>
+			<col class="sb-num">
+			<col class="sb-num">
+			<col>
+		</colgroup>
+		<thead>
+			<tr class="sb-caption"><th colspan="5"><h2>Korrekturen und Zeilen von Hand</h2></th></tr>
+			<tr>
+				<th class="sb-code">Zeile</th>
+				<th>Bezeichnung</th>
+				<th class="sb-num">Berechnet</th>
+				<th class="sb-num">Gemeldet</th>
+				<th>Begründung</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for row in annual.corrections %}
+			<tr>
+				<td class="sb-code">{{ (row.key or "") | e }}</td>
+				<td>{{ (row.label or ("Zeile von Hand" if row.manual else "")) | e }}</td>
+				<td class="sb-num">{{ "" if row.manual else money(row.computed) }}</td>
+				<td class="sb-num">{{ money(row.reported) }}</td>
+				<td>{{ (row.reason or "") | e }}</td>
+			</tr>
+			{%- endfor %}
+		</tbody>
+	</table>
+</div>
 {%- endif %}

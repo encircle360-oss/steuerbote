@@ -21,6 +21,15 @@
 {%- macro cents(value) -%}{{ frappe.utils.fmt_money(value, 2, None, "#.###,##") }}{%- endmacro -%}
 {%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
 
+{%- macro form_columns() -%}
+		<colgroup>
+			<col class="sb-line">
+			<col>
+			<col class="sb-kz">
+			<col class="sb-num">
+		</colgroup>
+{%- endmacro -%}
+
 {%- macro flag_row(line, kennzahl, label, value) -%}
 <tr>
 	<td class="sb-line">{{ line }}</td>
@@ -30,7 +39,13 @@
 </tr>
 {%- endmacro -%}
 
-<div class="sb-dfv">
+{% include "steuerbote/templates/includes/print/style.html" %}
+{%- set running_title = ("Anmeldung der Sondervorauszahlung " if with_sondervorauszahlung else "Antrag auf Dauerfristverlängerung ") ~ doc.year -%}
+{%- set running_number_label = "Steuernummer" -%}
+{%- set running_number = settings.tax_number -%}
+{%- set running_period = "Kalenderjahr " ~ doc.year -%}
+{% include "steuerbote/templates/includes/print/running.html" %}
+<div class="sb-print">
 	<h1>{{ "Anmeldung der Sondervorauszahlung" if with_sondervorauszahlung else "Antrag auf Dauerfristverlängerung" }} {{ doc.year }}</h1>
 	{%- set provisional = doc.provisional_forms() %}
 	{%- if provisional %}
@@ -61,15 +76,16 @@
 	</table>
 
 	{%- if with_sondervorauszahlung %}
-	<h2>Grundlage: abgegebene Voranmeldungen {{ previous_year }}</h2>
-	<table class="sb-form">
+	<div class="sb-block">
+	<table class="sb-lines">
 		<colgroup>
-			<col>
+			<col class="sb-period">
 			<col>
 			<col class="sb-num">
 			<col class="sb-num">
 		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="4"><h2>Grundlage: abgegebene Voranmeldungen {{ previous_year }}</h2></th></tr>
 			<tr>
 				<th>Voranmeldungszeitraum</th>
 				<th>Voranmeldung</th>
@@ -95,6 +111,7 @@
 			</tr>
 		</tbody>
 	</table>
+	</div>
 	{%- if doc.missing_periods %}
 	<p class="sb-note">Ohne abgegebene Voranmeldung: {{ doc.get_formatted("missing_periods") }}</p>
 	{%- endif %}
@@ -103,15 +120,11 @@
 	{%- endif %}
 	{%- endif %}
 
-	<h2>Vordruck USt 1 H</h2>
-	<table class="sb-form">
-		<colgroup>
-			<col class="sb-line">
-			<col>
-			<col class="sb-kz">
-			<col class="sb-num">
-		</colgroup>
+	<div class="sb-block">
+	<table class="sb-lines">
+		{{- form_columns() }}
 		<thead>
+			<tr class="sb-caption"><th colspan="4"><h2>Vordruck USt 1 H</h2></th></tr>
 			<tr>
 				<th class="sb-line">Zeile</th>
 				<th></th>
@@ -121,15 +134,18 @@
 		</thead>
 		{%- if doc.antrag %}
 		<tbody class="sb-group">
+			<tr><td class="sb-nest" colspan="4"><table class="sb-lines">{{- form_columns() }}
 			<tr class="sb-section"><td colspan="4">I. Antrag auf Dauerfristverlängerung</td></tr>
 			<tr>
 				<td class="sb-line"></td>
 				<td colspan="3">Ich beantrage, die Fristen für die Übermittlung der Umsatzsteuer-Voranmeldungen und für die Entrichtung der Umsatzsteuer-Vorauszahlungen um einen Monat zu verlängern.</td>
 			</tr>
+			</table></td></tr>
 		</tbody>
 		{%- endif %}
 		{%- if with_sondervorauszahlung %}
 		<tbody class="sb-group">
+			<tr><td class="sb-nest" colspan="4"><table class="sb-lines">{{- form_columns() }}
 			<tr class="sb-section"><td colspan="4">II. Berechnung und Anmeldung der Sondervorauszahlung auf die Steuer für das Kalenderjahr {{ doc.year }}</td></tr>
 			{{ flag_row(7, "10", "Berichtigte Anmeldung", doc.is_correction) }}
 			<tr>
@@ -144,14 +160,18 @@
 				<td class="sb-kz">38</td>
 				<td class="sb-num">{{ euros(doc.sondervorauszahlung) }}</td>
 			</tr>
+			</table></td></tr>
 		</tbody>
 		<tbody class="sb-group">
+			<tr><td class="sb-nest" colspan="4"><table class="sb-lines">{{- form_columns() }}
 			<tr class="sb-section"><td colspan="4">III. Sonstige Angaben</td></tr>
 			{{ flag_row(10, "29", "Verrechnung des Erstattungsbetrags erwünscht / Erstattungsbetrag ist abgetreten", doc.offset_requested) }}
 			{{ flag_row(11, "26", "Das SEPA-Lastschriftmandat soll ausnahmsweise (z. B. wegen Verrechnungswünschen) für die Sondervorauszahlung dieses Jahres nicht verwendet werden", doc.no_sepa_mandate) }}
+			</table></td></tr>
 		</tbody>
 		{%- endif %}
 		<tbody class="sb-group">
+			<tr><td class="sb-nest" colspan="4"><table class="sb-lines">{{- form_columns() }}
 			<tr class="sb-section"><td colspan="4">Ergänzende Angaben zur Steueranmeldung</td></tr>
 			<tr>
 				<td class="sb-line">12</td>
@@ -163,18 +183,21 @@
 				<td class="sb-kz">500</td>
 				<td class="sb-num">{{ doc.supplementary_code or "" }}</td>
 			</tr>
+			</table></td></tr>
 		</tbody>
 	</table>
+	</div>
 
 	{%- if with_sondervorauszahlung and doc.base_override_reason %}
-	<h2>Grundlage von Hand</h2>
-	<table class="sb-form">
+	<div class="sb-block">
+	<table class="sb-lines">
 		<colgroup>
 			<col class="sb-num">
 			<col class="sb-num">
 			<col>
 		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="3"><h2>Grundlage von Hand</h2></th></tr>
 			<tr>
 				<th class="sb-num">Grundlage aus den Voranmeldungen</th>
 				<th class="sb-num">Grundlage von Hand</th>
@@ -189,19 +212,26 @@
 			</tr>
 		</tbody>
 	</table>
+	</div>
 	{%- endif %}
 
 	{%- if doc.findings %}
+	<div class="sb-block sb-keep">
 	<h2>Offene Punkte</h2>
 	<p>{{ doc.get_formatted("findings") }}</p>
+	</div>
 	{%- endif %}
 
+	<div class="sb-keep">
 	{%- if doc.remarks %}
+	<div class="sb-block sb-keep">
 	<h2>Anmerkungen</h2>
 	<p>{{ doc.get_formatted("remarks") }}</p>
+	</div>
 	{%- endif %}
 
 	{%- if doc.filed_on %}
+	<div class="sb-block sb-keep">
 	<h2>Abgabe</h2>
 	<table class="sb-head">
 		<tr><td class="sb-label">Abgegeben über</td><td class="sb-value">{{ filed_via.get(doc.filed_via, "") }}</td></tr>
@@ -213,11 +243,13 @@
 		<tr><td class="sb-label">Wie und wann abgegeben</td><td class="sb-value">{{ doc.get_formatted("filing_note") }}</td></tr>
 		{%- endif %}
 	</table>
+	</div>
 	{%- endif %}
 
 	<div class="sb-footer">
 		<p>Zum Abgleich mit der Steuerberatung oder zum Eintragen in Mein ELSTER.</p>
 		<p>Dieser Ausdruck ist keine Abgabe. Abgegeben ist der Vordruck erst, wenn er elektronisch an das Finanzamt übermittelt ist.</p>
 		{% include "steuerbote/templates/includes/created_with.html" %}
+	</div>
 	</div>
 </div>

@@ -17,10 +17,27 @@
 	("S", "Sonstige Leistungen (§ 3a Absatz 2 UStG)"),
 ] -%}
 
+{%- macro line_columns() -%}
+		<colgroup>
+			<col class="sb-id">
+			<col>
+			<col class="sb-art">
+			{%- if correction %}
+			<col class="sb-num">
+			{%- endif %}
+			<col class="sb-num">
+		</colgroup>
+{%- endmacro -%}
 {%- macro euros(value) -%}{{ frappe.utils.fmt_money(value, 0, None, "#.###,##") }}{%- endmacro -%}
 {%- macro day(value) -%}{{ frappe.utils.formatdate(value, "dd.MM.yyyy") if value else "" }}{%- endmacro -%}
 
-<div class="sb-zm">
+{% include "steuerbote/templates/includes/print/style.html" %}
+{%- set running_title = "Zusammenfassende Meldung" -%}
+{%- set running_number_label = "USt-IdNr." -%}
+{%- set running_number = settings.ust_idnr -%}
+{%- set running_period = "Meldezeitraum " ~ (doc.period_label or "") -%}
+{% include "steuerbote/templates/includes/print/running.html" %}
+<div class="sb-print">
 	<h1>Zusammenfassende Meldung {{ (doc.period_label or "") | e }}</h1>
 	{%- if correction %}
 	<p class="sb-subtitle">Berichtigte Meldung zu {{ (doc.corrects or "") | e }}</p>
@@ -46,15 +63,7 @@
 	{%- endif %}
 
 	<table class="sb-lines">
-		<colgroup>
-			<col class="sb-id">
-			<col>
-			<col class="sb-art">
-			{%- if correction %}
-			<col class="sb-num">
-			{%- endif %}
-			<col class="sb-num">
-		</colgroup>
+		{{- line_columns() }}
 		<thead>
 			<tr>
 				<th class="sb-id">USt-IdNr.</th>
@@ -63,7 +72,7 @@
 				{%- if correction %}
 				<th class="sb-num">Bisher gemeldet<br>Euro</th>
 				{%- endif %}
-				<th class="sb-num">Summe der Bemessungsgrundlagen<br>Euro</th>
+				<th class="sb-num">Summe der Bemessungs&shy;grundlagen<br>Euro</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -82,6 +91,7 @@
 			{%- endfor %}
 		</tbody>
 		<tbody class="sb-group">
+			<tr><td class="sb-nest" colspan="{{ 5 if correction else 4 }}"><table class="sb-lines">{{- line_columns() }}
 			<tr class="sb-section"><td colspan="{{ 5 if correction else 4 }}">{{ "Summen der berichtigten Zeilen je Art" if correction else "Summen je Art" }}</td></tr>
 			{%- for art, label in arts %}
 			<tr class="sb-sum">
@@ -93,11 +103,12 @@
 				<td class="sb-num">{{ euros(filed | selectattr("art", "equalto", art) | sum(attribute="reported")) }}</td>
 			</tr>
 			{%- endfor %}
+			</table></td></tr>
 		</tbody>
 	</table>
 
 	{%- if overrides %}
-	<h2>Korrekturen gegenüber dem Hauptbuch</h2>
+	<div class="sb-block">
 	<table class="sb-lines">
 		<colgroup>
 			<col class="sb-id">
@@ -107,6 +118,7 @@
 			<col>
 		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="5"><h2>Korrekturen gegenüber dem Hauptbuch</h2></th></tr>
 			<tr>
 				<th class="sb-id">USt-IdNr.</th>
 				<th class="sb-art">Art</th>
@@ -127,12 +139,19 @@
 			{%- endfor %}
 		</tbody>
 	</table>
+	</div>
 	{%- endif %}
 
 	{%- if releases %}
-	<h2>Freigegebene USt-IdNrn.</h2>
+	<div class="sb-block">
 	<table class="sb-lines">
+		<colgroup>
+			<col class="sb-id">
+			<col class="sb-art">
+			<col>
+		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="3"><h2>Freigegebene USt-IdNrn.</h2></th></tr>
 			<tr>
 				<th class="sb-id">USt-IdNr.</th>
 				<th class="sb-art">Art</th>
@@ -149,13 +168,20 @@
 			{%- endfor %}
 		</tbody>
 	</table>
+	</div>
 	{%- endif %}
 
 	{%- if left_out %}
-	<h2>Nicht in der Meldung</h2>
-	<p class="sb-note">Diese Zeilen bucht das Hauptbuch, die Meldung meldet sie aber nicht, wie sie stehen.</p>
+	<div class="sb-block">
 	<table class="sb-lines">
+		<colgroup>
+			<col class="sb-id">
+			<col>
+			<col class="sb-art">
+			<col class="sb-num">
+		</colgroup>
 		<thead>
+			<tr class="sb-caption"><th colspan="4"><h2>Nicht in der Meldung</h2><p class="sb-note">Diese Zeilen bucht das Hauptbuch, die Meldung meldet sie aber nicht, wie sie stehen.</p></th></tr>
 			<tr>
 				<th class="sb-id">USt-IdNr.</th>
 				<th>Kunde</th>
@@ -174,25 +200,32 @@
 			{%- endfor %}
 		</tbody>
 	</table>
+	</div>
 	{%- endif %}
 
 	{%- if errors %}
+	<div class="sb-block">
 	<h2>Offene Fehler</h2>
-	<ul>
+	<ul class="sb-errors">
 		{%- for row in errors %}
 		<li>{{ row.code | e }}: {{ (row.text or "") | e }}</li>
 		{%- endfor %}
 	</ul>
+	</div>
 	{%- endif %}
 
+	<div class="sb-keep">
 	{%- if doc.remarks %}
+	<div class="sb-block sb-keep">
 	<h2>Bemerkungen</h2>
 	<p>{{ doc.get_formatted("remarks") }}</p>
+	</div>
 	{%- endif %}
 
 	<div class="sb-footer">
 		<p>Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.</p>
 		<p>Dieser Ausdruck ist keine Abgabe. Abgegeben ist die Zusammenfassende Meldung erst, wenn sie elektronisch an das Bundeszentralamt für Steuern übermittelt ist.</p>
 		{% include "steuerbote/templates/includes/created_with.html" %}
+	</div>
 	</div>
 </div>

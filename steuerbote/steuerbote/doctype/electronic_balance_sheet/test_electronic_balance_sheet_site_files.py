@@ -28,6 +28,8 @@ SOURCES = APP / "ebilanz_sources.py"
 REPORT = MODULE / "report" / "e_bilanz_positionen"
 PRINT_FORMAT = MODULE / "print_format" / "e_bilanz"
 INCLUDES = APP / "templates" / "includes" / "annual_filing"
+# The one stylesheet of every print format of the app.
+PRINT_STYLE = APP / "templates" / "includes" / "print" / "style.html"
 TRANSLATED_LITERAL = re.compile(r"\b_{1,2}\(\s*\"((?:[^\"\\]|\\.)*)\"")
 FORM_TEXTS = frozenset(
 	{
@@ -200,8 +202,9 @@ class PrintFormatFilesTest(TestCase):
 			re.findall(
 				r'\{% include "steuerbote/templates/includes/annual_filing/(\w+)\.html" %\}', template
 			),
-			["style", "head", "corrections", "findings", "remarks", "footer"],
+			["head", "corrections", "findings", "remarks", "footer"],
 		)
+		self.assertIn('{% include "steuerbote/templates/includes/print/style.html" %}', template)
 		self.assertIn("{%- set annual = doc.annual_print() -%}", template)
 		self.assertIn("{%- set form = doc.e_bilanz_print() -%}", template)
 		self.assertIn("<h1>E-Bilanz {{ doc.year }}</h1>", template)
@@ -240,8 +243,9 @@ class PrintFormatFilesTest(TestCase):
 
 	def test_keeps_to_classes_of_its_own_and_styles_each_it_uses(self):
 		record, template = self.files()
+		self.assertEqual(record["css"], "")
 		used = {item for value in CLASS_ATTRIBUTE.findall(template) for item in value.split()}
-		style = (INCLUDES / "style.html").read_text(encoding="utf-8") + record["css"]
+		style = PRINT_STYLE.read_text(encoding="utf-8")
 		styled = set(CLASS_SELECTOR.findall(re.sub(r"\d+\.\d+", "", style)))
 		self.assertEqual(sorted(item for item in used if not item.startswith("sb-")), [])
 		self.assertEqual(sorted(used - styled), [])
