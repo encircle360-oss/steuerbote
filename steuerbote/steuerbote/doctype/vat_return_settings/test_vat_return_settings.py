@@ -210,7 +210,7 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 			city="München",
 			phone="089 1234567",
 			email="erika@example.org",
-			wid_nr="de 123456789",
+			wid_nr="de 123456788",
 		).insert()
 		settings = frappe.get_doc("VAT Return Settings", COMPANY)
 		self.assertEqual(
@@ -219,7 +219,7 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 		)
 		self.assertEqual(
 			(settings.phone, settings.email, settings.wid_nr),
-			("089 1234567", "erika@example.org", "DE123456789"),
+			("089 1234567", "erika@example.org", "DE123456788"),
 		)
 
 	def contact_settings(self, **values: object) -> Document:
@@ -278,11 +278,14 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 		self.assertFalse(frappe.db.exists("VAT Return Settings", COMPANY))
 
 	def test_takes_the_ust_idnr_from_the_tax_id_of_the_company_when_it_is_one(self):
-		frappe.db.set_value("Company", COMPANY, "tax_id", "de 987 654 321")
+		frappe.db.set_value("Company", COMPANY, "tax_id", "de 987 654 328")
 		try:
-			self.assertEqual(self.make_settings().insert().ust_idnr, "DE987654321")
+			self.assertEqual(self.make_settings().insert().ust_idnr, "DE987654328")
 			frappe.delete_doc("VAT Return Settings", COMPANY)
-			self.assertEqual(self.make_settings(ust_idnr="DE123456789").insert().ust_idnr, "DE123456789")
+			self.assertEqual(self.make_settings(ust_idnr="DE123456788").insert().ust_idnr, "DE123456788")
+			frappe.delete_doc("VAT Return Settings", COMPANY)
+			frappe.db.set_value("Company", COMPANY, "tax_id", "DE987654321")
+			self.assertIsNone(self.make_settings().insert().ust_idnr)
 			frappe.delete_doc("VAT Return Settings", COMPANY)
 			frappe.db.set_value("Company", COMPANY, "tax_id", "123/456/78901")
 			self.assertIsNone(self.make_settings().insert().ust_idnr)
@@ -292,6 +295,13 @@ class IntegrationTestVATReturnSettings(IntegrationTestCase):
 	def test_refuses_an_ust_idnr_that_is_not_german(self):
 		with self.assertRaisesRegex(frappe.ValidationError, r"ATU12345678 is not a German USt-IdNr\."):
 			self.make_settings(ust_idnr="ATU12345678").insert()
+
+	def test_refuses_an_ust_idnr_or_a_w_idnr_with_a_wrong_check_digit(self):
+		"""ERiC refuses them in the ZM and the Voranmeldung (validation with ERiC 44.3.6.0)."""
+		with self.assertRaisesRegex(frappe.ValidationError, r"DE123456789 is not a valid German USt-IdNr\."):
+			self.make_settings(ust_idnr="DE123456789").insert()
+		with self.assertRaisesRegex(frappe.ValidationError, r"W-IdNr\. DE123456789 is not valid"):
+			self.make_settings(wid_nr="DE123456789").insert()
 
 	def test_the_teilnehmernummer_of_the_zm_is_optional_and_one_the_bzst_assigns(self):
 		"""Jahresdokumentation ZMDO 2, rule 170015024: seven or eight digits from 0300000 on; without one the ZM

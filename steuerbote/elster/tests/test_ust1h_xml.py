@@ -178,7 +178,7 @@ class ContextTest(TestCase):
 		}
 		for context, filing in full.items():
 			with self.subTest(context=context):
-				document = written(filing, wid_nr="DE123456789")
+				document = written(filing, wid_nr="DE123456788")
 				self.assertEqual(
 					tuple(name for name, _ in elements(document)), layout_for(2026).elements(context)
 				)
@@ -309,11 +309,11 @@ class FilerTest(TestCase):
 
 	def test_writes_the_wid_nr_after_the_steuernummer(self):
 		self.assertEqual(
-			elements(written(antrag(), wid_nr=" de 123 456 789 ")),
+			elements(written(antrag(), wid_nr=" de 123 456 788 ")),
 			[
 				("Jahr", "2026"),
 				("Steuernummer", TEST_STEUERNUMMER),
-				("WIdNr", "DE123456789"),
+				("WIdNr", "DE123456788"),
 				("Kz09", HERSTELLER_ID),
 			],
 		)

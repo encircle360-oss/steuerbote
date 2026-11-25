@@ -34,7 +34,7 @@ from enum import Enum
 
 from steuerbote.ustva.period import Period, Rhythm
 from steuerbote.ustva.rounding import CENT, ZERO, require_decimal
-from steuerbote.vatid.ustid import is_german
+from steuerbote.vatid.ustid import has_german_check_digit, is_german
 from steuerbote.vatid.ustid import normalize as normalize_vat_id
 from steuerbote.zm import rhythm as zm_rhythm
 from steuerbote.zm.errors import ZmError
@@ -55,6 +55,7 @@ SONDERVORAUSZAHLUNG_WITHOUT_DAUERFRIST = (
 	"The Sondervorauszahlung of {0} requires the Dauerfristverlängerung of that year."
 )
 NOT_A_GERMAN_VAT_ID = "{0} is not a German USt-IdNr.: DE and nine digits."
+WRONG_VAT_ID_CHECK_DIGIT = "{0} is not a valid German USt-IdNr.: its check digit, the last digit, is wrong."
 MESSAGES = (
 	NOT_A_YEAR,
 	NOT_A_FILING_PERIOD,
@@ -66,6 +67,7 @@ MESSAGES = (
 	NOT_IN_CENTS,
 	SONDERVORAUSZAHLUNG_WITHOUT_DAUERFRIST,
 	NOT_A_GERMAN_VAT_ID,
+	WRONG_VAT_ID_CHECK_DIGIT,
 )
 
 
@@ -217,8 +219,10 @@ def own_vat_id(value: str | None, company_tax_id: str | None) -> str | None:
 	if value:
 		if not is_german(value):
 			raise SettingsError(NOT_A_GERMAN_VAT_ID, value)
+		if not has_german_check_digit(value):
+			raise SettingsError(WRONG_VAT_ID_CHECK_DIGIT, normalize_vat_id(value))
 		return normalize_vat_id(value)
-	return normalize_vat_id(company_tax_id) if is_german(company_tax_id) else None
+	return normalize_vat_id(company_tax_id) if has_german_check_digit(company_tax_id) else None
 
 
 def _filing_rhythm(value: FilingRhythm | str) -> FilingRhythm:
