@@ -239,6 +239,7 @@ class TestTransmission(TransmissionTestCase):
 					"operation": "validate",
 					"status": "Erfolgreich",
 					"simulated": 1,
+					"schema_unchecked": False,
 				},
 			),
 		)
@@ -785,6 +786,7 @@ class TestTransmission(TransmissionTestCase):
 				"first_hints": [
 					{"code": f"1108513{index}", "text": f"Hinweis {index}"} for index in range(3)
 				],
+				"schema_unchecked": False,
 			},
 		)
 		valid, _, _ = self.transmitted(doc, "validate", FakeEric(messages=hints[:1]))
