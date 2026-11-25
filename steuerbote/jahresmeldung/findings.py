@@ -5,17 +5,21 @@ Filing Finding), with the Art, the Code, the Nachricht and the Referenz of each 
 Hinweis, as the Jahresdokumentationen of the ERiC documentation 44.3.6.0 mark each rule with its „Regelart“: an
 error blocks „Bereit“, a hint changes nothing, since „ein Datensatz, für den Hinweise aber keine Fehler gemeldet
 werden, [ist] valide und könnte versendet oder gedruckt werden“ (ERiC-Entwicklerhandbuch, Kap. 5.1.2.4.1). A
-document that is not ready is filed only once its remarks say why (steuerbote.jahresmeldung.lifecycle).
+document that is not ready is filed only once each of its errors is acknowledged with a reason, and none is one that
+can never be (steuerbote.jahresmeldung.acknowledgements, steuerbote.jahresmeldung.lifecycle).
 
 The code is the Fehlercode of a rule of a Jahresdokumentation, such as 30639, or a code of Steuerbote; the reference
 names what the finding is about, such as a field, a position, an account, a voucher or a period. The text is the
-message for the person who files the document, in the language the Frappe layer wrote it in.
+message for the person who files the document, in the language the Frappe layer wrote it in. Each row says whether
+its error can be acknowledged (steuerbote/jahresmeldung/acknowledgements.py).
 """
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
+
+from steuerbote.jahresmeldung.acknowledgements import ACKNOWLEDGEABLE, acknowledgeable
 
 DATA_LENGTH = 140
 """The characters a Data field of Frappe holds, which takes the code and the reference."""
@@ -92,6 +96,7 @@ def rows(findings: Iterable[Finding]) -> list[dict[str, Any]]:
 			"code": finding.code,
 			"text": finding.text,
 			"reference": finding.reference,
+			ACKNOWLEDGEABLE: int(finding.blocking and acknowledgeable(finding.code)),
 		}
 		for finding in ordered(findings)
 	]

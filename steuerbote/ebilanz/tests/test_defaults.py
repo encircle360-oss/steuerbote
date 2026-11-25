@@ -16,7 +16,6 @@ from steuerbote.ebilanz import defaults
 from steuerbote.ebilanz.calculation import calculate
 from steuerbote.ebilanz.defaults import (
 	CHARTS,
-	DATEV_EDITION,
 	DEFAULTS,
 	GROUPS,
 	REASONS,
@@ -67,6 +66,10 @@ DIGESTS = {
 	"SKR04 Taxonomie 6.9 2026.1": "fe84fc7cd49dc4501a08ee102b5521b4a8c6712228ae80ba28a8c7d8da6525a4",
 	"SKR03 Taxonomie 6.10 2026.1": "ba4f6076a3a50cd64445917fd4646cf269ef81afc57bc9044ceabd2b439182ad",
 	"SKR04 Taxonomie 6.10 2026.1": "3deefe2a1ecffd0a3c5de1aefd8ddb652b19020fc0d580c7f946691dd4727154",
+	"SKR03 Taxonomie 6.9 2026.2": "b48b4b4636dfd700ddc884e122981e695a946b74e4c00365ee4dd83dc181edc0",
+	"SKR04 Taxonomie 6.9 2026.2": "1790d77536396dc29decb8ea65ed28538eb0a33a9e0aa8b4b9acbffde30ecdfe",
+	"SKR03 Taxonomie 6.10 2026.2": "4f33471af195ba79cd19b73a36a92bb481088d450e026aee91c69f30d28a2978",
+	"SKR04 Taxonomie 6.10 2026.2": "5c9ed0ef78bf12965109ff3603f0705231ecf0a12e84b4a5e8827c233c709032",
 }
 """The SHA-256 of the canonical JSON of the rows of each version of the defaults."""
 
@@ -206,10 +209,10 @@ class DefaultsForTest(TestCase):
 
 class DefaultsVersionTest(TestCase):
 	def test_the_version_names_the_chart_the_taxonomy_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, dict(REVISIONS)), (2026, {"6.9": 1, "6.10": 1}))
+		self.assertEqual(dict(REVISIONS), {"6.9": 2, "6.10": 2})
 		self.assertEqual(
 			[defaults_version(chart, "6.9") for chart in sorted(CHARTS)],
-			["SKR03 Taxonomie 6.9 2026.1", "SKR04 Taxonomie 6.9 2026.1"],
+			["SKR03 Taxonomie 6.9 2026.2", "SKR04 Taxonomie 6.9 2026.2"],
 		)
 
 	def test_a_chart_without_defaults_has_no_version(self):
@@ -359,6 +362,7 @@ class PlacesTest(TestCase):
 					for chart, span in spans.items()
 				)
 				datev = any(span in labelled[chart] for chart, span in spans.items())
+				both = both or group.netting is not None
 				with self.subTest(account=account):
 					if group.opposite is not None:
 						self.assertTrue(both or not datev)
@@ -385,6 +389,8 @@ class PlacesTest(TestCase):
 						expected = TEMPLATE_TERMS[short.group(1)] if short else None
 					if group.reason is Reason.TEMPLATE_SRBNB:
 						expected = None
+					if group.due is not None and expected is None:
+						expected = RemainingTerm.UP_TO_ONE_YEAR
 					self.assertIs(group.remaining_term, expected)
 		self.assertEqual(
 			[span for group, span in accounts_of("SKR03") if group.reason is Reason.TEMPLATE_SRBNB], ["1702"]
@@ -445,6 +451,101 @@ class PlacesTest(TestCase):
 						(type(found), found.concept, found.opposite, found.purpose),
 						(DefaultRule, concept, opposite, Purpose.BOTH),
 					)
+
+
+VAT_NETTED = {
+	"SKR03": (
+		"1528 1529 1556 1557 1558 1559 1570 1571 1572 1574 1576 1577 1578 1560 1561 1562 1563 1566 1567 1569 1545 "
+		"1546 1539 1585 1584 1588 1573 1770 1771 1772 1774 1776 1777 1778 1779 1794 1780 1781 1782 1784 1785 1787 "
+		"1769 1789 1790 1791 1783 1797 1725"
+	),
+	"SKR04": (
+		"1376 1377 1396 1397 1398 1399 1400 1401 1402 1404 1406 1407 1408 1410 1411 1412 1413 1416 1417 1419 1420 "
+		"1421 1422 1425 1431 1432 1433 1436 3800 3801 3802 3804 3806 3807 3808 3809 3819 3820 3830 3832 3834 3835 "
+		"3837 3839 3840 3841 3845 3851 3852 3860 3865"
+	),
+}
+"""The VAT accounts of SKR03 and SKR04 towards the Finanzamt that the defaults net as one settlement position: the
+deductible Vorsteuer, the Umsatzsteuer, the Vorauszahlungen and the claims and debts of earlier years. Not among them:
+the Vorsteuer deductible only in a later period (1548/1434) and the Umsatzsteuer not yet due, which are no claims or
+debts that can be set off yet, the Einfuhrumsatzsteuer aufgeschoben owed to the customs office (3850), and the tax of
+other member states."""
+
+
+class NettingTest(TestCase):
+	"""The usual assignments of the standard charts show the VAT accounts towards the Finanzamt on the asset or the
+	liability side by the balance of the group: claims and debts of the same kind towards the same creditor that can
+	be set off against each other (§ 387 BGB, § 226 Abs. 1 AO, § 16 Abs. 2 Satz 1 UStG) are netted; § 246 Abs. 2
+	Satz 1 HGB bars netting only where no such set-off is possible."""
+
+	def test_the_vat_accounts_towards_the_finanzamt_form_one_netting_group(self):
+		for chart in sorted(CHARTS):
+			with self.subTest(chart=chart):
+				netted = [span for group, span in accounts_of(chart) if group.netting == defaults.VAT_NETTING]
+				self.assertEqual(sorted(netted), sorted(VAT_NETTED[chart].split()))
+
+	def test_every_netting_group_has_the_position_on_each_side_and_says_why(self):
+		self.assertEqual(
+			{group.netting for groups in GROUPS.values() for group in groups} - {None}, {defaults.VAT_NETTING}
+		)
+		for group in GROUPS["6.9"]:
+			if group.netting is not None:
+				with self.subTest(group=group.accounts[0]):
+					self.assertEqual(
+						{group.concept, group.opposite},
+						{"bs.ass.currAss.receiv.other.vat", "bs.eqLiab.liab.other.theroffTax"},
+					)
+					self.assertIs(group.reason, Reason.VAT)
+
+	def test_a_netted_group_of_vorsteuer_and_umsatzsteuer_is_one_position(self):
+		taxonomy = real.view()
+		for chart, (receivable, liability) in {"SKR03": ("1576", "1776"), "SKR04": ("1406", "3806")}.items():
+			defaults_of = defaults_for(chart, taxonomy.version)
+			books = Books(
+				(
+					AccountBalance(receivable, receivable, "Vorsteuer", Part.BALANCE_SHEET, D("300")),
+					AccountBalance(liability, liability, "Umsatzsteuer", Part.BALANCE_SHEET, D(0), D("500")),
+				)
+			)
+			placement = place(
+				defaults_of.for_accounts([receivable, liability]), books, taxonomy, Purpose.BOTH
+			)
+			with self.subTest(chart=chart):
+				self.assertEqual(
+					{item.concept for item in placement.placed}, {"bs.eqLiab.liab.other.theroffTax"}
+				)
+				self.assertEqual(sum(item.value for item in placement.placed), D("200"))
+
+
+class DueTest(TestCase):
+	"""The Forderungen and Verbindlichkeiten that the law makes due within a year carry the remaining term „bis 1
+	Jahr“, which the Vermerke of § 268 Abs. 4 Satz 1 and Abs. 5 Satz 1 HGB need, although their label names none."""
+
+	def test_every_ground_of_a_due_date_is_used_and_names_its_source(self):
+		self.assertEqual({group.due for group in GROUPS["6.9"]} - {None}, set(defaults.Due))
+		self.assertEqual(set(defaults.DUE_SOURCES), set(defaults.Due))
+		for due, text in defaults.DUE_SOURCES.items():
+			with self.subTest(due=due):
+				self.assertIn("§", text)
+
+	def test_a_group_due_within_a_year_has_the_remaining_term_up_to_one_year(self):
+		for group in GROUPS["6.9"]:
+			if group.due is not None:
+				with self.subTest(group=group.accounts[0]):
+					self.assertIs(group.remaining_term, RemainingTerm.UP_TO_ONE_YEAR)
+
+	def test_the_taxes_wages_and_contributions_due_by_law_are_due_within_a_year(self):
+		expected = {
+			defaults.Due.VAT: set(VAT_NETTED["SKR03"].split()) | {"1548"},
+			defaults.Due.WAGE_TAX: {"1741", "1749"},
+			defaults.Due.SOCIAL_SECURITY: {"1742", "1759"},
+			defaults.Due.WAGES: {"1740", "1755"},
+		}
+		found: dict = {}
+		for group, span in accounts_of("SKR03"):
+			if group.due is not None:
+				found.setdefault(group.due, set()).add(span)
+		self.assertEqual(found, expected)
 
 
 class PositionsTest(TestCase):
@@ -647,15 +748,18 @@ class InventedGmbHTest(TestCase):
 			Purpose.BOTH,
 			fiscal_year=FISCAL_YEAR,
 		)
-		self.assertEqual((placement.findings, placement.left_out), ((), ()))
+		self.assertEqual(
+			([finding.code for finding in placement.findings], placement.left_out), ([Code.NETTED], ())
+		)
 		return calculate(structure(taxonomy, Case("GmbH", YEAR)), ebilanz_balances(placement))
 
-	def test_the_books_on_skr04_make_an_e_bilanz_without_findings_in_which_aktiva_and_passiva_agree(self):
+	def test_the_books_on_skr04_make_an_e_bilanz_with_netted_vat_in_which_aktiva_and_passiva_agree(self):
 		found = self.e_bilanz("SKR04")
 		self.assertEqual(found.findings, ())
 		self.assertEqual(
-			(found.amount("bs.ass"), found.amount("bs.eqLiab")), (D("125220.00"), D("125220.00"))
+			(found.amount("bs.ass"), found.amount("bs.eqLiab")), (D("123700.00"), D("123700.00"))
 		)
+		self.assertEqual(found.amount("bs.eqLiab.liab.other.theroffTax"), D("8180.00"))
 		self.assertEqual(found.amount("is.netIncome"), D("19420.00"))
 
 	def test_the_books_on_skr03_give_the_same_e_bilanz(self):
@@ -793,7 +897,9 @@ class Taxonomy610Test(TestCase):
 			Purpose.BOTH,
 			fiscal_year=(year.fiscal_year_begin, year.fiscal_year_end),
 		)
-		self.assertEqual((placement.findings, placement.left_out), ((), ()))
+		self.assertEqual(
+			([finding.code for finding in placement.findings], placement.left_out), ([Code.NETTED], ())
+		)
 		found = calculate(structure(taxonomy, Case("GmbH", year)), ebilanz_balances(placement))
 		self.assertEqual(found.findings, ())
 		self.assertEqual(

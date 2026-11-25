@@ -18,7 +18,7 @@ from frappe.utils import flt, getdate
 from steuerbote.eric.result import Outcome
 from steuerbote.steuerbote.doctype.corporate_income_tax_return import bridge
 from steuerbote.tests import income_tax
-from steuerbote.tests.helpers import make_account, make_company, make_user
+from steuerbote.tests.helpers import acknowledge_errors, make_account, make_company, make_user
 from steuerbote.tests.income_tax import (
 	COMPANY,
 	MAPPING,
@@ -519,21 +519,19 @@ class TestCorporateIncomeTaxReturn(Transmitting, IntegrationTestCase):
 		doc.reload()
 		self.assertEqual((doc.docstatus, doc.status, doc.filed_via), (1, "Abgegeben", FILED_IN_MEIN_ELSTER))
 
-	def test_while_the_forms_of_the_year_are_provisional_a_filing_needs_remarks(self):
-		doc = self.calculated()
+	def test_while_the_forms_of_the_year_are_provisional_a_filing_needs_the_error_acknowledged(self):
+		doc = self.calculated(remarks=REMARKS)
 		with self.assertRaisesRegex(
-			frappe.ValidationError, "is not ready: an error of its findings holds it"
+			frappe.ValidationError, "is not ready: the error [A-Z0-9-]+ of its findings holds"
 		):
 			doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		doc.reload()
-		doc.remarks = REMARKS
-		doc.save()
-		doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		acknowledge_errors(doc, REMARKS).mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		doc.reload()
 		self.assertEqual((doc.docstatus, doc.status, doc.filed_via), (1, "Abgegeben", FILED_IN_MEIN_ELSTER))
 
 	def test_a_berichtigung_starts_with_the_statements_and_tables_of_the_filed_return(self):
-		doc = self.calculated(shareholder_contracts=1, remarks=REMARKS)
+		doc = acknowledge_errors(self.calculated(shareholder_contracts=1, remarks=REMARKS), REMARKS)
 		doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		correction = frappe.get_doc(DOCTYPE, doc.make_correction())
 		self.assertEqual(
@@ -549,9 +547,7 @@ class TestCorporateIncomeTaxReturn(Transmitting, IntegrationTestCase):
 			[len(correction.get(table)) for table in ("holding_results", "credits", "donations")], [5, 2, 1]
 		)
 		self.assertEqual(money(correction.zve), d("111200.00"))
-		correction.remarks = REMARKS
-		correction.save()
-		correction.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		acknowledge_errors(correction, REMARKS).mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		self.assertEqual(frappe.db.get_value(DOCTYPE, doc.name, "status"), "Ersetzt")
 
 	def test_an_accounts_user_calculates_but_does_not_file(self):

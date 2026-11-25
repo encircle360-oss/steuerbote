@@ -18,8 +18,9 @@ Only Steuerbote sets the status, by the moves of Event: Berechnen (CALCULATE) ma
 findings and the checks of its module allow it (steuerbote.jahresmeldung.findings.ready), else Berechnet; the
 Jahresabschluss has no Bereit and stays Berechnet. A save that changes what Berechnen checked, a correction or a line
 by hand, leaves it Berechnet (CHANGE) until Berechnen checks it again; another key discards the calculation
-(DISCARD). A calculated document is filed (FILE) when it is ready, or when its remarks say why it is filed
-nonetheless, as a Voranmeldung is („Bereit oder Anmerkungen“, fit_for_filing).
+(DISCARD). A calculated document is filed (FILE) when it is ready, or when each error of its findings is
+acknowledged with a reason and none is one that can never be (steuerbote.jahresmeldung.acknowledgements,
+fit_for_filing). The remarks are a note and file nothing.
 
 A key, the company and the year with what else a module adds to it, such as the Bilanzart of the E-Bilanz, holds one
 draft at a time and is filed once: every further filing of it is a Berichtigung of a filed document of the key. A
@@ -38,6 +39,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum, StrEnum
 from typing import Any
+
+from steuerbote.jahresmeldung import acknowledgements
 
 DRAFT_DOCSTATUS = 0
 SUBMITTED = 1
@@ -76,6 +79,7 @@ class Problem(Enum):
 	NO_MOVE = "no_move"
 	NOT_CALCULATED = "not_calculated"
 	NOT_READY = "not_ready"
+	NEVER_ACKNOWLEDGED = "never_acknowledged"
 	DRAFT_EXISTS = "draft_exists"
 	FILED_EXISTS = "filed_exists"
 	NOT_A_FILING = "not_a_filing"
@@ -176,12 +180,23 @@ ACCOUNTS = Lifecycle(
 """The Jahresabschluss."""
 
 
-def fit_for_filing(lifecycle: Lifecycle, status: object, ready: bool, remarks: str | None) -> None:
-	"""Refuse to file a document that is not calculated, or not ready without remarks that say why."""
+def fit_for_filing(
+	lifecycle: Lifecycle, status: object, ready: bool, findings: Iterable[Mapping[str, Any]]
+) -> None:
+	"""Refuse to file a document that is not calculated; one that is not ready while an error of its ``findings``, the
+	rows of its table Befunde, can never be acknowledged; and one with an error not acknowledged, or none to
+	acknowledge. The subject names the code of the error."""
 	if status not in lifecycle.calculated:
 		raise LifecycleError(Problem.NOT_CALCULATED, status)
-	if not ready and not (remarks or "").strip():
-		raise LifecycleError(Problem.NOT_READY)
+	if ready:
+		return
+	rows = tuple(findings)
+	hard = acknowledgements.never(rows)
+	if hard:
+		raise LifecycleError(Problem.NEVER_ACKNOWLEDGED, hard[0].get("code"))
+	unacknowledged = acknowledgements.open_errors(rows)
+	if unacknowledged or not any(row.get("blocking") for row in rows):
+		raise LifecycleError(Problem.NOT_READY, unacknowledged[0].get("code") if unacknowledged else "")
 
 
 @dataclass(frozen=True, slots=True)

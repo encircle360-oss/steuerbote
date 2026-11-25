@@ -205,13 +205,15 @@ class RowDefinitionTest(TestCase):
 		self.assertEqual(options(rule["remaining_term"]), ["", *REMAINING_TERMS])
 
 	def test_the_grid_of_the_rules_shows_account_position_and_what_the_rule_says(self):
+		"""The German label of the position beside its technical name, which the taxonomy gives on saving; whether the
+		balance is owed to or by the shareholders and the netting group show in the row."""
 		shown = [
 			field["fieldname"]
 			for field in definition("balance_sheet_mapping_rule")["fields"]
 			if field.get("in_list_view")
 		]
 		self.assertEqual(
-			shown, ["account", "concept", "opposite_concept", "purpose", "shareholder", "remaining_term"]
+			shown, ["account", "concept", "concept_label", "opposite_concept", "purpose", "remaining_term"]
 		)
 		self.assertLessEqual(
 			sum(

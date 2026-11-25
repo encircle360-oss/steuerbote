@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from unittest import TestCase
 
-from steuerbote.jahresmeldung import findings
+from steuerbote.jahresmeldung import acknowledgements, findings
 from steuerbote.jahresmeldung.findings import Severity
 from steuerbote.jahresmeldung.lifecycle import ACCOUNTS, FILING, standard_fields
 
@@ -58,8 +58,9 @@ class FindingFilesTest(TestCase):
 
 	def test_holds_the_rows_the_core_writes(self):
 		row = findings.rows([findings.Finding("SB-X", Severity.ERROR, "Text", "Konto 1590")])[0]
-		self.assertEqual(self.definition["field_order"], list(row))
-		self.assertEqual(list(self.fields), list(row))
+		columns = [*row, *acknowledgements.FIELDS]
+		self.assertEqual(self.definition["field_order"], columns)
+		self.assertEqual(list(self.fields), columns)
 
 	def test_names_art_sperrt_code_nachricht_and_referenz(self):
 		self.assertEqual(
@@ -70,6 +71,11 @@ class FindingFilesTest(TestCase):
 				"code": ("Data", "Code"),
 				"text": ("Small Text", "Message"),
 				"reference": ("Data", "Reference"),
+				"acknowledgeable": ("Check", "Can Be Acknowledged"),
+				"acknowledged": ("Check", "Acknowledged"),
+				"acknowledgement_reason": ("Small Text", "Reason for Filing Nonetheless"),
+				"acknowledged_by": ("Link", "Acknowledged By"),
+				"acknowledged_on": ("Datetime", "Acknowledged On"),
 			},
 		)
 
@@ -78,11 +84,16 @@ class FindingFilesTest(TestCase):
 			self.fields["severity"]["options"].split("\n"), [severity.value for severity in Severity]
 		)
 
-	def test_only_steuerbote_writes_a_finding_and_the_grid_shows_all_of_it(self):
+	def test_only_steuerbote_writes_a_finding_and_the_grid_shows_what_it_says_and_whether_it_is_acknowledged(
+		self,
+	):
+		"""Berechnen writes a finding and acknowledge_finding its acknowledgement; the form edits none of it."""
 		for name, field in self.fields.items():
 			with self.subTest(field=name):
-				self.assertEqual((field.get("read_only"), field.get("in_list_view")), (1, 1))
-		self.assertLessEqual(sum(field["columns"] for field in self.fields.values()), 10)
+				self.assertEqual(field.get("read_only"), 1)
+		listed = [name for name, field in self.fields.items() if field.get("in_list_view")]
+		self.assertEqual(listed, ["severity", "code", "text", "reference", "acknowledged"])
+		self.assertLessEqual(sum(self.fields[name]["columns"] for name in listed), 10)
 
 
 class BaseFilesTest(TestCase):
@@ -90,7 +101,7 @@ class BaseFilesTest(TestCase):
 		self.source = BASE.read_text(encoding="utf-8")
 
 	def test_the_methods_a_form_calls_are_whitelisted_for_post(self):
-		for method in ("calculate", "make_correction", "mark_filed_outside"):
+		for method in ("calculate", "make_correction", "mark_filed_outside", "acknowledge_finding"):
 			with self.subTest(method=method):
 				self.assertRegex(
 					self.source,
@@ -142,7 +153,9 @@ class FormScriptFilesTest(TestCase):
 
 	def test_the_methods_the_script_calls_are_those_of_the_base_whitelisted_for_post(self):
 		methods = set(re.findall(r'frm\.call\("(\w+)"', self.script))
-		self.assertEqual(methods, {"calculate", "make_correction", "mark_filed_outside"})
+		self.assertEqual(
+			methods, {"calculate", "make_correction", "mark_filed_outside", "acknowledge_finding"}
+		)
 		for method in sorted(methods):
 			with self.subTest(method=method):
 				self.assertRegex(

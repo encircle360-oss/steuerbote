@@ -197,6 +197,43 @@ class RowsToMappingTest(TestCase):
 		self.assertEqual(rows.rule_rows[0]["remaining_term"], None)
 
 
+TAX_RECEIVABLE = "bs.ass.currAss.receiv.other.vat"
+TAX_LIABILITY = "bs.eqLiab.liab.other.theroffTax"
+NETTED = Mapping(
+	"SKR04",
+	rules=(
+		Rule("1406", TAX_RECEIVABLE, opposite=TAX_LIABILITY, netting="Umsatzsteuer"),
+		Rule("3806", TAX_LIABILITY, opposite=TAX_RECEIVABLE, netting="Umsatzsteuer"),
+	),
+)
+
+
+class NettingGroupTest(TestCase):
+	"""The netting group of a rule (steuerbote.xbrl.mapping.Rule.netting) in the rows, the items, the body of the stored
+	defaults and the file; a body written before the field existed reads as rules without a group."""
+
+	def test_a_row_names_the_netting_group_of_its_rule(self):
+		rows = rows_of_mapping(NETTED)
+		self.assertEqual([row["netting_group"] for row in rows.rule_rows], ["Umsatzsteuer", "Umsatzsteuer"])
+		self.assertEqual(rows_to_mapping("SKR04", *rows, "6.9"), NETTED)
+		self.assertIsNone(rows_of_mapping(MAPPING).rule_rows[0]["netting_group"])
+
+	def test_an_item_names_the_group_only_where_the_rule_has_one(self):
+		items = items_of_mapping(NETTED)
+		self.assertEqual(items[(ACCOUNT, "1406")]["netting_group"], "Umsatzsteuer")
+		self.assertNotIn("netting_group", items_of_mapping(MAPPING)[(ACCOUNT, "1800")])
+		self.assertEqual(rows_of_items(items), rows_of_mapping(NETTED))
+
+	def test_the_body_holds_the_group_where_a_rule_has_one_and_reads_the_body_without_it(self):
+		body = body_of_items(items_of_mapping(NETTED))
+		self.assertEqual([row["netting_group"] for row in body["rules"]], ["Umsatzsteuer", "Umsatzsteuer"])
+		self.assertEqual(items_of_body(body), items_of_mapping(NETTED))
+		self.assertEqual(body_of_items(ITEMS), BODY)
+		self.assertEqual(items_of_body(BODY), ITEMS)
+		with self.assertRaises(MappingError):
+			items_of_body({**body, "rules": [{**body["rules"][0], "netting_group": 1}]})
+
+
 class ItemsTest(TestCase):
 	"""What Vorgaben aktualisieren and the file of a mapping compare (steuerbote/mappings/diff.py): one item per
 	account, so that a change of its place is one difference."""
