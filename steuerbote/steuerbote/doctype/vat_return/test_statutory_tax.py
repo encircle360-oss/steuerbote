@@ -137,6 +137,8 @@ class TestStatutoryTax(IntegrationTestCase):
 		self.assertIn(
 			"13 | Steuerpflichtige Umsätze zum Steuersatz von 19 % | 81 | 99 | | 18,99 |", self.printed(doc)
 		)
+		doc.remarks = "Erfunden: die Rechnungen stehen ohne Positionen im Register."
+		doc.save()
 		url = doc.make_import_file()
 		content = Path(frappe.get_doc("File", {"file_url": url}).get_full_path()).read_bytes()
 		self.assertIn(b"<Kz81>99</Kz81>", content)
