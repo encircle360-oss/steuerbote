@@ -111,6 +111,7 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 			[found.key for found in setup.setup_steps()][-5:],
 			[
 				"balance_sheet_mapping",
+				"exchange_accounts",
 				"vat_id_label",
 				"erpnext_germany_vat_id_check",
 				"vat_id_automatic_check",
