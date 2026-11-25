@@ -99,6 +99,7 @@ class ReviewTest(TestCase):
 				"Konten der Vorlagen von ERPNext.",
 				"Beobachtete Konten.",
 				"Verrechnung.",
+				"Debitoren und Kreditoren.",
 			],
 		)
 
