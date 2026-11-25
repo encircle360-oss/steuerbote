@@ -574,7 +574,7 @@ class DeviationRowsTest(TestCase):
 		rows = bridge.deviation_rows(
 			self.result, {"Journal Entry:ACC-JV-2026-00007": "Gutschrift zum Anlagenverkauf"}
 		)
-		self.assertEqual([row["note"] for row in rows], ["Gutschrift zum Anlagenverkauf", ""])
+		self.assertEqual([row["note"] for row in rows], ["Gutschrift zum Anlagenverkauf"])
 		self.assertEqual(bridge.check_rows(self.result)[0]["passed"], 0)
 
 	def test_lines_without_voucher_deviate_without_voucher_type_and_number(self):

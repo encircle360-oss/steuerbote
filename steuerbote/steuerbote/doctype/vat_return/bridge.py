@@ -431,7 +431,12 @@ def split_voucher(voucher: str | None) -> tuple[str, str]:
 	return voucher_type, voucher_no
 
 
-def deviation_rows(result: UstvaResult) -> list[dict[str, Any]]:
+def deviation_rows(
+	result: UstvaResult, notes: ReadOnlyMapping[str, str] | None = None
+) -> list[dict[str, Any]]:
+	"""One row per deviating voucher of each Verprobung, with the note on its cause where ``notes`` knows one, by
+	voucher (asset_sale_notes of the controller)."""
+	notes = notes or {}
 	rows = []
 	for check in result.checks:
 		for deviation in check.deviations:
@@ -444,6 +449,7 @@ def deviation_rows(result: UstvaResult) -> list[dict[str, Any]]:
 					"computed_tax": deviation.computed_tax,
 					"booked_tax": deviation.booked_tax,
 					"difference": deviation.difference,
+					"note": notes.get(deviation.voucher or "", ""),
 				}
 			)
 	return rows

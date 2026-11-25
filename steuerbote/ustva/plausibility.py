@@ -494,6 +494,31 @@ def tax_free_asset_sale_hints(sales: Iterable[AssetSale], figures: Figures) -> l
 	return found
 
 
+@dataclass(frozen=True, slots=True)
+class AssetSaleCorrection:
+	"""A Sales Invoice that books back the tax of an asset sale through the row with the Asset: a credit note, with the
+	invoice it corrects as ``original``, or the sale itself cancelled in a later period, without ``original``."""
+
+	voucher_no: str
+	original: str | None
+
+
+def asset_sale_deviation_note(correction: AssetSaleCorrection) -> str:
+	"""Why the Verprobung deviates for the voucher: the tax of an asset sale comes back without a base, since
+	Steuerbote derives a base from the remaining output tax in the credit alone (UMSATZ-OHNE-ERLOESKONTO, accepted
+	as a deviation in 0.15.0), and what the user does about it."""
+	if correction.original is None:
+		cause = f"Stornierung des Anlagenverkaufs {correction.voucher_no}"
+	else:
+		cause = f"Gutschrift zum Anlagenverkauf {correction.original}"
+	return (
+		f"{cause}: Für die Gutschrift oder Stornierung eines Anlagenverkaufs über die Position mit Vermögensgegenstand "
+		"leitet Steuerbote keine Bemessungsgrundlage aus der Steuer ab, deshalb weicht die Verprobung ab. Tragen Sie "
+		"die Minderung der Bemessungsgrundlage mit Begründung als Korrektur der Kennzahl ein, oder begründen Sie die "
+		"Abweichung in den Anmerkungen."
+	)
+
+
 def _turnover_hint(base: DerivedBase, figures: Figures) -> Hint:
 	accounts = (
 		f"dem Konto {base.accounts[0]}"

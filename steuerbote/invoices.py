@@ -10,7 +10,7 @@ dates of the period and leave out invoices marked as opening entries. Only the a
 with two queries per kind of invoice, through Frappe's query builder with parameters.
 """
 
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -18,7 +18,7 @@ from decimal import Decimal
 import frappe
 from frappe.query_builder.functions import Sum
 
-from steuerbote.ustva.plausibility import AssetSale, InvoiceLine
+from steuerbote.ustva.plausibility import AssetSale, AssetSaleCorrection, InvoiceLine
 from steuerbote.ustva.rounding import CENT, ZERO
 
 
@@ -255,3 +255,43 @@ def asset_sales_without_tax(
 		)
 		for row in rows
 	]
+
+
+def asset_sale_corrections(names: Iterable[str]) -> list[AssetSaleCorrection]:
+	"""Of the Sales Invoices ``names``, those that book back the tax of a taxed asset sale through the row with the
+	Asset: a credit note against such a sale, or the sale itself once cancelled."""
+	names = sorted(set(names))
+	if not names:
+		return []
+	invoices = frappe.get_all(
+		SALES.doctype,
+		filters={"name": ["in", names]},
+		fields=["name", "is_return", "return_against", "docstatus"],
+	)
+	candidates = {row.return_against if row.is_return else row.name for row in invoices} - {None, ""}
+	sold = set(
+		frappe.get_all(
+			SALES.items,
+			filters={
+				"parenttype": SALES.doctype,
+				"parent": ["in", sorted(candidates) or [""]],
+				"is_fixed_asset": 1,
+				"asset": ["is", "set"],
+			},
+			pluck="parent",
+		)
+	)
+	taxed = set(
+		frappe.get_all(
+			SALES.doctype,
+			filters={"name": ["in", sorted(sold) or [""]], "base_total_taxes_and_charges": ["!=", 0]},
+			pluck="name",
+		)
+	)
+	found = []
+	for row in sorted(invoices, key=lambda row: row.name):
+		if row.is_return and row.return_against in taxed:
+			found.append(AssetSaleCorrection(row.name, row.return_against))
+		elif not row.is_return and row.docstatus == 2 and row.name in taxed:
+			found.append(AssetSaleCorrection(row.name, None))
+	return found

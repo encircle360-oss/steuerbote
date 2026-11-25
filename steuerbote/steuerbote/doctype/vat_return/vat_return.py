@@ -324,7 +324,7 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		self.statutory_tax = statutory_tax_of(settings).value
 		self.set("kennzahlen", bridge.kennzahl_rows(result, catalogue, overrides))
 		self.set("checks", bridge.check_rows(result))
-		self.set("deviations", bridge.deviation_rows(result))
+		self.set("deviations", bridge.deviation_rows(result, asset_sale_notes(result)))
 		self.set(
 			"unmapped", bridge.unmapped_rows(result, lines, account_names(self.company, result.unmapped))
 		)
@@ -1196,6 +1196,24 @@ def return_hints(
 		*obligations.period_hints(period, getdate()),
 		*obligations.zm_rhythm_hints(amounts, months_without_zm_rhythm(settings, period), figures),
 	]
+
+
+def asset_sale_notes(result: ustva.UstvaResult) -> dict[str, str]:
+	"""The note of each deviating voucher that books back the tax of an asset sale through the row with the Asset, by
+	voucher (plausibility.asset_sale_deviation_note)."""
+	vouchers = {
+		deviation.voucher for check in result.checks for deviation in check.deviations if deviation.voucher
+	}
+	return {
+		f"{invoices.SALES.doctype}:{correction.voucher_no}": plausibility.asset_sale_deviation_note(
+			correction
+		)
+		for correction in invoices.asset_sale_corrections(
+			voucher.removeprefix(f"{invoices.SALES.doctype}:")
+			for voucher in vouchers
+			if voucher.startswith(f"{invoices.SALES.doctype}:")
+		)
+	}
 
 
 def months_without_zm_rhythm(settings: Document, period: ustva.Period) -> list[str]:
