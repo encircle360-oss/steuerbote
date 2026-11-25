@@ -70,7 +70,10 @@ class SetupPageFilesTest(TestCase):
 	def test_the_page_calls_the_setup_whitelisted_for_post(self):
 		(method,) = re.findall(r'const SETUP_METHOD = "([\w.]+)";', self.script)
 		self.assertEqual(method, "steuerbote.steuerbote.setup.set_up")
-		self.assertRegex(self.source, r'@frappe\.whitelist\(methods=\["POST"\]\)\ndef set_up\(company: str\)')
+		self.assertRegex(
+			self.source,
+			r'@frappe\.whitelist\(methods=\["POST"\]\)\ndef set_up\(company: str \| None = None\)',
+		)
 		self.assertIn("frappe.only_for(ROLES, message=True)", self.source)
 
 	def test_the_outcomes_of_the_page_are_those_of_the_core(self):
