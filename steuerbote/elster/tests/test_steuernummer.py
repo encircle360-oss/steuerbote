@@ -5,6 +5,7 @@ from steuerbote.elster.steuernummer import (
 	STATE_CODES,
 	STATES,
 	SteuernummerError,
+	ZeroSteuernummerError,
 	from_elster,
 	to_elster,
 	validate,
@@ -168,6 +169,15 @@ class ToElsterTest(TestCase):
 	def test_the_13_digit_form_is_not_the_issued_form(self):
 		with self.assertRaises(SteuernummerError):
 			to_elster("BW", "2812034567890")
+
+	def test_refuses_a_number_of_nothing_but_zeros(self):
+		"""Every digit of a Steuernummer stands for the Finanzamt, the Bezirk, the taxpayer or the check (ELSTER table
+		above); a number of zeros names none of them, so it is refused without ERiC."""
+		for state, number in (("NW", "000/0000/0000"), ("BY", "000 000 00000"), ("HE", "000/000/00000")):
+			with self.subTest(state=state), self.assertRaises(ZeroSteuernummerError) as caught:
+				to_elster(state, number)
+			self.assertIsInstance(caught.exception, SteuernummerError)
+		self.assertEqual(to_elster("NW", "000/0000/0001"), "5000000000001")
 
 	def test_refuses_unknown_states(self):
 		for state in ("XX", "bw", "Bayern", "", None, 9):

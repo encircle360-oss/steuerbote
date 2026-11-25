@@ -17,7 +17,7 @@ For ERiC the module hands the statement as it is filed to steuerbote.elster.zm_x
 Return Settings and the Zusammenfassende Meldung from the lines of the statement.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -278,7 +278,8 @@ def overrides_of(rows: Iterable[Row]) -> dict[tuple[str, Art], Override]:
 		if key in overrides:
 			raise ZmError(OVERRIDDEN_TWICE, *key)
 		basis = row.get("override_basis")
-		overrides[key] = Override(amount, reason, None if basis is None else to_amount(basis))
+		unknown = bool(int(row.get("override_basis_unknown") or 0))
+		overrides[key] = Override(amount, reason, None if basis is None else to_amount(basis), unknown)
 	return overrides
 
 
@@ -300,6 +301,23 @@ def override_bases(stored: Iterable[Row], rows: Iterable[Row]) -> list[Decimal |
 		else:
 			bases.append(to_amount(before.get("amount")))
 	return bases
+
+
+def unknown_bases(stored: Iterable[Row], rows: Iterable[Row]) -> list[int]:
+	"""Whether the basis of each override of ``rows`` is unknown: an override the stored line holds as it is keeps the
+	mark of the stored line (Override.basis_unknown); a new or changed one is confirmed against the ledger amount the
+	line showed and has a known basis (override_bases). Never from the rows a save sends, like the basis."""
+	by_key = {_key_of(row): row for row in stored}
+	unknown: list[int] = []
+	for row in rows:
+		before = by_key.get(_key_of(row))
+		kept = (
+			before is not None
+			and str(row.get("override_reason") or "").strip()
+			and _override(before) == _override(row)
+		)
+		unknown.append(int(bool(kept) and bool(int(before.get("override_basis_unknown") or 0))))
+	return unknown
 
 
 def acceptances_of(rows: Iterable[Row]) -> dict[tuple[str, Art], str]:
@@ -483,6 +501,7 @@ def _line_row(line: Line, holding: bool) -> dict[str, Any]:
 		"override": line.override.amount if line.override else ZERO,
 		"override_reason": line.override.reason if line.override else "",
 		"override_basis": line.override.basis if line.override else ZERO,
+		"override_basis_unknown": int(bool(line.override and line.override.basis_unknown)),
 		"acceptance_reason": line.acceptance,
 		"reported": line.reported,
 		"blocked": int(holding),
@@ -490,15 +509,23 @@ def _line_row(line: Line, holding: bool) -> dict[str, Any]:
 	}
 
 
-def hint_rows(findings: Iterable[Finding]) -> list[dict[str, Any]]:
+# Added to a finding a Berichtigung settles (Statement.settled), which the hints then show as a hint.
+SETTLED = (
+	"Die Zeile geht unverändert nicht in die Berichtigung; ihre Bestätigung hält die Berichtigung nicht an."
+)
+
+
+def hint_rows(findings: Iterable[Finding], settled: Collection[Finding] = ()) -> list[dict[str, Any]]:
+	"""A row per finding; one a Berichtigung settles is a hint that says so."""
 	rows = []
 	for finding in findings:
 		voucher_type, voucher_no = split_voucher(finding.voucher)
+		done = finding in settled
 		rows.append(
 			{
-				"severity": finding.severity.value,
+				"severity": Severity.HINT.value if done else finding.severity.value,
 				"code": finding.code.value,
-				"text": finding.text,
+				"text": f"{finding.text} {SETTLED}" if done else finding.text,
 				"voucher_type": voucher_type,
 				"voucher_no": voucher_no,
 				"party": finding.party,
@@ -507,13 +534,15 @@ def hint_rows(findings: Iterable[Finding]) -> list[dict[str, Any]]:
 	return rows
 
 
-def merged_hints(statement: Statement, rows: Iterable[Row]) -> list[dict[str, Any]]:
-	"""The findings of the lines anew, then the stored findings of the threshold, the reconciliation and the
-	comparison, which only Berechnen changes."""
+def merged_hints(
+	statement: Statement, rows: Iterable[Row], held: ReadOnlyMapping[tuple[str, Art], Decimal] | None = None
+) -> list[dict[str, Any]]:
+	"""The findings of the lines anew, those a Berichtigung settles as hints, then the stored findings of the
+	threshold, the reconciliation and the comparison, which only Berechnen changes."""
 	kept = [
 		{name: row.get(name) for name in HINT_FIELDS} for row in rows if row.get("code") not in LINE_CODES
 	]
-	return [*hint_rows(statement.findings), *kept]
+	return [*hint_rows(statement.findings, statement.settled(held)), *kept]
 
 
 def ready(

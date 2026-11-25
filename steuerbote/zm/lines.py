@@ -120,11 +120,14 @@ class VoucherAmount:
 @dataclass(frozen=True, slots=True)
 class Override:
 	"""An amount that a line reports instead of the computed one, and why; ``basis`` is the exact ledger amount of the
-	line the override was made against, None for an override that build() meets for the first time."""
+	line the override was made against, None for an override that build() meets for the first time. ``basis_unknown``
+	marks an override from before Steuerbote kept the basis, whose basis is the ledger amount of the day of the update
+	and not the one it was made against; it holds its line until it is confirmed."""
 
 	amount: Decimal
 	reason: str
 	basis: Decimal | None = None
+	basis_unknown: bool = False
 
 	def __post_init__(self) -> None:
 		require_whole_euros(self.amount)
@@ -262,6 +265,17 @@ class Statement:
 	def ready_against(self, held: ReadOnlyMapping[tuple[str, Art], Decimal] | None) -> bool:
 		return not self.holding(held)
 
+	def settled(self, held: ReadOnlyMapping[tuple[str, Art], Decimal] | None) -> tuple[Finding, ...]:
+		"""For a Berichtigung, the findings that would hold a line it repeats unchanged, which they no longer do."""
+		if held is None:
+			return ()
+		return tuple(
+			finding
+			for line in self.lines
+			if line.blocked and line.unchanged(held)
+			for finding in line.holding_findings
+		)
+
 	@property
 	def findings(self) -> tuple[Finding, ...]:
 		return tuple(finding for line in self.lines for finding in line.findings)
@@ -333,21 +347,19 @@ class _Context:
 
 # The findings on the confirmation of a number, which a release of the number lifts (decision of the maintainer).
 RELEASABLE = frozenset({Code.INVALID_VAT_ID, Code.UNCONFIRMED_VAT_ID})
-NO_VAT_ID_ADVICE = (
-	"Berichtige die Rechnung, oder nimm die Zeile mit der Korrektur 0 und einer Begründung aus der ZM."
-)
+NO_VAT_ID_ADVICE = "Berichtigen Sie die Rechnung, oder nehmen Sie die Zeile mit der Korrektur 0 und einer Begründung aus der ZM."
 MALFORMED_ADVICE = (
-	"Berichtige die USt-IdNr. in der Rechnung, oder nimm die Zeile mit der Korrektur 0 und einer Begründung "
+	"Berichtigen Sie die USt-IdNr. in der Rechnung, oder nehmen Sie die Zeile mit der Korrektur 0 und einer Begründung "
 	"aus der ZM."
 )
 INVALID_ADVICE = (
-	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, gib die USt-IdNr. mit Begründung frei; "
-	"sonst berichtige die Rechnung."
+	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, geben Sie die USt-IdNr. mit Begründung frei; "
+	"sonst berichtigen Sie die Rechnung."
 )
 # The Sorgfalt of § 6a Absatz 4 UStG asks for the confirmation at the time of the supply (UStAE 6a.8 Abs. 6 Satz 1).
 UNCONFIRMED_ADVICE = (
 	"Die Bestätigung soll spätestens zum Umsatz vorliegen (UStAE 6a.8 Abs. 6): „USt-IdNrn. prüfen“ fragt beim "
-	"BZSt an; liegt eine Bestätigung anders vor, gib die USt-IdNr. mit Begründung frei."
+	"BZSt an; liegt eine Bestätigung anders vor, geben Sie die USt-IdNr. mit Begründung frei."
 )
 
 
@@ -390,7 +402,11 @@ def _line(
 		findings.append(Finding(Code.OWN_LINE, _sentence(text)))
 	amount = sum((item.amount for item in vouchers), ZERO)
 	if override is not None:
-		if override.basis is None:
+		if override.basis_unknown:
+			findings.append(
+				Finding(Code.OVERRIDE_STALE, _unconfirmed(key, override, amount, figures), party=party)
+			)
+		elif override.basis is None:
 			override = replace(override, basis=amount)
 		elif override.basis != amount:
 			findings.append(Finding(Code.OVERRIDE_STALE, _stale(key, override, amount, figures), party=party))
@@ -412,14 +428,28 @@ def _aged(vat_id: str, day: date, age: ConfirmationAge, party: str) -> list[Find
 	return [Finding(Code.CONFIRMATION_STALE, text, party=party)]
 
 
-def _stale(key: tuple[str, Art], override: Override, amount: Decimal, figures: Figures) -> str:
+def _line_label(key: tuple[str, Art]) -> str:
 	vat_id, art = key
-	line = f"{vat_id} ({art.value})" if vat_id else f"ohne USt-IdNr. ({art.value})"
+	return f"{vat_id} ({art.value})" if vat_id else f"ohne USt-IdNr. ({art.value})"
+
+
+def _unconfirmed(key: tuple[str, Art], override: Override, amount: Decimal, figures: Figures) -> str:
+	return (
+		f"Die Korrektur der Zeile {_line_label(key)} auf {figures.money(override.amount)} stammt aus einer Version von "
+		"Steuerbote, die nicht festhielt, bei welchem Betrag im Hauptbuch sie eingetragen wurde; das Hauptbuch bucht "
+		f"jetzt {figures.money(amount)}. Die Zeile hält die Meldung an, bis die Korrektur bestätigt ist: Prüfen Sie "
+		"sie gegen das Hauptbuch und ändern Sie Betrag oder Begründung, oder löschen Sie die Korrektur, dann meldet "
+		"die Zeile das Hauptbuch."
+	)
+
+
+def _stale(key: tuple[str, Art], override: Override, amount: Decimal, figures: Figures) -> str:
+	line = _line_label(key)
 	return (
 		f"Die Korrektur der Zeile {line} auf {figures.money(override.amount)} wurde bei "
 		f"{figures.money(override.basis)} im Hauptbuch eingetragen; das Hauptbuch bucht jetzt {figures.money(amount)}. "
-		"Die Zeile hält die Meldung an, bis die Korrektur bestätigt ist: Passe Betrag oder Begründung an, oder lösche "
-		"die Korrektur, dann meldet die Zeile das Hauptbuch."
+		"Die Zeile hält die Meldung an, bis die Korrektur bestätigt ist: Passen Sie Betrag oder Begründung an, oder "
+		"löschen Sie die Korrektur, dann meldet die Zeile das Hauptbuch."
 	)
 
 

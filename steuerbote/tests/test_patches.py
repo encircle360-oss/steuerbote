@@ -5,13 +5,16 @@ from unittest.mock import patch
 import frappe
 from frappe.modules.patch_handler import PatchType, get_patches_from_app
 from frappe.tests import IntegrationTestCase
+from frappe.utils import add_days
 
 from steuerbote.patches import link_transmissions_to_their_document as transmissions
+from steuerbote.patches import mark_the_bases_of_earlier_overrides_unknown as unknown_bases
 from steuerbote.patches import set_the_basis_of_overrides as bases
 
 TRANSMISSION = "ELSTER Transmission"
 PATCH = "steuerbote.patches.link_transmissions_to_their_document"
 BASES_PATCH = "steuerbote.patches.set_the_basis_of_overrides"
+UNKNOWN_PATCH = "steuerbote.patches.mark_the_bases_of_earlier_overrides_unknown"
 
 
 class TestLinkTransmissionsToTheirDocument(IntegrationTestCase):
@@ -153,3 +156,134 @@ class TestSetTheLedgerBasisOfOverrides(IntegrationTestCase):
 			],
 			[55000.99, 0, 9, 1000, 1200],
 		)
+
+
+class TestMarkTheBasesOfEarlierOverridesUnknown(IntegrationTestCase):
+	"""The basis set_the_basis_of_overrides wrote is the amount of the day of the update, not the one an override was
+	made against, and it kept no record of the rows it wrote: every override and correction of a document created
+	before it ran gets the mark of an unknown basis, a line by hand and a row without a reason none."""
+
+	def setUp(self):
+		self.since = frappe.db.get_value("Patch Log", {"patch": BASES_PATCH}, "creation")
+		self.assertIsNotNone(self.since)
+
+	def document(self, doctype: str, name: str, days: int) -> str:
+		frappe.get_doc({"doctype": doctype, "name": name}).db_insert()
+		frappe.db.set_value(doctype, name, "creation", add_days(self.since, days), update_modified=False)
+		return name
+
+	def row(self, doctype: str, name: str, parent: str, parenttype: str, **fields) -> str:
+		frappe.get_doc(
+			{
+				"doctype": doctype,
+				"name": name,
+				"parent": parent,
+				"parentfield": "x",
+				"parenttype": parenttype,
+				**fields,
+			}
+		).db_insert()
+		return name
+
+	def unknown(self, doctype: str, name: str, field: str) -> int:
+		return frappe.db.get_value(doctype, name, field)
+
+	def test_runs_after_the_patch_that_set_the_bases(self):
+		patches = get_patches_from_app("steuerbote", PatchType.post_model_sync)
+		self.assertLess(patches.index(BASES_PATCH), patches.index(UNKNOWN_PATCH))
+
+	def test_marks_the_overrides_of_documents_created_before_the_bases_were_set(self):
+		older = self.document("VAT Return", "PATCH-UNKNOWN-UV-1", -1)
+		newer = self.document("VAT Return", "PATCH-UNKNOWN-UV-2", 1)
+		kennzahl = "VAT Return Kennzahl"
+		overridden = self.row(
+			kennzahl,
+			"PATCH-UNKNOWN-KZ-1",
+			older,
+			"VAT Return",
+			kennzahl="81",
+			amount=1300,
+			override=1100,
+			override_reason="Spät",
+			override_basis=1300,
+		)
+		plain = self.row(kennzahl, "PATCH-UNKNOWN-KZ-2", older, "VAT Return", kennzahl="86", amount=50)
+		later = self.row(
+			kennzahl,
+			"PATCH-UNKNOWN-KZ-3",
+			newer,
+			"VAT Return",
+			kennzahl="81",
+			amount=1300,
+			override=1100,
+			override_reason="Spät",
+			override_basis=1000,
+		)
+		statement = self.document("Recapitulative Statement", "PATCH-UNKNOWN-ZM-1", -1)
+		line = "Recapitulative Statement Line"
+		zm = self.row(
+			line,
+			"PATCH-UNKNOWN-ZM-L1",
+			statement,
+			"Recapitulative Statement",
+			vat_id="ATU12345678",
+			art="L",
+			amount=57000.99,
+			override=55000,
+			override_reason="Nachweis",
+			override_basis=57000.99,
+		)
+		by_hand = self.row(
+			line,
+			"PATCH-UNKNOWN-ZM-L2",
+			statement,
+			"Recapitulative Statement",
+			vat_id="ATU99999999",
+			art="L",
+			override=2500,
+			override_reason="Verbringen",
+			manual=1,
+		)
+		annual = self.document("Annual VAT Return", "PATCH-UNKNOWN-USTE-1", -1)
+		annual_line = self.row(
+			"Annual VAT Return Line",
+			"PATCH-UNKNOWN-JA-1",
+			annual,
+			"Annual VAT Return",
+			feldkennung="E3003303",
+			form_amount=1200,
+			correction=1100,
+			correction_reason="Spät",
+			correction_basis=1200,
+		)
+		unknown_bases.execute()
+		unknown_bases.execute()
+		self.assertEqual(
+			[
+				self.unknown(kennzahl, overridden, "override_basis_unknown"),
+				self.unknown(kennzahl, plain, "override_basis_unknown"),
+				self.unknown(kennzahl, later, "override_basis_unknown"),
+				self.unknown(line, zm, "override_basis_unknown"),
+				self.unknown(line, by_hand, "override_basis_unknown"),
+				self.unknown("Annual VAT Return Line", annual_line, "correction_basis_unknown"),
+			],
+			[1, 0, 0, 1, 0, 1],
+		)
+		self.assertEqual(frappe.db.get_value(kennzahl, overridden, "override_basis"), 1300)
+
+	def test_does_nothing_on_a_site_where_the_bases_were_never_set(self):
+		older = self.document("VAT Return", "PATCH-UNKNOWN-UV-3", -1)
+		row = self.row(
+			"VAT Return Kennzahl",
+			"PATCH-UNKNOWN-KZ-4",
+			older,
+			"VAT Return",
+			kennzahl="81",
+			amount=10,
+			override=8,
+			override_reason="x",
+			override_basis=10,
+		)
+		with patch.object(unknown_bases, "EARLIER_PATCH", "steuerbote.patches.of_no_site"):
+			unknown_bases.execute()
+		self.assertEqual(self.unknown("VAT Return Kennzahl", row, "override_basis_unknown"), 0)

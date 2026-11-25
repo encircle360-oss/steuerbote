@@ -17,7 +17,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, cstr, escape_html, flt, formatdate, getdate
 
-from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster
+from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, ZeroSteuernummerError, to_elster
 from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.annual_filing_settings import rules
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
@@ -179,6 +179,8 @@ class AnnualFilingSettings(Document):
 			)
 		try:
 			self.elster_income_tax_number = to_elster(code, number)
+		except ZeroSteuernummerError:
+			frappe.throw(transmission_adapter.zero_steuernummer(number), title=_("Invalid Steuernummer"))
 		except SteuernummerError:
 			frappe.throw(
 				_("The Steuernummer {0} does not have the format {1} of {2}.").format(

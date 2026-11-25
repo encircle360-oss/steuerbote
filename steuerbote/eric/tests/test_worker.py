@@ -507,7 +507,9 @@ class BilanzTest(AnnualTestCase):
 
 	def test_the_stub_refuses_the_hinweispruefung_of_a_bilanz_without_validiere_as_eric_does(self):
 		library = EricLibrary(self.lib_dir / "libericapi.so")
-		library.initialise(self.lib_dir, self.directory / "log" / "run-ebv7")
+		log_dir = self.directory / "log" / "run-ebv7"
+		log_dir.mkdir(parents=True, exist_ok=True)
+		library.initialise(self.lib_dir, log_dir)
 		try:
 			xml = '<TransferHeader version="11"><Nutzdaten></Nutzdaten>'
 			self.assertEqual(library.process(xml, "Bilanz_6.9", PRUEFE_HINWEISE).code, 610001218)
@@ -638,6 +640,17 @@ class ProtocolTest(WorkerTestCase):
 
 
 class SteuernummerTest(WorkerTestCase):
+	def test_makes_the_directory_of_its_log_first(self):
+		"""ERiC does not start without a directory for eric.log (ERIC_GLOBAL_FEHLER_INITIALISIERUNG, API-Referenz
+		44.3.6.0); the check of a Steuernummer and the versions make it, as Prüfen does."""
+		for command, extra in (("steuernummer", {"steuernummer": "9198011310019"}), ("version", {})):
+			with self.subTest(command=command):
+				runtime = replace(self.runtime, log_dir=self.directory / "fresh" / command / "log")
+				code, stdout, _ = self.serve({"command": command, "runtime": runtime.to_dict(), **extra})
+				self.assertEqual(code, 0)
+				self.assertNotIn("error", json.loads(stdout))
+				self.assertTrue((runtime.log_dir / "eric.log").is_file())
+
 	def test_checks_a_steuernummer_with_eric(self):
 		"""EricPruefeSteuernummer, in a worker of its own like every call of ERiC."""
 		for number, valid in (("9198011310010", True), ("9198011310019", False)):

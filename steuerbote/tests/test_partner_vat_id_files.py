@@ -235,6 +235,18 @@ class FieldFilesTest(TestCase):
 			self.assertEqual(fields[name]["options"].split("\n"), [level.value for level in Level])
 		self.assertEqual(fields["max_confirmation_age"]["default"], "90")
 
+	def test_the_settings_and_the_setup_say_which_partners_the_automatic_check_sends(self):
+		"""The partners of a company are those it deals with; a partner that deals with no company falls to the default
+		company of the site (companies_for and partners_of in partner_vat_ids.py). Whoever switches the automatic
+		check on for that company reads it where they switch it on."""
+		fields = fields_of("vat_return_settings")
+		for name in ("vat_id_check_on_change", "vat_id_renewal"):
+			with self.subTest(field=name):
+				self.assertIn("deals with no company", fields[name]["description"])
+				self.assertIn("default company of the site", fields[name]["description"])
+		source = SETUP.read_text(encoding="utf-8")
+		self.assertIn("default company of the site", source)
+
 	def test_a_confirmation_names_its_partner_its_invoice_and_what_started_it(self):
 		fields = fields_of("vat_id_confirmation")
 		self.assertEqual(

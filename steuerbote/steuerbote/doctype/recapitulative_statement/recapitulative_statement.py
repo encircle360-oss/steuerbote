@@ -112,9 +112,17 @@ REPLACED = "Ersetzt"
 # What Berechnen stores besides the lines and the hints, which every save builds anew.
 STORED_TABLES = ("vouchers", "reconciliation", "comparison")
 TOTALS = ("total_l", "total_d", "total_s")
-# What the form lets the user enter on a line, and the ledger amount an override was made against; Berechnen and
-# every save find the rest.
-LINE_INPUT = ("vat_id", "art", "override", "override_reason", "override_basis", "acceptance_reason")
+# What the form lets the user enter on a line, and the ledger amount an override was made against with the mark of an
+# unknown basis; Berechnen and every save find the rest.
+LINE_INPUT = (
+	"vat_id",
+	"art",
+	"override",
+	"override_reason",
+	"override_basis",
+	"override_basis_unknown",
+	"acceptance_reason",
+)
 LINE_KEY = ("vat_id", "art")
 FILING_FIELDS = ("filed_via", "filed_on", "transferticket", "filing_note", "filed_by")
 
@@ -336,7 +344,7 @@ class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 		self.set(
 			"hints",
 			bridge.with_names(
-				bridge.hint_rows(findings),
+				bridge.hint_rows(findings, statement.settled(held)),
 				_rows(stored.hints if stored else (), named=True),
 				bridge.HINT_FIELDS,
 			),
@@ -853,7 +861,7 @@ class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 		self.set(
 			"hints",
 			bridge.with_names(
-				bridge.merged_hints(statement, before.hints),
+				bridge.merged_hints(statement, before.hints, held),
 				_rows(before.hints, named=True),
 				bridge.HINT_FIELDS,
 			),
@@ -868,9 +876,14 @@ class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 
 	def _take_bases(self, stored: Iterable[Document]) -> None:
 		"""Give each override the ledger amount it was made against, from the stored lines and never from the rows a
-		save sends (bridge.override_bases)."""
-		for row, basis in zip(self.lines, bridge.override_bases(stored, self.lines), strict=True):
+		save sends (bridge.override_bases), and an override from before Steuerbote kept the basis its mark until it
+		changes (bridge.unknown_bases)."""
+		stored = list(stored)
+		bases = bridge.override_bases(stored, self.lines)
+		unknown = bridge.unknown_bases(stored, self.lines)
+		for row, basis, mark in zip(self.lines, bases, unknown, strict=True):
 			row.override_basis = basis
+			row.override_basis_unknown = mark
 
 	def _build(
 		self,

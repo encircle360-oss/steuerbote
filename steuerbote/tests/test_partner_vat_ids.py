@@ -525,6 +525,28 @@ class TestPartnerVatIds(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "without name and address"):
 			partner_module.check_invoice(doc)
 
+	def test_the_warning_of_an_invoice_for_services_names_the_next_step(self):
+		"""A warning lets the invoice through, but says what proves the customer a Unternehmer: the qualified
+		confirmation of its USt-IdNr. (UStAE 3a.2 Abs. 9), which the button on the customer asks for."""
+		doc = self.invoice(PARIS, self.accounts["8336"])
+		with patch("frappe.msgprint") as message:
+			partner_module.check_invoice(doc)
+		text = message.call_args.args[0]
+		self.assertIn(f"The USt-IdNr. {FRENCH} of the customer", text)
+		self.assertIn("has no confirmation", text)
+		self.assertIn("„Confirm VAT ID“ on the customer", text)
+		self.assertIn("UStAE 3a.2 Abs. 9", text)
+
+	def test_a_german_number_with_a_wrong_check_digit_is_refused_for_its_check_digit(self):
+		"""The invoice names what is wrong with the number as the form of the customer does, not the rule that the
+		BZSt confirms no German number."""
+		doc = self.invoice(PRUEFZIFFER, self.accounts["8125"])
+		with self.assertRaisesRegex(
+			frappe.ValidationError, "Die Prüfziffer von DE987654321 stimmt nicht"
+		) as refused:
+			partner_module.check_invoice(doc)
+		self.assertNotIn("§ 18e Nr. 1 UStG", str(refused.exception))
+
 	def test_an_invoice_the_mapping_puts_elsewhere_or_a_credit_note_needs_nothing(self):
 		with patch("frappe.msgprint") as message:
 			partner_module.check_invoice(self.invoice(MUENCHEN, self.accounts["8400"]))
