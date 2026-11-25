@@ -144,6 +144,8 @@ Der Bericht und die Erinnerung nennen dieselben Fristen, der Bericht bis zu sein
 
 Fristen am selben Tag stehen in der Reihenfolge Voranmeldung, Zusammenfassende Meldung, Sondervorauszahlung, Umsatzsteuererklärung, Körperschaftsteuererklärung, Gewerbesteuererklärung, E-Bilanz, Feststellung Jahresabschluss, Offenlegung Jahresabschluss.
 
+Vor dem Start der Bücher erscheint keine Frist: Nennen die Einstellungen Umsatzsteuer-Voranmeldung in „Bücher in ERPNext ab“ den ersten Tag der Bücher in ERPNext, lässt `upcoming` jede Voranmeldung und Zusammenfassende Meldung eines Zeitraums aus, der davor beginnt, und die Sondervorauszahlung und die Jahresmeldungen eines Jahres vor dem Jahr des Starts (`books_start` von `CompanyRules`). Diese Zeiträume gibt ab, wer die Bücher dieser Zeit führt, etwa die Voranmeldung für Dezember bei einem Start am 1. Januar; Steuerbote erinnert nicht an sie. Siehe [Start mit Steuerbote im laufenden Betrieb](einrichtung.md#start-mit-steuerbote-im-laufenden-betrieb).
+
 ## Der Bericht „Offene Fristen“
 
 Der Bericht steht im Arbeitsbereich „Steuern“ im Abschnitt „Fristen“ und in der Seitenleiste unter „Berichte“, für die Rollen Accounts Manager, Accounts User und System Manager.

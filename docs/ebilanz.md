@@ -122,6 +122,7 @@ Ein fehlender Periodenabschlussbeleg ist nur ein Hinweis: Die E-Bilanz nimmt den
 | `SB-AFA-OFFEN` | Fehler | eine Abschreibung, die der Plan bis zum Bilanzstichtag vorsieht, ist nicht gebucht |
 | `SB-ANLAGE-PLAN` | Fehler | eine abgeschriebene Anlage hat keinen aktiven Abschreibungsplan in einem Finanzbuch der E-Bilanz und keinen ohne Finanzbuch |
 | `SB-ANLAGE-DOPPELT` | Fehler | eine Anlage hat einen Plan in einem Finanzbuch der E-Bilanz und einen ohne Finanzbuch |
+| `SB-BV-VORJAHR` | Hinweis | Steuerbote hält keine abgegebene E-Bilanz des Vorjahres, und das Betriebsvermögen des Vorjahres kommt aus den Buchungen zu Beginn des Wirtschaftsjahres, etwa im ersten Jahr nach einem [Start im laufenden Betrieb](einrichtung.md#start-mit-steuerbote-im-laufenden-betrieb); abzugleichen mit der E-Bilanz des Vorjahres und bei einer Abweichung unter „Betriebsvermögen des Vorjahres laut Unternehmen“ einzutragen |
 | `SB-PERIODENABSCHLUSS` | Hinweis | für das Geschäftsjahr ist kein Periodenabschlussbeleg gebucht |
 | `SB-NEU-BERECHNEN` | Fehler | seit dem Berechnen hat sich etwas geändert, das „Berechnen“ liest |
 | `SB-JA-ABWEICHUNG` | Fehler, Hinweis | ein Posten der Handelsbilanz liegt einen Euro oder mehr neben dem des Jahresabschlusses: ein Fehler, wenn der Jahresabschluss festgestellt ist, sonst ein Hinweis |

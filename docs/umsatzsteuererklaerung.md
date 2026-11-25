@@ -116,6 +116,8 @@ Liegt die Differenz darüber, nennt der Hinweis `SB-UMSATZERLOESE` die Umsatzerl
 |---|---|---|
 | `SB-VERPROBUNG` | Fehler | eine Verprobung geht über das Jahr nicht auf; die Tabellen „Verprobung“ und „Abweichende Belege“ nennen die Belege |
 | `SB-KONTO-SPERRT` | Fehler | ein Konto der Stufe „Sperrt“ hat im Jahr einen Saldo, den keine Zeile der Erklärung liest |
+| `SB-KONTO-AUFGELOEST` | Hinweis | ein Konto, das einen Betrag in eine spätere Voranmeldung trägt, löst über das Jahr den Saldo auf, den es ins Jahr mitbrachte, etwa aus den Eröffnungsbuchungen; das sperrt nicht, siehe [Übergang eines Saldos](ustva-kennzahlen.md#übergang-eines-saldos-in-eine-spätere-voranmeldung) |
+| `SB-VOR-START` | Fehler | die Bücher in ERPNext beginnen nach dem 1. Januar des Jahres („Bücher in ERPNext ab“), das Hauptbuch hält das Jahr nicht ganz, siehe [Start mit Steuerbote im laufenden Betrieb](einrichtung.md#start-mit-steuerbote-im-laufenden-betrieb) |
 | `SB-KONTO-HINWEIS` | Hinweis | ein Konto der Stufe „Hinweis“ hat im Jahr einen Saldo, den keine Zeile liest |
 | `SB-KLEINUNTERNEHMER` | Hinweis | die Einstellungen Jahresmeldungen kennzeichnen das Jahr als Jahr eines Kleinunternehmers |
 | `SB-KZ136` | Hinweis | eine abgegebene Voranmeldung datiert den Wechsel zur Regelbesteuerung in Kz 70 auf einen anderen Tag als Kz 136 der Erklärung |
