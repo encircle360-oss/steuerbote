@@ -181,7 +181,7 @@ Jeden Tag läuft der Job `send_reminders` (`scheduler_events` in `hooks.py`, „
 
 ### Fristerinnerung (`Deadline Reminder`)
 
-Ein Dokument je Frist und Tag einer Erinnerung. Nur der Server legt es an, niemand ändert es; ein System Manager darf es löschen, dann kann an die Frist am selben Tag noch einmal erinnert werden. Sein Name ist aus Unternehmen, Art, Zeitraum, Fälligkeit und Tag gebildet, deshalb lässt sich dieselbe Erinnerung nicht zweimal anlegen. Die Liste steht in der Seitenleiste als „Fristerinnerungen“.
+Ein Dokument je Frist und Tag einer Erinnerung. Nur Steuerbote legt es an, keine Anfrage und kein Benutzer, auch nicht der Administrator (siehe [Schutz der Belege und Rechte](architektur.md#schutz-der-belege-und-rechte)), niemand ändert es; ein System Manager darf es löschen, dann kann an die Frist am selben Tag noch einmal erinnert werden. Sein Name ist aus Unternehmen, Art, Zeitraum, Fälligkeit und Tag gebildet, deshalb lässt sich dieselbe Erinnerung nicht zweimal anlegen. Die Liste steht in der Seitenleiste als „Fristerinnerungen“.
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|
