@@ -93,6 +93,11 @@ class SetupPageFilesTest(TestCase):
 		self.assertEqual(german["Set Up Steuerbote"], "Steuerbote einrichten")
 		self.assertEqual(german["Set Up"], "Einrichten")
 
+	def test_the_page_chooses_no_company_until_the_user_or_the_address_does(self):
+		"""Einrichten writes, so the page does not take the default company of the user, which may be the real one."""
+		(field,) = re.findall(r"page\.add_field\(\{.*?\}\);", self.script, re.DOTALL)
+		self.assertNotIn("default", field)
+
 	def test_the_report_escapes_what_the_site_holds(self):
 		report = re.search(
 			r"\nfunction show_report\(report, result\) \{\n(?P<body>.*?)\n\}\n", self.script, re.DOTALL
