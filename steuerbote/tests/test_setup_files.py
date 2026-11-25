@@ -87,7 +87,7 @@ class SetupPageFilesTest(TestCase):
 		texts.update(entry["label"] for entry in ast.literal_eval(values["BUILT_IN_STEPS"]))
 		texts.update(label for _field, label in ast.literal_eval(values["DATENLIEFERANT_LABELS"]))
 		texts.update(steps.MESSAGES)
-		self.assertEqual(len(messages(SETUP)), 35)
+		self.assertEqual(len(messages(SETUP)), 38)
 		self.assertIn("Set Up Steuerbote", texts)
 		self.assertEqual(sorted(texts - german.keys() - FRAMEWORK_LABELS), [])
 		self.assertEqual(german["Set Up Steuerbote"], "Steuerbote einrichten")
