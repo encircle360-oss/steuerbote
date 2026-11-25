@@ -13,6 +13,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, getdate, today
 
+from steuerbote import __version__
 from steuerbote.jahresmeldung import corrections, lifecycle, overrides
 from steuerbote.tests import annual_document
 from steuerbote.tests.annual_document import (
@@ -582,6 +583,11 @@ class TestPrint(AnnualFilingTestCase):
 		self.assertNotIn("Mein ELSTER", text)
 		doc.LIFECYCLE = lifecycle.ACCOUNTS
 		self.assertIn("Dieser Ausdruck ist keine Offenlegung.", self.printed(doc))
+
+	def test_the_footer_ends_with_the_version_of_steuerbote_that_printed_it(self):
+		self.assertTrue(
+			self.printed(self.calculated()).rstrip().endswith(f"Erstellt mit Steuerbote {__version__}")
+		)
 
 
 class TestJahresabschluss(AnnualFilingTestCase):

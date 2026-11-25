@@ -28,11 +28,16 @@ add_to_apps_screen = [
 app_include_icons = ["/assets/steuerbote/icons/module-icons.svg"]
 
 # The custom field on the Journal Entry, and the print formats of the app as the defaults of their DocTypes:
-# a standard DocType takes its default print format only from a Property Setter.
+# a standard DocType takes its default print format only from a Property Setter. The block Über Steuerbote of the
+# workspace is a Custom HTML Block, which has no module; bench migrate imports it anew each time.
 fixtures = [
 	{"dt": "Custom Field", "filters": [["module", "=", "Steuerbote"]]},
 	{"dt": "Property Setter", "filters": [["module", "=", "Steuerbote"]]},
+	{"dt": "Custom HTML Block", "filters": [["name", "=", "Über Steuerbote"]]},
 ]
+
+# The version of Steuerbote in the line „Erstellt mit Steuerbote“ of the printouts.
+jinja = {"methods": ["steuerbote.steuerbote.about.steuerbote_version"]}
 
 # ERPNext's "Delete Company Transactions" (Transaction Deletion Record) deletes the documents of every DocType
 # linked to the company with frappe.db.delete, past on_trash, unless the DocType is listed here: the filings and

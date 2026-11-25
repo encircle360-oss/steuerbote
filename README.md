@@ -157,6 +157,7 @@ In der Leiste links, bei den Bereichen von ERPNext wie Rechnungswesen und Vertri
 - [Übermittlung an ELSTER](docs/uebermittlung.md): Prüfen, Testsenden, Senden, Simulationsmodus, ERiC-Einstellungen und Übermittlungsprotokoll
 - [ERiC](docs/eric.md): Lizenz, Einrichtung durch den Betreiber, Datenarten auch der Jahresmeldungen, Versionen, Betrieb und Updates mit der wöchentlichen Prüfung gegen die Mindestversionsliste, Simulation, Sicherheit und Grenzen der Anbindung
 - [Entwicklung](docs/entwicklung.md): Aufbau, Einrichtung, Tests, Stil, CI und der Jahreswechsel je Modul
+- [Haftungsausschluss](docs/haftungsausschluss.md): ohne Gewähr, keine Steuerberatung, Verantwortung für jede Abgabe, Stand des Projekts und wo Fehler hingehören
 - [Mitwirken](CONTRIBUTING.md), [Hinweise für Coding-Agenten](AGENTS.md), [Sicherheit](SECURITY.md)
 
 ## Mitwirken und Community
@@ -200,15 +201,7 @@ Für Einführung, Anpassung an eigene Kontenrahmen, Betrieb, Schulung oder die B
 
 ## Haftungsausschluss
 
-Steuerbote wird „wie besehen“ („AS IS“) und ohne jede Gewährleistung bereitgestellt, weder ausdrücklich noch stillschweigend, einschließlich, aber nicht beschränkt auf die Gewährleistung der Marktgängigkeit, der Eignung für einen bestimmten Zweck und der Nichtverletzung von Rechten Dritter.
-
-Steuerbote ist Software, keine Steuerberatung. Mit der Nutzung erkennst du an:
-
-- Du nutzt Steuerbote auf eigenes Risiko. Für jede Steueranmeldung bleibst du selbst verantwortlich, für ihre Richtigkeit, Vollständigkeit und fristgerechte Abgabe.
-- Berechnungen, Kontenzuordnungen, Validierungen und Übermittlungen können Fehler enthalten, auch wenn alle Prüfungen grün sind. Prüfe jede Meldung vor der Abgabe und lass die Einrichtung von deiner Steuerberatung bestätigen.
-- Gesetze, Vordrucke und ELSTER-Schnittstellen ändern sich. Steuerbote kann dem hinterherhinken.
-- Die Maintainer, die encircle360 GmbH und alle Mitwirkenden haften nicht für Schäden oder Verluste jeder Art, die aus der Nutzung oder der Unmöglichkeit der Nutzung entstehen, insbesondere nicht für Steuernachzahlungen, Zinsen, Verspätungs- oder Säumniszuschläge, Bußgelder, verlorene Vorsteuer oder die Kosten einer Nachbearbeitung. Das gilt, soweit ein Haftungsausschluss gesetzlich zulässig ist.
-- Steuerbote ist kein Angebot der Finanzverwaltung. ELSTER und ERiC sind Verfahren und Software der Steuerverwaltungen der Länder und des Bundes, Frappe und ERPNext Projekte der Frappe Technologies Pvt. Ltd. Steuerbote steht mit keinem davon in Verbindung.
+Steuerbote wird ohne jede Gewährleistung und, soweit das Gesetz es erlaubt, ohne Haftung bereitgestellt (Abschnitte 15 und 16 der [Lizenz](LICENSE)). Steuerbote ist Software, keine Steuer- oder Rechtsberatung, und ersetzt keine Steuerberatung. Wer eine Meldung abgibt, bleibt für ihren Inhalt verantwortlich und prüft die Zahlen vor der Abgabe. Was das im Einzelnen heißt, steht im [Haftungsausschluss](docs/haftungsausschluss.md).
 
 Für den Einsatz mit zugesichertem Support und Reaktionszeiten sprich uns an: **hello@encircle360.com**
 
@@ -218,7 +211,7 @@ Steuerbote steht unter der [GNU Affero General Public License v3.0 oder später]
 
 ## Maintainer
 
-Steuerbote wird von der **[encircle360 GmbH](https://encircle360.com)** entwickelt und gepflegt.
+Steuerbote wird von der **[encircle360 GmbH](https://encircle360.com/?ref=github-steuerbote)** entwickelt und gepflegt, zusammen mit allen Mitwirkenden. Für Einführung, Betrieb und Unterstützung ist die encircle360 GmbH unter [encircle360.com](https://encircle360.com/?ref=github-steuerbote) erreichbar. Was Steuerbote im Desk über sich zeigt, steht in der [Architektur](docs/architektur.md#über-steuerbote), ohne Gewähr wie im [Haftungsausschluss](docs/haftungsausschluss.md) beschrieben.
 
 ## Credits und Mitwirkende
 
