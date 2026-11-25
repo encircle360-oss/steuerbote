@@ -1121,8 +1121,13 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[
 				(
 					"ZM-USTID-UNGUELTIG",
-					f"Die USt-IdNr. {FRENCH} ist laut Bestätigungsabfrage vom 20. November 2026 ungültig. "
-					f"{consequence('21')} {INVALID_ADVICE}",
+					" ".join(
+						(
+							f"Die USt-IdNr. {FRENCH} ist laut Bestätigungsabfrage vom 20. November 2026 ungültig.",
+							consequence("21"),
+							INVALID_ADVICE,
+						)
+					),
 				)
 			],
 		)
