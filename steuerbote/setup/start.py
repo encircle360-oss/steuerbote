@@ -20,7 +20,9 @@ before a start in January or February and those of the year of the start before 
 The annual returns carry amounts from the last notices of the Finanzamt: the loss carried forward (§ 10d EStG), the
 Fehlbetrag (§ 10a GewStG) and the steuerliches Einlagekonto (§ 27 KStG), as the Annual Filing Settings hold them.
 missing_carry_forwards() names those without an amount as of the end of the last year whose returns were filed outside
-Steuerbote. checklist() gives what the setup shows or checks for such a start, in the order a user works through it.
+Steuerbote. The Voranmeldungen of the last periods before the start are paid in the new year; prior_payments() finds
+such payments on the accounts of the Vorauszahlungen, which the Umsatzsteuererklärung then leaves out of the
+Vorauszahlungen of the year. checklist() gives what the setup shows or checks for such a start, in the order a user works through it.
 
 This module is pure Python and never imports Frappe.
 """
@@ -32,7 +34,7 @@ from decimal import Decimal
 from enum import Enum
 
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import CarryForward, CarryForwardKind
-from steuerbote.ustva.calculation import require_cents
+from steuerbote.ustva.calculation import LedgerLine, require_cents
 from steuerbote.ustva.period import Period, day_label
 from steuerbote.ustva.rounding import ZERO
 
@@ -67,6 +69,15 @@ PRIOR_MISSING = (
 	"Enter the Voranmeldungen filed before Steuerbote, as filed with Kz 83, 39, 41, 42 and 21, as VAT Return Prior "
 	"Filings: {0}."
 )
+PRIOR_PAYMENTS_CLEAN = (
+	"Payments and refunds of the Voranmeldungen filed before Steuerbote are booked on the prior-year VAT account, "
+	"not on the accounts of the Vorauszahlungen of {0}."
+)
+PRIOR_PAYMENTS_FOUND = (
+	"These payments on the accounts of the Vorauszahlungen pay Kz 83 of Voranmeldungen filed before Steuerbote: {0}. "
+	"The Umsatzsteuererklärung leaves them out of the Vorauszahlungen of the year; book such payments on the prior-year "
+	"VAT account."
+)
 DAUERFRIST_INFO = (
 	"If the Finanzamt granted the Dauerfristverlängerung before Steuerbote, give the VAT Return Settings its row for "
 	"{0}; a monthly filer files the Sondervorauszahlung of {0} as a Dauerfristverlängerung without the Antrag."
@@ -96,6 +107,8 @@ MESSAGES = (
 	OPENING_UNFLAGGED,
 	PRIOR_COMPLETE,
 	PRIOR_MISSING,
+	PRIOR_PAYMENTS_CLEAN,
+	PRIOR_PAYMENTS_FOUND,
 	DAUERFRIST_INFO,
 	ANNUAL_SETTINGS_MISSING,
 	CARRY_FORWARDS_COMPLETE,
@@ -228,6 +241,39 @@ def missing_months(
 	return tuple(found)
 
 
+@dataclass(frozen=True, slots=True)
+class PriorPayment:
+	"""A voucher on the accounts of the Vorauszahlungen that pays Kz 83 of a Voranmeldung filed before Steuerbote, its
+	``amount`` debit less credit, a refund negative."""
+
+	voucher: str
+	amount: Decimal
+	filing: PriorFiling
+
+
+def prior_payments(lines: Iterable[LedgerLine], filings: Iterable[PriorFiling]) -> tuple[PriorPayment, ...]:
+	"""The vouchers of ``lines``, the postings on the accounts of the Vorauszahlungen, that pay Kz 83 of the latest
+	filing of a period before Steuerbote: in the first year a payment there is the Vorauszahlung of the last periods
+	before the start, which the Vorauszahlungssoll of the new year does not hold (USt 2 E, Zeilen 124 bis 126). A voucher
+	pays a filing when its amount over all its lines is that Kz 83, not zero; each voucher and each filing pays once, the
+	latest periods first, since the new year pays them, and the vouchers in the order given."""
+	amounts: dict[str, Decimal] = {}
+	for entry in lines:
+		key = entry.voucher or ""
+		amounts[key] = amounts.get(key, ZERO) + entry.debit - entry.credit
+	found = []
+	for filed in reversed(latest(filings)):
+		if not filed.kz83:
+			continue
+		voucher = next(
+			(key for key, amount in amounts.items() if key and amount == filed.kz83),
+			None,
+		)
+		if voucher is not None:
+			found.append(PriorPayment(voucher, amounts.pop(voucher), filed))
+	return tuple(sorted(found, key=lambda payment: payment.filing.period.start))
+
+
 def missing_carry_forwards(stated: Iterable[CarryForward], as_of: date) -> tuple[CarryForwardKind, ...]:
 	"""The kinds of FIRST_YEAR_KINDS without an amount stated as of the day, in their order."""
 	known = {carry_forward.kind for carry_forward in stated if carry_forward.as_of == as_of}
@@ -243,6 +289,7 @@ class Item(Enum):
 	START = "start"
 	OPENING_ENTRIES = "opening_entries"
 	PRIOR_RETURNS = "prior_returns"
+	PRIOR_PAYMENTS = "prior_payments"
 	DAUERFRIST = "dauerfrist"
 	CARRY_FORWARDS = "carry_forwards"
 	PREPAYMENTS = "prepayments"
@@ -260,6 +307,7 @@ class Facts:
 	missing_prior: tuple[tuple[int, int], ...] = ()
 	annual_settings: bool = False
 	missing_carry_forwards: tuple[CarryForwardKind, ...] = ()
+	prior_payments: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,6 +341,12 @@ def checklist(facts: Facts) -> tuple[Check, ...]:
 		checks.append(Check(Item.PRIOR_RETURNS, False, PRIOR_MISSING, (labels,)))
 	else:
 		checks.append(Check(Item.PRIOR_RETURNS, True, PRIOR_COMPLETE, (day,)))
+	if facts.prior_payments:
+		checks.append(
+			Check(Item.PRIOR_PAYMENTS, False, PRIOR_PAYMENTS_FOUND, (", ".join(facts.prior_payments),))
+		)
+	else:
+		checks.append(Check(Item.PRIOR_PAYMENTS, True, PRIOR_PAYMENTS_CLEAN, (start.year,)))
 	checks.append(Check(Item.DAUERFRIST, None, DAUERFRIST_INFO, (start.year,)))
 	if not facts.annual_settings:
 		checks.append(Check(Item.CARRY_FORWARDS, False, ANNUAL_SETTINGS_MISSING, (year_end,)))

@@ -11,7 +11,7 @@ rows of report_rows(). only_deviations() keeps the rows whose change to the prev
 thresholds of the VAT Return Settings, in euros and relative to the previous period, with their vouchers.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -126,3 +126,17 @@ def only_deviations(rows: Sequence[dict[str, Any]], thresholds: Thresholds) -> l
 def note_row(text: str) -> dict[str, Any]:
 	"""A row of its own that tells the reader something about the report, such as a comparison it lacks."""
 	return {**dict.fromkeys(COLUMNS), "label": text, "indent": 0, "parent_kennzahl": None, "bold": 0}
+
+
+def blocked_notes(accounts: Iterable[str], names: Mapping[str, str]) -> list[str]:
+	"""A note per account watched at the blocking level that holds the return of the period back, as its table „Nicht
+	zugeordnet“ lists it: the same rule, including the release of a balance carried into the period
+	(steuerbote/ustva/carried.py), so that report and return agree."""
+	found = []
+	for number in accounts:
+		account = f"Konto {number} {names[number]}" if names.get(number) else f"Konto {number}"
+		found.append(
+			f"{account} ist auf der Stufe „Sperrt“ beobachtet und hat im Zeitraum einen Saldo, der in keine Kennzahl "
+			"eingeht: Die Voranmeldung ist nicht bereit, bis das Konto zugeordnet ist."
+		)
+	return found

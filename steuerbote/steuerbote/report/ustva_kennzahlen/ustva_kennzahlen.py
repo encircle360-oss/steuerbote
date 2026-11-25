@@ -22,10 +22,10 @@ from frappe.query_builder.functions import Min
 from frappe.utils import cint, formatdate
 
 from steuerbote import prior_filings, ustva
-from steuerbote.ledger import account_names, load_lines
+from steuerbote.ledger import account_labels, account_names, load_lines
 from steuerbote.setup.start import before_start
 from steuerbote.steuerbote.doctype.vat_return import bridge
-from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for, settings_for
+from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for, released, settings_for
 from steuerbote.steuerbote.report.ustva_kennzahlen import comparison
 from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import (
 	contributions,
@@ -56,7 +56,9 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 	settings = settings_for(company)
 	mapping = mapping_for(company, period.year)
 	lines = load_lines(company, period.start, period.end)
-	result = _calculate(lines, mapping, period, settings)
+	result, released_hints = released(
+		company, _calculate(lines, mapping, period, settings), lines, mapping, period
+	)
 	previous, previous_note = _compared(company, period.previous(), mapping, settings)
 	previous_year, previous_year_note = _compared(company, comparison.year_before(period), mapping, settings)
 	by_kennzahl = contributions(lines, mapping)
@@ -79,6 +81,8 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 	if cint(filters.get(ONLY_DEVIATIONS)):
 		rows = comparison.only_deviations(rows, _thresholds(settings))
 	notes = [comparison.note_row(note) for note in (previous_note, previous_year_note) if note]
+	blocked = comparison.blocked_notes(result.unmapped, account_labels(company, result.unmapped))
+	notes += [comparison.note_row(text) for text in (*blocked, *(hint.text for hint in released_hints))]
 	return get_columns(), notes + rows
 
 

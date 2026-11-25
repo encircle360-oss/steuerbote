@@ -518,6 +518,18 @@ class FindingsTest(TestCase):
 			],
 		)
 
+	def test_the_payments_of_the_year_without_those_of_returns_filed_before_steuerbote(self):
+		filed = PriorFiling(Period.month(2025, 12), "VVS-2025-00012", date(2026, 2, 10), Decimal("1200.00"))
+		lines = [
+			line("1780", debit="1200", voucher="Journal Entry:J1"),
+			line("1781", debit="2681", voucher="Journal Entry:J2"),
+		]
+		kept = bridge.without_prior_payments(
+			lines, [PriorPayment("Journal Entry:J1", Decimal("1200.00"), filed)]
+		)
+		self.assertEqual(kept, lines[1:])
+		self.assertEqual(bridge.paid(kept, ("1780", "1781")), Decimal("2681.00"))
+
 	def test_every_message_is_a_template_of_its_own(self):
 		self.assertEqual(
 			MESSAGES,

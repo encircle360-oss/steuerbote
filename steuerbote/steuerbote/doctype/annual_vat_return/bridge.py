@@ -39,6 +39,7 @@ from steuerbote.jahresmeldung.findings import DATA_LENGTH
 from steuerbote.jahresmeldung.findings import Finding as AnnualFinding
 from steuerbote.jahresmeldung.findings import Severity as AnnualSeverity
 from steuerbote.jahresmeldung.overrides import Columns, correction_of, reported, to_amount
+from steuerbote.setup.start import PriorPayment
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import Address
 from steuerbote.steuerbote.doctype.vat_return_settings import rules as settings_rules
 from steuerbote.ustjahr.calculation import (
@@ -216,6 +217,11 @@ BEFORE_START = (
 	"The books of the company begin in ERPNext on {0}, after the first day of {1}: the return needs the ledger of the "
 	"whole year. Compute it where the books of the months before are kept, or bring those books into ERPNext."
 )
+PRIOR_PAYMENT = (
+	"Voucher {0} pays {1} euros on the accounts of the Vorauszahlungen, Kz 83 of {2} filed before Steuerbote ({3}): it "
+	"is no Vorauszahlung of {4}, and the comparison of the payments leaves it out. Book such payments on the prior-year "
+	"VAT account."
+)
 MESSAGES = (
 	VERPROBUNG,
 	BLOCKED,
@@ -225,6 +231,7 @@ MESSAGES = (
 	SWITCH_OTHER,
 	RELEASED,
 	BEFORE_START,
+	PRIOR_PAYMENT,
 )
 
 
@@ -630,6 +637,33 @@ def release_findings(found: Iterable[Release], year: int) -> tuple[Finding, ...]
 		)
 		for release in found
 	)
+
+
+def prior_payment_findings(found: Iterable[PriorPayment], year: int) -> tuple[Finding, ...]:
+	"""A hint for each payment of the year on the accounts of the Vorauszahlungen that pays a Voranmeldung filed before
+	Steuerbote (steuerbote/setup/start.py), which the comparison of the payments with the Vorauszahlungssoll leaves out."""
+	return tuple(
+		Finding(
+			"SB-ZAHLUNG-VOR-START",
+			Severity.HINT,
+			PRIOR_PAYMENT,
+			(
+				payment.voucher.partition(":")[2] or payment.voucher,
+				_euros(payment.amount),
+				payment.filing.period.label,
+				payment.filing.name,
+				year,
+			),
+		)
+		for payment in found
+	)
+
+
+def without_prior_payments(lines: Iterable[LedgerLine], found: Iterable[PriorPayment]) -> list[LedgerLine]:
+	"""The postings on the accounts of the Vorauszahlungen without the vouchers that pay a Voranmeldung filed before
+	Steuerbote."""
+	vouchers = {payment.voucher for payment in found}
+	return [line for line in lines if line.voucher not in vouchers]
 
 
 def start_findings(year: int, books_start: date | None) -> tuple[Finding, ...]:
