@@ -23,6 +23,16 @@ data. Every account has one place in it:
   zu vermerken“ and likewise the Verbindlichkeiten „mit einer Restlaufzeit bis zu einem Jahr“ and „von mehr als einem
   Jahr“ (§ 268 Abs. 4 Satz 1, Abs. 5 Satz 1 HGB). The terms are those of steuerbote.hgb.statement.RemainingTerm; the
   E-Bilanz reports no Restlaufzeiten.
+- A netting group: rules that name the same group form one settlement position, whose combined balance decides the
+  side every account of it goes to. „Posten der Aktivseite dürfen nicht mit Posten der Passivseite ... verrechnet
+  werden“ (§ 246 Abs. 2 Satz 1 HGB), but claims and debts towards the same creditor that can be set off against each
+  other (§ 387 BGB; for claims from the Steuerschuldverhältnis § 226 Abs. 1 AO) are no separate Vermögensgegenstand
+  and Schuld, as the commentaries on § 246 HGB accept: the Vorsteuer is deducted from the Umsatzsteuer of the same
+  period (§ 16 Abs. 2 Satz 1 UStG), and what remains of earlier periods and years is set off against the same
+  Finanzamt. The usual assignments of the standard charts therefore show the VAT accounts on the asset or the
+  liability side by the balance of the group. A rule of a group names the position for the opposite balance, so that
+  the group has a position on each side; a netted group is a hint to confirm with the Steuerberatung. Every other
+  account keeps its own sign, a bank account above all (A.13).
 - A Watched account: an account whose position is not decided. A balance on it holds the E-Bilanz and the
   Jahresabschluss back; at the level hint it only adds a hint, as in the VAT Return Mapping since v0.4.0
   (steuerbote/ustva/mapping.py).
@@ -137,6 +147,9 @@ NO_REMAINING_TERM = "Account {0}: {1} is no remaining term."
 NO_FLAG = "Account {0}: whether the balance is owed to or by the shareholders is yes or no, not {1}."
 NO_LEVEL = "Account {0}: the level of a watched account is blocking or hint, not {1}."
 NO_REASON = "Account {0} lies outside the Bilanz and the GuV, but the mapping does not say why."
+NETTING_WITHOUT_OPPOSITE = (
+	"Account {0} belongs to the netting group {1}, so it needs the position for the opposite balance as well."
+)
 TWICE = "Account {0} has more than one row in the Balance Sheet Mapping."
 UNKNOWN_VERSION = "Steuerbote knows no HGB-Taxonomie {0}."
 MESSAGES = (
@@ -148,6 +161,7 @@ MESSAGES = (
 	NO_FLAG,
 	NO_LEVEL,
 	NO_REASON,
+	NETTING_WITHOUT_OPPOSITE,
 	TWICE,
 	UNKNOWN_VERSION,
 )
@@ -229,6 +243,8 @@ class Rule:
 	purpose: Purpose = Purpose.BOTH
 	shareholder: bool = False
 	remaining_term: RemainingTerm | None = None
+	netting: str | None = None
+	"""The netting group of the account, None for an account that keeps its own sign."""
 
 	def __post_init__(self) -> None:
 		number = _require_number(self.account_number)
@@ -251,6 +267,10 @@ class Rule:
 			if term not in REMAINING_TERMS:
 				raise MappingError(NO_REMAINING_TERM, number, term)
 			object.__setattr__(self, "remaining_term", REMAINING_TERMS[term])
+		netting = " ".join(str(self.netting or "").split()) or None
+		if netting is not None and opposite is None:
+			raise MappingError(NETTING_WITHOUT_OPPOSITE, number, netting)
+		object.__setattr__(self, "netting", netting)
 
 	@property
 	def term_value(self) -> str | None:
@@ -579,6 +599,7 @@ ZERO = Decimal(0)
 CATCH_ALL_WORDS = ("nicht zuordenbar", "ohne Zuordnung")
 """The words that mark an Auffangposition in its label (Leitfaden A.10.4)."""
 COMPLETENESS = "§ 246 Abs. 1 Satz 1 HGB"
+NETTING_SOURCE = "§ 246 Abs. 2 Satz 1 HGB; § 387 BGB; § 226 Abs. 1 AO; § 16 Abs. 2 Satz 1 UStG"
 _PURPOSES = MappingProxyType(
 	{Purpose.COMMERCIAL: ("Handelsbilanz", "HB"), Purpose.TAX: ("Steuerbilanz", "SB")}
 )
@@ -636,6 +657,7 @@ class Code(StrEnum):
 	EARLIER_RESULT = "BILANZ-ERGEBNISVORTRAG"
 	NO_CLOSING_ACCOUNT = "BILANZ-ABSCHLUSSKONTO"
 	TAXONOMY = "BILANZ-TAXONOMIE"
+	NETTED = "BILANZ-VERRECHNUNG"
 
 
 @dataclass(frozen=True, slots=True)
@@ -710,19 +732,71 @@ def place(
 			)
 		)
 	balances = _with_earlier_result(books, closing_account, findings)
+	groups = _group_balances(mapping, balances, taxonomy, purpose)
 	placed: list[Placed] = []
 	left_out: list[AccountBalance] = []
 	for balance in balances:
 		if not balance.amount:
 			continue
-		found = list(_findings_of(mapping, balance, taxonomy, purpose, fiscal_year))
-		item = None if _left_out(found) else _placed(mapping, balance, taxonomy)
+		found = list(_findings_of(mapping, balance, taxonomy, purpose, fiscal_year, groups))
+		item = None if _left_out(found) else _placed(mapping, balance, taxonomy, groups)
 		findings.extend(found)
 		if item is None:
 			left_out.append(balance)
 		else:
 			placed.append(item)
+	findings.extend(_netted(placed))
 	return Placement(tuple(placed), tuple(left_out), tuple(findings))
+
+
+def _group_balances(
+	mapping: Mapping, balances: Iterable[AccountBalance], taxonomy: Taxonomy, purpose: Purpose
+) -> dict[str, Decimal]:
+	"""The combined balance of each netting group, of the accounts that count in the balance sheet of the purpose and
+	whose rule names positions it may."""
+	groups: dict[str, Decimal] = {}
+	for balance in balances:
+		rule = mapping.place_of(balance.number) if balance.number else None
+		if (
+			isinstance(rule, Rule)
+			and rule.netting is not None
+			and rule.counts_for(purpose)
+			and not rule_problems(rule, taxonomy, balance.part)
+		):
+			groups[rule.netting] = groups.get(rule.netting, ZERO) + balance.amount
+	return groups
+
+
+def _netted(placed: Iterable[Placed]) -> Iterator[Finding]:
+	"""A hint for each netting group of more than one account with a balance: what it nets, to what and where."""
+	members: dict[str, list[Placed]] = {}
+	for item in placed:
+		if item.rule.netting is not None:
+			members.setdefault(item.rule.netting, []).append(item)
+	for group, items in members.items():
+		if len(items) < 2:
+			continue
+		total = sum((item.amount for item in items), ZERO)
+		concept = items[0].concept
+		side = "Aktivseite" if total >= 0 else "Passivseite"
+		numbers = ", ".join(item.balance.number for item in items)
+		yield Finding(
+			Code.NETTED,
+			Severity.HINT,
+			f"Die Konten der Verrechnungsgruppe „{group}“ ({numbers}) stehen verrechnet mit {euro(abs(total))} auf "
+			f"der {side} ({concept}): Forderungen und Verbindlichkeiten gegenüber demselben Gläubiger, die "
+			"gegeneinander aufgerechnet werden können, bilden eine Position. Lassen Sie die Gruppe von der "
+			"Steuerberatung bestätigen.",
+			NETTING_SOURCE,
+			group,
+			concept,
+			total,
+		)
+
+
+def euro(value: Decimal) -> str:
+	"""An amount as a German text writes it, such as 1.234,56 €."""
+	return f"{value:,.2f}".replace(",", " ").replace(".", ",").replace(" ", ".") + " €"
 
 
 def catch_all(taxonomy: Taxonomy, concept: str) -> bool:
@@ -790,6 +864,7 @@ def _findings_of(
 	taxonomy: Taxonomy,
 	purpose: Purpose,
 	fiscal_year: tuple[date, date] | None,
+	groups: ReadOnlyMapping[str, Decimal],
 ) -> Iterator[Finding]:
 	"""What the balance of an account wants: why it goes to no position, or what to look at where it goes."""
 	name, amount = _named(balance), balance.amount
@@ -860,11 +935,17 @@ def _findings_of(
 				amount,
 			)
 		case _:
-			yield from _rule_findings(place, balance, taxonomy, fiscal_year)
+			yield from _rule_findings(
+				place, balance, taxonomy, fiscal_year, _side_amount(place, balance, groups)
+			)
 
 
 def _rule_findings(
-	rule: Rule, balance: AccountBalance, taxonomy: Taxonomy, fiscal_year: tuple[date, date] | None
+	rule: Rule,
+	balance: AccountBalance,
+	taxonomy: Taxonomy,
+	fiscal_year: tuple[date, date] | None,
+	side_amount: Decimal,
 ) -> Iterator[Finding]:
 	name, amount = _named(balance), balance.amount
 	problems = rule_problems(rule, taxonomy, balance.part)
@@ -880,7 +961,7 @@ def _rule_findings(
 		)
 	if problems:
 		return
-	concept = _concept_for(rule, amount, taxonomy)
+	concept = _concept_for(rule, side_amount, taxonomy)
 	if fiscal_year is not None and not taxonomy.concept(concept).valid_for(*fiscal_year):
 		begin, end = fiscal_year
 		yield Finding(
@@ -911,17 +992,25 @@ def _left_out(found: Iterable[Finding]) -> bool:
 	return any(finding.code is not Code.CATCH_ALL for finding in found)
 
 
-def _placed(mapping: Mapping, balance: AccountBalance, taxonomy: Taxonomy) -> Placed:
+def _placed(
+	mapping: Mapping, balance: AccountBalance, taxonomy: Taxonomy, groups: ReadOnlyMapping[str, Decimal]
+) -> Placed:
 	rule = mapping.place_of(balance.number)
-	concept = _concept_for(rule, balance.amount, taxonomy)
+	concept = _concept_for(rule, _side_amount(rule, balance, groups), taxonomy)
 	position = position_of(taxonomy, concept)
 	return Placed(balance, rule, concept, position, _value(taxonomy, position, balance.amount))
 
 
+def _side_amount(rule: Rule, balance: AccountBalance, groups: ReadOnlyMapping[str, Decimal]) -> Decimal:
+	"""The balance that decides the side of an account: that of its netting group, else its own."""
+	return groups.get(rule.netting, balance.amount) if rule.netting is not None else balance.amount
+
+
 def _concept_for(rule: Rule, amount: Decimal, taxonomy: Taxonomy) -> str:
-	"""The position a balance goes to: the opposite position for one on the other side of the rule's position."""
+	"""The position a balance goes to: the opposite position for one on the other side of the rule's position. A
+	balanced netting group goes to the debit side, where its accounts add up to nothing."""
 	side = taxonomy.concept(rule.concept).balance
-	other_side = (amount < 0) if side is Balance.DEBIT else (amount > 0)
+	other_side = (amount < 0) if side is Balance.DEBIT else (amount >= 0 if rule.netting else amount > 0)
 	return rule.opposite if rule.opposite is not None and other_side else rule.concept
 
 
@@ -985,16 +1074,25 @@ class DefaultRule:
 	purpose: Purpose = Purpose.BOTH
 	shareholder: bool = False
 	remaining_term: RemainingTerm | None = None
+	netting: str | None = None
 
 	def __post_init__(self) -> None:
 		accounts = _accounts(self.accounts)
 		object.__setattr__(self, "accounts", accounts)
 		rule = self.rule(accounts.first)
-		for name in ("concept", "opposite", "purpose", "remaining_term"):
+		for name in ("concept", "opposite", "purpose", "remaining_term", "netting"):
 			object.__setattr__(self, name, getattr(rule, name))
 
 	def rule(self, number: str) -> Rule:
-		return Rule(number, self.concept, self.opposite, self.purpose, self.shareholder, self.remaining_term)
+		return Rule(
+			number,
+			self.concept,
+			self.opposite,
+			self.purpose,
+			self.shareholder,
+			self.remaining_term,
+			self.netting,
+		)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1083,7 +1181,8 @@ class Defaults:
 		return Mapping(self.chart, tuple(rules), tuple(watched), tuple(excluded), self.taxonomy_version)
 
 	def rows(self) -> dict[str, list[dict]]:
-		"""The entries as plain data, by kind and in their order, for the digest that pins a version of them."""
+		"""The entries as plain data, by kind and in their order, for the digest that pins a version of them; a rule
+		names its netting group only where it has one, so that the digest of defaults without one stays as it was."""
 		return {
 			"rules": [
 				{
@@ -1093,6 +1192,7 @@ class Defaults:
 					"purpose": rule.purpose.value,
 					"shareholder": rule.shareholder,
 					"remaining_term": rule.rule(rule.accounts.first).term_value,
+					**({"netting": rule.netting} if rule.netting else {}),
 				}
 				for rule in self.rules
 			],

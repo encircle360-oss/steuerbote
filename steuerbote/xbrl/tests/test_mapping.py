@@ -245,6 +245,7 @@ class MappingTest(TestCase):
 				mapping.NO_FLAG,
 				mapping.NO_LEVEL,
 				mapping.NO_REASON,
+				mapping.NETTING_WITHOUT_OPPOSITE,
 				mapping.TWICE,
 				mapping.UNKNOWN_VERSION,
 			},
@@ -953,7 +954,6 @@ class DefaultsTest(TestCase):
 						"purpose": "both",
 						"shareholder": False,
 						"remaining_term": None,
-						"netting": None,
 					},
 					{
 						"accounts": "1200",
@@ -962,7 +962,6 @@ class DefaultsTest(TestCase):
 						"purpose": "both",
 						"shareholder": False,
 						"remaining_term": "up to one year",
-						"netting": None,
 					},
 					{
 						"accounts": "3150",
@@ -971,7 +970,6 @@ class DefaultsTest(TestCase):
 						"purpose": "both",
 						"shareholder": False,
 						"remaining_term": "up to one year",
-						"netting": None,
 					},
 				],
 				"watched": [{"accounts": "1460", "level": "hint"}],

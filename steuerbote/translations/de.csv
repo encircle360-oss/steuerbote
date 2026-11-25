@@ -114,6 +114,7 @@
 "Account or Group","Konto oder Gruppe"
 "Account or Tax Check","Konto oder Verprobung"
 "Account {0}","Konto {0}"
+"Account {0} belongs to the netting group {1}, so it needs the position for the opposite balance as well.","Konto {0} gehört zur Verrechnungsgruppe {1} und braucht daher auch die Position bei Gegensaldo."
 "Account {0} cannot feed field {1} in line {2}: the form computes it, the company states it, or Steuerbote does not file it.","Konto {0} kann nicht in das Feld {1} in Zeile {2} gehen: Der Vordruck rechnet es aus, das Unternehmen gibt es an, oder Steuerbote übermittelt es nicht."
 "Account {0} does not belong to company {1}.","Das Konto {0} gehört nicht zum Unternehmen {1}."
 "Account {0} feeds Kennzahl {1} of the Voranmeldung, so its line comes from that mapping rule.","Konto {0} geht in Kennzahl {1} der Voranmeldung, seine Zeile kommt deshalb aus dieser Zuordnung."
