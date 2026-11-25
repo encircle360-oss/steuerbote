@@ -610,6 +610,7 @@
 "Employment Types Not Counted","Nicht gezählte Arten der Beschäftigung"
 "Empty while the shareholder holds the shares.","Leer, solange der Anteilseigner die Anteile hält."
 "End of the Period","Ende der Periode"
+"Enter a Kennzahl without postings as a row by hand: choose the Kennzahl and give the amount as an override with its reason. Calculate fills the other rows.","Eine Kennzahl ohne Buchungen tragen Sie als Zeile von Hand ein: Kennzahl wählen und den Betrag als Korrektur mit Begründung angeben. Die übrigen Zeilen füllt „Berechnen“."
 "Enter the Annual Filing Settings of {0} first.","Bitte zuerst die Einstellungen Jahresmeldungen von {0} anlegen."
 "Enter the Annual Filing Settings of {0} with its legal form first.","Bitte zuerst die Einstellungen Jahresmeldungen von {0} mit der Rechtsform erfassen."
 "Enter the Auftragsnummer of the order, as Meine Daten, Aufträge & Abrufe shows it.","Tragen Sie die Auftragsnummer des Auftrags ein, wie sie „Meine Daten“, „Aufträge & Abrufe“ zeigt."
