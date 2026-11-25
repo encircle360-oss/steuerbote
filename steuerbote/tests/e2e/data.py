@@ -31,7 +31,7 @@ WORKSPACE_SECTIONS = {
 		"Bilanzzuordnung",
 		"Zuord. Ertragsteuern",
 	),
-	"Einrichtung": ("Einrichten", "Einstellungen", "Kontenzuordnung"),
+	"Einrichtung": ("Einrichten", "Einstellungen", "Kontenzuordnung", "Vor Steuerbote"),
 }
 SHORTCUTS = tuple(label for labels in WORKSPACE_SECTIONS.values() for label in labels)
 # The sidebar Steuerbote (steuerbote/steuerbote/sidebar/steuerbote) as the German desk shows it to the Administrator:
@@ -60,7 +60,7 @@ SIDEBAR = {
 		"KSt/GewSt-Nachweis",
 		"Fristerinnerungen",
 	),
-	"Einrichtung": ("Einrichten", "Einstellungen", "Kontenzuordnung"),
+	"Einrichtung": ("Einrichten", "Einstellungen", "Kontenzuordnung", "Vor Steuerbote"),
 }
 # The shortcut to the page Steuerbote einrichten, which only a System Manager or an Accounts Manager opens.
 SETUP_SHORTCUT = "Einrichten"
