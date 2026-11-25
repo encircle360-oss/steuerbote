@@ -179,6 +179,26 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 			doc.calculate()
 		self.assertEqual(rollback.call_count, 3)
 
+	def test_pruefen_refuses_an_e_bilanz_whose_wirtschaftsjahr_no_version_serves_any_longer(self):
+		"""An E-Bilanz calculated by an earlier release for a Wirtschaftsjahr Steuerbote no longer has a taxonomy for:
+		Berechnen refuses it, and so does Prüfen, before an ELSTER Transmission is recorded, instead of checking the
+		calculation of the earlier release."""
+		doc = self.calculated()
+		before = frappe.db.count("ELSTER Transmission", {"document": doc.name})
+		with (
+			patch(
+				"steuerbote.steuerbote.doctype.electronic_balance_sheet.electronic_balance_sheet.versions.allowed_for",
+				return_value=False,
+			),
+			patch("frappe.enqueue") as enqueue,
+			self.assertRaisesRegex(
+				frappe.ValidationError, "Steuerbote has no HGB-Taxonomie for the Wirtschaftsjahr"
+			),
+		):
+			doc.transmit("validate")
+		enqueue.assert_not_called()
+		self.assertEqual(frappe.db.count("ELSTER Transmission", {"document": doc.name}), before)
+
 	def test_is_due_with_the_koerperschaftsteuererklaerung_of_the_year(self):
 		"""FAQ zur E-Bilanz, Tz. 5: seven months after the year, moved to the next working day."""
 		self.assertEqual(getdate(new_document().deadline), date(2027, 8, 2))
