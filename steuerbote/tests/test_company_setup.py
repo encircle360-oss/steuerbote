@@ -263,6 +263,30 @@ class CompanySetupTest(IntegrationTestCase):
 			"the Bundesland and the Steuernummer are still to be entered",
 		)
 
+	def test_the_status_before_the_setup_says_what_it_would_make_and_writes_nothing(self):
+		before = setup.setup_status(SKR03_COMPANY)
+		self.assertTrue(before["before"])
+		self.assertEqual(
+			[(step["key"], step["outcome"]) for step in before["steps"]],
+			[
+				("vat_return_settings", "created"),
+				("vat_return_mapping", "created"),
+				("filing_period", "undecided"),
+			],
+		)
+		self.assertFalse(frappe.db.exists(SETTINGS, SKR03_COMPANY))
+		self.assertFalse(frappe.db.exists(MAPPING, SKR03_COMPANY))
+		setup.set_up(SKR03_COMPANY)
+		after = setup.setup_status(SKR03_COMPANY)
+		self.assertEqual(
+			[(step["key"], step["outcome"]) for step in after["steps"]][:2],
+			[("vat_return_settings", "skipped"), ("vat_return_mapping", "skipped")],
+		)
+
+	def test_the_status_needs_a_company(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "There is no company"):
+			setup.setup_status()
+
 	def test_leaves_the_settings_and_the_mapping_a_company_has(self):
 		make_settings(SET_UP_COMPANY, [(2026, "quarterly", 1)])
 		make_mapping(SET_UP_COMPANY)
@@ -296,7 +320,7 @@ class CompanySetupTest(IntegrationTestCase):
 		result = result_of(done, "vat_return_mapping")
 		self.assertEqual((result.outcome, result.document), (Outcome.CREATED, (MAPPING, SET_UP_COMPANY)))
 		mapping = frappe.get_doc(MAPPING, SET_UP_COMPANY)
-		self.assertEqual(mapping.defaults_version, "SKR03 2026.3")
+		self.assertEqual(mapping.defaults_version, "SKR03 2026.4")
 		self.assertEqual(
 			[(row.account_number, row.kennzahl) for row in mapping.rules], [("8400", "81"), ("1576", "66")]
 		)
@@ -305,7 +329,7 @@ class CompanySetupTest(IntegrationTestCase):
 		self.assertEqual(
 			texts_of(done, "vat_return_mapping"),
 			[
-				f"The VAT Return Mapping of {SET_UP_COMPANY} had no rows and now holds the defaults SKR03 2026.3: "
+				f"The VAT Return Mapping of {SET_UP_COMPANY} had no rows and now holds the defaults SKR03 2026.4: "
 				"account rules 2, tax checks 1, watched accounts 1.",
 				f"{len(mapping.load_defaults())} accounts of the defaults do not exist in the company and were left "
 				"out.",

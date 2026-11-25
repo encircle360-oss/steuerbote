@@ -42,7 +42,7 @@ from typing import Protocol
 
 from steuerbote.ustva.calculation import AccountBalance, DerivedBase, require_cents
 from steuerbote.ustva.kennzahlen import Kennzahl
-from steuerbote.ustva.mapping import AccountRule, Mapping, is_account_number
+from steuerbote.ustva.mapping import DERIVED_TURNOVER_KENNZAHLEN, AccountRule, Mapping, is_account_number
 from steuerbote.ustva.period import Period, day_label
 from steuerbote.ustva.residence import Finding, Problem, Residence, Source
 from steuerbote.ustva.rounding import CENT, EURO, HUNDRED, ZERO, tax_from_base, to_cents
@@ -83,6 +83,7 @@ class Code(StrEnum):
 	PERIOD_NOT_ENDED = "ZEITRAUM-NICHT-ABGELAUFEN"
 	ZM_WITHOUT_RHYTHM = "ZM-OHNE-RHYTHMUS"
 	CORRECTION_UNCHANGED = "BERICHTIGUNG-OHNE-AENDERUNG"
+	OUTPUT_TAX_WITHOUT_REVENUE = "UMSATZ-OHNE-ERLOESKONTO"
 
 
 # A turnover that loses its exemption without a valid USt-IdNr. of the customer and an override that hides a change of
@@ -115,6 +116,7 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.PERIOD_NOT_ENDED: Severity.WARNING,
 		Code.ZM_WITHOUT_RHYTHM: Severity.WARNING,
 		Code.CORRECTION_UNCHANGED: Severity.HINT,
+		Code.OUTPUT_TAX_WITHOUT_REVENUE: Severity.HINT,
 	}
 )
 # The order of the hints of a return: errors, then warnings, then hints.
@@ -406,12 +408,16 @@ def watched_account_hints(
 
 
 def derived_base_hints(derived: Iterable[DerivedBase], figures: Figures) -> list[Hint]:
-	"""A hint per base taken from the tax, because the lines of its voucher did not tell it, in the order given.
+	"""A hint per base taken from the tax, because the lines of its voucher did not tell it, and per base of turnover,
+	which a voucher books without a revenue account (mapping.DERIVED_TURNOVER_KENNZAHLEN), in the order given.
 
 	The ledger keys a voucher as "<voucher type>:<voucher name>" (steuerbote.ledger), and the hint names both.
 	"""
 	found: list[Hint] = []
 	for base in derived:
+		if base.kennzahl in DERIVED_TURNOVER_KENNZAHLEN:
+			found.append(_turnover_hint(base, figures))
+			continue
 		if not base.from_tax:
 			continue
 		books = "Der Beleg bucht" if base.voucher is not None else "Die Buchungen ohne Beleg buchen"
@@ -434,6 +440,22 @@ def derived_base_hints(derived: Iterable[DerivedBase], figures: Figures) -> list
 		voucher_type, _, voucher_no = (base.voucher or "").partition(":")
 		found.append(Hint(Code.BASE_FROM_TAX, text, voucher_type, voucher_no))
 	return found
+
+
+def _turnover_hint(base: DerivedBase, figures: Figures) -> Hint:
+	accounts = (
+		f"dem Konto {base.accounts[0]}"
+		if len(base.accounts) == 1
+		else f"den Konten {', '.join(base.accounts[:-1])} und {base.accounts[-1]}"
+	)
+	text = (
+		f"Kz {base.kennzahl}: Der Beleg bucht {figures.money(base.tax)} Umsatzsteuer auf „{base.label}“, zu der kein "
+		f"Erlöskonto der Verprobung gehört. Seine Buchungszeilen auf {accounts} ergeben dazu "
+		f"{figures.money(base.base)} zu {figures.percent(base.rate)}, und Steuerbote meldet sie in Kz {base.kennzahl}, "
+		"beim Verkauf eines Anlageguts über eine Ausgangsrechnung dessen Verkaufspreis; bitte prüfen Sie sie am Beleg."
+	)
+	voucher_type, _, voucher_no = (base.voucher or "").partition(":")
+	return Hint(Code.OUTPUT_TAX_WITHOUT_REVENUE, text, voucher_type, voucher_no)
 
 
 # The decisions of residence.place() and the checks of calculate() on sections C and D as the hints say them.

@@ -10,7 +10,9 @@ from steuerbote.ustva.calculation import (
 	DerivedBase,
 	Deviation,
 	LedgerLine,
+	StatutoryTax,
 	UstvaResult,
+	booked_taxes,
 	calculate,
 	derive_bases,
 	purchase_vouchers,
@@ -1322,3 +1324,201 @@ class ResultTest(TestCase):
 		self.assertIsInstance(result, UstvaResult)
 		with self.assertRaises(AttributeError):
 			result.output_tax = d("1")  # type: ignore[misc]
+
+
+OUTPUT_19 = "Umsatzsteuer 19 %"
+OUTPUT_7 = "Umsatzsteuer 7 %"
+
+
+def asset_sale(voucher: str, *, receivable: str = "1400", tax_account: str = "1776") -> list[LedgerLine]:
+	"""A fixed asset sold for 800.00 net and 152.00 tax as ERPNext 16 posts a Sales Invoice whose row carries the
+	asset (get_gl_entries_on_asset_disposal): the receivable with the gross amount, the asset account credited with
+	the cost of 1,500.00, the accumulated depreciation of 520.00 debited, the book loss of 180.00 on the disposal
+	account and the tax; no revenue account."""
+	return purchase(
+		voucher,
+		(receivable, "952.00", "0"),
+		("0490", "0", "1500.00"),
+		("0499", "520.00", "0"),
+		("2310", "180.00", "0"),
+		(tax_account, "0", "152.00"),
+	)
+
+
+class OutputTaxWithoutRevenueAccountTest(TestCase):
+	"""A voucher that books output tax at a statutory rate beyond what its revenue accounts carry, as the sale of a
+	fixed asset through a Sales Invoice does: the lines that explain the tax give the base of Kz 81 or 86. Where they
+	do not, the tax stays a deviation; nothing is taken from the tax alone."""
+
+	def test_an_asset_sold_through_a_sales_invoice_goes_to_kz_81(self):
+		result = calculate(asset_sale("Sales Invoice:SI-1"), SKR03)
+		self.assertEqual(result.reported("81"), d("800"))
+		self.assertEqual(result.output_tax, d("152.00"))
+		self.assertEqual(result.kz83, d("152.00"))
+		check = check_of(result, "1776")
+		self.assertEqual(
+			check.derived,
+			(
+				DerivedBase(
+					OUTPUT_19,
+					"Sales Invoice:SI-1",
+					"81",
+					d("19"),
+					d("152.00"),
+					d("800.00"),
+					("0490", "0499", "2310"),
+				),
+			),
+		)
+		self.assertEqual((check.computed_tax, check.booked_tax), (d("152.00"), d("152.00")))
+		self.assertTrue(result.ready)
+
+	def test_a_book_gain_on_the_disposal_account_gives_the_same_base(self):
+		lines = purchase(
+			"Sales Invoice:SI-1",
+			("1400", "952.00", "0"),
+			("0490", "0", "1200.00"),
+			("0499", "900.00", "0"),
+			("2315", "0", "500.00"),
+			("1776", "0", "152.00"),
+		)
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("81"), d("800"))
+		self.assertEqual(check_of(result, "1776").derived[0].base, d("800.00"))
+		self.assertTrue(result.ready)
+
+	def test_an_asset_sold_through_a_journal_entry_goes_to_kz_81(self):
+		result = calculate(asset_sale("Journal Entry:JE-1", receivable="1200"), SKR03)
+		self.assertEqual(result.reported("81"), d("800"))
+		self.assertTrue(result.ready)
+
+	def test_skr04_takes_the_asset_sale_into_kz_81(self):
+		result = calculate(asset_sale("Sales Invoice:SI-1", receivable="1200", tax_account="3806"), SKR04)
+		self.assertEqual(result.reported("81"), d("800"))
+		self.assertTrue(result.ready)
+
+	def test_an_invoice_with_revenue_and_an_asset_derives_only_the_remaining_tax(self):
+		lines = [
+			*asset_sale("Sales Invoice:SI-1"),
+			line("8400", credit="200.00", voucher="Sales Invoice:SI-1"),
+			line("1400", debit="238.00", voucher="Sales Invoice:SI-1"),
+			line("1776", credit="38.00", voucher="Sales Invoice:SI-1"),
+		]
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("81"), d("1000"))
+		(derived,) = check_of(result, "1776").derived
+		self.assertEqual((derived.tax, derived.base), (d("152.00"), d("800.00")))
+		self.assertTrue(result.ready)
+
+	def test_a_resale_of_costs_at_7_percent_goes_to_kz_86(self):
+		lines = purchase(
+			"Sales Invoice:SI-1", ("1400", "107.00", "0"), ("4900", "0", "100.00"), ("1771", "0", "7.00")
+		)
+		result = calculate(lines, SKR03)
+		self.assertEqual(result.reported("86"), d("100"))
+		self.assertEqual(check_of(result, "1771").derived[0].label, OUTPUT_7)
+		self.assertTrue(result.ready)
+
+	def test_a_tax_without_any_turnover_stays_a_deviation(self):
+		lines = purchase("Journal Entry:JE-1", ("1200", "19.00", "0"), ("1776", "0", "19.00"))
+		result = calculate(lines, SKR03)
+		check = check_of(result, "1776")
+		self.assertEqual(check.derived, ())
+		self.assertEqual(check.deviations, (Deviation("Journal Entry:JE-1", d("0.00"), d("19.00")),))
+		self.assertNotIn("81", result.values)
+		self.assertFalse(result.ready)
+
+	def test_lines_that_do_not_explain_the_tax_leave_it_a_deviation(self):
+		lines = purchase(
+			"Journal Entry:JE-1", ("1200", "69.00", "0"), ("1590", "0", "50.00"), ("1776", "0", "19.00")
+		)
+		result = calculate(lines, SKR03)
+		self.assertEqual(check_of(result, "1776").derived, ())
+		self.assertFalse(result.ready)
+
+	def test_input_tax_booked_on_the_output_tax_account_is_no_turnover(self):
+		lines = purchase(
+			"Purchase Invoice:PI-1", ("4980", "100.00", "0"), ("1776", "19.00", "0"), ("1600", "0", "119.00")
+		)
+		result = calculate(lines, SKR03)
+		check = check_of(result, "1776")
+		self.assertEqual(check.derived, ())
+		self.assertEqual(check.deviations, (Deviation("Purchase Invoice:PI-1", d("0.00"), d("-19.00")),))
+		self.assertFalse(result.ready)
+
+	def test_a_correction_of_the_tax_account_stays_a_deviation(self):
+		lines = purchase("Journal Entry:JE-1", ("1776", "100.00", "0"), ("1790", "0", "100.00"))
+		result = calculate(lines, SKR03)
+		self.assertEqual(check_of(result, "1776").derived, ())
+		self.assertFalse(result.ready)
+
+	def test_a_credit_note_of_an_asset_sale_stays_a_deviation(self):
+		lines = purchase(
+			"Sales Invoice:SI-2",
+			("1400", "0", "952.00"),
+			("0490", "1500.00", "0"),
+			("0499", "0", "520.00"),
+			("2310", "0", "180.00"),
+			("1776", "152.00", "0"),
+		)
+		result = calculate(lines, SKR03)
+		self.assertEqual(check_of(result, "1776").derived, ())
+		self.assertFalse(result.ready)
+
+	def test_lines_without_voucher_take_nothing_from_their_tax(self):
+		lines = [line("1400", debit="119.00"), line("4900", credit="100.00"), line("1776", credit="19.00")]
+		result = calculate(lines, SKR03)
+		self.assertEqual(check_of(result, "1776").derived, ())
+		self.assertFalse(result.ready)
+
+	def test_a_cent_of_rounding_on_a_revenue_voucher_derives_nothing(self):
+		lines = purchase(
+			"Sales Invoice:SI-1",
+			("1400", "119.06", "0"),
+			("8400", "0", "100.00"),
+			("4900", "0", "0.05"),
+			("1776", "0", "19.01"),
+		)
+		result = calculate(lines, SKR03)
+		check = check_of(result, "1776")
+		self.assertEqual(check.derived, ())
+		self.assertTrue(check.passed)
+		self.assertEqual(result.reported("81"), d("100"))
+
+	def test_a_revenue_voucher_whose_remaining_tax_the_lines_do_not_explain_keeps_its_deviation(self):
+		lines = purchase(
+			"Sales Invoice:SI-1", ("1400", "130.00", "0"), ("8400", "0", "100.00"), ("1776", "0", "30.00")
+		)
+		check = check_of(calculate(lines, SKR03), "1776")
+		self.assertEqual(check.derived, ())
+		self.assertEqual(check.deviations, (Deviation("Sales Invoice:SI-1", d("19.00"), d("30.00")),))
+
+	def test_the_tax_as_booked_goes_with_the_derived_base(self):
+		lines = [
+			*asset_sale("Sales Invoice:SI-1"),
+			line("8400", credit="200.00", voucher="Sales Invoice:SI-1"),
+			line("1400", debit="238.00", voucher="Sales Invoice:SI-1"),
+			line("1776", credit="38.00", voucher="Sales Invoice:SI-1"),
+		]
+		result = calculate(lines, SKR03, statutory_tax=StatutoryTax.AS_BOOKED)
+		self.assertEqual(result.values["81"].tax, d("190.00"))
+		self.assertEqual(result.kz83, d("190.00"))
+		self.assertEqual(
+			[(share.account, share.tax) for share in booked_taxes(lines, SKR03)],
+			[("8400", d("38.00")), (None, d("152.00"))],
+		)
+
+	def test_derive_bases_gives_what_calculate_derives_for_turnover(self):
+		lines = [*asset_sale("Sales Invoice:SI-1"), *asset_sale("Journal Entry:JE-1", receivable="1200")]
+		self.assertEqual(derive_bases(lines, SKR03), calculate(lines, SKR03).derived)
+		self.assertEqual(dict(calculate(lines, SKR03).derived_bases), {"81": d("1600.00")})
+
+	def test_a_mapping_without_a_derived_base_for_turnover_keeps_the_deviation(self):
+		mapping = Mapping(
+			"own",
+			(AccountRule("8400", "81", Side.CREDIT),),
+			(TaxCheck(OUTPUT_19, ("8400",), ("1776",)),),
+		)
+		result = calculate(asset_sale("Sales Invoice:SI-1"), mapping)
+		self.assertEqual(check_of(result, "1776").derived, ())
+		self.assertFalse(result.ready)
