@@ -85,6 +85,7 @@ class IntegrationTestIncomeTaxSetup(IntegrationTestCase):
 				"deadlines",
 				"income_tax_mapping",
 				"balance_sheet_mapping",
+				"exchange_accounts",
 				"vat_id_label",
 				"erpnext_germany_vat_id_check",
 				"vat_id_automatic_check",
@@ -97,7 +98,7 @@ class IntegrationTestIncomeTaxSetup(IntegrationTestCase):
 		result = result_of(done, "income_tax_mapping")
 		self.assertEqual((result.outcome, result.document), (Outcome.CREATED, (MAPPING, SKR03_COMPANY)))
 		mapping = frappe.get_doc(MAPPING, SKR03_COMPANY)
-		self.assertEqual((mapping.chart, mapping.defaults_version), ("SKR03", "SKR03 2026.2"))
+		self.assertEqual((mapping.chart, mapping.defaults_version), ("SKR03", "SKR03 2026.3"))
 		self.assertEqual(
 			[(row.account_number, row.category) for row in mapping.rules],
 			[("2200", "kst"), ("4320", "gewst"), ("2654", "trading_unclassified")],
@@ -138,7 +139,7 @@ class IntegrationTestIncomeTaxSetup(IntegrationTestCase):
 		result = result_of(setup.run(SKR03_COMPANY, TODAY), "income_tax_mapping")
 		self.assertEqual((result.outcome, result.document), (Outcome.CREATED, (MAPPING, SKR03_COMPANY)))
 		mapping = frappe.get_doc(MAPPING, SKR03_COMPANY)
-		self.assertEqual(mapping.defaults_version, "SKR03 2026.2")
+		self.assertEqual(mapping.defaults_version, "SKR03 2026.3")
 		self.assertEqual(
 			[(row.account_number, row.category) for row in mapping.rules],
 			[("2200", "kst"), ("4320", "gewst"), ("2654", "trading_unclassified")],
@@ -146,7 +147,7 @@ class IntegrationTestIncomeTaxSetup(IntegrationTestCase):
 		self.assertEqual(
 			result.notes,
 			(
-				Note(step.MAPPING_FILLED, (SKR03_COMPANY, "SKR03 2026.2", 3, 1)),
+				Note(step.MAPPING_FILLED, (SKR03_COMPANY, "SKR03 2026.3", 3, 1)),
 				Note(step.DEFAULTS_MISSING, (len(default_accounts("SKR03")) - 4,)),
 				Note(step.TRADING_WITHOUT_CLASS, ("2654",), open=True),
 				Note(step.CHECK_WITH_ADVISER, open=True),
@@ -154,7 +155,7 @@ class IntegrationTestIncomeTaxSetup(IntegrationTestCase):
 		)
 		self.assertEqual(
 			setup.text_of(result.notes[0]),
-			f"The Income Tax Mapping of {SKR03_COMPANY} had no rows and now holds the defaults SKR03 2026.2: "
+			f"The Income Tax Mapping of {SKR03_COMPANY} had no rows and now holds the defaults SKR03 2026.3: "
 			"account rules 3, watched accounts 1.",
 		)
 		again = result_of(setup.run(SKR03_COMPANY, TODAY), "income_tax_mapping")

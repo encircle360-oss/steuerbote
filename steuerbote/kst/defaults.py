@@ -57,7 +57,7 @@ BLOCKING, HINT = WatchLevel.BLOCKING, WatchLevel.HINT
 # the defaults raises REVISION, and a new edition starts it at 1 again, so that the same version always means the
 # same defaults: test_defaults.py pins the content of each version.
 DATEV_EDITION = 2026
-REVISION = 2
+REVISION = 3
 
 
 class Reason(StrEnum):
@@ -436,17 +436,22 @@ _ROWS: tuple[_Row, ...] = (
 		"Erlöse aus Verkäufen von Wirtschaftsgütern des Umlaufvermögens, umsatzsteuerfrei § 4 Nr. 8 ff. UStG i. V. m. § 4 Abs. 3 Satz 4 EStG und § 3 Nr. 40 EStG bzw. § 8b Abs. 2 KStG",
 		"Erlöse aus Verkäufen von Wirtschaftsgütern des Umlaufvermögens, umsatzsteuerfrei § 4 Nr. 8 ff. UStG i. V. m. § 4 Abs. 3 Satz 4 EStG, § 3 Nr. 40 EStG bzw. § 8b Abs. 2 KStG",
 	),
-	# Older DATEV accounts of ERPNext's SKR04 template for the sale of shares of a Körperschaft.
+	# Older DATEV accounts for the sale of shares of a Körperschaft: SKR03 2723 and 2323 of the edition valid for 2020
+	# (Art.-Nr. 11174, Programmverbindung G K), their twins 4901 and 6903 of ERPNext's SKR04 template.
 	_rule(
-		None,
+		"2723",
 		"4901",
 		Category.SHARE_GAIN,
+		"Erträge aus der Veräußerung von Anteilen an Kapitalgesellschaften (Finanzanlagevermögen) § 3 Nr. 40 EStG bzw. "
+		"§ 8b Abs. 2 KStG",
 		"Erträge aus der Veräußerung von Anteilen an Kap.Ges. (Finanzanlageverm., inländ. Kap.Ges.)",
 	),
 	_rule(
-		None,
+		"2323",
 		"6903",
 		Category.SHARE_LOSS,
+		"Verluste aus der Veräußerung von Anteilen an Kapitalgesellschaften (Finanzanlagevermögen) § 3 Nr. 40 EStG bzw. "
+		"§ 8b Abs. 3 KStG",
 		"Verluste aus der Veräußerung von Anteilen an Kap.Ges. (Finanzanlagevermögen, inl. Kap.Ges.)",
 	),
 	_rule(

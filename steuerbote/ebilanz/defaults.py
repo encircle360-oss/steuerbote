@@ -4464,7 +4464,7 @@ _GROUPS_6_9: tuple[Group, ...] = (
 	_position(
 		"is.netIncome.regular.operatingTC.otherOpRevenue.disposFixAss.nonAllocable",
 		(
-			None,
+			"2723",
 			"4901",
 			"Erträge aus der Veräußerung von Anteilen an Kap.Ges. (Finanzanlageverm., inländ. Kap.Ges.)",
 		),
@@ -6098,7 +6098,7 @@ _GROUPS_6_9: tuple[Group, ...] = (
 	_position(
 		"is.netIncome.regular.operatingTC.otherCost.disposFixAss.misc",
 		(
-			None,
+			"2323",
 			"6903",
 			"Verluste aus der Veräußerung von Anteilen an Kap.Ges. (Finanzanlagevermögen, inl. Kap.Ges.)",
 		),
@@ -7526,7 +7526,7 @@ DEFAULTS: MappingProxyType[str, MappingProxyType[str, Defaults]] = MappingProxyT
 		for version in GROUPS
 	}
 )
-REVISIONS: MappingProxyType[str, int] = MappingProxyType({"6.9": 3, "6.10": 3})
+REVISIONS: MappingProxyType[str, int] = MappingProxyType({"6.9": 4, "6.10": 4})
 
 
 def defaults_for(chart: str, version: str) -> Defaults:

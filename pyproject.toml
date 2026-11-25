@@ -143,6 +143,7 @@ testpaths = [
     "steuerbote/tests/test_menu.py",
     "steuerbote/tests/test_docs_overview.py",
     "steuerbote/tests/test_formal_address.py",
+    "steuerbote/tests/test_exchange_setup_files.py",
     "steuerbote/tests/test_partner_vat_id_files.py",
     "steuerbote/tests/test_guard_files.py",
     "steuerbote/tests/test_about_files.py",

@@ -174,6 +174,12 @@ steuerbote_setup_steps = [
 		"run": "steuerbote.steuerbote.doctype.balance_sheet_mapping.setup.run",
 	},
 	{
+		"key": "exchange_accounts",
+		"label": "Exchange Rate Accounts",
+		"order": 55,
+		"run": "steuerbote.steuerbote.exchange_setup.check",
+	},
+	{
 		"key": "vat_id_label",
 		"label": "Label of the VAT ID",
 		"order": 60,
