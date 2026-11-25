@@ -649,7 +649,8 @@ def check_invoice(doc, method: str | None = None) -> None:
 		return
 	vat_id = doc.get("tax_id") or frappe.db.get_value(CUSTOMER, doc.customer, "tax_id")
 	number_kind = partners.kind(vat_id)
-	fact = known(doc.company, [vatid.normalize(vat_id)]).get(vatid.normalize(vat_id or ""), Known())
+	number = vatid.normalize(vat_id or "")
+	fact = known(doc.company, [number]).get(number, Known())
 	doc.set(LATEST_FIELD, fact.record)
 	finding = partners.invoice_finding(
 		kennzahlen,
