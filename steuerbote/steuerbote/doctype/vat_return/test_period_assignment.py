@@ -12,11 +12,13 @@ from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for
 from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import execute
 from steuerbote.tests.helpers import (
 	ensure_fiscal_year,
+	insert_record,
 	make_account,
 	make_company,
 	make_mapping,
 	make_settings,
 	post_journal_entry,
+	post_purchase_invoice,
 	post_sales_invoice,
 )
 from steuerbote.tests.late_documents import ACCOUNTS, filed_return, sales_invoice, set_rule
@@ -27,6 +29,7 @@ IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
 COMPANY = "Steuerbote Test Nachzügler GmbH"
 JULY = Period.month(2026, 7)
 SEPTEMBER = Period.month(2026, 9)
+AUGUST = Period.month(2026, 8)
 
 
 class TestPeriodAssignment(IntegrationTestCase):
@@ -286,3 +289,95 @@ class TestBeforeTheStart(IntegrationTestCase):
 					"period_index": 6,
 				}
 			).insert()
+
+
+SUPPLIER_COMPANY = "Steuerbote Test Lieferant EU GmbH"
+PRAGUE = "Vltava Analytics s.r.o."
+
+
+class TestSupplierOfAnotherMemberState(IntegrationTestCase):
+	"""A service under § 13b UStG from a supplier established in another member state goes to Kz 46 (§ 13b Abs. 1
+	UStG) by the facts of its supplier; the period rule must hand these facts on wherever it reads the ledger."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		make_company(SUPPLIER_COMPANY, "STEU")
+		cls.account = {
+			number: make_account(SUPPLIER_COMPANY, number, name, root_type)
+			for number, (name, root_type) in {
+				**ACCOUNTS,
+				"1600": ("Verbindlichkeiten aus Lieferungen und Leistungen", "Liability"),
+			}.items()
+		}
+		make_settings(SUPPLIER_COMPANY, [(2026, "monthly", 1)])
+		make_mapping(SUPPLIER_COMPANY)
+		ensure_fiscal_year(SUPPLIER_COMPANY, "2026-01-01")
+		insert_record(
+			"Supplier", name=PRAGUE, supplier_name=PRAGUE, country="Czech Republic", tax_id="CZ12345678"
+		)
+
+	def setUp(self):
+		frappe.db.savepoint("supplier_period_test")
+		self.addCleanup(frappe.db.rollback, save_point="supplier_period_test")
+
+	def post(self) -> str:
+		"""A July invoice written in August and an August service from Prague on an expense account."""
+		a = self.account
+		sales_invoice(
+			SUPPLIER_COMPANY, a, "SINV-EU-0001", "2026-08-03", "2026-08-03 09:00:00", to_date="2026-07-31"
+		)
+		name = post_purchase_invoice(
+			SUPPLIER_COMPANY,
+			"PINV-EU-0001",
+			PRAGUE,
+			"2026-08-12",
+			[(a["4980"], 1000, 0), (a["1577"], 190, 0), (a["1787"], 0, 190)],
+			items=[(a["4980"], 1000)],
+		)
+		insert_record(
+			"GL Entry",
+			company=SUPPLIER_COMPANY,
+			posting_date="2026-08-12",
+			account=a["1600"],
+			debit=0,
+			credit=1000,
+			party_type="Supplier",
+			party=PRAGUE,
+			voucher_type="Purchase Invoice",
+			voucher_no=name,
+			is_cancelled=0,
+			is_opening="No",
+			docstatus=1,
+		)
+		return name
+
+	def assert_kz_46_in_august(self, voucher: str, kz81_in_august: Decimal) -> None:
+		doc = frappe.get_doc(
+			{
+				"doctype": "VAT Return",
+				"company": SUPPLIER_COMPANY,
+				"year": 2026,
+				"rhythm": "monthly",
+				"period_index": 8,
+			}
+		).insert()
+		doc.calculate()
+		doc.reload()
+		amounts = {row.kennzahl: Decimal(str(row.amount)) for row in doc.kennzahlen}
+		self.assertEqual((amounts.get("46"), amounts.get("84", Decimal(0))), (Decimal("1000.00"), Decimal(0)))
+		self.assertEqual(amounts.get("81", Decimal(0)), kz81_in_august)
+		mapping = mapping_for(SUPPLIER_COMPANY, 2026)
+		(run,) = ustjahr_sources.period_runs(SUPPLIER_COMPANY, [AUGUST], mapping, Decimal("0.01")).values()
+		self.assertEqual((run.values["46"].amount, run.values.get("84")), (Decimal("1000.00"), None))
+		_columns, rows = execute(
+			{"company": SUPPLIER_COMPANY, "year": 2026, "rhythm": "monthly", "period_index": 8}
+		)
+		self.assertEqual({row["parent_kennzahl"] for row in rows if row.get("voucher_no") == voucher}, {"46"})
+
+	def test_by_service_date_the_service_from_another_member_state_stays_on_kz_46(self):
+		self.assert_kz_46_in_august(self.post(), Decimal(0))
+
+	def test_by_posting_date_the_service_from_another_member_state_stays_on_kz_46(self):
+		set_rule(SUPPLIER_COMPANY, "By Posting Date")
+		self.assert_kz_46_in_august(self.post(), Decimal("1000.00"))
