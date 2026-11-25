@@ -92,6 +92,8 @@ RECALCULATE = "SB-NEU-BERECHNEN"
 # A correction whose line Berechnen now computes at another amount than the one it was made against
 # (jahresmeldung.overrides.stale).
 STALE_CORRECTION = "SB-KORREKTUR-UEBERHOLT"
+CALCULATE_ATTEMPTS = 3
+"""How often Berechnen starts again after a conflict with a Berechnen of the same document at the same moment."""
 
 
 @dataclass(frozen=True)
@@ -259,6 +261,22 @@ class AnnualFiling(Filing):
 		"""Berechnen: compute the document through its module and save it, with the corrections and the lines by hand it
 		held."""
 		self.check_permission("write")
+		for _attempt in range(CALCULATE_ATTEMPTS):
+			try:
+				return self._calculate()
+			except frappe.QueryDeadlockError:
+				# MariaDB refuses the save of the rows when another Berechnen of the document saved them since this
+				# transaction began; only a new transaction on the document as stored gets past it.
+				frappe.db.rollback()
+				self.reload()
+		frappe.throw(
+			_(
+				"{0} was being calculated by another request at the same moment. Start Berechnen again."
+			).format(self.name),
+			title=_(self.doctype),
+		)
+
+	def _calculate(self) -> None:
 		if self.docstatus != 0:
 			frappe.throw(_("{0} is no draft and cannot be calculated.").format(self.name))
 		if self.transmits:
