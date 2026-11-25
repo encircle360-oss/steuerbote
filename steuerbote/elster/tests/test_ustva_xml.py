@@ -190,7 +190,7 @@ class OrderTest(TestCase):
 		amounts = {number: d("1") for number, kennzahl in catalogue.items() if kennzahl.holds_amount}
 		amounts["83"] = balance({number: amount for number, amount in amounts.items() if number != "83"})
 		document = to_nutzdaten(
-			filer(wid_nr="DE123456789"),
+			filer(wid_nr="DE123456788"),
 			voranmeldung(
 				amounts,
 				corrected=True,
@@ -496,25 +496,34 @@ class FilerTest(TestCase):
 			self.assertEqual(raised.exception.template, ustva_xml.NOT_A_STEUERNUMMER)
 
 	def test_takes_the_wid_nr_as_de_and_nine_digits(self):
-		self.assertEqual(filer(wid_nr=" de 123 456 789 ").wid_nr, "DE123456789")
+		self.assertEqual(filer(wid_nr=" de 123 456 788 ").wid_nr, "DE123456788")
 		self.assertIsNone(filer(wid_nr="  ").wid_nr)
 		self.assertIsNone(filer().wid_nr)
-		for value in ("DE123456789-00001", "DE12345678", "AT123456789", "123456789"):
+		for value in ("DE123456788-00001", "DE12345678", "AT123456789", "123456789"):
 			with self.subTest(value=value), self.assertRaises(XmlError) as raised:
 				filer(wid_nr=value)
 			self.assertEqual(
 				(raised.exception.template, raised.exception.values), (ustva_xml.NOT_A_WID_NR, (value,))
 			)
 
+	def test_refuses_a_wid_nr_with_a_wrong_check_digit(self):
+		"""ERiC 44.3.6.0 refuses it, ungueltigeWirtschaftsIdentifikationsnummer (validation of a Voranmeldung 2026)."""
+		with self.assertRaises(XmlError) as raised:
+			filer(wid_nr="DE123456789")
+		self.assertEqual(
+			(raised.exception.template, raised.exception.values),
+			(ustva_xml.WRONG_WID_NR_CHECK_DIGIT, ("DE123456789",)),
+		)
+
 	def test_writes_the_wid_nr_after_the_steuernummer(self):
-		document = to_import_file(filer(wid_nr="DE123456789"), voranmeldung(), CREATED)
+		document = to_import_file(filer(wid_nr="DE123456788"), voranmeldung(), CREATED)
 		self.assertEqual(
 			elements(document)[:4],
 			[
 				("Jahr", "2026"),
 				("Zeitraum", "10"),
 				("Steuernummer", TEST_STEUERNUMMER),
-				("WIdNr", "DE123456789"),
+				("WIdNr", "DE123456788"),
 			],
 		)
 

@@ -13,7 +13,7 @@ CREATED = date(2026, 11, 20)
 OCTOBER = ReportingPeriod.month(2026, 10)
 
 # Invented numbers in the form of their country.
-OWN_VAT_ID = "DE123456789"
+OWN_VAT_ID = "DE123456788"
 AUSTRIA = "ATU12345678"
 FRANCE = "FR12345678901"
 NORTHERN_IRELAND = "XI123456789"

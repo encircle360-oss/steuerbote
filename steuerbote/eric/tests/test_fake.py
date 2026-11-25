@@ -250,6 +250,16 @@ class ValidateTest(SimulationTestCase):
 	def test_needs_no_hersteller_id(self):
 		self.assertTrue(Simulation().run(Operation.VALIDATE, NUTZDATEN, replace(HEADER, hersteller_id="")).ok)
 
+	def test_the_check_digit_of_the_wid_nr(self):
+		"""ERiC 44.3.6.0 refuses a W-IdNr. with a wrong check digit (validation of a Voranmeldung 2026)."""
+		with_wid_nr = NUTZDATEN.replace("</Steuernummer>\n", "</Steuernummer>\n\t\t\t<WIdNr>{}</WIdNr>\n", 1)
+		self.assertNotEqual(with_wid_nr, NUTZDATEN)
+		self.assertTrue(Simulation().run(Operation.VALIDATE, with_wid_nr.format("DE123456788"), HEADER).ok)
+		result = Simulation().run(Operation.VALIDATE, with_wid_nr.format("DE123456789"), HEADER)
+		self.assertIs(result.outcome, Outcome.INVALID)
+		(error,) = (message for message in result.messages if message.severity == ERROR)
+		self.assertEqual((error.code, error.field), ("ungueltigeWirtschaftsIdentifikationsnummer", "WIdNr"))
+
 
 class SchemaTest(SimulationTestCase):
 	def test_validates_against_the_schema_of_the_documentation(self):
@@ -453,6 +463,12 @@ class ZmdoTest(SimulationTestCase):
 				code, field, text = self.refused(nutzdaten)
 				self.assertEqual((code, field), ("SIM-003", "zm"))
 				self.assertIn("000005", text)
+
+	def test_the_check_digit_of_the_own_ust_idnr(self):
+		"""ERiC 44.3.6.0 refuses an own USt-IdNr. with a wrong check digit (ungueltigeUStIDNr, validation of a ZM)."""
+		self.assertIn(f"<knri>{zm_examples.OWN_VAT_ID}</knri>", ZM)
+		code, field, _ = self.refused(ZM.replace(zm_examples.OWN_VAT_ID, "DE123456789"))
+		self.assertEqual((code, field), ("ungueltigeUStIDNr", "knri"))
 
 	def test_the_unternehmer_and_its_meldezeitraum_hold_the_fields_the_rules_require(self):
 		for element, code in (

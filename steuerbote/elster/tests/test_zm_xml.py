@@ -80,11 +80,17 @@ class NutzdatenTest(TestCase):
 class UnternehmerTest(TestCase):
 	def test_170015001_170015002_names_the_filer_by_its_german_ust_idnr(self):
 		self.assertEqual(text(nutzdaten(), "unternehmer/knri"), OWN_VAT_ID)
-		self.assertEqual(unternehmer(ust_idnr="de 123.456.789").ust_idnr, OWN_VAT_ID)
+		self.assertEqual(unternehmer(ust_idnr="de 123.456.788").ust_idnr, OWN_VAT_ID)
 		for value in ("", None, AUSTRIA, "DE12345678", "DE1234567890", "DEX23456789", 123456789):
 			with self.subTest(value=value), self.assertRaises(XmlError) as context:
 				unternehmer(ust_idnr=value)
 			self.assertEqual(raised(context), (zm_xml.NOT_A_GERMAN_VAT_ID, (value,)))
+
+	def test_refuses_an_own_ust_idnr_with_a_wrong_check_digit(self):
+		"""ERiC 44.3.6.0 refuses it in knri, ungueltigeUStIDNr (validation of a ZM)."""
+		with self.assertRaises(XmlError) as context:
+			unternehmer(ust_idnr="DE123456789")
+		self.assertEqual(raised(context), (zm_xml.WRONG_CHECK_DIGIT, ("DE123456789",)))
 
 	def test_the_teilnehmernummer_is_n_and_1111111_without_one_of_its_own(self):
 		"""Jahresdokumentation ZMDO 2, sheet „ZMDO - Felder“: zulnr1 „Für ERiC ist hier der konstante Wert „N“ zu

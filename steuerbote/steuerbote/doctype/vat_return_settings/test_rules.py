@@ -227,15 +227,15 @@ class OwnVatIdTest(TestCase):
 	"""The company asks with its own German USt-IdNr. to confirm the USt-IdNrn. of its customers."""
 
 	def test_keeps_the_number_entered_as_the_confirmation_writes_it(self):
-		self.assertEqual(own_vat_id("de 123 456 789", None), "DE123456789")
-		self.assertEqual(own_vat_id("DE123456789", "DE987654321"), "DE123456789")
+		self.assertEqual(own_vat_id("de 123 456 788", None), "DE123456788")
+		self.assertEqual(own_vat_id("DE123456788", "DE987654328"), "DE123456788")
 
 	def test_takes_the_tax_id_of_the_company_when_it_is_a_german_ust_idnr(self):
-		self.assertEqual(own_vat_id(None, "DE 987654321"), "DE987654321")
-		self.assertEqual(own_vat_id("", "de987654321"), "DE987654321")
+		self.assertEqual(own_vat_id(None, "DE 987654328"), "DE987654328")
+		self.assertEqual(own_vat_id("", "de987654328"), "DE987654328")
 
 	def test_leaves_it_empty_when_the_tax_id_is_none(self):
-		for tax_id in (None, "", "123/456/78901", "ATU12345678", "DE12345678"):
+		for tax_id in (None, "", "123/456/78901", "ATU12345678", "DE12345678", "DE987654321"):
 			with self.subTest(tax_id=tax_id):
 				self.assertIsNone(own_vat_id(None, tax_id))
 
@@ -245,7 +245,15 @@ class OwnVatIdTest(TestCase):
 				self.subTest(value=value),
 				self.assertRaisesRegex(SettingsError, r"is not a German USt-IdNr\.: DE and nine digits\.$"),
 			):
-				own_vat_id(value, "DE987654321")
+				own_vat_id(value, "DE987654328")
+
+	def test_refuses_a_number_with_a_wrong_check_digit(self):
+		"""ERiC refuses the ZM of a company whose own USt-IdNr. has a wrong check digit (ungueltigeUStIDNr, validation
+		with ERiC 44.3.6.0); the settings say so when they are saved, not the transmission."""
+		with self.assertRaisesRegex(
+			SettingsError, r"DE123456789 is not a valid German USt-IdNr\.: its check digit"
+		):
+			own_vat_id("DE123456789", None)
 
 
 class ZmRuleTest(TestCase):
