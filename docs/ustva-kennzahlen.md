@@ -1349,7 +1349,7 @@ Mehr Werte gibt es nicht. Ein Wert „nach Rechnungsdatum“ fiele mit „nach B
 
 Das Leistungsdatum einer Ausgangsrechnung (`service_date` in `assignment.py`, gelesen von `steuerbote/ledger.py`) ist, in dieser Reihenfolge:
 
-1. das Bis-Datum (`to_date`) des Leistungszeitraums der Rechnung. ERPNext füllt Von- und Bis-Datum bei Rechnungen aus einem Abonnement; die App für E-Rechnungen schreibt den Zeitraum in die E-Rechnung und nimmt das Bis-Datum als Lieferdatum. Eine Leistung über mehrere Monate ist mit ihrem Ende ausgeführt, sie zählt also im Zeitraum, in dem der Leistungszeitraum endet. Sind Teilleistungen vereinbart, etwa ein monatliches Entgelt, bekommt jede ihre eigene Rechnung mit ihrem eigenen Zeitraum;
+1. das Bis-Datum (`to_date`) des Leistungszeitraums der Rechnung. ERPNext füllt Von- und Bis-Datum bei Rechnungen aus einem Abonnement; die App für E-Rechnungen schreibt den Zeitraum in die E-Rechnung und nimmt das Bis-Datum als Lieferdatum. Eine Leistung über mehrere Monate ist mit ihrem Ende ausgeführt, sie zählt also im Zeitraum, in dem der Leistungszeitraum endet. Sind Teilleistungen vereinbart, etwa ein monatliches Entgelt, bekommt jede ihre eigene Rechnung mit ihrem eigenen Zeitraum; im Formular der Ausgangsrechnung stehen die beiden Felder als „Von-Datum“ und „Bis-Datum“ im Reiter „Weitere Informationen“ unter „Abonnement“, einem Abschnitt, den ERPNext eingeklappt zeigt;
 2. ohne Bis-Datum das Von-Datum;
 3. ohne beide das Buchungsdatum des letzten eingereichten Lieferscheins, den eine Position der Rechnung nennt, der Tag der Lieferung;
 4. sonst das Buchungsdatum.
