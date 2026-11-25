@@ -875,6 +875,7 @@ class HintsTest(TestCase):
 				"ERWERB-AUS-DRITTLAND",
 				"ZEITRAUM-NICHT-ABGELAUFEN",
 				"ZM-OHNE-RHYTHMUS",
+				"BERICHTIGUNG-OHNE-AENDERUNG",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung"])

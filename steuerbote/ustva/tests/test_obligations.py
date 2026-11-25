@@ -2,7 +2,13 @@ from datetime import date
 from decimal import Decimal
 from unittest import TestCase
 
-from steuerbote.ustva.obligations import ZM_KENNZAHLEN, has_ended, period_hints, zm_rhythm_hints
+from steuerbote.ustva.obligations import (
+	ZM_KENNZAHLEN,
+	correction_hints,
+	has_ended,
+	period_hints,
+	zm_rhythm_hints,
+)
 from steuerbote.ustva.period import Period
 from steuerbote.ustva.plausibility import SEVERITIES, Code, Severity
 
@@ -80,3 +86,27 @@ class ZmRhythmHintsTest(TestCase):
 	def test_the_codes_are_warnings(self):
 		self.assertIs(SEVERITIES[Code.PERIOD_NOT_ENDED], Severity.WARNING)
 		self.assertIs(SEVERITIES[Code.ZM_WITHOUT_RHYTHM], Severity.WARNING)
+
+
+class CorrectionHintsTest(TestCase):
+	FILED = {"81": Decimal("1000"), "83": Decimal("190.00")}
+
+	def test_a_corrected_return_that_files_what_was_filed_says_so(self):
+		(hint,) = correction_hints(dict(self.FILED), self.FILED, "UStVA-0001")
+		self.assertEqual(hint.code, Code.CORRECTION_UNCHANGED)
+		self.assertIs(hint.severity, Severity.HINT)
+		self.assertEqual(
+			hint.text,
+			"Die berichtigte Anmeldung meldet dieselben Beträge wie die abgegebene Meldung UStVA-0001: Sie ändert "
+			"nichts. Abgegeben wird sie nur, wenn sich eine Angabe außerhalb der Beträge ändert.",
+		)
+
+	def test_a_change_or_a_kennzahl_of_zero_decides(self):
+		self.assertEqual(
+			correction_hints({"81": Decimal("1500"), "83": Decimal("285.00")}, self.FILED, "U"), []
+		)
+		self.assertEqual(len(correction_hints({**self.FILED, "86": Decimal("0")}, self.FILED, "U")), 1)
+		self.assertEqual(correction_hints({"83": Decimal("190.00")}, self.FILED, "U"), [])
+
+	def test_without_a_filed_return_there_is_nothing_to_compare(self):
+		self.assertEqual(correction_hints(dict(self.FILED), None, "U"), [])
