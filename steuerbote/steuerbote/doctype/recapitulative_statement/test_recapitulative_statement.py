@@ -226,6 +226,19 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		doc.reload()
 		return numbers, call, commit, publish
 
+	def test_a_line_names_its_customer_as_it_is_called_now(self):
+		"""The line and its vouchers name the customer with its name and its ID, and a customer renamed after
+		Berechnen reads with its new name once the statement is saved, without Berechnen; the stored text of a voucher
+		never names a partner that no longer reads so."""
+		self.roll_back_afterwards()
+		doc = self.calculated(3)
+		frappe.db.set_value("Customer", ALPEN, "customer_name", "Alpen Handel und Söhne GmbH")
+		doc.save()
+		doc.reload()
+		label = f"Alpen Handel und Söhne GmbH ({ALPEN})"
+		self.assertEqual(self.line(doc, AUSTRIAN).party, label)
+		self.assertEqual({row.party for row in doc.vouchers if row.customer == ALPEN}, {label})
+
 	def test_berechnen_makes_a_line_per_vat_id_and_art_from_two_invoices_and_a_skonto_payment(self):
 		doc = self.calculated(3)
 		self.assertEqual(
