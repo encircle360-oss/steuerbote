@@ -4,6 +4,7 @@ import re
 import frappe
 from frappe.tests import IntegrationTestCase
 
+from steuerbote import __version__
 from steuerbote.tests.helpers import (
 	make_account,
 	make_company,
@@ -200,3 +201,7 @@ class TestUmsatzsteuerVoranmeldung(IntegrationTestCase):
 		text = cells(self.printed(self.calculated_return(6)))
 		self.assertIn("Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.", text)
 		self.assertIn("Dieser Ausdruck ist keine Abgabe", text)
+
+	def test_the_footer_names_the_version_of_steuerbote_that_printed_it(self):
+		text = cells(self.printed(self.calculated_return(7)))
+		self.assertTrue(text.rstrip().endswith(f"Erstellt mit Steuerbote {__version__}"), text[-200:])
