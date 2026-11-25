@@ -2,6 +2,8 @@
 // side is steuerbote/steuerbote/setup.py; ?company= in the address chooses the company.
 
 const SETUP_METHOD = "steuerbote.steuerbote.setup.set_up";
+// The block Über Steuerbote, the same as at the bottom of the workspace Steuern.
+const ABOUT_METHOD = "steuerbote.steuerbote.about_block.render";
 const OUTCOMES = {
 	created: { label: __("Made"), indicator: "green" },
 	skipped: { label: __("Skipped"), indicator: "gray" },
@@ -25,14 +27,17 @@ frappe.pages["steuerbote-setup"].on_page_load = function (wrapper) {
 		default: frappe.defaults.get_user_default("Company"),
 	});
 	const report = $('<div class="steuerbote-setup-report"></div>');
+	const about = $('<div class="steuerbote-about-block" style="margin-top: var(--margin-xl, 2rem);"></div>');
 	$(page.main).append(
 		$('<p class="text-muted steuerbote-setup-intro"></p>').text(
 			__(
 				"Makes what a company needs for the Umsatzsteuer-Voranmeldung and leaves what it has: the VAT Return Settings, the VAT Return Mapping with the defaults of SKR03 or SKR04 and, where § 18 Absatz 2 UStG decides it, the first Voranmeldungszeitraum. A second run changes nothing."
 			)
 		),
-		report
+		report,
+		about
 	);
+	frappe.call({ method: ABOUT_METHOD }).then((response) => about.html(response.message));
 	page.set_primary_action(__("Set Up"), () => set_up(company.get_value(), report));
 	wrapper.steuerbote_setup = { company };
 };
