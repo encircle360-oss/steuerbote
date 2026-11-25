@@ -91,7 +91,11 @@ def execute(filters: dict | None = None) -> tuple:
 	rows = comparison.compared_rows(rows, previous, previous_year)
 	if cint(filters.get(ONLY_DEVIATIONS)):
 		rows = comparison.only_deviations(rows, _thresholds(settings))
-	notes = [comparison.note_row(note) for note in (previous_note, previous_year_note) if note]
+	notes = [
+		comparison.note_row(note)
+		for note in (_rhythm_note(settings, period), previous_note, previous_year_note)
+		if note
+	]
 	blocked = comparison.blocked_notes(result.unmapped, account_labels(company, result.unmapped))
 	notes += [comparison.note_row(text) for text in (*blocked, *(hint.text for hint in released_hints))]
 	return get_columns(), notes + rows
@@ -159,6 +163,16 @@ def _period(filters: frappe._dict) -> tuple[ustva.Period | None, str | None]:
 		return None, _(
 			"Filing {0}, there is no Voranmeldungszeitraum {1}: months run from 1 to 12, quarters from 1 to 4."
 		).format(_(filters.rhythm), escape_html(str(filters.period_index)))
+
+
+def _rhythm_note(settings: Document, period: ustva.Period) -> str | None:
+	"""Why no return files the period, where the settings prescribe another rhythm for its first month."""
+	prescribed = settings.rhythm_for(period.year, period.first_month)
+	if prescribed is period.rhythm:
+		return None
+	return _(
+		"The VAT Return Settings prescribe filing {0} for month {1} of {2}, not {3}: the report shows {4} all the same, but no return files it."
+	).format(_(prescribed.value), period.first_month, period.year, _(period.rhythm.value), period.label)
 
 
 def _calculate(
