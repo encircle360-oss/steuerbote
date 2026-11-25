@@ -26,7 +26,7 @@ frappe.ui.form.on("Recapitulative Statement", {
 		if (changeable) {
 			frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
 		}
-		if (changeable && calculated && may_send(frm)) {
+		if (changeable && calculated && may_send(frm) && has_vat_ids_to_confirm(frm)) {
 			frm.add_custom_button(__("Confirm VAT IDs"), () =>
 				confirm_vat_ids(
 					frm,

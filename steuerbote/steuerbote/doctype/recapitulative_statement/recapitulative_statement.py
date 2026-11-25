@@ -373,7 +373,11 @@ class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 
 	def details_for(self, vat_id: str) -> Details | None:
 		"""Name and address of the customer of the first voucher of the lines of the number that names one."""
-		return zm_sources.customer_details(bridge.customer_of(self.vouchers, vat_id))
+		return zm_sources.customer_details(self.party_for(vat_id))
+
+	def party_for(self, vat_id: str) -> str | None:
+		"""The customer of the first voucher of the lines of the number that names one."""
+		return bridge.customer_of(self.vouchers, vat_id)
 
 	def take_in_confirmations(self) -> None:
 		"""Every save builds the lines with the latest confirmation of their numbers, so the job saves the statement."""

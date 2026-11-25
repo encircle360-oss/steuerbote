@@ -11,8 +11,15 @@ from steuerbote.vatid.result import Details
 from steuerbote.vatid.service import confirm
 from steuerbote.vatid.tests.fakes import DETAILS, REQUESTED, REQUESTER, FakeClock, FakeFetch, bzst
 
-# The company is made by the test itself.
-IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Recapitulative Statement", "User", "VAT Return"]
+# The company is made by the test itself; the partner and the invoice a record may name are not needed.
+IGNORE_TEST_RECORD_DEPENDENCIES = [
+	"Company",
+	"DocType",
+	"Recapitulative Statement",
+	"Sales Invoice",
+	"User",
+	"VAT Return",
+]
 
 DOCTYPE = "VAT ID Confirmation"
 COMPANY = "Steuerbote Test Bestätigung GmbH"

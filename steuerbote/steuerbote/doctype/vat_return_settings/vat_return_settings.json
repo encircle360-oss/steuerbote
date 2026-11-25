@@ -28,6 +28,14 @@
   "ust_idnr",
   "max_confirmation_age",
   "teilnehmernummer",
+  "vat_id_checks_section",
+  "vat_id_check_on_change",
+  "vat_id_renewal",
+  "vat_id_check_suppliers",
+  "column_break_vat_id_checks",
+  "vat_id_invoice_goods",
+  "vat_id_goods_max_age",
+  "vat_id_invoice_services",
   "datenlieferant_section",
   "filer_name",
   "street",
@@ -197,7 +205,7 @@
   },
   {
    "default": "90",
-   "description": "Calculate gives a hint on a USt-IdNr. behind Kz 41, 42 or 21 whose latest confirmation lies more days before the end of the Voranmeldungszeitraum. A hint never holds the return.",
+   "description": "Calculate gives a hint on a USt-IdNr. behind Kz 41, 42 or 21 whose latest confirmation lies more days before the end of the Voranmeldungszeitraum. A hint never holds the return. The same age applies to a Sales Invoice behind Kz 21 and to the daily renewal.",
    "fieldname": "max_confirmation_age",
    "fieldtype": "Int",
    "label": "Maximum Age of a VAT ID Confirmation (Days)",
@@ -209,6 +217,61 @@
    "fieldtype": "Data",
    "label": "Teilnehmernummer of the BZSt",
    "length": 8
+  },
+  {
+   "fieldname": "vat_id_checks_section",
+   "fieldtype": "Section Break",
+   "label": "VAT ID Checks",
+   "description": "How Steuerbote confirms the USt-IdNrn. of customers and suppliers at the BZSt. Nothing is asked without the own USt-IdNr. above, and nothing by itself until a confirmation on a change or the daily renewal is switched on; the buttons on the partner and on the invoice work regardless. Agree the ages with the tax adviser: no law names a number of days."
+  },
+  {
+   "default": "0",
+   "description": "Off by default. Confirm the USt-IdNr. of a partner in the background when the partner is created or its USt-IdNr., name or address changes; this sends the data of the partner to the BZSt, and to VIES when the BZSt cannot answer.",
+   "fieldname": "vat_id_check_on_change",
+   "fieldtype": "Check",
+   "label": "Confirm When a Partner Changes"
+  },
+  {
+   "default": "0",
+   "description": "Off by default. Every morning ask again about each partner whose latest confirmation is as old as the maximum age above or older, one after the other, at most 25 a day.",
+   "fieldname": "vat_id_renewal",
+   "fieldtype": "Check",
+   "label": "Renew Confirmations Daily"
+  },
+  {
+   "default": "1",
+   "description": "Confirm the USt-IdNrn. of suppliers from other member states as well. The law asks for those of customers; those of suppliers are a check of the master data.",
+   "fieldname": "vat_id_check_suppliers",
+   "fieldtype": "Check",
+   "label": "Confirm Suppliers"
+  },
+  {
+   "fieldname": "column_break_vat_id_checks",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Block",
+   "description": "What submitting a Sales Invoice behind Kz 41 or 42 does when the USt-IdNr. of the customer lacks a current valid confirmation. Block takes a written reason to submit all the same.",
+   "fieldname": "vat_id_invoice_goods",
+   "fieldtype": "Select",
+   "label": "Invoices for Goods (Kz 41, 42)",
+   "options": "Block\nWarn\nOff"
+  },
+  {
+   "default": "0",
+   "description": "The days a confirmation may lie before the posting date of an invoice behind Kz 41 or 42. 0: a confirmation of the day of the invoice.",
+   "fieldname": "vat_id_goods_max_age",
+   "fieldtype": "Int",
+   "label": "Maximum Age for Goods (Days)",
+   "non_negative": 1
+  },
+  {
+   "default": "Warn",
+   "description": "What submitting a Sales Invoice behind Kz 21 does when the USt-IdNr. of the customer lacks a current valid qualified confirmation; the maximum age above applies.",
+   "fieldname": "vat_id_invoice_services",
+   "fieldtype": "Select",
+   "label": "Invoices for Services (Kz 21)",
+   "options": "Block\nWarn\nOff"
   },
   {
    "description": "Who files: the name, address and contact the files for ELSTER carry as Datenlieferant. Saving fills an empty field from the company and its address.",
@@ -332,7 +395,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-25 14:00:00.000000",
+ "modified": "2026-11-25 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",

@@ -39,6 +39,10 @@
   "record_section",
   "recapitulative_statement",
   "vat_return",
+  "party_type",
+  "party",
+  "sales_invoice",
+  "started_by",
   "user",
   "previous",
   "fallback_reason",
@@ -267,6 +271,37 @@
    "read_only": 1
   },
   {
+   "fieldname": "party_type",
+   "fieldtype": "Link",
+   "label": "Party Type",
+   "options": "DocType",
+   "read_only": 1,
+   "description": "Customer or Supplier whose USt-IdNr. was asked about."
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Dynamic Link",
+   "label": "Party",
+   "options": "party_type",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "sales_invoice",
+   "fieldtype": "Link",
+   "label": "Sales Invoice",
+   "options": "Sales Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "started_by",
+   "fieldtype": "Select",
+   "label": "Started By",
+   "options": "\nManual\nPartner Changed\nInvoice\nRenewal\nVAT Return\nRecapitulative Statement",
+   "read_only": 1,
+   "description": "What started the confirmation: the button of the partner, a change of the partner, an invoice, the daily renewal, or USt-IdNrn. prüfen at a return or a statement."
+  },
+  {
    "fieldname": "user",
    "fieldtype": "Link",
    "label": "User",
@@ -306,7 +341,7 @@
  ],
  "in_create": 1,
  "links": [],
- "modified": "2026-11-23 12:00:00.000000",
+ "modified": "2026-11-25 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT ID Confirmation",

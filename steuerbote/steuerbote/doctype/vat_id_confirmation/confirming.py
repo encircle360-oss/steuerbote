@@ -3,14 +3,15 @@ every document whose USt-IdNrn. Steuerbote confirms.
 
 A document whose USt-IdNrn. Steuerbote confirms inherits Confirming before Document, has the fields company and
 confirmation_in_progress and provides numbers_to_confirm(), the numbers its job asks about; details_for(vat_id),
-name and address of the customer for the qualified query, or None; and take_in_confirmations(), which shows the
-latest confirmations once the job has stored them. Its whitelisted confirm_vat_ids checks what its document needs
+name and address of the customer for the qualified query, or None; party_for(vat_id), the customer whose number it
+is, or None; and take_in_confirmations(), which shows the latest confirmations once the job has stored them. Its whitelisted confirm_vat_ids checks what its document needs
 and hands the numbers to start_confirmation, which refuses a second run while one is queued or running, needs the
 company's own German USt-IdNr. and puts the run into the queue long, one job per document. The job of its module
 calls run() with the transport and the clock of that module.
 
-run() asks steuerbote.vatid about one number after the other and about none twice, and stores each confirmation
-as a VAT ID Confirmation, committed at once: the record is the proof of queries the service received (UStAE 18e.1
+run() asks steuerbote.vatid about one number after the other and about none twice, leaves out a number a query of
+today has answered already (steuerbote.vatid.partners.covered_today), wherever it was asked, and stores each
+confirmation as a VAT ID Confirmation that names the customer, committed at once: the record is the proof of queries the service received (UStAE 18e.1
 Abs. 2 Satz 5), which nothing that fails later may take back. While the run is queued or running, the document
 does not change; a lock whose job is gone is released by the form or by the next run.
 """
@@ -19,12 +20,13 @@ from collections.abc import Callable, Collection
 
 import frappe
 from frappe import _
-from frappe.utils import cint, strip_html
+from frappe.utils import cint, getdate, strip_html
 from frappe.utils.background_jobs import is_job_enqueued
 
 from steuerbote import vatid
-from steuerbote.steuerbote import guards
+from steuerbote.steuerbote import guards, partner_vat_ids
 from steuerbote.steuerbote.doctype.vat_id_confirmation import vat_id_confirmation
+from steuerbote.vatid.partners import covered_today
 from steuerbote.vatid.transport import Clock, Fetch
 
 LOCK_FIELD = "confirmation_in_progress"
@@ -34,15 +36,38 @@ SETTINGS_DOCTYPE = "VAT Return Settings"
 # up to a minute for each answer.
 SECONDS_PER_NUMBER = 200
 MINIMUM_TIMEOUT = 300
+CALCULATED_STATUSES = ("Berechnet", "Bereit")
 
 
 class Confirming:
 	"""A document whose USt-IdNrn. Steuerbote confirms at the BZSt, mixed into its controller before Document."""
 
-	def confirmation_state(self) -> dict[str, bool]:
-		"""For the form: whether the lock of a confirmation is stale, so that the form releases it."""
+	def confirmation_state(self) -> dict:
+		"""For the form: whether the lock of a confirmation is stale, so that the form releases it, and for a
+		calculated draft the numbers a confirmation would ask about now and the own USt-IdNr. it would send, which
+		its dialog names."""
 		draft = self.docstatus == 0 and not self.is_new()
-		return {"stale": draft and self._has_stale_confirmation()}
+		state = {"stale": draft and self._has_stale_confirmation(), "numbers": [], "requester": None}
+		if draft and self.get("status") in CALCULATED_STATUSES and not cint(self.get(LOCK_FIELD)):
+			ust_idnr = frappe.db.get_value(SETTINGS_DOCTYPE, self.company, "ust_idnr")
+			state["requester"] = vatid.normalize(ust_idnr) if vatid.is_german(ust_idnr) else None
+			shown = len(frappe.local.message_log)
+			try:
+				state["numbers"] = self.pending_numbers()
+			except frappe.ValidationError, ValueError:
+				del frappe.local.message_log[shown:]
+		return state
+
+	def pending_numbers(self) -> list[str]:
+		"""The numbers to confirm that no query of today has answered already."""
+		today = getdate()
+		return [
+			number
+			for number in self.numbers_to_confirm()
+			if not covered_today(
+				partner_vat_ids.today_queries(self.company, number, today), self.details_for(number)
+			)
+		]
 
 	@frappe.whitelist(methods=["POST"])
 	@guards.on_stored("write")
@@ -64,6 +89,9 @@ class Confirming:
 		requester(self.company)
 		if not numbers:
 			frappe.throw(nothing_to_confirm)
+		numbers = [number for number in numbers if number in set(self.pending_numbers())]
+		if not numbers:
+			frappe.throw(_("Every USt-IdNr. of {0} was confirmed today already.").format(self.name))
 		self.db_set(LOCK_FIELD, 1)
 		frappe.enqueue(
 			job,
@@ -140,12 +168,21 @@ def run(doctype: str, name: str, fetch: Callable[[], Fetch], clock: Clock) -> No
 		doc = frappe.get_doc(doctype, name)
 		asking = requester(doc.company)
 		for vat_id in doc.numbers_to_confirm():
+			details = doc.details_for(vat_id)
+			if covered_today(partner_vat_ids.today_queries(doc.company, vat_id, getdate()), details):
+				continue
+			customer = doc.party_for(vat_id)
+			party = (partner_vat_ids.CUSTOMER, customer) if customer else None
 			frappe.db.savepoint("vat_id_confirmation")
 			try:
-				answer = vatid.confirm(vat_id, asking, doc.details_for(vat_id), fetch(), clock)
-				vat_id_confirmation.store(answer, doc.company, (doctype, name))
+				answer = vatid.confirm(vat_id, asking, details, fetch(), clock)
+				vat_id_confirmation.store(
+					answer, doc.company, (doctype, name), party=party, started_by=doctype
+				)
 				frappe.db.commit()
 				confirmed.append(vat_id)
+				if customer:
+					partner_vat_ids.refresh_status(partner_vat_ids.CUSTOMER, customer)
 			except Exception:
 				frappe.db.rollback(save_point="vat_id_confirmation")
 				frappe.log_error(title=_("Confirmation of a USt-IdNr. failed"))

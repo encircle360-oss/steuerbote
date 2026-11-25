@@ -262,6 +262,9 @@ def report(company: str, done: list[tuple[Step, StepResult]]) -> dict:
 				"doctype": result.document[0] if result.document else None,
 				"document_label": _(result.document[0]) if result.document else None,
 				"name": result.document[1] if result.document else None,
+				"action": {"label": _(result.action.label), "method": result.action.method}
+				if result.action
+				else None,
 			}
 			for step, result in done
 		],

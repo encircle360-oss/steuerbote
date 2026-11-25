@@ -10,7 +10,8 @@ key, so the same steps always run in the same order.
 A step reports one Outcome and notes on what it did: it created its document, skipped it because the document was
 there, could not decide what only the user can settle, failed, or did not run because a step it needs has no
 document. A note marked open names something the user still has to do. A step makes only what is missing, so a
-second run creates nothing.
+second run creates nothing; what it must not do on its own, such as relabelling a field of ERPNext, it offers as an
+Action, which the page shows as a button.
 
 Messages are English templates with positional placeholders, which the Frappe layer translates before formatting
 them, as in SetupError. This module is pure Python and never imports Frappe.
@@ -35,6 +36,7 @@ NEEDS_ITSELF = "The setup step {0} needs itself."
 DUPLICATE_STEP = "The setup step {0} is defined twice."
 UNKNOWN_NEED = "The setup step {0} needs {1}, which is no setup step."
 CYCLE = "The setup steps {0} need each other in a circle."
+NOT_AN_ACTION = "The action {0} of a setup step calls {1}, which is not the dotted path of a function."
 MESSAGES = (
 	NOT_A_STEP,
 	MISSING_FIELDS,
@@ -47,6 +49,7 @@ MESSAGES = (
 	DUPLICATE_STEP,
 	UNKNOWN_NEED,
 	CYCLE,
+	NOT_AN_ACTION,
 )
 
 KEY = re.compile(r"[a-z][a-z0-9_]*")
@@ -91,12 +94,28 @@ class Note:
 
 
 @dataclass(frozen=True, slots=True)
+class Action:
+	"""What a step offers the user to do: an English label that the desk translates and the dotted path of a
+	whitelisted function, which the page calls with the company and then runs the setup again."""
+
+	label: str
+	method: str
+
+	def __post_init__(self) -> None:
+		label_ok = isinstance(self.label, str) and bool(self.label.strip())
+		if not label_ok or not isinstance(self.method, str) or not DOTTED_PATH.fullmatch(self.method):
+			raise SetupError(NOT_AN_ACTION, self.label, self.method)
+
+
+@dataclass(frozen=True, slots=True)
 class StepResult:
-	"""The outcome of a step, its notes and the document it made or found, as (DocType, name)."""
+	"""The outcome of a step, its notes, the document it made or found, as (DocType, name), and what it offers the
+	user to do."""
 
 	outcome: Outcome
 	notes: tuple[Note, ...] = ()
 	document: tuple[str, str] | None = None
+	action: Action | None = None
 
 	def __post_init__(self) -> None:
 		object.__setattr__(self, "outcome", Outcome(self.outcome))
