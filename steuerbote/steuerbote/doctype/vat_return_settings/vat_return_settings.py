@@ -79,6 +79,7 @@ class VATReturnSettings(Document):
 		teilnehmernummer: DF.Data | None
 		tolerance: DF.Currency
 		ust_idnr: DF.Data | None
+		vat_id_check_german: DF.Check
 		vat_id_check_on_change: DF.Check
 		vat_id_check_suppliers: DF.Check
 		vat_id_goods_max_age: DF.Int

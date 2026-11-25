@@ -26,6 +26,7 @@ STANDING_NOTES = {
 	"Address Missing": "Only a simple confirmation: the partner lacks the name or the town of the qualified query.",
 	"Not Qualified": "Only a simple confirmation, although name and town are known now.",
 	"Details Differ": "The member state has another name or address registered.",
+	"German VAT ID, Not Checked": "Not checked yet. VIES checks a German USt-IdNr. for its validity alone, without name or address; it is not the confirmation of § 18e UStG.",
 }
 
 
