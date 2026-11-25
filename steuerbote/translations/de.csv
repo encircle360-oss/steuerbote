@@ -2054,6 +2054,7 @@
 "{0} contains characters ELSTER does not take: {1}.","{0} enthält Zeichen, die ELSTER nicht nimmt: {1}."
 "{0} covers months of {1} already. Cancel it before entering {1} in another rhythm.","{0} deckt schon Monate von {1} ab. Stornieren Sie ihn, bevor Sie {1} in einem anderen Rhythmus eintragen."
 "{0} does not go to the Finanzamt.","{0} geht nicht an das Finanzamt."
+"{0} ends on {1}, and the return was calculated before: it is not ready. Calculate it again after that day, or explain in the remarks why it is filed nonetheless.","{0} endet am {1}, und die Meldung wurde vorher berechnet: Sie ist nicht bereit. Berechnen Sie sie nach diesem Tag erneut, oder erklären Sie in den Bemerkungen, warum sie trotzdem abgegeben wird."
 "{0} enters {1} as filed before Steuerbote: the books of the company start after that period.","{0} trägt {1} als vor Steuerbote abgegeben ein: Die Bücher des Unternehmens beginnen erst nach diesem Zeitraum."
 "{0} filed {1} for {2} already, which the Finanzamt keeps: a further form for the year is a corrected Anmeldung der Sondervorauszahlung (Kz 10).","{0} hat {1} für {2} bereits abgegeben, und das Finanzamt behält den Vordruck: Ein weiterer Vordruck für das Jahr ist eine berichtigte Anmeldung der Sondervorauszahlung (Kz 10)."
 "{0} files {1} through Steuerbote already: it holds the period itself.","{0} meldet {1} schon über Steuerbote: Der Zeitraum steht dort selbst."

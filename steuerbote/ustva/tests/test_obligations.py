@@ -37,9 +37,9 @@ class PeriodHintsTest(TestCase):
 		self.assertIs(hint.severity, Severity.WARNING)
 		self.assertEqual(
 			hint.text,
-			"November 2026 endet erst am 30.11.2026. Die Steuer entsteht mit Ablauf des Voranmeldungszeitraums "
+			"November 2026 endet erst am 30. November 2026. Die Steuer entsteht mit Ablauf des Voranmeldungszeitraums "
 			"(§ 13 Abs. 1 Nr. 1 Buchst. a UStG), und die Voranmeldung wird nach seinem Ablauf abgegeben (§ 18 Abs. 1 "
-			"Satz 1 UStG): Bis dahin ist die Meldung nicht bereit. Berechnen Sie sie nach dem 30.11.2026 erneut.",
+			"Satz 1 UStG): Bis dahin ist die Meldung nicht bereit. Berechnen Sie sie nach dem 30. November 2026 erneut.",
 		)
 
 	def test_an_ended_period_gets_none(self):

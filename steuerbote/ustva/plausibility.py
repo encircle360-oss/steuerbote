@@ -74,6 +74,8 @@ class Code(StrEnum):
 	RESIDENCE_CONFLICT = "SITZ-WIDERSPRUCH"
 	EU_SERVICE_OUTSIDE = "KZ46-OHNE-EU-SITZ"
 	ACQUISITION_OUTSIDE_EU = "ERWERB-AUS-DRITTLAND"
+	PERIOD_NOT_ENDED = "ZEITRAUM-NICHT-ABGELAUFEN"
+	ZM_WITHOUT_RHYTHM = "ZM-OHNE-RHYTHMUS"
 
 
 # A wrong invoice is a warning; a difference that may well be explained, such as a journal entry on a
@@ -101,6 +103,8 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.RESIDENCE_CONFLICT: Severity.HINT,
 		Code.EU_SERVICE_OUTSIDE: Severity.WARNING,
 		Code.ACQUISITION_OUTSIDE_EU: Severity.WARNING,
+		Code.PERIOD_NOT_ENDED: Severity.WARNING,
+		Code.ZM_WITHOUT_RHYTHM: Severity.WARNING,
 	}
 )
 

@@ -77,11 +77,13 @@ from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings impor
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
 from steuerbote.suppliers import load_vouchers
 from steuerbote.tax_templates import template_accounts
-from steuerbote.ustva import carried, input_tax, plausibility, registers, tax_templates
+from steuerbote.ustva import carried, input_tax, obligations, plausibility, registers, tax_templates
 from steuerbote.ustva.assignment import changes
 from steuerbote.ustva.defaults import TIMING_ACCOUNTS, deliberately_without_kennzahl, purchase_rates
 from steuerbote.vat_periods import VatLedger, filed_amounts
 from steuerbote.vatid import Details, UrllibFetch
+from steuerbote.zm import rhythm as zm_rhythm
+from steuerbote.zm.errors import ZmError
 from steuerbote.zm.lines import VoucherAmount
 
 DOCTYPE = "VAT Return"
@@ -299,10 +301,14 @@ class VATReturn(Confirming, Transmittable, Document):
 		)
 		hints = build_hints(self, period, mapping, result, comparison, reconciliation, sales_invoices(lines))
 		hints = plausibility.merged(
-			hints, release_hints, return_hints(self.company, mapping, lines, settings)
+			hints, release_hints, return_hints(self.company, period, mapping, lines, settings, result)
 		)
 		self.set("hints", bridge.hint_rows(hints))
-		self.ready = int(result.ready and bridge.provisional_forms(year) is None)
+		self.ready = int(
+			result.ready
+			and bridge.provisional_forms(year) is None
+			and obligations.has_ended(period, getdate())
+		)
 		self.status = READY if self.ready else CALCULATED
 		self.accounts_without_number = len(accounts_without_number(self.company))
 		self.flags.calculating = True
@@ -460,8 +466,13 @@ class VATReturn(Confirming, Transmittable, Document):
 		self._require_explained_differences()
 
 	def _not_ready(self) -> str:
-		"""Why a return that is not ready is filed with remarks only: the forms of a provisional year, or else the
-		Verprobung and the watched accounts."""
+		"""Why a return that is not ready is filed with remarks only: a period that had not ended when it was
+		calculated, the forms of a provisional year, or else the Verprobung and the watched accounts."""
+		if any(row.code == plausibility.Code.PERIOD_NOT_ENDED for row in self.hints):
+			period = self._chosen_period(cint(self.year))
+			return _(
+				"{0} ends on {1}, and the return was calculated before: it is not ready. Calculate it again after that day, or explain in the remarks why it is filed nonetheless."
+			).format(period.label, formatdate(period.end))
 		forms = bridge.provisional_forms(cint(self.year))
 		if forms is not None:
 			return _(
@@ -1027,18 +1038,37 @@ def build_hints(
 
 
 def return_hints(
-	company: str, mapping: ustva.Mapping, lines: list[ustva.LedgerLine], settings: Document
+	company: str,
+	period: ustva.Period,
+	mapping: ustva.Mapping,
+	lines: list[ustva.LedgerLine],
+	settings: Document,
+	result: ustva.UstvaResult,
 ) -> list[plausibility.Hint]:
 	"""The hints on the input tax of the vouchers of the period (steuerbote.ustva.input_tax), with the tolerance per
-	voucher of the Verprobung."""
-	currency = frappe.get_cached_value("Company", company, "default_currency")
-	return input_tax.input_tax_hints(
-		lines,
-		mapping,
-		purchase_rates(mapping.chart),
-		bridge.to_amount(settings.tolerance),
-		SiteFigures(currency),
-	)
+	voucher of the Verprobung, on a period that has not ended, and on turnover of the Zusammenfassende Meldung in
+	months without its rhythm (steuerbote.ustva.obligations)."""
+	figures = SiteFigures(frappe.get_cached_value("Company", company, "default_currency"))
+	amounts = {number: value.reported for number, value in result.values.items()}
+	return [
+		*input_tax.input_tax_hints(
+			lines, mapping, purchase_rates(mapping.chart), bridge.to_amount(settings.tolerance), figures
+		),
+		*obligations.period_hints(period, getdate()),
+		*obligations.zm_rhythm_hints(amounts, months_without_zm_rhythm(settings, period), figures),
+	]
+
+
+def months_without_zm_rhythm(settings: Document, period: ustva.Period) -> list[str]:
+	"""The months of the period for which the VAT Return Settings record no rhythm of the Zusammenfassende Meldung."""
+	rules = settings.get_zm_rules()
+	missing = []
+	for month in range(period.first_month, period.last_month + 1):
+		try:
+			zm_rhythm.rule_for(rules, period.year, month)
+		except ZmError:
+			missing.append(ustva.Period.month(period.year, month).label)
+	return missing
 
 
 def sales_invoices(lines: Iterable[ustva.LedgerLine]) -> list[str]:
