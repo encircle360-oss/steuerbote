@@ -217,6 +217,15 @@ def german_check_digit(first_eight: str) -> int:
 	return 0 if remainder == 10 else remainder
 
 
+def has_german_check_digit(value: str | None) -> bool:
+	"""True for a German USt-IdNr. or W-IdNr. whose ninth digit is the check digit of the eight before it
+	(german_check_digit)."""
+	if not is_german(value):
+		return False
+	number = normalize(value)
+	return german_check_digit(number[2:10]) == int(number[10])
+
+
 def german_problem(value: str | None) -> str | None:
 	"""Why the value is no German USt-IdNr. as Germany builds them, in German; None when it is one: DE and nine digits,
 	the first not 0 („C1 > 0“, Konstruktionsregeln), the last the check digit of german_check_digit."""
@@ -225,8 +234,8 @@ def german_problem(value: str | None) -> str | None:
 		return f"Eine deutsche USt-IdNr. besteht aus DE und neun Ziffern, „{number}“ nicht."
 	if number[2] == "0":
 		return f"Eine deutsche USt-IdNr. beginnt nach DE nicht mit 0, {number} schon."
-	expected = german_check_digit(number[2:10])
-	if int(number[10]) != expected:
+	if not has_german_check_digit(number):
+		expected = german_check_digit(number[2:10])
 		return (
 			f"Die Prüfziffer von {number} stimmt nicht: Nach dem Verfahren der deutschen USt-IdNr. wäre die "
 			f"letzte Ziffer {expected}."

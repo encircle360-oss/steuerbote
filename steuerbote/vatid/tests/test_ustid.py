@@ -17,6 +17,7 @@ from steuerbote.vatid.ustid import (
 	checked_pair,
 	german_check_digit,
 	german_problem,
+	has_german_check_digit,
 	is_german,
 	is_plausible,
 	normalize,
@@ -241,6 +242,12 @@ class GermanCheckDigitTest(TestCase):
 				for digits in ("11111112", "12345678", "98765432", "81234567", "31355133")
 			],
 			[5, 8, 8, 3, 0],
+		)
+
+	def test_tells_whether_the_last_digit_is_the_check_digit(self):
+		self.assertEqual(
+			[has_german_check_digit(value) for value in ("DE111111125", "DE123456789", "ATU12345678", None)],
+			[True, False, False, False],
 		)
 
 	def test_a_remainder_of_ten_gives_the_check_digit_zero(self):
