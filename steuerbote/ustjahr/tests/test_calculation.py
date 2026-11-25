@@ -29,6 +29,7 @@ from steuerbote.ustva import calculate as calculate_ustva
 from steuerbote.ustva.calculation import AccountBalance, LedgerLine, StatutoryTax
 from steuerbote.ustva.mapping import (
 	DERIVED_BASE_KENNZAHLEN,
+	DERIVED_TURNOVER_KENNZAHLEN,
 	AccountRule,
 	Mapping,
 	Side,
@@ -316,6 +317,39 @@ class DerivedBaseTest(TestCase):
 				tax = mapping_catalogue[number].tax_kennzahl
 				if tax is not None:
 					self.assertIsNotNone(CATALOGUE.default_child(tax))
+
+
+class AssetSaleTest(TestCase):
+	"""A fixed asset sold through a Sales Invoice books its output tax without a revenue account; over the year its base
+	goes to the line of Kz 81 as in each Voranmeldung (DERIVED_TURNOVER_KENNZAHLEN)."""
+
+	lines = (
+		line("1400", debit="952.00", voucher="Sales Invoice:SI-1"),
+		line("0490", credit="1500.00", voucher="Sales Invoice:SI-1"),
+		line("0499", debit="520.00", voucher="Sales Invoice:SI-1"),
+		line("2310", debit="180.00", voucher="Sales Invoice:SI-1"),
+		line("1776", credit="152.00", voucher="Sales Invoice:SI-1"),
+		line("8400", credit="1000.00", voucher="Sales Invoice:SI-2"),
+		line("1776", credit="190.00", voucher="Sales Invoice:SI-2"),
+	)
+
+	def test_the_line_of_kz_81_takes_the_sale(self):
+		mapping = Mapping(
+			"test",
+			(AccountRule("8400", "81", Side.CREDIT),),
+			checks=(TaxCheck("Umsatzsteuer 19 %", ("8400",), ("1776",), derived_base="81"),),
+			year=2026,
+		)
+		result = calculate(self.lines, split(mapping))
+		self.assertEqual(result.ustva, calculate_ustva(self.lines, mapping))
+		self.assertEqual(result.ustva.values["81"].amount, Decimal("1800.00"))
+		child = CATALOGUE.default_child("81")
+		self.assertEqual(result.values[child.element].ledger, Decimal("1800.00"))
+
+	def test_every_turnover_kennzahl_that_takes_a_derived_base_has_a_line(self):
+		for number in DERIVED_TURNOVER_KENNZAHLEN:
+			with self.subTest(kennzahl=number):
+				self.assertIsNotNone(CATALOGUE.default_child(number))
 
 
 class DerivedBaseBySupplierTest(TestCase):

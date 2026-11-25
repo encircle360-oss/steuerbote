@@ -418,6 +418,49 @@ class DerivedBaseHintsTest(TestCase):
 		self.assertEqual(codes(found), [Code.WATCHED_ACCOUNT, Code.BASE_FROM_TAX])
 
 
+def turnover(voucher: str, base: str, tax: str, accounts: tuple[str, ...]) -> DerivedBase:
+	return DerivedBase("Umsatzsteuer 19 %", voucher, "81", d("19"), d(tax), d(base), accounts)
+
+
+class OutputTaxWithoutRevenueAccountHintsTest(TestCase):
+	"""A base of turnover read from the lines of a voucher that books output tax beyond its revenue accounts, such as
+	the sale of a fixed asset, is named with the accounts it comes from."""
+
+	def test_names_the_voucher_the_tax_the_accounts_and_the_base(self):
+		(hint,) = derived_base_hints(
+			[turnover("Sales Invoice:ACC-SINV-2026-00031", "800.00", "152.00", ("0490", "0499", "2310"))],
+			FIGURES,
+		)
+		self.assertEqual((hint.code, hint.severity), (Code.OUTPUT_TAX_WITHOUT_REVENUE, Severity.HINT))
+		self.assertEqual(
+			hint.text,
+			"Kz 81: Der Beleg bucht 152,00 € Umsatzsteuer auf „Umsatzsteuer 19 %“, zu der kein Erlöskonto der "
+			"Verprobung gehört. Seine Buchungszeilen auf den Konten 0490, 0499 und 2310 ergeben dazu 800,00 € zu "
+			"19,0 %, und Steuerbote meldet sie in Kz 81, beim Verkauf eines Anlageguts über eine Ausgangsrechnung "
+			"dessen Verkaufspreis; bitte prüfen Sie sie am Beleg.",
+		)
+		self.assertEqual(
+			(hint.voucher_type, hint.voucher_no, hint.party), ("Sales Invoice", "ACC-SINV-2026-00031", "")
+		)
+
+	def test_one_account(self):
+		(hint,) = derived_base_hints([turnover("Journal Entry:J1", "100.00", "19.00", ("4900",))], FIGURES)
+		self.assertIn("Seine Buchungszeilen auf dem Konto 4900 ergeben dazu 100,00 €", hint.text)
+
+	def test_it_comes_in_the_order_given_with_the_bases_from_the_tax(self):
+		found = derived_base_hints(
+			[
+				derived("Journal Entry:B", "1.00", "0.19"),
+				turnover("Journal Entry:A", "2.00", "0.38", ("4900",)),
+			],
+			FIGURES,
+		)
+		self.assertEqual(
+			[(hint.code, hint.voucher_no) for hint in found],
+			[(Code.BASE_FROM_TAX, "B"), (Code.OUTPUT_TAX_WITHOUT_REVENUE, "A")],
+		)
+
+
 class ResidenceHintsTest(TestCase):
 	"""The decisions on the suppliers of sections C and D, as the person who files reads them."""
 
@@ -876,6 +919,7 @@ class HintsTest(TestCase):
 				"ZEITRAUM-NICHT-ABGELAUFEN",
 				"ZM-OHNE-RHYTHMUS",
 				"BERICHTIGUNG-OHNE-AENDERUNG",
+				"UMSATZ-OHNE-ERLOESKONTO",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung"])

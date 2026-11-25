@@ -15,7 +15,7 @@ IGNORE_TEST_RECORD_DEPENDENCIES = ["Company", "Account"]
 
 COMPANY = "Steuerbote Test Vorgaben GmbH"
 MAPPING = "VAT Return Mapping"
-VERSION = "SKR03 2026.3"
+VERSION = "SKR03 2026.4"
 # SKR03 accounts: a sale at 19 % with its tax, a service under § 13b UStG with its taxes, the Vorsteuer, a watched
 # account at each level and a bank, which the defaults leave out.
 ACCOUNTS = {
@@ -128,7 +128,7 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 		stored = frappe.get_doc(MAPPING, COMPANY)
 		self.assertEqual(
 			[(row.label, row.derived_base or None, row.derived_base_eu or None) for row in stored.checks],
-			[("Umsatzsteuer 19 %", None, None), ("Umsatzsteuer nach § 13b UStG 19 %", "84", "46")],
+			[("Umsatzsteuer 19 %", "81", None), ("Umsatzsteuer nach § 13b UStG 19 %", "84", "46")],
 		)
 
 	def test_the_kennzahl_for_suppliers_of_other_member_states_is_proposed_to_a_mapping_of_revision_2(self):
@@ -142,6 +142,29 @@ class IntegrationTestDefaultsUpdate(IntegrationTestCase):
 		self.mapping.update_from_defaults(chosen=["check:Umsatzsteuer nach § 13b UStG 19 %"])
 		stored = frappe.get_doc(MAPPING, COMPANY)
 		self.assertEqual(stored.checks[1].derived_base_eu, "46")
+
+	def test_the_kennzahl_of_output_tax_without_revenue_account_is_proposed_to_a_mapping_of_revision_3(self):
+		old = dict(self.defaults())
+		old[CHECK_19] = {name: value for name, value in old[CHECK_19].items() if name != "derived_base"}
+		self.as_if_built_from(old)
+		comparison = self.mapping.compare_with_defaults()
+		self.assertEqual(ids(comparison), [("check:Umsatzsteuer 19 %", True)])
+		(difference,) = comparison["differences"]
+		self.assertEqual(difference["fields"], "Kz of the Base Without Base Account")
+		self.assertTrue(difference["proposed"].endswith("; base without base account in Kz 81"))
+		self.mapping.update_from_defaults(chosen=["check:Umsatzsteuer 19 %"])
+		stored = frappe.get_doc(MAPPING, COMPANY)
+		self.assertEqual((stored.checks[0].label, stored.checks[0].derived_base), ("Umsatzsteuer 19 %", "81"))
+		self.assertEqual(stored.defaults_version, VERSION)
+
+	def test_a_mapping_that_declines_it_keeps_the_deviation(self):
+		old = dict(self.defaults())
+		old[CHECK_19] = {name: value for name, value in old[CHECK_19].items() if name != "derived_base"}
+		self.as_if_built_from(old)
+		self.mapping.update_from_defaults(acknowledge=1)
+		stored = frappe.get_doc(MAPPING, COMPANY)
+		self.assertFalse(stored.checks[0].derived_base)
+		self.assertEqual(ids(stored.compare_with_defaults()), [("check:Umsatzsteuer 19 %", False)])
 
 	def test_vorgaben_laden_keeps_the_classifications_under_13b(self):
 		supplier = "Steuerbote Test Lieferant Vorgaben"

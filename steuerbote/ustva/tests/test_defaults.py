@@ -660,12 +660,17 @@ class CheckTest(TestCase):
 		for check in SKR03.checks + SKR04.checks:
 			self.assertIs(check.side, Side.CREDIT, check.label)
 
-	def test_the_purchases_with_tax_of_the_recipient_derive_the_base_of_a_voucher_without_base_account(self):
+	def test_the_checks_with_a_rate_of_their_own_derive_the_base_of_a_voucher_without_base_account(self):
 		"""§ 13b UStG goes to Kz 84, the catch-all of § 13b Abs. 2 Nr. 1 UStG for every service of a business abroad
 		that is not one of Kz 46; the acquisitions go to the Kennzahl of their rate. The acquisitions without
-		Vorsteuerabzug book 7 and 19 % on one tax account, so their rate is open and they derive nothing; the
-		turnover of a company always has a revenue account of its own."""
+		Vorsteuerabzug book 7 and 19 % on one tax account, so their rate is open and they derive nothing. The output
+		tax at 19 and 7 % goes to Kz 81 and 86: a fixed asset sold through a Sales Invoice books its tax without a
+		revenue account."""
 		expected = {
+			"Umsatzsteuer 19 %": "81",
+			"Umsatzsteuer aus im Inland steuerpflichtigen EU-Lieferungen 19 %": "81",
+			"Umsatzsteuer 7 %": "86",
+			"Umsatzsteuer aus im Inland steuerpflichtigen EU-Lieferungen 7 %": "86",
 			"Umsatzsteuer aus innergemeinschaftlichem Erwerb 19 %": "89",
 			"Umsatzsteuer aus innergemeinschaftlichem Erwerb 7 %": "93",
 			"Umsatzsteuer aus innergemeinschaftlichem Erwerb von Neufahrzeugen": "94",
@@ -675,6 +680,25 @@ class CheckTest(TestCase):
 		for mapping in (SKR03, SKR04):
 			derived = {check.label: check.derived_base for check in mapping.checks if check.derived_base}
 			self.assertEqual(derived, expected, mapping.chart)
+
+	def test_both_ways_of_selling_a_fixed_asset_find_their_accounts(self):
+		"""A separate item on the revenue account for asset sales goes to Kz 81 through its rule, and the scrap entry
+		of the asset books the residual book value on an account without a place. ERPNext's asset row on a Sales
+		Invoice books the residual book value and the gain or loss instead of revenue; these accounts must have no
+		place either, so that the lines of the voucher can give the base (DATEV-Kontenrahmen 2026: SKR 03 8801, 8820,
+		2310 „Anlagenabgänge Sachanlagen (Restbuchwert bei Buchverlust)“ and 2315 „… bei Buchgewinn“, SKR 04 6885,
+		4845, 6895 and 4855)."""
+		for mapping, revenue, residual in (
+			(SKR03, ("8801", "8820"), ("2310", "2315")),
+			(SKR04, ("6885", "4845"), ("6895", "4855")),
+		):
+			check = next(check for check in mapping.checks if check.label == "Umsatzsteuer 19 %")
+			for account in revenue:
+				self.assertEqual(mapping.rule_for(account).kennzahl, "81", account)
+				self.assertIn(account, check.base_accounts)
+			for account in residual:
+				self.assertFalse(mapping.has_place(account), account)
+				self.assertNotIn(account, deliberately_without_kennzahl(mapping.chart))
 
 	def test_the_services_of_a_supplier_of_another_member_state_go_to_kz_46(self):
 		"""§ 13b Absatz 1 UStG, line 30: the sonstigen Leistungen of § 3a Absatz 2 UStG of a business established in
@@ -865,13 +889,15 @@ DIGESTS = {
 	"SKR04 2026.2": "21b19ba024c5101eac2087ef84dc72f03409163641b053b6b3e048ee6c3666f1",
 	"SKR03 2026.3": "41fdbbbe0873d5025b0ed46d4bee380b964e25ad4143f60174d76c188eb0659d",
 	"SKR04 2026.3": "91b7b061344ddd79161c3d94cb1ec3ae33ac242c49c186f167ba7d13cb05529a",
+	"SKR03 2026.4": "6576b0b1b2c9694f35f9675d6396109933adb414de9e9625b0576b2469a167a9",
+	"SKR04 2026.4": "7d3ccbf76010dee068cef81714a25bc04b329a6f5224fb5bfacf515986e314b1",
 }
 
 
 class DefaultsVersionTest(TestCase):
 	def test_the_version_names_the_chart_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, REVISION), (2026, 3))
-		self.assertEqual([defaults_version(chart) for chart in DEFAULTS], ["SKR03 2026.3", "SKR04 2026.3"])
+		self.assertEqual((DATEV_EDITION, REVISION), (2026, 4))
+		self.assertEqual([defaults_version(chart) for chart in DEFAULTS], ["SKR03 2026.4", "SKR04 2026.4"])
 
 	def test_a_chart_without_defaults_has_no_version(self):
 		with self.assertRaisesRegex(KeyError, "no default mapping for chart 'Eigener Kontenrahmen'"):
