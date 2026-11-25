@@ -654,6 +654,24 @@ class TestERiCSettings(IntegrationTestCase):
 		self.assertFalse(checks["schema"]["ok"])
 		self.assertIn("STEUERBOTE_ERIC_DOC_DIR nicht gesetzt", checks["schema"]["detail"])
 
+	def test_with_eric_the_status_says_what_the_documentation_gives_the_annual_vat_return(self):
+		"""With ERiC installed, Prüfen checks the schema in ERiC; the documentation only gives the official texts of the
+		rules Steuerbote checks itself in the Umsatzsteuererklärung of the year before, and the status says so."""
+		settings = self.settings(hersteller_id="12345", installed_version="44.3.6.0", lib_dir=LIB_DIR)
+		documentation = os.environ.get("STEUERBOTE_ERIC_DOC_DIR")
+		with patch.dict(os.environ, {}, clear=False), self.freeze_time("2026-11-23 10:00:00"):
+			os.environ.pop("STEUERBOTE_ERIC_DOC_DIR", None)
+			missing = {check["name"]: check for check in settings.check_runtime()}["schema"]
+			if documentation:
+				os.environ["STEUERBOTE_ERIC_DOC_DIR"] = documentation
+				found = {check["name"]: check for check in settings.check_runtime()}["schema"]
+				self.assertTrue(found["ok"])
+				self.assertIn("Jahresdokumentation_E50_2025.ods", found["detail"])
+		self.assertFalse(missing["ok"])
+		self.assertIn("ERiC prüft die Nutzdaten selbst gegen ihr Schema", missing["detail"])
+		self.assertIn("Umsatzsteuererklärung 2025", missing["detail"])
+		self.assertIn("STEUERBOTE_ERIC_DOC_DIR", missing["detail"])
+
 	def test_only_a_system_manager_checks_the_runtime(self):
 		settings = self.settings()
 		with (

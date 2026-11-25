@@ -14,6 +14,13 @@ from steuerbote.eric.result import ERROR, HINT
 
 ERIC_PATH = re.compile(r"\$(/[^$]*)\$")
 """A field in the text of a message of ERiC, its path in the delivery between dollar signs."""
+PLACE = re.compile(r"^\[\d+,\d+\]\s*")
+"""Line and column of the instance, which ERiC puts before a message of the rules of the XBRL taxonomy."""
+CLARK = re.compile(r"\{[^{}]*\}([\w.\-]+)")
+"""A fact named with the namespace of its taxonomy in Clark notation, such as {http://…/de-gaap-ci-…}bs.ass."""
+SPACES = re.compile(r" {2,}")
+HYPERCUBE = re.compile(r"\w+:all")
+"""The field ERiC names for a rule on the dimensions of a fact: the hypercube, not a position of the E-Bilanz."""
 KENNZAHL = re.compile(r"Kz(\d+)")
 FELDKENNUNG = re.compile(r"E\d{7}")
 SHOWN = 3
@@ -44,7 +51,13 @@ def summary(rows: Iterable[Row], shown: int = SHOWN) -> dict[str, Any]:
 def readable(text: str, field: str | None, datenart: str, year: int | None) -> tuple[str, str | None]:
 	"""Text and field of a message of ERiC with each field named as the Vordruck names it, where ERiC names its path in
 	the delivery: a Kennzahl as „Kz 61“, a field of an Erklärung by its line, such as „KSt1 Zeile 22c (E8122101)“, any
-	other by the last element of its path. A field that is no path stays as it is."""
+	other by the last element of its path. A message of the rules of the XBRL taxonomy names its fact without the
+	namespace and without its place in the instance, and the fact is its field instead of the hypercube. A field that is
+	no path stays as it is."""
+	facts = CLARK.findall(text)
+	text = SPACES.sub(" ", CLARK.sub(r"\1", PLACE.sub("", text)))
+	if field and facts and HYPERCUBE.fullmatch(field):
+		field = facts[0]
 	text = ERIC_PATH.sub(lambda found: _named(found.group(1), datenart, year), text)
 	if field and field.startswith("/"):
 		field = _named(field, datenart, year)

@@ -19,7 +19,7 @@ from steuerbote.steuerbote.doctype.corporate_income_tax_return import bridge as 
 from steuerbote.steuerbote.doctype.trade_tax_return import bridge
 from steuerbote.steuerbote.doctype.trade_tax_return.trade_tax_return import latest_corporate_income_tax_return
 from steuerbote.tests import income_tax
-from steuerbote.tests.helpers import acknowledge_errors, make_company
+from steuerbote.tests.helpers import acknowledge_errors, make_company, post_ledger
 from steuerbote.tests.income_tax import (
 	AGS,
 	COMPANY,
@@ -122,6 +122,33 @@ class TestTradeTaxReturn(Transmitting, IntegrationTestCase):
 		self.enterContext(patch.object(bridge, "provisional", **FINAL))
 
 	# Berechnen.
+
+	def test_after_a_later_posting_the_return_names_the_difference_of_the_gewerbesteuer_provision(self):
+		"""„Rückstellungen sind zu bilden für ungewisse Verbindlichkeiten“ (§ 249 Abs. 1 Satz 1 HGB): a sale posted after
+		the provisions raises the Gewerbesteuer, and its own return says so."""
+		a = self.account
+		corporate = income_tax.new_return()
+		corporate.calculate()
+		corporate.reload()
+		frappe.get_doc("Journal Entry", corporate.propose_provisions()).submit()
+		doc = self.new_return()
+		doc.calculate()
+		doc.reload()
+		self.assertNotIn("GEWST-RUECKSTELLUNG-DIFFERENZ", finding_codes(doc))
+		self.addCleanup(frappe.db.delete, "GL Entry", {"voucher_no": "JV-STGW-NACHTRAG"})
+		post_ledger(
+			COMPANY,
+			"Journal Entry",
+			"JV-STGW-NACHTRAG",
+			"2026-12-30",
+			[(a["8400"], 0, 10000), (a["1200"], 10000, 0)],
+		)
+		doc.calculate()
+		doc.reload()
+		(finding,) = [row for row in doc.findings if row.code == "GEWST-RUECKSTELLUNG-DIFFERENZ"]
+		self.assertEqual(finding.severity, "Hinweis")
+		self.assertIn("Gewerbesteuer 1.400,00 € mehr als gebucht", finding.text)
+		self.assertIn(corporate.name, finding.text)
 
 	def test_builds_on_the_koerperschaftsteuererklaerung_of_its_company_and_year(self):
 		corporate = income_tax.new_return()

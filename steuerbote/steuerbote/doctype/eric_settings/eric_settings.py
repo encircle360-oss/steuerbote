@@ -68,7 +68,7 @@ import steuerbote
 from steuerbote.elster import ustva_xml, vorsatz
 from steuerbote.eric import datenart as eric_datenart
 from steuerbote.eric import proxy, releases, runtime
-from steuerbote.eric.fake import Simulation
+from steuerbote.eric.fake import DOCUMENTATION_VARIABLE, Simulation
 from steuerbote.eric.releases import MinimumList, MinimumListError
 from steuerbote.eric.runtime import Check, RuntimeInstallError, UnsupportedPlatform
 from steuerbote.steuerbote import guards
@@ -337,7 +337,7 @@ class ERiCSettings(Document):
 			*transmission_adapter.runtime_status(self.hersteller_id or ""),
 			*releases.checks(installed, stored_minimum_list(self.minimum_versions), getdate()),
 			*taxonomy_status(),
-			*simulation_status(),
+			*simulation_status(bool(cint(self.simulation))),
 			*((runtime.copyright_check(self.copyright),) if has_annual_filings() else ()),
 		)
 		return [{"name": check.name, "ok": check.ok, "detail": check.detail} for check in checks]
@@ -477,10 +477,30 @@ def taxonomy_root() -> Path:
 	return Path(configured) if configured else Path(get_bench_path(), "sites", "taxonomy")
 
 
-def simulation_status() -> tuple[Check, ...]:
+def simulation_status(simulating: bool = True) -> tuple[Check, ...]:
 	"""Whether Prüfen in the simulation checks the Voranmeldung of the current year against its schema, which the
-	ERiC documentation that STEUERBOTE_ERIC_DOC_DIR names holds."""
-	return (Simulation().schema_check(eric_datenart.ustva(getdate().year)),)
+	ERiC documentation that STEUERBOTE_ERIC_DOC_DIR names holds. With ERiC, which checks the schema itself, the
+	documentation gives only the official texts of the rules Steuerbote checks itself in the Umsatzsteuererklärung of
+	the year before, the one filed this year; the check says whether the site has them."""
+	if simulating:
+		return (Simulation().schema_check(eric_datenart.ustva(getdate().year)),)
+	from steuerbote import ustjahr_sources
+
+	year = getdate().year - 1
+	source = ustjahr_sources.rule_text_source(year)
+	eric = "ERiC prüft die Nutzdaten selbst gegen ihr Schema, die Simulation läuft nicht."
+	if source is not None:
+		detail = (
+			f"{eric} Aus {source.name} in {source.parent} nennen die Befunde der Umsatzsteuererklärung {year} den "
+			"amtlichen Text jeder Regel, die Steuerbote selbst prüft."
+		)
+		return (Check("schema", True, detail),)
+	detail = (
+		f"{eric} Die Befunde der Umsatzsteuererklärung {year} nennen eine Regel, die Steuerbote selbst prüft, nur mit "
+		"Nummer und Bedingung: Ihren amtlichen Text gibt die Jahresdokumentation E50 der ERiC-Dokumentation, deren "
+		f"Verzeichnis die Umgebungsvariable {DOCUMENTATION_VARIABLE} des Web- und der Worker-Prozesse nennt."
+	)
+	return (Check("schema", False, detail),)
 
 
 def taxonomy_status() -> tuple[Check, ...]:

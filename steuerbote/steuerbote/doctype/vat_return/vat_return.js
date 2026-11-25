@@ -266,6 +266,10 @@ function show_intro(frm) {
 		poll_while_running(frm, "confirmation_in_progress");
 	}
 	notes.push(...late_notes(frm));
+	const provisional = (frm.doc.__onload || {}).provisional_forms;
+	if (provisional) {
+		notes.push(frappe.utils.escape_html(provisional));
+	}
 	frm.set_intro(notes.join("<br>"), "orange");
 }
 

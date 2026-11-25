@@ -30,6 +30,7 @@ from frappe.utils import cint, getdate
 
 from steuerbote import income_tax_sources
 from steuerbote.deadlines import Kind
+from steuerbote.ebilanz.positions import euro
 from steuerbote.elster import gewst_xml
 from steuerbote.eric import datenart as eric_datenart
 from steuerbote.gewst.form import catalogue_for
@@ -37,6 +38,7 @@ from steuerbote.jahresmeldung import findings as annual_findings
 from steuerbote.jahresmeldung.findings import Finding, Severity
 from steuerbote.jahresmeldung.lifecycle import Event
 from steuerbote.jahresmeldung.overrides import correction_of
+from steuerbote.kst import provisions
 from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, AnnualFiling, Calculation
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.doctype.corporate_income_tax_return import layout
@@ -53,6 +55,10 @@ VORGANG = "01"
 INPUT_FIELDS = ("corporate_income_tax_return", "supplement_key", "supplement_text")
 """What Berechnen reads of the return beside the Körperschaftsteuererklärung it names."""
 REPLACED = "Ersetzt"
+
+
+PROVISIONS_DIFFER = "GEWST-RUECKSTELLUNG-DIFFERENZ"
+"""The code of the hint on a provision for the Gewerbesteuer in the books that is not its balance."""
 
 
 class TradeTaxReturn(AnnualFiling, Transmittable, Document):
@@ -87,8 +93,28 @@ class TradeTaxReturn(AnnualFiling, Transmittable, Document):
 				"donations": [_receipt(row) for row in corporate.donations],
 			},
 			values=trade_tax.values,
-			findings=trade_tax.findings,
+			findings=(*trade_tax.findings, *self._provision_findings(corporate, trade_tax.result)),
 		)
+
+	def _provision_findings(self, corporate: Document, trade_tax) -> list[Finding]:
+		"""A hint where the books hold a provision for the Gewerbesteuer of the year that is not its balance, as after a
+		posting since Rückstellungen vorschlagen (§ 249 Abs. 1 Satz 1 HGB); none without a Hebesatz."""
+		posted = corporate.posted_provisions()
+		if trade_tax.hebesatz is None or not posted or not any(posted.values()):
+			return []
+		difference = trade_tax.balance - posted.get(provisions.Tax.GEWST, 0)
+		if not difference:
+			return []
+		part = f"{provisions.Tax.GEWST} {euro(abs(difference))} {'mehr' if difference > 0 else 'weniger'} als gebucht"
+		return [
+			Finding(
+				PROVISIONS_DIFFER,
+				Severity.HINT,
+				_(
+					"The books hold a provision for the Gewerbesteuer of {0} that differs from this return: {1}. Rückstellungen vorschlagen at {2} proposes the difference (§ 249 Abs. 1 Satz 1 HGB)."
+				).format(cint(self.year), part, corporate.name),
+			)
+		]
 
 	def check_reported(self, lines) -> list[Finding]:
 		"""The rules of the Jahresdokumentation E20 that Steuerbote checks itself, on the Vordrucke the return files."""
