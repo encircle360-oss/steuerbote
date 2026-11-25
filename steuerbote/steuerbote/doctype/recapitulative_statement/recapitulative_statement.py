@@ -13,6 +13,11 @@ filing, and a new statement starts as a draft. The file for Mein ELSTER and the 
 wait for Berechnen when it books other vouchers by then; they and every transmission build the lines again from
 the stored vouchers and overrides and refuse lines that differ from them.
 
+An override is tied to the ledger amount of its line it was made against (bridge.override_bases): a save or Berechnen
+keeps that basis while the override stays as it is, and the core holds the line once the ledger books another amount,
+also in a Berichtigung, which takes the overrides with their bases. A release of the USt-IdNr. of a line with a
+Begründung lifts only the block of an unconfirmed or invalid number and leaves the amount to the ledger.
+
 "USt-IdNrn. prüfen" (confirm_vat_ids) asks the BZSt about each USt-IdNr. the lines report, in a background job,
 one query after the other and none repeated (steuerbote.vatid), and keeps every query as a VAT ID Confirmation
 (vat_id_confirmation/confirming.py).
@@ -66,6 +71,7 @@ from steuerbote.steuerbote.doctype.elster_transmission.transmission import (
 from steuerbote.steuerbote.doctype.recapitulative_statement import bridge
 from steuerbote.steuerbote.doctype.vat_id_confirmation import confirming, vat_id_confirmation
 from steuerbote.steuerbote.doctype.vat_id_confirmation.confirming import Confirming
+from steuerbote.steuerbote.doctype.vat_return import bridge as vat_return_bridge
 from steuerbote.steuerbote.doctype.vat_return.vat_return import (
 	TRANSFERTICKET,
 	SiteFigures,
@@ -80,7 +86,7 @@ from steuerbote.zm.correction import as_filed
 from steuerbote.zm.csv_file import csv_file
 from steuerbote.zm.errors import ZmError
 from steuerbote.zm.findings import Finding
-from steuerbote.zm.lines import Art, Override, Statement, VoucherAmount, build
+from steuerbote.zm.lines import Art, ConfirmationAge, Override, Statement, VoucherAmount, build
 from steuerbote.zm.period import ReportingPeriod
 from steuerbote.zm.reconciliation import Filed, ledger_changes, reconcile
 from steuerbote.zm.rhythm import (
@@ -106,8 +112,10 @@ CALCULATED_TABLES = ("lines", "vouchers", "reconciliation", "comparison", "hints
 # What Berechnen stores besides the lines and the hints, which every save builds anew.
 STORED_TABLES = ("vouchers", "reconciliation", "comparison")
 TOTALS = ("total_l", "total_d", "total_s")
-# What the form lets the user enter on a line; Berechnen and every save find the rest.
-LINE_INPUT = ("vat_id", "art", "override", "override_reason")
+# What the form lets the user enter on a line, and the ledger amount an override was made against; Berechnen and
+# every save find the rest.
+LINE_INPUT = ("vat_id", "art", "override", "override_reason", "override_basis", "acceptance_reason")
+LINE_KEY = ("vat_id", "art")
 FILING_FIELDS = ("filed_via", "filed_on", "transferticket", "filing_note", "filed_by")
 
 CONFIRMATION_JOB = (
@@ -268,6 +276,8 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		rules = settings.get_zm_rules()
 		mapping = mapping_for(self.company, cint(self.year))
 		figures = self._figures()
+		stored = self._stored()
+		self._take_bases(stored.lines if stored else ())
 		with zm_errors():
 			overrides = bridge.overrides_of(self.lines)
 			shares = zm_sources.shares(self.company, covered, mapping)
@@ -305,12 +315,15 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 				*threshold_findings(rules, period, deliveries, figures),
 				*threshold_unknown(rules, period, books_start, first_year.covered(prior)),
 			)
-			reconciliation = reconcile(statement, shares, figures, self._filed(covered))
+			filed, notes = self._filed(covered)
+			reconciliation = reconcile(statement, shares, figures, filed)
 			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
 			lines = bridge.line_rows(statement, confirmations, period, held)
-		self.set("lines", lines)
+		self.set(
+			"lines", bridge.with_names(lines, _rows(stored.lines if stored else (), named=True), LINE_KEY)
+		)
 		self.set("vouchers", bridge.voucher_rows(amounts, parties))
-		self.set("reconciliation", bridge.reconciliation_rows(reconciliation))
+		self.set("reconciliation", bridge.reconciliation_rows(reconciliation, notes))
 		self.set("comparison", bridge.comparison_rows(compared))
 		findings = [
 			*statement.findings,
@@ -319,8 +332,15 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 			*comparison_hints(compared, before, figures),
 			*((not_compared,) if not_compared else ()),
 		]
-		self.set("hints", bridge.hint_rows(findings))
-		self._set_totals_and_status(statement)
+		self.set(
+			"hints",
+			bridge.with_names(
+				bridge.hint_rows(findings),
+				_rows(stored.hints if stored else (), named=True),
+				bridge.HINT_FIELDS,
+			),
+		)
+		self._set_totals_and_status(statement, held)
 		self.flags.calculating = True
 		try:
 			self.save()
@@ -367,12 +387,41 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		with zm_errors():
 			rows, correction = saved._file_lines(period)
 			content = csv_file(rows, correction=correction)
-		return saved._attach(bridge.csv_file_name(period, correction), content)
+		url = saved._attach(bridge.csv_file_name(period, correction), content)
+		saved._name_left_out(correction)
+		return url
+
+	def _name_left_out(self, correction: bool) -> None:
+		"""Say which lines with an amount in the ledger the file leaves out, so that nobody takes the file for the
+		whole statement (§ 18a Absatz 7 UStG)."""
+		left = bridge.left_out(self.lines, correction)
+		if not left:
+			return
+		figures = self._figures()
+		frappe.msgprint(
+			"<br>".join(
+				(
+					_(
+						"The file leaves out these lines, which the ledger books but the statement does not report as they stand:"
+					),
+					*(
+						escape_html(
+							f"{vat_id} ({art}){f' {party}' if party else ''}: {figures.money(amount)}"
+						)
+						for vat_id, art, party, amount in left
+					),
+				)
+			),
+			title=_("CSV for Mein ELSTER"),
+			indicator="orange",
+		)
 
 	@frappe.whitelist(methods=["POST"])
 	def make_correction(self) -> str:
-		"""Berichtigung anlegen: a new statement for the Meldezeitraum, with the overrides of this one, that
-		reports what changed against the filings; calculated at once. Returns its name."""
+		"""Berichtigung anlegen: a new statement for the Meldezeitraum, with the overrides of this one and the ledger
+		amounts they were made against, and with its releases of USt-IdNrn., that reports what changed against the
+		filings; calculated at once, so that an override whose ledger amount changed since holds it. Returns its
+		name."""
 		frappe.has_permission(DOCTYPE, "create", throw=True)
 		if self.docstatus != 1 or self.status != FILED:
 			frappe.throw(
@@ -398,7 +447,7 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 				"lines": [
 					{field: row.get(field) for field in LINE_INPUT}
 					for row in self.lines
-					if (row.override_reason or "").strip()
+					if (row.override_reason or "").strip() or (row.acceptance_reason or "").strip()
 				],
 			}
 		).insert()
@@ -482,6 +531,7 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 			self.submit()
 		finally:
 			self.flags.filed_outside = False
+		self._warn_filed_before_the_end(filed_date)
 		return self.new_transmission(
 			EXTERN,
 			simulated=False,
@@ -491,6 +541,18 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 			transferticket=ticket or None,
 			filed_on=filed_date,
 		).name
+
+	def _warn_filed_before_the_end(self, filed_on: date) -> None:
+		"""A statement noted as filed before its months have ended may miss vouchers booked later in them, which a
+		Berichtigung then has to report (§ 18a Absatz 10 UStG)."""
+		end = getdate(self.services_to or self.to_date)
+		if filed_on <= end:
+			frappe.msgprint(
+				_(
+					"{0} was noted as filed on {1}, before its months end on {2}. A voucher booked for them later needs a Berichtigung."
+				).format(self.period_label, formatdate(filed_on), formatdate(end)),
+				indicator="orange",
+			)
 
 	def datenart(self) -> eric_datenart.Datenart:
 		"""The Datenart ZMDO, which has no year."""
@@ -745,6 +807,7 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		self.update({"status": before.status, "ready": before.ready})
 		for table in STORED_TABLES:
 			self.set(table, _rows(before.get(table)))
+		self._take_bases(before.lines)
 		if self.status not in (CALCULATED, READY):
 			self.set("lines", [{field: row.get(field) for field in LINE_INPUT} for row in self.lines])
 			self.set("hints", _rows(before.hints))
@@ -756,9 +819,28 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 			statement, confirmations = self._build(amounts, overrides, covered, self._figures())
 			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
 			rows = bridge.line_rows(statement, confirmations, covered.period, held)
-		self.set("lines", rows)
-		self.set("hints", bridge.merged_hints(statement, before.hints))
-		self._set_totals_and_status(statement)
+		self.set("lines", bridge.with_names(rows, _rows(before.lines, named=True), LINE_KEY))
+		self.set(
+			"hints",
+			bridge.with_names(
+				bridge.merged_hints(statement, before.hints),
+				_rows(before.hints, named=True),
+				bridge.HINT_FIELDS,
+			),
+		)
+		self._set_totals_and_status(statement, held)
+
+	def _stored(self) -> Document | None:
+		"""The statement as the database holds it, None before its first save."""
+		if self.is_new() or not frappe.db.exists(DOCTYPE, self.name):
+			return None
+		return frappe.get_doc(DOCTYPE, self.name)
+
+	def _take_bases(self, stored: Iterable[Document]) -> None:
+		"""Give each override the ledger amount it was made against, from the stored lines and never from the rows a
+		save sends (bridge.override_bases)."""
+		for row, basis in zip(self.lines, bridge.override_bases(stored, self.lines), strict=True):
+			row.override_basis = basis
 
 	def _build(
 		self,
@@ -771,13 +853,27 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		months the statement reports, and that confirmation as the lines show it."""
 		vat_ids = bridge.line_vat_ids(amounts, overrides)
 		latest = vat_id_confirmation.latest(self.company, vat_ids)
-		validity = bridge.validity_for(vat_ids, latest, bridge.covered_span(covered))
-		statement = build(amounts, figures, validity, overrides, bridge.asked_on(latest))
+		span = bridge.covered_span(covered)
+		validity = bridge.validity_for(vat_ids, latest, span)
+		age = vat_return_bridge.max_confirmation_age(
+			frappe.db.get_value("VAT Return Settings", self.company, "max_confirmation_age")
+		)
+		statement = build(
+			amounts,
+			figures,
+			validity,
+			overrides,
+			bridge.asked_on(latest),
+			accepted=bridge.acceptances_of(self.lines),
+			confirmation_age=ConfirmationAge(span[1], age),
+		)
 		return statement, {vat_id: bridge.confirmation_fields(record) for vat_id, record in latest.items()}
 
-	def _set_totals_and_status(self, statement: Statement) -> None:
+	def _set_totals_and_status(
+		self, statement: Statement, held: dict[tuple[str, Art], Decimal] | None = None
+	) -> None:
 		self.update(bridge.totals(statement.meldezeilen))
-		self.ready = int(bridge.ready(statement, self.hints))
+		self.ready = int(bridge.ready(statement, self.hints, held))
 		self.status = READY if self.ready else CALCULATED
 
 	def _held(self) -> dict[tuple[str, Art], Decimal]:
@@ -790,21 +886,23 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		with zm_errors():
 			return as_filed(*(bridge.filed_meldezeilen(doc.lines) for doc in filings))
 
-	def _filed(self, covered: Coverage) -> dict[str, Filed]:
+	def _filed(self, covered: Coverage) -> tuple[dict[str, Filed], dict[str, str]]:
 		"""The Kz 41 and 42 of the Voranmeldungen filed for the goods months, the Kz 21 of those filed for the
-		services months."""
-		return {
-			**bridge.filed(
-				zm_sources.filed_returns(self.company, covered.goods_span),
-				covered.goods_span,
-				zm_sources.GOODS,
-			),
-			**bridge.filed(
-				zm_sources.filed_returns(self.company, covered.services_span),
-				covered.services_span,
-				zm_sources.SERVICES,
-			),
-		}
+		services months, and by Art why a comparison is missing (bridge.uncompared)."""
+		goods = zm_sources.filed_returns(self.company, covered.goods_span)
+		services = zm_sources.filed_returns(self.company, covered.services_span)
+		goods_note = bridge.uncompared(goods, covered.goods_span)
+		return (
+			{
+				**bridge.filed(goods, covered.goods_span, zm_sources.GOODS),
+				**bridge.filed(services, covered.services_span, zm_sources.SERVICES),
+			},
+			{
+				Art.L.value: goods_note,
+				Art.D.value: goods_note,
+				Art.S.value: bridge.uncompared(services, covered.services_span),
+			},
+		)
 
 	def _file_lines(self, period: ReportingPeriod) -> tuple[tuple, bool]:
 		statement = bridge.statement_of(self.vouchers, self.lines, self._figures())
@@ -936,9 +1034,15 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		self.reload()
 
 
-def _rows(rows: Iterable[Document]) -> list[dict]:
-	"""Rows of a table as they were stored, for a save to keep them."""
-	return [row.as_dict(no_default_fields=True, no_child_table_fields=True) for row in rows]
+def _rows(rows: Iterable[Document], named: bool = False) -> list[dict]:
+	"""Rows of a table as they were stored, for a save to keep them; ``named`` keeps the name of each row."""
+	return [
+		{
+			**row.as_dict(no_default_fields=True, no_child_table_fields=True),
+			**({"name": row.name} if named else {}),
+		}
+		for row in rows
+	]
 
 
 @contextmanager

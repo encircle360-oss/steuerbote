@@ -8,8 +8,9 @@ and the latest confirmation of each USt-IdNr., which the controller reads from i
 lifts its block at once, while the controller only moves data. Every amount and every rule is the core's.
 
 A number that was never confirmed counts as unconfirmed, as does one whose confirmation got no answer: both
-hold the statement back from „Bereit“ until the BZSt confirms the number or the line is overridden with a
-Begründung (decision of the maintainer, docs/zm.md, [Q16]). The core lets a number without an outcome pass, so
+hold the statement back from „Bereit“ until the BZSt confirms the number, the number of the line is released with a
+Begründung or the line is overridden with one (decision of the maintainer, docs/zm.md, [Q16]). An override keeps the
+ledger amount of its line it was made against (override_bases), so that a later change of the ledger holds the line. The core lets a number without an outcome pass, so
 the statement passes an outcome for every number its lines have.
 
 For ERiC the module hands the statement as it is filed to steuerbote.elster.zm_xml: the Unternehmer from the VAT
@@ -26,6 +27,7 @@ from typing import Any
 
 from steuerbote.elster import zm_xml
 from steuerbote.steuerbote.doctype.vat_return.bridge import Row, split_voucher, to_amount
+from steuerbote.ustva.period import Period
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import ZERO
 from steuerbote.vatid.result import valid_through
@@ -66,6 +68,9 @@ LINE_CODES: frozenset[str] = frozenset(
 		Code.UNCONFIRMED_VAT_ID,
 		Code.DESTINATION,
 		Code.OWN_LINE,
+		Code.OVERRIDE_STALE,
+		Code.VAT_ID_ACCEPTED,
+		Code.CONFIRMATION_STALE,
 	}
 )
 HINT_FIELDS = ("severity", "code", "text", "voucher_type", "voucher_no", "party")
@@ -77,6 +82,8 @@ CONFIRMATION_FIELDS = (
 	"confirmation_status",
 	"consultation_id",
 )
+# What a line shows for a number the ZM takes and nobody has confirmed yet.
+UNCONFIRMED = "unconfirmed"
 # The result of a confirmation as a VAT ID Confirmation keeps it, and what it means for a line.
 VALIDITY: ReadOnlyMapping[str, Validity] = MappingProxyType(
 	{"valid": Validity.CONFIRMED, "invalid": Validity.INVALID}
@@ -252,7 +259,8 @@ def voucher_amounts(rows: Iterable[Row]) -> list[VoucherAmount]:
 
 
 def overrides_of(rows: Iterable[Row]) -> dict[tuple[str, Art], Override]:
-	"""The overrides of the rows of the lines, by USt-IdNr. and Art as the lines show them.
+	"""The overrides of the rows of the lines, by USt-IdNr. and Art as the lines show them, each with the ledger amount
+	it was made against (``override_basis``), None where the row holds none.
 
 	An override takes effect once it has a Begründung, so that 0 drops a line. An amount without one is refused
 	rather than ignored, since its author expects it to count.
@@ -265,12 +273,48 @@ def overrides_of(rows: Iterable[Row]) -> dict[tuple[str, Art], Override]:
 			if amount:
 				raise ZmError(NO_REASON)
 			continue
-		art = Art(row.get("art"))
-		key = (line_vat_id(row.get("vat_id"), art), art)
+		key = _key_of(row)
 		if key in overrides:
 			raise ZmError(OVERRIDDEN_TWICE, *key)
-		overrides[key] = Override(amount, reason)
+		basis = row.get("override_basis")
+		overrides[key] = Override(amount, reason, None if basis is None else to_amount(basis))
 	return overrides
+
+
+def override_bases(stored: Iterable[Row], rows: Iterable[Row]) -> list[Decimal | None]:
+	"""The ledger amount each override of ``rows`` was made against, from the lines as ``stored`` holds them.
+
+	An override the stored line holds as it is keeps its basis. A new or changed one takes the exact ledger amount the
+	stored line showed when the user entered it, and one for a line the statement did not hold gets None, which
+	build() fills with the ledger amount it finds. A row without an override gets None.
+	"""
+	by_key = {_key_of(row): row for row in stored}
+	bases: list[Decimal | None] = []
+	for row in rows:
+		before = by_key.get(_key_of(row))
+		if not str(row.get("override_reason") or "").strip() or before is None:
+			bases.append(None)
+		elif _override(before) == _override(row):
+			bases.append(to_amount(before.get("override_basis")))
+		else:
+			bases.append(to_amount(before.get("amount")))
+	return bases
+
+
+def acceptances_of(rows: Iterable[Row]) -> dict[tuple[str, Art], str]:
+	"""The releases of the numbers of the rows, by USt-IdNr. and Art as the lines show them, each with its Begründung."""
+	return {
+		_key_of(row): reason for row in rows if (reason := str(row.get("acceptance_reason") or "").strip())
+	}
+
+
+def _key_of(row: Row) -> tuple[str, Art]:
+	art = Art(row.get("art"))
+	return (line_vat_id(row.get("vat_id"), art), art)
+
+
+def _override(row: Row) -> tuple[Decimal, str]:
+	return to_amount(row.get("override")), str(row.get("override_reason") or "").strip()
 
 
 def line_vat_ids(
@@ -353,19 +397,21 @@ def line_rows(
 	shows what was filed for it, the file reports the lines that change it, and a line filed before that has no
 	vouchers and no override any more gets a row of its own, which the Berichtigung cancels with 0.
 	"""
-	rows = {line.key: _line_row(line) for line in statement.lines}
+	holding = {line.key for line in statement.holding(held)}
+	rows = {line.key: _line_row(line, line.key in holding) for line in statement.lines}
 	in_file = {line.key for line in file_lines(statement, period, held)[0]}
 	if held is not None:
 		for key, amount in held.items():
 			if amount and key not in rows:
-				rows[key] = _line_row(Line(*key))
+				rows[key] = _line_row(Line(*key), False)
 	for key, row in rows.items():
+		unconfirmed = {"confirmation_outcome": UNCONFIRMED} if reportable(*key) else {}
 		row.update(
 			{
 				"filed_amount": (held or {}).get(key, ZERO),
 				"in_file": int(key in in_file),
 				**dict.fromkeys(CONFIRMATION_FIELDS),
-				**confirmations.get(key[0], {}),
+				**confirmations.get(key[0], unconfirmed),
 			}
 		)
 	return [rows[key] for key in sorted(rows, key=line_order)]
@@ -405,7 +451,7 @@ def _line_amounts(row: Row) -> tuple[Decimal, Decimal, Decimal, int]:
 	)
 
 
-def _line_row(line: Line) -> dict[str, Any]:
+def _line_row(line: Line, holding: bool) -> dict[str, Any]:
 	party = next((name.strip() for item in line.vouchers if (name := item.party or "").strip()), "")
 	return {
 		"vat_id": line.vat_id,
@@ -414,8 +460,10 @@ def _line_row(line: Line) -> dict[str, Any]:
 		"amount": line.amount,
 		"override": line.override.amount if line.override else ZERO,
 		"override_reason": line.override.reason if line.override else "",
+		"override_basis": line.override.basis if line.override else ZERO,
+		"acceptance_reason": line.acceptance,
 		"reported": line.reported,
-		"blocked": int(line.blocked),
+		"blocked": int(holding),
 		"manual": int(line.manual),
 	}
 
@@ -446,12 +494,46 @@ def merged_hints(statement: Statement, rows: Iterable[Row]) -> list[dict[str, An
 	return [*hint_rows(statement.findings), *kept]
 
 
-def ready(statement: Statement, hints: Iterable[Row]) -> bool:
-	"""No line holds the statement back, and no error that an override cannot lift: the threshold and the
-	reconciliation with the ledger."""
-	return statement.ready and not any(
+def ready(
+	statement: Statement, hints: Iterable[Row], held: ReadOnlyMapping[tuple[str, Art], Decimal] | None = None
+) -> bool:
+	"""No line holds the statement back, a Berichtigung with what the BZSt holds (``held``, Statement.holding), and no
+	error that an override cannot lift: the threshold and the reconciliation with the ledger."""
+	return statement.ready_against(held) and not any(
 		row.get("severity") == Severity.ERROR.value and row.get("code") not in LINE_CODES for row in hints
 	)
+
+
+def with_names(
+	rows: Iterable[dict[str, Any]], stored: Iterable[Row], fields: Sequence[str]
+) -> list[dict[str, Any]]:
+	"""The rows a save builds anew, each with the name of a stored row of the same values in ``fields`` that no row
+	before it took, so that Frappe updates the rows that stay instead of removing and adding them."""
+	names: dict[tuple, list[str]] = {}
+	for row in stored:
+		if row.get("name"):
+			names.setdefault(tuple(str(row.get(field) or "") for field in fields), []).append(row.get("name"))
+	named = []
+	for row in rows:
+		free = names.get(tuple(str(row.get(field) or "") for field in fields))
+		named.append({"name": free.pop(0), **row} if free else dict(row))
+	return named
+
+
+def left_out(rows: Iterable[Row], correction: bool) -> list[tuple[str, str, str, Decimal]]:
+	"""The lines with an amount in the ledger that the file of the statement does not report, as USt-IdNr., Art,
+	customer and exact amount; a Berichtigung leaves out the lines it repeats unchanged, which it need not name."""
+	found = []
+	for row in rows:
+		amount = to_amount(row.get("amount"))
+		if int(row.get("in_file") or 0) or not amount:
+			continue
+		if correction and to_amount(row.get("reported")) == to_amount(row.get("filed_amount")):
+			continue
+		found.append(
+			(row.get("vat_id") or "ohne USt-IdNr.", str(row.get("art")), row.get("party") or "", amount)
+		)
+	return found
 
 
 def totals(meldezeilen: Iterable[Meldezeile]) -> dict[str, Decimal]:
@@ -461,9 +543,11 @@ def totals(meldezeilen: Iterable[Meldezeile]) -> dict[str, Decimal]:
 	return {TOTAL_FIELDS[art]: amount for art, amount in sums.items()}
 
 
-def reconciliation_rows(reconciliation: Reconciliation) -> list[dict[str, Any]]:
-	"""A row per Art. A Currency field stores no blank, so a Kennzahl without filed Voranmeldungen holds 0 and
-	says that it is not known."""
+def reconciliation_rows(
+	reconciliation: Reconciliation, notes: ReadOnlyMapping[str, str] = MappingProxyType({})
+) -> list[dict[str, Any]]:
+	"""A row per Art. A Currency field stores no blank, so a Kennzahl without filed Voranmeldungen holds 0, says that
+	it is not known and why, from ``notes`` by Art (uncompared)."""
 	return [
 		{
 			"art": row.art.value,
@@ -474,6 +558,7 @@ def reconciliation_rows(reconciliation: Reconciliation) -> list[dict[str, Any]]:
 			"reported": row.reported,
 			"filed": ZERO if row.filed is None else row.filed,
 			"filed_known": int(row.filed is not None),
+			"filed_note": notes.get(row.art.value, ""),
 			"deviating_vouchers": len(row.differences),
 			"balanced": int(not row.differences),
 			"manual": row.manual,
@@ -515,6 +600,22 @@ def filed(
 		number: Filed(sum((item.amounts.get(number, ZERO) for item in inside), ZERO), len(inside))
 		for number in kennzahlen
 	}
+
+
+def uncompared(returns: Iterable[FiledReturn], span: tuple[date, date] | None) -> str:
+	"""Why the filed Voranmeldungen give nothing to compare for the months of ``span`` (filed), empty where they do."""
+	if span is None:
+		return "Nicht verglichen: Die Meldung umfasst keine Monate dieser Art."
+	inside = [item for item in returns if span[0] <= item.start and item.end <= span[1]]
+	months = sorted(month for item in inside for month in _months(item.start, item.end))
+	wanted = _months(*span)
+	if months == wanted:
+		return ""
+	missing = [month for month in wanted if month not in months]
+	if not missing:
+		return "Nicht verglichen: Die abgegebenen Voranmeldungen decken die Monate der Meldung nicht je einmal ab."
+	labels = ", ".join(Period.month(year, month).label for year, month in missing)
+	return f"Nicht verglichen: Für {labels} ist keine Voranmeldung abgegeben."
 
 
 def _months(start: date, end: date) -> list[tuple[int, int]]:

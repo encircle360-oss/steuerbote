@@ -362,7 +362,7 @@ class LineRowsTest(TestCase):
 		self.assertEqual(rows[0]["confirmation"], "USTID-2026-00001")
 		self.assertEqual(
 			(rows[1]["override_reason"], rows[1]["confirmation"], rows[1]["confirmation_outcome"]),
-			("Verbringen nach Spanien", None, None),
+			("Verbringen nach Spanien", None, "unconfirmed"),
 		)
 		self.assertEqual([row["manual"] for row in rows], [0, 1, 0])
 		self.assertEqual(
@@ -537,6 +537,7 @@ class ReconciliationRowsTest(TestCase):
 				"reported": d("1000"),
 				"filed": d("1000"),
 				"filed_known": 1,
+				"filed_note": "",
 				"deviating_vouchers": 1,
 				"balanced": 0,
 				"manual": d("0"),
