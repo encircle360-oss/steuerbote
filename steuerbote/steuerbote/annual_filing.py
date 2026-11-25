@@ -583,6 +583,9 @@ class AnnualFiling(Filing):
 		"""What the shared includes of the print formats read (templates/includes/annual_filing)."""
 		tax_number, elster_tax_number = self.tax_numbers()
 		columns = self.LINE_COLUMNS
+		shown = printed_findings(
+			self.get(FINDINGS_TABLE) or (), all_hints=bool(cint(frappe.form_dict.get("all_hints")))
+		)
 		corrected = [
 			row
 			for row in (self.get(self.LINES) if self.LINES else ())
@@ -593,7 +596,10 @@ class AnnualFiling(Filing):
 			"mein_elster": self.transmits and MEIN_ELSTER in self.FILED_OUTSIDE,
 			"tax_number": tax_number,
 			"elster_tax_number": elster_tax_number,
-			"findings": list(self.get(FINDINGS_TABLE) or ()),
+			"findings": shown["findings"],
+			"errors": shown["errors"],
+			"hint_kinds": shown["hint_kinds"],
+			"hints": shown["hints"],
 			"corrections": [
 				{
 					"key": row.get(columns.key),
@@ -934,6 +940,25 @@ class AnnualFiling(Filing):
 				).format(key),
 			}
 			frappe.throw(messages[error.problem])
+
+
+def printed_findings(rows: Sequence[Any], *, all_hints: bool = False) -> dict[str, Any]:
+	"""The findings as the print formats show them: every error with its acknowledgement, the hints by kind with their
+	number and the first of each, and every hint for an annex only when the print asks for it."""
+	errors = [row for row in rows if cint(row.get("blocking"))]
+	hints = [row for row in rows if not cint(row.get("blocking"))]
+	kinds: dict[str, dict[str, Any]] = {}
+	for row in hints:
+		kind = kinds.setdefault(
+			row.get("code") or "", {"code": row.get("code"), "count": 0, "text": row.get("text")}
+		)
+		kind["count"] += 1
+	return {
+		"findings": list(rows),
+		"errors": errors,
+		"hint_kinds": list(kinds.values()),
+		"hints": hints if all_hints else [],
+	}
 
 
 def fiscal_year_ending_in(company: str, year: int) -> frappe._dict:

@@ -47,6 +47,7 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import cast
 
+from steuerbote.ustjahr import text
 from steuerbote.ustjahr.form import (
 	RATE_7,
 	RATE_19,
@@ -58,7 +59,7 @@ from steuerbote.ustjahr.form import (
 	Severity,
 	catalogue_for,
 )
-from steuerbote.ustva.rounding import HUNDRED, ZERO, to_cents, to_full_euros
+from steuerbote.ustva.rounding import HUNDRED, ZERO, to_full_euros
 
 Values = ReadOnlyMapping[str, object]
 
@@ -520,7 +521,7 @@ def _ref(field: Field) -> str:
 
 
 def _euros(amount: Decimal) -> str:
-	return format(to_cents(amount), "f")
+	return text.euros(amount)
 
 
 def _any(values: Values, elements: tuple[str, ...]) -> bool:

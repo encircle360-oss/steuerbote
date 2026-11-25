@@ -175,6 +175,7 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 					),
 				),
 				_,
+				ustjahr_sources.rule_texts(year),
 			),
 			passed=result.ready and found_soll.ready and found.ready,
 		)

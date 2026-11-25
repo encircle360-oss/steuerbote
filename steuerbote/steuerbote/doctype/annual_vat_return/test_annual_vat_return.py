@@ -326,7 +326,7 @@ class TestAnnualVATReturn(Transmitting, IntegrationTestCase):
 				self.assertIn(code, codes)
 		self.assertEqual([row.code for row in doc.findings if row.blocking], [])
 		(payments,) = (row for row in doc.findings if row.code == "ZAHLUNGEN")
-		self.assertIn("1390.00", payments.text)
+		self.assertIn("1.390,00", payments.text)
 		(journal,) = (row for row in doc.findings if row.code == "JOURNALBUCHUNG-STEUERKONTO")
 		self.assertIn(self.section_15a.name, journal.text)
 		self.assertTrue(all(row.severity == "Hinweis" for row in doc.findings))

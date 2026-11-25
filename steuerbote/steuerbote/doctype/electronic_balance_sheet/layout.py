@@ -103,9 +103,16 @@ def print_sections(
 		"guv": components["GuV"],
 		"bvv": components["BVV"],
 		"anlagenspiegel": _anlagenspiegel(fixed_assets),
+		"fixed_assets_in_bilanz": any(
+			to_amount(row.get("reported")) for row in shown if str(row.get("concept") or "") == FIXED_ASSETS
+		),
 		"kontennachweis": _kontennachweis(accounts),
 		"ueberleitung": [_transfer(row) for row in transfers],
 	}
+
+
+FIXED_ASSETS = "bs.ass.fixAss"
+"""The Anlagevermögen of the Bilanz, whose development the Anlagenspiegel shows."""
 
 
 def german(amount: Decimal) -> str:

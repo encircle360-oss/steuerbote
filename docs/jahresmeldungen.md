@@ -167,7 +167,7 @@ Jeder Beleg druckt mit einem Standard-Druckformat seines Moduls, auf A4, schwarz
 | `style.html` | A4 hochkant, Schrift und Tabellen, alle Klassen mit `sb-`, denn das Druck-Stylesheet von Frappe gestaltet allgemeine Klassen wie `label` selbst. Das Druckformat bindet es zuerst ein und legt seinen Inhalt in `<div class="sb-annual">` |
 | `head.html` | der Kopf in zwei Spalten: Unternehmen, Steuernummer, Steuernummer im ELSTER-Format, Jahr, Geschäftsjahr, Fällig am, die Zeilen des Moduls aus `head_rows`, Beleg mit Status, Berichtigung zu und Abgegeben am mit dem Weg |
 | `corrections.html` | „Korrekturen und Zeilen von Hand“: Zeile, Bezeichnung, berechnet, gemeldet und Begründung |
-| `findings.html` | „Befunde“: Art, Code, Nachricht und Referenz, die Fehler zuerst |
+| `findings.html` | „Befunde“: jeder Fehler mit Art, Code, Nachricht, Referenz und, wo bestätigt, der Begründung (`errors`); die Hinweise nach Art mit ihrer Zahl und dem ersten (`hint_kinds`); alle Hinweise als Anhang nur, wenn der Druck `all_hints=1` verlangt (`hints`), über „Drucken mit allen Hinweisen“ am Formular |
 | `remarks.html` | die Anmerkungen |
 | `footer.html` | „Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.“ und der Hinweis, dass der Ausdruck keine Abgabe ist; ohne den Weg über Mein ELSTER, wie bei der E-Bilanz, nur „Zum Abgleich mit der Steuerberatung.“; beim Jahresabschluss der Hinweis, dass der Ausdruck keine Offenlegung ist |
 

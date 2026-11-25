@@ -30,6 +30,7 @@ gives it the Jahresabschluss:
 
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 from types import MappingProxyType
@@ -41,9 +42,9 @@ from frappe.core.doctype.file.utils import get_content_hash
 from frappe.model.document import Document
 from frappe.utils import cint, escape_html, flt, getdate
 
-from steuerbote import annual_accounts_sources, balances, headcount
+from steuerbote import annual_accounts_sources, balances, deadlines, headcount, holiday_list
 from steuerbote.deadlines import Kind
-from steuerbote.hgb import instance
+from steuerbote.hgb import instance, schemes
 from steuerbote.hgb.disclosure import adoption_problems
 from steuerbote.hgb.notes import answer_problems, register_problems
 from steuerbote.hgb.size import SizeClass
@@ -56,10 +57,12 @@ from steuerbote.jahresmeldung.overrides import to_amount
 from steuerbote.ledger import account_names
 from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, AnnualFiling, Calculation
-from steuerbote.steuerbote.deadlines import annual_deadline
+from steuerbote.steuerbote.deadlines import annual_deadline, annual_rules
 from steuerbote.steuerbote.doctype.annual_accounts import bridge, layout, xbrl_export
 from steuerbote.steuerbote.doctype.annual_accounts.bridge import BridgeError, DisclosureMode, Problem
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import record_adoption
+from steuerbote.steuerbote.doctype.annual_filing_settings.rules import SizeRecord, size_class_on
+from steuerbote.steuerbote.doctype.corporate_income_tax_return import corporate_income_tax_return
 from steuerbote.steuerbote.recorded_vouchers import ProposedJournalEntries
 
 DOCTYPE = "Annual Accounts"
@@ -159,6 +162,7 @@ class AnnualAccounts(ProposedJournalEntries, AnnualFiling, Document):
 	def compute(self) -> Calculation:
 		"""Berechnen: the size class, the Bilanz and the GuV of the class, the Angaben, the signatories and the
 		findings."""
+		self._refuse_an_unknown_year()
 		year = cint(self.year)
 		from_date, to_date = getdate(self.from_date), getdate(self.to_date)
 		settings = annual_accounts_sources.settings(self.company)
@@ -300,7 +304,10 @@ class AnnualAccounts(ProposedJournalEntries, AnnualFiling, Document):
 			lines=bridge.line_rows(found, sources.parents),
 			tables={NOTES: notes, SIGNATORIES: signatories},
 			values=calculated,
-			findings=found_findings,
+			findings=(
+				*found_findings,
+				*corporate_income_tax_return.provision_differences(self.company, cint(self.year)),
+			),
 		)
 
 	def compute_deadline(self) -> date | None:
@@ -309,9 +316,19 @@ class AnnualAccounts(ProposedJournalEntries, AnnualFiling, Document):
 		return annual_deadline(self.company, Kind.FESTSTELLUNG, cint(self.year))
 
 	def set_period(self) -> None:
-		"""Besides the fiscal year and the Feststellung, the last day of the Offenlegung (§ 325 Abs. 1a Satz 1 HGB)."""
+		"""Besides the fiscal year and the Feststellung, the last day of the Offenlegung (§ 325 Abs. 1a Satz 1 HGB). Where
+		the settings name no size class for the Abschlussstichtag, the class Berechnen applied gives the deadline of the
+		Feststellung, eleven months for a small company (§ 42a Abs. 2 Satz 1 GmbHG)."""
 		super().set_period()
 		self.disclosure_deadline = annual_deadline(self.company, Kind.OFFENLEGUNG, cint(self.year))
+		rules = annual_rules(self.company)
+		closing = getdate(self.to_date)
+		if rules is not None and self.size_class and size_class_on(rules.size_history, closing) is None:
+			applied = SizeRecord(closing, self.size_class, _(DOCTYPE))
+			rules = replace(rules, size_history=(*rules.size_history, applied))
+			self.deadline = deadlines.annual_due(
+				rules, Kind.FESTSTELLUNG, cint(self.year), holiday_list.holidays(self.company)
+			)
 
 	def set_amounts(self) -> None:
 		"""The Vortrag auf neue Rechnung of the Ergebnisverwendung."""
@@ -353,6 +370,7 @@ class AnnualAccounts(ProposedJournalEntries, AnnualFiling, Document):
 
 	def validate(self) -> None:
 		before = self.get_doc_before_save()
+		self._refuse_an_unknown_year()
 		if self.company and self.year:
 			self._keep_the_entered_tables(before)
 			self._keep_the_records(before)
@@ -676,6 +694,17 @@ class AnnualAccounts(ProposedJournalEntries, AnnualFiling, Document):
 			child.db_insert()
 
 	# Helpers.
+
+	def _refuse_an_unknown_year(self) -> None:
+		"""A Jahresabschluss of a year without the size thresholds and the schemes of the HGB is no draft Berechnen
+		could calculate, as the Erklärungen refuse a year without their forms."""
+		if self.year and cint(self.year) not in schemes.years():
+			known = ", ".join(str(year) for year in sorted(schemes.years()))
+			frappe.throw(
+				_(
+					"Steuerbote has no Jahresabschluss for {0} yet: it knows the size classes and schemes of {1}."
+				).format(cint(self.year), known)
+			)
 
 	def _prior(
 		self, sources: annual_accounts_sources.Sources, year: int, from_date: date

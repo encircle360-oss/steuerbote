@@ -2,7 +2,7 @@
 
 from unittest import TestCase
 
-from steuerbote.hgb import size
+from steuerbote.hgb import schemes, size
 from steuerbote.hgb.schemes import (
 	BALANCE_SHEETS,
 	INCOME_STATEMENTS,
@@ -240,6 +240,16 @@ class BalanceSheetYearsTest(TestCase):
 			balance_sheet_scheme(2027)
 		with self.assertRaises(TypeError):
 			balance_sheet_scheme("2026")  # type: ignore[arg-type]
+
+
+class YearsTest(TestCase):
+	"""The fiscal years a Jahresabschluss can be drawn up for: those with the size thresholds and both schemes."""
+
+	def test_are_the_years_of_the_thresholds_and_of_both_schemes(self):
+		self.assertEqual(schemes.years(), frozenset({2026}))
+		self.assertEqual(
+			schemes.years(), frozenset(size.YEARS) & frozenset(BALANCE_SHEETS) & frozenset(INCOME_STATEMENTS)
+		)
 
 
 class SizeClassFormTest(TestCase):
