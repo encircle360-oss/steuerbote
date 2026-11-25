@@ -8,6 +8,7 @@ from steuerbote.ustva.calculation import AccountBalance, DerivedBase
 from steuerbote.ustva.defaults import SKR03
 from steuerbote.ustva.plausibility import (
 	DEFAULT_CONFIRMATION_AGE,
+	AssetSale,
 	EU_MEMBER_STATES,
 	RESIDENCE_CODES,
 	SEVERITIES,
@@ -32,6 +33,7 @@ from steuerbote.ustva.plausibility import (
 	reconciliation_hints,
 	residence_hints,
 	sales_accounts,
+	tax_free_asset_sale_hints,
 	vat_id_hints,
 	watched_account_hints,
 )
@@ -479,6 +481,48 @@ class OutputTaxWithoutRevenueAccountHintsTest(TestCase):
 			[(hint.code, hint.voucher_no) for hint in found],
 			[(Code.BASE_FROM_TAX, "B"), (Code.OUTPUT_TAX_WITHOUT_REVENUE, "A")],
 		)
+
+
+class TaxFreeAssetSaleHintsTest(TestCase):
+	"""A tax-free sale of a fixed asset through the row with the Asset books nothing a Kennzahl reads (Anleitung USt 1 E
+	2026 zu Zeile 19 und 20, Kz 41 und 43): the return names the invoice and where its price belongs, and adds nothing."""
+
+	def sale(self, country: str | None, tax_id: str | None = None, voucher: str = "ACC-SINV-2026-00007"):
+		return AssetSale(voucher, "Beispiel Abnehmer GmbH", country, tax_id, d("12000.00"))
+
+	def test_an_intra_community_supply_belongs_in_kz_41_and_an_export_in_kz_43(self):
+		found = tax_free_asset_sale_hints(
+			[
+				self.sale("Austria", "ATU12345678"),
+				self.sale("United States", voucher="ACC-SINV-2026-00008"),
+				self.sale(None, "FR12345678901", voucher="ACC-SINV-2026-00009"),
+			],
+			FIGURES,
+		)
+		self.assertEqual(
+			[(hint.code, hint.severity, hint.voucher_type, hint.voucher_no) for hint in found],
+			[
+				(Code.ASSET_SALE_TAX_FREE, Severity.WARNING, "Sales Invoice", "ACC-SINV-2026-00007"),
+				(Code.ASSET_SALE_TAX_FREE, Severity.WARNING, "Sales Invoice", "ACC-SINV-2026-00008"),
+				(Code.ASSET_SALE_TAX_FREE, Severity.WARNING, "Sales Invoice", "ACC-SINV-2026-00009"),
+			],
+		)
+		self.assertEqual(
+			found[0].text,
+			"Kz 41: Die Rechnung ACC-SINV-2026-00007 an Beispiel Abnehmer GmbH verkauft ein Anlagegut über die Position "
+			"mit Vermögensgegenstand ohne Umsatzsteuer für 12.000,00 €, als innergemeinschaftliche Lieferung. ERPNext "
+			"bucht dabei kein Konto der Kz 41, und Steuerbote meldet den Verkauf nicht. Buchen Sie ihn mit einem Artikel "
+			"ohne Anlagegut auf das Erlöskonto der Kz 41 und verschrotten Sie den Vermögensgegenstand, oder tragen Sie "
+			"den Betrag mit Begründung als Korrektur in Kz 41 ein.",
+		)
+		self.assertTrue(found[1].text.startswith("Kz 43: "))
+		self.assertIn("als Ausfuhrlieferung", found[1].text)
+		self.assertTrue(
+			found[2].text.startswith("Kz 41: "), "the USt-IdNr. of a member state shows the country"
+		)
+
+	def test_a_sale_in_germany_or_without_a_country_is_left_alone(self):
+		self.assertEqual(tax_free_asset_sale_hints([self.sale("Germany"), self.sale(None)], FIGURES), [])
 
 
 class ResidenceHintsTest(TestCase):
@@ -949,6 +993,7 @@ class HintsTest(TestCase):
 				"ZM-OHNE-RHYTHMUS",
 				"BERICHTIGUNG-OHNE-AENDERUNG",
 				"UMSATZ-OHNE-ERLOESKONTO",
+				"ANLAGENVERKAUF-STEUERFREI",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung", "Fehler"])
