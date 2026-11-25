@@ -4,6 +4,7 @@ recipients, and records that nobody changes; with Annual Filing Settings also th
 notes, for every company whose VAT Return Settings name recipients."""
 
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import frappe
@@ -43,7 +44,7 @@ ACCOUNTS = {
 }
 
 
-def make_monthly_company(company: str, abbr: str, recipients: str) -> None:
+def make_monthly_company(company: str, abbr: str, recipients: str) -> dict[str, str]:
 	make_company(company, abbr)
 	accounts = {
 		number: make_account(company, number, name, root_type)
@@ -59,6 +60,7 @@ def make_monthly_company(company: str, abbr: str, recipients: str) -> None:
 	frappe.db.set_value(SETTINGS, company, "creation", "2026-11-01 08:00:00", update_modified=False)
 	make_mapping(company)
 	post_journal_entry(company, "2026-10-15", [(accounts["1400"], 1000, 0), (accounts["8125"], 0, 1000)])
+	return accounts
 
 
 def filed_vat_return(company: str, month: int):
@@ -82,7 +84,7 @@ class TestDeadlineReminder(IntegrationTestCase):
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
-		make_monthly_company(COMPANY, "STFE", RECIPIENTS)
+		cls.accounts = make_monthly_company(COMPANY, "STFE", RECIPIENTS)
 		make_monthly_company(SILENT_COMPANY, "STFO", "")
 
 	def setUp(self):
@@ -224,6 +226,63 @@ class TestDeadlineReminder(IntegrationTestCase):
 		(log,) = self.error_logs(SILENT_COMPANY) - logged
 		self.assertIn("Testfehler", frappe.db.get_value("Error Log", log, "error"))
 
+	def test_the_text_part_names_the_address_of_every_link(self):
+		"""A mail client without HTML shows the text part, which Frappe takes from the template of the e-mail."""
+		mail = self.send().call_args.kwargs
+		self.assertEqual(mail["template"], "steuerbote_deadline_reminder")
+		self.assertEqual(mail["args"]["html"], mail["message"])
+		text = mail["args"]["text"]
+		self.assertIn(f"Diese Fristen für {COMPANY} sind noch nicht abgegeben:", text)
+		self.assertIn(
+			"Zusammenfassende Meldung Oktober 2026\nFällig am: 25.11.2026 (Tage: 5)\nStatus: Fehlt", text
+		)
+		self.assertRegex(text, r"Beleg: Erstellen https?://\S+/desk/vat-return/new\?company=")
+		self.assertRegex(text, r"Offene Fristen \(https?://\S+/desk/query-report/Offene%20Fristen\)")
+		self.assertNotIn("<", text)
+		self.assertIn('<table border="1" cellpadding="6" cellspacing="0"', mail["message"])
+
+	def test_a_reminder_records_its_recipients(self):
+		self.send()
+		self.assertEqual(
+			set(frappe.get_all(DOCTYPE, filters={"company": COMPANY}, pluck="recipients")),
+			{"buchhaltung@example.com\nsteuerberatung@example.com"},
+		)
+
+	def test_the_settings_refuse_a_recipient_that_is_no_address(self):
+		settings = frappe.get_doc(SETTINGS, COMPANY)
+		settings.deadline_recipients = "buchhaltung@example.com\nkeine Adresse"
+		with self.assertRaisesRegex(frappe.ValidationError, "keine Adresse"):
+			settings.save()
+
+	def test_without_a_holiday_list_the_deadlines_say_so_and_move_off_the_holidays_of_every_state(self):
+		"""§ 108 Abs. 3 AO: the Zusammenfassende Meldung for November 2026 is due on 25 December, a holiday in every
+		state, and moves to Monday, 28 December."""
+		self.assertFalse(frappe.db.get_value("Company", COMPANY, "default_holiday_list"))
+		post_journal_entry(
+			COMPANY, "2026-11-12", [(self.accounts["1400"], 100, 0), (self.accounts["8125"], 0, 100)]
+		)
+		found = deadlines.company_deadlines(COMPANY, date(2026, 11, 20), 40)
+		(zm_november,) = [
+			item
+			for item in found
+			if (item.kind.value, item.period_label) == ("Zusammenfassende Meldung", "November 2026")
+		]
+		self.assertEqual(zm_november.due, date(2026, 12, 28))
+		self.assertIn("keine Feiertagsliste", deadlines.note_text(zm_november, "de"))
+
+	def test_the_setup_checks_the_holidays_the_extension_and_the_reminder(self):
+		settings = frappe.get_doc(SETTINGS, COMPANY)
+		settings.append("prepayments", {"year": 2025, "dauerfristverlaengerung": 1})
+		settings.save()
+		result = deadlines.check_setup(SimpleNamespace(company=COMPANY, today=date(2026, 11, 20)))
+		templates = {note.template: note for note in result.notes}
+		self.assertTrue(templates[deadlines.HOLIDAY_LIST_MISSING].open)
+		self.assertEqual(templates[deadlines.DAUERFRIST_CARRIED].values, (2025, 2026))
+		self.assertIn(deadlines.RECIPIENTS_SET, templates)
+		self.assertEqual(deadlines.NO_OUTGOING_ACCOUNT in templates, not deadlines.outgoing_account())
+		self.assertEqual(result.outcome.value, "undecided")
+		self.assertEqual(result.document, (SETTINGS, COMPANY))
+
 	def test_a_reminder_is_recorded_once_for_a_deadline_and_a_day(self):
 		values = {
 			"doctype": DOCTYPE,
@@ -232,6 +291,7 @@ class TestDeadlineReminder(IntegrationTestCase):
 			"period_label": "2027",
 			"due_date": "2027-02-10",
 			"sent_on": "2027-02-01",
+			"recipients": "buchhaltung@example.com",
 		}
 		first = frappe.get_doc(values).insert(ignore_permissions=True)
 		self.assertEqual(

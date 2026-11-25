@@ -126,3 +126,25 @@ class TranslationsTest(TestCase):
 		for source in texts - FRAMEWORK_LABELS:
 			with self.subTest(source=source):
 				self.assertCountEqual(PLACEHOLDER.findall(german(source)), PLACEHOLDER.findall(source))
+
+
+class SetupStepTranslationsTest(TestCase):
+	def test_every_note_of_the_setup_step_of_the_deadlines_is_translated(self):
+		"""Steuerbote einrichten shows the notes of check_setup through _() of their templates."""
+		tree = ast.parse((MODULE / "deadlines.py").read_text(encoding="utf-8"))
+		constants = {
+			node.targets[0].id: node.value.value
+			for node in tree.body
+			if isinstance(node, ast.Assign)
+			and isinstance(node.targets[0], ast.Name)
+			and isinstance(node.value, ast.Constant)
+			and isinstance(node.value.value, str)
+		}
+		(messages,) = (
+			node.value
+			for node in tree.body
+			if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) == "SETUP_MESSAGES"
+		)
+		texts = {constants[element.id] for element in messages.elts}
+		self.assertEqual(len(texts), 7)
+		self.assertEqual(untranslated(texts | {"Deadlines and Reminder"}), [])

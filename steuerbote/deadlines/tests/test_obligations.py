@@ -120,7 +120,7 @@ class CarriedDauerfristTest(TestCase):
 		)
 
 	def test_a_quarterly_filer_gets_the_note_and_no_sondervorauszahlung(self):
-		found = list(voranmeldungen(QUARTERLY, DAUERFRIST_2026, until=date(2027, 4, 10)))
+		found = list(voranmeldungen(QUARTERLY, DAUERFRIST_2026, until=date(2027, 4, 30)))
 		self.assertEqual(found[-1].notes, (Note.DAUERFRIST_NOT_RECORDED,))
 		self.assertEqual(
 			[
