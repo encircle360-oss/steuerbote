@@ -19,6 +19,8 @@ SAME_LINE = 2.0
 OVERPRINT = 0.8
 # How far a word may reach into the margin before it counts as cut off or bleeding, in points.
 BLEED = 1.0
+# How far apart the same line may stand in the printouts of the two generators, in points.
+SAME_PLACE = 1 * MM
 
 PAGE = re.compile(r'<page width="([\d.]+)" height="([\d.]+)">(.*?)</page>', re.DOTALL)
 WORD = re.compile(
@@ -174,6 +176,33 @@ def lonely_headings(pages, margins: Margins, headings) -> list[str]:
 	return problems
 
 
+def foot_fragments(pages, margins: Margins) -> list[str]:
+	"""Nothing stands between the content and the line of the running foot, such as the dots of an Ü that Chromium
+	paints there from the first line of the next page."""
+	problems = []
+	for number, page in enumerate(pages, start=1):
+		bottom = page.height - margins.bottom * MM
+		below = [word for word in page.words if word.y1 > bottom + BLEED]
+		foot = [word for word in below if word.text == "Seite"]
+		problems += [
+			f"Seite {number}: „{word.text}“ unter dem Inhalt über dem Fuß"
+			for word in below
+			if foot and word.y1 < min(line.y1 for line in foot) - SAME_LINE
+		]
+	return problems
+
+
+def lonely_table_heads(pages, margins: Margins) -> list[str]:
+	"""No page ends with the head of a table whose rows begin on the next page, which opens with the same lines."""
+	problems = []
+	for number, (page, following) in enumerate(itertools.pairwise(pages), start=1):
+		ending = [text_of(line) for line in lines(body(page, margins))]
+		opening = [text_of(line) for line in lines(body(following, margins))][:2]
+		if ending and (ending[-1:] == opening[:1] or (len(ending) > 1 and ending[-2:] == opening)):
+			problems.append(f"Seite {number}: Kopf der Tabelle „{ending[-1]}“ allein am Seitenende")
+	return problems
+
+
 def first_page_of(pages, text: str) -> int | None:
 	wanted = " ".join(text.split())
 	for number, page in enumerate(pages, start=1):
@@ -210,6 +239,52 @@ def nowhere(pages, texts) -> list[str]:
 	]
 
 
+@dataclass(frozen=True)
+class Frame:
+	"""Where on a page the running head ends, the content begins and the running foot begins, in points from the top
+	edge; None where the page has nothing there."""
+
+	head: float | None
+	first: float | None
+	foot: float | None
+
+
+def frame(page: Page, margins: Margins) -> Frame:
+	top, bottom = margins.top * MM, page.height - margins.bottom * MM
+	return Frame(
+		head=max((word.y1 for word in page.words if word.y1 < top - BLEED), default=None),
+		first=min((word.y0 for word in body(page, margins)), default=None),
+		foot=min((word.y0 for word in page.words if word.y0 > bottom + BLEED), default=None),
+	)
+
+
+def _mm(points: float | None) -> str:
+	return "keins" if points is None else f"{points / MM:.1f} mm".replace(".", ",")
+
+
+def alike(wkhtmltopdf, chromium, margins: Margins) -> list[str]:
+	"""The printout of one document with both generators: the same number of pages, the head and the foot of each
+	page and the first line of the first page at the same place, so that it does not matter which generator a site
+	prints with. A later page begins with the row its break leaves, which the two may choose differently."""
+	if len(wkhtmltopdf) != len(chromium):
+		return [f"wkhtmltopdf {len(wkhtmltopdf)} Seiten, Chromium {len(chromium)} Seiten"]
+	problems = []
+	for number, (one, other) in enumerate(zip(wkhtmltopdf, chromium, strict=True), start=1):
+		first, second = frame(one, margins), frame(other, margins)
+		for label, here, there in (
+			("Ende des Kopfs", first.head, second.head),
+			("erste Zeile", first.first if number == 1 else None, second.first if number == 1 else None),
+			("Fuß", first.foot, second.foot),
+		):
+			if (here is None) != (there is None) or (
+				here is not None and there is not None and abs(here - there) > SAME_PLACE
+			):
+				problems.append(
+					f"Seite {number}: {label} mit wkhtmltopdf {_mm(here)}, mit Chromium {_mm(there)}"
+				)
+	return problems
+
+
 def check(pages, expected: Expectations) -> list[str]:
 	"""Every problem of a printout, empty when it is clean."""
 	margins = expected.margins
@@ -221,6 +296,8 @@ def check(pages, expected: Expectations) -> list[str]:
 		*overprint(pages),
 		*last_page(pages, margins, expected.last_page_lines),
 		*lonely_headings(pages, margins, expected.headings),
+		*lonely_table_heads(pages, margins),
+		*foot_fragments(pages, margins),
 		*together(pages, expected.together),
 		*somewhere(pages, expected.somewhere),
 		*nowhere(pages, expected.nowhere),

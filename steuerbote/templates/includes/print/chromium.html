@@ -1,0 +1,12 @@
+{#-
+	The page margins at top and bottom for Frappe's Chromium-based generator, which style.html includes when Frappe
+	renders for it. That generator puts the running head below the top margin and the foot above the bottom margin;
+	with both at 0 the head and the foot, as high as the margins of wkhtmltopdf, stand where they stand there. Frappe
+	takes the last value of each option of the rules on .print-format, so this rule overrides the one of style.html.
+-#}
+<style>
+	.print-format {
+		margin-top: 0mm;
+		margin-bottom: 0mm;
+	}
+</style>
