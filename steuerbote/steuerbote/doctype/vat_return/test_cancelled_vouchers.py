@@ -28,6 +28,13 @@ NOTE = "Erfunden: abgegeben in Mein ELSTER."
 LEDGERS = {"without the immutable ledger": 0, "with the immutable ledger": 1}
 
 
+def delete(entry) -> None:
+	"""Delete a cancelled Journal Entry with its GL Entries, as ERPNext does with „Delete Accounting and Stock Ledger
+	Entries on deletion of Transaction“ in the Accounts Settings."""
+	with IntegrationTestCase.change_settings("Accounts Settings", {"delete_linked_ledger_entries": 1}):
+		frappe.delete_doc("Journal Entry", entry.name)
+
+
 def set_up_company() -> dict[str, str]:
 	"""The company of both test cases, made by the first that runs; returns its accounts by number."""
 	if not frappe.db.exists("Company", COMPANY):
@@ -107,7 +114,7 @@ class TestCancelledVouchers(IntegrationTestCase):
 		entry = self.deviating_entry("2026-07-10")
 		doc = self.calculated(7)
 		self.cancel(entry, 0, "2026-07-20")
-		frappe.delete_doc("Journal Entry", entry.name)
+		delete(entry)
 		doc.reload()
 		doc.remarks = NOTE
 		doc.save()
@@ -125,7 +132,7 @@ class TestCancelledVouchers(IntegrationTestCase):
 				self.cancel(entry, immutable, f"2026-{month + 1:02d}-04")
 				self.assertEqual(frappe.db.get_value("Journal Entry", entry.name, "docstatus"), 2)
 				if not immutable:
-					frappe.delete_doc("Journal Entry", entry.name)
+					delete(entry)
 					self.assertFalse(frappe.db.exists("Journal Entry", entry.name))
 
 	def test_every_row_that_names_a_voucher_accepts_a_cancelled_or_missing_one(self):
@@ -176,10 +183,12 @@ class TestCancellationPeriod(IntegrationTestCase):
 		self.addCleanup(frappe.db.rollback, save_point="cancellation_period_test")
 
 	def sale(self, day: str):
+		"""A sale entered on its own day, before the filing of its month."""
 		a = self.account
-		return post_journal_entry(
-			COMPANY, day, [(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)]
-		)
+		with self.freeze_time(f"{day} 09:00:00"):
+			return post_journal_entry(
+				COMPANY, day, [(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)]
+			)
 
 	calculated = TestCancelledVouchers.calculated
 	cancel = TestCancelledVouchers.cancel

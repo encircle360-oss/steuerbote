@@ -862,8 +862,8 @@ class TestERiCVersions(IntegrationTestCase):
 		):
 			checks = {check["name"]: check for check in settings.check_runtime()}
 		self.assertEqual(
-			list(checks)[-6:],
-			["ust", "kst", "gewst", "bilanz", "taxonomy_6_9", "taxonomy_6_10"],
+			list(checks)[-7:],
+			["ust", "kst", "gewst", "bilanz", "taxonomy_6_9", "taxonomy_6_10", "schema"],
 		)
 		self.assertEqual(
 			checks["ust"]["detail"],
@@ -1155,6 +1155,7 @@ class TestERiCVersions(IntegrationTestCase):
 				"plugin_next",
 				"taxonomy_6_9",
 				"taxonomy_6_10",
+				"schema",
 			],
 		)
 		self.assertFalse(checks["minimum"]["ok"])
