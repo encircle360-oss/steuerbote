@@ -579,7 +579,7 @@ Für diese Konten vergleicht [`input_tax.py`](../steuerbote/ustva/input_tax.py) 
 | 7 % | 3010 bis 3019 „Einkauf Roh-, Hilfs- und Betriebsstoffe 7 % Vorsteuer“, 3091 „Energiestoffe (Fertigung) 7 % VSt“, 3300 bis 3309 und 3347 „Wareneingang 7 % Vorsteuer“ | 5110 bis 5119, 5191, 5300 bis 5309, 5347 |
 | 19 % | 3030 bis 3039 „Einkauf Roh-, Hilfs- und Betriebsstoffe 19 % Vorsteuer“, 3092 „Energiestoffe (Fertigung) 19 % VSt“, 3400 bis 3409 und 3418 „Wareneingang 19 % Vorsteuer“ | 5130 bis 5139, 5192, 5400 bis 5409, 5418 |
 
-Quelle der Konten und ihrer Bezeichnungen sind die DATEV-Kontenrahmen SKR 03 und SKR 04, „Gültig für 2026“ (`purchase_rates` in `defaults.py`).
+Quelle der Konten und ihrer Bezeichnungen sind die Standardkontenrahmen SKR 03 und SKR 04, „Gültig für 2026“ (`purchase_rates` in `defaults.py`).
 
 ### Bemessungsgrundlage ohne Grundlagenkonto
 

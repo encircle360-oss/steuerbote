@@ -27,7 +27,7 @@ def hints(*lines: LedgerLine, mapping=SKR03, tolerance: Decimal = TOLERANCE):
 
 
 class PurchaseRatesTest(TestCase):
-	"""The DATEV-Kontenrahmen 2026 names the rate of the Vorsteuer of these purchase accounts."""
+	"""The Standardkontenrahmen SKR 03 and SKR 04 of 2026 name the rate of the Vorsteuer of these purchase accounts."""
 
 	def test_skr03_names_7_and_19_percent_with_the_members_of_the_ranges(self):
 		rates = purchase_rates("SKR03")

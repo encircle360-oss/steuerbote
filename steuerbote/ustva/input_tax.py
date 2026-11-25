@@ -6,7 +6,7 @@ Unternehmen ausgeführt worden sind“ is deductible (§ 15 Abs. 1 Satz 1 Nr. 1 
 A tax shown higher than the law owes is owed by the issuer (§ 14c Abs. 1 UStG) but is no deductible Vorsteuer, and the
 rates are 19 % and, for the supplies of § 12 Abs. 2 UStG, 7 % (§ 12 Abs. 1 and 2 UStG).
 
-The ledger does not see the invoice. What it does see is the account a purchase is booked on: the DATEV charts name the
+The ledger does not see the invoice. What it does see is the account a purchase is booked on: the charts SKR 03 and SKR 04 name the
 rate of the Vorsteuer of their goods and material accounts, such as SKR 03 3300 „Wareneingang 7 % Vorsteuer“
 (defaults.purchase_rates). input_tax_hints() compares, voucher by voucher, the Vorsteuer booked on the accounts of Kz 66
 with the tax these rates give the bases, rounded per rate as a document rounds its tax lines, and within the same

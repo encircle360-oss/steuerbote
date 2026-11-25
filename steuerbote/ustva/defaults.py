@@ -1359,7 +1359,7 @@ TIMING_ACCOUNTS = MappingProxyType({"SKR03": SKR03_WATCHED[:2], "SKR04": SKR04_W
 DATEV_EDITION = 2026
 REVISION = 3
 
-# The purchase accounts whose name states the rate of their Vorsteuer, as the DATEV-Kontenrahmen „Gültig für 2026“ name
+# The purchase accounts whose name states the rate of their Vorsteuer, as the Standardkontenrahmen SKR 03 and SKR 04 „Gültig für 2026“ name
 # them: SKR 03 3010 „Einkauf Roh-, Hilfs- und Betriebsstoffe 7 % Vorsteuer“ and 3030 of 19 %, 3091 and 3092
 # „Energiestoffe (Fertigung) 7 % VSt“ and „19 % VSt“, 3300 and 3347 „Wareneingang 7 % Vorsteuer“, 3400 and 3418
 # „Wareneingang 19 % Vorsteuer“; SKR 04 5110, 5130, 5191, 5192, 5300, 5347, 5400 and 5418 of the same names. The Voranmeldung
