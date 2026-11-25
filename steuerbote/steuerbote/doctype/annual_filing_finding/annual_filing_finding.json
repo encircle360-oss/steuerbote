@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-11-23 14:00:00.000000",
- "description": "A finding of the checks of an annual document: an error holds it back from Bereit, a hint changes nothing.",
+ "description": "A finding of the checks of an annual document: an error holds it back from Bereit until it is corrected or, where it may be, acknowledged with a reason; a hint changes nothing.",
  "doctype": "DocType",
  "editable_grid": 0,
  "engine": "InnoDB",
@@ -10,7 +10,12 @@
   "blocking",
   "code",
   "text",
-  "reference"
+  "reference",
+  "acknowledgeable",
+  "acknowledged",
+  "acknowledgement_reason",
+  "acknowledged_by",
+  "acknowledged_on"
  ],
  "fields": [
   {
@@ -27,7 +32,6 @@
    "default": "0",
    "fieldname": "blocking",
    "fieldtype": "Check",
-   "in_list_view": 1,
    "label": "Blocking",
    "read_only": 1
   },
@@ -54,11 +58,48 @@
    "in_list_view": 1,
    "label": "Reference",
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Whether the error may be acknowledged; one that makes the file wrong by construction may not.",
+   "fieldname": "acknowledgeable",
+   "fieldtype": "Check",
+   "label": "Can Be Acknowledged",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "description": "The error is acknowledged: the document is filed nonetheless, for the reason given.",
+   "fieldname": "acknowledged",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Acknowledged",
+   "read_only": 1
+  },
+  {
+   "fieldname": "acknowledgement_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for Filing Nonetheless",
+   "read_only": 1
+  },
+  {
+   "fieldname": "acknowledged_by",
+   "fieldtype": "Link",
+   "label": "Acknowledged By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "acknowledged_on",
+   "fieldtype": "Datetime",
+   "label": "Acknowledged On",
+   "read_only": 1
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-23 14:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Annual Filing Finding",

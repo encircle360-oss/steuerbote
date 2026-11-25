@@ -14,6 +14,7 @@ class BalanceSheetMappingRule(Document):
 		account_number: DF.Data | None
 		concept: DF.Data
 		concept_label: DF.SmallText | None
+		netting_group: DF.Data | None
 		opposite_concept: DF.Data | None
 		parent: DF.Data
 		parentfield: DF.Data

@@ -712,7 +712,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 				"An entry that Berechnen reads changed since Berechnen: the basis of the E-Bilanz, the Betriebsvermögensvergleich, a column or row by hand of the Anlagenspiegel or an entry by hand of the Überleitung. Calculate again, so that Berechnen checks the E-Bilanz with it."
 			),
 		)
-		self.set(FINDINGS_TABLE, annual_findings.rows((*stored, recalculate)))
+		self.add_finding(recalculate)
 
 	# Helpers.
 

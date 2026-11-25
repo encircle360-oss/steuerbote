@@ -38,6 +38,7 @@ from frappe.utils import flt
 
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import record_adoption
 from steuerbote.tests.helpers import (
+	acknowledge_errors,
 	ensure_fiscal_year,
 	insert_record,
 	make_company,
@@ -282,10 +283,12 @@ def new_document(doctype: str, **fields: Any) -> Document:
 
 
 def calculated(doctype: str, **fields: Any) -> Document:
+	"""The document calculated; with remarks, as a company files it nonetheless: each error that may be is acknowledged
+	with the remarks as its reason, since the remarks alone file nothing."""
 	doc = new_document(doctype, **fields)
 	doc.calculate()
 	doc.reload()
-	return doc
+	return acknowledge_errors(doc, fields["remarks"]) if fields.get("remarks") else doc
 
 
 def filed_ebilanz_of_2025(test: TestCase, equity: str, subscribed: str) -> str:
@@ -364,7 +367,7 @@ def festgestellt(answers: Iterable[str] = ()) -> Document:
 	doc.save()
 	doc.calculate()
 	doc.reload()
-	doc.submit()
+	acknowledge_errors(doc, REMARKS).submit()
 	return doc
 
 
@@ -382,7 +385,7 @@ def amended(cancelled: Document) -> Document:
 	doc.save()
 	doc.calculate()
 	doc.reload()
-	doc.submit()
+	acknowledge_errors(doc, doc.remarks or REMARKS).submit()
 	return doc
 
 

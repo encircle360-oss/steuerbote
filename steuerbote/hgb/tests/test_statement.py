@@ -482,10 +482,36 @@ class RemainingTermFindingsTest(TestCase):
 		statement = build(2026, SizeClass.KLEIN, books, parents=PARENTS)
 		findings = [finding for finding in statement.findings if finding.code is Code.REMAINING_TERM_UNKNOWN]
 		self.assertEqual(
-			[(finding.severity, finding.concept, finding.amount, finding.reference) for finding in findings],
-			[(Severity.ERROR, SHAREHOLDER_LOAN, Decimal("-500.00"), "§ 268 Abs. 5 Satz 1 HGB")],
+			[(finding.severity, finding.amount, finding.reference) for finding in findings],
+			[(Severity.ERROR, Decimal("-500.00"), "§ 268 Abs. 5 Satz 1 HGB")],
 		)
 		self.assertIn("0755 Darlehen des Gesellschafters", findings[0].text)
+
+	def test_the_balances_of_a_line_without_a_remaining_term_are_one_finding_that_says_where_to_enter_it(
+		self,
+	):
+		"""Instead of one error per account, one per line of the balance sheet, with every account it needs the
+		remaining term of and the way to give it."""
+		books = (
+			*BOOKS,
+			Balance(SOCIAL_SECURITY, Decimal("-200.00"), source="1742 Sozialversicherung"),
+			Balance(VAT_PAYABLE, Decimal("-300.00"), source="1776 Umsatzsteuer 19 %"),
+			Balance(SHAREHOLDER_LOAN, Decimal("-500.00"), source="0755 Darlehen des Gesellschafters"),
+		)
+		statement = build(2026, SizeClass.KLEINST, books, parents=PARENTS)
+		findings = [finding for finding in statement.findings if finding.code is Code.REMAINING_TERM_UNKNOWN]
+		self.assertEqual(len(findings), 1)
+		(finding,) = findings
+		self.assertEqual((finding.concept, finding.amount), ("bs.eqLiab.liab", Decimal("-1000.00")))
+		for source in (
+			"1742 Sozialversicherung",
+			"1776 Umsatzsteuer 19 %",
+			"0755 Darlehen des Gesellschafters",
+		):
+			self.assertIn(source, finding.text)
+		self.assertIn("3 Konten", finding.text)
+		self.assertIn("Bilanzzuordnung", finding.text)
+		self.assertIn("Restlaufzeit", finding.text)
 
 	def test_names_a_receivable_without_a_remaining_term_once(self):
 		books = (Balance(TRADE_RECEIVABLES, Decimal("10.00")), Balance(TRADE_RECEIVABLES, Decimal("0")))
