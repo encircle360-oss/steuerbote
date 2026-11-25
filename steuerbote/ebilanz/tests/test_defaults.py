@@ -67,6 +67,10 @@ DIGESTS = {
 	"SKR04 Taxonomie 6.9 2026.1": "fe84fc7cd49dc4501a08ee102b5521b4a8c6712228ae80ba28a8c7d8da6525a4",
 	"SKR03 Taxonomie 6.10 2026.1": "ba4f6076a3a50cd64445917fd4646cf269ef81afc57bc9044ceabd2b439182ad",
 	"SKR04 Taxonomie 6.10 2026.1": "3deefe2a1ecffd0a3c5de1aefd8ddb652b19020fc0d580c7f946691dd4727154",
+	"SKR03 Taxonomie 6.9 2026.2": "b48b4b4636dfd700ddc884e122981e695a946b74e4c00365ee4dd83dc181edc0",
+	"SKR04 Taxonomie 6.9 2026.2": "1790d77536396dc29decb8ea65ed28538eb0a33a9e0aa8b4b9acbffde30ecdfe",
+	"SKR03 Taxonomie 6.10 2026.2": "4f33471af195ba79cd19b73a36a92bb481088d450e026aee91c69f30d28a2978",
+	"SKR04 Taxonomie 6.10 2026.2": "5c9ed0ef78bf12965109ff3603f0705231ecf0a12e84b4a5e8827c233c709032",
 }
 """The SHA-256 of the canonical JSON of the rows of each version of the defaults."""
 
@@ -206,10 +210,10 @@ class DefaultsForTest(TestCase):
 
 class DefaultsVersionTest(TestCase):
 	def test_the_version_names_the_chart_the_taxonomy_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, dict(REVISIONS)), (2026, {"6.9": 1, "6.10": 1}))
+		self.assertEqual((DATEV_EDITION, dict(REVISIONS)), (2026, {"6.9": 2, "6.10": 2}))
 		self.assertEqual(
 			[defaults_version(chart, "6.9") for chart in sorted(CHARTS)],
-			["SKR03 Taxonomie 6.9 2026.1", "SKR04 Taxonomie 6.9 2026.1"],
+			["SKR03 Taxonomie 6.9 2026.2", "SKR04 Taxonomie 6.9 2026.2"],
 		)
 
 	def test_a_chart_without_defaults_has_no_version(self):
@@ -360,8 +364,8 @@ class PlacesTest(TestCase):
 				)
 				datev = any(span in labelled[chart] for chart, span in spans.items())
 				with self.subTest(account=account):
-					if group.opposite is not None and group.netting is None:
-						self.assertTrue(both or not datev)
+					if group.opposite is not None:
+						self.assertTrue(both or not datev or group.netting is not None)
 					elif both:
 						self.assertIn(group.reason, one_position)
 
@@ -893,7 +897,9 @@ class Taxonomy610Test(TestCase):
 			Purpose.BOTH,
 			fiscal_year=(year.fiscal_year_begin, year.fiscal_year_end),
 		)
-		self.assertEqual((placement.findings, placement.left_out), ((), ()))
+		self.assertEqual(
+			([finding.code for finding in placement.findings], placement.left_out), ([Code.NETTED], ())
+		)
 		found = calculate(structure(taxonomy, Case("GmbH", year)), ebilanz_balances(placement))
 		self.assertEqual(found.findings, ())
 		self.assertEqual(

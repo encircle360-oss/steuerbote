@@ -91,6 +91,7 @@ class ReviewTest(TestCase):
 			[
 				"Freigabe.",
 				"Restlaufzeiten.",
+				"Verrechnung.",
 				"Auffangpositionen.",
 				"Personengesellschaften.",
 				"Gesellschafter.",
