@@ -42,6 +42,7 @@ from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings
 from steuerbote.steuerbote.doctype.annual_vat_return import bridge as annual_vat_return_bridge
 from steuerbote.ustva import CATALOGUES, DEFAULTS, MappingError, UnknownYearError, calculate
 from steuerbote.ustva.period import MONTH_NAMES
+from steuerbote.vat_periods import VatLedger
 
 STEPS_HOOK = "steuerbote_setup_steps"
 ROLES = ("System Manager", "Accounts Manager")
@@ -554,7 +555,8 @@ def unflagged_opening_entries(company: str, books_start: date) -> tuple[str, ...
 
 
 def previous_year_tax(company: str, year: int) -> tuple[Decimal | None, Note | None]:
-	"""Kz 83 of the year by the ledger, with the mapping of the company, as Berechnen computes it for a period; or
+	"""Kz 83 of the year by the ledger, placed by the settings as for the Voranmeldung (steuerbote.vat_periods), with
+	the mapping of the company, as Berechnen computes it for a period; or
 	None and the note why it is unknown: Steuerbote does not know the Kennzahlen of the year, the mapping has no
 	defaults or does not fit the form of the year, the ledger holds nothing of the year, or what it holds is not
 	ready to file."""
@@ -573,7 +575,8 @@ def previous_year_tax(company: str, year: int) -> tuple[Decimal | None, Note | N
 		)
 	except (MappingError, UnknownYearError) as error:
 		return None, Note(MAPPING_UNFIT, (year, str(error)))
-	lines = ledger.load_lines(company, date(year, 1, 1), date(year, 12, 31))
+	start, end = date(year, 1, 1), date(year, 12, 31)
+	lines = VatLedger(company, start, end).lines_between(start, end)
 	if not lines:
 		return None, Note(NO_POSTINGS, (year,))
 	result = calculate(lines, mapping)

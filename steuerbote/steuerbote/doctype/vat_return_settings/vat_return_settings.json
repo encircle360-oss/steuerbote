@@ -11,6 +11,8 @@
   "column_break_company",
   "taxation_type",
   "tolerance",
+  "period_basis",
+  "late_documents",
   "comparison_section",
   "comparison_threshold_percent",
   "column_break_comparison",
@@ -87,6 +89,24 @@
    "label": "Tolerance per Voucher",
    "non_negative": 1,
    "options": "Company:company:default_currency"
+  },
+  {
+   "default": "By Service Date",
+   "description": "By service date a Sales Invoice counts in the Voranmeldungszeitraum of its supply: the end of its billing period (To Date), else its start, else its latest Delivery Note. Credit notes, payments, Journal Entries and purchase invoices count by their posting date, and so do the accounts of Kz 41, 42 and 21, as in the Zusammenfassende Meldung. By posting date every booking counts on its posting date.",
+   "fieldname": "period_basis",
+   "fieldtype": "Select",
+   "label": "Assignment to the Voranmeldungszeitraum",
+   "options": "By Service Date\nBy Posting Date",
+   "reqd": 1
+  },
+  {
+   "default": "Corrected Return",
+   "description": "A booking made after the return of its period was filed stays in that period, which then needs a corrected return (Kz 10), or is reported in the period that was open when it was booked, within the same year. Every return records which applied.",
+   "fieldname": "late_documents",
+   "fieldtype": "Select",
+   "label": "Documents for a Filed Period",
+   "options": "Corrected Return\nCurrent Period",
+   "reqd": 1
   },
   {
    "description": "A Kennzahl is conspicuous when it changes against the previous period by more than both thresholds. Conspicuous Kennzahlen get a hint and never hold the return.",

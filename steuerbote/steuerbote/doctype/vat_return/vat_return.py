@@ -39,7 +39,7 @@ gives these hints anew when it has finished; the return does not change while it
 
 import re
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import frappe
@@ -71,13 +71,15 @@ from steuerbote.steuerbote.doctype.elster_transmission.transmission import Trans
 from steuerbote.steuerbote.doctype.recapitulative_statement import bridge as zm_bridge
 from steuerbote.steuerbote.doctype.vat_id_confirmation import confirming, vat_id_confirmation
 from steuerbote.steuerbote.doctype.vat_id_confirmation.confirming import Confirming
-from steuerbote.steuerbote.doctype.vat_return import bridge
+from steuerbote.steuerbote.doctype.vat_return import bridge, late
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
 from steuerbote.suppliers import load_vouchers
 from steuerbote.tax_templates import template_accounts
 from steuerbote.ustva import carried, plausibility, registers, tax_templates
+from steuerbote.ustva.assignment import changes
 from steuerbote.ustva.defaults import TIMING_ACCOUNTS, deliberately_without_kennzahl
+from steuerbote.vat_periods import VatLedger, filed_amounts
 from steuerbote.vatid import Details, UrllibFetch
 from steuerbote.zm.lines import VoucherAmount
 
@@ -92,12 +94,13 @@ FILED = "Abgegeben"
 REPLACED = "Ersetzt"
 
 PERIOD_FIELDS = ("company", "year", "rhythm", "period_index")
-# What Berechnen finds besides the Kennzahlen: the Verprobung, the watched accounts, the hints and the comparison.
-FINDINGS = ("checks", "deviations", "unmapped", "hints", "comparison")
+# What Berechnen finds besides the Kennzahlen: the Verprobung, the watched accounts, the hints, the comparison and
+# what changed after the filing of earlier periods.
+FINDINGS = ("checks", "deviations", "unmapped", "hints", "comparison", "late_changes")
 # The reconciliation with the registers, which Berechnen fills and whose explanations a save takes.
 RECONCILIATION = "register_reconciliation"
 CALCULATED_TABLES = ("kennzahlen", *FINDINGS, RECONCILIATION)
-CALCULATED_FIELDS = ("status", "ready", "accounts_without_number")
+CALCULATED_FIELDS = ("status", "ready", "accounts_without_number", "period_basis", "late_treatment")
 
 # TransferTicketSType in headerbasis_datentypen.xsd of the ELSTER Basisschema.
 TRANSFERTICKET = re.compile(r"[0-9a-km-z]{2}[0-9]{3}[0-9a-km-z]{27}")
@@ -120,6 +123,9 @@ class VATReturn(Confirming, Transmittable, Document):
 		from steuerbote.steuerbote.doctype.vat_return_deviation.vat_return_deviation import VATReturnDeviation
 		from steuerbote.steuerbote.doctype.vat_return_hint.vat_return_hint import VATReturnHint
 		from steuerbote.steuerbote.doctype.vat_return_kennzahl.vat_return_kennzahl import VATReturnKennzahl
+		from steuerbote.steuerbote.doctype.vat_return_late_change.vat_return_late_change import (
+			VATReturnLateChange,
+		)
 		from steuerbote.steuerbote.doctype.vat_return_register_reconciliation.vat_return_register_reconciliation import (
 			VATReturnRegisterReconciliation,
 		)
@@ -143,12 +149,15 @@ class VATReturn(Confirming, Transmittable, Document):
 		kennzahlen: DF.Table[VATReturnKennzahl]
 		kz500_begruendung: DF.SmallText | None
 		kz83: DF.Currency
+		late_changes: DF.Table[VATReturnLateChange]
+		late_treatment: DF.Literal["", "Corrected Return", "Current Period"]
 		naming_series: DF.Literal["UStVA-.{year}.-.#####"]
 		no_sepa_mandate: DF.Check
 		offset_requested: DF.Check
 		other_tax: DF.Currency
 		output_tax: DF.Currency
 		period_code: DF.Data | None
+		period_basis: DF.Literal["", "By Service Date", "By Posting Date"]
 		period_index: DF.Int
 		period_label: DF.Data | None
 		provisional: DF.Check
@@ -170,6 +179,8 @@ class VATReturn(Confirming, Transmittable, Document):
 		self.set_onload("elster", self.elster_state())
 		self.set_onload("elster_run", self.latest_run())
 		self.set_onload("confirmation", self.confirmation_state())
+		if self.docstatus == 1 and self.status == FILED:
+			self.set_onload("changes_since_filing", self.changes_since_filing())
 
 	def before_insert(self) -> None:
 		"""A new return starts as a draft that Berechnen has not read, whatever it was made with: its Kennzahlen keep
@@ -178,7 +189,15 @@ class VATReturn(Confirming, Transmittable, Document):
 			self.set(table, [])
 		for row in self.kennzahlen:
 			row.update({"amount": 0, "reported": 0})
-		self.update({"status": DRAFT, "ready": 0, "accounts_without_number": 0})
+		self.update(
+			{
+				"status": DRAFT,
+				"ready": 0,
+				"accounts_without_number": 0,
+				"period_basis": "",
+				"late_treatment": "",
+			}
+		)
 
 	def validate(self):
 		self.refuse_changes_while_transmitting()
@@ -238,7 +257,8 @@ class VATReturn(Confirming, Transmittable, Document):
 		catalogue = ustva.catalogue_for(year)
 		overrides = _read_rows(bridge.overrides_of, self.kennzahlen, catalogue)
 		mapping = mapping_for(self.company, year)
-		lines = load_lines(self.company, period.start, period.end)
+		ledger = VatLedger.for_period(self.company, period)
+		lines = ledger.lines(period)
 		result, release_hints = released(
 			self.company, _calculated(lines, mapping, period, settings), lines, mapping, period
 		)
@@ -248,9 +268,13 @@ class VATReturn(Confirming, Transmittable, Document):
 		self.set(
 			"unmapped", bridge.unmapped_rows(result, lines, account_names(self.company, result.unmapped))
 		)
-		comparison = build_comparison(self, period, settings, mapping)
+		comparison = build_comparison(self, period, settings, mapping, ledger)
 		self.set("comparison", bridge.comparison_rows(comparison))
-		reconciliation = build_reconciliation(self.company, period, mapping, lines)
+		self.set("late_changes", late_change_rows(ledger, period, settings, mapping))
+		self.update({"period_basis": ledger.basis.value, "late_treatment": ledger.treatment.value})
+		reconciliation = build_reconciliation(
+			self.company, period, mapping, load_lines(self.company, period.start, period.end)
+		)
 		numbers = [row.account_number for row in reconciliation if row.account_number]
 		self.set(
 			RECONCILIATION,
@@ -272,6 +296,36 @@ class VATReturn(Confirming, Transmittable, Document):
 			self.save()
 		finally:
 			self.flags.calculating = False
+
+	def changes_since_filing(self) -> list[dict] | None:
+		"""For the form of a filed return: the bookings made after the filing of its period, where they are
+		reported, and the Kennzahlen whose ledger amounts changed since; None when the ledger cannot be read."""
+		try:
+			period = self._chosen_period(cint(self.year))
+			settings = settings_for(self.company)
+			mapping = mapping_for(self.company, period.year)
+			ledger = VatLedger(self.company, date(period.year, 1, 1), period.end)
+			rows = [
+				*late.filed_rows(ledger.late(), period),
+				*_change_rows(ledger, period, settings, mapping),
+			]
+		except frappe.ValidationError:
+			return None
+		return [_late_row(row) for row in rows]
+
+	@frappe.whitelist(methods=["POST"])
+	def make_correction(self) -> str:
+		"""Berichtigung anlegen: a draft corrected return (Kz 10) of the period of this filed return, or the draft
+		correction that exists already; returns its name."""
+		self.check_permission("read")
+		frappe.has_permission(DOCTYPE, "create", throw=True)
+		if self.docstatus != 1 or self.status != FILED:
+			frappe.throw(_("Only the filed return of a period is corrected."))
+		period = {field: self.get(field) for field in ("company", "year", "rhythm", "period_index")}
+		draft = frappe.db.get_value(DOCTYPE, {**period, "docstatus": 0, "is_correction": 1}, "name")
+		if draft:
+			return draft
+		return frappe.get_doc({"doctype": DOCTYPE, **period, "is_correction": 1}).insert().name
 
 	@frappe.whitelist(methods=["POST"])
 	def confirm_vat_ids(self) -> int:
@@ -779,13 +833,18 @@ def released(
 
 
 def build_comparison(
-	doc: Document, period: ustva.Period, settings: Document, mapping: ustva.Mapping
+	doc: Document,
+	period: ustva.Period,
+	settings: Document,
+	mapping: ustva.Mapping,
+	ledger: VatLedger | None = None,
 ) -> plausibility.Comparison:
 	"""Vorperiodenvergleich: the amounts the return files against the previous period of its rhythm and
 	against the same period a year earlier. A Kennzahl is flagged by the rule the report UStVA Kennzahlen
 	filters its deviations with, on the thresholds of the settings.
 
-	The earlier amounts come from the ledger, through the same query and the company's mapping validated
+	The earlier amounts come from the ledger, placed into periods by the same rule (``ledger``, read anew without
+	one) and with the company's mapping validated
 	against the form of their year, and never from earlier VAT Returns: the ledger is the single source of
 	every Kennzahl, and the comparison has to work before any earlier return exists. A year without a catalogue
 	of Kennzahlen, or with a form the mapping does not fit, leaves the amounts of its period empty and costs no
@@ -794,19 +853,20 @@ def build_comparison(
 	thresholds = Thresholds.of(
 		settings.get("comparison_threshold_percent"), settings.get("comparison_threshold_amount")
 	)
+	ledger = ledger or VatLedger.for_period(doc.company, period)
 	return plausibility.compare(
 		_read_rows(bridge.final_amounts, doc.kennzahlen, period.year),
-		_earlier_period(doc.company, period.previous(), settings, mapping),
-		_earlier_period(doc.company, year_before(period), settings, mapping),
+		_earlier_period(ledger, period.previous(), settings, mapping),
+		_earlier_period(ledger, year_before(period), settings, mapping),
 		mapping.catalogue,
 		thresholds.exceeded,
 	)
 
 
 def _earlier_period(
-	company: str, period: ustva.Period, settings: Document, mapping: ustva.Mapping
+	ledger: VatLedger, period: ustva.Period, settings: Document, mapping: ustva.Mapping
 ) -> plausibility.EarlierPeriod:
-	if prior_filings.lies_before_start(company, period.start):
+	if prior_filings.lies_before_start(ledger.company, period.start):
 		return plausibility.EarlierPeriod(period, None, plausibility.Code.BEFORE_START)
 	try:
 		mapping_of_the_year = mapping.for_year(period.year)
@@ -814,10 +874,52 @@ def _earlier_period(
 		return plausibility.EarlierPeriod(period, None, plausibility.Code.NO_CATALOGUE)
 	except ustva.MappingError:
 		return plausibility.EarlierPeriod(period, None, plausibility.Code.MAPPING_UNFIT)
-	result = _calculated(load_lines(company, period.start, period.end), mapping_of_the_year, period, settings)
+	result = _calculated(ledger.lines(period), mapping_of_the_year, period, settings)
 	return plausibility.EarlierPeriod(
 		period, {number: value.reported for number, value in result.values.items()}
 	)
+
+
+def late_change_rows(
+	ledger: VatLedger, period: ustva.Period, settings: Document, mapping: ustva.Mapping
+) -> list[dict]:
+	"""Nach der Abgabe geändert: the bookings made after the filing of an earlier period that this return reports or
+	that need the corrected return of their period, and the Kennzahlen of each period filed before it whose ledger
+	amounts changed since its filing."""
+	rows = late.current_rows(ledger.late(), period)
+	for filed_period in ledger.filed_before(period):
+		rows.extend(_change_rows(ledger, filed_period, settings, mapping))
+	return [_late_row(row) for row in rows]
+
+
+def _change_rows(
+	ledger: VatLedger, period: ustva.Period, settings: Document, mapping: ustva.Mapping
+) -> list[late.Row]:
+	"""The Kennzahlen of the filed period whose ledger amounts by today's ledger differ from those its return took;
+	none for a period without a filed return or whose form the mapping does not fit."""
+	filed = filed_amounts(ledger.company, period)
+	if filed is None:
+		return []
+	try:
+		mapping_of_the_year = mapping.for_year(period.year)
+	except ustva.UnknownYearError, ustva.MappingError:
+		return []
+	now = _calculated(ledger.lines(period), mapping_of_the_year, period, settings)
+	found = changes(filed, {number: value.amount for number, value in now.values.items()})
+	currency = frappe.get_cached_value("Company", ledger.company, "default_currency")
+	return late.change_rows(period, found, SiteFigures(currency).money)
+
+
+def _late_row(row: late.Row) -> dict:
+	return {
+		"period_label": row.period.label,
+		"kind": row.kind,
+		"voucher_type": row.voucher_type or None,
+		"voucher_no": row.voucher_no or None,
+		"booked_at": row.booked_at,
+		"message": _(row.template).format(*row.values),
+		"needs_correction": row.needs_correction,
+	}
 
 
 def build_hints(

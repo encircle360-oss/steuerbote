@@ -10,6 +10,10 @@ of the cancellation, so a cancellation within the period nets to zero and one in
 that period. GL Entries are summed per account number and voucher. The voucher key joins voucher type and
 name, because two document types can share a name. A caller that needs only some accounts, such as the
 Zusammenfassende Meldung those of Kz 41, 42 and 21, names their numbers and reads nothing else.
+
+load_lines reads by posting date. The Voranmeldung, its report and the annual return read through load_bookings
+instead, which keeps the posting date, the time of the entry and the date of the supply a Sales Invoice names, so
+that steuerbote.ustva.assignment can place each booking into its Voranmeldungszeitraum (steuerbote/vat_periods.py).
 """
 
 from collections.abc import Collection, Iterable
@@ -17,12 +21,15 @@ from datetime import date
 from decimal import Decimal
 
 import frappe
-from frappe.query_builder.functions import Coalesce, Min, Sum
+from frappe.query_builder.functions import Coalesce, Max, Min, Sum
+from frappe.utils import get_datetime, getdate
 
 from steuerbote.ustva import LedgerLine
+from steuerbote.ustva.assignment import Booking, service_date
 from steuerbote.ustva.rounding import CENT
 
 EXCLUDE_FIELD = "steuerbote_exclude_from_vat_return"
+SALES_INVOICE = "Sales Invoice"
 
 
 def load_lines(
@@ -81,6 +88,166 @@ def _ledger_rows(
 		.orderby(account.account_number)
 		.run(as_dict=True)
 	)
+
+
+def load_bookings(
+	company: str, from_date: date | str, to_date: date | str, by_service_date: bool
+) -> list[Booking]:
+	"""The bookings of the company that may count from ``from_date`` to ``to_date``, both included, for
+	steuerbote.ustva.assignment, with the exclusions of load_lines: those posted in the time and, by service date,
+	every booking of a Sales Invoice whose supply falls in it, wherever it is posted. Each Sales Invoice carries the
+	date of its supply (assignment.service_date); the assignment decides which of the bookings count."""
+	rows = _booking_rows(company, posting_between=(from_date, to_date))
+	if by_service_date:
+		seen = {(row.account_number, row.voucher_type, row.voucher_no, row.posting_date) for row in rows}
+		supplied = _invoices_supplied_between(company, from_date, to_date)
+		for row in _booking_rows(company, sales_invoices=supplied):
+			if (row.account_number, row.voucher_type, row.voucher_no, row.posting_date) not in seen:
+				rows.append(row)
+	rows.sort(key=lambda row: (str(row.posting_date), row.voucher_type, row.voucher_no, row.account_number))
+	invoices = _supplies([row.voucher_no for row in rows if row.voucher_type == SALES_INVOICE])
+	return [
+		Booking(
+			account_number=row.account_number.strip(),
+			voucher=f"{row.voucher_type}:{row.voucher_no}",
+			posting_date=getdate(row.posting_date),
+			booked_at=get_datetime(row.booked_at),
+			debit=_cents(row.debit),
+			credit=_cents(row.credit),
+			service_date=invoices.get(row.voucher_no) if row.voucher_type == SALES_INVOICE else None,
+		)
+		for row in rows
+	]
+
+
+def _booking_rows(
+	company: str,
+	posting_between: tuple[date | str, date | str] | None = None,
+	sales_invoices: Collection[str] = (),
+) -> list[frappe._dict]:
+	"""The ledger rows per account, voucher and posting date with the time of their first entry, posted in a time or
+	of some Sales Invoices."""
+	gl_entry = frappe.qb.DocType("GL Entry")
+	account = frappe.qb.DocType("Account")
+	journal_entry = frappe.qb.DocType("Journal Entry")
+	query = (
+		frappe.qb.from_(gl_entry)
+		.inner_join(account)
+		.on(account.name == gl_entry.account)
+		.left_join(journal_entry)
+		.on((gl_entry.voucher_type == "Journal Entry") & (journal_entry.name == gl_entry.voucher_no))
+		.select(
+			account.account_number,
+			gl_entry.voucher_type,
+			gl_entry.voucher_no,
+			gl_entry.posting_date,
+			Min(gl_entry.creation).as_("booked_at"),
+			Sum(gl_entry.debit).as_("debit"),
+			Sum(gl_entry.credit).as_("credit"),
+		)
+		.where(gl_entry.company == company)
+		.where(gl_entry.is_cancelled == 0)
+		.where(gl_entry.is_opening == "No")
+		.where(gl_entry.voucher_type != "Period Closing Voucher")
+		.where(Coalesce(journal_entry[EXCLUDE_FIELD], 0) == 0)
+		.where(Coalesce(account.account_number, "") != "")
+	)
+	if posting_between is not None:
+		query = query.where(gl_entry.posting_date.between(*posting_between))
+	else:
+		if not sales_invoices:
+			return []
+		query = query.where(gl_entry.voucher_type == SALES_INVOICE).where(
+			gl_entry.voucher_no.isin(list(sales_invoices))
+		)
+	return (
+		query.groupby(
+			account.account_number, gl_entry.voucher_type, gl_entry.voucher_no, gl_entry.posting_date
+		)
+		.orderby(gl_entry.posting_date)
+		.orderby(gl_entry.voucher_type)
+		.orderby(gl_entry.voucher_no)
+		.orderby(account.account_number)
+		.run(as_dict=True)
+	)
+
+
+def _invoices_supplied_between(company: str, from_date: date | str, to_date: date | str) -> list[str]:
+	"""The Sales Invoices of the company whose supply may fall in the time: by their billing period or by a Delivery
+	Note; _supplies decides which date counts."""
+	invoice = frappe.qb.DocType(SALES_INVOICE)
+	by_period = (
+		frappe.qb.from_(invoice)
+		.select(invoice.name)
+		.where(invoice.company == company)
+		.where(invoice.docstatus.isin([1, 2]))
+		.where(
+			invoice.to_date.between(from_date, to_date)
+			| (invoice.to_date.isnull() & invoice.from_date.between(from_date, to_date))
+		)
+		.run(pluck=True)
+	)
+	item = frappe.qb.DocType("Sales Invoice Item")
+	note = frappe.qb.DocType("Delivery Note")
+	by_delivery = (
+		frappe.qb.from_(item)
+		.inner_join(invoice)
+		.on(invoice.name == item.parent)
+		.inner_join(note)
+		.on(note.name == item.delivery_note)
+		.select(item.parent)
+		.distinct()
+		.where(item.parenttype == SALES_INVOICE)
+		.where(invoice.company == company)
+		.where(invoice.docstatus.isin([1, 2]))
+		.where(note.docstatus == 1)
+		.where(note.posting_date.between(from_date, to_date))
+		.run(pluck=True)
+	)
+	return sorted({*by_period, *by_delivery})
+
+
+def _supplies(names: Iterable[str]) -> dict[str, date]:
+	"""The date of the supply of each Sales Invoice that names one, by name (assignment.service_date)."""
+	names = sorted(set(names))
+	if not names:
+		return {}
+	invoice = frappe.qb.DocType(SALES_INVOICE)
+	invoices = (
+		frappe.qb.from_(invoice)
+		.select(invoice.name, invoice.to_date, invoice.from_date, invoice.is_return, invoice.is_debit_note)
+		.where(invoice.name.isin(names))
+		.run(as_dict=True)
+	)
+	item = frappe.qb.DocType("Sales Invoice Item")
+	note = frappe.qb.DocType("Delivery Note")
+	deliveries = dict(
+		frappe.qb.from_(item)
+		.inner_join(note)
+		.on(note.name == item.delivery_note)
+		.select(item.parent, Max(note.posting_date))
+		.where(item.parenttype == SALES_INVOICE)
+		.where(item.parent.isin(names))
+		.where(note.docstatus == 1)
+		.groupby(item.parent)
+		.run()
+	)
+	found = {}
+	for row in invoices:
+		supplied = service_date(
+			to_date=_date(row.to_date),
+			from_date=_date(row.from_date),
+			delivery_date=_date(deliveries.get(row.name)),
+			is_return=bool(row.is_return),
+			is_debit_note=bool(row.is_debit_note),
+		)
+		if supplied is not None:
+			found[row.name] = supplied
+	return found
+
+
+def _date(value: date | str | None) -> date | None:
+	return getdate(value) if value else None
 
 
 def _cents(amount: float | Decimal | None) -> Decimal:

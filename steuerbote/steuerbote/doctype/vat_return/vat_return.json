@@ -18,6 +18,8 @@
   "from_date",
   "to_date",
   "deadline",
+  "period_basis",
+  "late_treatment",
   "status",
   "transmission_in_progress",
   "confirmation_in_progress",
@@ -40,6 +42,8 @@
   "accounts_without_number",
   "register_section",
   "register_reconciliation",
+  "late_changes_section",
+  "late_changes",
   "hints_section",
   "hints",
   "comparison_section",
@@ -139,6 +143,22 @@
    "fieldname": "deadline",
    "fieldtype": "Date",
    "label": "Due Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "period_basis",
+   "fieldtype": "Select",
+   "label": "Assignment to the Voranmeldungszeitraum",
+   "no_copy": 1,
+   "options": "\nBy Service Date\nBy Posting Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "late_treatment",
+   "fieldtype": "Select",
+   "label": "Documents for a Filed Period",
+   "no_copy": 1,
+   "options": "\nCorrected Return\nCurrent Period",
    "read_only": 1
   },
   {
@@ -303,6 +323,21 @@
    "options": "VAT Return Register Reconciliation"
   },
   {
+   "depends_on": "eval:(doc.late_changes || []).length",
+   "fieldname": "late_changes_section",
+   "fieldtype": "Section Break",
+   "label": "Changed after Filing"
+  },
+  {
+   "description": "Bookings made after an earlier period was filed and the Kennzahlen of filed periods whose ledger amounts changed since, filled by Calculate with the rule of the settings recorded above.",
+   "fieldname": "late_changes",
+   "fieldtype": "Table",
+   "label": "Changed after Filing",
+   "no_copy": 1,
+   "options": "VAT Return Late Change",
+   "read_only": 1
+  },
+  {
    "depends_on": "eval:(doc.hints || []).length",
    "fieldname": "hints_section",
    "fieldtype": "Section Break",
@@ -390,7 +425,7 @@
    "link_fieldname": "vat_return"
   }
  ],
- "modified": "2026-11-23 22:00:00.000000",
+ "modified": "2026-11-25 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return",
