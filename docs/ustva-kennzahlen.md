@@ -185,7 +185,7 @@ Jede Firma passt die Vorgabe ihres Kontenrahmens in ihrer Kontenzuordnung an; �
 
 ### So rechnet `calculate()`
 
-[`calculation.py`](../steuerbote/ustva/calculation.py) bekommt die Buchungszeilen eines Zeitraums, eine Zeile je Buchung und Konto, in Firmenwährung und in Cent, dazu eine Zuordnung. Was nicht zum Umsatz des Zeitraums gehört, lässt der Aufrufer weg: Buchungen, die ERPNext als storniert kennzeichnet, Eröffnungs- und Abschlussbuchungen und die Buchungen, mit denen die Steuerkonten gegenüber dem Finanzamt ausgeglichen werden. Mit „Unveränderliches Hauptbuch aktivieren“ in den Buchhaltungseinstellungen kennzeichnet ERPNext keine Buchung als storniert; dann gehen ein stornierter Beleg und seine Gegenbuchungen ein, siehe [Die Abfrage des Hauptbuchs](architektur.md#die-abfrage-des-hauptbuchs).
+[`calculation.py`](../steuerbote/ustva/calculation.py) bekommt die Buchungszeilen eines Zeitraums, eine Zeile je Buchung und Konto, in Firmenwährung und in Cent, dazu eine Zuordnung. Was nicht zum Umsatz des Zeitraums gehört, lässt der Aufrufer weg: Buchungen, die ERPNext als storniert kennzeichnet, Eröffnungs- und Abschlussbuchungen und die Buchungen, mit denen die Steuerkonten gegenüber dem Finanzamt ausgeglichen werden. Einen stornierten Beleg liest die Voranmeldung mit seiner Gegenbuchung am Datum des Belegs, mit und ohne „Unveränderliches Hauptbuch aktivieren“ in den Buchhaltungseinstellungen, siehe [Stornierte Belege](#stornierte-belege).
 
 1. Soll, Haben und die Zahl der Buchungen werden je Konto summiert, dazu je Konto und Beleg, soweit die Zeilen einen Beleg nennen.
 2. Jedes zugeordnete Konto gibt seinen Saldo auf seiner Seite an seine Kennzahl. Trägt die Regel einen Steuersatz, geht zusätzlich die Steuer an die Steuer-Kennzahl: je Beleg Saldo × Satz, auf Cent gerundet, über alle Belege summiert. Konten ohne Regel, etwa Bankkonten, gehen nicht ein.
@@ -567,6 +567,19 @@ Die Spalte „bei Sitz im übrigen Gemeinschaftsgebiet“ nennt die Kennzahl, di
 In SKR04 fehlt in der Verprobung „Umsatzsteuer 7 %“ das Gegenstück zu 8630. Die Erwerbe ohne Vorsteuerabzug, auch 3066 und 3067 (SKR04: 5166 und 5167), verprobt 1779 (SKR04: 3809), das Konto für deren Umsatzsteuer.
 
 Die Steuer zu Kz 47, 85 und 96 kommt in den Vorgaben deshalb aus den Grundlagenkonten, nicht aus dem gebuchten Betrag auf 1787, 1785 oder 1784 (SKR04: 3837, 3835 oder 3834). Weicht die Buchung um mehr als die Toleranz ab, geht die Verprobung nicht auf, und die Meldung ist nicht bereit. Bucht ein Beleg Steuer auf diese Konten ohne Grundlagenkonto, nimmt Steuerbote die Bemessungsgrundlage aus dem Beleg, siehe den nächsten Abschnitt; die Spalte „Grundlage ohne Grundlagenkonto“ nennt ihre Kennzahl.
+
+### Vorsteuer und der Satz des Wareneingangskontos
+
+Die Vorsteuer (Kz 66) hat keine Verprobung: Ihre Grundlage, der Aufwand oder Wareneingang, steht auf Konten ohne Kennzahl, und ein Aufwandskonto sagt meist keinen Steuersatz. Abziehbar ist aber nur „die gesetzlich geschuldete Steuer für Lieferungen und sonstige Leistungen, die von einem anderen Unternehmer für sein Unternehmen ausgeführt worden sind“ (§ 15 Abs. 1 Satz 1 Nr. 1 Satz 1 UStG); eine zu hoch ausgewiesene Steuer schuldet der Aussteller (§ 14c Abs. 1 UStG), abziehen darf sie der Empfänger nicht. Einige Konten nennen den Satz ihrer Vorsteuer, und ERPNext setzt in einer Eingangsrechnung die Artikelsteuervorlage einer Position beim Speichern auf die Vorgabe des Artikels zurück, so dass 19 % Vorsteuer auf einem Wareneingang zu 7 % im Alltag vorkommt.
+
+Für diese Konten vergleicht [`input_tax.py`](../steuerbote/ustva/input_tax.py) je Beleg die gebuchte Vorsteuer auf den Konten der Kz 66 mit dem Satz des Kontos auf seiner Grundlage, je Satz auf Cent gerundet wie die Steuerzeile eines Belegs, mit der Toleranz je Beleg der Einstellungen wie die Verprobung der Umsatzsteuer. Weicht sie ab, gibt „Berechnen“ die Warnung `VORSTEUER-ABWEICHUNG` mit Beleg, Konten, Grundlage, gebuchter und erwarteter Vorsteuer. Die Warnung hält die Meldung nicht an, denn ob die Rechnung die Steuer so ausweist, sieht Steuerbote nicht; die Kennzahl bleibt, wie gebucht. Steuerbote beurteilt keinen Beleg, der zugleich auf ein anderes Aufwands- oder Bestandskonto ohne Satz bucht, denn seine Vorsteuer kann zu dieser Zeile gehören, und keine Buchungszeilen ohne Beleg. Ein Kontenrahmen ohne Vorgaben hat keine solchen Konten.
+
+| Satz der Vorsteuer | SKR03 | SKR04 |
+|---|---|---|
+| 7 % | 3010 bis 3019 „Einkauf Roh-, Hilfs- und Betriebsstoffe 7 % Vorsteuer“, 3091 „Energiestoffe (Fertigung) 7 % VSt“, 3300 bis 3309 und 3347 „Wareneingang 7 % Vorsteuer“ | 5110 bis 5119, 5191, 5300 bis 5309, 5347 |
+| 19 % | 3030 bis 3039 „Einkauf Roh-, Hilfs- und Betriebsstoffe 19 % Vorsteuer“, 3092 „Energiestoffe (Fertigung) 19 % VSt“, 3400 bis 3409 und 3418 „Wareneingang 19 % Vorsteuer“ | 5130 bis 5139, 5192, 5400 bis 5409, 5418 |
+
+Quelle der Konten und ihrer Bezeichnungen sind die DATEV-Kontenrahmen SKR 03 und SKR 04, „Gültig für 2026“ (`purchase_rates` in `defaults.py`).
 
 ### Bemessungsgrundlage ohne Grundlagenkonto
 
@@ -1347,7 +1360,7 @@ Eine [Bemessungsgrundlage ohne Grundlagenkonto](#bemessungsgrundlage-ohne-grundl
 
 Liegt das Leistungsdatum nach der Rechnung, zählt sie im späteren Zeitraum der Leistung. Wird eine solche Rechnung vor der Leistung bezahlt, entsteht die Steuer nach § 13 Abs. 1 Nr. 1 Buchst. a Satz 4 UStG schon mit der Zahlung; das erkennt Steuerbote nicht, siehe [Offen zur Zuordnung](#offen-zur-zuordnung).
 
-Eine stornierte Ausgangsrechnung fällt ohne unveränderliches Hauptbuch ganz heraus, weil ERPNext ihre Buchungen markiert. Mit „Unveränderliches Hauptbuch aktivieren“ bucht ERPNext die Gegenbuchung am Tag der Stornierung; sie trägt dasselbe Leistungsdatum und gleicht die Rechnung in ihrem Leistungszeitraum aus. Ist der schon abgegeben, gilt der nächste Abschnitt.
+Eine stornierte Ausgangsrechnung zählt mit ihrer Gegenbuchung im Zeitraum ihres Leistungsdatums und gleicht sich dort aus, mit und ohne „Unveränderliches Hauptbuch aktivieren“, siehe [Stornierte Belege](#stornierte-belege).
 
 ### Belege für abgegebene Zeiträume
 
@@ -1366,10 +1379,26 @@ Eine Buchung für einen abgegebenen Zeitraum macht dessen Anmeldung unvollständ
 
 **Wo Steuerbote es zeigt.** „Berechnen“ füllt an der Meldung die Tabelle „Nach der Abgabe geändert“ und hält in „Zuordnung zum Voranmeldungszeitraum“ und „Belege für abgegebene Zeiträume“ fest, nach welchen Einstellungen gerechnet wurde. Die Tabelle nennt
 
-- jede nachträgliche Buchung eines abgegebenen Zeitraums desselben Jahres oder des Vorjahres, die diese Meldung meldet („Gehört zu Juli 2026 und wurde nach der Abgabe von Juli 2026 gebucht: in diesem Zeitraum gemeldet.“) oder die eine Berichtigung ihres Zeitraums braucht, und
-- jede Kennzahl eines abgegebenen Zeitraums vor dieser Meldung, deren Betrag laut Hauptbuch heute von dem abweicht, den die abgegebene Meldung genommen hat („Kz 81: abgegeben 1.000,00 €, jetzt 1.500,00 €.“). Kz 83 und Kz 39 folgen aus den anderen und aus den Einstellungen und werden nicht verglichen. Dieser Vergleich findet auch, was keine nachträgliche Buchung erklärt, etwa eine Stornierung ohne unveränderliches Hauptbuch oder eine geänderte Kontenzuordnung.
+- jede nachträgliche Buchung eines abgegebenen Zeitraums desselben Jahres oder des Vorjahres, die diese Meldung meldet („Gehört zu Juli 2026 und wurde nach der Abgabe von Juli 2026 gebucht: in diesem Zeitraum gemeldet.“) oder die eine Berichtigung ihres Zeitraums braucht,
+- jede Stornierung nach der Abgabe des Zeitraums ihres Belegs, mit der Art „Nach der Abgabe storniert“, siehe [Stornierte Belege](#stornierte-belege), und
+- jede Kennzahl eines abgegebenen Zeitraums vor dieser Meldung, deren Betrag laut Hauptbuch heute von dem abweicht, den die abgegebene Meldung genommen hat („Kz 81: abgegeben 1.000,00 €, jetzt 1.500,00 €.“). Kz 83 und Kz 39 folgen aus den anderen und aus den Einstellungen und werden nicht verglichen. Dieser Vergleich findet auch, was keine nachträgliche Buchung erklärt, etwa einen gelöschten Beleg oder eine geänderte Kontenzuordnung.
 
 Die abgegebene Meldung selbst nennt beim Öffnen über dem Formular, was sich in ihrem Zeitraum seit der Abgabe geändert hat und wo eine nachträgliche Buchung gemeldet ist. „Berichtigung anlegen“ an ihr legt die berichtigte Anmeldung (Kz 10) des Zeitraums als Entwurf an oder öffnet den Entwurf, den es schon gibt.
+
+### Stornierte Belege
+
+Wer einen Beleg in ERPNext storniert, sagt: Diese Buchung war falsch. Die Lieferung, die Rechnung oder die Zahlung, die sie gebucht hat, gab es so nicht, und für die Umsatzsteuer hat es den Beleg in seinem Zeitraum nie gegeben. Die Steuer eines Zeitraums ist die Steuer seiner Umsätze (§ 13 Abs. 1 Nr. 1 Buchst. a, § 16 Abs. 1 und § 18 Abs. 1 UStG [Z1]), abziehbar ist nur die gesetzlich geschuldete Steuer für eine an das Unternehmen ausgeführte Leistung (§ 15 Abs. 1 Satz 1 Nr. 1 UStG [Z4]). Eine abgegebene Anmeldung, die den Beleg enthält, ist deshalb unrichtig und wird berichtigt (§ 153 Abs. 1 Satz 1 Nr. 1 AO [Z8]).
+
+ERPNext bucht beim Stornieren zu jeder Buchung des Belegs eine Gegenbuchung mit der Bemerkung „On cancellation of“ und dem Beleg. Ohne „Unveränderliches Hauptbuch aktivieren“ in den Buchhaltungseinstellungen trägt sie das Datum des Belegs, und ERPNext kennzeichnet beide als storniert (`is_cancelled`); mit der Einstellung trägt die Gegenbuchung den Tag der Stornierung, und nichts ist gekennzeichnet. Steuerbote liest in beiden Fällen dasselbe (`load_bookings` in `steuerbote/ledger.py`): die Buchungen des Belegs, wie sie gebucht wurden, und jede Gegenbuchung als Stornierung am Buchungsdatum des Belegs, eingetragen zur Zeit der Stornierung (`Booking.cancellation` in [`assignment.py`](../steuerbote/ustva/assignment.py)). Eine Ausgangsrechnung mit Leistungsdatum storniert sich nach Leistungsdatum. Damit gilt die Regel für [Belege für abgegebene Zeiträume](#belege-für-abgegebene-zeiträume):
+
+| Stornierung | Berichtigung des abgegebenen Zeitraums (Vorgabe) | im laufenden Zeitraum melden |
+|---|---|---|
+| bevor der Zeitraum des Belegs abgegeben ist, nach Leistungsdatum oder Buchungsdatum | Beleg und Stornierung heben sich in seinem Zeitraum auf, keine Meldung enthält ihn, auch nicht die des Tags der Stornierung (`settled` in `assignment.py`). | wie links |
+| nachdem der Zeitraum des Belegs abgegeben ist, nach Leistungsdatum oder Buchungsdatum | Die Stornierung bleibt im Zeitraum des Belegs, der abgegebene Zeitraum braucht eine berichtigte Anmeldung (Kz 10); die Meldung, die gerade vorbereitet wird, und die abgegebene nennen den Beleg mit „Nach der Abgabe storniert“. | Die Stornierung geht mit umgekehrtem Vorzeichen in den Zeitraum, der bei der Stornierung offen war, und die Tabelle „Nach der Abgabe geändert“ dieser Meldung nennt sie. |
+
+Die beiden Spalten unterscheiden sich nur nach der Abgabe, und die Einstellung „Zuordnung zum Voranmeldungszeitraum“ entscheidet nur, welcher Zeitraum der des Belegs ist. Eine Stornierung, die ERPNext vor das Datum des Belegs bucht, etwa eines vordatierten Belegs, ändert den Zeitraum ihres Tags nicht. Ein gelöschter Beleg, dessen Buchungen ERPNext nur ohne unveränderliches Hauptbuch und mit `delete_linked_ledger_entries` der Buchhaltungseinstellungen mitlöscht, fehlt im Hauptbuch; der Vergleich der Kennzahlen eines abgegebenen Zeitraums zeigt ihn.
+
+**Keine Stornierung ist eine spätere Änderung.** Ändert sich die Bemessungsgrundlage eines Umsatzes, den es gab, etwa durch Rückgabe, Preisnachlass, Skonto oder Forderungsausfall, wird sie berichtigt „für den Besteuerungszeitraum …, in dem die Änderung der Bemessungsgrundlage eingetreten ist“ (§ 17 Abs. 1 Satz 8 und Abs. 2 UStG [Z3]); beim Empfänger ebenso die Vorsteuer (§ 17 Abs. 1 Satz 2 UStG). Dafür bucht man eine Gutschrift (Rechnungskorrektur) oder bei einer Eingangsrechnung eine Rücksendung mit eigenem Datum, nicht die Stornierung der ursprünglichen Rechnung; die Gutschrift zählt an ihrem Buchungsdatum, siehe [Was das Gesetz sagt](#was-das-gesetz-sagt). Eine Stornierung mit „Ändern“ legt einen neuen Beleg an, der an seinem eigenen Datum zählt.
 
 ### Was sich für ein Unternehmen ändert
 
@@ -1383,6 +1412,7 @@ Mit der Vorgabe „nach Leistungsdatum“ ändert sich nur etwas für Ausgangsre
 - **§ 13b und innergemeinschaftlicher Erwerb.** Steuerbote nimmt das Buchungsdatum der Eingangsrechnung, auch wo das Gesetz den Zeitraum der Ausführung (§ 13b Abs. 1 UStG) oder spätestens den Folgemonat verlangt.
 - **Anzahlungen über eine Ausgangsrechnung.** Eine Rechnung mit Leistungszeitraum nach ihrem Datum, die vor der Leistung bezahlt wird, meldet Steuerbote im Zeitraum der Leistung statt der Zahlung.
 - **Rechnungskorrektur.** Eine Gutschrift, die eine falsch ausgestellte Rechnung berichtigt, ohne dass sich das Entgelt ändert, zählt nach ihrem Buchungsdatum wie eine Änderung der Bemessungsgrundlage. Ob sie in den Zeitraum der ursprünglichen Leistung gehört, klärt die Steuerberatung.
+- **Stornierung oder Änderung.** Ob eine Stornierung einen Fehler berichtigt (Zeitraum des Belegs) oder eine spätere Änderung der Bemessungsgrundlage ist (§ 17 UStG, Zeitraum der Änderung), sieht Steuerbote dem Beleg nicht an; es behandelt jede Stornierung als Berichtigung. Eine spätere Änderung bucht das Unternehmen als Gutschrift.
 - **Zeitpunkt der Abgabe.** Bei einem Vermerk zählt der Zeitpunkt, zu dem er in Steuerbote erfasst wurde, nicht der Tag der Abgabe in Mein ELSTER; eine Buchung zwischen beiden zählt als nicht nachträglich und erscheint dann als Abweichung der Kennzahlen.
 
 ### Quellen zur Zuordnung
@@ -1504,6 +1534,10 @@ Keine Ist-Versteuerung. Geprüft im Quelltext von ERPNext 16.60.0 und des Frappe
 - **Zeitraumcode:** `Period.code` liefert den zweistelligen Code der ELSTER-Schnittstelle für die Umsatzsteuer-Voranmeldung: 01 bis 12 für die Monate, 41 bis 44 für die Quartale. Die Tests des XML prüfen jeden Code gegen das Schema des Jahres aus der ERiC-Dokumentation, siehe [Abgabe über Mein ELSTER](abgabe-mein-elster.md).
 
 Beispiele aus den Tests: Januar 2026 ist am 10. Februar 2026 fällig, mit Dauerfristverlängerung am 10. März 2026. Das I. Kalendervierteljahr 2026 ist am 10. April 2026 fällig. Für September 2026 gilt der 12. Oktober 2026, weil der 10. Oktober ein Samstag ist. Dezember 2026 ist am 11. Januar 2027 fällig, weil der 10. Januar ein Sonntag ist.
+
+**Ein Zeitraum, der noch läuft.** Die Steuer entsteht mit Ablauf des Voranmeldungszeitraums (§ 13 Abs. 1 Nr. 1 Buchst. a Satz 1 UStG), und die Voranmeldung wird bis zum 10. Tag nach seinem Ablauf übermittelt (§ 18 Abs. 1 Satz 1 UStG). Eine Meldung lässt sich vorher anlegen und berechnen, damit die Buchhaltung den Monat prüfen kann; solange der letzte Tag ihres Zeitraums nicht vorbei ist, gibt „Berechnen“ die Warnung `ZEITRAUM-NICHT-ABGELAUFEN`, und die Meldung wird nicht bereit ([`obligations.py`](../steuerbote/ustva/obligations.py)). Nach dem Ende des Zeitraums rechnet man sie erneut; abgegeben wird sie vorher nur mit Anmerkungen, die sagen, warum. Auch ERiC weist auf einen Zeitraum hin, der noch nicht beendet ist oder in der Zukunft liegt.
+
+**Zusammenfassende Meldung.** Meldet die Voranmeldung Umsätze in Kz 41, 42 oder 21, ist für sie eine Zusammenfassende Meldung abzugeben (§ 18a Abs. 1 und 2 UStG). Nennen die Einstellungen für einen Monat des Zeitraums keinen Rhythmus der Zusammenfassenden Meldung, gibt „Berechnen“ die Warnung `ZM-OHNE-RHYTHMUS`; ohne Rhythmus kennt Steuerbote weder die Meldung noch ihre Frist, siehe [Einrichtung](einrichtung.md).
 
 **Vor dem Start der Bücher.** Nennen die Einstellungen in „Bücher in ERPNext ab“ den ersten Tag der Bücher in ERPNext, lehnt das Speichern eine Voranmeldung für einen Zeitraum ab, der davor beginnt: Sie wurde außerhalb von Steuerbote abgegeben und wird als Voranmeldung vor Steuerbote eingetragen. Der Vorperiodenvergleich mit einem solchen Zeitraum bleibt leer, mit dem Hinweis `VOR-START`; der Bericht „UStVA Kennzahlen“ sagt dasselbe in seiner Notiz. Siehe [Start mit Steuerbote im laufenden Betrieb](einrichtung.md#start-mit-steuerbote-im-laufenden-betrieb).
 
