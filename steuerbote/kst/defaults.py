@@ -57,7 +57,7 @@ BLOCKING, HINT = WatchLevel.BLOCKING, WatchLevel.HINT
 # the defaults raises REVISION, and a new edition starts it at 1 again, so that the same version always means the
 # same defaults: test_defaults.py pins the content of each version.
 DATEV_EDITION = 2026
-REVISION = 1
+REVISION = 2
 
 
 class Reason(StrEnum):
@@ -79,6 +79,8 @@ class Reason(StrEnum):
 	UEBERLEITUNG = "ueberleitung"
 	TANTIEME = "tantieme"
 	HOLDING_COSTS = "holding_costs"
+	HOLDING_INCOME = "holding_income"
+	SHARE_RESULTS = "share_results"
 
 
 REASONS: MappingProxyType[Reason, str] = MappingProxyType(
@@ -143,6 +145,17 @@ REASONS: MappingProxyType[Reason, str] = MappingProxyType(
 			"Costs of holdings, which reduce the Kürzung of a holding of at least 15 % in Anlage BEG lines 8 and 9 (§ 9 "
 			"Nummer 2a Satz 3 GewStG); DATEV hands the account to the Körperschaftsteuer of an Organgesellschaft only "
 			"(footnote 16)."
+		),
+		Reason.HOLDING_INCOME: (
+			"Income from holdings of no named legal form: a dividend of a Kapitalgesellschaft is exempt under § 8b "
+			"Absatz 1 KStG and § 9 Nummer 2a GewStG only on an account of the category Bezüge aus Anteilen, while the "
+			"share of a Mitunternehmerschaft is taxed by its Feststellung; DATEV marks the account for neither, so its "
+			"balance would count in full. The company books it apart or gives the account its category."
+		),
+		Reason.SHARE_RESULTS: (
+			"Income, gains, losses and write-downs of securities and Finanzanlagen that may be Bezüge, Gewinne or "
+			"Gewinnminderungen aus Anteilen an Kapitalgesellschaften (§ 8b Absätze 1 to 3 KStG), which DATEV marks only on "
+			"their own accounts: a balance asks whether it holds such results, which then belong on those accounts."
 		),
 	}
 )
@@ -870,6 +883,55 @@ _ROWS: tuple[_Row, ...] = (
 		HINT,
 		Reason.HOLDING_COSTS,
 		"Aufwendungen aus Anteilen an Kapitalgesellschaften §§ 3 Nr. 40 und 3c EStG bzw. § 8b Abs. 1 und 4 KStG",
+	),
+	# Not marked K by DATEV, but where results of shares under § 8b KStG may be booked (REASONS).
+	_watch("2600", "7000", BLOCKING, Reason.HOLDING_INCOME, "Erträge aus Beteiligungen"),
+	_watch(
+		"2619",
+		"7009",
+		BLOCKING,
+		Reason.HOLDING_INCOME,
+		"Erträge aus Beteiligungen an verbundenen Unternehmen",
+	),
+	_watch(
+		"2620",
+		"7010",
+		HINT,
+		Reason.SHARE_RESULTS,
+		"Erträge aus anderen Wertpapieren und Ausleihungen des Finanzanlagevermögens",
+	),
+	_watch("2640", "7020", HINT, Reason.SHARE_RESULTS, "Zins- und Dividendenerträge"),
+	_watch(
+		"2725",
+		"4905",
+		HINT,
+		Reason.SHARE_RESULTS,
+		"Erträge aus dem Abgang von Gegenständen des Umlaufvermögens (außer Vorräte)",
+		"Erträge aus dem Abgang von Gegenständen des Umlaufvermögens außer Vorräte",
+	),
+	_watch(
+		"2325",
+		"6905",
+		HINT,
+		Reason.SHARE_RESULTS,
+		"Verluste aus dem Abgang von Gegenständen des Umlaufvermögens (außer Vorräte)",
+		"Verluste aus dem Abgang von Gegenständen des Umlaufvermögens außer Vorräte",
+	),
+	_watch("4870", "7200", HINT, Reason.SHARE_RESULTS, "Abschreibungen auf Finanzanlagen (dauerhaft)"),
+	_watch(
+		"4877",
+		"7207",
+		HINT,
+		Reason.SHARE_RESULTS,
+		"Abschreibungen auf Finanzanlagen - verbundene Unternehmen",
+	),
+	_watch("4875", "7210", HINT, Reason.SHARE_RESULTS, "Abschreibungen auf Wertpapiere des Umlaufvermögens"),
+	_watch(
+		"4878",
+		"7217",
+		HINT,
+		Reason.SHARE_RESULTS,
+		"Abschreibungen auf Wertpapiere des Umlaufvermögens - verbundene Unternehmen",
 	),
 )
 
