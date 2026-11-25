@@ -12,7 +12,8 @@ The script checks, each in a worker process of steuerbote.eric.worker with the f
 
 - the E-Bilanz of the invented GmbH of the tests (steuerbote/ebilanz/tests/test_real_taxonomy.py) as an Einheitsbilanz
   with fixed assets, without fixed assets, as a Handelsbilanz with its Überleitung, with the previous year, as an
-  Eröffnungsbilanz, as a UG and with shareholders, Datenart Bilanz_6.9;
+  Eröffnungsbilanz, as a UG, with shareholders and their Steuernummern and W-IdNr., and in its founding year with the
+  capital paid in as Einlagen, Datenart Bilanz_6.9;
 - the Körperschaftsteuer- and the Gewerbesteuererklärung of the invented Muster IT GmbH as the documents file them
   (steuerbote/steuerbote/doctype/corporate_income_tax_return/test_bridge.py and trade_tax_return/test_bridge.py), and
   the Gewerbesteuer of a holding of 20 %, with dividends § 8b KStG exempts and with dividends it taxes. Steuerbote
@@ -100,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def ebilanzen() -> list[tuple[str, str, str, str]]:
 	"""The E-Bilanzen of the invented GmbH, each ready after the checks of Steuerbote."""
-	from steuerbote.ebilanz.calculation import AccountBalance
+	from steuerbote.ebilanz.calculation import AccountBalance, EquityChanges
 	from steuerbote.ebilanz.gcd import Gesellschafter
 	from steuerbote.ebilanz.instance import Sources, build
 	from steuerbote.ebilanz.positions import Case, structure
@@ -174,6 +175,17 @@ def ebilanzen() -> list[tuple[str, str, str, str]]:
 		),
 		"ebilanz-ug": (Case("UG", invented.YEAR), MASTER, books),
 		"ebilanz-mit-gesellschaftern": (Case("GmbH", invented.YEAR), shareholders, books),
+		"ebilanz-gruendungsjahr": (
+			Case("GmbH", invented.YEAR),
+			MASTER,
+			Sources(
+				without_assets,
+				equity=EquityChanges(
+					previous_equity=Decimal("0.00"), contributions=invented.EQUITY.previous_equity
+				),
+				first_year=True,
+			),
+		),
 	}
 	found = []
 	for name, (case, master, sources) in cases.items():
