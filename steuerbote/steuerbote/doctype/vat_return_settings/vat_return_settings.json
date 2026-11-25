@@ -168,7 +168,7 @@
    "reqd": 1
   },
   {
-   "description": "As issued by the Finanzamt, in the format of the Bundesland.",
+   "description": "As issued by the Finanzamt, in the format of the Bundesland. When a changed number is saved, ERiC checks it if a runtime is installed and the ERiC Settings record the confirmation of the Datenschutzhinweise; otherwise a message says so, and the first Prüfen of a return checks it.",
    "fieldname": "tax_number",
    "fieldtype": "Data",
    "label": "Steuernummer",
@@ -403,7 +403,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-25 22:00:00.000000",
+ "modified": "2026-11-26 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "VAT Return Settings",
