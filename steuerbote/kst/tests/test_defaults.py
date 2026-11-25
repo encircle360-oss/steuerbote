@@ -404,7 +404,6 @@ UNMARKED = {
 		"4665": Category.OTHER_NONDEDUCTIBLE,
 		"2723": Category.SHARE_GAIN,
 		"2323": Category.SHARE_LOSS,
-		"2130": Category.INTEREST,
 		"2139": Category.INTEREST,
 		"2140": Category.INTEREST,
 		"2149": Category.INTEREST,
@@ -451,6 +450,8 @@ DIGESTS = {
 	"SKR04 2026.2": "eff6e6e325ec06430bdfc93b8dd9c96d0f8db009ee07507ab7073a7d1b9b66ab",
 	"SKR03 2026.3": "3eb40f62030abbc7b50c02ea421233b66082c9eaeb30c5e0b55c778401896732",
 	"SKR04 2026.3": "eff6e6e325ec06430bdfc93b8dd9c96d0f8db009ee07507ab7073a7d1b9b66ab",
+	"SKR03 2026.4": "3f07d267b0c4287e2401f38a5326f1700bb907864a254087726d129d24d02c32",
+	"SKR04 2026.4": "bc0005c70d0c9aa52e4e61c4a9929605e8c1fd870ddd14394535fc5380af596e",
 }
 
 
@@ -507,32 +508,27 @@ class PlacesTest(TestCase):
 			"7644",
 			"6396",
 			"7007",
-			"7340",
-			"7349",
 			"4901",
 			"6903",
 			"2723",
 			"2323",
-			"7464",
-			"7563",
 			"7452",
 		}
 		self.assertEqual(count("SKR03", templates), count("SKR04", templates))
 		self.assertEqual(
-			{chart: len(default_accounts(chart)) for chart in CHARTS}, {"SKR03": 151, "SKR04": 159}
+			{chart: len(default_accounts(chart)) for chart in CHARTS}, {"SKR03": 164, "SKR04": 168}
 		)
 
 	def test_the_equity_is_left_to_kst_1_f_and_the_partnerships_and_the_reserved_range_are_left_out(self):
 		self.assertEqual(
 			{chart: {reason: len(numbers) for reason, numbers in OUTSIDE[chart].items()} for chart in CHARTS},
 			{
-				"SKR03": {Outside.EQUITY: 22, Outside.PARTNERSHIP: 17, Outside.RESERVED: 1},
+				"SKR03": {Outside.EQUITY: 22, Outside.PARTNERSHIP: 17, Outside.RESERVED: 0},
 				"SKR04": {Outside.EQUITY: 22, Outside.PARTNERSHIP: 17, Outside.RESERVED: 0},
 			},
 		)
 		self.assertIn("0800", OUTSIDE["SKR03"][Outside.EQUITY])
 		self.assertIn("2900", OUTSIDE["SKR04"][Outside.EQUITY])
-		self.assertEqual(OUTSIDE["SKR03"][Outside.RESERVED], ("2130",))
 		for chart in CHARTS:
 			with self.subTest(chart=chart):
 				self.assertIsNone(default_mapping(chart).rule_for(OUTSIDE[chart][Outside.EQUITY][0]))
@@ -875,8 +871,8 @@ class AccountTest(TestCase):
 
 class VersionTest(TestCase):
 	def test_the_version_names_the_chart_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, REVISION), (2026, 3))
-		self.assertEqual([defaults_version(chart) for chart in CHARTS], ["SKR03 2026.3", "SKR04 2026.3"])
+		self.assertEqual((DATEV_EDITION, REVISION), (2026, 4))
+		self.assertEqual([defaults_version(chart) for chart in CHARTS], ["SKR03 2026.4", "SKR04 2026.4"])
 
 	def test_a_chart_without_defaults_has_none(self):
 		for function in (defaults_version, default_mapping, default_accounts):

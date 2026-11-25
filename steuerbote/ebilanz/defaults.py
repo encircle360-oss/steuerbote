@@ -129,6 +129,7 @@ class Reason(StrEnum):
 	EUR = "eur"
 	EXEMPT_NO_DEDUCTION = "exempt_no_deduction"
 	EXPENSE_PROVISIONS = "expense_provisions"
+	EARLIER_EDITION = "earlier_edition"
 	EXTRAORDINARY_OLD = "extraordinary_old"
 	FLAT_RATE_23 = "flat_rate_23"
 	FLAT_RATE_INPUT = "flat_rate_input"
@@ -369,6 +370,12 @@ REASONS: MappingProxyType[Reason, str] = MappingProxyType(
 			"Abs. 3 Satz 1 EGHGB, exist in the Handelsbilanz only: a Passivierungswahlrecht of the "
 			"Handelsbilanz is a Passivierungsverbot of the Steuerbilanz (BFH, Beschluss vom 3. 2. "
 			"1969, GrS 2/68)."
+		),
+		Reason.EARLIER_EDITION: (
+			"An account of the DATEV edition valid for 2020 that the edition valid for 2026 no longer labels, whose label "
+			"names nothing the HGB-Taxonomie places for a GmbH today: the Verschmelzungsmehrwert of a merger before the "
+			"BilMoG, the interest of the Körperschaftsteuer-Erhöhungsbetrag of § 38 KStG. The Steuerberatung decides its "
+			"place."
 		),
 		Reason.EXTRAORDINARY_OLD: (
 			"Since the BilRUG the GuV has no außerordentliche Erträge und Aufwendungen any more (§ "
@@ -7445,6 +7452,123 @@ _GROUPS_6_9: tuple[Group, ...] = (
 	),
 )
 
+
+# Accounts of the DATEV edition valid for 2020 (DATEV-Kontenrahmen nach dem Bilanzrichtlinie-Umsetzungsgesetz,
+# Standardkontenrahmen SKR 03, Art.-Nr. 11174, and SKR 04, Art.-Nr. 11175, „Gültig für 2020“) that the edition valid for
+# 2026 no longer labels and a chart made from that edition still carries: SKR03, SKR04, the label of 2020 and the
+# account of SKR04 whose place it takes, its twin of 2020 where the defaults have one, otherwise the account of today's
+# chart for the same thing (SKR03 2010 „Betriebsfremde Aufwendungen“, which SKR04 had no twin for, that of 6967
+# „Sonstige Aufwendungen betriebsfremd und regelmäßig“; the Skonti at 10,7 % those at 9,0 %, the rate of § 24 UStG today).
+_EARLIER_EDITION: tuple[tuple[str | None, str | None, str, str], ...] = (
+	("0583", None, "Ausleihungen an stille Gesellschafter", "0964"),
+	("0978", None, "Aufwandsrückstellungen nach § 249 Abs. 2 HGB a. F.", "3098"),
+	("1300", "1230", "Wechsel aus Lieferungen und Leistungen", "1235"),
+	("1305", None, "Wechsel aus Lieferungen und Leistungen, bundesbankfähig", "1235"),
+	("1310", None, "Besitzwechsel gegen verbundene Unternehmen", "1266"),
+	("1315", None, "Besitzwechsel gegen verbundene Unternehmen, bundesbankfähig", "1269"),
+	("1320", None, "Besitzwechsel gegen Unternehmen, mit denen ein Beteiligungsverhältnis besteht", "1286"),
+	(
+		"1325",
+		None,
+		"Besitzwechsel gegen Unternehmen, mit denen ein Beteiligungsverhältnis besteht, bundesbankfähig",
+		"1289",
+	),
+	("1327", None, "Finanzwechsel", "1520"),
+	("1330", None, "Schecks", "1550"),
+	("1583", "1483", "Gegenkonto für Vorsteuer nach Durchschnittssätzen für § 4 Abs. 3 EStG", "1484"),
+	("1587", None, "Vorsteuer nach allgemeinen Durchschnittssätzen UStVA Kz. 63", "1484"),
+	("1660", None, "Wechselverbindlichkeiten", "3350"),
+	("1788", None, "Einfuhrumsatzsteuer aufgeschoben bis …", "3850"),
+	("2006", None, "Verluste durch außergewöhnliche Schadensfälle (nur Bilanzierer)", "7552"),
+	(
+		"2008",
+		None,
+		"Verluste aus der Veräußerung oder der Aufgabe von Geschäftsaktivitäten nach Steuern",
+		"7554",
+	),
+	("2010", None, "Betriebsfremde Aufwendungen", "6967"),
+	("2090", None, "Aufwendungen aus der Anwendung von Übergangsvorschriften", "7560"),
+	(
+		"2091",
+		None,
+		"Aufwendungen aus der Anwendung von Übergangsvorschriften (Pensionsrückstellungen)",
+		"7561",
+	),
+	("2094", None, "Aufwendungen aus der Anwendung von Übergangsvorschriften (Latente Steuern)", "7563"),
+	("2130", None, "Diskontaufwendungen", "7340"),
+	("2139", None, "Diskontaufwendungen an verbundene Unternehmen", "7349"),
+	("2307", None, "Sonstige Aufwendungen betriebsfremd und regelmäßig", "6967"),
+	("2309", None, "Sonstige Aufwendungen unregelmäßig", "6969"),
+	(
+		"2508",
+		None,
+		"Gewinn aus der Veräußerung oder der Aufgabe von Geschäftsaktivitäten nach Steuern",
+		"7454",
+	),
+	("2590", None, "Erträge aus der Anwendung von Übergangsvorschriften", "7460"),
+	("2594", None, "Erträge aus der Anwendung von Übergangsvorschriften (latente Steuern)", "7464"),
+	("2670", None, "Diskonterträge", "7130"),
+	("2679", None, "Diskonterträge aus verbundenen Unternehmen", "7139"),
+	("2705", None, "Sonstige betriebliche und regelmäßige Erträge (neutral)", "4835"),
+	("2707", None, "Sonstige Erträge betriebsfremd und regelmäßig", "4837"),
+	("2720", None, "Erträge aus dem Abgang von Gegenständen des Anlagevermögens", "4900"),
+	(
+		"3788",
+		"5788",
+		"Erhaltene Skonti aus Einkauf Roh-, Hilfs- und Betriebsstoffe 10,7 % Vorsteuer",
+		"5787",
+	),
+	("3796", "5796", "Erhaltene Skonti 10,7 % Vorsteuer", "5795"),
+	("4905", None, "Sonstige Aufwendungen betrieblich und regelmäßig", "6304"),
+	("8195", None, "Erlöse als Kleinunternehmer nach § 19 Abs. 1 UStG", "4185"),
+	("8196", None, "Erlöse aus Geldspielautomaten 19 % USt", "4186"),
+	("8516", None, "Provisionsumsätze 7 % USt", "4566"),
+	(
+		"8574",
+		None,
+		"Sonstige Erträge aus Provisionen, Lizenzen und Patenten, steuerfrei § 4 Nr. 8 ff. UStG",
+		"4574",
+	),
+	(
+		"8575",
+		None,
+		"Sonstige Erträge aus Provisionen, Lizenzen und Patenten, steuerfrei § 4 Nr. 5 UStG",
+		"4575",
+	),
+	("8576", None, "Sonstige Erträge aus Provisionen, Lizenzen und Patenten 7 % USt", "4576"),
+	("8579", None, "Sonstige Erträge aus Provisionen, Lizenzen und Patenten 19 % USt", "4579"),
+	("8600", None, "Sonstige Erlöse betrieblich und regelmäßig", "4835"),
+)
+
+
+def _earlier(groups: tuple[Group, ...]) -> tuple[Group, ...]:
+	"""The groups of the accounts of the earlier edition, each the group of its model with that account alone."""
+	built = []
+	for skr03, skr04, label, model in _EARLIER_EDITION:
+		(group,) = (group for group in groups if any(account.skr04 == model for account in group.accounts))
+		built.append(replace(group, accounts=(Account(skr03, skr04, label),)))
+	return tuple(built)
+
+
+_GROUPS_6_9 = (
+	*_GROUPS_6_9,
+	*_earlier(_GROUPS_6_9),
+	_watched(
+		Reason.PARTNERSHIP,
+		("1373", "1327", "Forderungen gegen Kommanditisten und atypisch stille Gesellschafter"),
+	),
+	_watched(
+		Reason.EARLIER_EDITION,
+		("0040", "0160", "Verschmelzungsmehrwert"),
+		("2106", "7307", "Zinsen aus Abzinsung des KSt-Erhöhungsbetrages § 38 KStG"),
+		(
+			"2688",
+			"7128",
+			"Zinsertrag aus vorzeitiger Rückzahlung des Körperschaftsteuer-Erhöhungsbetrages § 38 KStG",
+		),
+	),
+)
+
 _OTHER_TAXES_6_10: tuple[Group, ...] = (
 	_position(
 		"is.netIncome.otherTaxes.other",
@@ -7526,7 +7650,7 @@ DEFAULTS: MappingProxyType[str, MappingProxyType[str, Defaults]] = MappingProxyT
 		for version in GROUPS
 	}
 )
-REVISIONS: MappingProxyType[str, int] = MappingProxyType({"6.9": 4, "6.10": 4})
+REVISIONS: MappingProxyType[str, int] = MappingProxyType({"6.9": 5, "6.10": 5})
 
 
 def defaults_for(chart: str, version: str) -> Defaults:
