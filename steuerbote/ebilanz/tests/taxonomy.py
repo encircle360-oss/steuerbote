@@ -551,9 +551,91 @@ GCD_CONCEPTS = {
 	**_choice_values(
 		gcd("genInfo.company.id.domesticBranchOfForeignCompany"),
 		"Inländische Betriebsstätte eines ausländischen Unternehmens",
-		dict.fromkeys(("other",)),
+		dict.fromkeys(("HGB", "other")),
 		requirement=MUSS,
 	),
+	**_choice_values(
+		gcd("genInfo.company.id.entityWithTaxablePurposeBusiness"),
+		"Unternehmen mit Gewinnermittlung für besondere Fälle",
+		dict.fromkeys(("normal", "taxPrivileged", "publicLaw", "merchantVesselsInInternationalTraffic")),
+		requirement=MUSS,
+	),
+	gcd("genInfo.company.id.shareholder"): (
+		_concept(
+			gcd("genInfo.company.id.shareholder"),
+			kind=Kind.TUPLE,
+			requirement=MUSS,
+			content=_sequence(
+				*(
+					(gcd(f"genInfo.company.id.shareholder.{name}"), low, 1)
+					for name, low in (
+						("name", 1),
+						("id", 0),
+						("currentnumber", 0),
+						("taxnumber", 0),
+						("taxid", 0),
+						("WID", 0),
+						("legalStatus", 0),
+						("ShareDivideKey", 0),
+					)
+				)
+			),
+		),
+		"Gesellschafter",
+	),
+	**{
+		gcd(f"genInfo.company.id.shareholder.{name}"): (
+			_concept(
+				gcd(f"genInfo.company.id.shareholder.{name}"),
+				item_type=STRING,
+				period=DURATION,
+				requirement=MUSS,
+			),
+			label,
+		)
+		for name, label in (
+			("id", "Gesellschafterschlüssel"),
+			("taxnumber", "13stellige Steuernummer des Gesellschafters"),
+			("taxid", "Steuerliche IdNr. des Gesellschafters"),
+			("WID", "17stellige steuerliche W-IdNr."),
+		)
+	},
+	**_choice_values(
+		gcd("genInfo.company.id.shareholder.legalStatus"),
+		"Rechtsform des Gesellschafters",
+		dict.fromkeys(
+			(
+				"legalStatus.NPP",
+				"legalStatus.NPB",
+				"legalStatus.PG",
+				"legalStatus.KOER",
+			)
+		),
+		requirement=MUSS,
+	),
+	gcd("genInfo.company.id.shareholder.ShareDivideKey"): (
+		_concept(
+			gcd("genInfo.company.id.shareholder.ShareDivideKey"),
+			kind=Kind.TUPLE,
+			requirement=MUSS,
+			content=_sequence(
+				(gcd("genInfo.company.id.shareholder.ShareDivideKey.numerator"), 1, 1),
+				(gcd("genInfo.company.id.shareholder.ShareDivideKey.denominator"), 1, 1),
+			),
+		),
+		"Beteiligungsschlüssel",
+	),
+	**{
+		gcd(f"genInfo.company.id.shareholder.ShareDivideKey.{name}"): (
+			_concept(
+				gcd(f"genInfo.company.id.shareholder.ShareDivideKey.{name}"),
+				item_type=STRING,
+				period=DURATION,
+			),
+			label,
+		)
+		for name, label in (("numerator", "Zähler"), ("denominator", "Nenner"))
+	},
 }
 """The GCD a report of a GmbH fills beyond the mini taxonomy, with the requirements of the package 6.9."""
 
@@ -593,9 +675,31 @@ GCD_ARCS = (
 		for value in ("trade", "selfEmployment")
 	),
 	("genInfo", "genInfo.company.id.domesticBranchOfForeignCompany"),
-	(
-		"genInfo.company.id.domesticBranchOfForeignCompany",
-		"genInfo.company.id.domesticBranchOfForeignCompany.other",
+	*(
+		(
+			"genInfo.company.id.domesticBranchOfForeignCompany",
+			f"genInfo.company.id.domesticBranchOfForeignCompany.{value}",
+		)
+		for value in ("HGB", "other")
+	),
+	("genInfo", "genInfo.company.id.entityWithTaxablePurposeBusiness"),
+	*(
+		(
+			"genInfo.company.id.entityWithTaxablePurposeBusiness",
+			f"genInfo.company.id.entityWithTaxablePurposeBusiness.{value}",
+		)
+		for value in ("normal", "taxPrivileged", "publicLaw", "merchantVesselsInInternationalTraffic")
+	),
+	*(
+		("genInfo.company.id.shareholder", f"genInfo.company.id.shareholder.{name}")
+		for name in ("id", "taxnumber", "taxid", "WID", "legalStatus")
+	),
+	*(
+		(
+			"genInfo.company.id.shareholder.legalStatus",
+			f"genInfo.company.id.shareholder.legalStatus.legalStatus.{value}",
+		)
+		for value in ("NPP", "NPB", "PG", "KOER")
 	),
 )
 

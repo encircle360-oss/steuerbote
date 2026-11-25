@@ -3,20 +3,24 @@ every other Mussfeld of a GmbH, and what the master data lack or get wrong."""
 
 from dataclasses import replace
 from datetime import date
+from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.ebilanz.gcd import (
 	COUNTRY,
+	Gesellschafter,
 	MasterData,
 	check,
 	entity,
 	facts,
 	gcd,
+	gesellschafter,
 )
 from steuerbote.ebilanz.positions import structure
 from steuerbote.ebilanz.tests.taxonomy import view
 from steuerbote.ebilanz.tests.test_calculation import WITH_PRIOR, case
 from steuerbote.jahresmeldung.corrections import RevisionStatus
+from steuerbote.steuerbote.doctype.annual_filing_settings.rules import Shareholder, ShareholderKind
 from steuerbote.xbrl.checks import Severity
 from steuerbote.xbrl.facts import Entity, Item, Period, Periods, Tuple
 
@@ -34,6 +38,8 @@ REPORT_ELEMENT = gcd("genInfo.report.id.reportElement")
 ST13 = gcd("genInfo.company.id.idNo.type.companyId.ST13")
 BF4 = gcd("genInfo.company.id.idNo.type.companyId.BF4")
 NOT_YET_POSSIBLE = gcd("genInfo.report.id.reportElement.reportElements.transmissionNotYetPossible")
+SHAREHOLDER = gcd("genInfo.company.id.shareholder")
+WJ = Period.WIRTSCHAFTSJAHR
 
 
 def of(master=MASTER, *, reason="", taxonomy=None, **fields):
@@ -301,22 +307,52 @@ class MussfelderTest(TestCase):
 					"genInfo.company.id.business",
 					"genInfo.company.id.incomeClassification",
 					"genInfo.company.id.domesticBranchOfForeignCompany",
+					"genInfo.company.id.entityWithTaxablePurposeBusiness",
 				)
 			],
 		)
 		found = by_concept(found)
+		self.assertEqual(found[SHAREHOLDER], nil_shareholder())
+		self.assertNotIn(gcd("genInfo.company.id.optionKStGs1a"), found)
+
+	def test_a_choice_without_a_value_reports_one_auswahlwert_nil_in_the_fiscal_year(self):
+		"""ERiC rule 170155092 counts a fact of a Mussfeld only in the contexts of the current year, and a tuple has no
+		context: a choice NIL as a whole is no fact (real validation with ERiC 44.3.6.0, Bilanz_6.9). The GmbH example
+		of the ERiC documentation 44.3.6.0, HandelsbilanzLandwirt_GmbH.xml, reports these Auswahlwerte NIL."""
+		found = by_concept(of())
 		self.assertEqual(
-			found[gcd("genInfo.company.id.shareholder")],
+			found[gcd("genInfo.company.id.domesticBranchOfForeignCompany")],
 			Tuple(
-				gcd("genInfo.company.id.shareholder"),
-				(Item(gcd("genInfo.company.id.shareholder.name"), Period.WIRTSCHAFTSJAHR, None),),
+				gcd("genInfo.company.id.domesticBranchOfForeignCompany"),
+				(Item(gcd("genInfo.company.id.domesticBranchOfForeignCompany.other"), WJ, None),),
 			),
 		)
 		self.assertEqual(
-			found[gcd("genInfo.company.id.domesticBranchOfForeignCompany")],
-			Tuple(gcd("genInfo.company.id.domesticBranchOfForeignCompany"), nil=True),
+			found[gcd("genInfo.company.id.entityWithTaxablePurposeBusiness")],
+			Tuple(
+				gcd("genInfo.company.id.entityWithTaxablePurposeBusiness"),
+				(
+					Item(
+						gcd(
+							"genInfo.company.id.entityWithTaxablePurposeBusiness.merchantVesselsInInternationalTraffic"
+						),
+						WJ,
+						None,
+					),
+				),
+			),
 		)
-		self.assertNotIn(gcd("genInfo.company.id.optionKStGs1a"), found)
+
+	def test_no_tuple_is_nil_as_a_whole(self):
+		def tuples(found):
+			for fact in found:
+				if isinstance(fact, Tuple):
+					yield fact
+					yield from tuples(fact.children)
+
+		for fields in ({}, {"statement_type": "EB", "periods": OPENING}, {"accounting_standard": "HGBM"}):
+			with self.subTest(**fields):
+				self.assertEqual([fact.concept for fact in tuples(of(**fields)) if fact.nil], [])
 
 	def test_sends_every_mussfeld_of_the_gcd(self):
 		"""Leitfaden B.14.2: each Mussfeld of the GCD of the structure, inside its tuple where it is a part."""
@@ -327,6 +363,134 @@ class MussfelderTest(TestCase):
 				reported |= {child.concept for child in fact.children}
 		gcd_required = [name for name in structure(view(), case()).required if name.startswith("de-gcd:")]
 		self.assertEqual([name for name in gcd_required if name not in reported], [])
+
+
+def nil_shareholder() -> Tuple:
+	"""The Gesellschafter of a company without shareholders in its settings, as the GmbH example of the ERiC
+	documentation 44.3.6.0 reports them."""
+	return Tuple(
+		SHAREHOLDER,
+		(
+			Item(gcd("genInfo.company.id.shareholder.name"), WJ, None),
+			Item(gcd("genInfo.company.id.shareholder.id"), WJ, None),
+			Item(gcd("genInfo.company.id.shareholder.taxnumber"), WJ, None),
+			Item(gcd("genInfo.company.id.shareholder.taxid"), WJ, None),
+			Item(gcd("genInfo.company.id.shareholder.WID"), WJ, None),
+			Tuple(
+				gcd("genInfo.company.id.shareholder.legalStatus"),
+				(Item(gcd("genInfo.company.id.shareholder.legalStatus.legalStatus.NPP"), WJ, None),),
+			),
+			Tuple(
+				gcd("genInfo.company.id.shareholder.ShareDivideKey"),
+				(
+					Item(gcd("genInfo.company.id.shareholder.ShareDivideKey.numerator"), WJ, None),
+					Item(gcd("genInfo.company.id.shareholder.ShareDivideKey.denominator"), WJ, None),
+				),
+			),
+		),
+	)
+
+
+def shareholder(name: str, kind: ShareholderKind, percent: str, *, row: int = 1, **fields) -> Shareholder:
+	return Shareholder(
+		row=row,
+		name=name,
+		kind=kind,
+		nominal_amount=Decimal(25000),
+		percent=Decimal(percent),
+		from_date=fields.pop("from_date", date(2020, 1, 1)),
+		**fields,
+	)
+
+
+HOLDING = Gesellschafter("Muster Beteiligungs GmbH", ShareholderKind.CORPORATION, Decimal(60))
+PERSON = Gesellschafter("Erika Beispiel", ShareholderKind.NATURAL_PERSON, Decimal(40))
+
+
+class GesellschafterTest(TestCase):
+	"""genInfo.company.id.shareholder, a Mussfeld of the GCD of a GmbH (Leitfaden B.14.2.1), reported once per
+	shareholder of the Annual Filing Settings with what the settings say of them."""
+
+	def test_each_shareholder_with_its_legal_status_and_share(self):
+		"""The legal status of a corporation is KOER, of a partnership PG; that of a natural person tells Privat- from
+		Betriebsvermögen (NPP, NPB), which the settings do not record, so it is NIL. The share is the Beteiligungsschlüssel
+		as Zähler and Nenner in lowest terms (de-gcd-2025-04-01.xsd: digits only)."""
+		partnership = Gesellschafter("Muster KG", ShareholderKind.PARTNERSHIP, Decimal("33.3333"))
+		found = [
+			fact
+			for fact in of(replace(MASTER, shareholders=(HOLDING, PERSON, partnership)))
+			if fact.concept == SHAREHOLDER
+		]
+		self.assertEqual(len(found), 3)
+
+		def status(fact):
+			return next(child for child in fact.children if child.concept.endswith(".legalStatus")).children
+
+		def key(fact):
+			divide = next(child for child in fact.children if child.concept.endswith(".ShareDivideKey"))
+			return [child.value for child in divide.children]
+
+		self.assertEqual(
+			[fact.children[0].value for fact in found],
+			["Muster Beteiligungs GmbH", "Erika Beispiel", "Muster KG"],
+		)
+		self.assertEqual(
+			[status(fact) for fact in found],
+			[
+				(Item(gcd("genInfo.company.id.shareholder.legalStatus.legalStatus.KOER"), WJ, ""),),
+				(Item(gcd("genInfo.company.id.shareholder.legalStatus.legalStatus.NPP"), WJ, None),),
+				(Item(gcd("genInfo.company.id.shareholder.legalStatus.legalStatus.PG"), WJ, ""),),
+			],
+		)
+		self.assertEqual([key(fact) for fact in found], [["3", "5"], ["2", "5"], ["333333", "1000000"]])
+
+	def test_keeps_the_numbers_of_the_shareholders_for_the_kst_1(self):
+		"""Steuernummer, IdNr. and W-IdNr. of a shareholder are kept for the KSt 1 (§ 139b Abs. 2 AO for the IdNr.), so
+		the E-Bilanz sends them NIL, with every part in the order of the tuple."""
+		(found,) = [
+			fact for fact in of(replace(MASTER, shareholders=(HOLDING,))) if fact.concept == SHAREHOLDER
+		]
+		self.assertEqual(
+			[
+				(child.concept.rpartition(".shareholder.")[2], getattr(child, "value", None))
+				for child in found.children
+			],
+			[
+				("name", "Muster Beteiligungs GmbH"),
+				("id", None),
+				("taxnumber", None),
+				("taxid", None),
+				("WID", None),
+				("legalStatus", None),
+				("ShareDivideKey", None),
+			],
+		)
+
+	def test_without_shareholders_one_gesellschafter_nil(self):
+		self.assertEqual(by_concept(of())[SHAREHOLDER], nil_shareholder())
+
+	def test_the_shareholders_on_the_bilanzstichtag(self):
+		"""The Gesellschafter who hold shares on the Bilanzstichtag, as the Bilanz shows the company on that day."""
+		holders = (
+			shareholder("Alt GmbH", ShareholderKind.CORPORATION, "100", to_date=date(2026, 6, 30)),
+			shareholder("Neu GmbH", ShareholderKind.CORPORATION, "100", row=2, from_date=date(2026, 7, 1)),
+		)
+		self.assertEqual(
+			gesellschafter(holders, date(2026, 12, 31)),
+			(Gesellschafter("Neu GmbH", ShareholderKind.CORPORATION, Decimal(100)),),
+		)
+		self.assertEqual(
+			gesellschafter(holders, date(2026, 3, 1)),
+			(Gesellschafter("Alt GmbH", ShareholderKind.CORPORATION, Decimal(100)),),
+		)
+
+	def test_a_name_in_the_characters_of_elster(self):
+		"""ERiC E-Bilanz-Dokumentation für HGB-Taxonomie 6.9, Kap. 3.16."""
+		person = replace(PERSON, name="Erika \N{SNOWMAN}")
+		(finding,) = checked(replace(MASTER, shareholders=(person,)))
+		self.assertEqual(finding.code, "EB-GCD-ZEICHEN")
+		self.assertEqual(finding.reference, gcd("genInfo.company.id.shareholder.name"))
+		self.assertIn("Gesellschafter", finding.text)
 
 
 class CheckTest(TestCase):
