@@ -937,24 +937,33 @@ class LedgerFindingsTest(TestCase):
 			with self.subTest(extra=extra):
 				self.assertNotIn(UNMAPPED, [item.code for item in self.findings(*extra, mapping=mapping)])
 
-	def test_an_account_the_datev_chart_does_not_know_is_pointed_out_with_its_balance(self):
-		"""An account outside the DATEV chart the defaults follow, such as one of an older edition for the sale of shares
-		of a Kapitalgesellschaft, gets no default and counts only in the Jahresüberschuss; the hint names it, so that a
-		result under § 8b KStG does not stay taxed in full unseen. An account of the chart without a mark gets none."""
+	def test_an_account_the_defaults_do_not_know_holds_the_return_back_with_its_balance(self):
+		"""An account the defaults of the chart do not know, such as one a company opened for dividends of a subsidiary,
+		would count in the Jahresüberschuss alone and leave a result under § 8b KStG taxed in full: it holds the return
+		until it has its category, or until the error is acknowledged with the reason that it holds no such amount. An
+		account of the chart without a mark holds nothing."""
 		(finding,) = [
-			item for item in self.findings(credit("2723", "8000.00", "JV-9")) if item.code == UNKNOWN
+			item for item in self.findings(credit("2617", "8000.00", "JV-9")) if item.code == UNKNOWN
 		]
 		self.assertEqual(
-			(finding.severity, finding.reference), (Severity.HINT, "Kontenzuordnung Ertragsteuern")
+			(finding.severity, finding.reference), (Severity.ERROR, "Kontenzuordnung Ertragsteuern")
 		)
 		self.assertEqual(
 			finding.text,
-			"Account 2723 has a balance (debit 0,00 €, credit 8.000,00 €) but is no account of the DATEV chart SKR03 "
-			"2026 the defaults follow, so it counts in the Jahresüberschuss alone. If it holds Bezüge, Gewinne or "
-			"Gewinnminderungen aus Anteilen (§ 8b KStG) or another amount the taxes on income treat apart, give it its "
-			"category in the Income Tax Mapping.",
+			"Account 2617 has a balance (debit 0,00 €, credit 8.000,00 €) but no place in the defaults of SKR03, so it "
+			"counts in the Jahresüberschuss alone. If it holds Bezüge, Gewinne or Gewinnminderungen aus Anteilen (§ 8b "
+			"KStG) or another amount the taxes on income treat apart, give it its category in the Income Tax Mapping; if "
+			"it holds none, acknowledge this error with the reason.",
 		)
 		self.assertNotIn(UNKNOWN, [item.code for item in self.findings(credit("4400", "8000.00", "JV-9"))])
+
+	def test_a_sale_of_shares_on_the_account_of_an_earlier_datev_edition_needs_its_place(self):
+		"""SKR03 2723 of the DATEV edition valid for 2020 holds gains under § 8b Abs. 2 KStG; the defaults know it, so a
+		mapping without its row holds the return back like any account of the defaults."""
+		(finding,) = [
+			item for item in self.findings(credit("2723", "8000.00", "JV-9")) if item.code == UNMAPPED
+		]
+		self.assertEqual(finding.severity, Severity.ERROR)
 
 	def test_a_chart_of_its_own_has_no_defaults_to_compare_with(self):
 		mapping = Mapping("Eigener Kontenrahmen", MAPPING.rules)

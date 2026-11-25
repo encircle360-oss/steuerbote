@@ -29,6 +29,7 @@ from steuerbote.ebilanz.positions import AccountingStandard, Case, Mark, structu
 from steuerbote.ebilanz.tests.datev_charts import (
 	BOTH_SIDES,
 	COMMERCIAL,
+	EARLIER,
 	EUR,
 	LABELLED,
 	REMAINING_TERMS,
@@ -257,7 +258,9 @@ class CoverageTest(TestCase):
 				labelled = set(LABELLED[chart])
 				covered = {number for span in labelled for number in numbers(span)}
 				self.assertEqual(Counter(spans).most_common(1)[0][1], 1)
-				self.assertEqual(set(spans), labelled | (template_numbers(chart) - covered))
+				self.assertEqual(
+					set(spans), labelled | ((template_numbers(chart) | EARLIER[chart]) - covered)
+				)
 
 	def test_every_account_of_the_templates_has_a_place(self):
 		for chart in sorted(CHARTS):
