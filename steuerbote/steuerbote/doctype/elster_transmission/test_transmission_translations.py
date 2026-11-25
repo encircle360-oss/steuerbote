@@ -126,3 +126,16 @@ class TransmissionTranslationsTest(TestCase):
 
 	def test_the_framework_labels_are_left_to_the_framework(self):
 		self.assertEqual(sorted(FRAMEWORK_LABELS & translated()), [])
+
+
+class SimulationNoteTest(TestCase):
+	"""The note of the simulation in ERiC Settings is one long sentence. Frappe lays the close button of a message over
+	the end of its text (.close-message in frappe/public/scss/desk/form.scss), so the note is a permanent message, without
+	that button, which wraps over the whole width of the form."""
+
+	def test_the_note_is_a_permanent_message(self):
+		script = (MODULE / "doctype/eric_settings/eric_settings.js").read_text(encoding="utf-8")
+		self.assertNotIn("frm.set_intro(", script)
+		call = re.search(r"frm\.\$simulation_note = frm\.dashboard\.set_headline_alert\((.*?)\);\n", script, re.S)
+		self.assertIsNotNone(call)
+		self.assertRegex(call.group(1), r'"orange",\s*true\s*$')
