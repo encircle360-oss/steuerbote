@@ -14,12 +14,14 @@ from steuerbote.ustva.plausibility import (
 	VAT_ID_CODES,
 	VAT_ID_KENNZAHLEN,
 	AssetSale,
+	AssetSaleCorrection,
 	Code,
 	EarlierPeriod,
 	Hint,
 	InvoiceLine,
 	LatestConfirmation,
 	Severity,
+	asset_sale_deviation_note,
 	compare,
 	comparison_hints,
 	confirmable,
@@ -527,6 +529,27 @@ class TaxFreeAssetSaleHintsTest(TestCase):
 		self.assertEqual(tax_free_asset_sale_hints(sales, FIGURES), [])
 		(greek,) = tax_free_asset_sale_hints([self.sale(None, "EL123456789")], FIGURES)
 		self.assertTrue(greek.text.startswith("Kz 41: "))
+
+
+class AssetSaleDeviationNoteTest(TestCase):
+	"""A credit note or a later cancellation of an asset sale whose base Steuerbote derived from its tax
+	(UMSATZ-OHNE-ERLOESKONTO) books the tax back without a base: the Verprobung deviates, as accepted in 0.15.0, and
+	the row says why."""
+
+	def test_a_credit_note_names_the_asset_sale_it_corrects(self):
+		self.assertEqual(
+			asset_sale_deviation_note(AssetSaleCorrection("ACC-SINV-2026-00012", "ACC-SINV-2026-00007")),
+			"Gutschrift zum Anlagenverkauf ACC-SINV-2026-00007: Für die Gutschrift oder Stornierung eines Anlagenverkaufs "
+			"über die Position mit Vermögensgegenstand leitet Steuerbote keine Bemessungsgrundlage aus der Steuer ab, "
+			"deshalb weicht die Verprobung ab. Tragen Sie die Minderung der Bemessungsgrundlage mit Begründung als "
+			"Korrektur der Kennzahl ein, oder begründen Sie die Abweichung in den Anmerkungen.",
+		)
+
+	def test_a_cancellation_in_a_later_period_names_the_sale(self):
+		note = asset_sale_deviation_note(AssetSaleCorrection("ACC-SINV-2026-00007", None))
+		self.assertTrue(
+			note.startswith("Stornierung des Anlagenverkaufs ACC-SINV-2026-00007: Für die Gutschrift")
+		)
 
 
 class ResidenceHintsTest(TestCase):

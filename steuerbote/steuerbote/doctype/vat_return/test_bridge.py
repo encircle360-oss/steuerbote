@@ -565,9 +565,16 @@ class DeviationRowsTest(TestCase):
 				"computed_tax": d("190.00"),
 				"booked_tax": d("180.00"),
 				"difference": d("-10.00"),
+				"note": "",
 			},
 		)
 		self.assertEqual(bridge.check_rows(self.result)[0]["deviations"], 1)
+
+	def test_a_deviation_with_a_recognised_cause_carries_its_note(self):
+		rows = bridge.deviation_rows(
+			self.result, {"Journal Entry:ACC-JV-2026-00007": "Gutschrift zum Anlagenverkauf"}
+		)
+		self.assertEqual([row["note"] for row in rows], ["Gutschrift zum Anlagenverkauf", ""])
 		self.assertEqual(bridge.check_rows(self.result)[0]["passed"], 0)
 
 	def test_lines_without_voucher_deviate_without_voucher_type_and_number(self):

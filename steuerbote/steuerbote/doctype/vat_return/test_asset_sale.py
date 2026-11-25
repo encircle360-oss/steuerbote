@@ -6,6 +6,7 @@ the supply, in the report „UStVA Kennzahlen“ and in the run over the year.""
 from decimal import Decimal
 
 import frappe
+from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
 from erpnext.assets.doctype.asset.asset import make_sales_invoice
 from erpnext.assets.doctype.asset.depreciation import scrap_asset
 from frappe.tests import IntegrationTestCase
@@ -207,6 +208,16 @@ class TestAssetSale(IntegrationTestCase):
 		)
 		self.assertTrue(hint.text.startswith("Kz 41: "))
 		self.assertNotIn("41", self.amounts(doc))
+
+	def test_a_credit_note_to_an_asset_sale_deviates_with_a_note_that_says_why(self):
+		invoice = self.sell(self.asset("Testanlage Gutschrift"), "2026-03-10")
+		credit_note = make_sales_return(invoice)
+		credit_note.update({"posting_date": "2026-05-12", "set_posting_time": 1, "due_date": "2026-05-12"})
+		credit_note.insert(ignore_permissions=True)
+		credit_note.submit()
+		doc = self.calculated(5)
+		(row,) = [row for row in doc.deviations if row.voucher_no == credit_note.name]
+		self.assertTrue(row.note.startswith(f"Gutschrift zum Anlagenverkauf {invoice}: "), row.note)
 
 	def test_the_sale_through_the_invoice_goes_to_kz_81_with_a_hint(self):
 		invoice = self.sell(self.asset("Testanlage Rechnung"), "2026-03-10")
