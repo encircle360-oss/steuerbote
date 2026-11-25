@@ -304,7 +304,10 @@ class OverrideTest(TestCase):
 		)
 		line = result.lines[0]
 		self.assertEqual(codes(line), [Code.INVALID_VAT_ID])
-		self.assertEqual((line.override, line.computed, line.reported), (override, d("999"), d("1000")))
+		self.assertEqual(
+			(line.override, line.computed, line.reported),
+			(Override(override.amount, override.reason, basis=d("999.99")), d("999"), d("1000")),
+		)
 		self.assertFalse(line.blocked)
 		self.assertTrue(result.ready)
 		self.assertEqual(result.meldezeilen, (Meldezeile(AUSTRIA, Art.L, d("1000")),))
