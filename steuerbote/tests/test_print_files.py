@@ -308,7 +308,8 @@ class ColumnWidthsTest(TestCase):
 		}
 		used = 0.0
 		for classes in re.findall(r'<col(?: class="([^"]*)")?>', colgroup):
-			used += max((widths.get(name, 0.0) for name in classes.split()), default=0.0) if classes else 0.0
+			# The class named last is the more particular one, and the stylesheet sets it after the general one.
+			used += next((widths[name] for name in reversed(classes.split()) if name in widths), 0.0)
 		self.assertGreaterEqual(210 - 20 - 15 - used, 89.2)
 
 	def test_the_labels_of_the_bilanz_keep_their_words_whole(self):
