@@ -32,6 +32,7 @@ from steuerbote.xbrl.versions import FIRST
 
 BANK = "bs.ass.currAss.cashEquiv.bank"
 BANK_LIABILITY = "bs.eqLiab.liab.bank"
+TAX_LIABILITY = "bs.eqLiab.liab.other.theroffTax"
 
 
 class RuleTest(TestCase):
@@ -128,6 +129,24 @@ class RuleTest(TestCase):
 		with self.assertRaises(MappingError) as caught:
 			Rule("1200", BANK, shareholder="1")
 		self.assertEqual(caught.exception.template, mapping.NO_FLAG)
+
+
+	def test_takes_the_netting_group_of_its_account(self):
+		"""Claims and debts towards the same creditor that can be set off against each other are shown netted, as one
+		settlement position (§ 387 BGB, § 226 Abs. 1 AO; § 246 Abs. 2 Satz 1 HGB does not bar it)."""
+		rule = Rule("1576", OTHER_ASSETS, opposite=TAX_LIABILITY, netting="  Umsatzsteuer ")
+		self.assertEqual(rule.netting, "Umsatzsteuer")
+		self.assertIsNone(Rule("1576", OTHER_ASSETS, opposite=TAX_LIABILITY, netting=" ").netting)
+		self.assertIsNone(Rule("1576", OTHER_ASSETS).netting)
+
+	def test_a_netting_group_needs_the_position_for_the_opposite_balance(self):
+		"""The combined balance of the group decides the side, so every account of it needs a position on each."""
+		with self.assertRaises(MappingError) as caught:
+			Rule("1576", OTHER_ASSETS, netting="Umsatzsteuer")
+		self.assertEqual(
+			(caught.exception.template, caught.exception.values),
+			(mapping.NETTING_WITHOUT_OPPOSITE, ("1576", "Umsatzsteuer")),
+		)
 
 
 class PlacesTest(TestCase):
@@ -531,6 +550,99 @@ class SignTest(TestCase):
 		)
 
 
+class NettingTest(TestCase):
+	"""A netting group: the accounts of claims and debts towards the same creditor that can be set off against each
+	other, such as Vorsteuer and Umsatzsteuer towards the Finanzamt, form one settlement position whose combined balance
+	decides its side (§ 387 BGB, § 226 Abs. 1 AO, § 16 Abs. 2 Satz 1 UStG); § 246 Abs. 2 Satz 1 HGB bars netting
+	only where no such set-off is possible."""
+
+	@property
+	def RULES(self) -> tuple[Rule, ...]:
+		return (
+			Rule("1576", OTHER_ASSETS, opposite=TAX_LIABILITY, netting="Umsatzsteuer"),
+			Rule("1776", TAX_LIABILITY, opposite=OTHER_ASSETS, netting="Umsatzsteuer"),
+		)
+
+	def test_a_group_with_a_credit_balance_goes_to_the_liabilities_with_every_account(self):
+		placement = placed(*self.RULES, balances=[balance("1576", "300"), balance("1776", credit="500")])
+		self.assertEqual(
+			[(item.balance.number, item.concept, item.value) for item in placement.placed],
+			[("1576", TAX_LIABILITY, Decimal("-300")), ("1776", TAX_LIABILITY, Decimal("500"))],
+		)
+		self.assertEqual(sum(item.value for item in placement.placed), Decimal("200"))
+
+	def test_a_group_with_a_debit_balance_goes_to_the_receivables_with_every_account(self):
+		placement = placed(*self.RULES, balances=[balance("1576", "800"), balance("1776", credit="500")])
+		self.assertEqual(
+			[(item.balance.number, item.concept, item.value) for item in placement.placed],
+			[("1576", OTHER_ASSETS, Decimal("800")), ("1776", OTHER_ASSETS, Decimal("-500"))],
+		)
+
+	def test_a_balanced_group_stays_on_one_side_and_shows_nothing(self):
+		placement = placed(*self.RULES, balances=[balance("1576", "500"), balance("1776", credit="500")])
+		self.assertEqual({item.concept for item in placement.placed}, {OTHER_ASSETS})
+		self.assertEqual(sum(item.value for item in placement.placed), Decimal(0))
+
+	def test_the_netting_is_a_hint_to_confirm_with_its_amount_and_side(self):
+		placement = placed(*self.RULES, balances=[balance("1576", "300"), balance("1776", credit="500")])
+		netted = [finding for finding in placement.findings if finding.code is mapping.Code.NETTED]
+		self.assertEqual(
+			[(finding.severity, finding.account, finding.concept, finding.amount) for finding in netted],
+			[(mapping.Severity.HINT, "Umsatzsteuer", TAX_LIABILITY, Decimal("-200"))],
+		)
+		self.assertIn("1576, 1776", netted[0].text)
+		self.assertIn("200,00 €", netted[0].text)
+		self.assertIn("§ 246 Abs. 2 Satz 1 HGB", netted[0].source)
+		self.assertTrue(placement.ready)
+
+	def test_an_account_outside_the_group_keeps_its_own_side(self):
+		placement = placed(
+			*self.RULES,
+			Rule("1800", BANK, opposite=BANK_LIABILITY),
+			balances=[balance("1576", "300"), balance("1776", credit="500"), balance("1800", credit="50")],
+		)
+		self.assertEqual(
+			[(item.balance.number, item.concept) for item in placement.placed],
+			[("1576", TAX_LIABILITY), ("1776", TAX_LIABILITY), ("1800", BANK_LIABILITY)],
+		)
+
+	def test_groups_are_netted_each_on_their_own(self):
+		placement = placed(
+			*self.RULES,
+			Rule("1800", BANK, opposite=BANK_LIABILITY, netting="Hausbank"),
+			Rule("1810", BANK, opposite=BANK_LIABILITY, netting="Hausbank"),
+			balances=[
+				balance("1576", "300"),
+				balance("1776", credit="500"),
+				balance("1800", "100"),
+				balance("1810", credit="40"),
+			],
+		)
+		self.assertEqual(
+			[(item.balance.number, item.concept) for item in placement.placed],
+			[("1576", TAX_LIABILITY), ("1776", TAX_LIABILITY), ("1800", BANK), ("1810", BANK)],
+		)
+
+	def test_a_balance_left_out_of_the_balance_sheet_does_not_count_in_its_group(self):
+		rules = (
+			self.RULES[0],
+			replace(self.RULES[1], purpose=Purpose.TAX),
+		)
+		placement = placed(
+			*rules,
+			balances=[balance("1576", "300"), balance("1776", credit="500")],
+			purpose=Purpose.COMMERCIAL,
+		)
+		self.assertEqual(
+			[(item.balance.number, item.concept, item.value) for item in placement.placed],
+			[("1576", OTHER_ASSETS, Decimal("300"))],
+		)
+
+	def test_a_single_account_of_a_group_shows_no_hint(self):
+		placement = placed(*self.RULES, balances=[balance("1776", credit="500")])
+		self.assertNotIn(mapping.Code.NETTED, [finding.code for finding in placement.findings])
+
+
 class PurposeTest(TestCase):
 	def test_a_balance_counts_in_the_balance_sheets_its_rule_is_for(self):
 		rules = (
@@ -819,6 +931,16 @@ class DefaultsTest(TestCase):
 		with self.assertRaises(MappingError):
 			Defaults("SKR04", "6.8")
 
+	def test_a_default_rule_carries_its_netting_group_to_every_account(self):
+		defaults = Defaults(
+			"SKR03",
+			FIRST.version,
+			rules=(DefaultRule("1570-1579", OTHER_ASSETS, TAX_LIABILITY, netting="Umsatzsteuer"),),
+		)
+		(rule,) = defaults.for_accounts(["1576"]).rules
+		self.assertEqual(rule, Rule("1576", OTHER_ASSETS, TAX_LIABILITY, netting="Umsatzsteuer"))
+		self.assertEqual(defaults.rows()["rules"][0]["netting"], "Umsatzsteuer")
+
 	def test_the_rows_of_the_defaults_read_as_plain_data(self):
 		self.assertEqual(
 			self.defaults.rows(),
@@ -831,6 +953,7 @@ class DefaultsTest(TestCase):
 						"purpose": "both",
 						"shareholder": False,
 						"remaining_term": None,
+						"netting": None,
 					},
 					{
 						"accounts": "1200",
@@ -839,6 +962,7 @@ class DefaultsTest(TestCase):
 						"purpose": "both",
 						"shareholder": False,
 						"remaining_term": "up to one year",
+						"netting": None,
 					},
 					{
 						"accounts": "3150",
@@ -847,6 +971,7 @@ class DefaultsTest(TestCase):
 						"purpose": "both",
 						"shareholder": False,
 						"remaining_term": "up to one year",
+						"netting": None,
 					},
 				],
 				"watched": [{"accounts": "1460", "level": "hint"}],
