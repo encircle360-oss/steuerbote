@@ -117,8 +117,7 @@ AMOUNT_KEYS = {
 TEXT_KEYS = {"label", "value", "text", "party", "title"}
 REPEAT = 3
 LANGUAGE = "de"
-# A source text of Steuerbote and the words a printout must not hold, which only an English one does.
-PROBE = "Steuerbote has the forms of {0} provisionally from the Jahresdokumentation {1}: until ELSTER publishes those of {0}, the return is not ready. A filing needs remarks that say why it goes nonetheless."
+# The words a printout must not hold, which only an English one does.
 ENGLISH = ("the", "has", "with")
 # German texts that the printouts of the documents of the seed hold, so that a fallback to English fails the run.
 GERMAN = {
@@ -138,15 +137,16 @@ def run(directory: str) -> None:
 	# The translations Frappe keeps in Redis may be those a process built before the app's were complete.
 	clear_translations()
 	with print_language(LANGUAGE):
-		if (
-			_(
-				"Steuerbote has the forms of {0} provisionally from the Jahresdokumentation {1}: until ELSTER publishes those of {0}, the return is not ready. A filing needs remarks that say why it goes nonetheless."
-			)
-			== PROBE
-		):
+		# Any source text of the app's de.csv serves as probe, so that rewording a text never breaks the proof.
+		source, german = next(
+			(source, german)
+			for source, german in get_translations_from_csv(LANGUAGE, "steuerbote").items()
+			if source != german
+		)
+		if _(source) != german:
 			raise SystemExit(
 				"Die deutschen Übersetzungen von Steuerbote fehlen, die Ausdrucke wären englisch "
-				f"(Sprache {frappe.local.lang}, in de.csv: {PROBE in get_translations_from_csv(LANGUAGE, 'steuerbote')})."
+				f"(Sprache {frappe.local.lang}, Probe {source!r})."
 			)
 		proof_all(directory)
 
