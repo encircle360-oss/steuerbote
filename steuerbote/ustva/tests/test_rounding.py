@@ -2,6 +2,7 @@ from decimal import Decimal
 from unittest import TestCase
 
 from steuerbote.ustva.rounding import (
+	apportion_cents,
 	apportion_full_euros,
 	base_from_tax,
 	ceil_cents,
@@ -285,3 +286,34 @@ class ApportionFullEurosTest(TestCase):
 			apportion_full_euros((0.5,), Decimal("1"))
 		with self.assertRaises(TypeError):
 			apportion_full_euros(euros("0.5"), 1.0)
+
+
+class ApportionCentsTest(TestCase):
+	"""A tax in cents split over the exact taxes of its parts, such as the tax a voucher books over its bases."""
+
+	def test_each_part_takes_its_cents_and_the_largest_part_what_is_left(self):
+		parts = (Decimal("3.507"), Decimal("19.019"))
+		self.assertEqual(apportion_cents(parts, Decimal("22.54")), (Decimal("3.51"), Decimal("19.03")))
+
+	def test_the_largest_part_counts_with_its_sign(self):
+		parts = (Decimal("-19.095"), Decimal("1.919"))
+		self.assertEqual(apportion_cents(parts, Decimal("-17.19")), (Decimal("-19.11"), Decimal("1.92")))
+
+	def test_the_first_of_equal_parts_takes_the_rest(self):
+		parts = (Decimal("1.005"), Decimal("1.005"))
+		self.assertEqual(apportion_cents(parts, Decimal("2.00")), (Decimal("0.99"), Decimal("1.01")))
+
+	def test_parts_of_zero_leave_the_total_to_the_first(self):
+		self.assertEqual(
+			apportion_cents((Decimal("0"), Decimal("0")), Decimal("0.15")), (Decimal("0.15"), Decimal("0"))
+		)
+
+	def test_refuses_a_total_with_fractions_of_a_cent_or_no_parts(self):
+		with self.assertRaises(ValueError):
+			apportion_cents((Decimal("1"),), Decimal("1.001"))
+		with self.assertRaises(ValueError):
+			apportion_cents((), Decimal("1.00"))
+
+	def test_rejects_floats(self):
+		with self.assertRaises(TypeError):
+			apportion_cents((0.5,), Decimal("1"))
