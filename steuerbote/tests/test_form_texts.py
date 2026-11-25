@@ -66,3 +66,15 @@ class FormTextsTest(TestCase):
 			self.german.get(text),
 			"Die USt-IdNr. mit Länderkennzeichen, etwa ATU12345678. Die Steuernummer hat ein eigenes Feld.",
 		)
+
+
+class KennzahlenTableTest(TestCase):
+	def test_the_kennzahlen_say_that_a_kennzahl_without_postings_is_a_row_by_hand(self):
+		"""The table offers „Zeile hinzufügen“ on purpose: a Kennzahl the ledger does not fill is entered as a row by
+		hand with a correction and its reason (bridge.kennzahl_rows)."""
+		text = german()[description("vat_return", "kennzahlen")]
+		self.assertEqual(
+			text,
+			"Eine Kennzahl ohne Buchungen tragen Sie als Zeile von Hand ein: Kennzahl wählen und den Betrag als "
+			"Korrektur mit Begründung angeben. Die übrigen Zeilen füllt „Berechnen“.",
+		)
