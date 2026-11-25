@@ -7,16 +7,19 @@ from decimal import Decimal
 import frappe
 from frappe.tests import IntegrationTestCase
 
+from steuerbote import ustjahr_sources
+from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for
 from steuerbote.steuerbote.report.ustva_kennzahlen.ustva_kennzahlen import execute
 from steuerbote.tests.helpers import (
 	make_account,
 	make_company,
 	make_mapping,
 	make_settings,
+	post_journal_entry,
 	post_sales_invoice,
 )
 from steuerbote.tests.late_documents import ACCOUNTS, filed_return, sales_invoice, set_rule
-from steuerbote.ustva import Period
+from steuerbote.ustva import Period, calculate
 
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
 
@@ -129,6 +132,59 @@ class TestPeriodAssignment(IntegrationTestCase):
 		correction = frappe.get_doc("VAT Return", name)
 		self.assertEqual((correction.is_correction, correction.period_index, correction.docstatus), (1, 7, 0))
 		self.assertEqual(july.make_correction(), name)
+
+	def reverse_charge(self, posting: str):
+		"""A service under § 13b UStG booked on an expense account: its base is derived from its tax."""
+		a = self.account
+		return post_journal_entry(
+			COMPANY,
+			posting,
+			[(a["4980"], 1000, 0), (a["1577"], 190, 0), (a["1787"], 0, 190), (a["1200"], 0, 1000)],
+		)
+
+	def reverse_charge_check(self, doc):
+		return next(row for row in doc.checks if row.label == "Umsatzsteuer nach § 13b UStG 19 %")
+
+	def test_by_service_date_a_derived_base_stays_with_its_tax_in_the_month_of_its_posting(self):
+		self.invoice("SINV-NZ-0007", "2026-08-03", "2026-08-03 09:00:00", to_date="2026-07-31")
+		entry = self.reverse_charge("2026-08-12")
+		july, august = self.calculated(7), self.calculated(8)
+		self.assertEqual((self.amount(july, "81"), self.amount(july, "84")), (Decimal("1000.00"), Decimal(0)))
+		self.assertEqual(
+			(self.amount(august, "81"), self.amount(august, "84"), self.amount(august, "85")),
+			(Decimal(0), Decimal("1000.00"), Decimal("190.00")),
+		)
+		check = self.reverse_charge_check(august)
+		self.assertEqual((Decimal(str(check.derived_base)), check.passed), (Decimal("1000.00"), 1))
+		_columns, rows = execute({"company": COMPANY, "year": 2026, "rhythm": "monthly", "period_index": 8})
+		self.assertIn(entry.name, {row.get("voucher_no") for row in rows})
+		year = calculate(ustjahr_sources.year_lines(COMPANY, 2026), mapping_for(COMPANY, 2026))
+		self.assertEqual(
+			(year.values["81"].amount, year.values["84"].amount), (Decimal("1000.00"), Decimal("1000.00"))
+		)
+
+	def test_by_posting_date_the_invoice_and_the_derived_base_share_the_month_of_their_posting(self):
+		set_rule(COMPANY, "By Posting Date")
+		self.invoice("SINV-NZ-0008", "2026-08-03", "2026-08-03 09:00:00", to_date="2026-07-31")
+		self.reverse_charge("2026-08-12")
+		august = self.calculated(8)
+		self.assertEqual(
+			(self.amount(august, "81"), self.amount(august, "84"), self.amount(august, "85")),
+			(Decimal("1000.00"), Decimal("1000.00"), Decimal("190.00")),
+		)
+		self.assertEqual(self.reverse_charge_check(august).passed, 1)
+
+	def test_a_late_voucher_with_a_derived_base_moves_with_its_tax(self):
+		set_rule(COMPANY, late="Current Period")
+		july = filed_return(COMPANY, JULY, "2026-08-10 12:00:00")
+		entry = self.reverse_charge("2026-07-20")
+		august = self.calculated(8)
+		self.assertEqual(
+			(self.amount(august, "84"), self.amount(august, "85")), (Decimal("1000.00"), Decimal("190.00"))
+		)
+		check = self.reverse_charge_check(august)
+		self.assertEqual((Decimal(str(check.derived_base)), check.passed), (Decimal("1000.00"), 1))
+		self.assertEqual([row["voucher_no"] for row in july.changes_since_filing()], [entry.name])
 
 	def test_only_a_filed_return_makes_a_corrected_return(self):
 		with self.assertRaises(frappe.ValidationError):

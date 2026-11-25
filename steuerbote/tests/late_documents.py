@@ -14,6 +14,10 @@ ACCOUNTS = {
 	"8125": ("Steuerfreie innergemeinschaftliche Lieferungen", "Income"),
 	"1400": ("Forderungen aus Lieferungen und Leistungen", "Asset"),
 	"1200": ("Bank", "Asset"),
+	"3123": ("Sonstige Leistungen EU 19 %", "Expense"),
+	"1787": ("Umsatzsteuer nach § 13b UStG 19 %", "Liability"),
+	"1577": ("Vorsteuer nach § 13b UStG 19 %", "Asset"),
+	"4980": ("Betriebsbedarf", "Expense"),
 }
 FILING_NOTE = "Erfunden: abgegeben in Mein ELSTER."
 
