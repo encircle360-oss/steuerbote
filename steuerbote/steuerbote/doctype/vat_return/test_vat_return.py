@@ -30,6 +30,8 @@ UNMAPPED_COMPANY = "Steuerbote Test Ohne Zuordnung GmbH"
 # Has neither.
 BARE_COMPANY = "Steuerbote Test Ohne Einstellungen GmbH"
 FILED_IN_MEIN_ELSTER = "In Mein ELSTER abgegeben"
+# A day after the periods of 2026 have ended, so that their returns can be ready.
+AFTER_2026 = "2027-01-04 09:00:00"
 
 # SKR03 numbers of the month in VerifiedMonthTest of the core, a bank and a receivables account, and two
 # accounts the defaults watch: 1548 at the blocking level, 8603 at the hint level.
@@ -437,6 +439,7 @@ class TestVATReturn(IntegrationTestCase):
 		self.assertNotIn("KONTO-BEOBACHTET", [row.code for row in doc.hints])
 
 	def test_a_balance_watched_for_a_hint_adds_a_hint_and_leaves_the_return_ready(self):
+		self.enterContext(self.freeze_time(AFTER_2026, tick=True))
 		a = self.account
 		post_journal_entry(COMPANY, "2026-12-15", [(a["1200"], 250, 0), (a["8603"], 0, 250)])
 		doc = self.calculated(12)
@@ -700,6 +703,7 @@ class TestVATReturn(IntegrationTestCase):
 		self.assertEqual(kennzahlen(contents(doc.make_import_file())), {"Kz81": "1000", "Kz83": "190.00"})
 
 	def test_a_corrected_return_writes_zero_for_what_it_no_longer_reports(self):
+		self.enterContext(self.freeze_time(AFTER_2026, tick=True))
 		first = self.calculated(11)
 		first.append(
 			"kennzahlen",
@@ -718,6 +722,7 @@ class TestVATReturn(IntegrationTestCase):
 			first.make_import_file()
 
 	def test_the_import_file_needs_the_address_of_the_datenlieferant(self):
+		self.enterContext(self.freeze_time(AFTER_2026, tick=True))
 		doc = self.calculated(12, company=SWITCHING_COMPANY)
 		with self.assertRaisesRegex(frappe.ValidationError, "The street of the Datenlieferant is missing"):
 			doc.make_import_file()

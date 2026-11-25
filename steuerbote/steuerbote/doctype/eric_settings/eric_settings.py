@@ -66,7 +66,9 @@ from frappe.utils.user import get_system_managers
 
 import steuerbote
 from steuerbote.elster import ustva_xml, vorsatz
+from steuerbote.eric import datenart as eric_datenart
 from steuerbote.eric import proxy, releases, runtime
+from steuerbote.eric.fake import Simulation
 from steuerbote.eric.releases import MinimumList, MinimumListError
 from steuerbote.eric.runtime import Check, RuntimeInstallError, UnsupportedPlatform
 from steuerbote.steuerbote import guards
@@ -335,6 +337,7 @@ class ERiCSettings(Document):
 			*transmission_adapter.runtime_status(self.hersteller_id or ""),
 			*releases.checks(installed, stored_minimum_list(self.minimum_versions), getdate()),
 			*taxonomy_status(),
+			*simulation_status(),
 		)
 		return [{"name": check.name, "ok": check.ok, "detail": check.detail} for check in checks]
 
@@ -471,6 +474,12 @@ def taxonomy_root() -> Path:
 	"""
 	configured = transmission_adapter.common_site_config().get(TAXONOMY_ROOT)
 	return Path(configured) if configured else Path(get_bench_path(), "sites", "taxonomy")
+
+
+def simulation_status() -> tuple[Check, ...]:
+	"""Whether Prüfen in the simulation checks the Voranmeldung of the current year against its schema, which the
+	ERiC documentation that STEUERBOTE_ERIC_DOC_DIR names holds."""
+	return (Simulation().schema_check(eric_datenart.ustva(getdate().year)),)
 
 
 def taxonomy_status() -> tuple[Check, ...]:

@@ -92,3 +92,29 @@ class SharedScriptTest(TestCase):
 	def test_a_form_reacts_only_to_the_runs_of_its_own_documents(self):
 		self.assertIn("if (data.document_type === frm.doctype) {", self.script)
 		self.assertIn("if (frm.doc && frm.doc.name === data.document) {", self.script)
+
+
+class PollingTest(TestCase):
+	"""The notice of a finished run comes through the realtime connection, which a proxy in front of the site may
+	refuse: while a run or a confirmation holds the document, its form asks the server for the state itself."""
+
+	def setUp(self):
+		self.script = SHARED_SCRIPT.read_text(encoding="utf-8")
+
+	def test_the_running_note_starts_polling_the_lock_of_the_run(self):
+		(notes,) = re.findall(r"function elster_notes\(frm, texts\) \{.*?\n\}", self.script, re.DOTALL)
+		self.assertIn('poll_while_running(frm, "transmission_in_progress");', notes)
+
+	def test_the_poll_reads_the_lock_and_reloads_once_it_is_released(self):
+		(poll,) = re.findall(
+			r"function poll_while_running\(frm, fieldname\) \{.*?\n\}", self.script, re.DOTALL
+		)
+		self.assertIn("frappe.db.get_value(doctype, name, fieldname)", poll)
+		self.assertIn("frm.reload_doc();", poll)
+		self.assertIn("clearInterval(", poll)
+		self.assertIn("frappe.get_route()", poll)
+		self.assertRegex(self.script, r"const POLL_INTERVAL_MS = \d+;")
+
+	def test_the_vat_return_polls_a_running_confirmation_as_well(self):
+		form = FORMS["VAT Return"].read_text(encoding="utf-8")
+		self.assertIn('poll_while_running(frm, "confirmation_in_progress");', form)

@@ -83,7 +83,8 @@ def money(value) -> Decimal:
 
 
 def file_vat_return(company: str, rhythm: str, index: int, **fields) -> str:
-	"""Calculate the Voranmeldung of a period and note its filing in Mein ELSTER; returns its name."""
+	"""Calculate the Voranmeldung of a period and note its filing in Mein ELSTER, with remarks for a period that had
+	not ended when it was calculated; returns its name."""
 	doc = frappe.get_doc(
 		{
 			"doctype": "VAT Return",
@@ -91,6 +92,7 @@ def file_vat_return(company: str, rhythm: str, index: int, **fields) -> str:
 			"year": 2026,
 			"rhythm": rhythm,
 			"period_index": index,
+			"remarks": "Erfunden: abgegeben in Mein ELSTER.",
 			**fields,
 		}
 	).insert()
