@@ -84,7 +84,9 @@ class FindingFilesTest(TestCase):
 			self.fields["severity"]["options"].split("\n"), [severity.value for severity in Severity]
 		)
 
-	def test_only_steuerbote_writes_a_finding_and_the_grid_shows_what_it_says_and_whether_it_is_acknowledged(self):
+	def test_only_steuerbote_writes_a_finding_and_the_grid_shows_what_it_says_and_whether_it_is_acknowledged(
+		self,
+	):
 		"""Berechnen writes a finding and acknowledge_finding its acknowledgement; the form edits none of it."""
 		for name, field in self.fields.items():
 			with self.subTest(field=name):
@@ -148,7 +150,9 @@ class FormScriptFilesTest(TestCase):
 
 	def test_the_methods_the_script_calls_are_those_of_the_base_whitelisted_for_post(self):
 		methods = set(re.findall(r'frm\.call\("(\w+)"', self.script))
-		self.assertEqual(methods, {"calculate", "make_correction", "mark_filed_outside"})
+		self.assertEqual(
+			methods, {"calculate", "make_correction", "mark_filed_outside", "acknowledge_finding"}
+		)
 		for method in sorted(methods):
 			with self.subTest(method=method):
 				self.assertRegex(self.base, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')

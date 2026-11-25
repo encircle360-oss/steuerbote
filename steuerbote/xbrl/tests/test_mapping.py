@@ -130,7 +130,6 @@ class RuleTest(TestCase):
 			Rule("1200", BANK, shareholder="1")
 		self.assertEqual(caught.exception.template, mapping.NO_FLAG)
 
-
 	def test_takes_the_netting_group_of_its_account(self):
 		"""Claims and debts towards the same creditor that can be set off against each other are shown netted, as one
 		settlement position (§ 387 BGB, § 226 Abs. 1 AO; § 246 Abs. 2 Satz 1 HGB does not bar it)."""

@@ -13,7 +13,7 @@ gives it the Jahresabschluss:
 - A save takes the corrections, the answers of the Angaben, the signatories, the Vorjahr by hand, the class and the
   Arbeitnehmer by hand with their reasons, the Ergebnisverwendung, the Offenlegung and the day of the Feststellung; a
   change of any leaves a calculated document Berechnet until Berechnen checks it again.
-- Buchen is the Feststellung: whatever the remarks say, it waits for Aktiva equal to Passiva, the Jahresergebnis of
+- Buchen is the Feststellung: whatever is acknowledged, it waits for Aktiva equal to Passiva, the Jahresergebnis of
   the Bilanz equal to that of the GuV, the data of § 264 Abs. 1a HGB, every Angabe answered, the explanation of an
   Eigenkapital of zero and the day of the Feststellung (check_filing), freezes the figures and records the day in the
   Annual Filing Settings (record_adoption). A Jahresabschluss that changes is cancelled and amended, and the amendment
@@ -48,6 +48,7 @@ from steuerbote.hgb.disclosure import adoption_problems
 from steuerbote.hgb.notes import answer_problems, register_problems
 from steuerbote.hgb.size import SizeClass
 from steuerbote.hgb.statement import ProfitPresentation
+from steuerbote.jahresmeldung import acknowledgements
 from steuerbote.jahresmeldung import findings as finding_rows
 from steuerbote.jahresmeldung.findings import Finding, Severity
 from steuerbote.jahresmeldung.lifecycle import ACCOUNTS, Event, Status
@@ -317,7 +318,7 @@ class AnnualAccounts(AnnualFiling, Document):
 		return to_amount(stored.appropriation_carried) == self._appropriation().carried
 
 	def check_filing(self) -> None:
-		"""What holds the Feststellung back, whatever the remarks say (bridge.filing_problems)."""
+		"""What holds the Feststellung back, whatever is acknowledged (bridge.filing_problems)."""
 		problems = bridge.filing_problems(
 			self.name,
 			self._rows(self.LINES),
@@ -655,21 +656,18 @@ class AnnualAccounts(AnnualFiling, Document):
 				"An entry that Berechnen reads changed since Berechnen: an Angabe, a signatory, the Vorjahr by hand, the size class or the Arbeitnehmer by hand, the Ergebnisverwendung, the Offenlegung or the day of the Feststellung. Calculate again, so that Berechnen checks the Jahresabschluss with it."
 			),
 		)
-		self.set(FINDINGS_TABLE, finding_rows.rows((*stored, recalculate)))
+		self.add_finding(recalculate)
 
 	def _keep_the_findings_of_the_file(self, held: Sequence[Finding]) -> None:
 		"""The findings that hold the file back take the place of those of the file before; the others stay. The table
 		is written directly, since a festgestellter Jahresabschluss keeps its fields."""
-		kept = [
-			finding
-			for finding in finding_rows.of_rows(self._rows(FINDINGS_TABLE))
-			if not bridge.xbrl_code(finding.code)
-		]
+		stored = self._rows(FINDINGS_TABLE)
+		kept = [finding for finding in finding_rows.of_rows(stored) if not bridge.xbrl_code(finding.code)]
 		frappe.db.delete(
 			FINDING_DOCTYPE, {"parent": self.name, "parenttype": self.doctype, "parentfield": FINDINGS_TABLE}
 		)
 		self.set(FINDINGS_TABLE, [])
-		for row in finding_rows.rows((*kept, *held)):
+		for row in acknowledgements.carried(finding_rows.rows((*kept, *held)), stored):
 			child = self.append(FINDINGS_TABLE, row)
 			child.docstatus = self.docstatus
 			child.db_insert()

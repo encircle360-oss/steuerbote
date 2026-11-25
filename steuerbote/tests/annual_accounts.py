@@ -29,6 +29,7 @@ from frappe.model.document import Document
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import record_adoption
 from steuerbote.steuerbote.doctype.eric_settings import eric_settings
 from steuerbote.tests.helpers import (
+	acknowledge_errors,
 	ensure_fiscal_year,
 	insert_record,
 	make_account,
@@ -268,10 +269,11 @@ def new_accounts(company: Company, **fields) -> Document:
 
 
 def calculated(company: Company, **fields) -> Document:
+	"""The Jahresabschluss calculated; with remarks, each error that may be is acknowledged with them as its reason."""
 	doc = new_accounts(company, **fields)
 	doc.calculate()
 	doc.reload()
-	return doc
+	return acknowledge_errors(doc, fields["remarks"]) if fields.get("remarks") else doc
 
 
 def answer(doc: Document, answers: dict[str, tuple[str, str, int | float]] | None = None) -> None:
@@ -297,7 +299,7 @@ def adopted(doc: Document, day: str = ADOPTED_ON) -> Document:
 	doc.save()
 	doc.calculate()
 	doc.reload()
-	return doc
+	return acknowledge_errors(doc, doc.remarks) if doc.remarks else doc
 
 
 def ready_for_the_feststellung(company: Company, answers: dict | None = None, **fields) -> Document:

@@ -1067,7 +1067,7 @@ def filing_problems(
 	codes: Collection[str],
 	recalculate: str,
 ) -> tuple[Problem, ...]:
-	"""What holds the Feststellung back, whatever the remarks say: a calculation older than its entries, no size
+	"""What holds the Feststellung back, whatever is acknowledged: a calculation older than its entries, no size
 	class, Aktiva and Passiva apart, a Jahresergebnis of the Bilanz other than that of the GuV, missing data of § 264
 	Abs. 1a HGB, an Angabe of the catalogue not answered, an Eigenkapital of zero without its explanation, and no day
 	of the Feststellung or one within the fiscal year or to come."""

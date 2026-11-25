@@ -613,7 +613,8 @@ Alle Jahresmeldungen teilen eine Grundlage: den Kern `steuerbote/jahresmeldung` 
 
 | Modul | Aufgabe |
 |---|---|
-| `jahresmeldung/lifecycle.py` | Status und Schritte der Lebensläufe `FILING` (Erklärungen und E-Bilanz) und `ACCOUNTS` (Jahresabschluss), „Bereit oder Anmerkungen“, ein Entwurf und eine Abgabe je Schlüssel, die Felder jedes Belegs |
+| `jahresmeldung/lifecycle.py` | Status und Schritte der Lebensläufe `FILING` (Erklärungen und E-Bilanz) und `ACCOUNTS` (Jahresabschluss), „Bereit oder bestätigt“, ein Entwurf und eine Abgabe je Schlüssel, die Felder jedes Belegs |
+| `jahresmeldung/acknowledgements.py` | die Bestätigung eines Fehlers mit Begründung, die Fehler, die nie bestätigt werden, mit Grund und Quelle |
 | `jahresmeldung/overrides.py` | Korrekturen mit Begründung, Zeilen von Hand, gemeldete Beträge, was „Berechnen“ und ein Speichern von den Zeilen behalten |
 | `jahresmeldung/findings.py` | Befunde mit Code, Art, Nachricht und Referenz; ein Fehler hält „Bereit“ an |
 | `jahresmeldung/corrections.py` | die Berichtigung je Datenart: Kz 110 der USt, neue vollständige KSt- und GewSt-Erklärung, Status des Berichts der E-Bilanz, Änderung eines Auftrags an das Unternehmensregister |

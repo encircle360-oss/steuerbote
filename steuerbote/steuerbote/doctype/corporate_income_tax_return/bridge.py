@@ -336,7 +336,7 @@ CODES = (
 
 PROVISIONAL_TEXT = (
 	"Steuerbote has the forms of {0} provisionally from the Jahresdokumentation {1}: until ELSTER publishes those of "
-	"{0}, the return is not ready. A filing needs remarks that say why it goes nonetheless."
+	"{0}, the return is not ready. A filing needs this error acknowledged with the reason why it goes nonetheless."
 )
 NO_SETTINGS_TEXT = (
 	"The company has no Annual Filing Settings, which give the Rechtsform, the seats and the shareholders."

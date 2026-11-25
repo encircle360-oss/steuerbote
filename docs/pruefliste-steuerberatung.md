@@ -10,7 +10,7 @@ Jede Tabelle hat dieselben Spalten:
 
 - **Nr.:** fortlaufend über die ganze Seite, für Rückfragen.
 - **Punkt:** die Frage in einem Satz.
-- **Was Steuerbote bis zur Antwort tut:** das Verhalten von Steuerbote heute, mit dem Code des Befunds. **Fett** steht, was heute eine Abgabe anhält: Ein Fehler in den Befunden hält einen Beleg vor „Bereit“ an, und abgegeben wird er dann nur mit Anmerkungen, die begründen, warum trotzdem (siehe [Befunde und „Bereit zur Abgabe“](jahresmeldungen.md#befunde-und-bereit-zur-abgabe)); die XBRL-Datei für das Unternehmensregister entsteht mit einem Fehler des Jahresabschlusses gar nicht, und einige Fehler halten die [Feststellung](jahresabschluss.md#feststellung) an, was die Anmerkungen auch sagen.
+- **Was Steuerbote bis zur Antwort tut:** das Verhalten von Steuerbote heute, mit dem Code des Befunds. **Fett** steht, was heute eine Abgabe anhält: Ein Fehler in den Befunden hält einen Beleg vor „Bereit“ an. Eine Jahresmeldung wird dann nur abgegeben, wenn der Fehler mit einer Begründung bestätigt ist, und manche Fehler lassen sich nie bestätigen (siehe [Bestätigte Fehler](jahresmeldungen.md#bestätigte-fehler)); Voranmeldung, Zusammenfassende Meldung und Dauerfristverlängerung gehen mit Anmerkungen ab, die begründen, warum trotzdem. Die XBRL-Datei für das Unternehmensregister entsteht mit einem Fehler des Jahresabschlusses gar nicht, und einige Fehler halten die [Feststellung](jahresabschluss.md#feststellung) in jedem Fall an.
 - **Wo die Antwort eingetragen wird:** Beleg, Einstellungen oder Zuordnung mit Feld oder Zeile, wie die Oberfläche sie nennt. „Rückmeldung an die Maintainer“ heißt, dass es kein Feld gibt.
 - **Quelle:** der Abschnitt der Dokumentation oder der Pull Request mit der Regel.
 

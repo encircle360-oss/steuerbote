@@ -372,7 +372,11 @@ class TestFiling(AnnualFilingTestCase):
 		self.assertEqual([row.acknowledged for row in doc.findings if row.blocking], [0])
 
 	def test_an_error_that_makes_the_file_wrong_is_never_acknowledged(self):
-		unbalanced = {**SOURCE_ERROR, "finding": "JA-BILANZ-UNGLEICH", "text": "Aktiva und Passiva weichen ab."}
+		unbalanced = {
+			**SOURCE_ERROR,
+			"finding": "JA-BILANZ-UNGLEICH",
+			"text": "Aktiva und Passiva weichen ab.",
+		}
 		doc = self.calculated(*LINES, unbalanced)
 		(error,) = [row for row in doc.findings if row.blocking]
 		self.assertEqual(error.acknowledgeable, 0)

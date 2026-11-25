@@ -487,7 +487,9 @@ class RemainingTermFindingsTest(TestCase):
 		)
 		self.assertIn("0755 Darlehen des Gesellschafters", findings[0].text)
 
-	def test_the_balances_of_a_line_without_a_remaining_term_are_one_finding_that_says_where_to_enter_it(self):
+	def test_the_balances_of_a_line_without_a_remaining_term_are_one_finding_that_says_where_to_enter_it(
+		self,
+	):
 		"""Instead of one error per account, one per line of the balance sheet, with every account it needs the
 		remaining term of and the way to give it."""
 		books = (
@@ -501,7 +503,11 @@ class RemainingTermFindingsTest(TestCase):
 		self.assertEqual(len(findings), 1)
 		(finding,) = findings
 		self.assertEqual((finding.concept, finding.amount), ("bs.eqLiab.liab", Decimal("-1000.00")))
-		for source in ("1742 Sozialversicherung", "1776 Umsatzsteuer 19 %", "0755 Darlehen des Gesellschafters"):
+		for source in (
+			"1742 Sozialversicherung",
+			"1776 Umsatzsteuer 19 %",
+			"0755 Darlehen des Gesellschafters",
+		):
 			self.assertIn(source, finding.text)
 		self.assertIn("3 Konten", finding.text)
 		self.assertIn("Bilanzzuordnung", finding.text)

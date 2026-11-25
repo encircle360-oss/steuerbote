@@ -373,7 +373,7 @@ class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
 				"An entry that Berechnen reads changed since Berechnen: a table of the return or one of its statements. Calculate again, so that Berechnen checks the return with it."
 			),
 		)
-		self.set(FINDINGS_TABLE, annual_findings.rows((*stored, recalculate)))
+		self.add_finding(recalculate)
 
 	# Helpers.
 

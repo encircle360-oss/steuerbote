@@ -79,8 +79,9 @@ function annual_filing_notes(frm, state) {
 	];
 }
 
-// An error of the findings holds a calculated document back from Bereit; the remarks say why it is filed
-// nonetheless (Bereit oder Anmerkungen in steuerbote/jahresmeldung/lifecycle.py).
+// An error of the findings holds a calculated document back from Bereit until it is corrected or, where it may be,
+// acknowledged with a reason on the finding itself; the remarks file nothing (steuerbote/jahresmeldung/
+// acknowledgements.py).
 function annual_findings_note(frm, texts) {
 	if (frm.$findings_note) {
 		frm.$findings_note.remove();
@@ -89,18 +90,73 @@ function annual_findings_note(frm, texts) {
 	if (frm.is_new() || frm.doc.docstatus !== 0) {
 		return;
 	}
-	const errors = (frm.doc.findings || []).filter((row) => row.blocking).length;
+	const errors = (frm.doc.findings || []).filter((row) => row.blocking);
+	const open = errors.filter((row) => !(row.acknowledged && row.acknowledgement_reason));
 	if (frm.doc.ready) {
 		frm.$findings_note = frm.dashboard.set_headline_alert(texts.ready || __("Ready to file."), "blue");
-	} else if (errors) {
+	} else if (open.length) {
 		frm.$findings_note = frm.dashboard.set_headline_alert(
 			__(
-				"Errors of the findings hold the document: {0}. Correct them and calculate again, or explain in the remarks why it is filed nonetheless.",
-				[errors]
+				"Errors of the findings hold the document: {0}. Correct them and calculate again, or acknowledge those that may be with the reason why it is filed nonetheless.",
+				[open.length]
 			),
 			"red"
 		);
+	} else if (errors.length) {
+		frm.$findings_note = frm.dashboard.set_headline_alert(
+			__("Every error of the findings is acknowledged; the document is filed nonetheless."),
+			"orange"
+		);
 	}
+	const calculated = (annual_state(frm).calculated || []).includes(frm.doc.status);
+	if (calculated && errors.some((row) => row.acknowledgeable)) {
+		frm.add_custom_button(__("Acknowledge Errors"), () => annual_acknowledge_errors(frm));
+	}
+}
+
+function annual_acknowledge_errors(frm) {
+	const errors = (frm.doc.findings || []).filter((row) => row.blocking && row.acknowledgeable);
+	const escape = frappe.utils.escape_html;
+	const fields = [];
+	for (const row of errors) {
+		fields.push(
+			{
+				fieldtype: "HTML",
+				fieldname: `finding_${row.idx}`,
+				options: `<p><b>${escape(row.code)}</b> ${escape(row.text || "")}</p>`,
+			},
+			{
+				fieldtype: "Small Text",
+				fieldname: `reason_${row.idx}`,
+				label: __("Reason for Filing Nonetheless"),
+				default: row.acknowledgement_reason || "",
+			}
+		);
+	}
+	const blocked = (frm.doc.findings || []).filter((row) => row.blocking && !row.acknowledgeable);
+	if (blocked.length) {
+		fields.push({
+			fieldtype: "HTML",
+			fieldname: "never",
+			options: `<p>${__("These errors make the file wrong whatever the reason and are corrected in the books or the mapping: {0}", [blocked.map((row) => escape(row.code)).join(", ")])}</p>`,
+		});
+	}
+	const dialog = new frappe.ui.Dialog({
+		title: __("Acknowledge Errors"),
+		fields,
+		primary_action_label: __("Acknowledge Errors"),
+		primary_action: async (values) => {
+			for (const row of errors) {
+				const reason = (values[`reason_${row.idx}`] || "").trim();
+				if (reason !== (row.acknowledgement_reason || "")) {
+					await frm.call("acknowledge_finding", { finding: row.name, reason });
+				}
+			}
+			dialog.hide();
+			frm.reload_doc();
+		},
+	});
+	dialog.show();
 }
 
 function annual_make_berichtigung(frm, texts) {

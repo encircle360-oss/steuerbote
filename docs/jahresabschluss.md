@@ -159,7 +159,7 @@ Was die XBRL-Datei anhält (`JA-XBRL-…` und `XBRL-…`), steht in [Befunde der
 
 ## Feststellung
 
-„Buchen“ ist die Feststellung. Wie jede Jahresmeldung braucht sie „Bereit zur Abgabe“ oder Anmerkungen, die sagen, warum der Abschluss dennoch richtig ist; was die Anmerkungen auch sagen, hält sie an (`check_filing`, `bridge.filing_problems`):
+„Buchen“ ist die Feststellung. Wie jede Jahresmeldung braucht sie „Bereit zur Abgabe“ oder jeden Fehler der Befunde mit einer Begründung bestätigt, die sagt, warum der Abschluss dennoch richtig ist (siehe [Bestätigte Fehler](jahresmeldungen.md#bestätigte-fehler)); unabhängig von jeder Bestätigung hält sie an (`check_filing`, `bridge.filing_problems`):
 
 - eine Eingabe, die sich seit „Berechnen“ geändert hat,
 - keine Größenklasse,

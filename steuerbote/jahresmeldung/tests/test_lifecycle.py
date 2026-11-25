@@ -1,3 +1,4 @@
+from types import MappingProxyType
 from unittest import TestCase
 
 from steuerbote.jahresmeldung.lifecycle import (
@@ -160,15 +161,23 @@ class FitForFilingTest(TestCase):
 	acknowledged with a reason and none is one that can never be (steuerbote/jahresmeldung/acknowledgements.py). The
 	remarks are a note and file nothing."""
 
-	PROVISIONAL = {"code": "KST-VORLAEUFIG", "blocking": 1, "acknowledgeable": 1, "text": "vorläufig"}
-	UNBALANCED = {"code": "JA-BILANZ-UNGLEICH", "blocking": 1, "acknowledgeable": 0, "text": "ungleich"}
+	PROVISIONAL = MappingProxyType(
+		{"code": "KST-VORLAEUFIG", "blocking": 1, "acknowledgeable": 1, "text": "vorläufig"}
+	)
+	UNBALANCED = MappingProxyType(
+		{"code": "JA-BILANZ-UNGLEICH", "blocking": 1, "acknowledgeable": 0, "text": "ungleich"}
+	)
 
 	def test_a_ready_document_is_filed(self):
 		fit_for_filing(FILING, Status.READY, True, ())
 		fit_for_filing(ACCOUNTS, Status.CALCULATED, True, ())
 
 	def test_a_document_that_is_not_ready_is_filed_once_each_error_is_acknowledged(self):
-		acknowledged = {**self.PROVISIONAL, "acknowledged": 1, "acknowledgement_reason": "Mit der Steuerberatung."}
+		acknowledged = {
+			**self.PROVISIONAL,
+			"acknowledged": 1,
+			"acknowledgement_reason": "Mit der Steuerberatung.",
+		}
 		fit_for_filing(FILING, Status.CALCULATED, False, [acknowledged, {"code": "SB-X", "blocking": 0}])
 
 	def test_an_error_that_is_not_acknowledged_holds_it_whatever_the_remarks_say(self):
