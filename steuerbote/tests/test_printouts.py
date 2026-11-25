@@ -233,3 +233,48 @@ class LanguageTest(TestCase):
 	def test_matches_whole_words_only(self):
 		found = pages(("Dombauhütte der Kathedrale",), ("Steuerbote has the forms",))
 		self.assertEqual(printouts.nowhere(found, ["the"]), ["Seite 2: „the“ im Ausdruck"])
+
+
+def framed(head: float, first: float, foot: float, number: int = 1, total: int = 1) -> Page:
+	"""A page with its running head ending at head, its first line of content at first and its running foot at
+	foot, all in millimetres from the top edge."""
+	words = [
+		*line("Umsatzsteuer-Voranmeldung 2026", head * MM),
+		*line("Unternehmen", first * MM + 8),
+		*line(f"Seite {number} von {total}", foot * MM + 8),
+	]
+	return Page(*A4, tuple(words))
+
+
+class FrameTest(TestCase):
+	def test_finds_the_end_of_the_head_the_first_line_and_the_foot(self):
+		found = printouts.frame(framed(22.5, 30, 284), MARGINS)
+		self.assertAlmostEqual(found.head / MM, 22.5)
+		self.assertAlmostEqual(found.first / MM, 30)
+		self.assertAlmostEqual(found.foot / MM, 284)
+
+	def test_a_page_without_a_head_in_the_top_margin_has_none(self):
+		self.assertIsNone(printouts.frame(framed(41, 49, 276), MARGINS).head)
+
+
+class AlikeTest(TestCase):
+	def test_accepts_the_same_pages_with_lines_less_than_a_millimetre_apart(self):
+		first = [framed(22.5, 30, 284, 1, 2), framed(22.5, 29, 284, 2, 2)]
+		second = [framed(22.9, 30.6, 283.3, 1, 2), framed(22.9, 29.4, 283.3, 2, 2)]
+		self.assertEqual(printouts.alike(first, second, MARGINS), [])
+
+	def test_names_a_different_number_of_pages(self):
+		self.assertEqual(
+			printouts.alike([framed(22.5, 30, 284)], [framed(22.5, 30, 284)] * 2, MARGINS),
+			["wkhtmltopdf 1 Seiten, Chromium 2 Seiten"],
+		)
+
+	def test_names_each_line_that_stands_elsewhere(self):
+		self.assertEqual(
+			printouts.alike([framed(22.5, 30, 284)], [framed(41, 49.5, 276.5)], MARGINS),
+			[
+				"Seite 1: Ende des Kopfs mit wkhtmltopdf 22,5 mm, mit Chromium keins",
+				"Seite 1: erste Zeile mit wkhtmltopdf 30,0 mm, mit Chromium 38,2 mm",
+				"Seite 1: Fuß mit wkhtmltopdf 284,0 mm, mit Chromium keins",
+			],
+		)
