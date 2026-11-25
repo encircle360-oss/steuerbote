@@ -9,7 +9,7 @@ Der Beleg lebt auf der Grundlage der Jahresmeldungen: Status, Berechnen, Korrekt
 - **Unternehmen:** eine GmbH oder UG (haftungsbeschränkt), wie die Einstellungen Jahresmeldungen sie nennen, mit einer Bilanzzuordnung, für SKR03 und SKR04 aus den Vorgaben, für einen eigenen Kontenrahmen von Hand.
 - **Bilanzart:** der Jahresabschluss eines Wirtschaftsjahres und die Eröffnungsbilanz des Gründungsjahres.
 - **Bilanzierungsstandard:** die Einheitsbilanz (HAOE), die Handelsbilanz mit Überleitungsrechnung (HGBM) oder die Steuerbilanz (AO), Technischer Leitfaden zur HGB-Taxonomie 6.9, Stand 10.06.2025 („Leitfaden“), B.13.
-- **Taxonomie:** 6.9, für die Wirtschaftsjahre 2025 bis 2027, siehe [Versionen](taxonomie.md#versionen).
+- **Taxonomie:** 6.9, für die Wirtschaftsjahre 2025 bis 2027, siehe [Versionen](taxonomie.md#versionen). Eine E-Bilanz für ein Wirtschaftsjahr, dem keine Version dient, etwa 2024, lehnt schon das Anlegen ab.
 - **Wirtschaftsjahr:** das Geschäftsjahr von ERPNext, das im Jahr endet. Wie ERPNext nimmt der Beleg ein Geschäftsjahr, das das Unternehmen nennt, vor einem für alle Unternehmen, so dass ein kurzes erstes Wirtschaftsjahr neben dem Kalenderjahr der übrigen Unternehmen seine E-Bilanz hat; genau eines muss es geben.
 - **Nicht darin:** Vorjahreswerte, denn eine Steuerbilanz meldet keine; Ergänzungs- und Sonderbilanzen und die Kapitalkontenentwicklung von Personengesellschaften; die GuV im Umsatzkostenverfahren; die Handelsbilanz aus dem Beleg „Jahresabschluss“, siehe [Grenzen](#grenzen).
 

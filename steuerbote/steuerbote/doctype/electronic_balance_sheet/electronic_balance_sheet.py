@@ -44,7 +44,7 @@ import frappe
 from frappe import _
 from frappe.core.doctype.file.utils import get_content_hash
 from frappe.model.document import Document
-from frappe.utils import cint, escape_html, getdate
+from frappe.utils import cint, escape_html, formatdate, getdate
 
 from steuerbote import balances, ebilanz_sources
 from steuerbote.balance_mapping_sync import davon_values, ebilanz_balances, ebilanz_davon_lines
@@ -71,6 +71,7 @@ from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission impor
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import Transmittable
 from steuerbote.steuerbote.doctype.eric_settings import eric_settings
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
+from steuerbote.xbrl import versions
 from steuerbote.xbrl.mapping import Books, Placement, Purpose, part_of, place, position_of
 from steuerbote.xbrl.taxonomy import Taxonomy, View
 
@@ -300,6 +301,16 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		super().set_period()
 		start, end = getdate(self.from_date), getdate(self.to_date)
 		self.stichtag = start if self._opening else end
+		if not versions.allowed_for(start, end):
+			frappe.throw(
+				_(
+					"Steuerbote has no HGB-Taxonomie for the Wirtschaftsjahr from {0} to {1}: it knows {2}, each for the Wirtschaftsjahre its letter names."
+				).format(
+					formatdate(start, "dd.MM.yyyy"),
+					formatdate(end, "dd.MM.yyyy"),
+					", ".join(versions.TAXONOMIES),
+				)
+			)
 		self.taxonomy_version = bridge.taxonomy_for(start, end, self.taxonomy_version)
 
 	# Transmittable.

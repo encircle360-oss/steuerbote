@@ -43,7 +43,7 @@ from frappe.utils import cint, escape_html, flt, getdate
 
 from steuerbote import annual_accounts_sources, balances, headcount
 from steuerbote.deadlines import Kind
-from steuerbote.hgb import instance
+from steuerbote.hgb import instance, schemes
 from steuerbote.hgb.disclosure import adoption_problems
 from steuerbote.hgb.notes import answer_problems, register_problems
 from steuerbote.hgb.size import SizeClass
@@ -156,6 +156,7 @@ class AnnualAccounts(AnnualFiling, Document):
 	def compute(self) -> Calculation:
 		"""Berechnen: the size class, the Bilanz and the GuV of the class, the Angaben, the signatories and the
 		findings."""
+		self._refuse_an_unknown_year()
 		year = cint(self.year)
 		from_date, to_date = getdate(self.from_date), getdate(self.to_date)
 		settings = annual_accounts_sources.settings(self.company)
@@ -350,6 +351,7 @@ class AnnualAccounts(AnnualFiling, Document):
 
 	def validate(self) -> None:
 		before = self.get_doc_before_save()
+		self._refuse_an_unknown_year()
 		if self.company and self.year:
 			self._keep_the_entered_tables(before)
 			self._keep_the_records(before)
@@ -673,6 +675,17 @@ class AnnualAccounts(AnnualFiling, Document):
 			child.db_insert()
 
 	# Helpers.
+
+	def _refuse_an_unknown_year(self) -> None:
+		"""A Jahresabschluss of a year without the size thresholds and the schemes of the HGB is no draft Berechnen
+		could calculate, as the Erklärungen refuse a year without their forms."""
+		if self.year and cint(self.year) not in schemes.years():
+			known = ", ".join(str(year) for year in sorted(schemes.years()))
+			frappe.throw(
+				_(
+					"Steuerbote has no Jahresabschluss for {0} yet: it knows the size classes and schemes of {1}."
+				).format(cint(self.year), known)
+			)
 
 	def _prior(
 		self, sources: annual_accounts_sources.Sources, year: int, from_date: date

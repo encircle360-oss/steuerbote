@@ -7,7 +7,7 @@ Der Beleg lebt auf der Grundlage der Jahresmeldungen mit dem Lebenslauf `ACCOUNT
 ## Umfang
 
 - **Unternehmen:** eine GmbH oder UG (haftungsbeschränkt) mit den Einstellungen Jahresmeldungen und einer Bilanzzuordnung. Für eine Kleinstkapitalgesellschaft (§ 267a HGB) und eine kleine Gesellschaft (§ 267 Abs. 1 HGB) bereitet Steuerbote alles vor, was die Offenlegung braucht; für eine mittelgroße oder große Gesellschaft berechnet und druckt der Beleg Bilanz und Gewinn- und Verlustrechnung, Anhang und Offenlegung übernimmt die Steuerberatung oder der Abschlussprüfer.
-- **Geschäftsjahre:** das Geschäftsjahr von ERPNext, das im Jahr des Belegs endet, für die Offenlegung eines der HGB-Taxonomie 6.9, siehe [Umfang der Offenlegung](offenlegung.md#umfang).
+- **Geschäftsjahre:** das Geschäftsjahr von ERPNext, das im Jahr des Belegs endet, für die Offenlegung eines der HGB-Taxonomie 6.9, siehe [Umfang der Offenlegung](offenlegung.md#umfang). Steuerbote kennt Schwellen der Größenklassen und Gliederungen heute für 2026 (`schemes.years()`); einen Jahresabschluss für ein anderes Jahr lehnt schon das Anlegen ab, mit der Meldung „Steuerbote hat noch keinen Jahresabschluss für …“.
 - **Gliederung:** die Bilanz nach § 266 HGB in der Kontoform der Größenklasse und die Gewinn- und Verlustrechnung nach dem Gesamtkostenverfahren (§ 275 Abs. 2 HGB), denn das Hauptbuch kennt die Art eines Aufwands, nicht seine Funktion (`steuerbote/hgb/schemes.py`).
 - **Nicht darin:** Lagebericht, Konzernabschluss, Umsatzkostenverfahren, Tabellen der Haftungsverhältnisse und der Vorschüsse und Kredite an Organmitglieder (sie stehen im Text und Betrag ihrer Angabe), die Steuerbilanz und die Übermittlung selbst, siehe [Grenzen](#grenzen).
 

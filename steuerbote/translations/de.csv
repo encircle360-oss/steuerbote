@@ -1334,6 +1334,8 @@
 "Steuerbote cannot write the ELSTER XML of the Umsatzsteuererklärung {0} yet.","Steuerbote kann das ELSTER-XML der Umsatzsteuererklärung {0} noch nicht schreiben."
 "Steuerbote does not know form USt 1 H for {0} yet.","Steuerbote kennt den Vordruck USt 1 H für {0} noch nicht."
 "Steuerbote has form USt 1 H of {0} provisionally from the documentation of {1} and the form of {2}: until ERiC and the BMF publish that of {0}, the form is not ready.","Steuerbote hat den Vordruck USt 1 H für {0} vorläufig aus der Dokumentation der {1} und dem Vordruck von {2}: Bis ERiC und das BMF den für {0} veröffentlichen, ist der Vordruck nicht bereit."
+"Steuerbote has no HGB-Taxonomie for the Wirtschaftsjahr from {0} to {1}: it knows {2}, each for the Wirtschaftsjahre its letter names.","Steuerbote hat keine HGB-Taxonomie für das Wirtschaftsjahr vom {0} bis {1}: Es kennt {2}, jede für die Wirtschaftsjahre, die ihr BMF-Schreiben nennt."
+"Steuerbote has no Jahresabschluss for {0} yet: it knows the size classes and schemes of {1}.","Steuerbote hat noch keinen Jahresabschluss für {0}: Es kennt die Größenklassen und Gliederungen für {1}."
 "Steuerbote has no Kennzahlen for {0} yet.","Steuerbote kennt die Kennzahlen für {0} noch nicht."
 "Steuerbote has no form USt 2 A for {0} yet.","Steuerbote hat noch keinen Vordruck USt 2 A für {0}."
 "Steuerbote has no forms of the Gewerbesteuer for {0} yet.","Steuerbote hat für {0} noch keine Vordrucke der Gewerbesteuer."
