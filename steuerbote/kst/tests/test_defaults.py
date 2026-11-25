@@ -427,6 +427,8 @@ UNMARKED = {
 DIGESTS = {
 	"SKR03 2026.1": "fdb7ce2ffaa9ecfe8e737d626d66cc2ddf85b4a078216b7af620552f3c8a9b98",
 	"SKR04 2026.1": "17da0b1384181b59cbbaf2e13c211f7edb7c230e002ed092da4496298bc23bb7",
+	"SKR03 2026.2": "376ec2feb66839740f67718bbb9df56cd2a18af31ca24d3d54810c5158d2ce25",
+	"SKR04 2026.2": "eff6e6e325ec06430bdfc93b8dd9c96d0f8db009ee07507ab7073a7d1b9b66ab",
 }
 
 
@@ -493,7 +495,7 @@ class PlacesTest(TestCase):
 		}
 		self.assertEqual(count("SKR03", templates), count("SKR04", templates))
 		self.assertEqual(
-			{chart: len(default_accounts(chart)) for chart in CHARTS}, {"SKR03": 139, "SKR04": 149}
+			{chart: len(default_accounts(chart)) for chart in CHARTS}, {"SKR03": 149, "SKR04": 159}
 		)
 
 	def test_the_equity_is_left_to_kst_1_f_and_the_partnerships_and_the_reserved_range_are_left_out(self):
@@ -833,8 +835,8 @@ class AccountTest(TestCase):
 
 class VersionTest(TestCase):
 	def test_the_version_names_the_chart_the_datev_edition_and_the_revision(self):
-		self.assertEqual((DATEV_EDITION, REVISION), (2026, 1))
-		self.assertEqual([defaults_version(chart) for chart in CHARTS], ["SKR03 2026.1", "SKR04 2026.1"])
+		self.assertEqual((DATEV_EDITION, REVISION), (2026, 2))
+		self.assertEqual([defaults_version(chart) for chart in CHARTS], ["SKR03 2026.2", "SKR04 2026.2"])
 
 	def test_a_chart_without_defaults_has_none(self):
 		for function in (defaults_version, default_mapping, default_accounts):
