@@ -17,8 +17,23 @@ booked on the same documents: three services of 33.33 at 19 % carry 6.33 tax eac
 while 19 % of their sum is 19.00. Lines without a voucher count as one document per tax Kennzahl and
 rate, and per check.
 
-The tax of the bases with a statutory rate (Kennzahl 81, 86, 89 and 93) is not summed from the
-ledger at all: the form derives it from the reported base in full euros.
+The tax of the bases with a statutory rate (Kennzahl 81, 86, 89 and 93) has no Kennzahl of its own: the form
+transmits only the base, in full euros, and Kz 83 with cents. How it enters the sums and Kz 83 is the setting
+StatutoryTax of the company:
+
+- FROM_BASE, the default: the rate times the reported base in full euros, as the form computes it („Steuer“ next to
+  lines 13, 14, 25 and 26 of USt 1 A 2026). The cents of the bases drop out of the tax as well.
+- AS_BOOKED: the tax the vouchers of the Verprobung of the base book on its tax accounts (booked_taxes()), so Kz 83
+  is the balance of the tax accounts to the cent. A voucher that shows bases of two Kennzahlen at a statutory rate in
+  one Verprobung, such as the acquisitions without Vorsteuerabzug at 7 and 19 %, splits its booked tax by the exact
+  tax of each base (rounding.apportion_cents); a voucher that also shows a base whose tax has a Kennzahl of its own
+  leaves that tax, as derived for that Kennzahl, to it; a voucher that books tax without any base gives it to the
+  first Kennzahl at a statutory rate of its Verprobung. A base outside every Verprobung takes the tax of its rate per
+  voucher, as a document rounds it. The bases themselves are reported in full euros either way, and the Verprobung
+  is the same.
+
+The Jahresdokumentation UStVA 2026 has no rule that computes Kz 83 again from the bases, so ERiC takes both. The
+derived taxes with a Kennzahl of their own, such as Kz 47 and 85, are the same in both.
 
 A purchase whose tax the company owes itself, an innergemeinschaftlicher Erwerb or a Leistung under § 13b UStG, is
 often booked without a base account of its own: its net goes to an ordinary expense, asset or goods account, and a
@@ -57,6 +72,7 @@ from collections.abc import Iterable
 from collections.abc import Mapping as ReadOnlyMapping
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 from itertools import combinations
 from types import MappingProxyType
 
@@ -76,6 +92,7 @@ from steuerbote.ustva.rounding import (
 	CENT,
 	HUNDRED,
 	ZERO,
+	apportion_cents,
 	base_from_tax,
 	require_decimal,
 	tax_from_base,
@@ -89,6 +106,16 @@ TOLERANCE_PER_VOUCHER = CENT
 DERIVATION_TOLERANCE = CENT
 # The most accounts of a voucher whose sets derive_bases() tries, 4095 sets; a larger voucher takes the tax.
 MOST_LINES = 12
+
+
+class StatutoryTax(StrEnum):
+	"""The setting „Steuer zu Umsätzen mit festem Steuersatz“ of the VAT Return Settings, see the module."""
+
+	FROM_BASE = "From the Base in Full Euros"
+	AS_BOOKED = "As Booked"
+
+
+DEFAULT_STATUTORY_TAX = StatutoryTax.FROM_BASE
 
 
 def require_cents(amount: Decimal) -> Decimal:
@@ -130,9 +157,25 @@ def _balance(debit: Decimal, credit: Decimal, side: Side) -> Decimal:
 
 @dataclass(frozen=True, slots=True)
 class KennzahlValue:
+	"""The exact amount of a Kennzahl and the amount the form takes. ``tax`` is the tax a base at a statutory rate adds
+	to the sums, in cents, as the setting StatutoryTax gives it; None for every other Kennzahl."""
+
 	kennzahl: str
 	amount: Decimal
 	reported: Decimal
+	tax: Decimal | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BookedTax:
+	"""The part of the tax a voucher books on the tax accounts of a Verprobung that belongs to a base at a statutory
+	rate: ``account`` is the base account, None for a derived base or a tax booked without a base. ``voucher`` is None
+	for the lines without voucher."""
+
+	kennzahl: str
+	voucher: str | None
+	account: str | None
+	tax: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,6 +331,8 @@ def calculate(
 	extra_values: ReadOnlyMapping[str, Decimal] | None = None,
 	tolerance: Decimal = TOLERANCE_PER_VOUCHER,
 	vouchers: ReadOnlyMapping[str, Voucher] | None = None,
+	statutory_tax: StatutoryTax = DEFAULT_STATUTORY_TAX,
+	taxes: ReadOnlyMapping[str, Decimal] | None = None,
 ) -> UstvaResult:
 	"""Aggregate the ledger into Kennzahlen, derive the taxes the form derives, and balance Kennzahl 83.
 
@@ -305,19 +350,35 @@ def calculate(
 	of 0.01 absorbs a booked line that was rounded differently.
 
 	``vouchers`` holds what the caller knows of the vouchers of sections C and D (purchase_vouchers), see the module.
+
+	``statutory_tax`` decides the tax of the bases at a statutory rate, see the module. ``taxes`` gives that tax as
+	booked for Kennzahlen of the extra values, as a return keeps it with its amounts as filed; it adds to what the
+	ledger books, and a Kennzahl without a booked or given tax takes the tax of its base.
 	"""
 	tolerance = _require_tolerance(tolerance)
+	statutory_tax = StatutoryTax(statutory_tax)
 	catalogue = mapping.catalogue
+	given = _given_taxes(taxes or {}, catalogue, statutory_tax)
 	ledger = _Ledger(lines)
 	derived = _derive(ledger, mapping, vouchers)
 	amounts = _amounts_by_kennzahl(ledger, mapping, derived)
 	_add_extra_values(amounts, extra_values or {}, catalogue)
-	values = {number: _value(catalogue[number], amount) for number, amount in amounts.items() if amount}
+	booked: dict[str, Decimal] = {}
+	if statutory_tax is StatutoryTax.AS_BOOKED:
+		for share in _booked(ledger, mapping, derived):
+			_add(booked, share.kennzahl, share.tax)
+		for number, amount in given.items():
+			_add(booked, number, amount)
+	values = {
+		number: _value(catalogue[number], amounts.get(number, ZERO), booked.get(number))
+		for number in dict.fromkeys((*amounts, *booked))
+		if amounts.get(number) or booked.get(number)
+	}
 
 	output_tax = input_tax = other_tax = sondervorauszahlung = ZERO
 	for value in values.values():
 		kennzahl = catalogue[value.kennzahl]
-		contribution = _contribution(kennzahl, value)
+		contribution = value.tax if kennzahl.derives_tax else value.reported
 		if kennzahl.number == SONDERVORAUSZAHLUNG_KENNZAHL:
 			sondervorauszahlung += contribution
 		elif kennzahl.effect is Effect.INCREASES and kennzahl.line in OUTPUT_TAX_LINES:
@@ -347,6 +408,21 @@ def calculate(
 		),
 		findings=() if vouchers is None else _findings(ledger, mapping, derived, vouchers),
 	)
+
+
+def _given_taxes(
+	taxes: ReadOnlyMapping[str, Decimal],
+	catalogue: ReadOnlyMapping[str, Kennzahl],
+	statutory_tax: StatutoryTax,
+) -> dict[str, Decimal]:
+	if taxes and statutory_tax is not StatutoryTax.AS_BOOKED:
+		raise ValueError("the taxes of the bases at a statutory rate are given only as booked")
+	for number, amount in taxes.items():
+		kennzahl = catalogue.get(number)
+		if kennzahl is None or not kennzahl.derives_tax:
+			raise ValueError(f"Kennzahl {number} is no base at a statutory rate")
+		require_cents(amount)
+	return dict(taxes)
 
 
 def _require_tolerance(tolerance: Decimal) -> Decimal:
@@ -417,6 +493,106 @@ def derive_bases(
 	of the checks, each in the order of the ledger."""
 	derived = _derive(_Ledger(lines), mapping, vouchers)
 	return tuple(base for check in mapping.checks for base in derived.get(check.label, ()))
+
+
+def booked_taxes(
+	lines: Iterable[LedgerLine], mapping: Mapping, vouchers: ReadOnlyMapping[str, Voucher] | None = None
+) -> tuple[BookedTax, ...]:
+	"""The tax of the bases at a statutory rate as booked, see the module: per voucher and base, in the order of the
+	checks, each in the order of the ledger, and then the bases outside every Verprobung."""
+	ledger = _Ledger(lines)
+	return tuple(_booked(ledger, mapping, _derive(ledger, mapping, vouchers)))
+
+
+@dataclass(frozen=True, slots=True)
+class _Part:
+	"""A base of a voucher in a Verprobung: on ``account``, or derived without one."""
+
+	account: str | None
+	kennzahl: str
+	base: Decimal
+	rate: Decimal
+
+	@property
+	def tax(self) -> Decimal:
+		return self.base * self.rate / HUNDRED
+
+
+def _booked(
+	ledger: _Ledger, mapping: Mapping, derived: ReadOnlyMapping[str, tuple[DerivedBase, ...]]
+) -> list[BookedTax]:
+	catalogue = mapping.catalogue
+	found: list[BookedTax] = []
+	checked: set[str] = set()
+	for check in mapping.checks:
+		checked.update(check.base_accounts)
+		parts: dict[str | None, list[_Part]] = {}
+		for account in check.base_accounts:
+			rule = mapping.rule_for(account)
+			rate = mapping.rate_for(rule)
+			for voucher, total in ledger.vouchers(account).items():
+				parts.setdefault(voucher, []).append(
+					_Part(account, rule.kennzahl, total.balance(rule.side), rate)
+				)
+		for base in derived.get(check.label, ()):
+			parts.setdefault(base.voucher, []).append(_Part(None, base.kennzahl, base.base, base.rate))
+		numbers = (
+			*(mapping.rule_for(account).kennzahl for account in check.base_accounts),
+			check.derived_base,
+		)
+		own = next((number for number in numbers if number and catalogue[number].derives_tax), None)
+		if own is None:
+			continue
+		booked: dict[str | None, Decimal] = {}
+		for account in check.tax_accounts:
+			for voucher, total in ledger.vouchers(account).items():
+				_add(booked, voucher, total.balance(check.side))
+		for voucher in sorted(parts.keys() | booked.keys(), key=ledger.first_line):
+			found.extend(_shares(voucher, parts.get(voucher, []), booked.get(voucher, ZERO), own, catalogue))
+	loose: dict[tuple[str, str | None], list[_Part]] = {}
+	for account in ledger.accounts:
+		rule = mapping.rule_for(account)
+		if rule is None or account in checked or not catalogue[rule.kennzahl].derives_tax:
+			continue
+		rate = mapping.rate_for(rule)
+		for voucher, total in ledger.vouchers(account).items():
+			loose.setdefault((rule.kennzahl, voucher), []).append(
+				_Part(account, rule.kennzahl, total.balance(rule.side), rate)
+			)
+	for (_kennzahl, voucher), group in loose.items():
+		tax = tax_from_base(sum((part.base for part in group), ZERO), group[0].rate)
+		found.extend(_split(voucher, group, tax))
+	return found
+
+
+def _shares(
+	voucher: str | None,
+	parts: list[_Part],
+	booked: Decimal,
+	own: str,
+	catalogue: ReadOnlyMapping[str, Kennzahl],
+) -> list[BookedTax]:
+	"""The booked tax of one voucher in one Verprobung over its bases at a statutory rate, less the tax its other bases
+	report in their own tax Kennzahl, rounded per tax Kennzahl and rate as calculate() rounds it."""
+	if not parts:
+		return [BookedTax(own, voucher, None, booked)] if booked else []
+	statutory = [part for part in parts if catalogue[part.kennzahl].derives_tax]
+	if not statutory:
+		return []
+	others: dict[tuple[str | None, Decimal], Decimal] = {}
+	for part in (part for part in parts if not catalogue[part.kennzahl].derives_tax):
+		key = (catalogue[part.kennzahl].tax_kennzahl, part.rate)
+		others[key] = others.get(key, ZERO) + part.base
+	reported = sum((tax_from_base(base, rate) for (_tax, rate), base in others.items()), ZERO)
+	return _split(voucher, statutory, booked - reported)
+
+
+def _split(voucher: str | None, parts: list[_Part], tax: Decimal) -> list[BookedTax]:
+	shares = apportion_cents([part.tax for part in parts], tax)
+	return [
+		BookedTax(part.kennzahl, voucher, part.account, share)
+		for part, share in zip(parts, shares, strict=True)
+	]
 
 
 def purchase_vouchers(lines: Iterable[LedgerLine], mapping: Mapping) -> tuple[str, ...]:
@@ -637,15 +813,13 @@ def _add_extra_values(
 		_add(amounts, number, require_cents(amount))
 
 
-def _value(kennzahl: Kennzahl, amount: Decimal) -> KennzahlValue:
+def _value(kennzahl: Kennzahl, amount: Decimal, booked: Decimal | None) -> KennzahlValue:
+	"""``booked`` is the tax as booked of a base at a statutory rate, None where it takes the tax of its base."""
 	reported = to_full_euros(amount) if kennzahl.kind is Kind.BASE else to_cents(amount)
-	return KennzahlValue(kennzahl.number, amount, reported)
-
-
-def _contribution(kennzahl: Kennzahl, value: KennzahlValue) -> Decimal:
+	tax = None
 	if kennzahl.derives_tax:
-		return tax_from_base(value.reported, kennzahl.rate)
-	return value.reported
+		tax = to_cents(booked) if booked is not None else tax_from_base(reported, kennzahl.rate)
+	return KennzahlValue(kennzahl.number, amount, reported, tax)
 
 
 @dataclass(slots=True)

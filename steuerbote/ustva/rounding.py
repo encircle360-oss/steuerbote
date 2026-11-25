@@ -51,6 +51,24 @@ def base_from_tax(tax: Decimal, rate_percent: Decimal) -> Decimal:
 	return to_cents(require_decimal(tax) * HUNDRED / require_decimal(rate_percent))
 
 
+def apportion_cents(parts: Sequence[Decimal], total: Decimal) -> tuple[Decimal, ...]:
+	"""A tax in cents over the exact taxes of its parts: each part rounded half up, and the cents that the rounded parts
+	miss or exceed on the part largest in amount, the first of equal ones.
+
+	For the tax a voucher books over the bases it shows (steuerbote.ustva.calculation): each base keeps the tax its
+	rate gives it, and what the booking rounded otherwise stays with the largest one, so the parts add up to the
+	booking to the cent.
+	"""
+	exact = tuple(require_decimal(part) for part in parts)
+	target = require_decimal(total)
+	if not exact or not target.is_finite() or target != target.quantize(CENT):
+		raise ValueError(f"cannot apportion {target} in cents over {len(exact)} parts")
+	rounded = [to_cents(part) for part in exact]
+	largest = max(range(len(exact)), key=lambda index: (abs(exact[index]), -index))
+	rounded[largest] = _without_negative_zero(rounded[largest] + target - sum(rounded, ZERO))
+	return tuple(rounded)
+
+
 def floor_euro(amount: Decimal) -> Decimal:
 	"""Round down to whole euros: the Körperschaftsteuer and the Steuermessbetrag.
 
