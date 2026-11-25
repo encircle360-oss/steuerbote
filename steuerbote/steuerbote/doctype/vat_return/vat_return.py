@@ -323,7 +323,7 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		self.set("late_changes", late_rows)
 		self.update({"period_basis": ledger.basis.value, "late_treatment": ledger.treatment.value})
 		reconciliation = build_reconciliation(
-			self.company, period, mapping, load_lines(self.company, period.start, period.end)
+			self.company, period, mapping, load_lines(self.company, period.start, period.end), lines
 		)
 		numbers = [row.account_number for row in reconciliation if row.account_number]
 		self.set(
@@ -1147,15 +1147,21 @@ def sales_invoices(lines: Iterable[ustva.LedgerLine]) -> list[str]:
 
 
 def build_reconciliation(
-	company: str, period: ustva.Period, mapping: ustva.Mapping, lines: list[ustva.LedgerLine]
+	company: str,
+	period: ustva.Period,
+	mapping: ustva.Mapping,
+	lines: list[ustva.LedgerLine],
+	reported: list[ustva.LedgerLine] | None = None,
 ) -> tuple[registers.Row, ...]:
 	"""Abgleich mit Registern: the reports Sales Register and Purchase Register of the period against the ledger lines
-	the return is computed from, see steuerbote.ustva.registers."""
+	posted in it, and an information row on the vouchers the return, computed from ``reported``, takes from another
+	period or leaves to one, see steuerbote.ustva.registers."""
 	return registers.reconcile(
 		register_lines(company, period.start, period.end),
 		lines,
 		mapping,
 		deliberately_without_kennzahl(mapping.chart),
+		reported,
 	)
 
 
