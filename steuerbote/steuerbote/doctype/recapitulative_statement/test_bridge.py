@@ -854,3 +854,208 @@ class OverlappingTest(TestCase):
 		self.assertIsNone(
 			bridge.overlapping(Coverage(ReportingPeriod.month(2026, 7), (7,), (7,)), [kept_nothing])
 		)
+
+
+class OverrideBasisTest(TestCase):
+	"""An override is tied to the ledger amount of its line it was made against (steuerbote.zm.lines): a save takes it
+	from the stored row while the override stays as it was, and from the ledger amount the stored line showed when
+	the override is new or changed. Frappe keeps no read-only field from a save through its API, so the basis never
+	comes from the rows a save sends."""
+
+	STORED = (
+		line_row(
+			AUSTRIA,
+			"L",
+			amount="55000.99",
+			override="55000",
+			override_reason="Nachweis",
+			override_basis="55000.99",
+		),
+		line_row(FRANCE, "S", amount="4000.00"),
+	)
+
+	def test_an_override_reads_its_basis(self):
+		overrides = bridge.overrides_of(
+			[
+				line_row(
+					AUSTRIA, "L", override="55000", override_reason="Nachweis", override_basis="55000.99"
+				),
+				line_row(FRANCE, "S", override="0", override_reason="Kein Unternehmer", override_basis=None),
+				line_row(SPAIN, "L", override="10", override_reason="Verbringen"),
+			]
+		)
+		self.assertEqual([override.basis for override in overrides.values()], [d("55000.99"), None, None])
+
+	def test_an_unchanged_override_keeps_its_basis(self):
+		sent = [
+			line_row(
+				"atu 12345678", "L", override="55000", override_reason=" Nachweis ", override_basis="1.00"
+			),
+			line_row(FRANCE, "S"),
+		]
+		self.assertEqual(bridge.override_bases(self.STORED, sent), [d("55000.99"), None])
+
+	def test_a_new_or_changed_override_takes_the_ledger_amount_the_line_showed(self):
+		for name, row in (
+			("amount", line_row(AUSTRIA, "L", override="57000", override_reason="Nachweis")),
+			("reason", line_row(AUSTRIA, "L", override="55000", override_reason="Nachweis geprüft")),
+		):
+			with self.subTest(name):
+				self.assertEqual(bridge.override_bases(self.STORED, [row]), [d("55000.99")])
+		new = line_row(FRANCE, "S", override="0", override_reason="Kein Unternehmer")
+		self.assertEqual(bridge.override_bases(self.STORED, [new]), [d("4000.00")])
+
+	def test_a_line_the_statement_did_not_hold_has_no_basis_yet(self):
+		row = line_row("ATU99999999", "L", override="2500", override_reason="Verbringen")
+		self.assertEqual(bridge.override_bases(self.STORED, [row]), [None])
+		self.assertEqual(bridge.override_bases((), [row]), [None])
+
+
+class AcceptancesTest(TestCase):
+	def test_the_release_of_each_line_with_its_reason(self):
+		self.assertEqual(
+			bridge.acceptances_of(
+				[
+					line_row("atu 12345678", "L", acceptance_reason=" Bestätigt am Liefertag "),
+					line_row(FRANCE, "S", acceptance_reason=" "),
+					line_row(SPAIN, "L"),
+				]
+			),
+			{(AUSTRIA, Art.L): "Bestätigt am Liefertag"},
+		)
+
+
+class LineRowsOfOverridesAndReleasesTest(TestCase):
+	def test_a_row_keeps_the_basis_of_its_override_and_its_release(self):
+		lines = build(
+			(invoice("SINV-1", "1000.99"), invoice("SINV-2", "20.00", kennzahl="21", vat_id=FRANCE)),
+			FIGURES,
+			validity={AUSTRIA: Validity.UNCONFIRMED, FRANCE: Validity.CONFIRMED},
+			overrides={(FRANCE, Art.S): Override(d("0"), "Kein Unternehmer")},
+			accepted={(AUSTRIA, Art.L): "Bestätigt am Liefertag"},
+		)
+		rows = bridge.line_rows(lines, {}, MARCH)
+		self.assertEqual(
+			[(row["override_basis"], row["acceptance_reason"], row["blocked"]) for row in rows],
+			[(d("0"), "Bestätigt am Liefertag", 0), (d("20.00"), "", 0)],
+		)
+
+	def test_a_number_without_confirmation_shows_so(self):
+		lines = statement(
+			invoice("SINV-1", "10.00"), invoice("SINV-2", "10.00", vat_id="DE123456789"), validity={}
+		)
+		rows = bridge.line_rows(lines, {}, MARCH)
+		self.assertEqual(
+			[(row["vat_id"], row["confirmation_outcome"]) for row in rows],
+			[(AUSTRIA, "unconfirmed"), ("DE123456789", None)],
+		)
+		self.assertIn(
+			"unconfirmed", fields_of("recapitulative_statement_line")["confirmation_outcome"]["options"]
+		)
+
+	def test_a_berichtigung_shows_an_unchanged_line_with_an_unconfirmed_number_as_holding_nothing(self):
+		lines = statement(invoice("SINV-1", "1000.00"), validity={AUSTRIA: Validity.UNCONFIRMED})
+		(unchanged,) = bridge.line_rows(lines, {}, MARCH, {(AUSTRIA, Art.L): d("1000")})
+		(changed,) = bridge.line_rows(lines, {}, MARCH, {(AUSTRIA, Art.L): d("900")})
+		self.assertEqual((unchanged["blocked"], changed["blocked"]), (0, 1))
+
+
+class ReadyAgainstTest(TestCase):
+	def test_a_berichtigung_is_ready_when_only_lines_it_repeats_unchanged_are_unconfirmed(self):
+		lines = statement(invoice("SINV-1", "1000.00"), validity={AUSTRIA: Validity.UNCONFIRMED})
+		hints = bridge.hint_rows(lines.findings)
+		self.assertFalse(bridge.ready(lines, hints))
+		self.assertTrue(bridge.ready(lines, hints, {(AUSTRIA, Art.L): d("1000")}))
+		self.assertFalse(bridge.ready(lines, hints, {(AUSTRIA, Art.L): d("900")}))
+
+	def test_the_findings_on_overrides_releases_and_old_confirmations_come_from_the_lines(self):
+		self.assertLessEqual(
+			{Code.OVERRIDE_STALE, Code.VAT_ID_ACCEPTED, Code.CONFIRMATION_STALE}, bridge.LINE_CODES
+		)
+
+
+class RowNamesTest(TestCase):
+	"""Every save builds the lines and the findings anew; rows that stay keep the names they had, so that the version
+	of the statement shows what changed and not every row removed and added."""
+
+	def test_a_row_keeps_the_name_of_the_stored_row_of_its_key(self):
+		stored = [
+			{"name": "a1", "vat_id": AUSTRIA, "art": "L"},
+			{"name": "f1", "vat_id": FRANCE, "art": "S"},
+		]
+		rows = [{"vat_id": FRANCE, "art": "S"}, {"vat_id": SPAIN, "art": "L"}]
+		self.assertEqual(
+			bridge.with_names(rows, stored, ("vat_id", "art")),
+			[{"name": "f1", "vat_id": FRANCE, "art": "S"}, {"vat_id": SPAIN, "art": "L"}],
+		)
+
+	def test_rows_of_the_same_key_take_one_name_each(self):
+		stored = [{"name": "h1", "code": "X", "text": "a"}, {"name": "h2", "code": "X", "text": "a"}]
+		rows = [{"code": "X", "text": "a"}] * 3
+		self.assertEqual(
+			[row.get("name") for row in bridge.with_names(rows, stored, ("code", "text"))], ["h1", "h2", None]
+		)
+
+
+class LeftOutTest(TestCase):
+	"""The file for Mein ELSTER and the print hold the lines the ZM reports; the lines it leaves out are named, so that
+	nobody takes the file or the print for the whole statement."""
+
+	def test_the_lines_with_an_amount_that_the_file_does_not_report(self):
+		rows = [
+			line_row(AUSTRIA, "L", "1000", amount="1000.00", in_file=1),
+			line_row("", "L", "1200", amount="1200.00", party="Muster Kft.", in_file=0),
+			line_row("PL-12", "S", "800", amount="800.00", party="Muster Sp. z o.o.", in_file=0),
+			line_row(FRANCE, "S", "0", amount="0.00", in_file=0),
+		]
+		self.assertEqual(
+			bridge.left_out(rows, correction=False),
+			[
+				("ohne USt-IdNr.", "L", "Muster Kft.", d("1200.00")),
+				("PL-12", "S", "Muster Sp. z o.o.", d("800.00")),
+			],
+		)
+
+	def test_a_berichtigung_leaves_out_the_lines_it_repeats_unchanged_without_naming_them(self):
+		rows = [
+			line_row(AUSTRIA, "L", "1000", amount="1000.00", filed_amount="1000", in_file=0),
+			line_row("", "L", "50", amount="50.00", filed_amount="0", in_file=0),
+		]
+		self.assertEqual(bridge.left_out(rows, correction=True), [("ohne USt-IdNr.", "L", "", d("50.00"))])
+
+
+class UncomparedTest(TestCase):
+	"""A reconciliation row without filed Voranmeldungen to compare with says why, instead of 0,00 €."""
+
+	def test_names_the_months_without_a_filed_voranmeldung(self):
+		returns = [FiledReturn(date(2026, 9, 1), date(2026, 9, 30))]
+		self.assertEqual(
+			bridge.uncompared(returns, (date(2026, 7, 1), date(2026, 9, 30))),
+			"Nicht verglichen: Für Juli 2026, August 2026 ist keine Voranmeldung abgegeben.",
+		)
+
+	def test_says_so_when_the_voranmeldungen_do_not_fit_the_months(self):
+		returns = [
+			FiledReturn(date(2026, 7, 1), date(2026, 9, 30)),
+			FiledReturn(date(2026, 9, 1), date(2026, 9, 30)),
+		]
+		self.assertEqual(
+			bridge.uncompared(returns, (date(2026, 7, 1), date(2026, 9, 30))),
+			"Nicht verglichen: Die abgegebenen Voranmeldungen decken die Monate der Meldung nicht je einmal ab.",
+		)
+
+	def test_nothing_to_say_when_they_are_compared_or_the_statement_has_no_such_months(self):
+		returns = [FiledReturn(date(2026, 7, 1), date(2026, 9, 30))]
+		self.assertEqual(bridge.uncompared(returns, (date(2026, 7, 1), date(2026, 9, 30))), "")
+		self.assertEqual(
+			bridge.uncompared([], None), "Nicht verglichen: Die Meldung umfasst keine Monate dieser Art."
+		)
+
+	def test_the_rows_carry_the_note_of_their_art(self):
+		lines = statement(invoice("SINV-1", "1000.00"))
+		rows = bridge.reconciliation_rows(reconcile(lines, [], FIGURES), {"L": "a", "D": "a", "S": "b"})
+		self.assertEqual([row["filed_note"] for row in rows], ["a", "a", "b"])
+		self.assertEqual(
+			[row["filed_note"] for row in bridge.reconciliation_rows(reconcile(lines, [], FIGURES))],
+			["", "", ""],
+		)
