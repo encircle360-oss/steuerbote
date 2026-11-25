@@ -4,6 +4,7 @@ from unittest import TestCase
 
 from steuerbote.steuerbote.doctype.vat_return.late import (
 	BOOKED_AFTER_FILING,
+	CANCELLED_AFTER_FILING,
 	CHANGED_AMOUNT,
 	CHANGED_SINCE_FILING,
 	MOVED_HERE,
@@ -11,8 +12,10 @@ from steuerbote.steuerbote.doctype.vat_return.late import (
 	NEEDS_CORRECTION,
 	OUTSIDE_MOVED_HERE,
 	OUTSIDE_NEEDS_CORRECTION,
+	REPORTED_BY_CORRECTION,
 	Row,
 	change_rows,
+	correction_rows,
 	current_rows,
 	filed_rows,
 )
@@ -26,9 +29,15 @@ BOOKED = datetime(2026, 9, 5, 9, 30)
 
 
 def placement(
-	tax_period: Period | None, period: Period | None, late: bool, voucher: str = "Sales Invoice:SINV-1"
+	tax_period: Period | None,
+	period: Period | None,
+	late: bool,
+	voucher: str = "Sales Invoice:SINV-1",
+	cancellation: bool = False,
 ):
-	booking = Booking("8400", voucher, date(2026, 9, 5), BOOKED, credit=Decimal("100.00"))
+	booking = Booking(
+		"8400", voucher, date(2026, 9, 5), BOOKED, credit=Decimal("100.00"), cancellation=cancellation
+	)
 	return Placement(booking, date(2026, 7, 31), tax_period, period, late)
 
 
@@ -75,6 +84,50 @@ class FiledRowsTest(TestCase):
 			[("SINV-1", MOVED_TO, ("August 2026",)), ("JV-2", NEEDS_CORRECTION, ("Juli 2026",))],
 		)
 		self.assertFalse(rows[0].needs_correction)
+
+
+class CancellationRowsTest(TestCase):
+	"""A voucher cancelled after the filing of its period is named as a cancellation, wherever it is reported."""
+
+	def test_on_the_current_return(self):
+		moved, kept = current_rows(
+			[
+				placement(JULY, SEPTEMBER, late=True, cancellation=True),
+				placement(AUGUST, AUGUST, late=True, voucher="Journal Entry:JV-2", cancellation=True),
+			],
+			SEPTEMBER,
+		)
+		self.assertEqual((moved.kind, moved.template), (CANCELLED_AFTER_FILING, MOVED_HERE))
+		self.assertEqual((kept.kind, kept.template), (CANCELLED_AFTER_FILING, NEEDS_CORRECTION))
+		self.assertTrue(kept.needs_correction)
+
+	def test_on_the_filed_return(self):
+		(row,) = filed_rows([placement(JULY, JULY, late=True, cancellation=True)], JULY)
+		self.assertEqual((row.kind, row.template), (CANCELLED_AFTER_FILING, NEEDS_CORRECTION))
+
+
+class CorrectionRowsTest(TestCase):
+	"""A corrected return names the bookings of its own period made after the filing it corrects, which it reports."""
+
+	def test_names_the_late_bookings_of_its_period_it_reports(self):
+		rows = correction_rows(
+			[
+				placement(JULY, JULY, late=True, voucher="Sales Invoice:SINV-1"),
+				placement(JULY, JULY, late=True, voucher="Journal Entry:JV-2", cancellation=True),
+				placement(JULY, AUGUST, late=True, voucher="Sales Invoice:SINV-3"),
+				placement(AUGUST, AUGUST, late=True, voucher="Sales Invoice:SINV-4"),
+				placement(JULY, JULY, late=False, voucher="Sales Invoice:SINV-5"),
+			],
+			JULY,
+		)
+		self.assertEqual(
+			[(row.voucher_no, row.kind, row.template, row.values) for row in rows],
+			[
+				("SINV-1", BOOKED_AFTER_FILING, REPORTED_BY_CORRECTION, ("Juli 2026",)),
+				("JV-2", CANCELLED_AFTER_FILING, REPORTED_BY_CORRECTION, ("Juli 2026",)),
+			],
+		)
+		self.assertFalse(any(row.needs_correction for row in rows))
 
 
 class ChangeRowsTest(TestCase):

@@ -11,6 +11,7 @@ from unittest import TestCase, mock
 from steuerbote.elster import zm_xml
 from steuerbote.elster.tests import eric_schema, zm_examples
 from steuerbote.eric import fake
+from steuerbote.eric.datenart import of_version
 from steuerbote.eric.fake import DOCUMENTATION_VARIABLE, SIMULATED_VERSION, Simulation, placeholder_pdf
 from steuerbote.eric.header import EnvelopeHeader
 from steuerbote.eric.result import ERROR, HINT, TESTMERKER, Operation, Outcome
@@ -293,6 +294,42 @@ class SchemaTest(SimulationTestCase):
 		result = simulation.run(Operation.VALIDATE, nutzdaten, HEADER)
 		self.assertIs(result.outcome, Outcome.INVALID)
 		self.assertNotIn("geheim", " ".join(message.text for message in result.messages))
+
+
+class SkippedSchemaTest(SimulationTestCase):
+	"""Why the schema check did not run, in the result of Prüfen and in „Laufzeitumgebung prüfen“."""
+
+	def test_says_that_the_variable_is_not_set(self):
+		result = Simulation().run(Operation.VALIDATE, NUTZDATEN, HEADER)
+		self.assertEqual(
+			result.messages[1].text,
+			"Die Simulation prüft nur Aufbau, Kontext und Pflichtfelder, nicht das XSD des Jahres 2026: Die Prüfung "
+			"gegen das Schema wurde übersprungen, weil die Umgebungsvariable STEUERBOTE_ERIC_DOC_DIR nicht gesetzt "
+			"ist; sie nennt die entpackte ERiC-Dokumentation mit UStVA-2026.xsd.",
+		)
+
+	def test_says_where_the_schema_is_missing(self):
+		os.environ[DOCUMENTATION_VARIABLE] = str(self.directory)
+		result = Simulation().run(Operation.VALIDATE, NUTZDATEN, HEADER)
+		self.assertIn(
+			f"weil STEUERBOTE_ERIC_DOC_DIR auf {self.directory} zeigt und dort UStVA-2026.xsd fehlt.",
+			result.messages[1].text,
+		)
+
+	def test_the_check_of_the_runtime_names_the_schema_or_why_it_is_missing(self):
+		kind = of_version(HEADER.datenart_version)
+		check = Simulation().schema_check(kind)
+		self.assertEqual((check.name, check.ok), ("schema", False))
+		self.assertIn("STEUERBOTE_ERIC_DOC_DIR nicht gesetzt", check.detail)
+		os.environ[DOCUMENTATION_VARIABLE] = str(self.directory)
+		self.assertIn("dort UStVA-2026.xsd fehlt", Simulation().schema_check(kind).detail)
+		documentation = self.documentation(self.directory / "Dokumentation")
+		check = Simulation(documentation).schema_check(kind)
+		self.assertEqual((check.name, check.ok), ("schema", True))
+		self.assertEqual(
+			check.detail,
+			f"Die Simulation prüft „Prüfen“ gegen UStVA-2026.xsd aus {documentation}.",
+		)
 
 
 class Ust1HTest(SimulationTestCase):
