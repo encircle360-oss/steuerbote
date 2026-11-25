@@ -16,35 +16,6 @@ from steuerbote.steuerbote import partner_vat_ids
 COMPANY = "company"
 PARTY_TYPE = "party_type"
 FILTERS = (COMPANY, PARTY_TYPE)
-COLUMNS = (
-	{
-		"fieldname": "party_type",
-		"label": "Party Type",
-		"fieldtype": "Link",
-		"options": "DocType",
-		"width": 110,
-	},
-	{
-		"fieldname": "party",
-		"label": "Party",
-		"fieldtype": "Dynamic Link",
-		"options": "party_type",
-		"width": 220,
-	},
-	{"fieldname": "tax_id", "label": "VAT ID", "fieldtype": "Data", "width": 150},
-	{"fieldname": "standing", "label": "Confirmation Standing", "fieldtype": "Data", "width": 170},
-	{"fieldname": "asked_on", "label": "Latest Answer", "fieldtype": "Date", "width": 110},
-	{"fieldname": "age", "label": "Age (Days)", "fieldtype": "Int", "width": 90},
-	{"fieldname": "result", "label": "Result", "fieldtype": "Data", "width": 90},
-	{
-		"fieldname": "confirmation",
-		"label": "VAT ID Confirmation",
-		"fieldtype": "Link",
-		"options": "VAT ID Confirmation",
-		"width": 160,
-	},
-	{"fieldname": "note", "label": "Note", "fieldtype": "Data", "width": 360},
-)
 NO_REQUESTER = "{0} has no own USt-IdNr. in its VAT Return Settings, so Steuerbote confirms nothing for it."
 STANDING_NOTES = {
 	"Missing": "No confirmation yet.",
@@ -71,7 +42,35 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 
 
 def get_columns() -> list[dict[str, Any]]:
-	return [{**column, "label": _(column["label"])} for column in COLUMNS]
+	return [
+		{
+			"fieldname": "party_type",
+			"label": _("Party Type"),
+			"fieldtype": "Link",
+			"options": "DocType",
+			"width": 110,
+		},
+		{
+			"fieldname": "party",
+			"label": _("Party"),
+			"fieldtype": "Dynamic Link",
+			"options": "party_type",
+			"width": 220,
+		},
+		{"fieldname": "tax_id", "label": _("VAT ID"), "fieldtype": "Data", "width": 150},
+		{"fieldname": "standing", "label": _("Confirmation Standing"), "fieldtype": "Data", "width": 170},
+		{"fieldname": "asked_on", "label": _("Latest Answer"), "fieldtype": "Date", "width": 110},
+		{"fieldname": "age", "label": _("Age (Days)"), "fieldtype": "Int", "width": 90},
+		{"fieldname": "result", "label": _("Result"), "fieldtype": "Data", "width": 90},
+		{
+			"fieldname": "confirmation",
+			"label": _("VAT ID Confirmation"),
+			"fieldtype": "Link",
+			"options": "VAT ID Confirmation",
+			"width": 160,
+		},
+		{"fieldname": "note", "label": _("Note"), "fieldtype": "Data", "width": 360},
+	]
 
 
 def _row(row: dict) -> dict[str, Any]:

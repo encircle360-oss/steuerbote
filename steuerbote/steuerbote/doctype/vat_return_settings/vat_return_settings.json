@@ -205,7 +205,7 @@
   },
   {
    "default": "90",
-   "description": "The days the latest confirmation of a USt-IdNr. may lie back: before the end of the Voranmeldungszeitraum for the hints of Calculate, before the posting date of an invoice behind Kz 21, and before today for the daily renewal. A hint never holds the return.",
+   "description": "Calculate gives a hint on a USt-IdNr. behind Kz 41, 42 or 21 whose latest confirmation lies more days before the end of the Voranmeldungszeitraum. A hint never holds the return. The same age applies to a Sales Invoice behind Kz 21 and to the daily renewal.",
    "fieldname": "max_confirmation_age",
    "fieldtype": "Int",
    "label": "Maximum Age of a VAT ID Confirmation (Days)",

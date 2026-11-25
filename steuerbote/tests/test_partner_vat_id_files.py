@@ -329,7 +329,6 @@ class TranslationFilesTest(TestCase):
 		texts |= set(literal(SETUP, "MESSAGES"))
 		texts |= {value for value in literal(PARTNERS, "STATUSES") if value}
 		texts |= set(literal(PARTNERS, "TRIGGERS"))
-		texts |= {column["label"] for column in literal(REPORT / f"{REPORT.name}.py", "COLUMNS")}
 		texts |= set(literal(REPORT / f"{REPORT.name}.py", "STANDING_NOTES").values())
 		texts.add(literal(REPORT / f"{REPORT.name}.py", "NO_REQUESTER"))
 		texts |= {standing.value for standing in Standing}

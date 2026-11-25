@@ -490,7 +490,8 @@ def run_party_confirmation(
 ) -> None:
 	"""The background job of request(): confirm the partner's number for each company that confirms it, unless a
 	query of today answers the question already, each confirmation committed at once as the proof of queries the
-	service received; then the status of the partner, and a notice to the user who started it."""
+	service received; then the status of the partner, which the end of the job commits, and a notice to the user who
+	started it."""
 	stored, failed = 0, []
 	try:
 		tax_id = frappe.db.get_value(party_type, party, "tax_id")
@@ -508,7 +509,6 @@ def run_party_confirmation(
 		status = (
 			refresh_status(party_type, party)[STATUS_FIELD] if frappe.db.exists(party_type, party) else ""
 		)
-		frappe.db.commit()
 	frappe.publish_realtime(
 		PARTY_EVENT,
 		{"party_type": party_type, "party": party, "status": status, "asked": stored, "failed": failed},
@@ -586,7 +586,6 @@ def renew_confirmations() -> None:
 		if frappe.db.exists(*party):
 			refresh_status(*party)
 	refresh_statuses()
-	frappe.db.commit()
 
 
 def partners_of(policy: CompanyPolicy) -> list[tuple[str, str, str]]:
