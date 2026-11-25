@@ -21,8 +21,6 @@ from steuerbote.tests.helpers import (
 )
 from steuerbote.ustva import Classification, Supplier, Voucher, calculate
 
-IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
-
 COMPANY = "Steuerbote Test Lieferanten GmbH"
 OTHER_COMPANY = "Steuerbote Test Andere Lieferanten GmbH"
 MAPPING = "VAT Return Mapping"
