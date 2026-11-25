@@ -229,18 +229,32 @@ class AnlagenspiegelTest(TestCase):
 		self.assertIn("· {{ total.value_type | e }}</td></tr>", template)
 
 
-CLOSING = '{%- if annual.findings | length <= 8 %}<div class="sb-keep">{% else %}<div>{% endif %}'
+FEW_FINDINGS = '{%- if annual.findings | length <= 8 %}<div class="sb-keep">{% endif %}'
+MANY_FINDINGS = '{%- if annual.findings | length > 8 %}<div class="sb-keep">{% endif %}'
+REMARKS = '{% include "steuerbote/templates/includes/annual_filing/remarks.html" %}'
+FINDINGS = '{% include "steuerbote/templates/includes/annual_filing/findings.html" %}'
+FOOTER = '{% include "steuerbote/templates/includes/annual_filing/footer.html" %}'
 
 
 class ClosingTest(TestCase):
-	def test_the_closing_note_of_an_annual_document_stays_with_few_findings_and_the_remarks(self):
-		"""Alone, the closing note of three lines can end up on a page of its own; with up to eight findings the
-		findings, the remarks and the note move to the next page together, with more the findings fill the pages."""
-		footer = '{% include "steuerbote/templates/includes/annual_filing/footer.html" %}'
-		findings = '{% include "steuerbote/templates/includes/annual_filing/findings.html" %}'
+	"""Alone, the closing note of three lines can end up on a page of its own. It moves to the next page together with
+	the remarks, and with up to eight findings with the findings too; more findings fill the pages before."""
+
+	def test_an_annual_document_keeps_the_closing_note_with_the_remarks_and_few_findings(self):
 		for name, (_, template) in print_formats().items():
-			if footer not in template:
+			if FOOTER not in template:
 				continue
 			with self.subTest(print_format=name):
-				self.assertLess(template.index(CLOSING), template.index(findings))
-				self.assertRegex(template[template.index(footer) :], r"^\{% include [^%]+%\}\s*</div>")
+				self.assertLess(template.index(FEW_FINDINGS), template.index(FINDINGS))
+				self.assertLess(template.index(FINDINGS), template.index(MANY_FINDINGS))
+				self.assertLess(template.index(MANY_FINDINGS), template.index(REMARKS))
+				self.assertRegex(template[template.index(FOOTER) :], r"^\{% include [^%]+%\}\s*</div>")
+
+	def test_the_other_formats_keep_the_closing_note_with_the_remarks(self):
+		for name, (_, template) in print_formats().items():
+			if FOOTER in template:
+				continue
+			with self.subTest(print_format=name):
+				closing = template[template.rindex('<div class="sb-keep">') :]
+				self.assertRegex(closing, r"<h2>(Anmerkungen|Bemerkungen)</h2>")
+				self.assertIn('<div class="sb-footer">', closing)
