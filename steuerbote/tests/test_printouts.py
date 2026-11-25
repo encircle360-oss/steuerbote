@@ -207,3 +207,25 @@ class CheckTest(TestCase):
 				"Seite 1: Überschrift „Befunde“ allein am Seitenende",
 			],
 		)
+
+
+class LanguageTest(TestCase):
+	def test_names_a_text_the_printout_must_hold_and_lacks(self):
+		found = pages(
+			("Befunde", "Steuerbote hat die Vordrucke für 2026 vorläufig"),
+		)
+		self.assertEqual(printouts.somewhere(found, ["Steuerbote hat die Vordrucke"]), [])
+		self.assertEqual(
+			printouts.somewhere(found, ["Bemessungsgrundlage"]), ["„Bemessungsgrundlage“ fehlt im Ausdruck"]
+		)
+
+	def test_names_a_text_the_printout_must_not_hold(self):
+		found = pages(("Befunde",), ("Steuerbote has the forms of 2026 provisionally",))
+		self.assertEqual(
+			printouts.nowhere(found, ["Steuerbote has"]), ["Seite 2: „Steuerbote has“ im Ausdruck"]
+		)
+		self.assertEqual(printouts.nowhere(found, ["Umsatzsteuer"]), [])
+
+	def test_check_reports_both(self):
+		expected = Expectations(pages=(1, 1), somewhere=("Seite",), nowhere=("Befunde",))
+		self.assertEqual(printouts.check(pages(("Befunde",)), expected), ["Seite 1: „Befunde“ im Ausdruck"])
