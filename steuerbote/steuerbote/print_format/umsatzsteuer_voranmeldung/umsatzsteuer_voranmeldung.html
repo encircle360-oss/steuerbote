@@ -2,7 +2,9 @@
 	Umsatzsteuer-Voranmeldung in the order and wording of the form USt 1 A 2026 (BMF letter of
 	29 December 2025, GZ III C 3 - S 7344/00039/007/036). Every amount is the final amount of a row of the
 	return, or a sum the VAT Return keeps of them; lines 45 and 48 are the differences of those sums that the
-	form itself prints. The form computes the tax of lines 13, 14, 25 and 26 from the base in full euros.
+	form itself prints. The form computes the tax of lines 13, 14, 25 and 26 from the base in full euros; a return
+	calculated with the tax as booked (VAT Return Settings, „Steuer zu Umsätzen mit festem Steuersatz“) prints the tax
+	it files with Kz 83 instead (doc.statutory_taxes()).
 	A year whose forms are provisional prints this form under the mark „vorläufig“ with the documentation of ERiC
 	and the form it takes (steuerbote/ustva/years.py), 2027 until the BMF letter with the form of 2027.
 	Text fields print as Frappe formats them, since Frappe sanitises their markup when a document is saved.
@@ -13,6 +15,7 @@
 {%- set remaining_tax = frappe.utils.flt(output_tax - frappe.utils.flt(doc.input_tax, 2), 2) -%}
 {%- set prepayment = frappe.utils.flt(remaining_tax + frappe.utils.flt(doc.other_tax, 2), 2) -%}
 {%- set derived_rates = {"81": 19, "86": 7, "89": 19, "93": 7} -%}
+{%- set statutory_taxes = doc.statutory_taxes() -%}
 {%- set sums = {
 	37: ("Umsatzsteuer (Summe der Zeilen 13 bis 18 und 25 bis 32)", "", output_tax),
 	45: ("Verbleibender Betrag (Zeile 37 abzüglich der Zeilen 38 bis 44)", "", remaining_tax),
@@ -77,6 +80,7 @@
 	<td class="sb-kz">{{ tax.kennzahl if tax else "" }}</td>
 	<td class="sb-num">
 		{%- if tax -%}{{ cents(tax.final) }}
+		{%- elif base and base.kennzahl in statutory_taxes -%}{{ cents(statutory_taxes[base.kennzahl]) }}
 		{%- elif rate -%}{{ cents(frappe.utils.flt(base.final * rate / 100, 2)) }}
 		{%- endif -%}
 	</td>

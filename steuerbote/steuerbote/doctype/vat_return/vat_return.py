@@ -101,7 +101,14 @@ FINDINGS = ("checks", "deviations", "unmapped", "hints", "comparison", "late_cha
 # The reconciliation with the registers, which Berechnen fills and whose explanations a save takes.
 RECONCILIATION = "register_reconciliation"
 CALCULATED_TABLES = ("kennzahlen", *FINDINGS, RECONCILIATION)
-CALCULATED_FIELDS = ("status", "ready", "accounts_without_number", "period_basis", "late_treatment")
+CALCULATED_FIELDS = (
+	"status",
+	"ready",
+	"accounts_without_number",
+	"period_basis",
+	"late_treatment",
+	"statutory_tax",
+)
 
 # TransferTicketSType in headerbasis_datentypen.xsd of the ELSTER Basisschema.
 TRANSFERTICKET = re.compile(r"[0-9a-km-z]{2}[0-9]{3}[0-9a-km-z]{27}")
@@ -168,6 +175,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		remarks: DF.SmallText | None
 		rhythm: DF.Literal["monthly", "quarterly"]
 		sondervorauszahlung: DF.Currency
+		statutory_tax: DF.Literal["", "From the Base in Full Euros", "As Booked"]
 		status: DF.Literal["Entwurf", "Berechnet", "Bereit", "Abgegeben", "Ersetzt"]
 		supplementary_code: DF.Literal["", "1", "2", "3", "4"]
 		to_date: DF.Date | None
@@ -197,6 +205,7 @@ class VATReturn(Confirming, Transmittable, Document):
 				"accounts_without_number": 0,
 				"period_basis": "",
 				"late_treatment": "",
+				"statutory_tax": "",
 			}
 		)
 
@@ -263,6 +272,7 @@ class VATReturn(Confirming, Transmittable, Document):
 		result, release_hints = released(
 			self.company, _calculated(lines, mapping, period, settings), lines, mapping, period
 		)
+		self.statutory_tax = statutory_tax_of(settings).value
 		self.set("kennzahlen", bridge.kennzahl_rows(result, catalogue, overrides))
 		self.set("checks", bridge.check_rows(result))
 		self.set("deviations", bridge.deviation_rows(result))
@@ -666,8 +676,25 @@ class VATReturn(Confirming, Transmittable, Document):
 		)
 		self.update({field: before.get(field) for field in CALCULATED_FIELDS})
 
+	def statutory_tax_of_the_return(self) -> ustva.StatutoryTax:
+		"""The setting „Steuer zu Umsätzen mit festem Steuersatz“ the return was calculated with."""
+		return bridge.statutory_tax_of(self.statutory_tax)
+
+	def statutory_taxes(self) -> dict[str, float]:
+		"""For the print format „Umsatzsteuer-Voranmeldung“: the tax as booked of each base at a statutory rate that the
+		return files; a base without one prints the tax of the form, the rate times the base in full euros."""
+		taxes = _read_rows(
+			bridge.filed_taxes,
+			self.kennzahlen,
+			ustva.catalogue_for(cint(self.year)),
+			self.statutory_tax_of_the_return(),
+		)
+		return {number: float(tax) for number, tax in taxes.items()}
+
 	def _set_final_amounts(self) -> None:
-		filing = _read_rows(bridge.filing, self.kennzahlen, cint(self.year))
+		filing = _read_rows(
+			bridge.filing, self.kennzahlen, cint(self.year), self.statutory_tax_of_the_return()
+		)
 		for row, values in zip(self.kennzahlen, filing.rows, strict=True):
 			row.update(values)
 		self.update(filing.totals)
@@ -675,7 +702,13 @@ class VATReturn(Confirming, Transmittable, Document):
 	def _require_amounts_as_stored(self, stored: Document) -> None:
 		"""A filing carries the amounts the return holds, which every save sets from its Kennzahlen: computed again
 		from the rows, they are the amounts ``stored`` holds, or nothing is filed."""
-		if not _read_rows(bridge.amounts_kept, self.kennzahlen, stored, cint(self.year)):
+		if not _read_rows(
+			bridge.amounts_kept,
+			self.kennzahlen,
+			stored,
+			cint(self.year),
+			self.statutory_tax_of_the_return(),
+		):
 			frappe.throw(
 				_(
 					"The amounts of {0} do not agree with its Kennzahlen as stored. Reload the return, and calculate it again if they still do not agree."
@@ -768,7 +801,8 @@ def _read_rows(read, rows, *args):
 
 
 def settings_for(company: str) -> Document:
-	"""The company's VAT Return Settings: rhythm, Dauerfristverlängerung, Sondervorauszahlung, tolerance."""
+	"""The company's VAT Return Settings: rhythm, Dauerfristverlängerung, Sondervorauszahlung, tolerance, the tax of the
+	bases at a statutory rate."""
 	if not frappe.db.exists(SETTINGS_DOCTYPE, company):
 		frappe.throw(
 			_(
@@ -789,11 +823,18 @@ def mapping_for(company: str, year: int) -> ustva.Mapping:
 	return frappe.get_doc(MAPPING_DOCTYPE, company).to_mapping(year)
 
 
+def statutory_tax_of(settings: Document) -> ustva.StatutoryTax:
+	"""The setting „Steuer zu Umsätzen mit festem Steuersatz“ of the VAT Return Settings; settings saved before it
+	existed take the tax of the form until the patch fills it."""
+	return bridge.statutory_tax_of(settings.get("statutory_tax"))
+
+
 def _calculated(
 	lines: list[ustva.LedgerLine], mapping: ustva.Mapping, period: ustva.Period, settings: Document
 ) -> ustva.UstvaResult:
-	"""The core's result for a period, with Kz 39 in the last period of a year with Dauerfristverlängerung and with
-	the suppliers of the vouchers of sections C and D (steuerbote.suppliers)."""
+	"""The core's result for a period, with Kz 39 in the last period of a year with Dauerfristverlängerung, with
+	the suppliers of the vouchers of sections C and D (steuerbote.suppliers) and the tax of the bases at a statutory
+	rate as the settings choose it."""
 	try:
 		return ustva.calculate(
 			lines,
@@ -805,6 +846,7 @@ def _calculated(
 			),
 			tolerance=bridge.to_amount(settings.tolerance),
 			vouchers=load_vouchers(settings.company, lines, mapping),
+			statutory_tax=statutory_tax_of(settings),
 		)
 	except ValueError as error:
 		frappe.throw(str(error))
@@ -856,7 +898,9 @@ def build_comparison(
 	)
 	ledger = ledger or VatLedger.for_period(doc.company, period)
 	return plausibility.compare(
-		_read_rows(bridge.final_amounts, doc.kennzahlen, period.year),
+		_read_rows(
+			bridge.final_amounts, doc.kennzahlen, period.year, bridge.statutory_tax_of(doc.statutory_tax)
+		),
 		_earlier_period(ledger, period.previous(), settings, mapping),
 		_earlier_period(ledger, year_before(period), settings, mapping),
 		mapping.catalogue,
