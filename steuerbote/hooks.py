@@ -99,6 +99,9 @@ doc_events = {
 	"Sales Invoice": {"before_submit": "steuerbote.steuerbote.partner_vat_ids.check_invoice"},
 }
 
+# Drucken in the print view prints the PDF of the generator for the print formats of Steuerbote.
+page_js = {"print": "public/js/print_view.js"}
+
 # The form of a customer or supplier confirms its USt-IdNr. and shows where its confirmations stand; a draft Sales
 # Invoice confirms that of its customer.
 doctype_js = {
