@@ -41,6 +41,7 @@ from steuerbote.eric.result import (
 )
 from steuerbote.eric.service import PrivacyNoticeNotConfirmed, WorkerOutput
 from steuerbote.eric.tests import stub
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import stash_certificate
 from steuerbote.steuerbote.doctype.eric_settings.eric_settings import eric_log_root, run_installation
 from steuerbote.steuerbote.doctype.vat_return import transmission_adapter
@@ -599,7 +600,7 @@ class TestTransmission(TransmissionTestCase):
 			}
 		)
 		with self.assertRaisesRegex(frappe.ValidationError, "no document of type Company"):
-			transmission.insert(ignore_permissions=True)
+			guards.insert_record(transmission)
 
 	def test_a_transmission_stays_as_it_was_recorded(self):
 		doc = self.calculated(1)

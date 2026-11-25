@@ -94,7 +94,8 @@
    "label": "Company",
    "options": "Company",
    "remember_last_selected_value": 1,
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1
   },
   {
    "description": "The Veranlagungszeitraum, the calendar year the Wirtschaftsjahr ends in; it chooses the forms of the Körperschaftsteuer.",
@@ -103,7 +104,8 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Year",
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1
   },
   {
    "default": "0",
@@ -535,7 +537,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-24 10:00:00.000000",
+ "modified": "2026-11-25 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Corporate Income Tax Return",

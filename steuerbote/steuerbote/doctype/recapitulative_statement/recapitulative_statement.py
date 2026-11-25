@@ -51,6 +51,7 @@ from steuerbote import holiday_list, prior_filings, vatid, zm_sources
 from steuerbote.elster import zm_xml
 from steuerbote.eric import datenart as eric_datenart
 from steuerbote.setup import start as first_year
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
 	FILED_VIA,
@@ -73,6 +74,7 @@ from steuerbote.steuerbote.doctype.vat_return.vat_return import (
 	settings_for,
 )
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
+from steuerbote.steuerbote.guards import Filing
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
 from steuerbote.vatid import Details, UrllibFetch
 from steuerbote.zm.comparison import before_start, compare, comparison_hints, earlier
@@ -101,8 +103,6 @@ READY = "Bereit"
 FILED = "Abgegeben"
 REPLACED = "Ersetzt"
 
-PERIOD_FIELDS = ("company", "year", "period_kind", "period_index")
-CALCULATED_TABLES = ("lines", "vouchers", "reconciliation", "comparison", "hints")
 # What Berechnen stores besides the lines and the hints, which every save builds anew.
 STORED_TABLES = ("vouchers", "reconciliation", "comparison")
 TOTALS = ("total_l", "total_d", "total_s")
@@ -117,7 +117,7 @@ CONFIRMATION_JOB = (
 FILED_THROUGH_ERIC = "eric"
 
 
-class RecapitulativeStatement(Confirming, Transmittable, Document):
+class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -252,6 +252,7 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 				frappe.get_doc(DOCTYPE, name).db_set("status", REPLACED)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def calculate(self) -> None:
 		"""Berechnen: the lines of the Meldezeitraum from the ledger, with their vouchers and the latest
 		confirmation of each USt-IdNr., the threshold, the reconciliation and the previous period; overrides
@@ -328,10 +329,12 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 			self.flags.calculating = False
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def confirm_vat_ids(self) -> int:
 		"""USt-IdNrn. prüfen: ask about each USt-IdNr. the lines report, in a background job; returns how many
-		numbers the job asks about."""
-		self.check_permission("write")
+		numbers the job asks about. The query goes to the BZSt or VIES, so it needs the permission to submit, also
+		while ERiC runs as a simulation."""
+		guards.require_permission_to_send(self)
 		self.lock_for_confirmation()
 		if self.docstatus != 0:
 			frappe.throw(_("Only the USt-IdNrn. of a draft Zusammenfassende Meldung are confirmed."))
@@ -358,6 +361,7 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		self.save()
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def make_csv_file(self) -> str:
 		"""CSV für Mein ELSTER: the statement as saved, as the file the form of Mein ELSTER imports, attached
 		privately; a Berichtigung writes the lines that change what was filed. Returns the address of the file."""
@@ -370,6 +374,7 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		return saved._attach(bridge.csv_file_name(period, correction), content)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read")
 	def make_correction(self) -> str:
 		"""Berichtigung anlegen: a new statement for the Meldezeitraum, with the overrides of this one, that
 		reports what changed against the filings; calculated at once. Returns its name."""
@@ -418,6 +423,7 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		return correction.name
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read")
 	def ledger_changes_since_filing(self) -> list[str]:
 		"""The form asks this when it shows the filing of a Meldezeitraum: the vouchers whose share in the ledger of
 		its months now differs from the one it filed, as sentences, none while the ledger books what it filed.
@@ -431,6 +437,7 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		return [finding.text for finding in self._changes_since_filing()]
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("submit")
 	def mark_filed_outside(
 		self,
 		remarks: str | None = None,
@@ -730,17 +737,12 @@ class RecapitulativeStatement(Confirming, Transmittable, Document):
 		Frappe keeps no read-only field from a save through the API, so a save takes only the overrides and the
 		lines of its own from the rows it sends: the status, the vouchers, the reconciliation and the comparison
 		stay as Berechnen stored them, and so do the findings of the threshold, the reconciliation and the
-		comparison among the hints; each USt-IdNr. counts with its latest VAT ID Confirmation. Another company or
-		Meldezeitraum discards the calculation instead. A new statement is a draft (before_insert), so a calculated
-		one was saved.
+		comparison among the hints; each USt-IdNr. counts with its latest VAT ID Confirmation. Company and
+		Meldezeitraum stay as the statement was created (guards.Filing). A new statement is a draft (before_insert),
+		so a calculated one was saved.
 		"""
 		before = self.get_doc_before_save()
 		if before is None or self.flags.calculating:
-			return
-		if any(str(before.get(field)) != str(self.get(field)) for field in PERIOD_FIELDS):
-			for table in CALCULATED_TABLES:
-				self.set(table, [])
-			self.update({"ready": 0, "status": DRAFT, **dict.fromkeys(TOTALS, 0)})
 			return
 		self.update({"status": before.status, "ready": before.ready})
 		for table in STORED_TABLES:

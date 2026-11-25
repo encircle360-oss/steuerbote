@@ -259,9 +259,14 @@ class StandardFieldsTest(TestCase):
 		fields = {field.fieldname: field for field in standard_fields(FILING, DOCTYPE, transmits=True)}
 		self.assertEqual(
 			fields["company"],
-			StandardField("company", "Link", "Company", "Company", read_only=False, reqd=True),
+			StandardField(
+				"company", "Link", "Company", "Company", read_only=False, reqd=True, set_only_once=True
+			),
 		)
-		self.assertEqual(fields["year"], StandardField("year", "Int", "Year", read_only=False, reqd=True))
+		self.assertEqual(
+			fields["year"],
+			StandardField("year", "Int", "Year", read_only=False, reqd=True, set_only_once=True),
+		)
 		self.assertEqual(
 			fields["fiscal_year"], StandardField("fiscal_year", "Link", "Fiscal Year", "Fiscal Year")
 		)
@@ -300,6 +305,7 @@ class StandardFieldsTest(TestCase):
 					"options": field.options,
 					"read_only": int(field.read_only),
 					"reqd": int(field.reqd),
+					"set_only_once": int(field.set_only_once),
 				}
 				for field in standard_fields(FILING, DOCTYPE, transmits=True)
 			],
@@ -307,10 +313,26 @@ class StandardFieldsTest(TestCase):
 		self.assertEqual(field_problems(definition, FILING, transmits=True), [])
 		definition["fields"] = [field for field in definition["fields"] if field["fieldname"] != "deadline"]
 		definition["fields"][0] = {**definition["fields"][0], "label": "Firma"}
+		definition["fields"][1] = {**definition["fields"][1], "set_only_once": 0}
 		definition["fields"][5] = {**definition["fields"][5], "read_only": 0}
 		self.assertEqual(
 			field_problems(definition, FILING, transmits=True),
-			["company: label 'Firma', not 'Company'", "status: read_only 0, not 1", "deadline: missing"],
+			[
+				"company: label 'Firma', not 'Company'",
+				"year: set_only_once 0, not 1",
+				"status: read_only 0, not 1",
+				"deadline: missing",
+			],
+		)
+
+	def test_company_and_year_say_what_a_document_is_for_and_are_set_once(self):
+		self.assertEqual(
+			[
+				field.fieldname
+				for field in standard_fields(FILING, DOCTYPE, transmits=True)
+				if field.set_only_once
+			],
+			["company", "year"],
 		)
 
 	def test_a_definition_writes_no_options_or_flags_it_leaves_out(self):
@@ -321,6 +343,7 @@ class StandardFieldsTest(TestCase):
 				| ({"options": field.options} if field.options else {})
 				| ({"read_only": 1} if field.read_only else {})
 				| ({"reqd": 1} if field.reqd else {})
+				| ({"set_only_once": 1} if field.set_only_once else {})
 				for field in standard_fields(FILING, DOCTYPE, transmits=False)
 			],
 		}

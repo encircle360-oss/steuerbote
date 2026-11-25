@@ -55,7 +55,10 @@ class MappingFormFilesTest(TestCase):
 		)
 		for method in methods:
 			with self.subTest(method=method):
-				self.assertRegex(self.source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+				self.assertRegex(
+					self.source,
+					rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\t@guards\.on_stored\([^\n]*\)\n\tdef {method}\(',
+				)
 
 	def test_the_check_reads_in_german(self):
 		german = translations()

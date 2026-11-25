@@ -835,7 +835,10 @@ class ZmFormFilesTest(TestCase):
 		source = (ZM_SCRIPT.parent / "recapitulative_statement.py").read_text(encoding="utf-8")
 		for method in sorted(set(re.findall(r'frm\.call\("(\w+)"', self.script))):
 			with self.subTest(method=method):
-				self.assertRegex(source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+				self.assertRegex(
+					source,
+					rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\t@guards\.on_stored\([^\n]*\)\n\tdef {method}\(',
+				)
 
 
 class VatReturnFormFilesTest(TestCase):

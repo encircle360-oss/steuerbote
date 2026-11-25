@@ -123,7 +123,10 @@ class ControllerFilesTest(TestCase):
 	def test_without_the_hersteller_id_the_filing_is_noted_as_made_outside(self):
 		source = CONTROLLER.read_text(encoding="utf-8")
 		self.assertIn("FILED_OUTSIDE = (OTHER_WAY,)", source)
-		self.assertIn('@frappe.whitelist(methods=["POST"])\n\tdef export_xbrl(self) -> str:', source)
+		self.assertIn(
+			'@frappe.whitelist(methods=["POST"])\n\t@guards.on_stored("write")\n\tdef export_xbrl(self) -> str:',
+			source,
+		)
 		self.assertIn("eric_datenart.bilanz(self.taxonomy_version)", source)
 		self.assertIn("simulated_bilanz.register_taxonomy(version,", source)
 
