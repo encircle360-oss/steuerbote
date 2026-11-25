@@ -97,7 +97,9 @@ Der Bericht und die Erinnerung nennen in der Spalte „Hinweis“, worauf der Ta
 | `early_request_kst` | Vorab angefordert: Körperschaftsteuererklärung | |
 | `early_request_gewst` | Vorab angefordert: Gewerbesteuererklärung | |
 | `kleinunternehmer` | Kleinunternehmer | keine Umsatzsteuererklärung |
-| `no_vat_return`, `no_vat_return_reason`, `no_vat_return_note` | Keine Umsatzsteuererklärung geschuldet, Grund, Aktenzeichen und Vermerk | keine Umsatzsteuererklärung, siehe [Keine Umsatzsteuererklärung geschuldet](#jahresmeldungen) |
+| `no_vat_return` | Keine Umsatzsteuererklärung geschuldet | keine Umsatzsteuererklärung, eine Erklärung des Unternehmens, siehe [Belege der Jahresmeldungen](#belege-der-jahresmeldungen) |
+| `no_vat_return_reason` | Grund | Pflicht mit dem Haken: Kein Unternehmer (§ 2 UStG), Vom Finanzamt befreit oder Anderer Grund |
+| `no_vat_return_note` | Aktenzeichen und Vermerk | etwa Schreiben und Datum des Finanzamts; Pflicht beim anderen Grund |
 | `exempt_264_3` | Befreit nach § 264 Abs. 3 HGB | keine Offenlegung |
 | `size_history` | Größenmerkmale je Geschäftsjahr | die angewandte Größenklasse zum Abschlussstichtag für die Feststellung |
 
