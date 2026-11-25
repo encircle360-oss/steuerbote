@@ -887,7 +887,9 @@ def _findings_of(
 				Code.UNPLACED,
 				Severity.ERROR,
 				f"{name} hat einen Saldo, aber keinen Platz in der Bilanzzuordnung: Ordnen Sie es einer Position zu, "
-				"oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt.",
+				"oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt. Die Vorgaben geben Konten, die der "
+				"Kontenrahmen nicht beschriftet, keinen Platz; die Steuerberatung entscheidet ihn. „Konten prüfen“ in "
+				"der Bilanzzuordnung nennt alle Konten ohne Platz.",
 				COMPLETENESS,
 				number,
 				amount=amount,
