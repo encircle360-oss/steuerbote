@@ -141,7 +141,7 @@ Neben den Befunden der Bilanzzuordnung (`BILANZ-…`) schreibt „Berechnen“ d
 | `JA-RECHENPOSTEN` | Fehler | ein Saldo liegt auf einem Posten, den das Schema rechnet |
 | `JA-BILANZ-UNGLEICH` | Fehler | Aktiva und Passiva weichen voneinander ab (§ 242 Abs. 1, § 266 Abs. 1 HGB) |
 | `JA-OHNE-UNTERPOSTEN` | Fehler | ein Saldo liegt auf einem Posten, den die Klasse in Unterposten zeigt |
-| `JA-RESTLAUFZEIT-FEHLT` | Fehler | einer Forderung oder Verbindlichkeit fehlt die Restlaufzeit, die ihre Vermerke brauchen (§ 268 Abs. 4 und 5 HGB) |
+| `JA-RESTLAUFZEIT-FEHLT` | Fehler | Forderungen oder Verbindlichkeiten eines Postens fehlt die Restlaufzeit, die seine Vermerke brauchen (§ 268 Abs. 4 und 5 HGB); ein Befund je Posten nennt alle Konten und sagt, wo die Restlaufzeit einzutragen ist. Steuern, Sozialversicherung und Löhne tragen sie nach den Vorgaben ab Stand 2026.2 schon, siehe [Restlaufzeit kraft Gesetzes](ebilanz-zuordnung.md#restlaufzeit-kraft-gesetzes) |
 | `JA-BILANZGEWINN` | Fehler | ein Saldo steht auf dem Bilanzgewinn, die Bilanz ist aber vor Verwendung des Jahresergebnisses aufgestellt; sie braucht den Ausweis nach teilweiser Verwendung (§ 268 Abs. 1 Satz 2 HGB) |
 | `JA-ANGABE-OFFEN` | Fehler | eine Angabe des Katalogs ist nicht beantwortet |
 | `JA-ANGABE-PFLICHT` | Fehler | eine Pflichtangabe ist nicht mit „ja“ beantwortet |
@@ -161,7 +161,7 @@ Was die XBRL-Datei anhält (`JA-XBRL-…` und `XBRL-…`), steht in [Befunde der
 
 ## Feststellung
 
-„Buchen“ ist die Feststellung. Wie jede Jahresmeldung braucht sie „Bereit zur Abgabe“ oder Anmerkungen, die sagen, warum der Abschluss dennoch richtig ist; was die Anmerkungen auch sagen, hält sie an (`check_filing`, `bridge.filing_problems`):
+„Buchen“ ist die Feststellung. Wie jede Jahresmeldung braucht sie „Bereit zur Abgabe“ oder jeden Fehler der Befunde mit einer Begründung bestätigt, die sagt, warum der Abschluss dennoch richtig ist (siehe [Bestätigte Fehler](jahresmeldungen.md#bestätigte-fehler)); unabhängig von jeder Bestätigung hält sie an (`check_filing`, `bridge.filing_problems`):
 
 - eine Eingabe, die sich seit „Berechnen“ geändert hat,
 - keine Größenklasse,

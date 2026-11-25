@@ -19,7 +19,7 @@ from steuerbote.steuerbote.doctype.corporate_income_tax_return import bridge as 
 from steuerbote.steuerbote.doctype.trade_tax_return import bridge
 from steuerbote.steuerbote.doctype.trade_tax_return.trade_tax_return import latest_corporate_income_tax_return
 from steuerbote.tests import income_tax
-from steuerbote.tests.helpers import make_company
+from steuerbote.tests.helpers import acknowledge_errors, make_company
 from steuerbote.tests.income_tax import (
 	AGS,
 	COMPANY,
@@ -131,13 +131,11 @@ class TestTradeTaxReturn(Transmitting, IntegrationTestCase):
 		corporate = income_tax.new_return(remarks=REMARKS)
 		corporate.calculate()
 		corporate.reload()
-		corporate.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		acknowledge_errors(corporate, REMARKS).mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		self.assertEqual(latest_corporate_income_tax_return(COMPANY, YEAR), corporate.name)
 		correction = frappe.get_doc(income_tax.CORPORATE, corporate.make_correction())
 		self.assertEqual(latest_corporate_income_tax_return(COMPANY, YEAR), correction.name)
-		correction.remarks = REMARKS
-		correction.save()
-		correction.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		acknowledge_errors(correction, REMARKS).mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		self.assertEqual(latest_corporate_income_tax_return(COMPANY, YEAR), correction.name)
 		self.assertIsNone(latest_corporate_income_tax_return(OTHER_COMPANY, YEAR))
 
@@ -335,7 +333,7 @@ class TestTradeTaxReturn(Transmitting, IntegrationTestCase):
 		self.assertEqual((doc.docstatus, doc.status, doc.filed_via), (1, "Abgegeben", FILED_IN_MEIN_ELSTER))
 
 	def test_a_berichtigung_builds_on_the_koerperschaftsteuererklaerung_of_the_year(self):
-		doc = self.calculated(remarks=REMARKS)
+		doc = acknowledge_errors(self.calculated(remarks=REMARKS), REMARKS)
 		doc.mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		correction = frappe.get_doc(DOCTYPE, doc.make_correction())
 		self.assertEqual(
@@ -343,9 +341,7 @@ class TestTradeTaxReturn(Transmitting, IntegrationTestCase):
 			(1, doc.name, doc.corporate_income_tax_return),
 		)
 		self.assertEqual((correction.status, money(correction.gewst)), ("Berechnet", d("15064.00")))
-		correction.remarks = REMARKS
-		correction.save()
-		correction.mark_filed_outside(FILED_IN_MEIN_ELSTER)
+		acknowledge_errors(correction, REMARKS).mark_filed_outside(FILED_IN_MEIN_ELSTER)
 		self.assertEqual(frappe.db.get_value(DOCTYPE, doc.name, "status"), "Ersetzt")
 
 	# Prüfen and the print.

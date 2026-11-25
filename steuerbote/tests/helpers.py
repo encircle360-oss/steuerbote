@@ -483,3 +483,14 @@ def post_customer_journal_entry(
 		)
 	post_ledger(company, "Journal Entry", name, posting_date, [row[:3] for row in rows])
 	return name
+
+
+def acknowledge_errors(doc: Document, reason: str) -> Document:
+	"""Acknowledge every error of the findings of an annual document that may be, for the reason, as a company files it
+	nonetheless (steuerbote/jahresmeldung/acknowledgements.py); returns the document reloaded."""
+	for name in [
+		row.name for row in doc.findings if row.blocking and row.acknowledgeable and not row.acknowledged
+	]:
+		doc.acknowledge_finding(name, reason)
+	doc.reload()
+	return doc

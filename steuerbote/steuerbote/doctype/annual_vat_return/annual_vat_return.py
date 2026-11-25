@@ -344,7 +344,7 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 				"An entry that Berechnen reads changed since Berechnen: a statement, the Vorauszahlungssoll by the Finanzamt, a reason for a period without a Voranmeldung or a Grundstück. Calculate again, so that Berechnen checks the return with it."
 			),
 		)
-		self.set(FINDINGS_TABLE, annual_findings.rows((*stored, recalculate)))
+		self.add_finding(recalculate)
 
 	# Helpers.
 

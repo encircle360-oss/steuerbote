@@ -274,7 +274,7 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 				"excluded": [("9000", "Saldenvorträge der Klasse 9")],
 			},
 		)
-		self.assertEqual(stored.defaults_version, "SKR04 Taxonomie 6.9 2026.1")
+		self.assertEqual(stored.defaults_version, "SKR04 Taxonomie 6.9 2026.2")
 		self.assertEqual(load_items(stored.defaults_rows), default_items("SKR04", "6.9", set(ACCOUNTS)))
 		self.assertEqual(stored.rules[0].account, self.accounts["1800"])
 
@@ -324,7 +324,7 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 				],
 			},
 		)
-		self.assertEqual(stored.defaults_version, "SKR04 Taxonomie 6.9 2026.1")
+		self.assertEqual(stored.defaults_version, "SKR04 Taxonomie 6.9 2026.2")
 
 	def test_vorgaben_laden_keeps_the_label_of_each_position_of_the_installed_taxonomy_whole(self):
 		"""Saving writes the label of each position into its rule, longer than the 140 characters of a Data field for
@@ -426,7 +426,7 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 		)
 		self.assertEqual(stored.update_from_defaults(acknowledge=True), 0)
 		noted = frappe.get_doc(MAPPING, COMPANY)
-		self.assertEqual((noted.defaults_version, noted.rules), ("SKR04 Taxonomie 6.9 2026.1", []))
+		self.assertEqual((noted.defaults_version, noted.rules), ("SKR04 Taxonomie 6.9 2026.2", []))
 		self.assertEqual(
 			[
 				(difference["id"], difference["proposes"])
@@ -442,7 +442,7 @@ class IntegrationTestBalanceSheetMappingDefaults(MappingTestCase):
 		with self.at_revision_0():
 			mapping.load_defaults()
 			mapping.insert()
-		self.assertEqual(defaults_to_load(frappe.get_doc(MAPPING, COMPANY)), "SKR04 Taxonomie 6.9 2026.1")
+		self.assertEqual(defaults_to_load(frappe.get_doc(MAPPING, COMPANY)), "SKR04 Taxonomie 6.9 2026.2")
 		own = frappe.get_doc(MAPPING, COMPANY)
 		own.chart = "Eigener Kontenrahmen"
 		self.assertIsNone(defaults_to_load(own))
@@ -501,7 +501,7 @@ class IntegrationTestBalanceSheetMappingFile(MappingTestCase):
 		self.assertEqual(target.import_file(content=self.text, chosen=chosen), len(chosen))
 		target = frappe.get_doc(MAPPING, TARGET)
 		self.assertEqual(rows(target), rows(frappe.get_doc(MAPPING, COMPANY)))
-		self.assertEqual(target.defaults_version, "SKR04 Taxonomie 6.9 2026.1")
+		self.assertEqual(target.defaults_version, "SKR04 Taxonomie 6.9 2026.2")
 		self.assertEqual(target.defaults_rows, dump_items(load_items(self.source.defaults_rows)))
 
 	def test_an_import_refuses_a_file_of_another_taxonomy_another_chart_or_with_accounts_the_company_lacks(

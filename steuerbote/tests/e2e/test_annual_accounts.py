@@ -81,8 +81,9 @@ def test_the_xbrl_waits_until_the_jahresabschluss_could_be_festgestellt(desk, ex
 	response = desk.run_doc_method(
 		"make_xbrl", desk.menu_item(OFFENLEGUNG, "XBRL für das Unternehmensregister").click
 	)
-	assert not response.ok
-	expect(desk.dialog()).to_contain_text(f"{name} ist nicht bereit")
+	assert not response.ok, name
+	# The checks of the Feststellung come before the acknowledgements of the findings and say what to complete.
+	expect(desk.dialog()).to_contain_text("Die Angaben sind nicht vollständig")
 
 
 def test_a_new_jahresabschluss_opens_as_a_draft_of_the_default_company(desk, expect):

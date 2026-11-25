@@ -1470,7 +1470,7 @@ class ProvisionalTest(TestCase):
 		self.assertEqual(
 			finding.text,
 			"Steuerbote has the forms of 2027 provisionally from the Jahresdokumentation 2026: until ELSTER publishes "
-			"those of 2027, the return is not ready. A filing needs remarks that say why it goes nonetheless.",
+			"those of 2027, the return is not ready. A filing needs this error acknowledged with the reason why it goes nonetheless.",
 		)
 		self.assertEqual(
 			(finding.code, finding.reference, finding.blocking),

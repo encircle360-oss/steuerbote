@@ -24,8 +24,14 @@ label and its twin in the other chart, in groups of the same place and in the or
   defaults say so although DATEV marks the account for both: the latente Steuern (§ 274 HGB), the provisions of the
   Steuerstundung and the Aufwandsrückstellungen for the Handelsbilanz, the release of steuerfreie Rücklagen and the
   transfer of a § 6b-Rücklage for the Steuerbilanz; a mark of DATEV they never contradict;
+- the netting group of the VAT accounts towards the Finanzamt, VAT_NETTING: claims and debts of the same kind towards
+  the same creditor that can be set off against each other form one settlement position whose combined balance decides
+  its side (§ 387 BGB, § 226 Abs. 1 AO, § 16 Abs. 2 Satz 1 UStG; steuerbote/xbrl/mapping.py), as the usual
+  assignments of the standard charts show them; not the Vorsteuer deductible only in a later period, the Umsatzsteuer
+  not yet due, the Einfuhrumsatzsteuer owed to the customs office or the tax of other member states;
 - the shareholder flag on every position gegenüber Gesellschaftern (§ 42 Abs. 3 GmbHG), and the remaining term the
-  label names: „Restlaufzeit bis 1 Jahr“, „1 bis 5 Jahre“ and „größer 5 Jahre“, and „größer 1 Jahr“ as one to five
+  label names, or „bis 1 Jahr“ where the law makes the claim or debt due within a year (Due, DUE_SOURCES): the
+  taxes towards the Finanzamt, the social security contributions and the wages; the label names: „Restlaufzeit bis 1 Jahr“, „1 bis 5 Jahre“ and „größer 5 Jahre“, and „größer 1 Jahr“ as one to five
   years, which the Vermerk of § 268 Abs. 4 Satz 1 HGB counts as more than one year. An account whose label names no
   term has none, so that the Offenlegung asks for it where a Vermerk needs it;
 - _watched(): at the level blocking, an account of a partnership, a sole trader, a Genossenschaft, a Sonder- or
@@ -842,6 +848,42 @@ REASONS: MappingProxyType[Reason, str] = MappingProxyType(
 )
 
 
+VAT_NETTING = "Umsatzsteuer"
+"""The netting group of the VAT accounts towards the Finanzamt."""
+
+
+class Due(StrEnum):
+	"""Why a Forderung or Verbindlichkeit whose label names no remaining term is due within a year; DUE_SOURCES gives
+	the law."""
+
+	VAT = "vat"
+	WAGE_TAX = "wage_tax"
+	SOCIAL_SECURITY = "social_security"
+	WAGES = "wages"
+
+
+DUE_SOURCES: MappingProxyType[Due, str] = MappingProxyType(
+	{
+		Due.VAT: (
+			"A Vorauszahlung of the Umsatzsteuer, and its refund, is due on the tenth day after the end of the "
+			"Voranmeldungszeitraum (§ 18 Abs. 1 Satz 4 UStG, § 220 Abs. 1 AO), the balance of the year one month after "
+			"the Steuererklärung (§ 18 Abs. 4 Satz 1 UStG), a refund with its assessment (§ 168 Satz 2, § 220 Abs. 2 "
+			"AO); the Vorsteuer is deducted in the Voranmeldung of its period (§ 16 Abs. 2 Satz 1 UStG)."
+		),
+		Due.WAGE_TAX: (
+			"The Lohnsteuer is paid on the tenth day after the end of the Lohnsteuer-Anmeldungszeitraum (§ 41a Abs. 1 "
+			"Satz 1 EStG), the Bauabzug on the tenth day after the end of the month of the payment (§ 48a Abs. 1 Satz "
+			"1 EStG)."
+		),
+		Due.SOCIAL_SECURITY: (
+			"The contributions are due on the third last banking day of the month in which the work is done (§ 23 "
+			"Abs. 1 Satz 2 SGB IV)."
+		),
+		Due.WAGES: ("The salary is paid after the period of the work it pays for (§ 614 BGB)."),
+	}
+)
+
+
 class Outside(StrEnum):
 	"""Why accounts lie outside the Bilanz and the GuV, as the rows of a Balance Sheet Mapping give it."""
 
@@ -882,6 +924,8 @@ class Group:
 	level: WatchLevel | None = None
 	outside: Outside | None = None
 	reason: Reason | None = None
+	netting: str | None = None
+	due: Due | None = None
 
 	def entries(self, chart: str) -> Iterator[DefaultRule | DefaultWatched | DefaultExcluded]:
 		"""The entries of the defaults of a chart for the accounts of the group it has."""
@@ -891,7 +935,13 @@ class Group:
 				continue
 			if self.concept is not None:
 				yield DefaultRule(
-					number, self.concept, self.opposite, self.purpose, self.shareholder, self.remaining_term
+					number,
+					self.concept,
+					self.opposite,
+					self.purpose,
+					self.shareholder,
+					self.remaining_term,
+					self.netting,
 				)
 			elif self.level is not None:
 				yield DefaultWatched(number, self.level)
@@ -910,8 +960,22 @@ def _position(
 	shareholder: bool = False,
 	remaining_term: RemainingTerm | None = None,
 	reason: Reason | None = None,
+	netting: str | None = None,
+	due: Due | None = None,
 ) -> Group:
-	return Group(_accounts(accounts), concept, opposite, purpose, shareholder, remaining_term, reason=reason)
+	if due is not None:
+		remaining_term = RemainingTerm.UP_TO_ONE_YEAR
+	return Group(
+		_accounts(accounts),
+		concept,
+		opposite,
+		purpose,
+		shareholder,
+		remaining_term,
+		reason=reason,
+		netting=netting,
+		due=due,
+	)
 
 
 def _watched(reason: Reason, *accounts: _Row, level: WatchLevel = WatchLevel.BLOCKING) -> Group:
@@ -1934,6 +1998,8 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1529", "1377", "Zurückzuzahlende Vorsteuer nach § 15a Abs. 2 UStG"),
 		opposite="bs.eqLiab.liab.other.theroffTax",
 		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
 	),
 	_position(
 		"bs.ass.currAss.receiv.other.reInsurClaim",
@@ -2032,10 +2098,16 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1569", "1419", "Aufzuteilende Vorsteuer nach §§ 13a und 13b UStG 19 %"),
 		opposite="bs.eqLiab.liab.other.theroffTax",
 		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
 	),
 	_position(
 		"bs.ass.currAss.receiv.other.vat",
 		("1545", "1420", "Forderungen aus Umsatzsteuer-Vorauszahlungen"),
+		opposite="bs.eqLiab.liab.other.theroffTax",
+		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
 	),
 	_position(
 		"bs.ass.currAss.receiv.other.vat",
@@ -2044,6 +2116,8 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1539", "1425", "Umsatzsteuerforderungen frühere Jahre"),
 		opposite="bs.eqLiab.liab.other.theroffTax",
 		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
 	),
 	_position(
 		"bs.ass.currAss.receiv.other.otherTaxRec",
@@ -2064,9 +2138,17 @@ _GROUPS_6_9: tuple[Group, ...] = (
 			"Abziehbare Vorsteuer aus innergemeinschaftlichem Erwerb von Neufahrzeugen von Lieferanten ohne USt-Identifikationsnummer",
 		),
 		("1588", "1433", "Entstandene Einfuhrumsatzsteuer"),
+		opposite="bs.eqLiab.liab.other.theroffTax",
+		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
+	),
+	_position(
+		"bs.ass.currAss.receiv.other.vat",
 		("1548", "1434", "Vorsteuer in Folgeperiode/im Folgejahr abziehbar"),
 		opposite="bs.eqLiab.liab.other.theroffTax",
 		reason=Reason.VAT,
+		due=Due.VAT,
 	),
 	_position(
 		"bs.ass.currAss.receiv.other.tradeTaxOverpayment",
@@ -2079,6 +2161,8 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1573", "1436", "Vorsteuer aus Erwerb als letzter Abnehmer innerhalb eines Dreiecksgeschäfts"),
 		opposite="bs.eqLiab.liab.other.theroffTax",
 		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
 	),
 	_position(
 		"bs.ass.currAss.receiv.other.otherTaxRec",
@@ -3460,6 +3544,7 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1740", "3720", "Verbindlichkeiten aus Lohn und Gehalt"),
 		opposite="bs.ass.currAss.receiv.other.employees",
 		reason=Reason.BOTH_SIDES,
+		due=Due.WAGES,
 	),
 	_position(
 		"bs.eqLiab.liab.other.other",
@@ -3473,12 +3558,14 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1741", "3730", "Verbindlichkeiten aus Lohn- und Kirchensteuer"),
 		opposite="bs.ass.currAss.receiv.other.otherTaxRec",
 		reason=Reason.BOTH_SIDES,
+		due=Due.WAGE_TAX,
 	),
 	_position(
 		"bs.eqLiab.liab.other.thereoffSocSec",
 		("1742", "3740", "Verbindlichkeiten im Rahmen der sozialen Sicherheit"),
 		opposite="bs.ass.currAss.receiv.other.socInsur",
 		reason=Reason.BOTH_SIDES,
+		due=Due.SOCIAL_SECURITY,
 	),
 	_position(
 		"bs.eqLiab.liab.other.thereoffSocSec",
@@ -3516,6 +3603,7 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1759", "3759", "Voraussichtliche Beitragsschuld gegenüber den Sozialversicherungsträgern"),
 		opposite="bs.ass.currAss.receiv.other.socInsur",
 		reason=Reason.BOTH_SIDES,
+		due=Due.SOCIAL_SECURITY,
 	),
 	_position(
 		"bs.eqLiab.liab.other.theroffTax",
@@ -3560,6 +3648,7 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1755", "3790", "Lohn- und Gehaltsverrechnungskonto"),
 		opposite="bs.ass.currAss.receiv.other.employees",
 		reason=Reason.BOTH_SIDES,
+		due=Due.WAGES,
 	),
 	_watched(
 		Reason.EUR,
@@ -3587,6 +3676,8 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1779", "3809", "Umsatzsteuer aus innergemeinschaftlichem Erwerb ohne Vorsteuerabzug"),
 		opposite="bs.ass.currAss.receiv.other.vat",
 		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
 	),
 	_position(
 		"bs.eqLiab.accruals.tax.other",
@@ -3614,6 +3705,8 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1781", "3830", "Umsatzsteuer-Vorauszahlungen 1/11"),
 		opposite="bs.ass.currAss.receiv.other.vat",
 		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
 	),
 	_position(
 		"bs.eqLiab.liab.other.theroffTax",
@@ -3635,6 +3728,8 @@ _GROUPS_6_9: tuple[Group, ...] = (
 		("1791", "3845", "Umsatzsteuerverbindlichkeiten frühere Jahre"),
 		opposite="bs.ass.currAss.receiv.other.vat",
 		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
 	),
 	_outside(
 		Outside.INTERIM,
@@ -3643,21 +3738,37 @@ _GROUPS_6_9: tuple[Group, ...] = (
 	_position(
 		"bs.eqLiab.liab.other.theroffTax",
 		(None, "3850", "Einfuhrumsatzsteuer aufgeschoben bis"),
-		("1783", "3851", "In Rechnung unrichtig oder unberechtigt ausgewiesene Steuerbeträge, UStVA Kz. 69"),
-		(None, "3852", "In Rechnung unrichtig oder unberechtigtausgewiesene Steuerbeträge, UStVA Kz. 69"),
 		opposite="bs.ass.currAss.receiv.other.vat",
 		reason=Reason.VAT,
 	),
 	_position(
 		"bs.eqLiab.liab.other.theroffTax",
+		("1783", "3851", "In Rechnung unrichtig oder unberechtigt ausgewiesene Steuerbeträge, UStVA Kz. 69"),
+		(None, "3852", "In Rechnung unrichtig oder unberechtigtausgewiesene Steuerbeträge, UStVA Kz. 69"),
+		opposite="bs.ass.currAss.receiv.other.vat",
+		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
+	),
+	_position(
+		"bs.eqLiab.liab.other.theroffTax",
 		("1754", "3854", "Steuerzahlungen an andere Länder"),
+	),
+	_position(
+		"bs.eqLiab.liab.other.theroffTax",
 		("1797", "3860", "Verbindlichkeiten aus Umsatzsteuer-Vorauszahlungen"),
+		opposite="bs.ass.currAss.receiv.other.vat",
+		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
 	),
 	_position(
 		"bs.eqLiab.liab.other.theroffTax",
 		("1725", "3865", "Umsatzsteuer in Folgeperiode fällig (§§ 13 Abs. 1 Nr. 6 und 13b Abs. 2 UStG)"),
 		opposite="bs.ass.currAss.receiv.other.vat",
 		reason=Reason.VAT,
+		netting=VAT_NETTING,
+		due=Due.VAT,
 	),
 	_position(
 		"bs.eqLiab.defIncome",
@@ -7404,7 +7515,7 @@ DEFAULTS: MappingProxyType[str, MappingProxyType[str, Defaults]] = MappingProxyT
 		for version in GROUPS
 	}
 )
-REVISIONS: MappingProxyType[str, int] = MappingProxyType({"6.9": 1, "6.10": 1})
+REVISIONS: MappingProxyType[str, int] = MappingProxyType({"6.9": 2, "6.10": 2})
 
 
 def defaults_for(chart: str, version: str) -> Defaults:

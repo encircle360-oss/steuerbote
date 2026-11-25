@@ -98,6 +98,7 @@ class ReviewTest(TestCase):
 				"Abschlusszweck.",
 				"Konten der Vorlagen von ERPNext.",
 				"Beobachtete Konten.",
+				"Verrechnung.",
 			],
 		)
 

@@ -217,7 +217,7 @@ class TradeTaxReturn(AnnualFiling, Transmittable, Document):
 				"An entry that Berechnen reads changed since Berechnen: the Körperschaftsteuererklärung or the supplementary information. Calculate again, so that Berechnen checks the return with it."
 			),
 		)
-		self.set(FINDINGS_TABLE, annual_findings.rows((*stored, recalculate)))
+		self.add_finding(recalculate)
 
 	# Helpers.
 
