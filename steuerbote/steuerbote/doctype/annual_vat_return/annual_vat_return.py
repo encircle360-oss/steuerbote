@@ -63,6 +63,7 @@ from steuerbote.steuerbote.doctype.vat_return import bridge as vat_return_bridge
 from steuerbote.steuerbote.doctype.vat_return.vat_return import settings_for
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
+from steuerbote.suppliers import load_vouchers
 from steuerbote.ustjahr import calculation, form, reconciliation, rules, soll, split
 from steuerbote.ustva import carried
 from steuerbote.ustva.defaults import TIMING_ACCOUNTS
@@ -100,7 +101,8 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 			mapping = annual_split.mapping
 			lines = ustjahr_sources.year_lines(self.company, year)
 			manual = self._lines(bridge.manual_lines, stored)
-			result = calculation.calculate(lines, annual_split, manual, tolerance)
+			vouchers = load_vouchers(self.company, lines, mapping)
+			result = calculation.calculate(lines, annual_split, manual, tolerance, vouchers)
 			result, released = _released(self.company, result, lines, mapping, year)
 			periods = bridge.year_periods(
 				settings.get_period_rules(), year, date_of_establishment(self.company)

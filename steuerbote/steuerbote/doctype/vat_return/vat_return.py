@@ -74,6 +74,7 @@ from steuerbote.steuerbote.doctype.vat_id_confirmation.confirming import Confirm
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
+from steuerbote.suppliers import load_vouchers
 from steuerbote.tax_templates import template_accounts
 from steuerbote.ustva import carried, plausibility, registers, tax_templates
 from steuerbote.ustva.defaults import TIMING_ACCOUNTS, deliberately_without_kennzahl
@@ -736,7 +737,8 @@ def mapping_for(company: str, year: int) -> ustva.Mapping:
 def _calculated(
 	lines: list[ustva.LedgerLine], mapping: ustva.Mapping, period: ustva.Period, settings: Document
 ) -> ustva.UstvaResult:
-	"""The core's result for a period, with Kz 39 in the last period of a year with Dauerfristverlängerung."""
+	"""The core's result for a period, with Kz 39 in the last period of a year with Dauerfristverlängerung and with
+	the suppliers of the vouchers of sections C and D (steuerbote.suppliers)."""
 	try:
 		return ustva.calculate(
 			lines,
@@ -747,6 +749,7 @@ def _calculated(
 				bridge.to_amount(settings.sondervorauszahlung(period.year)),
 			),
 			tolerance=bridge.to_amount(settings.tolerance),
+			vouchers=load_vouchers(settings.company, lines, mapping),
 		)
 	except ValueError as error:
 		frappe.throw(str(error))
@@ -826,7 +829,8 @@ def build_hints(
 	reconciliation: tuple[registers.Row, ...] = (),
 ) -> tuple[plausibility.Hint, ...]:
 	"""Hinweise: the invoices of the period, their reconciliation with the ledger, the balances on the accounts
-	watched for a hint, the bases taken from the tax of a voucher without base account, the Vorperiodenvergleich, the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21, the
+	watched for a hint, the bases taken from the tax of a voucher without base account, the suppliers of the vouchers of
+	sections C and D, the Vorperiodenvergleich, the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21, the
 	accounts of the tax templates without a place in the mapping and the differences of the reconciliation with the
 	registers.
 
@@ -845,7 +849,15 @@ def build_hints(
 	names = account_labels(doc.company, (balance.account_number for balance in result.hinted))
 	figures = SiteFigures(currency)
 	found = plausibility.hints(
-		comparison, lines, ledger, mapping, figures, result.hinted, names, derived=result.derived
+		comparison,
+		lines,
+		ledger,
+		mapping,
+		figures,
+		result.hinted,
+		names,
+		derived=result.derived,
+		findings=result.findings,
 	)
 	vat_ids = period_vat_ids(doc.company, period, mapping)
 	return plausibility.merged(

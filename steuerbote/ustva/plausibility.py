@@ -40,6 +40,7 @@ from steuerbote.ustva.calculation import AccountBalance, DerivedBase, require_ce
 from steuerbote.ustva.kennzahlen import Kennzahl
 from steuerbote.ustva.mapping import AccountRule, Mapping, is_account_number
 from steuerbote.ustva.period import Period, day_label
+from steuerbote.ustva.residence import Finding, Problem, Residence, Source
 from steuerbote.ustva.rounding import CENT, EURO, HUNDRED, ZERO, tax_from_base, to_cents
 from steuerbote.vatid.result import Outcome, valid_through
 from steuerbote.vatid.ustid import is_plausible, normalize, problem
@@ -67,6 +68,10 @@ class Code(StrEnum):
 	REGISTER_DEVIATION = "REGISTER-ABWEICHUNG"
 	BASE_FROM_TAX = "GRUNDLAGE-AUS-STEUER"
 	BEFORE_START = "VOR-START"
+	RESIDENCE_OPEN = "SITZ-OFFEN"
+	RESIDENCE_CONFLICT = "SITZ-WIDERSPRUCH"
+	EU_SERVICE_OUTSIDE = "KZ46-OHNE-EU-SITZ"
+	ACQUISITION_OUTSIDE_EU = "ERWERB-AUS-DRITTLAND"
 
 
 # A wrong invoice is a warning; a difference that may well be explained, such as a journal entry on a
@@ -89,6 +94,10 @@ SEVERITIES: MappingProxyType[Code, Severity] = MappingProxyType(
 		Code.TAX_TEMPLATE_WITHOUT_PLACE: Severity.HINT,
 		Code.REGISTER_DEVIATION: Severity.HINT,
 		Code.BASE_FROM_TAX: Severity.HINT,
+		Code.RESIDENCE_OPEN: Severity.HINT,
+		Code.RESIDENCE_CONFLICT: Severity.HINT,
+		Code.EU_SERVICE_OUTSIDE: Severity.WARNING,
+		Code.ACQUISITION_OUTSIDE_EU: Severity.WARNING,
 	}
 )
 
@@ -394,6 +403,124 @@ def derived_base_hints(derived: Iterable[DerivedBase], figures: Figures) -> list
 	return found
 
 
+# The decisions of residence.place() and the checks of calculate() on sections C and D as the hints say them.
+RESIDENCE_CODES: MappingProxyType[Problem, Code] = MappingProxyType(
+	{
+		Problem.NO_SUPPLIER: Code.RESIDENCE_OPEN,
+		Problem.SUPPLIERS_DISAGREE: Code.RESIDENCE_OPEN,
+		Problem.NO_COUNTRY: Code.RESIDENCE_OPEN,
+		Problem.ADDRESS_ELSEWHERE: Code.RESIDENCE_CONFLICT,
+		Problem.VAT_ID_PREFIX: Code.RESIDENCE_CONFLICT,
+		Problem.TEMPLATE_OTHER_FROM_MEMBER_STATE: Code.RESIDENCE_CONFLICT,
+		Problem.STATED_EU_SERVICE_OUTSIDE: Code.EU_SERVICE_OUTSIDE,
+		Problem.EU_SERVICE_ACCOUNT_OUTSIDE: Code.EU_SERVICE_OUTSIDE,
+		Problem.ACQUISITION_OUTSIDE_EU: Code.ACQUISITION_OUTSIDE_EU,
+	}
+)
+RESIDENCES: MappingProxyType[str, str] = MappingProxyType(
+	{
+		Residence.DOMESTIC: "im Inland",
+		Residence.OTHER_MEMBER_STATE: "im übrigen Gemeinschaftsgebiet",
+		Residence.THIRD_COUNTRY: "im Drittlandsgebiet",
+	}
+)
+STATED_BY: MappingProxyType[str, str] = MappingProxyType(
+	{
+		Source.VOUCHER: "Der Beleg ist",
+		Source.SUPPLIER: "Der Lieferant ist",
+		Source.TAX_TEMPLATE: "Die Steuervorlage des Belegs ist",
+	}
+)
+CLASSIFY = (
+	"Ordne den Beleg oder den Lieferanten in der Kontenzuordnung unter „Einordnung nach § 13b UStG“ ein"
+)
+
+
+def residence_hints(findings: Iterable[Finding]) -> list[Hint]:
+	"""A hint per finding of calculate() on the suppliers of sections C and D, in the order given.
+
+	The ledger keys a voucher as "<voucher type>:<voucher name>" (steuerbote.ledger), and the hint names both.
+	"""
+	found: list[Hint] = []
+	for finding in findings:
+		voucher_type, _, voucher_no = (finding.voucher or "").partition(":")
+		code = RESIDENCE_CODES[finding.problem]
+		found.append(
+			Hint(code, _sentence(_residence_text(finding)), voucher_type, voucher_no, finding.supplier)
+		)
+	return found
+
+
+def _residence_text(finding: Finding) -> str:
+	kz, other, supplier, facts = finding.kennzahl, finding.alternative, finding.supplier, finding.facts
+	went = f"Steuerbote meldet die Bemessungsgrundlage in Kz {kz}"
+	match finding.problem:
+		case Problem.NO_SUPPLIER:
+			return (
+				f"Kz {kz}: Der Beleg bucht Steuer nach § 13b UStG ohne Grundlagenkonto und nennt keinen Lieferanten; "
+				f"{went}, der Vorgabe der Verprobung. Ist es eine sonstige Leistung nach § 3a Abs. 2 UStG eines im "
+				f"übrigen Gemeinschaftsgebiet ansässigen Unternehmers, gehört sie in Kz {other}: {CLASSIFY}"
+			)
+		case Problem.SUPPLIERS_DISAGREE:
+			where = ", ".join(
+				f"{name} {RESIDENCES[residence]}"
+				for name, residence in zip(facts[::2], facts[1::2], strict=True)
+			)
+			return f"Kz {kz}: Die Lieferanten des Belegs sind an verschiedenen Orten ansässig ({where}); {went}. {CLASSIFY}"
+		case Problem.NO_COUNTRY:
+			prefix = (
+				f"; seine USt-IdNr. beginnt mit {facts[0]}, das zeigt aber nur eine Registrierung"
+				if facts
+				else ""
+			)
+			return (
+				f"Kz {kz}: Beim Lieferanten {supplier} ist weder ein Land noch eine Anschrift mit Land gepflegt{prefix}. "
+				f"{went}. Pflege das Land des Lieferanten, oder {CLASSIFY[0].lower()}{CLASSIFY[1:]}"
+			)
+		case Problem.ADDRESS_ELSEWHERE:
+			return (
+				f"Kz {kz}: Beim Lieferanten {supplier} steht als Land {facts[0]}, seine Anschrift liegt aber in "
+				f"{facts[1]}. Steuerbote folgt dem Land; bitte prüfe, wo der Lieferant ansässig ist"
+			)
+		case Problem.VAT_ID_PREFIX:
+			return (
+				f"Kz {kz}: Der Lieferant {supplier} hat das Land {facts[0]}, seine USt-IdNr. beginnt aber mit "
+				f"{facts[1]}. Steuerbote folgt dem Land, denn ansässig ist ein Unternehmer, wo er Sitz, "
+				"Geschäftsleitung oder eine Betriebsstätte hat (§ 13b Abs. 7 UStG), nicht wo er registriert ist; "
+				"bitte prüfe den Sitz am Beleg"
+			)
+		case Problem.TEMPLATE_OTHER_FROM_MEMBER_STATE:
+			return (
+				f"Kz {kz}: Die Steuervorlage {facts[0]} ist als andere Leistung nach § 13b Abs. 2 UStG eingeordnet, der "
+				f"Lieferant {supplier} ist aber im übrigen Gemeinschaftsgebiet ansässig. Ist es eine sonstige Leistung "
+				f"nach § 3a Abs. 2 UStG, gehört sie in Kz {other}: {CLASSIFY}"
+			)
+		case Problem.STATED_EU_SERVICE_OUTSIDE:
+			return (
+				f"Kz {kz}: {STATED_BY[facts[0]]} als sonstige Leistung aus dem übrigen Gemeinschaftsgebiet eingeordnet, "
+				f"der Lieferant {supplier} ist laut Stammdaten aber {RESIDENCES[facts[1]]} ansässig. Kz {kz} setzt einen "
+				"im übrigen Gemeinschaftsgebiet ansässigen Unternehmer voraus (§ 13b Abs. 1 UStG); bitte prüfe die "
+				"Einordnung"
+			)
+		case Problem.EU_SERVICE_ACCOUNT_OUTSIDE:
+			reason = (
+				f"ist laut Stammdaten aber {RESIDENCES[facts[1]]} ansässig"
+				if facts[0] in (Source.COUNTRY, Source.ADDRESS)
+				else "ist aber als andere Leistung nach § 13b Abs. 2 UStG eingeordnet"
+			)
+			return (
+				f"Kz {kz}: Der Beleg bucht auf ein Grundlagenkonto von Kz {kz}, der Lieferant {supplier} {reason}. "
+				f"Kz {kz} nimmt nur sonstige Leistungen nach § 3a Abs. 2 UStG eines im übrigen Gemeinschaftsgebiet "
+				f"ansässigen Unternehmers auf (§ 13b Abs. 1 UStG), alle anderen gehören in Kz {other}"
+			)
+	return (
+		f"Der Beleg bucht Umsatzsteuer aus innergemeinschaftlichem Erwerb, der Lieferant {supplier} ist laut Stammdaten "
+		f"aber im Drittlandsgebiet ansässig ({facts[0]}). Ein innergemeinschaftlicher Erwerb setzt voraus, dass der "
+		"Gegenstand aus einem anderen Mitgliedstaat kommt (§ 1a Abs. 1 Nr. 1 UStG); kommt er aus dem Drittlandsgebiet, "
+		"ist es eine Einfuhr. Bitte prüfe den Beleg"
+	)
+
+
 @dataclass(frozen=True, slots=True)
 class EarlierPeriod:
 	"""A period to compare with and its reported amounts by Kennzahl.
@@ -529,12 +656,14 @@ def hints(
 	watched: Iterable[AccountBalance] = (),
 	names: ReadOnlyMapping[str, str] = MappingProxyType({}),
 	derived: Iterable[DerivedBase] = (),
+	findings: Iterable[Finding] = (),
 ) -> tuple[Hint, ...]:
 	"""Every hint of a return: the warnings first, then the hints; each kind in the order it is found.
 
 	The invoices come first, then their reconciliation with the ledger, then the balances of the accounts
 	watched at the hint level (``watched``, named after ``names``), then the bases taken from the tax of their
-	voucher (``derived``, calculation.derive_bases), then the comparison.
+	voucher (``derived``, calculation.derive_bases), then the findings on the suppliers of sections C and D
+	(``findings``, UstvaResult.findings), then the comparison.
 	"""
 	derived = tuple(derived)
 	found = [
@@ -542,6 +671,7 @@ def hints(
 		*reconciliation_hints(lines, ledger, mapping, figures, derived),
 		*watched_account_hints(watched, names, figures),
 		*derived_base_hints(derived, figures),
+		*residence_hints(findings),
 		*comparison_hints(comparison, figures),
 	]
 	return tuple(sorted(found, key=lambda hint: hint.severity is not Severity.WARNING))

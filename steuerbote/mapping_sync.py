@@ -71,10 +71,10 @@ WATCHED = "watched"
 ANNUAL_FIELD = "annual_field"
 ANNUAL_RULE = "annual_rule"
 RULE_FIELDS = ("kennzahl", "side", "tax_rate", "also_kennzahl", "also_side")
-CHECK_FIELDS = ("base_accounts", "tax_accounts", "side", "derived_base")
-# A check holds derived_base only when it names one, as item, as row of the defaults and in the body, so that the
-# items, the stored defaults and the files of a mapping without one read as they did before it.
-OPTIONAL_CHECK_FIELDS = ("derived_base",)
+CHECK_FIELDS = ("base_accounts", "tax_accounts", "side", "derived_base", "derived_base_eu")
+# A check holds derived_base and derived_base_eu only when it names one, as item, as row of the defaults and in the
+# body, so that the items, the stored defaults and the files of a mapping without one read as they did before it.
+OPTIONAL_CHECK_FIELDS = ("derived_base", "derived_base_eu")
 CHOICE_FIELDS = ("annual_field", "paragraph")
 ANNUAL_RULE_FIELDS = ("annual_field", "side", "paragraph")
 BODY_PARTS = {
@@ -212,6 +212,7 @@ def items_of_mapping(mapping: Mapping) -> dict[Key, Fields]:
 				"tax_accounts": ", ".join(check.tax_accounts),
 				"side": check.side.value,
 				"derived_base": check.derived_base,
+				"derived_base_eu": check.derived_base_eu,
 			}
 			for check in mapping.checks
 		],
@@ -516,8 +517,9 @@ def _check_fields(check: TaxCheck) -> Fields:
 		"tax_accounts": ", ".join(sorted(check.tax_accounts)),
 		"side": check.side.value,
 	}
-	if check.derived_base is not None:
-		fields["derived_base"] = check.derived_base
+	for name in OPTIONAL_CHECK_FIELDS:
+		if getattr(check, name) is not None:
+			fields[name] = getattr(check, name)
 	return fields
 
 
@@ -566,6 +568,7 @@ def _check(row: Row) -> TaxCheck:
 		tax_accounts=_account_numbers(row.get("tax_accounts")),
 		side=_side(row.get("side") or Side.CREDIT, f"check {label!r}"),
 		derived_base=_text(row.get("derived_base")) or None,
+		derived_base_eu=_text(row.get("derived_base_eu")) or None,
 	)
 
 
@@ -632,8 +635,9 @@ def _check_row(check: TaxCheck, existing_numbers: Set[str]) -> dict[str, Any] | 
 		"tax_accounts": ", ".join(tax_accounts),
 		"side": check.side.value,
 	}
-	if check.derived_base is not None:
-		row["derived_base"] = check.derived_base
+	for name in OPTIONAL_CHECK_FIELDS:
+		if getattr(check, name) is not None:
+			row[name] = getattr(check, name)
 	return row
 
 

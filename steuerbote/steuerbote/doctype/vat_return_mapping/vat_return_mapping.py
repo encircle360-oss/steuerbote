@@ -21,6 +21,11 @@ the annual return reads (annual_rules). Vorgaben laden fills those rows from the
 (steuerbote/ustjahr/defaults.py) and keeps the annual field and paragraph of a rule whose account keeps its Kennzahl;
 Vorgaben aktualisieren and the file carry both like every other row. Saving checks them against the latest form USt 2
 A (mapping_sync.check_annual_rows), and to_split gives the annual return the line of every account.
+
+The classifications under § 13b UStG (reverse_charge) are no rows of the mapping of a chart: they name suppliers,
+vouchers and tax templates of the company, which a person classified as a service of § 13b Absatz 1 UStG (Kz 46) or as
+another supply of § 13b UStG (Kz 84). steuerbote.suppliers reads them; Vorgaben laden, Vorgaben aktualisieren and the
+file leave them as they are.
 """
 
 import re
@@ -95,6 +100,8 @@ FILE_MESSAGES = (
 	MISSING_ACCOUNTS,
 	INVALID_FILE_MAPPING,
 )
+# The documents of a classification under § 13b UStG that belong to one company.
+COMPANY_DOCUMENTS = ("Purchase Invoice", "Journal Entry", "Purchase Taxes and Charges Template")
 FIELD_LABELS = {
 	"place": "Place in the Mapping",
 	"kennzahl": "Kennzahl",
@@ -106,6 +113,7 @@ FIELD_LABELS = {
 	"base_accounts": "Base Accounts",
 	"tax_accounts": "Tax Accounts",
 	"derived_base": "Kz of the Base Without Base Account",
+	"derived_base_eu": "Kz for Suppliers in Other Member States",
 	"annual_field": "Annual Return Field",
 	"paragraph": "Paragraph of the Exemption",
 }
@@ -126,6 +134,9 @@ class VATReturnMapping(Document):
 		from steuerbote.steuerbote.doctype.vat_return_mapping_check.vat_return_mapping_check import (
 			VATReturnMappingCheck,
 		)
+		from steuerbote.steuerbote.doctype.vat_return_mapping_reverse_charge.vat_return_mapping_reverse_charge import (
+			VATReturnMappingReverseCharge,
+		)
 		from steuerbote.steuerbote.doctype.vat_return_mapping_rule.vat_return_mapping_rule import (
 			VATReturnMappingRule,
 		)
@@ -139,6 +150,7 @@ class VATReturnMapping(Document):
 		company: DF.Link
 		defaults_rows: DF.LongText | None
 		defaults_version: DF.Data | None
+		reverse_charge: DF.Table[VATReturnMappingReverseCharge]
 		rules: DF.Table[VATReturnMappingRule]
 		watched: DF.Table[VATReturnWatchedAccount]
 	# end: auto-generated types
@@ -149,6 +161,7 @@ class VATReturnMapping(Document):
 
 	def validate(self):
 		self.validate_accounts()
+		self.validate_reverse_charge()
 		self.current_items()
 		self.to_mapping(LATEST_YEAR)
 		self.validate_annual_rows()
@@ -173,6 +186,28 @@ class VATReturnMapping(Document):
 			if account.is_group:
 				frappe.throw(
 					_("Account {0} is a group and takes no postings.").format(frappe.bold(account.name))
+				)
+
+	def validate_reverse_charge(self):
+		"""A classification under § 13b UStG names each document once, and a voucher or tax template of the company."""
+		seen: set[tuple[str, str]] = set()
+		for row in self.reverse_charge:
+			key = (row.reference_doctype, row.reference_name)
+			if key in seen:
+				frappe.throw(
+					_("{0} {1} is classified twice under § 13b UStG.").format(
+						_(row.reference_doctype), frappe.bold(row.reference_name)
+					)
+				)
+			seen.add(key)
+			if (
+				row.reference_doctype in COMPANY_DOCUMENTS
+				and frappe.db.get_value(row.reference_doctype, row.reference_name, "company") != self.company
+			):
+				frappe.throw(
+					_("{0} {1} does not belong to company {2}.").format(
+						_(row.reference_doctype), frappe.bold(row.reference_name), frappe.bold(self.company)
+					)
 				)
 
 	def to_mapping(self, year: int) -> Mapping:
@@ -605,6 +640,8 @@ def described(kind: str, fields: dict | None) -> str:
 		)
 		if fields.get("derived_base"):
 			text += "; " + _("base without base account in Kz {0}").format(fields["derived_base"])
+		if fields.get("derived_base_eu"):
+			text += "; " + _("suppliers in other member states in Kz {0}").format(fields["derived_base_eu"])
 		return text
 	if fields["place"] == WATCHED:
 		return _("Watched, level {0}").format(_(fields["level"]))
