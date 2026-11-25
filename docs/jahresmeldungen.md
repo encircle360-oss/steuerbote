@@ -89,7 +89,7 @@ Nie bestätigt werden Fehler, die die Datei schon im Aufbau falsch machen; die S
 | ein Saldo ohne Platz, die Bilanz unvollständig (§ 246 Abs. 1 Satz 1 HGB) | `BILANZ-OHNE-PLATZ`, `BILANZ-OHNE-KONTONUMMER`, `BILANZ-BEOBACHTET`, `BILANZ-POSITION`, `BILANZ-NICHT-GUELTIG`, `BILANZ-ABSCHLUSSKONTO`, `EB-NICHT-ZUGEORDNET`, `JA-OHNE-POSTEN`, `JA-RECHENPOSTEN`, `JA-OHNE-UNTERPOSTEN` |
 | Summen, Mussfelder und Positionen, die die HGB-Taxonomie verlangt (§ 5b Abs. 1 Satz 1 EStG, Leitfaden A.10, B.10) | `EB-SUMME`, `EB-KORREKTUR-SUMME`, `EB-BERECHNET`, `EB-UEBERLEITUNG-SUMME`, `XBRL-RECHNUNG`, `XBRL-MUSSFELD`, `XBRL-SUMMENMUSSFELD`, `XBRL-UNZULAESSIG`, `XBRL-NICHT-UEBERMITTELBAR`, `XBRL-RECHTSFORM`, `XBRL-SONDERBILANZ`, `XBRL-KONTEXT`, `XBRL-BERICHTSBESTANDTEIL`, `XBRL-OBERPOSITION`, `XBRL-GUV-FORMAT` |
 | eine Zuordnung einer anderen Version der Taxonomie | `BILANZ-TAXONOMIE`, `SB-ZUORDNUNG-VERSION` |
-| eine Berechnung, die älter ist als ihre Eingaben | `SB-NEU-BERECHNEN` |
+| eine Berechnung, die älter ist als ihre Eingaben, oder eine Korrektur, die gegen einen anderen Betrag eingetragen wurde, als „Berechnen“ jetzt ergibt | `SB-NEU-BERECHNEN`, `SB-KORREKTUR-UEBERHOLT` |
 | Nutzdaten, die ihr Schema nicht bestehen (§ 150 Abs. 6 AO) | `KST-NUTZDATEN`, `GEWST-NUTZDATEN` |
 
 Alle anderen Fehler von Steuerbote lassen sich bestätigen. Der Jahresabschluss prüft vor der Feststellung zusätzlich, was `check_filing()` verlangt (siehe [Feststellung](jahresabschluss.md#feststellung)).
