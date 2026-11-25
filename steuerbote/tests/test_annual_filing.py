@@ -645,8 +645,8 @@ class TestPrint(AnnualFilingTestCase):
 		doc.reload()
 		text = self.printed(doc)
 		for expected in (
-			"Fehler | SB-QUELLE | Ein Konto ohne Zuordnung hat einen Saldo. | Konto 1590 |",
-			"Bestätigt: Mit der Steuerberatung abgestimmt.",
+			"Fehler | SB-QUELLE | Ein Konto ohne Zuordnung hat einen Saldo. Bestätigt: Mit der Steuerberatung abgestimmt. "
+			"| Konto 1590 |",
 			"Hinweise nach Art",
 			"SB-HINWEIS | 3 | Die Journalbuchung JV-1 bewegt ein Steuerkonto. |",
 		):
