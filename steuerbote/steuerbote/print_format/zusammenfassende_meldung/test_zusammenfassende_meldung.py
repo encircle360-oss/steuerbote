@@ -128,3 +128,25 @@ class TestZusammenfassendeMeldung(IntegrationTestCase):
 		self.assertIn(f"FR12345678901 | {PARIS} | S | 2.500 |", text)
 		self.assertIn("Korrekturen gegenüber dem Hauptbuch", text)
 		self.assertIn("FR12345678901 | S | 3.000,00 | 2.500 | Gutschrift vom 30. März 2026 |", text)
+
+	def test_prints_the_open_errors_the_releases_and_the_lines_the_file_leaves_out(self):
+		"""The printout that goes to the Steuerberatung shows what holds the statement and what it does not report."""
+		doc = self.calculated()
+		text = self.printed(doc)
+		self.assertIn("Offene Fehler", text)
+		self.assertIn("ZM-USTID-UNBESTAETIGT: Die USt-IdNr. ATU12345678 ist nicht bestätigt.", text)
+		self.assertNotIn("Nicht in der Meldung", text)
+		row = next(row for row in doc.lines if row.vat_id == "ATU12345678")
+		row.acceptance_reason = "Bestätigung vom Liefertag in der Akte"
+		paris = next(row for row in doc.lines if row.vat_id == "FR12345678901")
+		paris.override = 0
+		paris.override_reason = "Leistung an einen Nichtunternehmer, Rechnung wird berichtigt"
+		doc.save()
+		text = self.printed(doc)
+		self.assertIn("Freigegebene USt-IdNrn.", text)
+		self.assertIn("ATU12345678 | L | Bestätigung vom Liefertag in der Akte |", text)
+		self.assertIn("Nicht in der Meldung", text)
+		self.assertIn(f"FR12345678901 | {PARIS} | S | 3.000,00 |", text)
+		self.assertEqual(
+			[(row["vat_id"], row["art"]) for row in doc.left_out_lines()], [("FR12345678901", "S")]
+		)

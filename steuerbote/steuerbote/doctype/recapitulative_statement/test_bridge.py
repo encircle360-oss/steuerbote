@@ -912,6 +912,22 @@ class OverrideBasisTest(TestCase):
 		self.assertEqual(bridge.override_bases((), [row]), [None])
 
 
+class OpenErrorsTest(TestCase):
+	def test_the_errors_that_still_hold_the_statement(self):
+		lines = [line_row(AUSTRIA, "L", acceptance_reason="Grund"), line_row(FRANCE, "S")]
+		vouchers = bridge.voucher_rows(
+			[invoice("SINV-1", "10.00"), invoice("SINV-2", "10.00", kennzahl="21", vat_id=FRANCE)], {}
+		)
+		hints = [
+			{"severity": "Fehler", "code": "ZM-SCHWELLE", "text": "Schwelle"},
+			{"severity": "Fehler", "code": "ZM-USTID-UNBESTAETIGT", "text": "alt"},
+			{"severity": "Hinweis", "code": "ZM-ABWEICHUNG-VORPERIODE", "text": "Vorperiode"},
+		]
+		found = bridge.open_errors(bridge.statement_of(vouchers, lines, FIGURES), hints)
+		self.assertEqual([code for code, _text in found], ["ZM-USTID-UNBESTAETIGT", "ZM-SCHWELLE"])
+		self.assertIn(FRANCE, found[0][1])
+
+
 class AcceptancesTest(TestCase):
 	def test_the_release_of_each_line_with_its_reason(self):
 		self.assertEqual(

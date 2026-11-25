@@ -502,6 +502,17 @@ class AcceptanceTest(TestCase):
 		self.assertFalse(line.blocked)
 		self.assertTrue(result.ready)
 
+	def test_a_line_names_the_findings_that_still_hold_it(self):
+		result = build(
+			(invoice("1", "10.00"), invoice("2", "10.00", vat_id=FRANCE)),
+			FIGURES,
+			validity={AUSTRIA: Validity.UNCONFIRMED, FRANCE: Validity.UNCONFIRMED},
+			accepted={(AUSTRIA, Art.L): "Grund"},
+		)
+		austria, france = result.lines
+		self.assertEqual(austria.holding_findings, ())
+		self.assertEqual([finding.code for finding in france.holding_findings], [Code.UNCONFIRMED_VAT_ID])
+
 	def test_a_release_lifts_an_invalid_number_as_well(self):
 		result = build(
 			(invoice("1", "10.00"),),
