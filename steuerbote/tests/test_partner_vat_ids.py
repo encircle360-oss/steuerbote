@@ -31,6 +31,7 @@ from steuerbote.tests.helpers import (
 	make_settings,
 	make_user,
 )
+from steuerbote.vatid.exemption import consequence
 from steuerbote.vatid.service import confirm
 from steuerbote.vatid.tests.fakes import FakeBzst, FakeFetch, bzst
 
@@ -473,7 +474,7 @@ class TestPartnerVatIds(IntegrationTestCase):
 		doc = self.invoice(ALPEN, self.accounts["8125"])
 		with self.assertRaisesRegex(frappe.ValidationError, "Confirm VAT ID of the Customer") as refused:
 			partner_module.check_invoice(doc)
-		for step in ("Confirm VAT ID", "VAT ID Override Reason"):
+		for step in ("Confirm VAT ID", "Reason for Releasing the VAT ID"):
 			self.assertIn(step, str(refused.exception))
 		service = FakeBzst({AUSTRIAN: [bzst("evatr-0000"), bzst("evatr-0000", **QUALIFIED)]})
 		self.run_job(service, party_type="Customer", party=ALPEN, trigger="Invoice")
@@ -481,11 +482,22 @@ class TestPartnerVatIds(IntegrationTestCase):
 		self.assertEqual(frappe.db.get_value(CONFIRMATION, doc.vat_id_confirmation, "requested"), AUSTRIAN)
 
 	def test_a_reason_submits_a_blocked_invoice_and_stays_on_it(self):
-		doc = self.invoice(ALPEN, self.accounts["8125"], vat_id_override_reason="Bestätigung per Telefon")
+		doc = self.invoice(
+			ALPEN, self.accounts["8125"], vat_id_release_reason="Bestätigung vom Liefertag in der Akte"
+		)
 		with patch("frappe.msgprint") as message:
 			partner_module.check_invoice(doc)
-		self.assertIn("with the reason given", message.call_args.args[0])
-		self.assertEqual(doc.vat_id_override_reason, "Bestätigung per Telefon")
+		self.assertIn("released for this invoice", message.call_args.args[0])
+		self.assertEqual(doc.vat_id_release_reason, "Bestätigung vom Liefertag in der Akte")
+
+	def test_no_reason_releases_a_missing_or_wrong_number_and_the_refusal_says_what_it_costs(self):
+		doc = self.invoice(
+			MUENCHEN, self.accounts["8125"], vat_id_release_reason="Kunde sagt, er sei Unternehmer"
+		)
+		with self.assertRaisesRegex(frappe.ValidationError, "Correct the USt-IdNr.") as refused:
+			partner_module.check_invoice(doc)
+		self.assertIn(consequence("41"), str(refused.exception))
+		self.assertNotIn("Reason for Releasing the VAT ID", str(refused.exception))
 
 	def test_an_invoice_for_services_warns_without_a_qualified_confirmation(self):
 		doc = self.invoice(PARIS, self.accounts["8336"])

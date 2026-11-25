@@ -8,6 +8,7 @@ from unittest import TestCase
 from steuerbote.vatid.partners import (
 	GOODS,
 	MAX_PER_RUN,
+	RELEASABLE,
 	SERVICES,
 	Answer,
 	Asked,
@@ -294,3 +295,23 @@ class InvoiceTest(TestCase):
 
 	def test_the_kennzahlen_of_goods_and_services_are_those_of_the_zm(self):
 		self.assertEqual((GOODS, SERVICES), (("41", "42"), ("21",)))
+
+
+class ReleaseTest(TestCase):
+	def test_a_reason_releases_a_number_that_lacks_a_confirmation_but_not_one_that_is_missing_or_wrong(self):
+		"""As a line of the Zusammenfassende Meldung: a release lifts an unconfirmed or invalid number, never a missing or
+		malformed one, which the invoice has to correct."""
+		self.assertEqual(
+			RELEASABLE,
+			frozenset(
+				{
+					Problem.UNCONFIRMED,
+					Problem.NO_ANSWER,
+					Problem.INVALID,
+					Problem.STALE,
+					Problem.NOT_QUALIFIED,
+				}
+			),
+		)
+		self.assertTrue(Finding(Problem.INVALID, Level.BLOCK, ("41",)).releasable)
+		self.assertFalse(Finding(Problem.NO_VAT_ID, Level.BLOCK, ("41",)).releasable)

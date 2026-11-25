@@ -52,7 +52,7 @@ FRAMEWORK = frozenset(
 	}
 )
 PARTY_FIELDS = ("steuernummer", "foreign_tax_id", "vat_id_status", "vat_id_checked_on", "vat_id_confirmation")
-INVOICE_FIELDS = ("vat_id_confirmation", "vat_id_override_reason")
+INVOICE_FIELDS = ("vat_id_confirmation", "vat_id_release_reason")
 
 
 def read(path: Path) -> str:
@@ -210,7 +210,8 @@ class FieldFilesTest(TestCase):
 		self.assertEqual(
 			(reason["fieldtype"], reason["no_copy"], reason["allow_on_submit"]), ("Small Text", 1, 0)
 		)
-		self.assertEqual(literal(PARTNERS, "OVERRIDE_FIELD"), "vat_id_override_reason")
+		self.assertEqual(literal(PARTNERS, "RELEASE_FIELD"), "vat_id_release_reason")
+		self.assertEqual(reason["label"], "Reason for Releasing the VAT ID")
 
 	def test_the_settings_send_nothing_by_themselves_and_block_goods_by_default(self):
 		fields = fields_of("vat_return_settings")
@@ -297,6 +298,7 @@ class FormFilesTest(TestCase):
 		):
 			self.assertIn(item, script)
 		self.assertIn("if (state.can_ask)", script)
+		self.assertIn("POLL_INTERVAL_MS", script)
 
 	def test_the_dialog_of_a_return_and_a_statement_names_what_leaves_and_shows_only_with_numbers_to_confirm(
 		self,
