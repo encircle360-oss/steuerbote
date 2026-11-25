@@ -481,6 +481,63 @@ class TestTransmission(TransmissionTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "running"):
 			doc.calculate()
 
+	def test_pruefen_keeps_the_modified_timestamp_of_the_return(self):
+		"""The lock of a run is no change of the return: another user with the form open saves it afterwards."""
+		doc = self.calculated(10)
+		modified = frappe.db.get_value("VAT Return", doc.name, "modified")
+		self.transmitted(doc, "validate")
+		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "modified"), modified)
+
+	def test_a_conflict_on_the_number_of_the_transmission_starts_transmit_again(self):
+		"""Several documents of one company started at the same instant: MariaDB refused all but one the series of
+		the name of the ELSTER Transmission with QueryDeadlockError (1020, seen on a test site). transmit rolls back
+		and starts again; when it keeps failing, it says so instead of a server error."""
+		doc = self.calculated(11)
+		real = doc.new_transmission
+		failures = [frappe.QueryDeadlockError("Record has changed since last read in table 'tabSeries'")]
+
+		def flaky(*args, **kwargs):
+			if failures:
+				raise failures.pop()
+			return real(*args, **kwargs)
+
+		with (
+			patch.object(frappe.db, "rollback") as rollback,
+			patch.object(doc, "new_transmission", side_effect=flaky),
+		):
+			name, enqueue = self.transmit(doc, "validate")
+		rollback.assert_called_once_with()
+		self.assertEqual(frappe.db.get_value(TRANSMISSION, name, "status"), "Läuft")
+		enqueue.assert_called_once()
+		self.run_job(enqueue)
+		doc.reload()
+		with (
+			patch.object(frappe.db, "rollback") as rollback,
+			patch.object(doc, "new_transmission", side_effect=frappe.QueryDeadlockError("tabSeries")),
+			patch("frappe.enqueue") as enqueue,
+			self.assertRaisesRegex(frappe.ValidationError, "at the same moment"),
+		):
+			doc.transmit("validate")
+		self.assertEqual(rollback.call_count, 3)
+		enqueue.assert_not_called()
+
+	def test_a_year_no_runtime_serves_is_refused_before_a_transmission_is_recorded(self):
+		"""The refusal names the plugin and the Datenart, and leaves no failed ELSTER Transmission behind."""
+		self.use_runtime()
+		doc = self.calculated(12)
+		before = frappe.db.count(TRANSMISSION, {"document": doc.name})
+		with (
+			patch.object(transmission_adapter, "detect_runtime", return_value=None),
+			patch("frappe.enqueue") as enqueue,
+			self.assertRaisesRegex(
+				frappe.ValidationError, "plugin checkUStVA_2026 of the Datenart UStVA_2026"
+			),
+		):
+			doc.transmit("validate")
+		enqueue.assert_not_called()
+		self.assertEqual(frappe.db.count(TRANSMISSION, {"document": doc.name}), before)
+		self.assertEqual(frappe.db.get_value("VAT Return", doc.name, "transmission_in_progress"), 0)
+
 	def test_a_check_whose_job_is_gone_is_closed_as_failed(self):
 		doc = self.calculated(8)
 		first, _ = self.transmit(doc, "validate")
