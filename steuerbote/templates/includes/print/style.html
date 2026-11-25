@@ -8,7 +8,9 @@
 	and the foot as high as the bottom margin, the gaps to the content inside them, so that both generators put them
 	in the same place: wkhtmltopdf sets them into the margins, the Chromium-based generator stacks them on margins of 0
 	(chromium.html). Neither sets the page option for the spacing of the header: Frappe 16.60 hands it to its
-	Chromium-based generator as text and fails.
+	Chromium-based generator as text and fails. Line heights, the padding of cells and the rules of tables are whole
+	pixels: wkhtmltopdf rounds each down to a pixel and Chromium keeps the fraction, so that with fractions every row
+	is higher with Chromium and its printouts run to more pages.
 -#}
 <style>
 	@page {
@@ -46,20 +48,20 @@
 		font-feature-settings: "liga" 0, "clig" 0, "dlig" 0;
 		font-size: 9pt;
 		font-variant-ligatures: none;
-		line-height: 1.3;
+		line-height: 15px;
 	}
 
 	.sb-print h1 {
 		font-size: 15pt;
 		font-weight: bold;
-		line-height: 1.2;
+		line-height: 24px;
 		margin: 0 0 1mm;
 	}
 
 	.sb-print h2 {
 		font-size: 11pt;
 		font-weight: bold;
-		line-height: 1.2;
+		line-height: 18px;
 		margin: 0 0 2mm;
 	}
 
@@ -129,7 +131,7 @@
 
 	.sb-print .sb-head td {
 		border: 0;
-		padding: 0.6mm 2mm 0.6mm 0;
+		padding: 2px 8px 2px 0;
 	}
 
 	.sb-print .sb-head td.sb-value {
@@ -147,17 +149,18 @@
 	}
 
 	.sb-print .sb-lines th {
-		border-bottom: 0.4mm solid #000;
+		border-bottom: 2px solid #000;
 		color: #000;
 		font-size: 7.5pt;
 		font-weight: bold;
-		padding: 0.8mm 1.2mm;
+		line-height: 13px;
+		padding: 3px 5px;
 		vertical-align: bottom;
 	}
 
 	.sb-print .sb-lines td {
-		border-bottom: 0.15mm solid #bbb;
-		padding: 0.9mm 1.2mm;
+		border-bottom: 1px solid #bbb;
+		padding: 3px 5px;
 	}
 
 	.sb-print .sb-lines td.sb-nest {
@@ -167,7 +170,7 @@
 
 	.sb-print .sb-lines tr.sb-caption th {
 		border-bottom: 0;
-		padding: 0 0 1mm;
+		padding: 0 0 4px;
 	}
 
 	.sb-print .sb-lines tr.sb-caption h2 {
@@ -177,18 +180,19 @@
 	.sb-print .sb-lines tr.sb-caption .sb-note {
 		font-size: 9pt;
 		font-weight: normal;
-		margin: 1mm 0 0;
+		line-height: 15px;
+		margin: 4px 0 0;
 	}
 
 	.sb-print .sb-lines .sb-section td {
 		background: #eee;
-		border-bottom: 0.3mm solid #777;
+		border-bottom: 1px solid #777;
 		font-weight: bold;
-		padding-top: 1.2mm;
+		padding-top: 5px;
 	}
 
 	.sb-print .sb-lines .sb-sum td {
-		border-top: 0.3mm solid #000;
+		border-top: 1px solid #000;
 		font-weight: bold;
 	}
 
@@ -198,7 +202,7 @@
 
 	.sb-print .sb-lines .sb-group-head td {
 		font-weight: bold;
-		padding-top: 1.5mm;
+		padding-top: 6px;
 	}
 
 	.sb-print .sb-lines .sb-empty td,
@@ -213,11 +217,13 @@
 
 	.sb-print .sb-lines .sb-columns td {
 		font-size: 7.5pt;
+		line-height: 13px;
 		white-space: normal;
 	}
 
 	.sb-print .sb-small {
 		font-size: 8pt;
+		line-height: 13px;
 	}
 
 	.sb-print .sb-line,
@@ -279,11 +285,13 @@
 
 	.sb-print .sb-findings td {
 		font-size: 8pt;
+		line-height: 13px;
 	}
 
 	.sb-print .sb-recon td,
 	.sb-print .sb-recon th {
 		font-size: 7.5pt;
+		line-height: 13px;
 	}
 
 	.sb-print .sb-recon .sb-num {
@@ -335,6 +343,7 @@
 
 	.sb-print .sb-bilanz {
 		font-size: 8pt;
+		line-height: 13px;
 	}
 
 	.sb-print .sb-note {
@@ -374,6 +383,7 @@
 	.sb-print .sb-unverified {
 		color: #555;
 		font-size: 7.5pt;
+		line-height: 13px;
 		margin: 0.5mm 0 1.5mm;
 	}
 
@@ -385,6 +395,7 @@
 		border-top: 0.3mm solid #777;
 		color: #333;
 		font-size: 7.5pt;
+		line-height: 13px;
 		margin-top: 6mm;
 		padding-top: 1.5mm;
 	}
@@ -396,6 +407,7 @@
 	.sb-running {
 		color: #333;
 		font-size: 7.5pt;
+		line-height: 13px;
 	}
 
 	.sb-running table {
