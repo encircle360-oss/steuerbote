@@ -93,6 +93,7 @@ class VatLedger:
 		self.periods = tuple(periods)
 		self.filed = frozenset(filing.period for filing in filed)
 		self.bookings = load_bookings(company, start, end, self.basis is PeriodBasis.SERVICE_DATE)
+		self.placements = [self.assignment.place(booking) for booking in self.bookings]
 
 	@classmethod
 	def for_period(cls, company: str, period: Period) -> VatLedger:
@@ -105,16 +106,18 @@ class VatLedger:
 		return cls(company, date(year, 1, 1), date(year, 12, 31))
 
 	def lines(self, period: Period) -> list[LedgerLine]:
-		return self.assignment.lines(self.bookings, period)
+		"""The ledger lines ``period`` reports, as Assignment.lines gives them, from the placements made once."""
+		return self.lines_between(period.start, period.end)
 
 	def lines_between(self, start: date, end: date) -> list[LedgerLine]:
-		return self.assignment.lines_between(self.bookings, start, end)
+		return [placement.booking.line() for placement in self.placements if start <= placement.date <= end]
 
 	def posting_dates(self, period: Period) -> dict[str, date]:
 		"""The first posting date of each voucher reported in ``period``, by voucher key."""
 		dates: dict[str, date] = {}
-		for booking in self.bookings:
-			if period.contains(self.assignment.place(booking).date):
+		for placement in self.placements:
+			booking = placement.booking
+			if period.contains(placement.date):
 				known = dates.get(booking.voucher)
 				dates[booking.voucher] = min(known, booking.posting_date) if known else booking.posting_date
 		return dates
