@@ -168,7 +168,7 @@ class LatePostingTest(TestCase):
 		self.assertEqual(recon.balance.late, Decimal("19.00"))
 		self.assertEqual((recon.kennzahl("81").rest, recon.balance.rest), (ZERO, ZERO))
 		self.assertIn(
-			Finding("BUCHUNG-NACH-ABGABE", Severity.HINT, LATE, ("März 2026", "19.00")), recon.findings
+			Finding("BUCHUNG-NACH-ABGABE", Severity.HINT, LATE, ("März 2026", "19,00")), recon.findings
 		)
 		self.assertTrue(recon.ready)
 
@@ -254,8 +254,8 @@ class RestTest(TestCase):
 		recon = reconcile(result, soll, year.now())
 		self.assertEqual((recon.kennzahl("81").rest, recon.balance.rest), (Decimal("50.00"), Decimal("9.50")))
 		self.assertFalse(recon.ready)
-		self.assertIn(Finding("ABGLEICH-REST", Severity.ERROR, REST, ("81", "50.00")), recon.findings)
-		self.assertIn(Finding("ABGLEICH-REST", Severity.ERROR, REST_OF_KZ_820, ("9.50",)), recon.findings)
+		self.assertIn(Finding("ABGLEICH-REST", Severity.ERROR, REST, ("81", "50,00")), recon.findings)
+		self.assertIn(Finding("ABGLEICH-REST", Severity.ERROR, REST_OF_KZ_820, ("9,50",)), recon.findings)
 
 
 class KennzahlenTest(TestCase):

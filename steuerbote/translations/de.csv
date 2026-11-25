@@ -2061,6 +2061,7 @@
 "yearly","jährlich"
 "{0} (Simulation)","{0} (Simulation)"
 "{0} Enter them in the Annual Filing Settings and calculate again.","{0} Tragen Sie sie in den Einstellungen Jahresmeldungen ein und berechnen Sie erneut."
+"{0} Journal Entries of {1} move tax accounts without the flag Exclude from VAT Return, such as {2}: a clearing of the tax accounts needs the flag, a correction does not. The report UStVA Kennzahlen shows the vouchers of each Kennzahl.","{0} Journalbuchungen aus {1} bewegen Steuerkonten ohne das Kennzeichen „Nicht in der Umsatzsteuer-Voranmeldung“, etwa {2}: Eine Umbuchung zwischen den Steuerkonten braucht das Kennzeichen, eine Korrektur nicht. Der Bericht „UStVA Kennzahlen“ zeigt die Belege jeder Kennzahl."
 "{0} accounts are watched at the level Blocking now.","{0} Konten werden jetzt auf der Stufe „Sperrt“ beobachtet."
 "{0} accounts of the company have no place in the Balance Sheet Mapping yet: give each a position or the reason why it lies outside the Bilanz and the GuV, since a balance on one of them holds the E-Bilanz and the Jahresabschluss back. Konten prüfen in the mapping lists them.","{0} Konten des Unternehmens haben noch keinen Platz in der Bilanzzuordnung: Geben Sie jedem eine Position oder den Grund, warum es außerhalb von Bilanz und GuV liegt, denn ein Saldo auf einem von ihnen hält E-Bilanz und Jahresabschluss an. „Konten prüfen“ in der Zuordnung nennt sie."
 "{0} accounts of the company have no place in the defaults: {1}","{0} Konten des Unternehmens haben in den Vorgaben keinen Platz: {1}"
