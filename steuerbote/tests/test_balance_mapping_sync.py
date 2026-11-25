@@ -38,6 +38,7 @@ from steuerbote.xbrl.changes import LiftError
 from steuerbote.xbrl.facts import Periods
 from steuerbote.xbrl.mapping import (
 	AccountBalance,
+	AccountKind,
 	Books,
 	DefaultExcluded,
 	DefaultRule,
@@ -47,6 +48,7 @@ from steuerbote.xbrl.mapping import (
 	Mapping,
 	MappingError,
 	Part,
+	PartyBalance,
 	Purpose,
 	Rule,
 	Watched,
@@ -433,6 +435,61 @@ class StatementBalancesTest(TestCase):
 				Balance("is.netIncome.netSales", Decimal("500"), source="4401 - Erlöse - MG"),
 			),
 		)
+
+
+class PartyBalancesTest(TestCase):
+	"""A customer with a credit balance on the sonstigen Verbindlichkeiten: an overpayment or a prepayment the customer
+	may claim back at once, „Ist eine Zeit für die Leistung weder bestimmt noch aus den Umständen zu entnehmen, so kann
+	der Gläubiger die Leistung sofort verlangen“ (§ 271 Abs. 1 BGB), so its remaining term is up to one year."""
+
+	def placement(self):
+		rule = Rule("1200", "bs.ass.currAss.receiv.trade", opposite="bs.eqLiab.liab.other")
+		books = Books(
+			(
+				AccountBalance(
+					"1200 - Forderungen - MG",
+					"1200",
+					"Forderungen",
+					Part.BALANCE_SHEET,
+					Decimal("1000"),
+					Decimal("300"),
+					kind=AccountKind.RECEIVABLE,
+					parties=(
+						PartyBalance("Customer", "Kunde A", Decimal("1000")),
+						PartyBalance("Customer", "Kunde B", credit=Decimal("300")),
+					),
+				),
+			)
+		)
+		return place(Mapping("SKR04", rules=(rule,)), books, positions.view(), Purpose.BOTH)
+
+	def test_the_part_on_the_other_side_is_due_within_a_year_in_the_jahresabschluss(self):
+		self.assertEqual(
+			sync.statement_balances(self.placement()),
+			(
+				Balance("bs.ass.currAss.receiv.trade", Decimal("1000"), source="1200 - Forderungen - MG"),
+				Balance(
+					"bs.eqLiab.liab.other",
+					Decimal("-300"),
+					remaining_term=RemainingTerm.UP_TO_ONE_YEAR,
+					source="1200 - Forderungen - MG",
+				),
+			),
+		)
+
+	def test_the_e_bilanz_lists_the_account_under_both_positions_and_they_add_up_to_the_ledger(self):
+		balances = sync.ebilanz_balances(self.placement())
+		self.assertEqual(
+			[
+				(balance.account, balance.concept.removeprefix("de-gaap-ci:"), balance.amount)
+				for balance in balances
+			],
+			[
+				("1200", "bs.ass.currAss.receiv.trade", Decimal("1000")),
+				("1200", "bs.eqLiab.liab.other", Decimal("-300")),
+			],
+		)
+		self.assertEqual(sum(balance.amount for balance in balances), Decimal("700"))
 
 
 class EBilanzBalancesTest(TestCase):

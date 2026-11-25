@@ -33,6 +33,16 @@ data. Every account has one place in it:
   liability side by the balance of the group. A rule of a group names the position for the opposite balance, so that
   the group has a position on each side; a netted group is a hint to confirm with the Steuerberatung. Every other
   account keeps its own sign, a bank account above all (A.13).
+- Parties: an account of type Receivable or Payable, whose every posting ERPNext keeps with its party, is split by
+  party at the Stichtag. „Posten der Aktivseite dürfen nicht mit Posten der Passivseite ... verrechnet werden“
+  (§ 246 Abs. 2 Satz 1 HGB): a customer with a credit balance is a sonstige Verbindlichkeit, not a smaller Forderung
+  against the others, and a supplier with a debit balance a sonstiger Vermögensgegenstand. Each party goes to the
+  position on the side of its own balance: the position of the rule, or its position for the opposite balance, or,
+  where the rule names none, the one of its kind (RECLASSIFICATION). A customer and a supplier that ERPNext links as
+  one party (Party Link) are set off against each other (§ 387 BGB) and go together to the position on the side of
+  their net balance. Postings without a party count on their own, with a hint. The parts of an account on one
+  position are one balance again, so that the Kontennachweis of the E-Bilanz lists the account under each position
+  with its part, and the parts add up to the ledger.
 - A Watched account: an account whose position is not decided. A balance on it holds the E-Bilanz and the
   Jahresabschluss back; at the level hint it only adds a hint, as in the VAT Return Mapping since v0.4.0
   (steuerbote/ustva/mapping.py).
@@ -199,6 +209,26 @@ class MappingError(ValueError):
 		super().__init__(template.format(*values))
 		self.template = template
 		self.values = values
+
+
+class AccountKind(StrEnum):
+	"""The account types of ERPNext whose postings carry a party (party_type and party of the GL Entry)."""
+
+	RECEIVABLE = "Receivable"
+	PAYABLE = "Payable"
+
+
+RECLASSIFICATION: MappingProxyType[AccountKind, str] = MappingProxyType(
+	{
+		AccountKind.RECEIVABLE: "bs.eqLiab.liab.other.other",
+		AccountKind.PAYABLE: "bs.ass.currAss.receiv.other.other",
+	}
+)
+"""Where the parties on the other side go when the rule of their account names no position for the opposite balance:
+customers with a credit balance to the übrige sonstige Verbindlichkeiten (§ 266 Abs. 3 C. 8. HGB), suppliers with a
+debit balance to the übrige sonstige Vermögensgegenstände (§ 266 Abs. 2 B. II. 4. HGB), as the defaults place the
+opposite balance of the Forderungen and Verbindlichkeiten aus Lieferungen und Leistungen (steuerbote/ebilanz/
+defaults.py)."""
 
 
 class Part(StrEnum):
@@ -606,9 +636,26 @@ _PURPOSES = MappingProxyType(
 
 
 @dataclass(frozen=True, slots=True)
+class PartyBalance:
+	"""What one party owes or is owed on an account of type Receivable or Payable: its type and name, empty for postings
+	without a party, debit and credit, and the key a Party Link gives a customer and a supplier that are one party."""
+
+	party_type: str
+	party: str
+	debit: Decimal = ZERO
+	credit: Decimal = ZERO
+	linked: str = ""
+
+	@property
+	def amount(self) -> Decimal:
+		return self.debit - self.credit
+
+
+@dataclass(frozen=True, slots=True)
 class AccountBalance:
 	"""The balance of an account of the books: its name in ERPNext, its number, empty without one, its label, its
-	part, and debit and credit in euros and cents."""
+	part, and debit and credit in euros and cents; an account of type Receivable or Payable with its kind and the
+	balance of each party, which add up to it."""
 
 	account: str
 	number: str
@@ -616,11 +663,19 @@ class AccountBalance:
 	part: Part
 	debit: Decimal = ZERO
 	credit: Decimal = ZERO
+	kind: AccountKind | None = None
+	parties: tuple[PartyBalance, ...] = ()
 
 	def __post_init__(self) -> None:
 		for name in ("debit", "credit"):
 			if not isinstance(getattr(self, name), Decimal):
 				raise TypeError(f"the {name} of account {self.account} is a Decimal")
+		object.__setattr__(self, "parties", tuple(self.parties))
+		if self.parties and (
+			sum((item.debit for item in self.parties), ZERO) != self.debit
+			or sum((item.credit for item in self.parties), ZERO) != self.credit
+		):
+			raise ValueError(f"the parties of account {self.account} do not add up to its balance")
 
 	@property
 	def amount(self) -> Decimal:
@@ -658,6 +713,9 @@ class Code(StrEnum):
 	NO_CLOSING_ACCOUNT = "BILANZ-ABSCHLUSSKONTO"
 	TAXONOMY = "BILANZ-TAXONOMIE"
 	NETTED = "BILANZ-VERRECHNUNG"
+	RECLASSIFIED = "BILANZ-UMGLIEDERUNG"
+	NO_PARTY = "BILANZ-OHNE-PARTEI"
+	PARTY_SET_OFF = "BILANZ-PARTEI-VERRECHNET"
 
 
 @dataclass(frozen=True, slots=True)
@@ -688,6 +746,8 @@ class Placed:
 	concept: str
 	position: str
 	value: Decimal
+	reclassified: bool = False
+	"""Whether the balance is the part of the parties of the account on the other side of its position."""
 
 	@property
 	def amount(self) -> Decimal:
@@ -717,9 +777,12 @@ def place(
 	*,
 	closing_account: str | None = None,
 	fiscal_year: tuple[date, date] | None = None,
+	reclassification: ReadOnlyMapping[AccountKind, str] = RECLASSIFICATION,
 ) -> Placement:
 	"""The balances of the books on their positions in the balance sheet of the purpose, with the earlier result on the
-	closing account and, given the fiscal year, only positions valid in it."""
+	closing account and, given the fiscal year, only positions valid in it; the parties of an account of type
+	Receivable or Payable each on the side of their balance, those whose rule names no position for the opposite
+	balance on the one ``reclassification`` gives their kind."""
 	findings: list[Finding] = []
 	if taxonomy.version != mapping.taxonomy_version:
 		findings.append(
@@ -733,19 +796,26 @@ def place(
 		)
 	balances = _with_earlier_result(books, closing_account, findings)
 	groups = _group_balances(mapping, balances, taxonomy, purpose)
+	linked = _linked_parties(mapping, balances, taxonomy, purpose, reclassification)
 	placed: list[Placed] = []
 	left_out: list[AccountBalance] = []
 	for balance in balances:
-		if not balance.amount:
+		if not balance.amount and not any(item.amount for item in balance.parties):
 			continue
 		found = list(_findings_of(mapping, balance, taxonomy, purpose, fiscal_year, groups))
-		item = None if _left_out(found) else _placed(mapping, balance, taxonomy, groups)
 		findings.extend(found)
-		if item is None:
+		if _left_out(found):
 			left_out.append(balance)
+			continue
+		rule = mapping.place_of(balance.number)
+		if balance.parties and rule.netting is None:
+			parts = _party_parts(rule, balance, taxonomy, linked, reclassification)
+			placed.extend(part for part, _count in parts)
+			findings.extend(_party_findings(balance, parts))
 		else:
-			placed.append(item)
+			placed.append(_placed(mapping, balance, taxonomy, groups))
 	findings.extend(_netted(placed))
+	findings.extend(_set_off(linked))
 	return Placement(tuple(placed), tuple(left_out), tuple(findings))
 
 
@@ -765,6 +835,139 @@ def _group_balances(
 		):
 			groups[rule.netting] = groups.get(rule.netting, ZERO) + balance.amount
 	return groups
+
+
+@dataclass(frozen=True, slots=True)
+class _Link:
+	"""A customer and a supplier that are one party: the position of the side of their net balance."""
+
+	concept: str
+	amount: Decimal
+	parties: tuple[str, ...]
+	count: int
+
+
+def _party_concept(
+	rule: Rule, amount: Decimal, kind: AccountKind | None, taxonomy: Taxonomy, reclassification
+) -> str:
+	"""The position of a party on the side of its own balance: that of the rule, its position for the opposite balance,
+	or the one of the kind of the account."""
+	opposite = rule.opposite or reclassification.get(kind)
+	return _concept_for(replace(rule, opposite=opposite), amount, taxonomy)
+
+
+def _linked_parties(
+	mapping: Mapping,
+	balances: Iterable[AccountBalance],
+	taxonomy: Taxonomy,
+	purpose: Purpose,
+	reclassification: ReadOnlyMapping[AccountKind, str],
+) -> dict[str, _Link]:
+	"""For each key of a Party Link, the net balance of its parties on every account that counts and the position of
+	the side of it: that of the part on the same side, the first one where they are even."""
+	parts: dict[str, list[tuple[Rule, AccountBalance, PartyBalance]]] = {}
+	for balance in balances:
+		rule = mapping.place_of(balance.number) if balance.number else None
+		if not (
+			isinstance(rule, Rule)
+			and rule.netting is None
+			and rule.counts_for(purpose)
+			and not rule_problems(rule, taxonomy, balance.part)
+		):
+			continue
+		for item in balance.parties:
+			if item.linked and item.amount:
+				parts.setdefault(item.linked, []).append((rule, balance, item))
+	links: dict[str, _Link] = {}
+	for key, found in parts.items():
+		net = sum((item.amount for _, _, item in found), ZERO)
+		rule, balance, item = next(
+			(part for part in found if (part[2].amount > 0) == (net > 0) and net), found[0]
+		)
+		concept = _party_concept(rule, item.amount, balance.kind, taxonomy, reclassification)
+		links[key] = _Link(concept, net, tuple(dict.fromkeys(part[2].party for part in found)), len(found))
+	return links
+
+
+def _party_parts(
+	rule: Rule,
+	balance: AccountBalance,
+	taxonomy: Taxonomy,
+	linked: ReadOnlyMapping[str, _Link],
+	reclassification: ReadOnlyMapping[AccountKind, str],
+) -> list[tuple[Placed, int]]:
+	"""The parties of the account on their positions, the parts of one position summed up to one balance, each with the
+	number of named parties in it."""
+	sums: dict[str, tuple[Decimal, Decimal]] = {}
+	counts: dict[str, int] = {}
+	for item in balance.parties:
+		if not item.amount:
+			continue
+		link = linked.get(item.linked) if item.linked else None
+		concept = (
+			link.concept
+			if link
+			else _party_concept(rule, item.amount, balance.kind, taxonomy, reclassification)
+		)
+		debit, credit = sums.get(concept, (ZERO, ZERO))
+		sums[concept] = (debit + item.debit, credit + item.credit)
+		counts[concept] = counts.get(concept, 0) + int(bool(item.party))
+	parts = []
+	for concept, (debit, credit) in sums.items():
+		part = replace(balance, debit=debit, credit=credit, parties=())
+		position = position_of(taxonomy, concept)
+		value = _value(taxonomy, position, part.amount)
+		parts.append((Placed(part, rule, concept, position, value, concept != rule.concept), counts[concept]))
+	return parts
+
+
+def _party_findings(balance: AccountBalance, parts: Iterable[tuple[Placed, int]]) -> Iterator[Finding]:
+	"""A hint for the parties of the account on the other side of its position, and one for postings without a
+	party."""
+	name = _named(balance)
+	for part, count in parts:
+		if not (part.reclassified and count):
+			continue
+		parties = "1 Partei" if count == 1 else f"{count} Parteien"
+		yield Finding(
+			Code.RECLASSIFIED,
+			Severity.HINT,
+			f"{name}: {parties} mit einem Saldo auf der Gegenseite, zusammen {euro(abs(part.amount))}, stehen unter "
+			f"{part.concept}: Forderungen und Verbindlichkeiten verschiedener Parteien werden nicht verrechnet.",
+			"§ 246 Abs. 2 Satz 1 HGB",
+			balance.number,
+			part.concept,
+			part.amount,
+		)
+	without = sum((item.amount for item in balance.parties if not item.party), ZERO)
+	if without:
+		yield Finding(
+			Code.NO_PARTY,
+			Severity.HINT,
+			f"{name} hat Buchungen ohne Partei über {euro(abs(without))}: Sie zählen für sich nach ihrem Saldo. "
+			"Ordnen Sie sie einer Partei zu, wenn sie zu einem Kunden oder Lieferanten gehören.",
+			"§ 246 Abs. 2 Satz 1 HGB",
+			balance.number,
+			amount=without,
+		)
+
+
+def _set_off(linked: ReadOnlyMapping[str, _Link]) -> Iterator[Finding]:
+	"""A hint for each customer and supplier that ERPNext links as one party and that are set off."""
+	for key, link in linked.items():
+		if link.count < 2:
+			continue
+		yield Finding(
+			Code.PARTY_SET_OFF,
+			Severity.HINT,
+			f"Kunde und Lieferant „{key}“ sind in ERPNext als eine Partei verknüpft ({', '.join(link.parties)}); "
+			f"Forderung und Verbindlichkeit sind verrechnet und stehen mit {euro(abs(link.amount))} unter "
+			f"{link.concept}.",
+			"§ 387 BGB; § 246 Abs. 2 Satz 1 HGB",
+			key,
+			link.concept,
+			link.amount,
+		)
 
 
 def _netted(placed: Iterable[Placed]) -> Iterator[Finding]:
