@@ -398,6 +398,36 @@ class TestPartnerVatIds(IntegrationTestCase):
 		partner_module.check_invoice(doc)
 		self.assertEqual(doc.vat_id_confirmation, record)
 
+	def test_a_draft_invoice_confirms_its_customer_for_its_company_and_the_confirmation_names_it(self):
+		frappe.db.delete("Party Account", {"parent": PARIS})
+		invoice = insert_record(
+			"Sales Invoice", name="SINV-STPU-ENTWURF", company=COMPANY, customer=PARIS, docstatus=0
+		)
+		frappe.db.set_single_value("Global Defaults", "default_company", OTHER)
+		with patch("frappe.enqueue") as enqueue:
+			self.assertTrue(partner_module.confirm_invoice_customer(invoice))
+		self.assertEqual(
+			{
+				key: enqueue.call_args.kwargs[key]
+				for key in ("party", "trigger", "source_doctype", "source_name")
+			},
+			{"party": PARIS, "trigger": "Invoice", "source_doctype": "Sales Invoice", "source_name": invoice},
+		)
+		service = FakeBzst({FRENCH: [bzst("evatr-0000"), bzst("evatr-0000", **QUALIFIED)]})
+		job = ("party_type", "party", "trigger", "source_doctype", "source_name")
+		self.run_job(service, **{key: enqueue.call_args.kwargs[key] for key in job})
+		self.assertEqual(
+			set(
+				frappe.get_all(
+					CONFIRMATION, filters={"party": PARIS}, fields=["company", "sales_invoice"], as_list=True
+				)
+			),
+			{(COMPANY, invoice)},
+		)
+		frappe.db.set_value("Sales Invoice", invoice, "docstatus", 1)
+		with self.assertRaisesRegex(frappe.ValidationError, "saved draft invoice"):
+			partner_module.confirm_invoice_customer(invoice)
+
 	def test_a_reason_submits_a_blocked_invoice_and_stays_on_it(self):
 		doc = self.invoice(ALPEN, self.accounts["8125"], vat_id_override_reason="Bestätigung per Telefon")
 		with patch("frappe.msgprint") as message:
