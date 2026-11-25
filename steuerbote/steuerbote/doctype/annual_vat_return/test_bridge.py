@@ -10,9 +10,11 @@ from steuerbote.jahresmeldung.overrides import OverrideError
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import Address
 from steuerbote.steuerbote.doctype.annual_vat_return import bridge
 from steuerbote.steuerbote.doctype.annual_vat_return.bridge import (
+	BEFORE_START,
 	BLOCKED,
 	KLEINUNTERNEHMER,
 	MESSAGES,
+	RELEASED,
 	SWITCH_MISSING,
 	SWITCH_OTHER,
 	VERPROBUNG,
@@ -35,6 +37,7 @@ from steuerbote.ustjahr.soll import Filed, FiledKennzahl, Override, SollError, v
 from steuerbote.ustjahr.split import AnnualRule, Choice, split
 from steuerbote.ustva import calculate as calculate_ustva
 from steuerbote.ustva.calculation import LedgerLine
+from steuerbote.ustva.carried import Release
 from steuerbote.ustva.mapping import AccountRule, Mapping, Side, TaxCheck, WatchedAccount, WatchLevel
 from steuerbote.ustva.period import Period
 
@@ -475,9 +478,40 @@ class FindingsTest(TestCase):
 		(other,) = bridge.switch_findings(YEAR, switch, date(2026, 5, 1))
 		self.assertEqual((other.template, other.values), (SWITCH_OTHER, (YEAR, "01.04.2026", "01.05.2026")))
 
+	def test_a_hint_for_a_timing_account_that_releases_what_it_carried_into_the_year(self):
+		found = bridge.release_findings([Release("1548", Decimal("1900.00"), Decimal("-1900.00"))], YEAR)
+		self.assertEqual(
+			[(finding.code, finding.severity, finding.template, finding.values) for finding in found],
+			[("SB-KONTO-AUFGELOEST", form.Severity.HINT, RELEASED, ("1548", "1900.00", "1900.00", YEAR))],
+		)
+
+	def test_an_error_for_a_year_the_books_do_not_cover_from_its_first_day(self):
+		"""A company that starts with Steuerbote in the middle of its life has the ledger of the year from the start of
+		its books on only (steuerbote/setup/start.py)."""
+		self.assertEqual(bridge.start_findings(YEAR, None), ())
+		self.assertEqual(bridge.start_findings(YEAR, date(YEAR, 1, 1)), ())
+		self.assertEqual(bridge.start_findings(YEAR, date(YEAR - 3, 7, 1)), ())
+		(finding,) = bridge.start_findings(YEAR, date(YEAR, 7, 1))
+		self.assertEqual(
+			(finding.code, finding.severity, finding.template, finding.values),
+			("SB-VOR-START", form.Severity.ERROR, BEFORE_START, ("01.07.2026", YEAR)),
+		)
+		(before,) = bridge.start_findings(YEAR, date(YEAR + 1, 1, 1))
+		self.assertEqual(before.values, ("01.01.2027", YEAR))
+
 	def test_every_message_is_a_template_of_its_own(self):
 		self.assertEqual(
-			MESSAGES, (VERPROBUNG, BLOCKED, WATCHED, KLEINUNTERNEHMER, SWITCH_MISSING, SWITCH_OTHER)
+			MESSAGES,
+			(
+				VERPROBUNG,
+				BLOCKED,
+				WATCHED,
+				KLEINUNTERNEHMER,
+				SWITCH_MISSING,
+				SWITCH_OTHER,
+				RELEASED,
+				BEFORE_START,
+			),
 		)
 		self.assertEqual(len(set(MESSAGES)), len(MESSAGES))
 

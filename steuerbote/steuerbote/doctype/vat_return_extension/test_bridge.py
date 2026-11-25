@@ -8,6 +8,7 @@ from unittest import TestCase
 
 from steuerbote.dauerfrist import Context, FormError, Ust1H
 from steuerbote.dauerfrist.form import LATEST_YEAR, NO_LAYOUT
+from steuerbote.setup.start import PriorFiling
 from steuerbote.steuerbote.doctype.vat_return_extension import bridge
 from steuerbote.steuerbote.doctype.vat_return_extension.bridge import (
 	Activity,
@@ -67,6 +68,7 @@ class BaseRowsTest(TestCase):
 					"period_label": "März 2026",
 					"period_code": "03",
 					"vat_return": "UStVA-2026-00002",
+					"prior_filing": None,
 					"kz83": d("19000.00"),
 					"kz39": d("0"),
 				},
@@ -74,15 +76,82 @@ class BaseRowsTest(TestCase):
 					"period_label": "Dezember 2026",
 					"period_code": "12",
 					"vat_return": "UStVA-2026-00003",
+					"prior_filing": None,
 					"kz83": d("20000.00"),
 					"kz39": d("5000.00"),
 				},
 			],
 		)
 
+	def test_a_voranmeldung_filed_before_steuerbote_names_its_record(self):
+		before = FiledReturn(
+			Period.quarter(2026, 4), "VVS-2026-00004", d("-500.00"), d("1781.00"), prior=True
+		)
+		self.assertEqual(
+			bridge.base_rows([before]),
+			[
+				{
+					"period_label": "IV. Kalendervierteljahr 2026",
+					"period_code": "44",
+					"vat_return": None,
+					"prior_filing": "VVS-2026-00004",
+					"kz83": d("-500.00"),
+					"kz39": d("1781.00"),
+				}
+			],
+		)
+
 	def test_the_amounts_of_the_rows_feed_the_base(self):
 		rows = [{"kz83": 19000.0, "kz39": 0}, {"kz83": "20000", "kz39": 5000.0}, {"kz83": None, "kz39": None}]
 		self.assertEqual(bridge.base_amounts(rows), ([d("19000.00"), d("20000.00"), d("0.00")], d("5000.00")))
+
+
+def before(
+	period: Period, name: str, kz83: str, kz39: str = "0.00", filed_on: date = date(2026, 3, 10)
+) -> PriorFiling:
+	return PriorFiling(period, name, filed_on, d(kz83), d(kz39))
+
+
+class WithPriorTest(TestCase):
+	"""The Voranmeldungen filed before Steuerbote count as filed, as their records hold them."""
+
+	def test_a_year_filed_outside_steuerbote_makes_the_base(self):
+		prior = [before(period, f"VVS-2026-{period.code}", "2500.00") for period in months(2026, 1, 11)]
+		prior.append(before(Period.month(2026, 12), "VVS-2026-12", "-2000.00", "4000.00"))
+		returns = bridge.with_prior([], prior)
+		self.assertEqual(len(returns), 12)
+		self.assertTrue(all(filed_return.prior for filed_return in returns))
+		self.assertEqual(bridge.gaps(GapsTest.MONTHLY, 2026, returns), ())
+		kz83, kz39 = bridge.base_amounts(bridge.base_rows(returns))
+		result = bridge.sondervorauszahlung(kz83, kz39, WHOLE_YEAR, None)
+		self.assertEqual(
+			(result.computed_base, result.base, result.kz38), (d("29500.00"), d("29500.00"), d("2681"))
+		)
+
+	def test_a_return_filed_through_steuerbote_comes_first(self):
+		prior = [
+			before(Period.quarter(2026, 1), "VVS-2026-00001", "300.00"),
+			before(Period.month(2026, 3), "VVS-2026-00002", "100.00"),
+			before(Period.month(2026, 4), "VVS-2026-00003", "400.00"),
+		]
+		self.assertEqual(
+			bridge.with_prior([MARCH, DECEMBER], prior),
+			(
+				MARCH,
+				FiledReturn(Period.month(2026, 4), "VVS-2026-00003", d("400.00"), prior=True),
+				DECEMBER,
+			),
+		)
+
+	def test_the_latest_filing_before_steuerbote_of_a_period_counts(self):
+		prior = [
+			before(Period.month(2026, 5), "VVS-2026-00005", "100.00"),
+			before(Period.month(2026, 5), "VVS-2026-00009", "150.00", filed_on=date(2026, 8, 1)),
+		]
+		self.assertEqual(
+			bridge.with_prior([], prior),
+			(FiledReturn(Period.month(2026, 5), "VVS-2026-00009", d("150.00"), prior=True),),
+		)
 
 
 class GapsTest(TestCase):

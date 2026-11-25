@@ -1,7 +1,8 @@
+from datetime import date
 from unittest import TestCase
 
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
-from steuerbote.zm.comparison import Earlier, compare, comparison_hints, earlier
+from steuerbote.zm.comparison import Earlier, before_start, compare, comparison_hints, earlier
 from steuerbote.zm.findings import Code
 from steuerbote.zm.lines import Art, Override, build
 from steuerbote.zm.period import ReportingPeriod
@@ -164,3 +165,27 @@ class HintsTest(TestCase):
 				f"Die Zeile {SPAIN} (S) liegt mit 300,00 € über der Vorperiode März 2026 (0,00 €).",
 			],
 		)
+
+
+class BeforeTheStartTest(TestCase):
+	"""Before the start of the books in Steuerbote the ledger holds no lines to compare with."""
+
+	def test_a_meldezeitraum_before_the_start_is_not_compared(self):
+		before = Earlier(Coverage(ReportingPeriod.quarter(2026, 4), (10, 11, 12), ()), None)
+		finding = before_start(before, date(2027, 1, 1))
+		self.assertEqual(finding.code, Code.BEFORE_START)
+		self.assertFalse(finding.blocking)
+		self.assertEqual(
+			finding.text,
+			"Kein Vorperiodenvergleich mit IV. Kalendervierteljahr 2026: Es liegt vor dem Start der Bücher in "
+			"Steuerbote am 1. Januar 2027.",
+		)
+
+	def test_the_sonstige_leistungen_compare_with_their_own_meldezeitraum(self):
+		before = Earlier(Coverage(month(1, 2027), (1,), ()), Coverage(month(12), (12,), (10, 11, 12)))
+		self.assertIn("Dezember 2026", before_start(before, date(2027, 1, 1)).text)
+		self.assertIsNone(before_start(before, date(2026, 12, 1)))
+
+	def test_without_a_start_everything_is_compared(self):
+		self.assertIsNone(before_start(BEFORE_APRIL, None))
+		self.assertIsNone(before_start(BEFORE_APRIL, date(2026, 3, 1)))

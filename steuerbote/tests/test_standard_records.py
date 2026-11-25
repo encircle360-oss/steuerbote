@@ -277,6 +277,7 @@ class WorkspaceFilesTest(TestCase):
 				("DocType", "Annual Filing Settings", "List"),
 				("DocType", "Balance Sheet Mapping", "List"),
 				("DocType", "Income Tax Mapping", "List"),
+				("DocType", "VAT Return Prior Filing", "List"),
 			},
 		)
 		doctypes = doctype_names() | {DAUERFRIST_DOCTYPE}
@@ -349,6 +350,7 @@ class WorkspaceFilesTest(TestCase):
 				("Annual Filing Settings", "List"): "Jahres-Einstellungen",
 				("Balance Sheet Mapping", "List"): "Bilanzzuordnung",
 				("Income Tax Mapping", "List"): "Zuord. Ertragsteuern",
+				("VAT Return Prior Filing", "List"): "Vor Steuerbote",
 			},
 		)
 		self.assertEqual([label for label in labels.values() if len(label) > LONGEST_LABEL], [])
@@ -388,7 +390,7 @@ class WorkspaceFilesTest(TestCase):
 						"Zuord. Ertragsteuern",
 					],
 				),
-				("Einrichtung", ["Einrichten", "Einstellungen", "Kontenzuordnung"]),
+				("Einrichtung", ["Einrichten", "Einstellungen", "Kontenzuordnung", "Vor Steuerbote"]),
 			],
 		)
 
@@ -447,6 +449,7 @@ class SidebarFilesTest(TestCase):
 				"Einrichten",
 				"Einstellungen",
 				"Kontenzuordnung",
+				"Vor Steuerbote",
 			],
 		)
 		self.assertEqual([label for label in in_german if len(label) > LONGEST_LABEL], [])

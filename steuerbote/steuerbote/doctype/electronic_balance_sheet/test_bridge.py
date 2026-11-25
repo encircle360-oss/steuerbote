@@ -1116,6 +1116,13 @@ class FindingsTest(TestCase):
 		self.assertEqual(bridge.closing_finding("Jahresabschluss", ("PCV-2026",)), ())
 		self.assertEqual(bridge.closing_finding("Eröffnungsbilanz", ()), ())
 
+	def test_a_hint_where_the_betriebsvermoegen_of_the_previous_year_comes_from_the_books(self):
+		(found,) = bridge.previous_equity_finding(2027, from_books=True)
+		self.assertEqual((found.code, found.severity), ("SB-BV-VORJAHR", Severity.HINT))
+		self.assertIn("zum Schluss von 2026 kommt aus den Buchungen", found.text)
+		self.assertIn("keine abgegebene E-Bilanz für 2026", found.text)
+		self.assertEqual(bridge.previous_equity_finding(2027, from_books=False), ())
+
 	def test_each_book_holds_the_depreciation_of_each_asset_once(self):
 		"""ERPNext counts the entries without a finance book in every book (steuerbote/balances.py)."""
 		scheduled = {
