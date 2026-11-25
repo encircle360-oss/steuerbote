@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -643,6 +644,15 @@ class TestERiCSettings(IntegrationTestCase):
 					(True, "Hersteller-ID 12345."),
 				)
 				self.assertIn("plugin", checks)
+
+	def test_the_status_says_whether_the_simulation_checks_the_schema(self):
+		"""Without STEUERBOTE_ERIC_DOC_DIR, Prüfen in the simulation checks no schema; the status says so and why."""
+		settings = self.settings()
+		with patch.dict(os.environ, {}, clear=False):
+			os.environ.pop("STEUERBOTE_ERIC_DOC_DIR", None)
+			checks = {check["name"]: check for check in settings.check_runtime()}
+		self.assertFalse(checks["schema"]["ok"])
+		self.assertIn("STEUERBOTE_ERIC_DOC_DIR nicht gesetzt", checks["schema"]["detail"])
 
 	def test_only_a_system_manager_checks_the_runtime(self):
 		settings = self.settings()
