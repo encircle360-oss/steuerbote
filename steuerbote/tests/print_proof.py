@@ -1,18 +1,20 @@
-"""The proof of the print formats as PDF, for CI: every print format of the app, rendered with wkhtmltopdf as Frappe
-renders it on a site, for the documents of the browser tests (steuerbote/tests/e2e/seed.py) and for variants of them
-that stress the layout, then checked page by page (printouts.py):
+"""The proof of the print formats as PDF, for CI: every print format of the app, in German and with both engines
+Frappe offers, wkhtmltopdf and the Chromium-based one, for the documents of the browser tests
+(steuerbote/tests/e2e/seed.py, made in German) and for variants of them that stress the layout, then checked page by
+page (printouts.py):
 
 	bench --site <site> execute steuerbote.tests.print_proof.run --kwargs "{'directory': '<directory>'}"
 
 The variants change the document in memory only and save nothing: „kurz“ is the document as the seed made it,
 „lang“ repeats the rows of its print and adds many findings and long remarks, „namen“ gives it an invented company
 with a long name, long labels and large negative amounts and marks it as a Berichtigung. The Jahresabschluss also
-prints its Vorschau der Offenlegung.
+prints its Vorschau der Offenlegung, the E-Bilanz an invented Anlagenspiegel.
 
-Each printout is rendered without the stylesheet of Frappe's print bundle, as on a site where wkhtmltopdf cannot load
-it, and the short ones once more with it, so that both look the same. The directory receives the PDFs, the words of
-their pages (pdftotext -bbox) and report.md with the pages and the problems of each; the run fails when one has a
-problem. Every record is invented; nothing goes to a real company.
+The step of the CI makes the URL of the site unreachable: a print format must load nothing. wkhtmltopdf gets the HTML
+without the link to Frappe's print bundle, which Frappe adds for every print format, and the short printouts once more
+with the bundle inlined, so that both look the same; any other address in the HTML fails the printout. The directory
+receives the PDFs, the words of their pages (pdftotext -bbox) and report.md with the pages and the problems of each;
+the run fails when one has a problem. Every record is invented; nothing goes to a real company.
 """
 
 import copy
@@ -124,6 +126,8 @@ GERMAN = {
 }
 LINK = re.compile(r'<link[^>]*rel="stylesheet"[^>]*>')
 SCRIPT = re.compile(r"<script[^>]*\bsrc=[^>]*>\s*</script>")
+# What makes a browser fetch something: a source, a stylesheet, a CSS address or import.
+FETCHED = re.compile(r"""\bsrc=["'][^"']+|<link\b[^>]*>|url\([^)]*\)|@import[^;]*""", re.IGNORECASE)
 BUNDLE = re.compile(r'href="(/assets/[^"]*print\.bundle[^"]*\.css)"')
 
 
@@ -156,9 +160,12 @@ def proof_all(directory: str) -> None:
 				failed = True
 				report.append(f"- {slug(print_format)}__{variant}: nicht angelegt: {error!r}")
 				continue
-			for bundle in (False, True) if variant == "kurz" else (False,):
-				stem = f"{slug(print_format)}__{variant}{'__mit-druckstil' if bundle else ''}"
-				problems, pages = proof(out, stem, doc, print_format, together, bundle)
+			renders = [("wkhtmltopdf", False), ("chrome", False)]
+			if variant == "kurz":
+				renders.append(("wkhtmltopdf", True))
+			for engine, bundle in renders:
+				stem = f"{slug(print_format)}__{variant}__{engine}{'__mit-druckstil' if bundle else ''}"
+				problems, pages = proof(out, stem, doc, print_format, together, engine, bundle)
 				failed = failed or bool(problems)
 				report.append(f"- {stem}: {pages} Seiten{'' if not problems else ', ' + '; '.join(problems)}")
 	(out / "report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
@@ -362,9 +369,11 @@ def renamed(doc):
 	return doc
 
 
-def proof(out: Path, stem: str, doc, print_format: str, together, bundle: bool) -> tuple[list[str], int]:
+def proof(
+	out: Path, stem: str, doc, print_format: str, together, engine: str, bundle: bool
+) -> tuple[list[str], int]:
 	try:
-		pdf = render(doc, print_format, bundle)
+		pdf = render(doc, print_format, engine, bundle)
 	except Exception as error:
 		return [f"nicht gedruckt: {error}"], 0
 	path = out / f"{stem}.pdf"
@@ -387,20 +396,25 @@ def proof(out: Path, stem: str, doc, print_format: str, together, bundle: bool) 
 	return printouts.check(pages, expected), len(pages)
 
 
-def render(doc, print_format: str, bundle: bool) -> bytes:
-	"""The PDF of a document with wkhtmltopdf, from the HTML Frappe prints, without or with Frappe's print bundle."""
+def render(doc, print_format: str, engine: str, bundle: bool) -> bytes:
+	"""The PDF of a document with one of the engines of Frappe. The Chromium-based one takes the assets of the bench
+	from disk. wkhtmltopdf would fetch Frappe's print bundle from the URL of the site, which the step of the CI makes
+	unreachable; it gets the HTML without that link, or with the bundle inlined, and fails on any other address the
+	print format would load (FETCHED)."""
+	if engine == "chrome":
+		return frappe.get_print(
+			doc.doctype, doc.name, print_format, doc=doc, no_letterhead=1, as_pdf=True, pdf_generator="chrome"
+		)
 	html = frappe.get_print(
 		doc.doctype, doc.name, print_format, doc=doc, no_letterhead=1, pdf_generator="wkhtmltopdf"
 	)
-	style = ""
-	if bundle:
-		match = BUNDLE.search(html)
-		if match:
-			style = (
-				"<style>" + Path(frappe.local.sites_path, match.group(1).lstrip("/")).read_text() + "</style>"
-			)
-	html = SCRIPT.sub("", LINK.sub(style.replace("\\", "\\\\"), html, count=1))
-	html = LINK.sub("", html)
+	bundle_link = BUNDLE.search(html)
+	html = LINK.sub("", SCRIPT.sub("", html))
+	if fetched := FETCHED.findall(html):
+		raise ValueError(f"lädt aus dem Netz: {fetched[:3]}")
+	if bundle and bundle_link:
+		css = Path(frappe.local.sites_path, bundle_link.group(1).lstrip("/")).read_text()
+		html = html.replace("</head>", f"<style>{css}</style></head>", 1)
 	return get_pdf(html)
 
 
