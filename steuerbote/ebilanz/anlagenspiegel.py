@@ -38,9 +38,11 @@ Value types. „Wird für die Position Bilanzierungsstandard die Ausprägung „
 Steuerbilanz under „deutsches Steuerrecht“ gives Steuerbilanzwerte as well (g). A Handelsbilanz gives
 Handelsbilanzwerte, and with Überleitungswerte the Steuerbilanzwerte too, which Steuerbote derives: „muss sich aus ihnen
 rechnerisch der unter „Steuerbilanzwert“ [dim_taxBal] berichtete Wert ergeben“ (c, d). A position „steuerlich“ not
-permitted has no Steuerbilanzwert: in a Steuerbilanz it is no row (steuerbote/ebilanz/positions.py), and in a
-Handelsbilanz its Handelsbilanzwert and Überleitungswert add up to zero (i), so Steuerbote sends no Steuerbilanzwert of
-it, as structural error 170165096 of the Jahresdokumentation 6.9 refuses any.
+permitted is no row of a Steuerbilanz (steuerbote/ebilanz/positions.py); in a Handelsbilanz its Handelsbilanzwert and
+Überleitungswert add up to zero, and its Steuerbilanzwert is sent with that zero: „Werden im Anlagenspiegel für eine als
+„steuerlich“ unzulässig (notPermittedFor) gekennzeichnete Position ... Steuerbilanzwerte ... berichtet, so müssen diese
+gleich 0 sein.“ (i) ERiC 44.3.6.0 wants it: without it structural error 170185133 refuses the Anlagenspiegel, and
+170165096 refuses a Steuerbilanzwert of such a position only outside the tables (validation of Bilanz_6.9).
 
 Checks. The Buchwert at the end of each row is the value of its position in the Bilanz, the Handelsbilanzwert that of
 the Handelsbilanz, the Steuerbilanzwert that of the Steuerbilanz after the Überleitung, where the Bilanz reports the
@@ -296,7 +298,7 @@ def anlagenspiegel(
 	for position in structure.rows:
 		for value_type in ValueType:
 			key = (position, value_type)
-			if key not in summed or _withheld(structure, position, value_type):
+			if key not in summed:
 				continue
 			values = _columns(structure, summed[key])
 			if not any(value is not None for value in values.values()):
@@ -430,8 +432,8 @@ def _columns(structure: Structure, given: Mapping[str, Decimal]) -> dict[str, De
 	return values
 
 
-def _withheld(structure: Structure, position: str, value_type: ValueType) -> bool:
-	"""Whether the row is one Steuerbote does not send: a Steuerbilanzwert of a position „steuerlich“ not permitted."""
+def _fiscally_not_permitted(structure: Structure, position: str, value_type: ValueType) -> bool:
+	"""Whether the row is a Steuerbilanzwert of a position „steuerlich“ not permitted."""
 	concept = structure.taxonomy.concepts[position]
 	return value_type is ValueType.STEUERBILANZ and not concept.permitted_for(NOT_PERMITTED_FISCAL)
 
@@ -442,7 +444,7 @@ def _not_permitted(
 	"""A position „steuerlich“ not permitted has a Steuerbilanzwert of zero (Leitfaden B.14.12.1 i)."""
 	taxonomy = structure.taxonomy
 	for (position, value_type), values in summed.items():
-		if not _withheld(structure, position, value_type):
+		if not _fiscally_not_permitted(structure, position, value_type):
 			continue
 		book_value = _columns(structure, values).get(BOOK_VALUE) or ZERO
 		if book_value:
