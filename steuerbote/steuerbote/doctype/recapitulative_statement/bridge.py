@@ -278,7 +278,8 @@ def overrides_of(rows: Iterable[Row]) -> dict[tuple[str, Art], Override]:
 		if key in overrides:
 			raise ZmError(OVERRIDDEN_TWICE, *key)
 		basis = row.get("override_basis")
-		overrides[key] = Override(amount, reason, None if basis is None else to_amount(basis))
+		unknown = bool(int(row.get("override_basis_unknown") or 0))
+		overrides[key] = Override(amount, reason, None if basis is None else to_amount(basis), unknown)
 	return overrides
 
 
@@ -300,6 +301,23 @@ def override_bases(stored: Iterable[Row], rows: Iterable[Row]) -> list[Decimal |
 		else:
 			bases.append(to_amount(before.get("amount")))
 	return bases
+
+
+def unknown_bases(stored: Iterable[Row], rows: Iterable[Row]) -> list[int]:
+	"""Whether the basis of each override of ``rows`` is unknown: an override the stored line holds as it is keeps the
+	mark of the stored line (Override.basis_unknown); a new or changed one is confirmed against the ledger amount the
+	line showed and has a known basis (override_bases). Never from the rows a save sends, like the basis."""
+	by_key = {_key_of(row): row for row in stored}
+	unknown: list[int] = []
+	for row in rows:
+		before = by_key.get(_key_of(row))
+		kept = (
+			before is not None
+			and str(row.get("override_reason") or "").strip()
+			and _override(before) == _override(row)
+		)
+		unknown.append(int(bool(kept) and bool(int(before.get("override_basis_unknown") or 0))))
+	return unknown
 
 
 def acceptances_of(rows: Iterable[Row]) -> dict[tuple[str, Art], str]:
@@ -483,6 +501,7 @@ def _line_row(line: Line, holding: bool) -> dict[str, Any]:
 		"override": line.override.amount if line.override else ZERO,
 		"override_reason": line.override.reason if line.override else "",
 		"override_basis": line.override.basis if line.override else ZERO,
+		"override_basis_unknown": int(bool(line.override and line.override.basis_unknown)),
 		"acceptance_reason": line.acceptance,
 		"reported": line.reported,
 		"blocked": int(holding),

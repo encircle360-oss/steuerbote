@@ -162,6 +162,7 @@ class RecalculatedTest(TestCase):
 					"correction": Decimal("0"),
 					"correction_reason": "",
 					"correction_basis": Decimal("0"),
+					"correction_basis_unknown": 0,
 					"reported": Decimal("1000.00"),
 					"manual": 0,
 				}

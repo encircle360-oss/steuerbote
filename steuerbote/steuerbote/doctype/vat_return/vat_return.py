@@ -463,9 +463,14 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 
 	def _take_bases(self, stored: Iterable[Document]) -> None:
 		"""Give each override the ledger amount it was made against (bridge.override_bases); a Kennzahl the stored return
-		did not hold has no ledger amount yet but the one Berechnen finds."""
-		for row, basis in zip(self.kennzahlen, bridge.override_bases(stored, self.kennzahlen), strict=True):
+		did not hold has no ledger amount yet but the one Berechnen finds. An override from before Steuerbote kept the
+		basis keeps its mark until it changes (bridge.unknown_bases)."""
+		stored = list(stored)
+		bases = bridge.override_bases(stored, self.kennzahlen)
+		unknown = bridge.unknown_bases(stored, self.kennzahlen)
+		for row, basis, mark in zip(self.kennzahlen, bases, unknown, strict=True):
 			row.override_basis = basis
+			row.override_basis_unknown = mark
 
 	def _vat_ids(self) -> PeriodVatIds:
 		"""The vouchers behind Kz 41, 42 and 21 of the period with their customers, read once for the document."""
