@@ -8,12 +8,12 @@ from steuerbote.ustva.calculation import AccountBalance, DerivedBase
 from steuerbote.ustva.defaults import SKR03
 from steuerbote.ustva.plausibility import (
 	DEFAULT_CONFIRMATION_AGE,
-	AssetSale,
 	EU_MEMBER_STATES,
 	RESIDENCE_CODES,
 	SEVERITIES,
 	VAT_ID_CODES,
 	VAT_ID_KENNZAHLEN,
+	AssetSale,
 	Code,
 	EarlierPeriod,
 	Hint,
@@ -522,7 +522,11 @@ class TaxFreeAssetSaleHintsTest(TestCase):
 		)
 
 	def test_a_sale_in_germany_or_without_a_country_is_left_alone(self):
-		self.assertEqual(tax_free_asset_sale_hints([self.sale("Germany"), self.sale(None)], FIGURES), [])
+		"""A number from outside the EU without an address does not tell where the goods went."""
+		sales = [self.sale("Germany"), self.sale(None), self.sale(None, "CHE123456789")]
+		self.assertEqual(tax_free_asset_sale_hints(sales, FIGURES), [])
+		(greek,) = tax_free_asset_sale_hints([self.sale(None, "EL123456789")], FIGURES)
+		self.assertTrue(greek.text.startswith("Kz 41: "))
 
 
 class ResidenceHintsTest(TestCase):
@@ -950,6 +954,7 @@ class HintsTest(TestCase):
 				Code.ACQUISITION_OUTSIDE_EU,
 				Code.PERIOD_NOT_ENDED,
 				Code.ZM_WITHOUT_RHYTHM,
+				Code.ASSET_SALE_TAX_FREE,
 			},
 		)
 

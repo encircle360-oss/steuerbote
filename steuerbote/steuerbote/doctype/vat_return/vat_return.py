@@ -1128,8 +1128,8 @@ def build_hints(
 	"""Hinweise: the invoices of the period, their reconciliation with the ledger, the balances on the accounts
 	watched for a hint, the bases taken from the tax of a voucher without base account, the suppliers of the vouchers of
 	sections C and D, the Vorperiodenvergleich, the confirmations of the USt-IdNrn. behind Kz 41, 42 and 21, the
-	accounts of the tax templates without a place in the mapping and the differences of the reconciliation with the
-	registers.
+	accounts of the tax templates without a place in the mapping, the asset sales without tax that no Kennzahl sees and
+	the differences of the reconciliation with the registers.
 
 	A hint informs and never holds the return; whether it is ready follows the Verprobung and the accounts
 	watched at the blocking level alone. ``invoices_of_the_period`` names the Sales Invoices whose bookings the
@@ -1164,6 +1164,10 @@ def build_hints(
 		found,
 		vat_id_hints(doc.company, period, vat_ids.amounts),
 		_tax_template_hints(doc.company, period, mapping, figures),
+		plausibility.tax_free_asset_sale_hints(
+			invoices.asset_sales_without_tax(doc.company, period.start, period.end, invoices_of_the_period),
+			figures,
+		),
 		registers.hints(
 			reconciliation,
 			account_labels(doc.company, (row.account_number for row in reconciliation if row.account_number)),
