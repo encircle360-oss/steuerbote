@@ -646,7 +646,9 @@ class NettingTest(TestCase):
 
 
 OTHER_LIABILITIES = "bs.eqLiab.liab.other"
-RECLASSIFIED = MappingProxyType({AccountKind.RECEIVABLE: OTHER_LIABILITIES, AccountKind.PAYABLE: OTHER_ASSETS})
+RECLASSIFIED = MappingProxyType(
+	{AccountKind.RECEIVABLE: OTHER_LIABILITIES, AccountKind.PAYABLE: OTHER_ASSETS}
+)
 
 
 def party(name: str, debit: str = "0", credit: str = "0", party_type: str = "Customer", linked: str = ""):
@@ -683,16 +685,23 @@ class PartySplitTest(TestCase):
 		placement = self.placed(
 			self.RECEIVABLE,
 			balances=[
-				ledger("1400", AccountKind.RECEIVABLE, party("Kunde A", "1000"), party("Kunde B", credit="300"))
+				ledger(
+					"1400", AccountKind.RECEIVABLE, party("Kunde A", "1000"), party("Kunde B", credit="300")
+				)
 			],
 		)
 		self.assertEqual(
 			[(item.balance.number, item.concept, item.value, item.reclassified) for item in placement.placed],
-			[("1400", RECEIVABLES, Decimal("1000"), False), ("1400", OTHER_LIABILITIES, Decimal("300"), True)],
+			[
+				("1400", RECEIVABLES, Decimal("1000"), False),
+				("1400", OTHER_LIABILITIES, Decimal("300"), True),
+			],
 		)
 		self.assertEqual(sum(item.amount for item in placement.placed), Decimal("700"))
 		(hint,) = [finding for finding in placement.findings if finding.code is mapping.Code.RECLASSIFIED]
-		self.assertEqual((hint.severity, hint.account, hint.amount), (mapping.Severity.HINT, "1400", Decimal("-300")))
+		self.assertEqual(
+			(hint.severity, hint.account, hint.amount), (mapping.Severity.HINT, "1400", Decimal("-300"))
+		)
 		self.assertIn("1 Partei", hint.text)
 
 	def test_a_supplier_with_a_debit_balance_is_an_asset(self):
@@ -795,6 +804,23 @@ class PartySplitTest(TestCase):
 			[(RECEIVABLES, Decimal("1200"), Decimal(0)), (OTHER_LIABILITIES, Decimal(0), Decimal("50"))],
 		)
 		self.assertTrue(all(not item.balance.parties for item in placement.placed))
+
+	def test_a_party_without_a_balance_and_a_link_of_one_party_alone_change_nothing(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			balances=[
+				ledger(
+					"1400",
+					AccountKind.RECEIVABLE,
+					party("Kunde A", "100", "100"),
+					party("Partner", "1000", linked="Partner"),
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed], [(RECEIVABLES, Decimal("1000"))]
+		)
+		self.assertEqual(placement.findings, ())
 
 	def test_the_parties_add_up_to_the_account(self):
 		with self.assertRaises(ValueError):
