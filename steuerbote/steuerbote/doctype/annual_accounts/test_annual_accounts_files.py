@@ -319,7 +319,10 @@ class ControllerFilesTest(TestCase):
 		source = (HERE / "annual_accounts.py").read_text(encoding="utf-8")
 		for name in WHITELISTED:
 			with self.subTest(method=name):
-				self.assertRegex(source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {name}\(')
+				self.assertRegex(
+					source,
+					rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\t@guards\.on_stored\([^\n]*\)\n\tdef {name}\(',
+				)
 
 	def test_the_print_reads_what_annual_accounts_print_gives(self):
 		given = dict_keys(method("annual_accounts_print"))

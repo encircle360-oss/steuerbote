@@ -366,7 +366,10 @@ class FormFilesTest(TestCase):
 		)
 		for method in methods:
 			with self.subTest(method=method):
-				self.assertRegex(self.source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+				self.assertRegex(
+					self.source,
+					rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\t@guards\.on_stored\([^\n]*\)\n\tdef {method}\(',
+				)
 
 	def test_the_form_offers_the_ledger_accounts_of_the_company_in_each_table(self):
 		self.assertIn('for (const table of ["rules", "watched", "excluded"])', self.script)

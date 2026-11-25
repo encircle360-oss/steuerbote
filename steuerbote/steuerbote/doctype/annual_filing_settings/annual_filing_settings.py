@@ -18,6 +18,7 @@ from frappe.model.document import Document
 from frappe.utils import cint, cstr, escape_html, flt, formatdate, getdate
 
 from steuerbote.elster import SCHEMES, STATE_CODES, SteuernummerError, to_elster
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.annual_filing_settings import rules
 
 REGISTER_FIELDS = ("register_court", "register_type", "register_number")
@@ -277,6 +278,7 @@ class AnnualFilingSettings(Document):
 				row.idx = index
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read", new=True)
 	def fill_address(self, quiet: bool = False) -> None:
 		"""Put the address of the VAT Return Settings into the form, with the street split at its last digits.
 
