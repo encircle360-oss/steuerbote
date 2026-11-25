@@ -10,7 +10,7 @@ Messages are English templates with positional placeholders, which the Frappe la
 them. This module is pure Python and never imports Frappe.
 """
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -27,7 +27,18 @@ NEEDS_CORRECTION = (
 	"Belongs to {0} and was booked after {0} was filed: make a corrected return (Kz 10) of {0}."
 )
 CHANGED_AMOUNT = "Kz {0}: filed {1}, now {2}."
-MESSAGES = (BOOKED_AFTER_FILING, CHANGED_SINCE_FILING, MOVED_HERE, MOVED_TO, NEEDS_CORRECTION, CHANGED_AMOUNT)
+OUTSIDE_MOVED_HERE = "Belongs to {0}, which was filed outside Steuerbote before the start of its books: reported in this period."
+OUTSIDE_NEEDS_CORRECTION = "Belongs to {0}, which was filed outside Steuerbote before the start of its books: its corrected return (Kz 10) goes where {0} was filed, or Documents for a Filed Period set to Current Period reports it in the period open when it was booked."
+MESSAGES = (
+	BOOKED_AFTER_FILING,
+	CHANGED_SINCE_FILING,
+	MOVED_HERE,
+	MOVED_TO,
+	NEEDS_CORRECTION,
+	CHANGED_AMOUNT,
+	OUTSIDE_MOVED_HERE,
+	OUTSIDE_NEEDS_CORRECTION,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +56,7 @@ class Row:
 
 	@property
 	def needs_correction(self) -> bool:
-		return self.template in (NEEDS_CORRECTION, CHANGED_AMOUNT)
+		return self.template in (NEEDS_CORRECTION, CHANGED_AMOUNT, OUTSIDE_NEEDS_CORRECTION)
 
 
 def _voucher(placement: Placement, period: Period, template: str, values: tuple[str, ...]) -> Row:
@@ -55,18 +66,23 @@ def _voucher(placement: Placement, period: Period, template: str, values: tuple[
 	)
 
 
-def current_rows(placements: Iterable[Placement], current: Period) -> list[Row]:
+def current_rows(
+	placements: Iterable[Placement], current: Period, outside: Collection[Period] = frozenset()
+) -> list[Row]:
 	"""The late bookings a return of ``current`` reports itself or names for a corrected return of an earlier
-	period."""
+	period; a period of ``outside`` was filed outside Steuerbote, which cannot correct it."""
 	rows = []
 	for placement in placements:
 		tax_period = placement.tax_period
 		if tax_period is None:
 			continue
+		elsewhere = tax_period in outside
 		if placement.moved and placement.period == current:
-			rows.append(_voucher(placement, tax_period, MOVED_HERE, (tax_period.label,)))
+			template = OUTSIDE_MOVED_HERE if elsewhere else MOVED_HERE
+			rows.append(_voucher(placement, tax_period, template, (tax_period.label,)))
 		elif placement.needs_correction and tax_period.start < current.start:
-			rows.append(_voucher(placement, tax_period, NEEDS_CORRECTION, (tax_period.label,)))
+			template = OUTSIDE_NEEDS_CORRECTION if elsewhere else NEEDS_CORRECTION
+			rows.append(_voucher(placement, tax_period, template, (tax_period.label,)))
 	return rows
 
 

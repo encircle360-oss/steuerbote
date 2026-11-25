@@ -36,6 +36,14 @@ the year it stays in its tax period and needs a corrected return, since a Besteu
 year (§ 16 Abs. 1 Satz 2 UStG) and the annual return holds it in its own year. Either way every posting is
 reported in exactly one period: placements are a function of the posting, the periods and their filings.
 
+**Before the start of the books.** A company that starts with Steuerbote in the middle of its life keeps its books
+in ERPNext from a day on; the Voranmeldungen of the periods before were filed outside Steuerbote, from other books.
+No booking in ERPNext is in such a return, so each period before the start counts as filed before any booking
+(filed_outside): a booking that belongs there is late, whenever it was entered, and either needs a corrected return
+where that period was filed or goes to the period open when it was booked. The periods before the start are those
+filed before Steuerbote, else those of the rules, else the months (periods_with_the_books), so that no such booking
+counts by its date alone.
+
 This module is pure Python and never imports Frappe.
 """
 
@@ -250,6 +258,35 @@ class Assignment:
 
 def _booked_at(placement: Placement) -> tuple[datetime, str]:
 	return placement.booking.booked_at, placement.booking.voucher
+
+
+def periods_with_the_books(
+	periods: Iterable[Period], prior: Iterable[Period], start: date | None, years: Iterable[int]
+) -> tuple[Period, ...]:
+	"""The periods of the years in order: before ``start`` those filed before Steuerbote (``prior``), else those of the
+	rules (``periods``), else the month; from ``start`` on those of the rules. Without a start, the rules alone."""
+	periods = tuple(periods)
+	if start is None:
+		return periods
+	prior = tuple(prior)
+	found: list[Period] = []
+	for year in years:
+		for month in range(1, 13):
+			first = date(year, month, 1)
+			candidates = (*prior, *periods, Period.month(year, month)) if first < start else periods
+			period = next((period for period in candidates if period.contains(first)), None)
+			if period is not None and period not in found:
+				found.append(period)
+	return tuple(sorted(found, key=lambda period: period.start))
+
+
+def filed_outside(periods: Iterable[Period], start: date | None) -> tuple[Filing, ...]:
+	"""A filing before any booking for each period before ``start``."""
+	return tuple(
+		Filing(period, datetime.min, datetime.min)
+		for period in periods
+		if start is not None and period.start < start
+	)
 
 
 @dataclass(frozen=True, slots=True)

@@ -10,6 +10,12 @@ VatLedger reads the bookings of a time once (ledger.load_bookings) and gives the
 it, the late bookings and, for a filed period, which Kennzahlen the ledger gives other amounts today than the
 return filed for it. The Voranmeldung, its report UStVA Kennzahlen and the Umsatzsteuererklärung read their lines
 here, so a year is the sum of its periods under the same rule.
+
+A company whose books in ERPNext start in the middle of its life (books_start of the settings, steuerbote/setup/start.py)
+filed the periods before the start outside Steuerbote, from other books, and records them as VAT Return Prior Filings.
+Each period before the start counts as filed before any booking in ERPNext (assignment.filed_outside), whatever day it
+was filed on: none of these bookings is in its return, so one that belongs there needs a corrected return where the
+period was filed, or goes to the period open when it was booked; it never lands in such a period unnoticed.
 """
 
 from collections.abc import Iterable
@@ -20,6 +26,7 @@ import frappe
 from frappe.model.document import Document
 from frappe.utils import cint, get_datetime
 
+from steuerbote import prior_filings
 from steuerbote.ledger import load_bookings
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import filings as filing_records
 from steuerbote.steuerbote.doctype.vat_return_settings import rules
@@ -33,6 +40,8 @@ from steuerbote.ustva.assignment import (
 	LateTreatment,
 	PeriodBasis,
 	Placement,
+	filed_outside,
+	periods_with_the_books,
 )
 
 VAT_RETURN = "VAT Return"
@@ -78,12 +87,19 @@ class VatLedger:
 	def __init__(self, company: str, start: date, end: date) -> None:
 		settings = frappe.get_doc(SETTINGS, company) if frappe.db.exists(SETTINGS, company) else None
 		years = range(start.year, end.year + 1)
-		periods = (
+		rule_periods = (
 			[period for year in years for period in rules.periods_of(settings.get_period_rules(), year)]
 			if settings is not None
 			else []
 		)
-		filed = filings(company, years)
+		books_start = prior_filings.books_start(company)
+		prior = [filed.period for filed in prior_filings.prior_filings(company, years)]
+		periods = periods_with_the_books(rule_periods, prior, books_start, years)
+		outside = filed_outside(periods, books_start)
+		filed = [
+			*outside,
+			*(filing for filing in filings(company, years) if filing.period not in outside_periods(outside)),
+		]
 		self.company = company
 		self.basis = basis_of(settings)
 		self.treatment = treatment_of(settings)
@@ -92,6 +108,7 @@ class VatLedger:
 		)
 		self.periods = tuple(periods)
 		self.filed = frozenset(filing.period for filing in filed)
+		self.outside = outside_periods(outside)
 		self.bookings = load_bookings(company, start, end, self.basis is PeriodBasis.SERVICE_DATE)
 		self.placements = [self.assignment.place(booking) for booking in self.bookings]
 
@@ -129,6 +146,10 @@ class VatLedger:
 	def filed_before(self, period: Period) -> list[Period]:
 		"""The filed periods before ``period`` in the time of the ledger, in order."""
 		return [earlier for earlier in self.periods if earlier in self.filed and earlier.start < period.start]
+
+
+def outside_periods(filed: Iterable[Filing]) -> frozenset[Period]:
+	return frozenset(filing.period for filing in filed)
 
 
 def accounts_by_invoice_date(company: str) -> frozenset[str]:

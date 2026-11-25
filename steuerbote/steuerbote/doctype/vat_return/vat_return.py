@@ -887,7 +887,7 @@ def late_change_rows(
 	"""Nach der Abgabe geändert: the bookings made after the filing of an earlier period that this return reports or
 	that need the corrected return of their period, and the Kennzahlen of each period filed before it whose ledger
 	amounts changed since its filing."""
-	rows = late.current_rows(ledger.late(), period)
+	rows = late.current_rows(ledger.late(), period, ledger.outside)
 	for filed_period in ledger.filed_before(period):
 		rows.extend(_change_rows(ledger, filed_period, settings, mapping))
 	return [_late_row(row) for row in rows]
