@@ -85,7 +85,9 @@
 		</table>
 	</div>
 
+	{%- if annual.findings | length <= 8 %}<div class="sb-keep">{% else %}<div>{% endif %}
 	{% include "steuerbote/templates/includes/annual_filing/findings.html" %}
 	{% include "steuerbote/templates/includes/annual_filing/remarks.html" %}
 	{% include "steuerbote/templates/includes/annual_filing/footer.html" %}
+	</div>
 </div>
