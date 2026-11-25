@@ -519,7 +519,8 @@ def _findings(
 					Severity.HINT,
 					f"Bei {line.holding.result.holding.name} mindern {figures.money(line.financing_costs)} "
 					"Aufwendungen im Sinne des § 8 Nummer 1 GewStG die Kürzung. Um sie kürzt Anlage BEG Zeile 20 die "
-					"Hinzurechnung; das berechnet Steuerbote nicht.",
+					"Hinzurechnung; die Erklärung nennt sie dort und in Zeile 79, die Rückstellung von Steuerbote "
+					"rechnet ohne diese Kürzung.",
 					"§ 9 Nummer 2a Satz 3 GewStG",
 				)
 			)

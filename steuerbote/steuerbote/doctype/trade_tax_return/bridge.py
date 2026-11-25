@@ -42,7 +42,7 @@ from steuerbote.eric.datenart import gewst as gewst_datenart
 from steuerbote.eric.simulation import gewst as gewst_rules
 from steuerbote.gewst.chain import STEPS, GewstInputs, GewstResult
 from steuerbote.gewst.chain import compute as compute_gewst
-from steuerbote.gewst.form import BEG_LINES, beg_lines, catalogue_for, vordrucke
+from steuerbote.gewst.form import BEG_LINES, beg_lines, beg_sums, catalogue_for, vordrucke
 from steuerbote.gewst.years import year_of
 from steuerbote.jahresmeldung.findings import Finding
 from steuerbote.jahresmeldung.overrides import Columns, to_amount
@@ -301,21 +301,25 @@ def filed_vordrucke(
 	settings: kst.Settings | None,
 ) -> tuple[Vordruck, ...]:
 	"""The Vordrucke the return files: GewSt 1 A from its lines as stored, the settings and the receipts of the
-	Zuwendungen, and an Anlage BEG of each row of the table of holdings."""
+	Zuwendungen, and an Anlage BEG of each row of the table of holdings, whose lines 19 and 20 GewSt 1 A lines 79 and
+	81 sum (steuerbote.gewst.form.beg_sums)."""
 	catalogue = catalogue_for(ret.year)
+	begs = tuple(beg_vordruck(row) for row in holdings)
+	sums = beg_sums(begs)
 	entries = general_entries(ret, settings, municipalities)
 	for row in rows:
 		item = catalogue.field(kst.normalized(row.get("feldkennung")))
 		amount = to_amount(row.get("reported"))
-		if amount or item.format not in kst.ZERO_REFUSED:
+		if item.feldkennung not in sums and (amount or item.format not in kst.ZERO_REFUSED):
 			entries.append(Entry(item.feldkennung, amount))
+	entries += [Entry(feldkennung, amount) for feldkennung, amount in sums.items()]
 	for number, row in enumerate(donations):
 		entries += [
 			Entry(RECEIPT_RECIPIENT, str(row.get("recipient")).strip(), (number,)),
 			Entry(RECEIPT_AMOUNT, to_amount(row.get("amount")), (number,)),
 			Entry(RECEIPT_ABROAD, kst.ABROAD if row.get("abroad") else kst.INLAND, (number,)),
 		]
-	return (Vordruck("GewSt1A", tuple(entries)), *(beg_vordruck(row) for row in holdings))
+	return (Vordruck("GewSt1A", tuple(entries)), *begs)
 
 
 def general_entries(ret: Return, settings: kst.Settings | None, municipalities: Iterable[Row]) -> list[Entry]:

@@ -44,7 +44,7 @@ from steuerbote.elster.erklaerung import Form, FormCatalogue, Rule
 from steuerbote.eric.datenart import gewst
 from steuerbote.gewst.chain import STEPS, BegLine, GewstResult
 from steuerbote.kst.form import Entry, Vordruck, checked, entries, table_fields
-from steuerbote.ustva.rounding import ZERO, half_up_euro
+from steuerbote.ustva.rounding import ZERO, ceil_euro, half_up_euro
 from steuerbote.ustva.years import UnknownYearError
 
 # The JD, sheet „GewSt1A - Felder“.
@@ -456,6 +456,10 @@ BEG_WITH_CUT_BASE = MappingProxyType(
 )
 """Lines 17, 18 and 19 of Anlage BEG, which go beside line 16, each with the line it needs filed as well."""
 LICENCES = "E4003703"
+BEG_FINANCING_CUT = "E4051701"
+BEG_HINZURECHNUNG_CUT = "E4052001"
+BEG_SUMS = MappingProxyType({BEG_HINZURECHNUNG_CUT: "E4006701", "E4051901": "E4006801"})
+"""The line of GewSt 1 A that sums a line of the Anlagen BEG, by the Feldkennung of that line."""
 LICENCES_NONRESIDENTS = "E4004103"
 # Anlage BEG lines 15 to 19, by the attribute of BegLine that holds each.
 BEG_LINES = (
@@ -487,10 +491,21 @@ def vordrucke(result: GewstResult) -> tuple[Vordruck, ...]:
 			amounts[step.field] = declared
 	if LICENCES in amounts:
 		amounts[LICENCES_NONRESIDENTS] = ZERO
-	return (
-		Vordruck("GewSt1A", entries(amounts)),
-		*(Vordruck("BEG", tuple(_beg(line))) for line in result.beg),
-	)
+	begs = tuple(Vordruck("BEG", tuple(_beg(line))) for line in result.beg)
+	amounts.update(beg_sums(begs))
+	return (Vordruck("GewSt1A", entries(amounts)), *begs)
+
+
+def beg_sums(begs: Iterable[Vordruck]) -> dict[str, Decimal]:
+	"""GewSt 1 A line 79, the sum of line 20, and line 81, the sum of line 19 of the Anlagen BEG, each where one of
+	them files its line, at zero as well (rules 40448, 40449, 40491 and 40492)."""
+	sums: dict[str, Decimal] = {}
+	for beg in begs:
+		for entry in beg.entries:
+			if entry.feldkennung in BEG_SUMS:
+				total = BEG_SUMS[entry.feldkennung]
+				sums[total] = sums.get(total, ZERO) + entry.value
+	return sums
 
 
 def beg_lines(amounts: Mapping[str, Decimal], written: set[str]) -> list[Entry]:
@@ -498,7 +513,8 @@ def beg_lines(amounts: Mapping[str, Decimal], written: set[str]) -> list[Entry]:
 
 	A line that is not zero goes, and so does one a rule of the Jahresdokumentation GewSt 2025 wants beside another,
 	at zero as well: line 16 beside lines 7 and 14 (rules 40946, 40956), lines 17 and 18 beside line 16 where lines 8
-	and 9 are filed, and line 19 beside line 16 (rules 40947 to 40949); validation with ERiC 44.3.6.0."""
+	and 9 are filed, and line 19 beside line 16 (rules 40947 to 40949); validation with ERiC 44.3.6.0. Line 20 goes
+	beside line 17 (rule 40750), for a Körperschaft „Aufrunden([E4051701])“ (rule 40966)."""
 	found = []
 	for _, feldkennung in BEG_LINES:
 		amount = amounts.get(feldkennung, ZERO)
@@ -510,6 +526,8 @@ def beg_lines(amounts: Mapping[str, Decimal], written: set[str]) -> list[Entry]:
 		if amount or required:
 			found.append(Entry(feldkennung, amount))
 			written.add(feldkennung)
+	if BEG_FINANCING_CUT in written:
+		found.append(Entry(BEG_HINZURECHNUNG_CUT, ceil_euro(amounts.get(BEG_FINANCING_CUT, ZERO))))
 	return found
 
 
