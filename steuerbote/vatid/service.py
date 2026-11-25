@@ -19,6 +19,7 @@ from dataclasses import replace
 from steuerbote.vatid import bzst, vies
 from steuerbote.vatid.result import Confirmation, Details, Outcome
 from steuerbote.vatid.transport import Clock, Fetch
+from steuerbote.vatid.ustid import normalize
 
 
 def confirm(
@@ -27,9 +28,13 @@ def confirm(
 	"""Confirm the USt-IdNr. requested for the business with the German USt-IdNr. requester.
 
 	The record returned is that of the last query, with the earlier ones in previous (Confirmation.queries).
-	Its service says who answered, and fallback_reason why VIES did. ValueError, before any request, unless
-	requested is a plausible number of another member state and requester a German number.
+	Its service says who answered, and fallback_reason why VIES did. A German number goes to VIES alone, simply:
+	the BZSt does not confirm it („Die anfragende DE USt-IdNr. ist nicht berechtigt eine DE USt-IdNr. anzufragen.“,
+	evatr-0006; § 18e Nr. 1 UStG). ValueError, before any request, unless requested is a plausible number of another
+	member state or a German number with the right check digit, and requester a German number.
 	"""
+	if isinstance(requested, str) and normalize(requested)[:2] == "DE":
+		return vies.query(requested, requester, None, fetch, clock)
 	simple = bzst.query(requested, requester, None, fetch, clock)
 	if simple.unavailable:
 		answer = vies.query(simple.requested, simple.requester, details, fetch, clock)

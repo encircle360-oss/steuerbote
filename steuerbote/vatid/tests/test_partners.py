@@ -83,6 +83,7 @@ class KindTest(TestCase):
 		self.assertIn("Länderkennzeichen", reason("CHE123456789"))
 		self.assertIsNone(reason("ATU12345678"))
 		self.assertIsNone(reason("DE111111125"))
+		self.assertIsNone(reason(None))
 
 
 class AnswerTest(TestCase):
