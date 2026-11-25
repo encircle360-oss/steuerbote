@@ -626,6 +626,34 @@ class TestPrint(AnnualFilingTestCase):
 			with self.subTest(expected=expected):
 				self.assertIn(expected, text)
 
+	def test_the_hints_print_by_kind_with_their_number_and_all_of_them_only_on_request(self):
+		"""A printout to file and to compare with the Steuerberatung, not a log: each error with its text and its
+		acknowledgement, the hints by kind with their number and one of them; every hint in an annex only when the
+		print asks for it (all_hints)."""
+		hints = [
+			{**SOURCE_HINT, "text": f"Die Journalbuchung JV-{index} bewegt ein Steuerkonto."}
+			for index in range(1, 4)
+		]
+		doc = self.calculated(*LINES, SOURCE_ERROR, *hints)
+		(error,) = [row for row in doc.findings if row.blocking]
+		doc.acknowledge_finding(error.name, "Mit der Steuerberatung abgestimmt.")
+		doc.reload()
+		text = self.printed(doc)
+		for expected in (
+			"Fehler | SB-QUELLE | Ein Konto ohne Zuordnung hat einen Saldo. | Konto 1590 |",
+			"Bestätigt: Mit der Steuerberatung abgestimmt.",
+			"Hinweise nach Art",
+			"SB-HINWEIS | 3 | Die Journalbuchung JV-1 bewegt ein Steuerkonto. |",
+		):
+			with self.subTest(expected=expected):
+				self.assertIn(expected, text)
+		self.assertNotIn("JV-3", text)
+		frappe.form_dict.all_hints = 1
+		self.addCleanup(frappe.form_dict.pop, "all_hints", None)
+		annex = self.printed(doc)
+		self.assertIn("Anhang: alle Hinweise", annex)
+		self.assertIn("Die Journalbuchung JV-3 bewegt ein Steuerkonto.", annex)
+
 	def test_a_filed_berichtigung_names_what_it_corrects_and_how_and_when_it_was_filed(self):
 		first = self.filed(self.calculated())
 		correction = self.filed(frappe.get_doc(DOCTYPE, first.make_correction()))
