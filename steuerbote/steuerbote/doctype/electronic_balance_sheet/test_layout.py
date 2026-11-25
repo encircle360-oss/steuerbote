@@ -201,6 +201,25 @@ class AnlagenspiegelTest(TestCase):
 		self.assertEqual((row["label"], row["value_type"], row["source"]), ("", "Steuerbilanzwert", ""))
 
 
+class MissingAnlagenspiegelTest(TestCase):
+	"""A Bilanz with Anlagevermögen but no row of the Anlagenspiegel lacks the Anlagenspiegel, which the print says
+	instead of „Kein Anlagevermögen“."""
+
+	def position(self, amount: str) -> dict:
+		return {
+			"concept": "bs.ass.fixAss",
+			"component": "B",
+			"reported": amount,
+			"depth": 2,
+			"label": "Anlagevermögen",
+		}
+
+	def test_the_print_knows_whether_the_bilanz_shows_anlagevermoegen(self):
+		self.assertTrue(layout.print_sections([self.position("2888.00")])["fixed_assets_in_bilanz"])
+		self.assertFalse(layout.print_sections([self.position("0")])["fixed_assets_in_bilanz"])
+		self.assertFalse(layout.print_sections([])["fixed_assets_in_bilanz"])
+
+
 class UeberleitungTest(TestCase):
 	def test_each_entry_with_its_kind_amounts_and_reason(self):
 		sections = layout.print_sections(

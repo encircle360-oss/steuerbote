@@ -7,7 +7,7 @@ Der Beleg lebt auf der Grundlage der Jahresmeldungen mit dem Lebenslauf `ACCOUNT
 ## Umfang
 
 - **Unternehmen:** eine GmbH oder UG (haftungsbeschränkt) mit den Einstellungen Jahresmeldungen und einer Bilanzzuordnung. Für eine Kleinstkapitalgesellschaft (§ 267a HGB) und eine kleine Gesellschaft (§ 267 Abs. 1 HGB) bereitet Steuerbote alles vor, was die Offenlegung braucht; für eine mittelgroße oder große Gesellschaft berechnet und druckt der Beleg Bilanz und Gewinn- und Verlustrechnung, Anhang und Offenlegung übernimmt die Steuerberatung oder der Abschlussprüfer.
-- **Geschäftsjahre:** das Geschäftsjahr von ERPNext, das im Jahr des Belegs endet, für die Offenlegung eines der HGB-Taxonomie 6.9, siehe [Umfang der Offenlegung](offenlegung.md#umfang).
+- **Geschäftsjahre:** das Geschäftsjahr von ERPNext, das im Jahr des Belegs endet, für die Offenlegung eines der HGB-Taxonomie 6.9, siehe [Umfang der Offenlegung](offenlegung.md#umfang). Steuerbote kennt Schwellen der Größenklassen und Gliederungen heute für 2026 (`schemes.years()`); einen Jahresabschluss für ein anderes Jahr lehnt schon das Anlegen ab, mit der Meldung „Steuerbote hat noch keinen Jahresabschluss für …“.
 - **Gliederung:** die Bilanz nach § 266 HGB in der Kontoform der Größenklasse und die Gewinn- und Verlustrechnung nach dem Gesamtkostenverfahren (§ 275 Abs. 2 HGB), denn das Hauptbuch kennt die Art eines Aufwands, nicht seine Funktion (`steuerbote/hgb/schemes.py`).
 - **Nicht darin:** Lagebericht, Konzernabschluss, Umsatzkostenverfahren, Tabellen der Haftungsverhältnisse und der Vorschüsse und Kredite an Organmitglieder (sie stehen im Text und Betrag ihrer Angabe), die Steuerbilanz und die Übermittlung selbst, siehe [Grenzen](#grenzen).
 
@@ -132,7 +132,8 @@ Neben den Befunden der Bilanzzuordnung (`BILANZ-…`) schreibt „Berechnen“ d
 | `JA-ARBEITNEHMER-HAND` | Hinweis | die Arbeitnehmer von Hand ersetzen die gezählten |
 | `JA-ARBEITNEHMER-ART` | Hinweis | die Einstellungen lassen Arten der Beschäftigung aus, die Mitarbeiter haben aber keine |
 | `JA-VORJAHR-FEHLT` | Fehler | kein Vorjahr in den Büchern und keines von Hand |
-| `JA-GROESSE-EINSTELLUNGEN` | Hinweis | die Größenmerkmale der Einstellungen nennen für den Abschlussstichtag nicht die angewandte Klasse; die Frist der Feststellung rechnet nach ihnen |
+| `JA-GROESSE-EINSTELLUNGEN` | Hinweis | die Größenmerkmale der Einstellungen nennen für den Abschlussstichtag nicht die angewandte Klasse; nennen sie keine, rechnet die Frist der Feststellung am Beleg mit der angewandten Klasse (elf Monate für eine kleine Gesellschaft), Offene Fristen weiter nach den Einstellungen |
+| `SB-RUECKSTELLUNG-ABWEICHUNG` | Hinweis | die Rückstellungen für die Steuern vom Einkommen und Ertrag in den Büchern weichen von der zuletzt berechneten Körperschaft- und Gewerbesteuererklärung ab (§ 249 Abs. 1 Satz 1 HGB); „Rückstellungen vorschlagen“ an der Körperschaftsteuererklärung schlägt die Differenz vor |
 | `JA-UG-RUECKLAGE` | Fehler | eine UG stellt weniger als ein Viertel ihres Jahresüberschusses in die gesetzliche Rücklage ein (§ 5a Abs. 3 Satz 1 GmbHG) |
 | `JA-HINTERLEGUNG` | Hinweis | eine Kleinstkapitalgesellschaft veröffentlicht, was sie hinterlegen könnte |
 | `JA-KORREKTUR` | Fehler | eine Korrektur einer Zeile, die die Klasse nicht zeigt |
@@ -140,7 +141,7 @@ Neben den Befunden der Bilanzzuordnung (`BILANZ-…`) schreibt „Berechnen“ d
 | `JA-RECHENPOSTEN` | Fehler | ein Saldo liegt auf einem Posten, den das Schema rechnet |
 | `JA-BILANZ-UNGLEICH` | Fehler | Aktiva und Passiva weichen voneinander ab (§ 242 Abs. 1, § 266 Abs. 1 HGB) |
 | `JA-OHNE-UNTERPOSTEN` | Fehler | ein Saldo liegt auf einem Posten, den die Klasse in Unterposten zeigt |
-| `JA-RESTLAUFZEIT-FEHLT` | Fehler | einer Forderung oder Verbindlichkeit fehlt die Restlaufzeit, die ihre Vermerke brauchen (§ 268 Abs. 4 und 5 HGB) |
+| `JA-RESTLAUFZEIT-FEHLT` | Fehler | Forderungen oder Verbindlichkeiten eines Postens fehlt die Restlaufzeit, die seine Vermerke brauchen (§ 268 Abs. 4 und 5 HGB); ein Befund je Posten nennt alle Konten und sagt, wo die Restlaufzeit einzutragen ist. Steuern, Sozialversicherung und Löhne tragen sie nach den Vorgaben ab Stand 2026.2 schon, siehe [Restlaufzeit kraft Gesetzes](ebilanz-zuordnung.md#restlaufzeit-kraft-gesetzes) |
 | `JA-BILANZGEWINN` | Fehler | ein Saldo steht auf dem Bilanzgewinn, die Bilanz ist aber vor Verwendung des Jahresergebnisses aufgestellt; sie braucht den Ausweis nach teilweiser Verwendung (§ 268 Abs. 1 Satz 2 HGB) |
 | `JA-ANGABE-OFFEN` | Fehler | eine Angabe des Katalogs ist nicht beantwortet |
 | `JA-ANGABE-PFLICHT` | Fehler | eine Pflichtangabe ist nicht mit „ja“ beantwortet |
@@ -159,7 +160,7 @@ Was die XBRL-Datei anhält (`JA-XBRL-…` und `XBRL-…`), steht in [Befunde der
 
 ## Feststellung
 
-„Buchen“ ist die Feststellung. Wie jede Jahresmeldung braucht sie „Bereit zur Abgabe“ oder Anmerkungen, die sagen, warum der Abschluss dennoch richtig ist; was die Anmerkungen auch sagen, hält sie an (`check_filing`, `bridge.filing_problems`):
+„Buchen“ ist die Feststellung. Wie jede Jahresmeldung braucht sie „Bereit zur Abgabe“ oder jeden Fehler der Befunde mit einer Begründung bestätigt, die sagt, warum der Abschluss dennoch richtig ist (siehe [Bestätigte Fehler](jahresmeldungen.md#bestätigte-fehler)); unabhängig von jeder Bestätigung hält sie an (`check_filing`, `bridge.filing_problems`):
 
 - eine Eingabe, die sich seit „Berechnen“ geändert hat,
 - keine Größenklasse,

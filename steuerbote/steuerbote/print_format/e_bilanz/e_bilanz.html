@@ -201,6 +201,11 @@
 	</div>
 	{%- endfor %}
 	<p class="sb-note">Die Abschreibungen des Jahres sind die Summe ihrer Arten; die XBRL-Datei meldet jede Art einzeln.</p>
+	{%- elif form.fixed_assets_in_bilanz %}
+	<div class="sb-block sb-keep">
+		<h2>Anlagenspiegel (brutto)</h2>
+		<p class="sb-note">Kein Anlagenspiegel: Die Bilanz zeigt Anlagevermögen, aber Berechnen fand keine Anlagegüter dazu. Die Befunde nennen, was fehlt.</p>
+	</div>
 	{%- else %}
 	<div class="sb-block sb-keep">
 		<h2>Anlagenspiegel (brutto)</h2>

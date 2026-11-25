@@ -6,7 +6,7 @@ from unittest import TestCase
 from steuerbote.gewst import chain as gewst
 from steuerbote.kst import chain as kst
 from steuerbote.kst.categories import Mapping
-from steuerbote.kst.provisions import ACCOUNTS, ProvisionRow, Tax, TaxAccounts, propose
+from steuerbote.kst.provisions import ACCOUNTS, ProvisionRow, Tax, TaxAccounts, differences, propose
 from steuerbote.kst.tests.support import FIGURES, credit
 from steuerbote.ustva.mapping import MappingError
 
@@ -81,6 +81,82 @@ class ProposeTest(TestCase):
 		tax, trade = results("111200.00", hebesatz=None)
 		with self.assertRaisesRegex(ValueError, "the Gewerbesteuer has no Hebesatz"):
 			propose(tax, trade, ACCOUNTS["SKR03"])
+
+
+class DifferenceTest(TestCase):
+	"""After a later posting the balances of the year change while the provisions posted before stay: „Rückstellungen
+	sind zu bilden für ungewisse Verbindlichkeiten“ (§ 249 Abs. 1 Satz 1 HGB), in full, so Steuerbote proposes the
+	difference between the balance of each tax and what the books hold of its provision or its claim to a refund."""
+
+	def setUp(self):
+		self.tax, self.trade = results(
+			"111200.00",
+			capital_gains_tax_credit=Decimal("5000.00"),
+			solz_credit=Decimal("275.00"),
+			kst_prepayments=Decimal("10000.00"),
+			solz_prepayments=Decimal("550.00"),
+			gewst_prepayments=Decimal("15500.00"),
+		)
+
+	def test_the_differences_are_the_balances_less_what_the_books_hold(self):
+		posted = {Tax.KST: Decimal("1000.00"), Tax.SOLZ: Decimal("92.40"), Tax.GEWST: Decimal("100.00")}
+		self.assertEqual(
+			differences(self.tax, self.trade, posted),
+			{Tax.KST: Decimal("680.00"), Tax.GEWST: Decimal("-32.00")},
+		)
+		self.assertEqual(
+			differences(self.tax, None, {}), {Tax.KST: Decimal("1680.00"), Tax.SOLZ: Decimal("92.40")}
+		)
+
+	def test_proposes_the_difference_to_the_provisions_posted_before(self):
+		posted = {Tax.KST: Decimal("1000.00"), Tax.SOLZ: Decimal("92.40"), Tax.GEWST: Decimal("100.00")}
+		rows = propose(self.tax, self.trade, ACCOUNTS["SKR03"], posted)
+		self.assertEqual(
+			[(row.tax, row.amount, row.debit_account, row.credit_account, row.remark) for row in rows],
+			[
+				(
+					Tax.KST,
+					Decimal("680.00"),
+					"2200",
+					"0963",
+					"Anpassung Rückstellung Körperschaftsteuer 2026",
+				),
+				(Tax.GEWST, Decimal("32.00"), "0956", "4320", "Anpassung Rückstellung Gewerbesteuer 2026"),
+			],
+		)
+
+	def test_a_provision_that_turned_into_a_refund_is_released_and_the_claim_posted(self):
+		tax, trade = results(
+			"1000.00", kst_prepayments=Decimal("1000.00"), gewst_prepayments=Decimal("500.00")
+		)
+		posted = {Tax.KST: Decimal("100.00"), Tax.SOLZ: Decimal("8.25"), Tax.GEWST: Decimal("-360.00")}
+		rows = propose(tax, trade, ACCOUNTS["SKR03"], posted)
+		self.assertEqual(
+			[(row.tax, row.amount, row.debit_account, row.credit_account) for row in rows],
+			[(Tax.KST, Decimal("100.00"), "0963", "2200"), (Tax.KST, Decimal("850.00"), "1549", "2200")],
+		)
+
+	def test_a_claim_to_a_refund_that_grows_smaller_is_reduced(self):
+		tax, trade = results(
+			"1000.00", kst_prepayments=Decimal("1000.00"), gewst_prepayments=Decimal("500.00")
+		)
+		posted = {Tax.KST: Decimal("-900.00"), Tax.SOLZ: Decimal("8.25"), Tax.GEWST: Decimal("-360.00")}
+		(row,) = propose(tax, trade, ACCOUNTS["SKR03"], posted)
+		self.assertEqual(
+			(row.tax, row.amount, row.debit_account, row.credit_account, row.remark),
+			(
+				Tax.KST,
+				Decimal("50.00"),
+				"2200",
+				"1549",
+				"Anpassung Erstattungsanspruch Körperschaftsteuer 2026",
+			),
+		)
+
+	def test_nothing_is_proposed_where_the_books_hold_the_balances(self):
+		posted = {Tax.KST: Decimal("1680.00"), Tax.SOLZ: Decimal("92.40"), Tax.GEWST: Decimal("68.00")}
+		self.assertEqual(propose(self.tax, self.trade, ACCOUNTS["SKR03"], posted), ())
+		self.assertEqual(differences(self.tax, self.trade, posted), {})
 
 
 class RowTest(TestCase):

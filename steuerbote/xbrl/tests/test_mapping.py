@@ -12,6 +12,7 @@ from steuerbote.ustva import WatchLevel
 from steuerbote.xbrl import mapping
 from steuerbote.xbrl.mapping import (
 	AccountBalance,
+	AccountKind,
 	Accounts,
 	Books,
 	DefaultExcluded,
@@ -22,6 +23,7 @@ from steuerbote.xbrl.mapping import (
 	Mapping,
 	MappingError,
 	Part,
+	PartyBalance,
 	Purpose,
 	Rule,
 	Watched,
@@ -32,6 +34,7 @@ from steuerbote.xbrl.versions import FIRST
 
 BANK = "bs.ass.currAss.cashEquiv.bank"
 BANK_LIABILITY = "bs.eqLiab.liab.bank"
+TAX_LIABILITY = "bs.eqLiab.liab.other.theroffTax"
 
 
 class RuleTest(TestCase):
@@ -128,6 +131,23 @@ class RuleTest(TestCase):
 		with self.assertRaises(MappingError) as caught:
 			Rule("1200", BANK, shareholder="1")
 		self.assertEqual(caught.exception.template, mapping.NO_FLAG)
+
+	def test_takes_the_netting_group_of_its_account(self):
+		"""Claims and debts towards the same creditor that can be set off against each other are shown netted, as one
+		settlement position (§ 387 BGB, § 226 Abs. 1 AO; § 246 Abs. 2 Satz 1 HGB does not bar it)."""
+		rule = Rule("1576", OTHER_ASSETS, opposite=TAX_LIABILITY, netting="  Umsatzsteuer ")
+		self.assertEqual(rule.netting, "Umsatzsteuer")
+		self.assertIsNone(Rule("1576", OTHER_ASSETS, opposite=TAX_LIABILITY, netting=" ").netting)
+		self.assertIsNone(Rule("1576", OTHER_ASSETS).netting)
+
+	def test_a_netting_group_needs_the_position_for_the_opposite_balance(self):
+		"""The combined balance of the group decides the side, so every account of it needs a position on each."""
+		with self.assertRaises(MappingError) as caught:
+			Rule("1576", OTHER_ASSETS, netting="Umsatzsteuer")
+		self.assertEqual(
+			(caught.exception.template, caught.exception.values),
+			(mapping.NETTING_WITHOUT_OPPOSITE, ("1576", "Umsatzsteuer")),
+		)
 
 
 class PlacesTest(TestCase):
@@ -226,6 +246,7 @@ class MappingTest(TestCase):
 				mapping.NO_FLAG,
 				mapping.NO_LEVEL,
 				mapping.NO_REASON,
+				mapping.NETTING_WITHOUT_OPPOSITE,
 				mapping.TWICE,
 				mapping.UNKNOWN_VERSION,
 			},
@@ -531,6 +552,289 @@ class SignTest(TestCase):
 		)
 
 
+class NettingTest(TestCase):
+	"""A netting group: the accounts of claims and debts towards the same creditor that can be set off against each
+	other, such as Vorsteuer and Umsatzsteuer towards the Finanzamt, form one settlement position whose combined balance
+	decides its side (§ 387 BGB, § 226 Abs. 1 AO, § 16 Abs. 2 Satz 1 UStG); § 246 Abs. 2 Satz 1 HGB bars netting
+	only where no such set-off is possible."""
+
+	@property
+	def RULES(self) -> tuple[Rule, ...]:
+		return (
+			Rule("1576", OTHER_ASSETS, opposite=TAX_LIABILITY, netting="Umsatzsteuer"),
+			Rule("1776", TAX_LIABILITY, opposite=OTHER_ASSETS, netting="Umsatzsteuer"),
+		)
+
+	def test_a_group_with_a_credit_balance_goes_to_the_liabilities_with_every_account(self):
+		placement = placed(*self.RULES, balances=[balance("1576", "300"), balance("1776", credit="500")])
+		self.assertEqual(
+			[(item.balance.number, item.concept, item.value) for item in placement.placed],
+			[("1576", TAX_LIABILITY, Decimal("-300")), ("1776", TAX_LIABILITY, Decimal("500"))],
+		)
+		self.assertEqual(sum(item.value for item in placement.placed), Decimal("200"))
+
+	def test_a_group_with_a_debit_balance_goes_to_the_receivables_with_every_account(self):
+		placement = placed(*self.RULES, balances=[balance("1576", "800"), balance("1776", credit="500")])
+		self.assertEqual(
+			[(item.balance.number, item.concept, item.value) for item in placement.placed],
+			[("1576", OTHER_ASSETS, Decimal("800")), ("1776", OTHER_ASSETS, Decimal("-500"))],
+		)
+
+	def test_a_balanced_group_stays_on_one_side_and_shows_nothing(self):
+		placement = placed(*self.RULES, balances=[balance("1576", "500"), balance("1776", credit="500")])
+		self.assertEqual({item.concept for item in placement.placed}, {OTHER_ASSETS})
+		self.assertEqual(sum(item.value for item in placement.placed), Decimal(0))
+
+	def test_the_netting_is_a_hint_to_confirm_with_its_amount_and_side(self):
+		placement = placed(*self.RULES, balances=[balance("1576", "300"), balance("1776", credit="500")])
+		netted = [finding for finding in placement.findings if finding.code is mapping.Code.NETTED]
+		self.assertEqual(
+			[(finding.severity, finding.account, finding.concept, finding.amount) for finding in netted],
+			[(mapping.Severity.HINT, "Umsatzsteuer", TAX_LIABILITY, Decimal("-200"))],
+		)
+		self.assertIn("1576, 1776", netted[0].text)
+		self.assertIn("200,00 €", netted[0].text)
+		self.assertIn("§ 246 Abs. 2 Satz 1 HGB", netted[0].source)
+		self.assertTrue(placement.ready)
+
+	def test_an_account_outside_the_group_keeps_its_own_side(self):
+		placement = placed(
+			*self.RULES,
+			Rule("1800", BANK, opposite=BANK_LIABILITY),
+			balances=[balance("1576", "300"), balance("1776", credit="500"), balance("1800", credit="50")],
+		)
+		self.assertEqual(
+			[(item.balance.number, item.concept) for item in placement.placed],
+			[("1576", TAX_LIABILITY), ("1776", TAX_LIABILITY), ("1800", BANK_LIABILITY)],
+		)
+
+	def test_groups_are_netted_each_on_their_own(self):
+		placement = placed(
+			*self.RULES,
+			Rule("1800", BANK, opposite=BANK_LIABILITY, netting="Hausbank"),
+			Rule("1810", BANK, opposite=BANK_LIABILITY, netting="Hausbank"),
+			balances=[
+				balance("1576", "300"),
+				balance("1776", credit="500"),
+				balance("1800", "100"),
+				balance("1810", credit="40"),
+			],
+		)
+		self.assertEqual(
+			[(item.balance.number, item.concept) for item in placement.placed],
+			[("1576", TAX_LIABILITY), ("1776", TAX_LIABILITY), ("1800", BANK), ("1810", BANK)],
+		)
+
+	def test_a_balance_left_out_of_the_balance_sheet_does_not_count_in_its_group(self):
+		rules = (
+			self.RULES[0],
+			replace(self.RULES[1], purpose=Purpose.TAX),
+		)
+		placement = placed(
+			*rules,
+			balances=[balance("1576", "300"), balance("1776", credit="500")],
+			purpose=Purpose.COMMERCIAL,
+		)
+		self.assertEqual(
+			[(item.balance.number, item.concept, item.value) for item in placement.placed],
+			[("1576", OTHER_ASSETS, Decimal("300"))],
+		)
+
+	def test_a_single_account_of_a_group_shows_no_hint(self):
+		placement = placed(*self.RULES, balances=[balance("1776", credit="500")])
+		self.assertNotIn(mapping.Code.NETTED, [finding.code for finding in placement.findings])
+
+
+OTHER_LIABILITIES = "bs.eqLiab.liab.other"
+RECLASSIFIED = MappingProxyType(
+	{AccountKind.RECEIVABLE: OTHER_LIABILITIES, AccountKind.PAYABLE: OTHER_ASSETS}
+)
+
+
+def party(name: str, debit: str = "0", credit: str = "0", party_type: str = "Customer", linked: str = ""):
+	return PartyBalance(party_type, name, Decimal(debit), Decimal(credit), linked)
+
+
+def ledger(number: str, kind: AccountKind, *parties: PartyBalance) -> AccountBalance:
+	"""An account of type Receivable or Payable with the balance of each party, as ERPNext keeps it per party."""
+	return AccountBalance(
+		f"{number} - Konto - MG",
+		number,
+		f"Konto {number}",
+		Part.BALANCE_SHEET,
+		sum((item.debit for item in parties), Decimal(0)),
+		sum((item.credit for item in parties), Decimal(0)),
+		kind=kind,
+		parties=parties,
+	)
+
+
+class PartySplitTest(TestCase):
+	"""„Posten der Aktivseite dürfen nicht mit Posten der Passivseite ... verrechnet werden“ (§ 246 Abs. 2 Satz 1 HGB):
+	a customer with a credit balance is no Forderung that lowers those of the other customers but a sonstige
+	Verbindlichkeit, a supplier with a debit balance a sonstiger Vermögensgegenstand. The balance of an account of type
+	Receivable or Payable is split by party at the Stichtag: each part goes to the position on its side."""
+
+	RECEIVABLE = Rule("1400", RECEIVABLES, opposite=OTHER_LIABILITIES)
+	PAYABLE = Rule("1600", BANK_LIABILITY, opposite=OTHER_ASSETS)
+
+	def placed(self, *rules, balances):
+		return placed(*rules, balances=balances, reclassification=RECLASSIFIED)
+
+	def test_a_customer_with_a_credit_balance_is_a_liability(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			balances=[
+				ledger(
+					"1400", AccountKind.RECEIVABLE, party("Kunde A", "1000"), party("Kunde B", credit="300")
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.balance.number, item.concept, item.value, item.reclassified) for item in placement.placed],
+			[
+				("1400", RECEIVABLES, Decimal("1000"), False),
+				("1400", OTHER_LIABILITIES, Decimal("300"), True),
+			],
+		)
+		self.assertEqual(sum(item.amount for item in placement.placed), Decimal("700"))
+		(hint,) = [finding for finding in placement.findings if finding.code is mapping.Code.RECLASSIFIED]
+		self.assertEqual(
+			(hint.severity, hint.account, hint.amount), (mapping.Severity.HINT, "1400", Decimal("-300"))
+		)
+		self.assertIn("1 Partei", hint.text)
+
+	def test_a_supplier_with_a_debit_balance_is_an_asset(self):
+		placement = self.placed(
+			self.PAYABLE,
+			balances=[
+				ledger(
+					"1600",
+					AccountKind.PAYABLE,
+					party("Lieferant A", credit="500", party_type="Supplier"),
+					party("Lieferant B", "80", party_type="Supplier"),
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed],
+			[(BANK_LIABILITY, Decimal("500")), (OTHER_ASSETS, Decimal("80"))],
+		)
+
+	def test_an_account_without_a_position_for_the_opposite_balance_takes_the_one_of_its_kind(self):
+		"""A receivable account of one party, which a company sets up itself and the defaults do not know."""
+		placement = self.placed(
+			Rule("1450", RECEIVABLES),
+			balances=[ledger("1450", AccountKind.RECEIVABLE, party("Kunde C", credit="40"))],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed], [(OTHER_LIABILITIES, Decimal("40"))]
+		)
+
+	def test_a_customer_linked_to_a_supplier_is_set_off_on_the_side_of_the_balance_of_both(self):
+		"""One person that is customer and supplier, as a Party Link of ERPNext records it: the claim and the debt can
+		be set off (§ 387 BGB), so the net shows on the side of the larger one, in its position."""
+		placement = self.placed(
+			self.RECEIVABLE,
+			self.PAYABLE,
+			balances=[
+				ledger("1400", AccountKind.RECEIVABLE, party("Partner", "1000", linked="Partner")),
+				ledger(
+					"1600",
+					AccountKind.PAYABLE,
+					party("Partner GmbH", credit="1200", party_type="Supplier", linked="Partner"),
+				),
+			],
+		)
+		self.assertEqual(
+			[(item.balance.number, item.concept, item.value) for item in placement.placed],
+			[("1400", BANK_LIABILITY, Decimal("-1000")), ("1600", BANK_LIABILITY, Decimal("1200"))],
+		)
+		self.assertIn(mapping.Code.PARTY_SET_OFF, [finding.code for finding in placement.findings])
+
+	def test_a_customer_and_a_supplier_without_a_link_stay_apart(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			self.PAYABLE,
+			balances=[
+				ledger("1400", AccountKind.RECEIVABLE, party("Partner", "1000")),
+				ledger("1600", AccountKind.PAYABLE, party("Partner", credit="1200", party_type="Supplier")),
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed],
+			[(RECEIVABLES, Decimal("1000")), (BANK_LIABILITY, Decimal("1200"))],
+		)
+
+	def test_postings_without_a_party_are_a_hint_and_count_on_their_own(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			balances=[
+				ledger(
+					"1400",
+					AccountKind.RECEIVABLE,
+					party("Kunde A", "1000"),
+					PartyBalance("", "", Decimal(0), Decimal("50")),
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed],
+			[(RECEIVABLES, Decimal("1000")), (OTHER_LIABILITIES, Decimal("50"))],
+		)
+		(hint,) = [finding for finding in placement.findings if finding.code is mapping.Code.NO_PARTY]
+		self.assertEqual((hint.severity, hint.amount), (mapping.Severity.HINT, Decimal("-50")))
+
+	def test_the_parts_of_an_account_on_one_position_are_one_balance(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			balances=[
+				ledger(
+					"1400",
+					AccountKind.RECEIVABLE,
+					party("Kunde A", "1000"),
+					party("Kunde B", "200"),
+					party("Kunde C", credit="30"),
+					party("Kunde D", credit="20"),
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.balance.debit, item.balance.credit) for item in placement.placed],
+			[(RECEIVABLES, Decimal("1200"), Decimal(0)), (OTHER_LIABILITIES, Decimal(0), Decimal("50"))],
+		)
+		self.assertTrue(all(not item.balance.parties for item in placement.placed))
+
+	def test_a_party_without_a_balance_and_a_link_of_one_party_alone_change_nothing(self):
+		placement = self.placed(
+			self.RECEIVABLE,
+			balances=[
+				ledger(
+					"1400",
+					AccountKind.RECEIVABLE,
+					party("Kunde A", "100", "100"),
+					party("Partner", "1000", linked="Partner"),
+				)
+			],
+		)
+		self.assertEqual(
+			[(item.concept, item.value) for item in placement.placed], [(RECEIVABLES, Decimal("1000"))]
+		)
+		self.assertEqual(placement.findings, ())
+
+	def test_the_parties_add_up_to_the_account(self):
+		with self.assertRaises(ValueError):
+			AccountBalance(
+				"1400 - Konto - MG",
+				"1400",
+				"Konto 1400",
+				Part.BALANCE_SHEET,
+				Decimal("100"),
+				kind=AccountKind.RECEIVABLE,
+				parties=(party("Kunde A", "90"),),
+			)
+
+
 class PurposeTest(TestCase):
 	def test_a_balance_counts_in_the_balance_sheets_its_rule_is_for(self):
 		rules = (
@@ -587,7 +891,9 @@ class PlacesOfBalancesTest(TestCase):
 		self.assertEqual(
 			finding.text,
 			"Konto 1360 Geldtransit hat einen Saldo, aber keinen Platz in der Bilanzzuordnung: Ordnen Sie es einer "
-			"Position zu, oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt.",
+			"Position zu, oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt. Die Vorgaben geben Konten, die "
+			"der Kontenrahmen nicht beschriftet, keinen Platz; die Steuerberatung entscheidet ihn. „Konten prüfen“ in "
+			"der Bilanzzuordnung nennt alle Konten ohne Platz.",
 		)
 		self.assertEqual((finding.amount, finding.source), (Decimal("5"), "§ 246 Abs. 1 Satz 1 HGB"))
 		self.assertEqual((placement.left_out, placement.ready), ((books[1],), False))
@@ -818,6 +1124,16 @@ class DefaultsTest(TestCase):
 			DefaultWatched("1460", "sperrt")
 		with self.assertRaises(MappingError):
 			Defaults("SKR04", "6.8")
+
+	def test_a_default_rule_carries_its_netting_group_to_every_account(self):
+		defaults = Defaults(
+			"SKR03",
+			FIRST.version,
+			rules=(DefaultRule("1570-1579", OTHER_ASSETS, TAX_LIABILITY, netting="Umsatzsteuer"),),
+		)
+		(rule,) = defaults.for_accounts(["1576"]).rules
+		self.assertEqual(rule, Rule("1576", OTHER_ASSETS, TAX_LIABILITY, netting="Umsatzsteuer"))
+		self.assertEqual(defaults.rows()["rules"][0]["netting"], "Umsatzsteuer")
 
 	def test_the_rows_of_the_defaults_read_as_plain_data(self):
 		self.assertEqual(

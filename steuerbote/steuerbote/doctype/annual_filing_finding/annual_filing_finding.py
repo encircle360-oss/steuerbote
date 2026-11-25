@@ -10,6 +10,11 @@ class AnnualFilingFinding(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		acknowledgeable: DF.Check
+		acknowledged: DF.Check
+		acknowledged_by: DF.Link | None
+		acknowledged_on: DF.Datetime | None
+		acknowledgement_reason: DF.SmallText | None
 		blocking: DF.Check
 		code: DF.Data | None
 		parent: DF.Data

@@ -2,7 +2,8 @@
 Frappe.
 
 The DocType keeps the Bilanzzuordnung of a company as table rows: rules (account, position, position for the
-opposite balance, Abschlusszweck, shareholder flag and remaining term), watched accounts with their level, and
+opposite balance, Abschlusszweck, shareholder flag, remaining term and netting group), watched accounts with their
+level, and
 accounts outside the Bilanz and the GuV with their reason. rows_to_mapping turns the rows into a Mapping,
 rows_of_mapping the other way, and defaults_rows gives the rows of the defaults of a chart
 (steuerbote/ebilanz/defaults.py) for the accounts a company has. All take and return plain dicts with the field names
@@ -11,7 +12,9 @@ does for the VAT Return Mapping.
 
 For Vorgaben aktualisieren and the file of a mapping, the rows are also items of steuerbote.mappings.diff: one per
 account, ("account", number), with its place, rule, watched or excluded, and the fields of that place as texts; the
-shareholder flag is "1" or None. An account has one place, so a change of its place is one difference.
+shareholder flag is "1" or None. An account has one place, so a change of its place is one difference. The netting
+group is a field of an item, and of a rule of the body, only where the rule has one, so that the stored defaults and
+the files written before it existed read as they were.
 items_of_rows and rows_of_items turn rows into items and back, default_items gives the defaults of a chart for a
 company as items, and body_of_items and items_of_body turn items into the plain data of the stored defaults and of the
 file and back, with the flag as true or false; file_body and items_of_file_body make the body of the file, the
@@ -27,7 +30,10 @@ The balances placed on their positions (steuerbote.xbrl.mapping.place) feed both
 
 - the Jahresabschluss (steuerbote/hgb/statement.py) takes statement_balances(): a Balance per account with the
   position its rule gives it, debit minus credit, the shareholder flag and the remaining term of the rule, and the
-  account as its source. A „davon“ position goes as it is, which the statement notes as its Vermerk where one names
+  account as its source; the part of the parties of an account on the other side of its position, such as customers
+  with a credit balance, is due within a year: „Ist eine Zeit für die Leistung weder bestimmt noch aus den Umständen
+  zu entnehmen, so kann der Gläubiger die Leistung sofort verlangen“ (§ 271 Abs. 1 BGB). A „davon“ position goes as
+  it is, which the statement notes as its Vermerk where one names
   it; the Restlaufzeiten and the shareholders come from the flags.
 - the E-Bilanz (steuerbote/ebilanz/calculation.py) takes ebilanz_balances(): an AccountBalance per account with
   its number, its label, the position its value counts in and debit minus credit, from which calculate() gives each
@@ -50,7 +56,7 @@ from typing import Any, NamedTuple
 from steuerbote.ebilanz.calculation import AccountBalance as EBilanzBalance
 from steuerbote.ebilanz.calculation import Adjustment
 from steuerbote.ebilanz.defaults import defaults_for
-from steuerbote.hgb.statement import Balance
+from steuerbote.hgb.statement import Balance, RemainingTerm
 from steuerbote.mappings.transfer import canonical_json
 from steuerbote.ustva.mapping import WatchLevel
 from steuerbote.xbrl import changes
@@ -70,7 +76,10 @@ ACCOUNT = "account"
 RULE = "rule"
 WATCHED = "watched"
 EXCLUDED = "excluded"
-RULE_FIELDS = ("concept", "opposite_concept", "purpose", "shareholder", "remaining_term")
+NETTING_GROUP = "netting_group"
+RULE_FIELDS = ("concept", "opposite_concept", "purpose", "shareholder", "remaining_term", NETTING_GROUP)
+OPTIONAL_FIELDS = frozenset({NETTING_GROUP})
+"""The fields a row of the body may leave out: written before they existed, or empty."""
 BODY_PARTS = MappingProxyType(
 	{
 		"rules": ("account_number", *RULE_FIELDS),
@@ -164,6 +173,7 @@ def items_of_mapping(mapping: Mapping) -> dict[Key, Fields]:
 			"purpose": rule.purpose.value,
 			"shareholder": "1" if rule.shareholder else None,
 			"remaining_term": rule.term_value,
+			**({NETTING_GROUP: rule.netting} if rule.netting else {}),
 		}
 	for watched in mapping.watched:
 		items[(ACCOUNT, watched.account_number)] = {"place": WATCHED, "level": watched.level.value}
@@ -194,7 +204,7 @@ def rows_of_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]])
 			rows.rule_rows.append(
 				{
 					"account_number": number,
-					**{name: fields[name] for name in RULE_FIELDS},
+					**{name: fields.get(name) for name in RULE_FIELDS},
 					"shareholder": 1 if fields["shareholder"] else 0,
 				}
 			)
@@ -209,7 +219,13 @@ def body_of_items(items: ReadOnlyMapping[Key, ReadOnlyMapping[str, str | None]])
 	"""The items as plain data, the form the stored defaults and the file of a mapping hold them in."""
 	rows = rows_of_items(items)
 	return {
-		"rules": [{**row, "shareholder": bool(row["shareholder"])} for row in rows.rule_rows],
+		"rules": [
+			{
+				**{name: value for name, value in row.items() if name not in OPTIONAL_FIELDS or value},
+				"shareholder": bool(row["shareholder"]),
+			}
+			for row in rows.rule_rows
+		],
 		"watched": rows.watched_rows,
 		"excluded": rows.excluded_rows,
 	}
@@ -294,7 +310,11 @@ def statement_balances(placement: Placement) -> tuple[Balance, ...]:
 	"""The placed balances as the Balance rows of the Jahresabschluss, in the order of the books."""
 	return tuple(
 		Balance(
-			item.concept, item.amount, item.rule.shareholder, item.rule.remaining_term, item.balance.account
+			item.concept,
+			item.amount,
+			item.rule.shareholder,
+			RemainingTerm.UP_TO_ONE_YEAR if item.reclassified else item.rule.remaining_term,
+			item.balance.account,
 		)
 		for item in placement.placed
 	)
@@ -338,7 +358,7 @@ def ebilanz_davon_lines(
 
 
 def _plain_row(row: Any, fields: tuple[str, ...]) -> bool:
-	if not isinstance(row, dict) or set(row) != set(fields):
+	if not isinstance(row, dict) or not set(fields) - OPTIONAL_FIELDS <= set(row) <= set(fields):
 		return False
 	return all(
 		isinstance(value, bool) if name == "shareholder" else value is None or isinstance(value, str)
@@ -354,6 +374,7 @@ def _rule(row: Row) -> Rule:
 		row.get("purpose") or Purpose.BOTH,
 		bool(row.get("shareholder")),
 		row.get("remaining_term") or None,
+		row.get(NETTING_GROUP) or None,
 	)
 
 
@@ -373,6 +394,7 @@ def _rule_row(rule: Rule) -> dict[str, Any]:
 		"purpose": rule.purpose.value,
 		"shareholder": int(rule.shareholder),
 		"remaining_term": rule.term_value,
+		NETTING_GROUP: rule.netting,
 	}
 
 

@@ -34,7 +34,7 @@ Jeder Beleg einer Jahresmeldung hat diese Felder mit diesen Feldnamen, Typen und
 | `company`, `year` | Unternehmen, Jahr | Pflicht. Das Jahr ist der Veranlagungszeitraum (VZ) von Umsatzsteuer und Körperschaftsteuer, der Erhebungszeitraum (EZ) der Gewerbesteuer und bei E-Bilanz und Jahresabschluss das Jahr, in dem das Wirtschaftsjahr endet |
 | `fiscal_year`, `from_date`, `to_date` | Geschäftsjahr, Von-Datum, Bis-Datum | setzt jedes Speichern: das Geschäftsjahr, das im Jahr endet, eines des Unternehmens vor einem ohne Unternehmen, das allen dient, wie ERPNext sie ordnet (Fiscal Year Company, `_get_fiscal_years`), damit ein kurzes erstes Wirtschaftsjahr neben dem Kalenderjahr der übrigen Unternehmen steht. Es muss genau eines geben |
 | `status` | Status | setzt nur Steuerbote, siehe [Status](#status) |
-| `ready`, `remarks` | Bereit zur Abgabe, Anmerkungen | „Bereit zur Abgabe“ setzt „Berechnen“. Die Anmerkungen begründen, warum ein Beleg, der nicht bereit ist, trotzdem abgegeben wird; nach einem Senden ändern sich nur noch sie |
+| `ready`, `remarks` | Bereit zur Abgabe, Anmerkungen | „Bereit zur Abgabe“ setzt „Berechnen“. Die Anmerkungen sind eine Notiz zum Beleg und geben nichts frei: Warum ein Beleg, der nicht bereit ist, trotzdem abgegeben wird, steht an jedem Fehler der Befunde, siehe [Bestätigte Fehler](#bestätigte-fehler); nach einem Senden ändern sich nur noch die Anmerkungen |
 | `deadline` | Fälligkeitsdatum | was `compute_deadline` des Moduls nennt, gesetzt mit dem Geschäftsjahr |
 | `is_correction`, `corrects` | Berichtigung, Berichtigt | setzt „Berichtigung anlegen“ beim Anlegen; jedes spätere Speichern behält sie |
 | `transmission_in_progress` | Übermittlung läuft | nur an Belegen, die über ERiC gehen: die Sperre während eines Vorgangs |
@@ -72,7 +72,28 @@ Ein Befund (`Finding` in `steuerbote/jahresmeldung/findings.py`) hat einen Code,
 
 - **Code:** der Fehlercode einer Regel der Jahresdokumentation, etwa 30639, oder ein Code von Steuerbote, der mit `SB-` beginnt. **Referenz:** worum es geht, ein Feld, eine Position, ein Konto, ein Beleg oder ein Zeitraum. Beide haben höchstens 140 Zeichen, wie ein Datenfeld von Frappe.
 - **Die Tabelle „Befunde“** listet die Fehler zuerst, dann die Hinweise, jeden einmal, in der Reihenfolge, in der sie gefunden wurden (`findings.rows`). Nur Steuerbote schreibt sie; ein Speichern behält sie.
-- **Bereit oder Anmerkungen:** Ein berechneter Beleg, der nicht bereit ist, wird erst abgegeben, wenn seine Anmerkungen begründen, warum trotzdem (`lifecycle.fit_for_filing`), wie die Voranmeldung. Über dem Formular steht, wie viele Fehler ihn anhalten, oder dass er bereit ist.
+- **Bereit oder bestätigt:** Ein berechneter Beleg, der nicht bereit ist, wird erst abgegeben, wenn jeder seiner Fehler mit Begründung bestätigt ist und keiner zu denen gehört, die sich nie bestätigen lassen (`lifecycle.fit_for_filing`). Über dem Formular steht, wie viele Fehler ihn anhalten, dass alle bestätigt sind, oder dass er bereit ist. Die Anmerkungen geben nichts frei.
+
+### Bestätigte Fehler
+
+Manche Fehler sagen nur, dass etwas nicht sicher ist: vorläufige Vordrucke, ein Konto ohne entschiedenen Platz, eine Prüfung, die noch nicht vermerkt ist. Das Unternehmen kann trotzdem abgeben, wenn es sagt, warum, und zwar an jedem einzelnen Fehler: „Fehler bestätigen“ zeigt die bestätigbaren Fehler mit einem Feld „Begründung der Abgabe trotz Fehler“ (`acknowledge_finding`). Die Zeile hält „Bestätigt“, die Begründung, wer bestätigt hat und wann, die Chronik des Belegs einen Eintrag; eine leere Begründung nimmt die Bestätigung zurück. „Berechnen“ behält die Bestätigung eines Befunds, der gleich bleibt (Code, Referenz und Nachricht); ändert sich etwa sein Betrag, fragt der Befund neu. Bestätigt wird nur an einem berechneten Entwurf.
+
+Nie bestätigt werden Fehler, die die Datei schon im Aufbau falsch machen; die Spalte „Bestätigbar“ zeigt es, und der Kern nennt den Grund mit Quelle (`steuerbote/jahresmeldung/acknowledgements.py`, `NEVER` und `SOURCES`):
+
+| Grund | Codes |
+|---|---|
+| Fehler einer Regel der Jahresdokumentation, die ERiC und ELSTER zurückweisen (ERiC-Entwicklerhandbuch 44.3.6.0, Kap. 5.1.2.4.1) | jeder numerische Fehlercode, etwa 170205010 „Summe Aktiva ungleich Summe Passiva“ |
+| Aktiva und Passiva weichen ab (§ 242 Abs. 1, § 266 Abs. 1 HGB) | `JA-BILANZ-UNGLEICH` |
+| ein anderes Jahresergebnis als das der GuV oder der E-Bilanz, die die Erklärung liest | `JA-BILANZGEWINN`, `KST-EBILANZ-ABWEICHUNG` |
+| ein Saldo ohne Platz, die Bilanz unvollständig (§ 246 Abs. 1 Satz 1 HGB) | `BILANZ-OHNE-PLATZ`, `BILANZ-OHNE-KONTONUMMER`, `BILANZ-BEOBACHTET`, `BILANZ-POSITION`, `BILANZ-NICHT-GUELTIG`, `BILANZ-ABSCHLUSSKONTO`, `EB-NICHT-ZUGEORDNET`, `JA-OHNE-POSTEN`, `JA-RECHENPOSTEN`, `JA-OHNE-UNTERPOSTEN` |
+| Summen, Mussfelder und Positionen, die die HGB-Taxonomie verlangt (§ 5b Abs. 1 Satz 1 EStG, Leitfaden A.10, B.10) | `EB-SUMME`, `EB-KORREKTUR-SUMME`, `EB-BERECHNET`, `EB-UEBERLEITUNG-SUMME`, `XBRL-RECHNUNG`, `XBRL-MUSSFELD`, `XBRL-SUMMENMUSSFELD`, `XBRL-UNZULAESSIG`, `XBRL-NICHT-UEBERMITTELBAR`, `XBRL-RECHTSFORM`, `XBRL-SONDERBILANZ`, `XBRL-KONTEXT`, `XBRL-BERICHTSBESTANDTEIL`, `XBRL-OBERPOSITION`, `XBRL-GUV-FORMAT` |
+| eine Zuordnung einer anderen Version der Taxonomie | `BILANZ-TAXONOMIE`, `SB-ZUORDNUNG-VERSION` |
+| eine Berechnung, die älter ist als ihre Eingaben | `SB-NEU-BERECHNEN` |
+| Nutzdaten, die ihr Schema nicht bestehen (§ 150 Abs. 6 AO) | `KST-NUTZDATEN`, `GEWST-NUTZDATEN` |
+
+Alle anderen Fehler von Steuerbote lassen sich bestätigen. Der Jahresabschluss prüft vor der Feststellung zusätzlich, was `check_filing()` verlangt (siehe [Feststellung](jahresabschluss.md#feststellung)).
+
+Das Modell ist für alle Meldungen gedacht: Eine Tabelle von Befunden mit den Spalten `acknowledgeable`, `acknowledged`, `acknowledgement_reason`, `acknowledged_by` und `acknowledged_on` und die Funktionen `acknowledge`, `carried`, `open_errors` und `never` des Kerns genügen; Voranmeldung und Zusammenfassende Meldung können es übernehmen, indem sie ihre Hinweistabellen um diese Spalten ergänzen und ihre Codes, die die Datei im Aufbau falsch machen, in `NEVER` eintragen.
 
 ## Abgabe
 
@@ -84,7 +105,7 @@ Ein Befund (`Finding` in `steuerbote/jahresmeldung/findings.py`) hat einen Code,
 | `upload` | Upload ins Unternehmensregister | die Übermittlung des Jahresabschlusses an das Unternehmensregister, festgehalten mit `move_on` |
 
 - **Buchen allein gibt nichts ab.** Eine Erklärung oder E-Bilanz bucht nur ein Senden, das ELSTER angenommen hat, oder einer der beiden Vermerke (`mark_filed_outside`), der dazu eine ELSTER-Übermittlung mit dem Vorgang „Außerhalb abgegeben“ anlegt (`before_submit`). Das Formular zeigt an ihrem Entwurf deshalb kein „Buchen“, außer nach einem angenommenen Senden, dessen Buchen scheiterte. Der Jahresabschluss wird von Hand gebucht; das ist seine Feststellung.
-- **Vor jeder Abgabe** muss der Beleg berechnet sein, bereit oder mit Anmerkungen, mit den Beträgen, wie sie gespeichert sind, und die Prüfungen von `check_filing()` des Moduls bestehen (`check_fit_for_filing`); die E-Bilanz braucht dazu ihren Status des Berichts.
+- **Vor jeder Abgabe** muss der Beleg berechnet sein, bereit oder mit jedem Fehler bestätigt, mit den Beträgen, wie sie gespeichert sind, und die Prüfungen von `check_filing()` des Moduls bestehen (`check_fit_for_filing`); die E-Bilanz braucht dazu ihren Status des Berichts.
 - **Die Vermerke** prüfen das Transferticket gegen die Form, die ELSTER vorgibt (32 Zeichen, `TransferTicketSType`), weisen einen Tag der Abgabe in der Zukunft ab und gehen nicht für einen Beleg, den ELSTER angenommen hat: Der wird gebucht.
 - **Ein Schlüssel wird einmal abgegeben.** Er hat einen Entwurf zur Zeit. Sobald ein Beleg des Schlüssels gebucht ist oder über Steuerbote gesendet wurde, mit Annahme durch ELSTER oder unbekanntem Ergebnis, auch wenn er danach storniert wurde, ist jeder weitere eine Berichtigung (`refuse_second_filing`). Das prüfen Speichern, Senden, die Vermerke und die Datei eines Moduls.
 - **Nichts Abgegebenes wird storniert** (`before_cancel`), denn das nähme beim Finanzamt nichts zurück; eine Änderung geht als [Berichtigung](#berichtigung). Nur der Jahresabschluss wird storniert und berichtigt (in Frappe „Stornieren“ und „Berichtigen“), wenn er sich ändert; die festgestellte Berichtigung setzt den stornierten auf „Ersetzt“. „Berichtigung anlegen“ und eine eigene Berichtigung gibt es für ihn nicht.
@@ -145,7 +166,7 @@ Jeder Beleg druckt mit einem Standard-Druckformat seines Moduls, auf A4, schwarz
 | `style.html` | A4 hochkant, Schrift und Tabellen, alle Klassen mit `sb-`, denn das Druck-Stylesheet von Frappe gestaltet allgemeine Klassen wie `label` selbst. Das Druckformat bindet es zuerst ein und legt seinen Inhalt in `<div class="sb-annual">` |
 | `head.html` | der Kopf in zwei Spalten: Unternehmen, Steuernummer, Steuernummer im ELSTER-Format, Jahr, Geschäftsjahr, Fällig am, die Zeilen des Moduls aus `head_rows`, Beleg mit Status, Berichtigung zu und Abgegeben am mit dem Weg |
 | `corrections.html` | „Korrekturen und Zeilen von Hand“: Zeile, Bezeichnung, berechnet, gemeldet und Begründung |
-| `findings.html` | „Befunde“: Art, Code, Nachricht und Referenz, die Fehler zuerst |
+| `findings.html` | „Befunde“: jeder Fehler mit Art, Code, Nachricht, Referenz und, wo bestätigt, der Begründung (`errors`); die Hinweise nach Art mit ihrer Zahl und dem ersten (`hint_kinds`); alle Hinweise als Anhang nur, wenn der Druck `all_hints=1` verlangt (`hints`), über „Drucken mit allen Hinweisen“ am Formular |
 | `remarks.html` | die Anmerkungen |
 | `footer.html` | „Zum Abgleich mit der Steuerberatung oder zum Übertragen in Mein ELSTER.“ und der Hinweis, dass der Ausdruck keine Abgabe ist; ohne den Weg über Mein ELSTER, wie bei der E-Bilanz, nur „Zum Abgleich mit der Steuerberatung.“; beim Jahresabschluss der Hinweis, dass der Ausdruck keine Offenlegung ist |
 
@@ -254,7 +275,7 @@ Der Jahresabschluss geht nicht an ELSTER: `class AnnualAccounts(AnnualFiling, Do
 | `compute_deadline()` | nein | das Fälligkeitsdatum aus den Fristen der Jahresmeldungen: `annual_deadline(company, kind, year)` in `steuerbote/steuerbote/deadlines.py` gibt mit dem Kern `steuerbote/deadlines/annual.py` denselben Tag wie „Offene Fristen“, siehe [Fristen](fristen.md#belege-der-jahresmeldungen); ohne es bleibt das Feld leer |
 | `set_amounts()` | nein | setzt bei jedem Speichern die Felder, die das Modul aus den gemeldeten Zeilen bildet, etwa seine Summen |
 | `amounts_kept(stored)` | nein | ob der gespeicherte Beleg diese Felder so hält, wie die Zeilen sie ergeben |
-| `check_filing()` | nein | lehnt eine Abgabe ab, die das Modul über „Bereit oder Anmerkungen“ hinaus nicht zulässt |
+| `check_filing()` | nein | lehnt eine Abgabe ab, die das Modul über „Bereit oder bestätigt“ hinaus nicht zulässt |
 | `correction_values()` | nein | die Werte, mit denen eine Berichtigung über Schlüssel und Zeilen hinaus beginnt |
 | `bescheiddaten()` | nein | ob der Vorsatz einer Erklärung die Bescheiddaten zum Abruf anfordert |
 | `datenart()`, `nutzdaten(hersteller_id)` | ja, wenn über ERiC | aus `Transmittable`: die Datenart und die Nutzdaten |
@@ -264,11 +285,13 @@ Der Jahresabschluss geht nicht an ELSTER: `class AnnualAccounts(AnnualFiling, Do
 | Methode | Inhalt |
 |---|---|
 | `calculate()` | „Berechnen“, nur POST |
+| `acknowledge_finding(finding, reason)` | „Fehler bestätigen“, nur POST: bestätigt einen Fehler der Befunde mit Begründung, eine leere Begründung nimmt die Bestätigung zurück |
 | `make_correction()` | „Berichtigung anlegen“, nur POST; gibt den Namen der Berichtigung |
+| `add_finding(finding)` | fügt den Befunden, die „Berechnen“ gespeichert hat, einen hinzu, etwa den, der nach „Berechnen“ fragt, und behält die Bestätigungen der anderen |
 | `mark_filed_outside(filed_via, note, transferticket, filed_on)` | „In Mein ELSTER abgegeben“ und „Als außerhalb abgegeben vermerken“, nur POST; gibt den Namen der ELSTER-Übermittlung |
 | `move_on(event, filed_via=…, filed_on=…, note=…)` | der nächste Schritt eines gebuchten Belegs, Übermittlung und Einstellung des Jahresabschlusses; gibt den neuen Status |
 | `set_period()` | Geschäftsjahr, Von-Datum, Bis-Datum und Fälligkeitsdatum |
-| `check_fit_for_filing()` | „Bereit oder Anmerkungen“, Status des Berichts und `check_filing()` |
+| `check_fit_for_filing()` | „Bereit oder bestätigt“, Status des Berichts und `check_filing()` |
 | `require_amounts_as_stored(stored)` | die Beträge, wie die gespeicherten Zeilen sie ergeben |
 | `require_fit_for_export()` | vor einer Datei eines Moduls, etwa dem XBRL der E-Bilanz: ein abgegebener Beleg schreibt sie, wie er abgegeben ist, ein Entwurf nur, solange er abgegeben werden könnte und weder gesendet noch abgegeben ist; ein stornierter nie |
 | `refuse_second_filing()`, `refuse_sent_document()` | ein Schlüssel wird einmal abgegeben; was ELSTER hat oder haben kann, geht nicht noch einmal |
@@ -282,9 +305,10 @@ Der Jahresabschluss geht nicht an ELSTER: `class AnnualAccounts(AnnualFiling, Do
 
 | Modul | Inhalt |
 |---|---|
-| `jahresmeldung/lifecycle.py` | `Status`, `Event`, `Lifecycle` mit `FILING` und `ACCOUNTS`, „Bereit oder Anmerkungen“ (`fit_for_filing`), ein Entwurf und eine Abgabe je Schlüssel (`refuse_second_draft`, `refuse_second_filing`, `check_correction`), die Wege der Abgabe (`FILED_VIA`) und die Felder jedes Belegs (`standard_fields`, `field_problems`) |
+| `jahresmeldung/lifecycle.py` | `Status`, `Event`, `Lifecycle` mit `FILING` und `ACCOUNTS`, „Bereit oder bestätigt“ (`fit_for_filing`), ein Entwurf und eine Abgabe je Schlüssel (`refuse_second_draft`, `refuse_second_filing`, `check_correction`), die Wege der Abgabe (`FILED_VIA`) und die Felder jedes Belegs (`standard_fields`, `field_problems`) |
 | `jahresmeldung/overrides.py` | `Columns`, `Correction`, `ManualLine`; die Zeilen nach „Berechnen“ (`recalculated`) und nach einem Speichern (`restored`), der gemeldete Betrag (`reported`), ob die gespeicherten Beträge stimmen (`kept`), ob ein Speichern etwas geändert hat (`changed`), die Zeilen von Hand (`manual_lines`) |
 | `jahresmeldung/findings.py` | `Finding`, `Severity`, `ready`, die Zeilen der Tabelle „Befunde“ (`rows`, `of_rows`) |
+| `jahresmeldung/acknowledgements.py` | die Bestätigung eines Fehlers (`acknowledge`), die Fehler, die nie bestätigt werden, mit Grund und Quelle (`NEVER`, `Ground`, `SOURCES`, `ground_of`), die offenen Fehler (`open_errors`, `never`) und die Bestätigungen, die „Berechnen“ behält (`carried`) |
 | `jahresmeldung/corrections.py` | die Berichtigung je Datenart (`BERICHTIGUNGEN`, `berichtigung_of`), Kz 110 (`marker`), der Status des Berichts (`RevisionStatus`, `revision_status`), die Änderung eines Auftrags an das Unternehmensregister (`register_changes`, `fee_factor`) |
 
 Der Kern ist reines Python ohne Frappe, mit 100 % Testabdeckung (`steuerbote/jahresmeldung/tests`). Die Frappe-Tests der Grundlage laufen an zwei Test-DocTypes, die sie selbst anlegen (`steuerbote/tests/annual_document.py`): „Steuerbote Test Annual Filing“ mit dem Lebenslauf `FILING`, der als Körperschaftsteuererklärung oder E-Bilanz über ERiC geht, und „Steuerbote Test Annual Accounts“ mit `ACCOUNTS`.

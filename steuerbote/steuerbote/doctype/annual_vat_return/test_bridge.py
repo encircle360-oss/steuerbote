@@ -35,6 +35,7 @@ from steuerbote.ustjahr.calculation import (
 	calculate,
 )
 from steuerbote.ustjahr.reconciliation import reconcile
+from steuerbote.ustjahr.rules import RULE
 from steuerbote.ustjahr.soll import Filed, FiledKennzahl, Override, SollError, vorauszahlungssoll
 from steuerbote.ustjahr.split import AnnualRule, Choice, split
 from steuerbote.ustva import calculate as calculate_ustva
@@ -459,6 +460,26 @@ class FindingsTest(TestCase):
 				("SB-KLEINUNTERNEHMER", Severity.HINT, "Kein 2026.", ""),
 			],
 		)
+
+	def test_a_rule_shows_its_official_text_first_and_its_condition_as_detail(self):
+		"""The text of the rule as the installed Jahresdokumentation words it, column „Fehler- /Hinweistext“; without
+		the documentation on the site, the code and the condition as before."""
+		found = [form.Finding("30089", form.Severity.HINT, RULE, ("30089", "KeinFeldAngegeben(E3001401)"))]
+		(official,) = bridge.findings(found, lambda template: template, {"30089": "Bitte die Dauer angeben."})
+		self.assertEqual(
+			official.text,
+			"Bitte die Dauer angeben. (ERiC rule 30089; condition: KeinFeldAngegeben(E3001401))",
+		)
+		(bare,) = bridge.findings(found, lambda template: template, {})
+		self.assertEqual(bare.text, "ERiC rule 30089 applies: KeinFeldAngegeben(E3001401).")
+
+	def test_reads_the_official_text_of_each_rule_from_the_rows_of_the_documentation(self):
+		rows = [
+			("USt2A", {"Fehlercode": "30089", "Fehler- /Hinweistext": " Bitte die Dauer angeben. "}),
+			("USt2A", {"Fehlercode": "30008", "Fehler- /Hinweistext": ""}),
+			("USt2A", {"Fehlercode": "", "Fehler- /Hinweistext": "ohne Code"}),
+		]
+		self.assertEqual(bridge.rule_texts(rows), {"30089": "Bitte die Dauer angeben."})
 
 	def test_names_as_many_fields_as_the_reference_holds(self):
 		fields = [f"E30{index:05d}" for index in range(40)]

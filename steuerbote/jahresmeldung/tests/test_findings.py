@@ -116,6 +116,7 @@ class RowsTest(TestCase):
 					"code": "30639",
 					"text": "Die Steuer zu Kz 177 weicht um mehr als 1 Euro ab.",
 					"reference": "E3003303",
+					"acknowledgeable": 0,
 				},
 				{
 					"severity": "Hinweis",
@@ -123,6 +124,7 @@ class RowsTest(TestCase):
 					"code": "SB-UMSATZ",
 					"text": "Die Umsatzerlöse weichen von Kz 81 ab.",
 					"reference": "",
+					"acknowledgeable": 0,
 				},
 			],
 		)

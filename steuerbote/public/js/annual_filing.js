@@ -14,6 +14,11 @@ function annual_transmits() {
 }
 
 function annual_filing_setup(frm) {
+	if (frm.doctype !== "Annual Accounts") {
+		// Buchen alone files no Erklärung and no E-Bilanz, so Frappe's banner that asks for it stays away from the
+		// first refresh on, also after a transmission reloads the form.
+		frm.show_submit_message = () => {};
+	}
 	if (annual_transmits()) {
 		listen_for_transmissions(frm);
 	}
@@ -37,6 +42,10 @@ function annual_filing_refresh(frm, texts) {
 	if (free && !(transmits && locked_as_sent(frm))) {
 		frm.add_custom_button(__("Calculate"), () => frm.call("calculate").then(() => frm.reload_doc()));
 	}
+	if (frm.doc.docstatus === 1 && !state.submitted_by_hand) {
+		// A filed Erklärung or E-Bilanz is never cancelled; a change goes to the Finanzamt as a Berichtigung.
+		frm.page.clear_secondary_action();
+	}
 	if (state.can_correct) {
 		frm.add_custom_button(__("Make Berichtigung"), () => annual_make_berichtigung(frm, texts));
 	}
@@ -44,6 +53,13 @@ function annual_filing_refresh(frm, texts) {
 		annual_transmission_buttons(frm, state, texts);
 	}
 	annual_findings_note(frm, texts);
+	if (!frm.is_new() && (frm.doc.findings || []).some((row) => !row.blocking)) {
+		// The printout shows the hints by kind; every hint goes into its annex only on request.
+		frm.add_custom_button(__("Print with All Hints"), () => {
+			const query = new URLSearchParams({ doctype: frm.doctype, name: frm.doc.name, all_hints: 1 });
+			window.open(`/printview?${query.toString()}`);
+		});
+	}
 	const notes = [...annual_filing_notes(frm, state)];
 	if (transmits) {
 		show_latest_run(frm);
@@ -79,8 +95,9 @@ function annual_filing_notes(frm, state) {
 	];
 }
 
-// An error of the findings holds a calculated document back from Bereit; the remarks say why it is filed
-// nonetheless (Bereit oder Anmerkungen in steuerbote/jahresmeldung/lifecycle.py).
+// An error of the findings holds a calculated document back from Bereit until it is corrected or, where it may be,
+// acknowledged with a reason on the finding itself; the remarks file nothing (steuerbote/jahresmeldung/
+// acknowledgements.py).
 function annual_findings_note(frm, texts) {
 	if (frm.$findings_note) {
 		frm.$findings_note.remove();
@@ -89,18 +106,73 @@ function annual_findings_note(frm, texts) {
 	if (frm.is_new() || frm.doc.docstatus !== 0) {
 		return;
 	}
-	const errors = (frm.doc.findings || []).filter((row) => row.blocking).length;
+	const errors = (frm.doc.findings || []).filter((row) => row.blocking);
+	const open = errors.filter((row) => !(row.acknowledged && row.acknowledgement_reason));
 	if (frm.doc.ready) {
 		frm.$findings_note = frm.dashboard.set_headline_alert(texts.ready || __("Ready to file."), "blue");
-	} else if (errors) {
+	} else if (open.length) {
 		frm.$findings_note = frm.dashboard.set_headline_alert(
 			__(
-				"Errors of the findings hold the document: {0}. Correct them and calculate again, or explain in the remarks why it is filed nonetheless.",
-				[errors]
+				"Errors of the findings hold the document: {0}. Correct them and calculate again, or acknowledge those that may be with the reason why it is filed nonetheless.",
+				[open.length]
 			),
 			"red"
 		);
+	} else if (errors.length) {
+		frm.$findings_note = frm.dashboard.set_headline_alert(
+			__("Every error of the findings is acknowledged; the document is filed nonetheless."),
+			"orange"
+		);
 	}
+	const calculated = (annual_state(frm).calculated || []).includes(frm.doc.status);
+	if (calculated && errors.some((row) => row.acknowledgeable)) {
+		frm.add_custom_button(__("Acknowledge Errors"), () => annual_acknowledge_errors(frm));
+	}
+}
+
+function annual_acknowledge_errors(frm) {
+	const errors = (frm.doc.findings || []).filter((row) => row.blocking && row.acknowledgeable);
+	const escape = frappe.utils.escape_html;
+	const fields = [];
+	for (const row of errors) {
+		fields.push(
+			{
+				fieldtype: "HTML",
+				fieldname: `finding_${row.idx}`,
+				options: `<p><b>${escape(row.code)}</b> ${escape(row.text || "")}</p>`,
+			},
+			{
+				fieldtype: "Small Text",
+				fieldname: `reason_${row.idx}`,
+				label: __("Reason for Filing Nonetheless"),
+				default: row.acknowledgement_reason || "",
+			}
+		);
+	}
+	const blocked = (frm.doc.findings || []).filter((row) => row.blocking && !row.acknowledgeable);
+	if (blocked.length) {
+		fields.push({
+			fieldtype: "HTML",
+			fieldname: "never",
+			options: `<p>${__("These errors make the file wrong whatever the reason and are corrected in the books or the mapping: {0}", [blocked.map((row) => escape(row.code)).join(", ")])}</p>`,
+		});
+	}
+	const dialog = new frappe.ui.Dialog({
+		title: __("Acknowledge Errors"),
+		fields,
+		primary_action_label: __("Acknowledge Errors"),
+		primary_action: async (values) => {
+			for (const row of errors) {
+				const reason = (values[`reason_${row.idx}`] || "").trim();
+				if (reason !== (row.acknowledgement_reason || "")) {
+					await frm.call("acknowledge_finding", { finding: row.name, reason });
+				}
+			}
+			dialog.hide();
+			frm.reload_doc();
+		},
+	});
+	dialog.show();
 }
 
 function annual_make_berichtigung(frm, texts) {
@@ -119,8 +191,11 @@ function annual_filing_note(frm, filed_via, texts) {
 		return;
 	}
 	const in_mein_elster = filed_via === "mein_elster";
-	frappe.prompt(
-		[
+	// A dialog that stays open when the server refuses what was entered, such as a wrong Transferticket, so that
+	// nothing typed is lost.
+	const dialog = new frappe.ui.Dialog({
+		title: in_mein_elster ? __("Filed in Mein ELSTER") : __("Mark as Filed Outside"),
+		fields: [
 			{
 				fieldtype: "Data",
 				fieldname: "transferticket",
@@ -141,13 +216,16 @@ function annual_filing_note(frm, filed_via, texts) {
 				reqd: in_mein_elster ? 0 : 1,
 			},
 		],
-		(values) => annual_mark_filed(frm, filed_via, values),
-		in_mein_elster ? __("Filed in Mein ELSTER") : __("Mark as Filed Outside"),
-		__("Mark as Filed")
-	);
+		primary_action_label: __("Mark as Filed"),
+		primary_action: (values) => annual_mark_filed(frm, filed_via, values, dialog),
+	});
+	dialog.show();
 }
 
-function annual_mark_filed(frm, filed_via, values) {
+function annual_mark_filed(frm, filed_via, values, dialog) {
 	const { note, transferticket, filed_on } = values;
-	frm.call("mark_filed_outside", { filed_via, note, transferticket, filed_on }).then(() => frm.reload_doc());
+	frm.call("mark_filed_outside", { filed_via, note, transferticket, filed_on }).then(() => {
+		dialog.hide();
+		frm.reload_doc();
+	});
 }
