@@ -263,6 +263,12 @@ class AlikeTest(TestCase):
 		second = [framed(22.9, 30.6, 283.3, 1, 2), framed(22.9, 29.4, 283.3, 2, 2)]
 		self.assertEqual(printouts.alike(first, second, MARGINS), [])
 
+	def test_a_later_page_may_begin_with_another_line(self):
+		"""Where a page breaks depends on the rows the generator keeps together; the head and the foot stay put."""
+		first = [framed(22.5, 30, 284, 1, 2), framed(22.5, 29, 284, 2, 2)]
+		second = [framed(22.5, 30, 284, 1, 2), framed(22.5, 33, 284, 2, 2)]
+		self.assertEqual(printouts.alike(first, second, MARGINS), [])
+
 	def test_names_a_different_number_of_pages(self):
 		self.assertEqual(
 			printouts.alike([framed(22.5, 30, 284)], [framed(22.5, 30, 284)] * 2, MARGINS),

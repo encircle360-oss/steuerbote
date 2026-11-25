@@ -236,8 +236,9 @@ def _mm(points: float | None) -> str:
 
 
 def alike(wkhtmltopdf, chromium, margins: Margins) -> list[str]:
-	"""The printout of one document with both generators: the same number of pages, and on each page the head, the
-	first line and the foot at the same place, so that it does not matter which generator a site prints with."""
+	"""The printout of one document with both generators: the same number of pages, the head and the foot of each
+	page and the first line of the first page at the same place, so that it does not matter which generator a site
+	prints with. A later page begins with the row its break leaves, which the two may choose differently."""
 	if len(wkhtmltopdf) != len(chromium):
 		return [f"wkhtmltopdf {len(wkhtmltopdf)} Seiten, Chromium {len(chromium)} Seiten"]
 	problems = []
@@ -245,7 +246,7 @@ def alike(wkhtmltopdf, chromium, margins: Margins) -> list[str]:
 		first, second = frame(one, margins), frame(other, margins)
 		for label, here, there in (
 			("Ende des Kopfs", first.head, second.head),
-			("erste Zeile", first.first, second.first),
+			("erste Zeile", first.first if number == 1 else None, second.first if number == 1 else None),
 			("Fuß", first.foot, second.foot),
 		):
 			if (here is None) != (there is None) or (
