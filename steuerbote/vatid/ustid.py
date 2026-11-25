@@ -198,8 +198,8 @@ def is_german(value: str | None) -> bool:
 
 
 def german_check_digit(first_eight: str) -> int:
-	"""The ninth digit of a German USt-IdNr. from its first eight: ISO/IEC 7064 MOD 11,10, as the Konstruktionsregeln
-	of the Austrian BMF give it for Germany („Information über die Konstruktionsregeln der
+	"""The ninth digit of a German USt-IdNr. from its first eight, by the procedure the Konstruktionsregeln of the
+	Austrian BMF give for Germany, the hybrid system ISO/IEC 7064 MOD 11,10 („Information über die Konstruktionsregeln der
 	Umsatzsteuer-Identifikationsnummern (UID)“, Stand November 2020, section „DE - Deutsche UID“,
 	https://bmf.gv.at/dam/jcr:d6794f8f-d321-43df-9840-1a841f9bf5dc/BMF_UID_Konstruktionsregeln_Stand_November%202020.pdf,
 	retrieved 25 November 2026): „Folgende Konstruktionsregeln wurden vom jeweiligen Mitgliedstaat aufgrund
