@@ -29,6 +29,7 @@ from steuerbote.vatid.partners import (
 	invoice_kennzahlen,
 	is_due,
 	kind,
+	reason,
 	renew,
 	renewal_order,
 	standing,
@@ -54,8 +55,10 @@ class KindTest(TestCase):
 			"ATU12345678": Kind.CONFIRMABLE,
 			"atu 123 456 78": Kind.CONFIRMABLE,
 			"NL123456789B01": Kind.CONFIRMABLE,
-			"DE123456789": Kind.GERMAN,
-			"DE 123 456 789": Kind.GERMAN,
+			"DE111111125": Kind.GERMAN,
+			"DE 111 111 125": Kind.GERMAN,
+			"DE123456789": Kind.MALFORMED,
+			"ATU1234567": Kind.MALFORMED,
 			"DE12345": Kind.MALFORMED,
 			"CHE-123.456.789 MWST": Kind.NOT_CONFIRMABLE,
 			"GB123456789": Kind.NOT_CONFIRMABLE,
@@ -67,8 +70,19 @@ class KindTest(TestCase):
 		}
 		self.assertEqual({value: kind(value) for value in cases}, cases)
 
-	def test_only_a_confirmable_number_is_sent(self):
+	def test_only_a_confirmable_number_is_sent_and_a_german_one_where_the_company_checks_them(self):
 		self.assertEqual([item for item in Kind if item.sent], [Kind.CONFIRMABLE])
+		self.assertEqual(
+			[item for item in Kind if item.checked(german=True)], [Kind.CONFIRMABLE, Kind.GERMAN]
+		)
+		self.assertEqual([item for item in Kind if item.checked(german=False)], [Kind.CONFIRMABLE])
+
+	def test_says_what_is_wrong_with_a_number(self):
+		self.assertIn("Prüfziffer", reason("DE123456789"))
+		self.assertIn("Österreich", reason("ATU1234567"))
+		self.assertIn("Länderkennzeichen", reason("CHE123456789"))
+		self.assertIsNone(reason("ATU12345678"))
+		self.assertIsNone(reason("DE111111125"))
 
 
 class AnswerTest(TestCase):
@@ -91,7 +105,7 @@ class StandingTest(TestCase):
 
 	def test_a_partner_without_a_number_the_bzst_confirms_is_not_on_the_list_unless_the_number_is_wrong(self):
 		self.assertEqual(
-			[self.standing(value) for value in (None, "DE123456789", "CHE123456789", "PL-12")],
+			[self.standing(value) for value in (None, "DE111111125", "CHE123456789", "PL-12")],
 			[None, None, Standing.NOT_CONFIRMABLE, Standing.MALFORMED],
 		)
 
@@ -112,6 +126,28 @@ class StandingTest(TestCase):
 
 	def test_an_old_invalid_answer_stays_invalid(self):
 		self.assertEqual(self.standing(last=answer(200, INVALID)), Standing.INVALID)
+
+	def test_a_german_number_stands_once_the_company_checks_german_numbers_and_needs_no_name(self):
+		def german(last=None, asked=None):
+			return standing(
+				kind("DE111111125"),
+				last,
+				last is not None if asked is None else asked,
+				TODAY,
+				90,
+				False,
+				german=True,
+			)
+
+		self.assertEqual(german(), Standing.GERMAN_UNCHECKED)
+		self.assertEqual(german(asked=True), Standing.NO_ANSWER)
+		self.assertEqual(german(answer(5, qualified=False)), Standing.CURRENT)
+		self.assertEqual(german(answer(5, INVALID, qualified=False)), Standing.INVALID)
+		self.assertEqual(german(answer(91, qualified=False)), Standing.EXPIRED)
+
+	def test_a_valid_answer_of_a_service_outweighs_the_structure_of_the_merkblatt(self):
+		self.assertEqual(self.standing("ATU1234567"), Standing.MALFORMED)
+		self.assertEqual(self.standing("ATU1234567", last=answer(5)), Standing.CURRENT)
 
 	def test_every_standing_but_current_is_work(self):
 		self.assertEqual([item for item in Standing if not item.work], [Standing.CURRENT])
@@ -156,9 +192,18 @@ class DueTest(TestCase):
 
 	def test_asks_about_no_number_the_bzst_cannot_confirm(self):
 		self.assertEqual(
-			[self.due(value=value) for value in (None, "DE123456789", "GB123456789", "PL-12")],
-			[False] * 4,
+			[self.due(value=value) for value in (None, "DE111111125", "GB123456789", "PL-12", "DE123456789")],
+			[False] * 5,
 		)
+
+	def test_asks_about_a_german_number_where_the_company_checks_them_and_never_qualified(self):
+		def due(last=None, asked_on=None):
+			return is_due(kind("DE111111125"), last, asked_on, TODAY, 90, True, german=True)
+
+		self.assertTrue(due())
+		self.assertFalse(due(answer(10, qualified=False)))
+		self.assertTrue(due(answer(90, qualified=False)))
+		self.assertFalse(due(asked_on=TODAY))
 
 
 class RenewalTest(TestCase):
@@ -259,7 +304,7 @@ class InvoiceTest(TestCase):
 
 	def test_a_number_the_bzst_cannot_confirm_never_passes(self):
 		self.assertEqual(
-			[self.finding(("41",), value).problem for value in (None, "DE123456789", "GB123456789", "PL-12")],
+			[self.finding(("41",), value).problem for value in (None, "DE111111125", "GB123456789", "PL-12")],
 			[Problem.NO_VAT_ID, Problem.GERMAN, Problem.NOT_CONFIRMABLE, Problem.MALFORMED],
 		)
 
@@ -288,6 +333,10 @@ class InvoiceTest(TestCase):
 		self.assertIsNone(self.finding(("41",), goods=off))
 		self.assertIsNone(self.finding(("21",), services=off))
 		self.assertIsNone(self.finding((), value=None))
+
+	def test_a_valid_answer_outweighs_the_structure_of_the_merkblatt_at_the_invoice(self):
+		self.assertEqual(self.finding(("41",), "ATU1234567").problem, Problem.MALFORMED)
+		self.assertIsNone(self.finding(("41",), "ATU1234567", last=answer(0)))
 
 	def test_a_policy_needs_an_age_from_zero_on(self):
 		with self.assertRaisesRegex(ValueError, "from 0 on"):

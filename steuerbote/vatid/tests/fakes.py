@@ -15,6 +15,9 @@ from steuerbote.vatid.transport import Request, Response
 
 REQUESTER = "DE123456789"
 REQUESTED = "ATU12345678"
+GERMAN_REQUESTED = "DE111111125"
+"""The example of the German USt-IdNr. in the Konstruktionsregeln the Austrian BMF publishes (Stand November 2020),
+whose check digit is right."""
 DETAILS = Details("Musterhaus GmbH & Co KG", "musterort", "12345", "Musterstrasse 22")
 START = datetime(2026, 11, 20, 14, 0, tzinfo=UTC)
 BZST_ID = "0a1b2c3d4e5f6071"

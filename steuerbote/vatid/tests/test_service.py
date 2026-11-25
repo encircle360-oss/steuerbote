@@ -9,6 +9,7 @@ from steuerbote.vatid.result import Match, Outcome, Service
 from steuerbote.vatid.service import confirm
 from steuerbote.vatid.tests.fakes import (
 	DETAILS,
+	GERMAN_REQUESTED,
 	REQUESTED,
 	REQUESTER,
 	FakeClock,
@@ -163,3 +164,30 @@ class FallbackTest(TestCase):
 			"zurzeit nicht möglich. Bitte versuchen Sie es später noch einmal.",
 		)
 		self.assertIs(record.outcome, Outcome.INVALID)
+
+
+class GermanNumberTest(TestCase):
+	"""The BZSt confirms no German USt-IdNr. („Die anfragende DE USt-IdNr. ist nicht berechtigt eine DE USt-IdNr.
+	anzufragen.“, evatr-0006); VIES checks numbers of every member state. A German number goes to VIES alone, simply."""
+
+	def test_asks_vies_alone_and_simply(self):
+		record, fetch = run(
+			vies_answer(True, countryCode="DE", vatNumber="111111125"), requested=GERMAN_REQUESTED
+		)
+		self.assertEqual(fetch.urls(), [vies.URL])
+		self.assertEqual(
+			(record.service, record.outcome, record.qualified, record.previous, record.fallback_reason),
+			(Service.VIES, Outcome.VALID, False, None, None),
+		)
+		body = fetch.requests[0].body.decode()
+		self.assertIn("<v:vatNumber>111111125</v:vatNumber>", body)
+		self.assertNotIn("traderName", body)
+
+	def test_never_asks_with_name_and_address(self):
+		record, fetch = run(vies_answer(True), requested=GERMAN_REQUESTED, details=DETAILS)
+		self.assertFalse(record.qualified)
+		self.assertNotIn("traderName", fetch.requests[0].body.decode())
+
+	def test_sends_nothing_for_a_german_number_whose_check_digit_is_wrong(self):
+		with self.assertRaisesRegex(ValueError, "Prüfziffer"):
+			run(requested="DE123456789")
