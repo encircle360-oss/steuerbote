@@ -96,7 +96,19 @@ LONG_COMPANY = (
 LONGER = " einschließlich der weiteren Angaben, die eine Bezeichnung über mehrere Zeilen laufen lassen"
 LARGE_NEGATIVE = "-9.876.543,21"
 AMOUNT = re.compile(r"-?\d{1,3}(\.\d{3})*(,\d+)?")
-AMOUNT_KEYS = {"value", "amount", "left", "right", "tax", "sum", "current", "previous", "prior"}
+AMOUNT_KEYS = {
+	"value",
+	"amount",
+	"left",
+	"right",
+	"tax",
+	"sum",
+	"current",
+	"previous",
+	"prior",
+	"cost",
+	"depreciation",
+}
 TEXT_KEYS = {"label", "value", "text", "party", "title"}
 REPEAT = 3
 LINK = re.compile(r'<link[^>]*rel="stylesheet"[^>]*>')
@@ -143,11 +155,70 @@ def rows(doc) -> int:
 
 def variants(doctype: str, name: str):
 	"""Each variant by its name with what makes it, so that one that fails costs only itself."""
-	yield "kurz", lambda: frappe.get_doc(doctype, name)
-	yield "lang", lambda: lengthened(frappe.get_doc(doctype, name))
-	yield "namen", lambda: renamed(frappe.get_doc(doctype, name))
+
+	def document():
+		return with_fixed_assets(frappe.get_doc(doctype, name))
+
+	yield "kurz", document
+	yield "lang", lambda: lengthened(document())
+	yield "namen", lambda: renamed(document())
 	if doctype == "Annual Accounts":
-		yield "offenlegung", lambda: disclosed(frappe.get_doc(doctype, name))
+		yield "offenlegung", lambda: disclosed(document())
+
+
+# An invented Anlagenspiegel of four asset categories, with additions, a disposal and depreciation, which an E-Bilanz
+# prints in all eight columns of its part „Abschreibungen und Buchwert“ (layout.DEPRECIATION_COLUMNS).
+FIXED_ASSETS = (
+	{
+		"position_label": "andere Anlagen, Betriebs- und Geschäftsausstattung (Betriebsausstattung)",
+		"cost_begin": 1209.41,
+		"depreciation_begin": 1083.41,
+		"depreciation_regular": 125,
+	},
+	{
+		"position_label": "andere Anlagen, Betriebs- und Geschäftsausstattung (Büroeinrichtung)",
+		"cost_begin": 12100,
+		"additions": 2450.5,
+		"depreciation_begin": 5500,
+		"depreciation_regular": 1299.76,
+	},
+	{
+		"position_label": "andere Anlagen, Betriebs- und Geschäftsausstattung (Computerhardware)",
+		"cost_begin": 8461.34,
+		"additions": 12805.04,
+		"depreciation_begin": 6218.34,
+		"depreciation_regular": 3045.04,
+		"depreciation_7g": 2500,
+		"writeups": 150,
+	},
+	{
+		"position_label": "technische Anlagen und Maschinen (Fahrzeuge)",
+		"cost_begin": 48900,
+		"disposals": 48900,
+		"depreciation_begin": 36675,
+		"depreciation_regular": 8150,
+		"depreciation_disposals": 44825,
+	},
+)
+
+
+def with_fixed_assets(doc):
+	"""An E-Bilanz without fixed assets gets the invented Anlagenspiegel, so that every run prints it."""
+	if doc.doctype != "Electronic Balance Sheet" or doc.get("fixed_assets"):
+		return doc
+	for asset in FIXED_ASSETS:
+		row = {"value_type": "StB", "manual": 1, **asset}
+		row["cost_end"] = row.get("cost_begin", 0) + row.get("additions", 0) - row.get("disposals", 0)
+		row["depreciation_end"] = (
+			row.get("depreciation_begin", 0)
+			+ row.get("depreciation_regular", 0)
+			+ row.get("depreciation_7g", 0)
+			- row.get("depreciation_disposals", 0)
+			- row.get("writeups", 0)
+		)
+		row["book_value_end"] = row["cost_end"] - row["depreciation_end"]
+		doc.append("fixed_assets", row)
+	return doc
 
 
 def disclosed(doc):
