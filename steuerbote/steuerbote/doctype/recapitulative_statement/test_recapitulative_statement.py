@@ -31,7 +31,9 @@ from steuerbote.tests.helpers import (
 	post_payment_entry,
 	post_sales_invoice,
 )
+from steuerbote.vatid.exemption import consequence
 from steuerbote.vatid.tests.fakes import BZST_ID, START, FakeBzst, FakeClock, bzst
+from steuerbote.zm.lines import INVALID_ADVICE
 
 # The companies, their accounts, customers and vouchers are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = [
@@ -743,6 +745,104 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "latest filed Zusammenfassende Meldung"):
 			doc.make_correction()
 
+	def test_a_late_invoice_after_an_override_holds_the_berichtigung_until_the_override_is_confirmed(self):
+		"""§ 18a Absatz 10 UStG: the Berichtigung reports the full correct sum of a line (Anleitung zur ZM, IV.12.2). An
+		override made against the ledger amount of the filing must not hide a voucher booked later for the same
+		customer: the Berichtigung takes the override with its basis, and the line holds it until the override is
+		confirmed or removed. A release of the number lifts its block without touching the amount."""
+		self.roll_back_afterwards()
+		doc = self.calculated(4)
+		austrian, french = self.line(doc, AUSTRIAN), self.line(doc, FRENCH)
+		austrian.override = 9800
+		austrian.override_reason = "Die Nummer war am Liefertag bestätigt."
+		french.acceptance_reason = "Bestätigung vom Leistungstag liegt in der Akte."
+		doc.save()
+		doc.reload()
+		self.assertEqual((doc.status, doc.ready), ("Bereit", 1))
+		self.assertEqual(
+			[
+				(row.vat_id, money(row.override_basis), row.acceptance_reason or None, row.blocked)
+				for row in doc.lines
+			],
+			[
+				(AUSTRIAN, money(9800), None, 0),
+				(FRENCH, money(0), "Bestätigung vom Leistungstag liegt in der Akte.", 0),
+			],
+		)
+		self.assertIn("ZM-USTID-FREIGEGEBEN", [row.code for row in doc.hints])
+		doc.calculate()
+		doc.reload()
+		self.assertEqual(
+			(doc.status, money(self.line(doc, AUSTRIAN).override_basis)), ("Bereit", money(9800))
+		)
+		doc.mark_filed_outside(filed_via="mein_elster")
+		a = self.account
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-04-3", ALPEN, "2026-04-28", [(a["1400"], 2000, 0), (a["8125"], 0, 2000)]
+		)
+		correction = frappe.get_doc(DOCTYPE, doc.make_correction())
+		line = self.line(correction, AUSTRIAN)
+		self.assertEqual(
+			(money(line.amount), money(line.reported), money(line.override_basis), line.blocked),
+			(money(11800), money(9800), money(9800), 1),
+		)
+		self.assertEqual(correction.status, "Berechnet")
+		(stale,) = (row for row in correction.hints if row.code == "ZM-KORREKTUR-UEBERHOLT")
+		self.assertEqual(stale.severity, "Fehler")
+		self.assertIn("das Hauptbuch bucht jetzt", stale.text)
+		self.assertEqual(
+			self.line(correction, FRENCH).acceptance_reason, "Bestätigung vom Leistungstag liegt in der Akte."
+		)
+		line.override = 0
+		line.override_reason = ""
+		line.acceptance_reason = "Die Nummer war am Liefertag bestätigt."
+		correction.save()
+		correction.reload()
+		line = self.line(correction, AUSTRIAN)
+		self.assertEqual((correction.status, money(line.reported), line.in_file), ("Bereit", money(11800), 1))
+		self.assertEqual(contents(correction.make_csv_file()), HEADER + b"ATU12345678,11800,L")
+
+	def test_a_confirmed_override_holds_nothing_after_the_ledger_changed(self):
+		"""Changing the amount or the Begründung of an override confirms it against the ledger amount the line shows."""
+		self.roll_back_afterwards()
+		doc = self.calculated(4)
+		row = self.line(doc, AUSTRIAN)
+		row.override = 9800
+		row.override_reason = "Nachweis in der Akte."
+		doc.save()
+		a = self.account
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-04-4", ALPEN, "2026-04-29", [(a["1400"], 100, 0), (a["8125"], 0, 100)]
+		)
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		self.assertEqual(self.line(doc, AUSTRIAN).blocked, 1)
+		self.assertIn("ZM-KORREKTUR-UEBERHOLT", [hint.code for hint in doc.hints])
+		row = self.line(doc, AUSTRIAN)
+		row.override = 9900
+		doc.save()
+		doc.reload()
+		self.assertEqual(
+			(money(self.line(doc, AUSTRIAN).override_basis), self.line(doc, AUSTRIAN).blocked),
+			(money(9900), 0),
+		)
+		self.assertNotIn("ZM-KORREKTUR-UEBERHOLT", [hint.code for hint in doc.hints])
+
+	def test_a_save_keeps_the_names_of_the_rows_that_stay(self):
+		"""Every save builds the lines and findings anew; the version of the statement shows what changed, not every
+		row removed and added."""
+		self.roll_back_afterwards()
+		doc = self.calculated(4)
+		names = ([row.name for row in doc.lines], [row.name for row in doc.hints])
+		doc.remarks = "Geprüft."
+		doc.save()
+		doc.reload()
+		self.assertEqual(([row.name for row in doc.lines], [row.name for row in doc.hints]), names)
+		doc.calculate()
+		doc.reload()
+		self.assertEqual([row.name for row in doc.lines], names[0])
+
 	def test_a_month_is_filed_once_also_when_the_rhythm_changes_afterwards(self):
 		"""The I. Kalendervierteljahr filed quarterly holds the Lieferungen of January; after the rules turn
 		monthly from January, a ZM for January would file them again under another quart."""
@@ -799,7 +899,7 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[row.code for row in doc.hints if row.code == "ZM-USTID-UNBESTAETIGT"],
 			["ZM-USTID-UNBESTAETIGT"] * 2,
 		)
-		self.assertEqual({row.confirmation_outcome for row in doc.lines}, {None})
+		self.assertEqual({row.confirmation_outcome for row in doc.lines}, {"unconfirmed"})
 		self.assertEqual(money(doc.vouchers[0].amount), money(10000))
 
 		quarter = self.statement(1, company=QUARTERLY_COMPANY, kind="quarter")
@@ -1021,7 +1121,8 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[
 				(
 					"ZM-USTID-UNGUELTIG",
-					f"Die USt-IdNr. {FRENCH} ist laut Bestätigungsabfrage vom 20. November 2026 ungültig.",
+					f"Die USt-IdNr. {FRENCH} ist laut Bestätigungsabfrage vom 20. November 2026 ungültig. "
+					f"{consequence('21')} {INVALID_ADVICE}",
 				)
 			],
 		)
