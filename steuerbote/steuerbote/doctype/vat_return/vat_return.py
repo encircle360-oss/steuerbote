@@ -196,6 +196,8 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		if self.docstatus == 1 and self.status == FILED:
 			self.set_onload("changes_since_filing", self.changes_since_filing())
 		self.set_onload("cancellable", self.cancellable())
+		if self.docstatus == 0 and bridge.provisional_forms(cint(self.year)) is not None:
+			self.set_onload("provisional_forms", self._not_ready())
 
 	def cancellable(self) -> bool:
 		"""Whether the form offers Stornieren: only a submitted return without a record that files it, which a version
