@@ -62,6 +62,7 @@ from steuerbote.steuerbote.doctype.annual_accounts import bridge, layout, xbrl_e
 from steuerbote.steuerbote.doctype.annual_accounts.bridge import BridgeError, DisclosureMode, Problem
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import record_adoption
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import SizeRecord, size_class_on
+from steuerbote.steuerbote.recorded_vouchers import ProposedJournalEntries
 
 DOCTYPE = "Annual Accounts"
 PRINT_FORMAT = "Jahresabschluss"
@@ -121,7 +122,8 @@ ADOPTION_FIELDS = ("adopted_on", "resolution_file")
 """What a new Jahresabschluss starts without: an amendment is festgestellt again (§ 325 Abs. 1b Satz 1 HGB)."""
 
 
-class AnnualAccounts(AnnualFiling, Document):
+class AnnualAccounts(ProposedJournalEntries, AnnualFiling, Document):
+	PROPOSED_ENTRIES = ("appropriation_entry",)
 	LIFECYCLE = ACCOUNTS
 	LINES = "lines"
 	LINE_COLUMNS = bridge.LINE_COLUMNS

@@ -183,6 +183,10 @@ class CompanySetupTest(IntegrationTestCase):
 		self.assertEqual([row.tax_accounts for row in mapping.checks], ["1776"])
 		self.assertEqual([(row.account_number, row.level) for row in mapping.watched], [("1548", "blocking")])
 
+	def test_without_a_company_it_asks_for_one(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "There is no company"):
+			setup.set_up()
+
 	def test_reports_what_it_made_and_what_is_left_to_the_user(self):
 		done = setup.run(SKR03_COMPANY, TODAY)
 		settings = result_of(done, "vat_return_settings")
@@ -193,8 +197,14 @@ class CompanySetupTest(IntegrationTestCase):
 				(setup.SETTINGS_MADE, False),
 				(setup.VAT_ID_TAKEN, False),
 				(setup.DATENLIEFERANT_TAKEN, False),
+				(setup.DATENLIEFERANT_MISSING, True),
 				(setup.STATE_AND_TAX_NUMBER, True),
 			],
+		)
+		self.assertEqual(
+			texts_of(done, "vat_return_settings")[3],
+			"Enter the missing parts of the Datenlieferant in the VAT Return Settings, which the file for Mein ELSTER "
+			"and ERiC need: Street and House Number, Postal Code, Town.",
 		)
 		self.assertEqual(
 			texts_of(done, "vat_return_settings")[:3],
@@ -214,6 +224,7 @@ class CompanySetupTest(IntegrationTestCase):
 				"The chart SKR03 follows from the accounts 1576, 1776, 8400 of the company.",
 				f"{len(frappe.get_doc(MAPPING, SKR03_COMPANY).load_defaults())} accounts of the defaults do not "
 				"exist in the company and were left out.",
+				"Check Tax Templates finds every account of the tax templates of the company placed in the mapping.",
 			],
 		)
 		filing_period = result_of(done, "filing_period")
@@ -298,6 +309,7 @@ class CompanySetupTest(IntegrationTestCase):
 				"account rules 2, tax checks 1, watched accounts 1.",
 				f"{len(mapping.load_defaults())} accounts of the defaults do not exist in the company and were left "
 				"out.",
+				"Check Tax Templates finds every account of the tax templates of the company placed in the mapping.",
 			],
 		)
 		self.assertEqual(outcomes(setup.run(SET_UP_COMPANY, TODAY))["vat_return_mapping"], Outcome.SKIPPED)
