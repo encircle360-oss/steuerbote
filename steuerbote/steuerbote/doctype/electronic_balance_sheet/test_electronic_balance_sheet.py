@@ -626,6 +626,25 @@ class TestElectronicBalanceSheetTaxonomy610(IntegrationTestCase):
 		self.assertEqual((doc.datenart().version, doc.datenart().plugin), ("Bilanz_6.10", "checkBilanz_6_10"))
 		self.assertTrue(ebilanz_sources.taxonomy_check("6.10")[0])
 
+	def test_a_wirtschaftsjahr_no_version_serves_is_refused_when_it_is_made(self):
+		"""The taxonomy 6.9 serves a Wirtschaftsjahr beginning after 31 December 2024 at the earliest (BMF letter of
+		10 June 2025); Steuerbote has no earlier version, so an E-Bilanz of 2024 is no draft Berechnen could file."""
+		fiscal_year = "2024 Steuerbote Test E-Bilanz"
+		if not frappe.db.exists("Fiscal Year", fiscal_year):
+			frappe.get_doc(
+				{
+					"doctype": "Fiscal Year",
+					"year": fiscal_year,
+					"year_start_date": date(2024, 1, 1),
+					"year_end_date": date(2024, 12, 31),
+					"companies": [{"company": COMPANY}],
+				}
+			).insert(ignore_permissions=True)
+		with self.assertRaisesRegex(
+			frappe.ValidationError, "Steuerbote has no HGB-Taxonomie for the Wirtschaftsjahr"
+		):
+			new_document(year=2024)
+
 	def test_the_wirtschaftsjahr_2026_keeps_6_9_or_the_6_10_it_may_take(self):
 		self.assertEqual(new_document().taxonomy_version, "6.9")
 		discard_documents()

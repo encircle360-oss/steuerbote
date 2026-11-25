@@ -18,6 +18,7 @@ from steuerbote.ustva import (
 	registers,
 )
 from steuerbote.ustva.defaults import SKR03
+from steuerbote.ustva.tests.test_plausibility import FIGURES
 from steuerbote.vatid.result import Outcome
 
 BOOKED = StatutoryTax.AS_BOOKED
@@ -114,7 +115,18 @@ class KennzahlRowsTest(TestCase):
 				"tax": d("190.00"),
 				"override": d("0"),
 				"override_reason": "",
+				"override_basis": d("0"),
 			},
+		)
+
+	def test_an_override_keeps_the_ledger_amount_it_was_made_against(self):
+		overrides = {
+			"45": bridge.Override(d("600.00"), "Steuerberatung"),
+			"81": bridge.Override(d("1100.00"), "Steuerberatung", d("900.00")),
+		}
+		rows = {row["kennzahl"]: row for row in bridge.kennzahl_rows(self.result, KENNZAHLEN, overrides)}
+		self.assertEqual(
+			(rows["45"]["override_basis"], rows["81"]["override_basis"]), (d("500"), d("900.00"))
 		)
 
 	def test_a_kennzahl_without_a_tax_at_a_statutory_rate_carries_none(self):
@@ -135,6 +147,87 @@ class KennzahlRowsTest(TestCase):
 		self.assertEqual([row["kennzahl"] for row in rows][:3], ["81", "43", "46"])
 		row = rows[1]
 		self.assertEqual((row["amount"], row["reported"], row["override"]), (d("0"), d("0"), d("250.00")))
+
+
+class OverrideBasisTest(TestCase):
+	"""An override is made against the ledger amount of its Kennzahl. When the ledger books another amount later, the
+	override would hide the change from the return; the hint KORREKTUR-UEBERHOLT holds it until the override is
+	confirmed or removed."""
+
+	STORED = (
+		{
+			"kennzahl": "81",
+			"amount": 1000,
+			"override": 1100,
+			"override_reason": "Spät",
+			"override_basis": 900,
+		},
+		{"kennzahl": "41", "amount": 2000.5},
+	)
+
+	def test_an_override_reads_its_basis(self):
+		rows = [
+			{"kennzahl": "81", "override": 1100, "override_reason": "Spät", "override_basis": 900},
+			{"kennzahl": "45", "override": 0, "override_reason": "Steuerberatung"},
+		]
+		self.assertEqual(
+			[override.basis for override in bridge.overrides_of(rows, KENNZAHLEN).values()],
+			[d("900.00"), None],
+		)
+
+	def test_a_save_keeps_the_basis_of_an_unchanged_override_and_sets_that_of_a_new_one(self):
+		rows = [
+			{"kennzahl": "81", "override": 1100, "override_reason": " Spät ", "override_basis": 5},
+			{"kennzahl": "41", "override": 2100, "override_reason": "Steuerberatung"},
+			{"kennzahl": "43", "override": 250, "override_reason": "Ausfuhr"},
+			{"kennzahl": "86"},
+		]
+		self.assertEqual(bridge.override_bases(self.STORED, rows), [d("900.00"), d("2000.50"), None, None])
+		changed = [{"kennzahl": "81", "override": 1200, "override_reason": "Spät"}]
+		self.assertEqual(bridge.override_bases(self.STORED, changed), [d("1000.00")])
+
+	def test_a_hint_names_each_override_whose_ledger_amount_changed(self):
+		rows = [
+			{
+				"kennzahl": "81",
+				"amount": 1300,
+				"override": 1100,
+				"override_reason": "Spät",
+				"override_basis": 900,
+			},
+			{
+				"kennzahl": "41",
+				"amount": 2000,
+				"override": 2100,
+				"override_reason": "x",
+				"override_basis": 2000,
+			},
+			{"kennzahl": "86", "amount": 50},
+		]
+		(hint,) = bridge.stale_override_hints(rows, FIGURES)
+		self.assertEqual(
+			(hint.code, hint.severity), (plausibility.Code.OVERRIDE_STALE, plausibility.Severity.ERROR)
+		)
+		self.assertEqual(
+			hint.text,
+			"Kz 81: Die Korrektur auf 1.100,00 € wurde bei 900,00 € im Hauptbuch eingetragen; das Hauptbuch bucht "
+			"jetzt 1.300,00 €. Die Voranmeldung ist nicht bereit, bis die Korrektur bestätigt ist: Passe Betrag oder "
+			"Begründung an, oder lösche die Korrektur.",
+		)
+
+
+class ReadyOfTest(TestCase):
+	"""A return is ready when every Verprobung passes, no watched account has a balance, no error among the hints
+	holds it and its forms are final."""
+
+	PASSED = ({"passed": 1}, {"passed": 1})
+
+	def test_ready_from_the_stored_tables(self):
+		self.assertTrue(bridge.ready_of(self.PASSED, [], [{"severity": "Warnung"}], provisional=False))
+		self.assertFalse(bridge.ready_of([{"passed": 1}, {"passed": 0}], [], [], provisional=False))
+		self.assertFalse(bridge.ready_of(self.PASSED, [{"account_number": "1590"}], [], provisional=False))
+		self.assertFalse(bridge.ready_of(self.PASSED, [], [{"severity": "Fehler"}], provisional=False))
+		self.assertFalse(bridge.ready_of(self.PASSED, [], [], provisional=True))
 
 
 class OverridesOfTest(TestCase):
@@ -842,7 +935,7 @@ class HintRowsTest(TestCase):
 			bridge.hint_rows(found),
 			[
 				{
-					"severity": "Warnung",
+					"severity": "Fehler",
 					"code": "EU-OHNE-USTID",
 					"text": "Rechnung ...",
 					"voucher_type": "Sales Invoice",
@@ -945,7 +1038,7 @@ class ReplacedHintsTest(TestCase):
 			"party": party,
 		}
 
-	def test_new_hints_take_the_place_of_those_of_their_codes_and_warnings_stay_first(self):
+	def test_new_hints_take_the_place_of_those_of_their_codes_and_errors_and_warnings_stay_first(self):
 		stored = [
 			{
 				**self.row("Warnung", "EU-OHNE-USTID", "a", "X"),
@@ -962,12 +1055,12 @@ class ReplacedHintsTest(TestCase):
 		self.assertEqual(
 			bridge.replaced_hints(stored, new, plausibility.VAT_ID_CODES),
 			[
+				self.row("Fehler", "USTIDNR-UNGUELTIG", "c", "Y"),
 				{
 					**self.row("Warnung", "EU-OHNE-USTID", "a", "X"),
 					"voucher_type": "Sales Invoice",
 					"voucher_no": "S-1",
 				},
-				self.row("Warnung", "USTIDNR-UNGUELTIG", "c", "Y"),
 				self.row("Hinweis", "KEIN-KATALOG", "b"),
 				self.row("Hinweis", "USTIDNR-VERALTET", "d", "Z"),
 			],

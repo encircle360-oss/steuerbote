@@ -18,6 +18,11 @@ class AnnualFilingYear(Document):
 		exempt_264_3: DF.Check
 		exempt_264_3_reason: DF.SmallText | None
 		kleinunternehmer: DF.Check
+		no_vat_return: DF.Check
+		no_vat_return_note: DF.SmallText | None
+		no_vat_return_reason: DF.Literal[
+			"", "Not an Unternehmer (§ 2 UStG)", "Released by the Finanzamt", "Other Reason"
+		]
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data

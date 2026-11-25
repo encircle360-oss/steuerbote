@@ -9,7 +9,7 @@ Der Beleg lebt auf der Grundlage der Jahresmeldungen: Status, Berechnen, Korrekt
 - **Unternehmen:** eine GmbH oder UG mit Sitz im Inland und einer Steuernummer, Kontenrahmen SKR03 oder SKR04 mit den Vorgaben der Kontenzuordnung, Geschäftsjahr gleich Kalenderjahr.
 - **Jahre:** 2026, der erste Jahrgang mit Vordruck, Jahresdokumentation und Schema (`steuerbote/ustjahr/years.py`). Ein Jahr ohne Vordruck lehnt der Beleg beim Speichern ab.
 - **Besteuerung:** nach vereinbarten Entgelten; die Erklärung gibt Kz 133 immer mit 1 an.
-- **Nicht darin:** Anlage UN und Anlage FV, die Umsätze nach §§ 25 und 25a UStG (Zeilen 37 und 38) und die Aufgabe des Unternehmens im Lauf des Jahres. Ein Kleinunternehmer gibt keine Erklärung ab (§ 19 Abs. 1 Satz 2 UStG), außer das Finanzamt fordert sie an (§ 149 Abs. 1 Satz 2 AO); ein Jahr, das die Einstellungen Jahresmeldungen als Jahr eines Kleinunternehmers kennzeichnen, hat deshalb kein Fälligkeitsdatum und einen Hinweis.
+- **Nicht darin:** Anlage UN und Anlage FV, die Umsätze nach §§ 25 und 25a UStG (Zeilen 37 und 38) und die Aufgabe des Unternehmens im Lauf des Jahres. Ein Jahr, für das die Einstellungen Jahresmeldungen erklären, dass keine Umsatzsteuererklärung geschuldet ist, hat keine: Steuerbote lehnt eine Erklärung dieses Jahres ab, siehe [Fristen](fristen.md#jahresmeldungen). Ein Kleinunternehmer gibt keine Erklärung ab (§ 19 Abs. 1 Satz 2 UStG), außer das Finanzamt fordert sie an (§ 149 Abs. 1 Satz 2 AO); ein Jahr, das die Einstellungen Jahresmeldungen als Jahr eines Kleinunternehmers kennzeichnen, hat deshalb kein Fälligkeitsdatum und einen Hinweis.
 
 ## Der Beleg
 
@@ -124,6 +124,7 @@ Liegt die Differenz darüber, nennt der Hinweis `SB-UMSATZERLOESE` die Umsatzerl
 | `SB-KZ136` | Hinweis | eine abgegebene Voranmeldung datiert den Wechsel zur Regelbesteuerung in Kz 70 auf einen anderen Tag als Kz 136 der Erklärung |
 | `SB-UMSATZERLOESE` | Hinweis | die Bemessungsgrundlagen der Lieferungen und sonstigen Leistungen liegen über Rundung und Toleranz hinaus neben den Umsatzerlösen des festgestellten Jahresabschlusses oder der abgegebenen E-Bilanz, siehe [Abgleich mit den Umsatzerlösen](#abgleich-mit-den-umsatzerlösen) |
 | `SB-NEU-BERECHNEN` | Fehler | seit dem Berechnen hat sich etwas geändert, das „Berechnen“ liest |
+| `SB-KORREKTUR-UEBERHOLT` | Fehler | eine Korrektur wurde gegen einen anderen Betrag eingetragen, als „Berechnen“ jetzt für ihre Zeile ergibt, siehe [Jahresmeldungen](jahresmeldungen.md) |
 | `ZEITRAUM-FEHLT` | Fehler | ein fälliger Zeitraum ohne abgegebene Voranmeldung und ohne Begründung |
 | `SONDERVORAUSZAHLUNG-KZ39` | Hinweis | Kz 39 der Voranmeldungen weicht von der Sondervorauszahlung der Einstellungen ab |
 | `SOLL-UEBERSCHRIEBEN` | Hinweis | das Vorauszahlungssoll laut Finanzamt ersetzt das berechnete |
@@ -170,6 +171,8 @@ Was die Erklärung über die Beträge hinaus meldet, nimmt sie aus den Einstellu
 ## Druckformat
 
 Das Druckformat „Umsatzsteuererklärung“ gibt die Erklärung in Reihenfolge und Wortlaut des Vordrucks USt 2 A 2026 aus, auf A4, schwarz und grau: den Kopf der Jahresmeldungen mit Finanzamt und dem Tag der Abschlusszahlung, dann die Abschnitte A bis K mit ihren Zwischenüberschriften, die ergänzenden Angaben der Zeile 23 und die Mitwirkung der Zeilen 127 bis 129. Jede Zeile zeigt Zeile, Bezeichnung, Kennzahl und Betrag, die Bemessungsgrundlage in vollen Euro links, die Steuer in Euro und Cent rechts, in den Zeilen 105 bis 108 links den nachträglich abziehbaren und rechts den zurückzuzahlenden Betrag. Ein Abschnitt ohne Werte sagt „Keine Eintragungen“. Darunter stehen das Vorauszahlungssoll, der Abgleich je Voranmeldungszeitraum und je Kennzahl, die Korrekturen und Zeilen von Hand, die Befunde, die Anmerkungen und der Hinweis, dass der Ausdruck keine Abgabe ist. Das Druckformat rechnet nichts: Die Abschnitte gibt `annual_vat_print()` aus `annual_vat_return/layout.py`, das je Jahr den Aufbau des Vordrucks hält.
+
+Die Befunde druckt es wie jede Jahresmeldung: jeden Fehler mit seiner Bestätigung, die Hinweise nach Art mit ihrer Zahl und einem Beispiel, etwa „JOURNALBUCHUNG-STEUERKONTO“ einmal für alle Journalbuchungen auf Steuerkonten; alle Hinweise einzeln stehen im Formular und, mit „Drucken mit allen Hinweisen“, in einem Anhang des Ausdrucks. Beträge in den Hinweisen stehen im deutschen Format, etwa 2.706,00 Euro. Einen Befund zu einer Regel der Jahresdokumentation zeigt Steuerbote mit dem amtlichen Fehler- oder Hinweistext der Regel und der Prüfbedingung dahinter, wenn die ERiC-Dokumentation auf dem Server liegt (`STEUERBOTE_ERIC_DOC_DIR`); ohne sie nur mit Regel und Prüfbedingung.
 
 ## Grenzen
 

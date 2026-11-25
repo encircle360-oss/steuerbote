@@ -117,6 +117,23 @@ class YearObligationsTest(TestCase):
 		found = year_obligations(replace(YEAR_2026, kleinunternehmer=True))
 		self.assertEqual([item.kind for item in found], [KST, GEWST, EBILANZ, FESTSTELLUNG, OFFENLEGUNG])
 
+	def test_a_year_the_company_states_no_umsatzsteuererklaerung_for_owes_none(self):
+		"""A statement of the company in the settings, such as a holding that is no Unternehmer (§ 2 UStG); the
+		other annual filings stay."""
+		found = year_obligations(replace(YEAR_2026, no_vat_return=True))
+		self.assertEqual([item.kind for item in found], [KST, GEWST, EBILANZ, FESTSTELLUNG, OFFENLEGUNG])
+
+	def test_the_statement_of_the_settings_reaches_the_year(self):
+		rules = AnnualRules(
+			years=(
+				settings.YearSettings(
+					2026, no_vat_return=True, no_vat_return_reason="Released by the Finanzamt"
+				),
+			)
+		)
+		self.assertTrue(rules.year(2026).no_vat_return)
+		self.assertFalse(rules.year(2027).no_vat_return)
+
 	def test_the_founding_year_owes_the_eroeffnungsbilanz_with_the_e_bilanz(self):
 		found = year_obligations(replace(YEAR_2026, founding=True))
 		self.assertEqual(

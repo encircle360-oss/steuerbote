@@ -64,6 +64,16 @@ company_data_to_be_ignored = [
 	*(name for name in _ANNUAL_DOCUMENTS if (_DOCTYPES / name.lower().replace(" ", "_")).is_dir()),
 ]
 
+# The rows that record a voucher of the ledger as Berechnen found it keep no voucher from being cancelled or deleted
+# (steuerbote/steuerbote/recorded_vouchers.py).
+ignore_links_on_delete = [
+	"VAT Return Deviation",
+	"VAT Return Hint",
+	"VAT Return Late Change",
+	"Recapitulative Statement Hint",
+	"Recapitulative Statement Voucher",
+]
+
 # The records of what Steuerbote did, which only Steuerbote writes and nobody renames (steuerbote/steuerbote/guards.py).
 _RECORDS = ("ELSTER Transmission", "VAT ID Confirmation", "Deadline Reminder")
 
@@ -121,8 +131,9 @@ after_migrate = [
 	"steuerbote.steuerbote.partner_vat_ids.fill_statuses",
 ]
 
-# The steps Steuerbote einrichten runs besides its own (steuerbote/steuerbote/setup.py): the Kontenzuordnung
-# Ertragsteuern and the Bilanzzuordnung, each with the defaults of SKR03 or SKR04.
+# The steps Steuerbote einrichten runs besides its own (steuerbote/steuerbote/setup.py): the start in Steuerbote, the
+# check of the deadlines and the reminder, the Kontenzuordnung Ertragsteuern and the Bilanzzuordnung, each with the
+# defaults of SKR03 or SKR04.
 steuerbote_setup_steps = [
 	{
 		"key": "books_start",
@@ -130,6 +141,13 @@ steuerbote_setup_steps = [
 		"order": 35,
 		"needs": ["vat_return_settings", "vat_return_mapping"],
 		"run": "steuerbote.steuerbote.setup.check_books_start",
+	},
+	{
+		"key": "deadlines",
+		"label": "Deadlines and Reminder",
+		"order": 36,
+		"needs": ["vat_return_settings"],
+		"run": "steuerbote.steuerbote.deadlines.check_setup",
 	},
 	{
 		"key": "income_tax_mapping",

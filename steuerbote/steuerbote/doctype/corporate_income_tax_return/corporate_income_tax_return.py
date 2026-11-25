@@ -36,6 +36,7 @@ transmission through ERiC are those of AnnualFiling and Transmittable. This cont
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 import frappe
@@ -45,6 +46,7 @@ from frappe.utils import cint, flt, getdate
 
 from steuerbote import ebilanz_sources, income_tax_sources
 from steuerbote.deadlines import Kind
+from steuerbote.ebilanz.positions import euro
 from steuerbote.elster import kst_xml
 from steuerbote.eric import datenart as eric_datenart
 from steuerbote.jahresmeldung import findings as annual_findings
@@ -62,6 +64,7 @@ from steuerbote.steuerbote.doctype.elster_transmission.transmission import Trans
 from steuerbote.steuerbote.doctype.trade_tax_return import bridge as trade_tax_bridge
 from steuerbote.steuerbote.doctype.vat_return.vat_return import SiteFigures
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
+from steuerbote.steuerbote.recorded_vouchers import ProposedJournalEntries
 from steuerbote.ustva.years import UnknownYearError
 
 DOCTYPE = "Corporate Income Tax Return"
@@ -82,10 +85,12 @@ INPUT_FIELDS = (
 )
 """What Berechnen reads of the return besides its lines."""
 HOLDING_COLUMNS = ("percent_on_1_january", "percent_at_start_of_ez", "exemption")
+PROVISIONS_DIFFER = "KST-RUECKSTELLUNG-DIFFERENZ"
 """The columns of the § 8b results that a save fills from the holdings register."""
 
 
-class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
+class CorporateIncomeTaxReturn(ProposedJournalEntries, AnnualFiling, Transmittable, Document):
+	PROPOSED_ENTRIES = ("provisions_entry",)
 	LINES = "lines"
 	LINE_COLUMNS = bridge.LINE_COLUMNS
 	CALCULATED_FIELDS = (
@@ -114,7 +119,47 @@ class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
 			self.company, cint(self.year), self.electronic_balance_sheet
 		)
 		computation = self.computation()
-		return Calculation(lines=computation.lines, values=computation.values, findings=computation.findings)
+		found = (*computation.findings, *self.provision_findings(computation))
+		return Calculation(lines=computation.lines, values=computation.values, findings=found)
+
+	def provision_findings(self, computation: bridge.Computation) -> list[Finding]:
+		"""A hint where the books hold provisions for the Körperschaftsteuer and the Solidaritätszuschlag of the year that
+		are not their balances, as after a posting since Rückstellungen vorschlagen (§ 249 Abs. 1 Satz 1 HGB)."""
+		posted = self.posted_provisions()
+		if not posted or not any(posted.values()):
+			return []
+		found = provisions.differences(computation.result, None, posted)
+		if not found:
+			return []
+		parts = ", ".join(
+			f"{tax} {euro(abs(difference))} {'mehr' if difference > 0 else 'weniger'} als gebucht"
+			for tax, difference in found.items()
+		)
+		return [
+			Finding(
+				PROVISIONS_DIFFER,
+				Severity.HINT,
+				_(
+					"The books hold provisions for the taxes of {0} that differ from the taxes of this return: {1}. Rückstellungen vorschlagen proposes the difference (§ 249 Abs. 1 Satz 1 HGB)."
+				).format(cint(self.year), parts),
+			)
+		]
+
+	def posted_provisions(self) -> dict[provisions.Tax, Decimal] | None:
+		"""What the books of the Wirtschaftsjahr hold of the provision or the claim to a refund of each tax, a provision
+		positive; None for a chart without the accounts of the provisions."""
+		accounts = provisions.ACCOUNTS.get(income_tax_sources.mapping(self.company).chart)
+		if accounts is None:
+			return None
+		postings = income_tax_sources.tax_postings(
+			self.company,
+			getdate(self.from_date),
+			getdate(self.to_date),
+			accounts,
+			income_tax_sources.commercial_finance_book(self.company),
+		)
+		_booked, posted = bridge.booked_taxes(postings, accounts)
+		return {tax: posted[key] for tax, key in zip(provisions.Tax, bridge.TAX_KEYS, strict=True)}
 
 	def check_reported(self, lines) -> list[Finding]:
 		"""The rules of the Jahresdokumentation E30 that Steuerbote checks itself, on the Vordrucke the return files with
@@ -205,20 +250,7 @@ class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
 				)
 			)
 		from_date, to_date = getdate(self.from_date), getdate(self.to_date)
-		postings = income_tax_sources.tax_postings(
-			self.company,
-			from_date,
-			to_date,
-			accounts,
-			income_tax_sources.commercial_finance_book(self.company),
-		)
-		_booked, posted = bridge.booked_taxes(postings, accounts)
-		if any(posted.values()):
-			frappe.throw(
-				_(
-					"The books hold provisions for the taxes of {0} already. Posting them leaves the zu versteuerndes Einkommen as it is, so Steuerbote proposes no second posting."
-				).format(self.year)
-			)
+		posted = self.posted_provisions() or {}
 		ledger, settings = self.sources(mapping)
 		computation = self.computation(mapping, ledger, settings)
 		trade_tax = trade_tax_bridge.compute(
@@ -236,9 +268,16 @@ class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
 					"The Annual Filing Settings give no Hebesatz for {0}, so the proposal leaves out the Gewerbesteuer."
 				).format(self.year)
 			)
-		rows = provisions.propose(computation.result, trade_tax, accounts)
+		rows = provisions.propose(computation.result, trade_tax, accounts, posted)
 		if not rows:
-			frappe.msgprint(_("No tax of {0} has a balance to provide for.").format(self.year))
+			if any(posted.values()):
+				frappe.msgprint(
+					_(
+						"The books hold the provisions for the taxes of {0} as this return computes them."
+					).format(self.year)
+				)
+			else:
+				frappe.msgprint(_("No tax of {0} has a balance to provide for.").format(self.year))
 			return ""
 		entry = provision_entry(self.company, to_date, rows, self.name)
 		self.db_set("provisions_entry", entry)
@@ -375,7 +414,7 @@ class CorporateIncomeTaxReturn(AnnualFiling, Transmittable, Document):
 				"An entry that Berechnen reads changed since Berechnen: a table of the return or one of its statements. Calculate again, so that Berechnen checks the return with it."
 			),
 		)
-		self.set(FINDINGS_TABLE, annual_findings.rows((*stored, recalculate)))
+		self.add_finding(recalculate)
 
 	# Helpers.
 
@@ -423,6 +462,74 @@ def core_errors() -> Iterator[None]:
 		yield
 	except bridge.BridgeError as error:
 		frappe.throw(_(error.template).format(*error.values), title=_(DOCTYPE))
+
+
+PROVISIONS_ELSEWHERE = "SB-RUECKSTELLUNG-ABWEICHUNG"
+CALCULATED_STATUSES = ("Berechnet", "Bereit", "Abgegeben")
+
+
+def provision_differences(company: str, year: int) -> list[Finding]:
+	"""For the Jahresabschluss and the E-Bilanz, which would be filed with the provisions in the books: a hint where the
+	books hold provisions for the taxes on income of the year that differ from the balances of the latest calculated
+	Körperschaft- and Gewerbesteuererklärung, naming the return that proposes the difference (§ 249 Abs. 1 Satz 1 HGB).
+	Nothing without such a return or without provisions in the books."""
+	latest = frappe.get_all(
+		DOCTYPE,
+		filters={
+			"company": company,
+			"year": year,
+			"docstatus": ["<", 2],
+			"status": ["in", CALCULATED_STATUSES],
+		},
+		fields=["name", "kst_balance", "solz_balance"],
+		order_by="creation desc",
+		limit=1,
+	)
+	if not latest:
+		return []
+	corporate = latest[0]
+	posted = frappe.get_doc(DOCTYPE, corporate.name).posted_provisions()
+	if not posted or not any(posted.values()):
+		return []
+	balances = {
+		provisions.Tax.KST: Decimal(str(corporate.kst_balance or 0)),
+		provisions.Tax.SOLZ: Decimal(str(corporate.solz_balance or 0)),
+	}
+	trade = frappe.get_all(
+		"Trade Tax Return",
+		filters={
+			"company": company,
+			"year": year,
+			"docstatus": ["<", 2],
+			"status": ["in", CALCULATED_STATUSES],
+		},
+		fields=["name", "balance"],
+		order_by="creation desc",
+		limit=1,
+	)
+	if trade:
+		balances[provisions.Tax.GEWST] = Decimal(str(trade[0].balance or 0))
+	found = {
+		tax: (balance - posted.get(tax, Decimal(0))).quantize(Decimal("0.01"))
+		for tax, balance in balances.items()
+	}
+	found = {tax: difference for tax, difference in found.items() if difference}
+	if not found:
+		return []
+	parts = ", ".join(
+		f"{tax} {euro(abs(difference))} {'mehr' if difference > 0 else 'weniger'} als gebucht"
+		for tax, difference in found.items()
+	)
+	returns = ", ".join([corporate.name, *(row.name for row in trade)])
+	return [
+		Finding(
+			PROVISIONS_ELSEWHERE,
+			Severity.HINT,
+			_(
+				"The provisions for the taxes of {0} in the books differ from the returns {1}: {2}. This balance sheet would show them so; Rückstellungen vorschlagen at {3} proposes the difference (§ 249 Abs. 1 Satz 1 HGB)."
+			).format(year, returns, parts, corporate.name),
+		)
+	]
 
 
 def provision_entry(company: str, posting_date: date, rows, document: str) -> str:

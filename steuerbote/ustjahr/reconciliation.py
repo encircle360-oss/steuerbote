@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 
+from steuerbote.ustjahr import text
 from steuerbote.ustjahr.calculation import AnnualResult, entries
 from steuerbote.ustjahr.form import KZ_816, KZ_820, Field, Finding, Severity, catalogue_for
 from steuerbote.ustjahr.soll import Filed, Soll
@@ -54,7 +55,7 @@ from steuerbote.ustva.kennzahlen import (
 from steuerbote.ustva.kennzahlen import catalogue_for as ustva_catalogue_for
 from steuerbote.ustva.mapping import Mapping
 from steuerbote.ustva.period import Period
-from steuerbote.ustva.rounding import HUNDRED, ZERO, to_cents
+from steuerbote.ustva.rounding import HUNDRED, ZERO
 
 INVOICE_LINE = "E3006201"
 
@@ -79,9 +80,10 @@ INVOICE = (
 	"year it arrived."
 )
 JOURNAL_ENTRY = (
-	"Journal Entry {0} of {1} moves the tax account {2} by {3} euros, debit less credit, without the flag Exclude "
-	"from VAT Return: a clearing of the tax accounts needs the flag, a correction does not."
+	"{0} Journal Entries of {1} move tax accounts without the flag Exclude from VAT Return, such as {2}: a clearing of "
+	"the tax accounts needs the flag, a correction does not. The report UStVA Kennzahlen shows the vouchers of each Kennzahl."
 )
+NAMED_JOURNAL_ENTRIES = 5
 MESSAGES = (NO_RUN, OTHER_YEAR, LATE, REST, REST_OF_KZ_820, INVOICE, JOURNAL_ENTRY)
 
 
@@ -259,7 +261,8 @@ def reconcile(
 def journal_entries(
 	year: int, lines: Iterable[LedgerLine], mapping: Mapping, vouchers: Collection[str]
 ) -> tuple[Finding, ...]:
-	"""Hints at the Journal Entries of the year that move a tax account without the flag Exclude from VAT Return.
+	"""One hint at the Journal Entries of the year that move a tax account without the flag Exclude from VAT Return,
+	with their number and the first of them by name.
 
 	``vouchers`` names the vouchers of ``lines`` that are Journal Entries; steuerbote/ledger.py leaves out those with
 	the flag, so every one here lacks it. A tax account is an account of a tax Kennzahl or a tax account of a
@@ -273,15 +276,18 @@ def journal_entries(
 		if line.voucher in vouchers and line.account_number in taxes:
 			key = (line.voucher, line.account_number)
 			moved[key] = moved.get(key, ZERO) + line.debit - line.credit
-	return tuple(
+	vouchers_moved = list(dict.fromkeys(voucher for (voucher, _account), amount in moved.items() if amount))
+	if not vouchers_moved:
+		return ()
+	names = [voucher.partition(":")[2] or voucher for voucher in vouchers_moved[:NAMED_JOURNAL_ENTRIES]]
+	more = " …" if len(vouchers_moved) > NAMED_JOURNAL_ENTRIES else ""
+	return (
 		Finding(
 			"JOURNALBUCHUNG-STEUERKONTO",
 			Severity.HINT,
 			JOURNAL_ENTRY,
-			(voucher, year, account, _euros(amount)),
-		)
-		for (voucher, account), amount in moved.items()
-		if amount
+			(len(vouchers_moved), year, ", ".join(names) + more),
+		),
 	)
 
 
@@ -390,4 +396,4 @@ def _exact_prepayment(run: UstvaResult, ustva: ReadOnlyMapping[str, Kennzahl]) -
 
 
 def _euros(amount: Decimal) -> str:
-	return format(to_cents(amount), "f")
+	return text.euros(amount)

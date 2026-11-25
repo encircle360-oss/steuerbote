@@ -24,6 +24,7 @@ from steuerbote.ustva.plausibility import (
 	confirmable,
 	derived_base_hints,
 	hints,
+	holds,
 	invoice_hints,
 	member_state,
 	merged,
@@ -35,7 +36,18 @@ from steuerbote.ustva.plausibility import (
 	watched_account_hints,
 )
 from steuerbote.ustva.residence import Finding, Problem
+from steuerbote.vatid.exemption import consequence
 from steuerbote.vatid.result import Outcome
+
+NO_VAT_ID_ADVICE = "Berichtige die Rechnung, oder begründe in den Anmerkungen, warum die Voranmeldung trotzdem so abgegeben wird."
+INVALID_ADVICE = (
+	"Belegt eine frühere Bestätigung die Gültigkeit am Tag des Umsatzes, begründe das in den Anmerkungen; sonst "
+	"berichtige die Rechnung."
+)
+MALFORMED_ADVICE = (
+	"Berichtige die USt-IdNr. in der Rechnung, oder begründe in den Anmerkungen, warum die Voranmeldung trotzdem so "
+	"abgegeben wird."
+)
 
 
 def d(value: str) -> Decimal:
@@ -159,13 +171,21 @@ class EuHintsTest(TestCase):
 		(hint,) = invoice_hints([invoice("8336", "2000", tax_id=None)], SKR03, FIGURES)
 		self.assertEqual(
 			(hint.code, hint.severity, hint.voucher_type, hint.voucher_no, hint.party),
-			(Code.EU_WITHOUT_VAT_ID, Severity.WARNING, "Sales Invoice", "ACC-SINV-2026-00001", "Muster GmbH"),
+			(Code.EU_WITHOUT_VAT_ID, Severity.ERROR, "Sales Invoice", "ACC-SINV-2026-00001", "Muster GmbH"),
 		)
 		self.assertEqual(
 			hint.text,
 			"Rechnung ACC-SINV-2026-00001 über 2.000,00 € geht in Kz 21 ein, "
-			"aber der Kunde Muster GmbH hat keine USt-IdNr.",
+			f"aber der Kunde Muster GmbH hat keine USt-IdNr. {consequence('21')} {NO_VAT_ID_ADVICE}",
 		)
+
+	def test_an_eu_delivery_to_a_customer_without_vat_id_says_what_it_costs(self):
+		"""§ 6a Absatz 1 Satz 1 Nummer 4 UStG: without a valid USt-IdNr. of the customer the delivery is not exempt;
+		the Zusammenfassende Meldung says the same about the same voucher (steuerbote.vatid.exemption)."""
+		(hint,) = invoice_hints([invoice("8125", "1200", tax_id=None)], SKR03, FIGURES)
+		self.assertEqual(hint.severity, Severity.ERROR)
+		self.assertIn(consequence("41"), hint.text)
+		self.assertTrue(holds([hint]))
 
 	def test_a_blank_vat_id_is_no_vat_id(self):
 		self.assertEqual(
@@ -378,7 +398,7 @@ class DerivedBaseHintsTest(TestCase):
 			"Kz 84: Der Beleg bucht 11,98 € Steuer auf „Umsatzsteuer nach § 13b UStG 19 %“, aber nichts auf ein "
 			"Grundlagenkonto, und seine übrigen Buchungszeilen ergeben die Bemessungsgrundlage nicht eindeutig. "
 			"Steuerbote hat sie aus der Steuer zurückgerechnet (11,98 € zu 19,0 %) und meldet 63,05 €; "
-			"bitte prüfe sie am Beleg.",
+			"bitte prüfen Sie sie am Beleg.",
 		)
 		self.assertEqual(
 			(hint.voucher_type, hint.voucher_no, hint.party), ("Journal Entry", "ACC-JV-2026-00012", "")
@@ -484,7 +504,7 @@ class ResidenceHintsTest(TestCase):
 		self.assertEqual(
 			hint.text,
 			"Kz 84: Beim Lieferanten Harbor Analytics Inc. steht als Land United States, seine Anschrift liegt aber "
-			"in Ireland. Steuerbote folgt dem Land; bitte prüfe, wo der Lieferant ansässig ist.",
+			"in Ireland. Steuerbote folgt dem Land; bitte prüfen Sie, wo der Lieferant ansässig ist.",
 		)
 
 	def test_a_vat_id_of_another_place(self):
@@ -494,7 +514,7 @@ class ResidenceHintsTest(TestCase):
 			hint.text,
 			"Kz 84: Der Lieferant Harbor Analytics Inc. hat das Land United States, seine USt-IdNr. beginnt aber mit "
 			"IE. Steuerbote folgt dem Land, denn ansässig ist ein Unternehmer, wo er Sitz, Geschäftsleitung oder eine "
-			"Betriebsstätte hat (§ 13b Abs. 7 UStG), nicht wo er registriert ist; bitte prüfe den Sitz am Beleg.",
+			"Betriebsstätte hat (§ 13b Abs. 7 UStG), nicht wo er registriert ist; bitte prüfen Sie den Sitz am Beleg.",
 		)
 
 	def test_a_template_of_another_reverse_charge_for_a_supplier_of_a_member_state(self):
@@ -517,7 +537,7 @@ class ResidenceHintsTest(TestCase):
 			hint.text,
 			"Kz 46: Der Lieferant ist als sonstige Leistung aus dem übrigen Gemeinschaftsgebiet eingeordnet, der "
 			"Lieferant Harbor Analytics Inc. ist laut Stammdaten aber im Drittlandsgebiet ansässig. Kz 46 setzt einen "
-			"im übrigen Gemeinschaftsgebiet ansässigen Unternehmer voraus (§ 13b Abs. 1 UStG); bitte prüfe die "
+			"im übrigen Gemeinschaftsgebiet ansässigen Unternehmer voraus (§ 13b Abs. 1 UStG); bitte prüfen Sie die "
 			"Einordnung.",
 		)
 		for source, start in (
@@ -835,15 +855,26 @@ class HintsTest(TestCase):
 		self.assertEqual(
 			{code for code, severity in SEVERITIES.items() if severity is Severity.WARNING},
 			{
-				Code.EU_WITHOUT_VAT_ID,
 				Code.EU_ADDRESS,
 				Code.ZERO_TAX,
 				Code.TAX_DEVIATION,
-				Code.VAT_ID_INVALID,
+				Code.INPUT_TAX_DEVIATION,
 				Code.EU_SERVICE_OUTSIDE,
 				Code.ACQUISITION_OUTSIDE_EU,
+				Code.PERIOD_NOT_ENDED,
+				Code.ZM_WITHOUT_RHYTHM,
 			},
 		)
+
+	def test_a_customer_without_a_valid_vat_id_and_a_changed_ledger_behind_an_override_hold_the_return(self):
+		"""Decision of the maintainer: an invalid USt-IdNr. holds „Bereit“ and is filed only with a written reason, in
+		the Voranmeldung as in the Zusammenfassende Meldung; the remarks of the return carry it."""
+		self.assertEqual(
+			{code for code, severity in SEVERITIES.items() if severity is Severity.ERROR},
+			{Code.EU_WITHOUT_VAT_ID, Code.VAT_ID_INVALID, Code.OVERRIDE_STALE},
+		)
+		self.assertTrue(holds([Hint(Code.NO_CATALOGUE, "a"), Hint(Code.VAT_ID_INVALID, "b")]))
+		self.assertFalse(holds([Hint(Code.NO_CATALOGUE, "a"), Hint(Code.ZERO_TAX, "b")]))
 
 	def test_the_codes_and_severities_are_those_the_return_stores(self):
 		self.assertEqual(
@@ -853,6 +884,7 @@ class HintsTest(TestCase):
 				"EU-VORLAGE-ADRESSE",
 				"NULLSATZ-OHNE-GRUND",
 				"STEUER-ABWEICHUNG",
+				"VORSTEUER-ABWEICHUNG",
 				"ABGLEICH-RECHNUNGEN",
 				"KONTO-BEOBACHTET",
 				"ABWEICHUNG-VORPERIODE",
@@ -869,11 +901,15 @@ class HintsTest(TestCase):
 				"SITZ-WIDERSPRUCH",
 				"KZ46-OHNE-EU-SITZ",
 				"ERWERB-AUS-DRITTLAND",
+				"KORREKTUR-UEBERHOLT",
+				"ZEITRAUM-NICHT-ABGELAUFEN",
+				"ZM-OHNE-RHYTHMUS",
+				"BERICHTIGUNG-OHNE-AENDERUNG",
 			],
 		)
-		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung"])
+		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung", "Fehler"])
 
-	def test_warnings_come_first_and_each_kind_keeps_its_order(self):
+	def test_errors_come_first_then_warnings_and_each_kind_keeps_its_order(self):
 		comparison = compare(
 			{"81": d("1600"), "21": d("2000")},
 			EarlierPeriod(Period.month(2026, 10), {"81": d("1000")}),
@@ -886,8 +922,8 @@ class HintsTest(TestCase):
 		self.assertEqual(
 			codes(found),
 			[
-				Code.ZERO_TAX,
 				Code.EU_WITHOUT_VAT_ID,
+				Code.ZERO_TAX,
 				Code.INVOICES_AND_LEDGER,
 				Code.PREVIOUS_PERIOD,
 				Code.PREVIOUS_PERIOD,
@@ -917,8 +953,8 @@ class HintsTest(TestCase):
 		self.assertEqual(
 			codes(found),
 			[
-				Code.ZERO_TAX,
 				Code.EU_WITHOUT_VAT_ID,
+				Code.ZERO_TAX,
 				Code.INVOICES_AND_LEDGER,
 				Code.WATCHED_ACCOUNT,
 				Code.WATCHED_ACCOUNT,
@@ -1021,12 +1057,12 @@ class VatIdHintsTest(TestCase):
 		)
 		self.assertEqual(
 			(hint.code, hint.severity, hint.party),
-			(Code.VAT_ID_INVALID, Severity.WARNING, "Paris Services SA"),
+			(Code.VAT_ID_INVALID, Severity.ERROR, "Paris Services SA"),
 		)
 		self.assertEqual(
 			hint.text,
 			"Die USt-IdNr. FR12345678901 des Kunden Paris Services SA (Kz 21) ist laut Bestätigungsabfrage vom "
-			"20. November 2026 ungültig.",
+			f"20. November 2026 ungültig. {consequence('21')} {INVALID_ADVICE}",
 		)
 
 	def test_a_number_valid_all_through_the_period_counts_as_confirmed_for_it(self):
@@ -1054,11 +1090,11 @@ class VatIdHintsTest(TestCase):
 		for vat_id, reason in cases.items():
 			with self.subTest(vat_id=vat_id):
 				(hint,) = found_for(Use(vat_id), latest={AUSTRIAN: asked("2026-10-20")})
-				self.assertEqual((hint.code, hint.severity), (Code.VAT_ID_INVALID, Severity.WARNING))
+				self.assertEqual((hint.code, hint.severity), (Code.VAT_ID_INVALID, Severity.ERROR))
 				self.assertEqual(
 					hint.text,
 					f"Die USt-IdNr. „{vat_id}“ des Kunden Alpen Handel GmbH (Kz 41) lässt sich nicht "
-					f"bestätigen: {reason}",
+					f"bestätigen: {reason} {consequence('41')} {MALFORMED_ADVICE}",
 				)
 
 	def test_one_hint_per_number_that_names_its_kennzahlen_in_the_order_of_the_form(self):
@@ -1127,8 +1163,12 @@ class ConfirmableTest(TestCase):
 
 
 class MergedTest(TestCase):
-	def test_warnings_come_first_and_each_source_keeps_its_order(self):
-		first = (Hint(Code.EU_WITHOUT_VAT_ID, "a"), Hint(Code.INVOICES_AND_LEDGER, "b"))
+	def test_errors_and_warnings_come_first_and_each_source_keeps_its_order(self):
+		first = (
+			Hint(Code.ZERO_TAX, "w"),
+			Hint(Code.EU_WITHOUT_VAT_ID, "a"),
+			Hint(Code.INVOICES_AND_LEDGER, "b"),
+		)
 		second = (Hint(Code.VAT_ID_UNCONFIRMED, "c"), Hint(Code.VAT_ID_INVALID, "d"))
-		self.assertEqual([hint.text for hint in merged(first, second)], ["a", "d", "b", "c"])
+		self.assertEqual([hint.text for hint in merged(first, second)], ["a", "d", "w", "b", "c"])
 		self.assertIsInstance(merged(first), tuple)

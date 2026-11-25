@@ -60,7 +60,7 @@
 		<tr><td class="sb-label">Hinzurechnung nach § 8 Nr. 1 GewStG</td><td class="sb-value">{{ money(doc.financing_addback) }}</td></tr>
 		<tr><td class="sb-label">Gewerbeertrag, auf volle 100 Euro abgerundet</td><td class="sb-value">{{ money(doc.gewerbeertrag) }}</td></tr>
 		<tr><td class="sb-label">Steuermessbetrag</td><td class="sb-value">{{ money(doc.messbetrag) }}</td></tr>
-		<tr><td class="sb-label">Hebesatz</td><td class="sb-value">{{ doc.get_formatted("hebesatz") }}</td></tr>
+		<tr><td class="sb-label">Hebesatz</td><td class="sb-value">{%- set hebesatz = doc.hebesatz or 0 -%}{{ frappe.utils.fmt_money(hebesatz, 0 if hebesatz == (hebesatz | int) else 2, None, "#.###,##") }} %</td></tr>
 		<tr><td class="sb-label">Gewerbesteuer</td><td class="sb-value">{{ money(doc.gewst) }}</td></tr>
 		<tr><td class="sb-label">Vorauszahlungen</td><td class="sb-value">{{ money(doc.prepayments) }}</td></tr>
 		<tr><td class="sb-label">Abschlusszahlung oder Erstattung</td><td class="sb-value">{{ money(doc.balance) }}</td></tr>

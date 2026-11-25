@@ -70,6 +70,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from types import MappingProxyType
 
+from steuerbote.hgb import size
 from steuerbote.hgb.size import SizeClass, UnknownYearError
 
 
@@ -1033,6 +1034,12 @@ _UKV_2026 = IncomeStatementScheme(
 INCOME_STATEMENTS: MappingProxyType[int, MappingProxyType[Method, IncomeStatementScheme]] = MappingProxyType(
 	{2026: MappingProxyType({Method.GKV: _GKV_2026, Method.UKV: _UKV_2026})}
 )
+
+
+def years() -> frozenset[int]:
+	"""The fiscal years, by the year they end in, that Steuerbote can draw a Jahresabschluss up for: those with the
+	size thresholds of § 267 HGB (steuerbote/hgb/size.py) and both schemes."""
+	return frozenset(size.YEARS) & frozenset(BALANCE_SHEETS) & frozenset(INCOME_STATEMENTS)
 
 
 def income_statement_scheme(year: int, method: Method = Method.GKV) -> IncomeStatementScheme:

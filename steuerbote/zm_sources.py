@@ -8,6 +8,14 @@ gives Kz 41, 42 or 21, and attribution.contributions() splits them by voucher wi
 Lieferungen (Kz 41 and 42) come from the goods months of the Meldezeitraum and the sonstige Leistungen (Kz 21)
 from its services months (steuerbote.zm.rhythm.Coverage), each by posting date (decision of the maintainer).
 
+The bookings come from the loader of the Voranmeldung (ledger.load_bookings) and are placed by its rule
+(steuerbote.ustva.assignment) into the months of the year, which count as filed with the statements that reported them
+(bridge.month_filings): a cancelled voucher counts on its own date, entered when it was cancelled, so voucher and
+reversal cancel out in a month not yet filed; after the filing the setting „Belege für abgegebene Zeiträume“ keeps it
+there, for a Berichtigung (§ 18a Absatz 10 UStG), or moves it, like any booking entered after the filing of its month,
+to the month open then. The accounts of Kz 41, 42 and 21 keep the posting date in the Voranmeldung under both bases
+(assignment.invoice_date_accounts), so the ZM and the Voranmeldung place every booking in the same month.
+
 ERPNext knows the customer of a voucher in three ways, and reads each with one query per kind of voucher:
 
 - a Sales Invoice names its customer and keeps the customer's tax_id, read-only, as it was when the invoice was
@@ -28,16 +36,20 @@ from datetime import date
 from decimal import Decimal
 
 import frappe
+from frappe.utils import get_datetime, getdate
 
-from steuerbote.ledger import load_lines
-from steuerbote.steuerbote.doctype.recapitulative_statement.bridge import FiledReturn, Party
+from steuerbote.ledger import load_bookings
+from steuerbote.steuerbote.doctype.elster_transmission.transmission import filings as filing_records
+from steuerbote.steuerbote.doctype.recapitulative_statement.bridge import FiledReturn, Party, month_filings
 from steuerbote.steuerbote.doctype.vat_return.bridge import to_amount
 from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import (
 	Contribution,
 	contributions,
 	vouchers_by_type,
 )
-from steuerbote.ustva import Mapping
+from steuerbote.ustva import LedgerLine, Mapping
+from steuerbote.ustva.assignment import Assignment, PeriodBasis
+from steuerbote.ustva.period import Period
 from steuerbote.ustva.rounding import ZERO
 from steuerbote.vatid.result import Details
 from steuerbote.zm.lines import ART_KENNZAHL, Art
@@ -51,6 +63,8 @@ SALES_INVOICE = "Sales Invoice"
 PAYMENT_ENTRY = "Payment Entry"
 JOURNAL_ENTRY = "Journal Entry"
 FILED = "Abgegeben"
+SETTINGS = "VAT Return Settings"
+STATEMENT = "Recapitulative Statement"
 ADDRESS_FIELDS = ("name", "address_line1", "pincode", "city")
 
 
@@ -83,8 +97,59 @@ def _shares(
 	accounts = accounts_of(mapping, kennzahlen)
 	if not accounts:
 		return []
-	by_kennzahl = contributions(load_lines(company, *span, account_numbers=accounts), mapping)
+	services = not set(kennzahlen) & set(GOODS)
+	by_kennzahl = contributions(placed_lines(company, span, accounts, services), mapping)
 	return [item for number in kennzahlen for item in by_kennzahl.get(number, ())]
+
+
+def placed_lines(
+	company: str, span: tuple[date, date], accounts: Collection[str], services: bool = False
+) -> list[LedgerLine]:
+	"""The ledger lines of the accounts that the months of ``span`` report, placed as the Voranmeldung places them:
+	by posting date, with the months filed by the statements that reported their Lieferungen, or with ``services``
+	their sonstige Leistungen, and the setting „Belege für abgegebene Zeiträume“ of the company."""
+	from steuerbote.vat_periods import treatment_of
+
+	start = date(span[0].year, 1, 1)
+	bookings = [
+		booking
+		for booking in load_bookings(company, start, span[1], by_service_date=False)
+		if booking.account_number in accounts
+	]
+	settings = frappe.get_doc(SETTINGS, company) if frappe.db.exists(SETTINGS, company) else None
+	# The whole year, so that a booking entered after the filing of its month can move to the month open then.
+	months = [Period.month(year, month) for year, month in _months(start, date(span[1].year, 12, 31))]
+	assignment = Assignment(
+		PeriodBasis.POSTING_DATE,
+		treatment_of(settings),
+		months,
+		month_filings(_filed_statements(company, range(start.year, span[1].year + 1), services)),
+	)
+	return assignment.lines_between(bookings, *span)
+
+
+def _filed_statements(
+	company: str, years: Iterable[int], services: bool
+) -> list[tuple[tuple[date, date] | None, list]]:
+	"""Each statement of the company in the years with the months of its kind, and the times its filings were
+	recorded: a Senden ELSTER accepted or whose outcome is unknown, or the note of a filing outside Steuerbote."""
+	rows = frappe.get_all(
+		STATEMENT,
+		filters={"company": company, "year": ["in", list(years)]},
+		fields=["name", "from_date", "to_date", "goods_from", "goods_to", "services_from", "services_to"],
+	)
+	times: dict[str, list] = {}
+	for record in filing_records(STATEMENT, [row.name for row in rows]):
+		if record.finished_at:
+			times.setdefault(record.document, []).append(get_datetime(record.finished_at))
+	found = []
+	for row in rows:
+		first, last = (row.services_from, row.services_to) if services else (row.goods_from, row.goods_to)
+		if not (row.goods_from or row.goods_to):
+			first, last = row.from_date, row.to_date
+		span = (getdate(first), getdate(last)) if first and last else None
+		found.append((span, times.get(row.name, [])))
+	return found
 
 
 def accounts_of(mapping: Mapping, kennzahlen: Collection[str]) -> set[str]:
@@ -103,7 +168,7 @@ def deliveries(company: str, window: tuple[date, date], mapping: Mapping) -> dic
 	found = {}
 	for year, month in _months(*window):
 		period = ReportingPeriod.month(year, month)
-		lines = load_lines(company, period.start, period.end, account_numbers=accounts) if accounts else []
+		lines = placed_lines(company, (period.start, period.end), accounts) if accounts else []
 		by_kennzahl = contributions(lines, mapping)
 		found[(year, month)] = sum(
 			(item.amount for number in GOODS for item in by_kennzahl.get(number, ())), ZERO

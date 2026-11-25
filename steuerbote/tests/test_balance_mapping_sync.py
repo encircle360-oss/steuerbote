@@ -38,6 +38,7 @@ from steuerbote.xbrl.changes import LiftError
 from steuerbote.xbrl.facts import Periods
 from steuerbote.xbrl.mapping import (
 	AccountBalance,
+	AccountKind,
 	Books,
 	DefaultExcluded,
 	DefaultRule,
@@ -47,6 +48,7 @@ from steuerbote.xbrl.mapping import (
 	Mapping,
 	MappingError,
 	Part,
+	PartyBalance,
 	Purpose,
 	Rule,
 	Watched,
@@ -195,6 +197,43 @@ class RowsToMappingTest(TestCase):
 		self.assertEqual(rows_to_mapping("SKR04", *rows, "6.9"), MAPPING)
 		self.assertEqual(rows.rule_rows[2]["shareholder"], 1)
 		self.assertEqual(rows.rule_rows[0]["remaining_term"], None)
+
+
+TAX_RECEIVABLE = "bs.ass.currAss.receiv.other.vat"
+TAX_LIABILITY = "bs.eqLiab.liab.other.theroffTax"
+NETTED = Mapping(
+	"SKR04",
+	rules=(
+		Rule("1406", TAX_RECEIVABLE, opposite=TAX_LIABILITY, netting="Umsatzsteuer"),
+		Rule("3806", TAX_LIABILITY, opposite=TAX_RECEIVABLE, netting="Umsatzsteuer"),
+	),
+)
+
+
+class NettingGroupTest(TestCase):
+	"""The netting group of a rule (steuerbote.xbrl.mapping.Rule.netting) in the rows, the items, the body of the stored
+	defaults and the file; a body written before the field existed reads as rules without a group."""
+
+	def test_a_row_names_the_netting_group_of_its_rule(self):
+		rows = rows_of_mapping(NETTED)
+		self.assertEqual([row["netting_group"] for row in rows.rule_rows], ["Umsatzsteuer", "Umsatzsteuer"])
+		self.assertEqual(rows_to_mapping("SKR04", *rows, "6.9"), NETTED)
+		self.assertIsNone(rows_of_mapping(MAPPING).rule_rows[0]["netting_group"])
+
+	def test_an_item_names_the_group_only_where_the_rule_has_one(self):
+		items = items_of_mapping(NETTED)
+		self.assertEqual(items[(ACCOUNT, "1406")]["netting_group"], "Umsatzsteuer")
+		self.assertNotIn("netting_group", items_of_mapping(MAPPING)[(ACCOUNT, "1800")])
+		self.assertEqual(rows_of_items(items), rows_of_mapping(NETTED))
+
+	def test_the_body_holds_the_group_where_a_rule_has_one_and_reads_the_body_without_it(self):
+		body = body_of_items(items_of_mapping(NETTED))
+		self.assertEqual([row["netting_group"] for row in body["rules"]], ["Umsatzsteuer", "Umsatzsteuer"])
+		self.assertEqual(items_of_body(body), items_of_mapping(NETTED))
+		self.assertEqual(body_of_items(ITEMS), BODY)
+		self.assertEqual(items_of_body(BODY), ITEMS)
+		with self.assertRaises(MappingError):
+			items_of_body({**body, "rules": [{**body["rules"][0], "netting_group": 1}]})
 
 
 class ItemsTest(TestCase):
@@ -396,6 +435,61 @@ class StatementBalancesTest(TestCase):
 				Balance("is.netIncome.netSales", Decimal("500"), source="4401 - Erlöse - MG"),
 			),
 		)
+
+
+class PartyBalancesTest(TestCase):
+	"""A customer with a credit balance on the sonstigen Verbindlichkeiten: an overpayment or a prepayment the customer
+	may claim back at once, „Ist eine Zeit für die Leistung weder bestimmt noch aus den Umständen zu entnehmen, so kann
+	der Gläubiger die Leistung sofort verlangen“ (§ 271 Abs. 1 BGB), so its remaining term is up to one year."""
+
+	def placement(self):
+		rule = Rule("1200", "bs.ass.currAss.receiv.trade", opposite="bs.eqLiab.liab.other")
+		books = Books(
+			(
+				AccountBalance(
+					"1200 - Forderungen - MG",
+					"1200",
+					"Forderungen",
+					Part.BALANCE_SHEET,
+					Decimal("1000"),
+					Decimal("300"),
+					kind=AccountKind.RECEIVABLE,
+					parties=(
+						PartyBalance("Customer", "Kunde A", Decimal("1000")),
+						PartyBalance("Customer", "Kunde B", credit=Decimal("300")),
+					),
+				),
+			)
+		)
+		return place(Mapping("SKR04", rules=(rule,)), books, positions.view(), Purpose.BOTH)
+
+	def test_the_part_on_the_other_side_is_due_within_a_year_in_the_jahresabschluss(self):
+		self.assertEqual(
+			sync.statement_balances(self.placement()),
+			(
+				Balance("bs.ass.currAss.receiv.trade", Decimal("1000"), source="1200 - Forderungen - MG"),
+				Balance(
+					"bs.eqLiab.liab.other",
+					Decimal("-300"),
+					remaining_term=RemainingTerm.UP_TO_ONE_YEAR,
+					source="1200 - Forderungen - MG",
+				),
+			),
+		)
+
+	def test_the_e_bilanz_lists_the_account_under_both_positions_and_they_add_up_to_the_ledger(self):
+		balances = sync.ebilanz_balances(self.placement())
+		self.assertEqual(
+			[
+				(balance.account, balance.concept.removeprefix("de-gaap-ci:"), balance.amount)
+				for balance in balances
+			],
+			[
+				("1200", "bs.ass.currAss.receiv.trade", Decimal("1000")),
+				("1200", "bs.eqLiab.liab.other", Decimal("-300")),
+			],
+		)
+		self.assertEqual(sum(balance.amount for balance in balances), Decimal("700"))
 
 
 class EBilanzBalancesTest(TestCase):

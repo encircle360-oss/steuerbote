@@ -7,6 +7,7 @@ from steuerbote.steuerbote.doctype.annual_filing_settings import rules as rules_
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import (
 	AGS_ONLY_FOR_GEWERBESTEUER,
 	MESSAGES,
+	NO_VAT_RETURN_REASONS,
 	ROW_TEXT_LENGTHS,
 	TEXT_LENGTHS,
 	Address,
@@ -336,6 +337,47 @@ class YearSettingsTest(TestCase):
 		):
 			YearSettings(
 				2026, kleinunternehmer=True, advisor_prepares=True, early_request_ust=date(2027, 8, 31)
+			)
+
+	def test_a_year_without_umsatzsteuererklaerung_states_why(self):
+		"""The company states that it owes no Umsatzsteuererklärung for the year, for example as a holding that is no
+		Unternehmer within § 2 UStG or because the Finanzamt released it; Steuerbote does not judge that status."""
+		year = YearSettings(2026, no_vat_return=True, no_vat_return_reason=NO_VAT_RETURN_REASONS[0])
+		self.assertTrue(year.no_vat_return)
+		YearSettings(
+			2026,
+			no_vat_return=True,
+			no_vat_return_reason=NO_VAT_RETURN_REASONS[1],
+			no_vat_return_note="Schreiben vom 3. März 2027",
+		)
+		self.assertEqual(
+			NO_VAT_RETURN_REASONS,
+			("Not an Unternehmer (§ 2 UStG)", "Released by the Finanzamt", "Other Reason"),
+		)
+		for reason in (None, "", "Kleinunternehmer"):
+			with (
+				self.subTest(reason=reason),
+				self.assertRaisesRegex(SettingsError, "needs one of the reasons"),
+			):
+				YearSettings(2026, no_vat_return=True, no_vat_return_reason=reason)
+		with self.assertRaisesRegex(SettingsError, "Other Reason.*needs a note"):
+			YearSettings(
+				2026, no_vat_return=True, no_vat_return_reason="Other Reason", no_vat_return_note=" "
+			)
+		YearSettings(
+			2026, no_vat_return=True, no_vat_return_reason="Other Reason", no_vat_return_note="Organschaft"
+		)
+		with self.assertRaisesRegex(SettingsError, "states no Umsatzsteuererklärung"):
+			YearSettings(2026, no_vat_return_reason="Other Reason")
+
+	def test_a_year_without_umsatzsteuererklaerung_has_none_to_ask_for(self):
+		with self.assertRaisesRegex(SettingsError, "owes no Umsatzsteuererklärung for 2026"):
+			YearSettings(
+				2026,
+				no_vat_return=True,
+				no_vat_return_reason=NO_VAT_RETURN_REASONS[0],
+				advisor_prepares=True,
+				early_request_ust=date(2027, 8, 31),
 			)
 
 	def test_an_exemption_under_264_3_hgb_states_its_reason(self):

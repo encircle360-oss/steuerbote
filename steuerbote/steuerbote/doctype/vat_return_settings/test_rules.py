@@ -11,6 +11,7 @@ from steuerbote.steuerbote.doctype.vat_return_settings.rules import (
 	PeriodRule,
 	Prepayment,
 	SettingsError,
+	carried_dauerfrist,
 	check_period_rules,
 	check_prepayments,
 	check_zm_rules,
@@ -136,6 +137,21 @@ class PeriodsOfTest(TestCase):
 		rules = [PeriodRule(2026, "quarterly", 4), PeriodRule(2026, "none", 7)]
 		self.assertEqual(periods_of(rules, 2026), [Period.quarter(2026, 2)])
 		self.assertEqual(periods_of(rules, 2025), [])
+
+
+class CarriedDauerfristTest(TestCase):
+	def test_names_the_year_whose_extension_a_year_without_a_row_carries(self):
+		"""§ 46 UStDV: the extension holds until the company gives it up or the Finanzamt revokes it."""
+		prepayments = (Prepayment(2025, True), Prepayment(2026, True))
+		self.assertEqual(
+			[carried_dauerfrist(prepayments, year) for year in (2024, 2025, 2026, 2027, 2028)],
+			[None, None, None, 2026, 2026],
+		)
+
+	def test_a_row_without_the_extension_ends_it(self):
+		prepayments = (Prepayment(2025, True), Prepayment(2026))
+		self.assertEqual([carried_dauerfrist(prepayments, year) for year in (2026, 2027)], [None, None])
+		self.assertIsNone(carried_dauerfrist((), 2027))
 
 
 class PrepaymentTest(TestCase):

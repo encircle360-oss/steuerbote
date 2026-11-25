@@ -1,7 +1,9 @@
 from frappe.model.document import Document
 
+from steuerbote.steuerbote.recorded_vouchers import RecordedVoucherRow
 
-class VATReturnDeviation(Document):
+
+class VATReturnDeviation(RecordedVoucherRow, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 

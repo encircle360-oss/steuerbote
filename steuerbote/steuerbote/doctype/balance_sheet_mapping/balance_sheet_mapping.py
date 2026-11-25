@@ -116,6 +116,7 @@ FIELD_LABELS = {
 	"purpose": "Abschlusszweck",
 	"shareholder": "Owed to or by Shareholders",
 	"remaining_term": "Remaining Term",
+	"netting_group": "Netting Group",
 	"level": "Watch Level",
 	"reason": "Reason",
 }
@@ -679,6 +680,8 @@ def described(fields: dict | None) -> str:
 		parts.append(_("owed to or by shareholders"))
 	if fields["remaining_term"]:
 		parts.append(_(fields["remaining_term"]))
+	if fields.get("netting_group"):
+		parts.append(_("netting group {0}").format(fields["netting_group"]))
 	return ", ".join(parts)
 
 

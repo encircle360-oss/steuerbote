@@ -18,10 +18,13 @@ of its own for it. The accounts of the DATEV charts „Gültig für 2026“ (Art
 | Gewerbesteuer | 4320, 0956 „Gewerbesteuerrückstellung nach § 4 Abs. 5b EStG“, 1540 „Forderungen aus Gewerbesteuerüberzahlungen“ | 7610, 3035, 1435 |
 
 A company with a chart of its own passes its ProvisionAccounts. The rows are for the whole balance of the year, and
-posting them does not change it: once the provisions of the year are in the books, the caller proposes only what
-they do not hold yet.
+posting them does not change it. A posting after the provisions changes the balances, while the provisions in the
+books stay; § 249 Abs. 1 Satz 1 HGB asks for them in full, so propose() takes what the books hold of each tax, its
+provision as a positive amount and its claim to a refund as a negative one, and proposes the difference
+(differences()): more provision, a provision released, a claim posted or reduced, each an „Anpassung“.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -86,6 +89,7 @@ class ProvisionRow:
 	credit_account: str
 	year: int
 	refund: bool = False
+	adjustment: bool = False
 
 	def __post_init__(self) -> None:
 		if (
@@ -99,24 +103,52 @@ class ProvisionRow:
 	def remark(self) -> str:
 		"""The text of the row, as the Journal Entry shows it."""
 		what = "Erstattungsanspruch" if self.refund else "Rückstellung"
-		return f"{what} {self.tax} {self.year}"
+		return f"{'Anpassung ' if self.adjustment else ''}{what} {self.tax} {self.year}"
 
 
-def propose(
-	kst: KstResult, gewst: GewstResult | None, accounts: ProvisionAccounts
-) -> tuple[ProvisionRow, ...]:
-	"""The rows for the balances of the year; a tax without a balance has none. Without ``gewst`` only the
-	Körperschaftsteuer and the Solidaritätszuschlag are proposed."""
-	year = kst.year.year
-	balances = [(Tax.KST, kst.kst_balance, accounts.kst), (Tax.SOLZ, kst.solz_balance, accounts.solz)]
+def balances(kst: KstResult, gewst: GewstResult | None) -> dict[Tax, Decimal]:
+	"""The balance of each tax of the year; without ``gewst`` the Körperschaftsteuer and the Solidaritätszuschlag."""
+	found = {Tax.KST: kst.kst_balance, Tax.SOLZ: kst.solz_balance}
 	if gewst is not None:
 		if gewst.hebesatz is None:
 			raise ValueError("the Gewerbesteuer has no Hebesatz, so it has no balance to provide for")
-		balances.append((Tax.GEWST, gewst.balance, accounts.gewst))
+		found[Tax.GEWST] = gewst.balance
+	return found
+
+
+def differences(
+	kst: KstResult, gewst: GewstResult | None, posted: Mapping[Tax, Decimal]
+) -> dict[Tax, Decimal]:
+	"""Each tax whose balance is not what the books hold of it, with the balance less the posted amount."""
+	found = {tax: balance - posted.get(tax, ZERO) for tax, balance in balances(kst, gewst).items()}
+	return {tax: difference for tax, difference in found.items() if difference}
+
+
+def propose(
+	kst: KstResult,
+	gewst: GewstResult | None,
+	accounts: ProvisionAccounts,
+	posted: Mapping[Tax, Decimal] = MappingProxyType({}),
+) -> tuple[ProvisionRow, ...]:
+	"""The rows that bring the books to the balances of the year, from what they hold of each tax in ``posted``; a tax
+	without a difference has none. Without ``gewst`` only the Körperschaftsteuer and the Solidaritätszuschlag are
+	proposed."""
+	year = kst.year.year
+	taxed_by = {Tax.KST: accounts.kst, Tax.SOLZ: accounts.solz, Tax.GEWST: accounts.gewst}
 	rows = []
-	for tax, balance, taxed in balances:
-		if balance > ZERO:
-			rows.append(ProvisionRow(tax, balance, taxed.expense, taxed.provision, year))
-		elif balance < ZERO:
-			rows.append(ProvisionRow(tax, -balance, taxed.refund, taxed.expense, year, refund=True))
+	for tax, balance in balances(kst, gewst).items():
+		taxed, before = taxed_by[tax], posted.get(tax, ZERO)
+		adjustment = bool(before)
+		provision = max(balance, ZERO) - max(before, ZERO)
+		claim = max(-balance, ZERO) - max(-before, ZERO)
+		if provision > ZERO:
+			rows.append(ProvisionRow(tax, provision, taxed.expense, taxed.provision, year, False, adjustment))
+		elif provision < ZERO:
+			rows.append(
+				ProvisionRow(tax, -provision, taxed.provision, taxed.expense, year, False, adjustment)
+			)
+		if claim > ZERO:
+			rows.append(ProvisionRow(tax, claim, taxed.refund, taxed.expense, year, True, adjustment))
+		elif claim < ZERO:
+			rows.append(ProvisionRow(tax, -claim, taxed.expense, taxed.refund, year, True, adjustment))
 	return tuple(rows)

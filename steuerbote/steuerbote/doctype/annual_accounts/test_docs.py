@@ -207,6 +207,7 @@ class SetupPageTest(TestCase):
 			keys,
 			[
 				"books_start",
+				"deadlines",
 				"income_tax_mapping",
 				"balance_sheet_mapping",
 				"vat_id_label",

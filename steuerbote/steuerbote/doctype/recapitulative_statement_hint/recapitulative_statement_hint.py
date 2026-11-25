@@ -1,11 +1,9 @@
 from frappe.model.document import Document
 
-from steuerbote.steuerbote.doctype.recapitulative_statement_voucher.recapitulative_statement_voucher import (
-	CancelledVoucherRow,
-)
+from steuerbote.steuerbote.recorded_vouchers import RecordedVoucherRow
 
 
-class RecapitulativeStatementHint(CancelledVoucherRow, Document):
+class RecapitulativeStatementHint(RecordedVoucherRow, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 

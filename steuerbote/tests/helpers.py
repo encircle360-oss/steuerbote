@@ -268,11 +268,14 @@ def post_ledger(
 		)
 
 
-def cancel_voucher(voucher_type: str, voucher_no: str, immutable_on: str | None = None) -> None:
+def cancel_voucher(
+	voucher_type: str, voucher_no: str, immutable_on: str | None = None, at: str | None = None
+) -> None:
 	"""Cancel a submitted voucher as make_reverse_gl_entries of ERPNext 16 does (erpnext/accounts/general_ledger.py):
-	a reversing GL Entry for each of its entries, debit and credit swapped. With „Unveränderliches Hauptbuch
-	aktivieren“ in the Accounts Settings the reversal is posted on the day of the cancellation, ``immutable_on``, and
-	nothing is flagged; without it the reversal keeps the voucher's date, and both are flagged as cancelled."""
+	a reversing GL Entry for each of its entries, debit and credit swapped, with the remark „On cancellation of“ and
+	the voucher, entered ``at`` a time or now. With „Unveränderliches Hauptbuch aktivieren“ in the Accounts Settings
+	the reversal is posted on the day of the cancellation, ``immutable_on``, and nothing is flagged; without it the
+	reversal keeps the voucher's date, and both are flagged as cancelled."""
 	filters = {"voucher_type": voucher_type, "voucher_no": voucher_no}
 	entries = frappe.get_all(
 		"GL Entry",
@@ -290,6 +293,8 @@ def cancel_voucher(voucher_type: str, voucher_no: str, immutable_on: str | None 
 			is_cancelled=0 if immutable_on else 1,
 			is_opening="No",
 			docstatus=1,
+			remarks=f"On cancellation of {voucher_no}",
+			**({"creation": at} if at else {}),
 			**filters,
 		)
 	if not immutable_on:
@@ -478,3 +483,14 @@ def post_customer_journal_entry(
 		)
 	post_ledger(company, "Journal Entry", name, posting_date, [row[:3] for row in rows])
 	return name
+
+
+def acknowledge_errors(doc: Document, reason: str) -> Document:
+	"""Acknowledge every error of the findings of an annual document that may be, for the reason, as a company files it
+	nonetheless (steuerbote/jahresmeldung/acknowledgements.py); returns the document reloaded."""
+	for name in [
+		row.name for row in doc.findings if row.blocking and row.acknowledgeable and not row.acknowledged
+	]:
+		doc.acknowledge_finding(name, reason)
+	doc.reload()
+	return doc

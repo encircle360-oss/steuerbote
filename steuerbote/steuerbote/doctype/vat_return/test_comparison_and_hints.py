@@ -18,6 +18,8 @@ from steuerbote.tests.helpers import (
 	make_settings,
 	post_journal_entry,
 )
+from steuerbote.ustva.plausibility import NO_VAT_ID_ADVICE
+from steuerbote.vatid.exemption import consequence
 
 # The companies, their accounts, parties and vouchers are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
@@ -45,6 +47,8 @@ ACCOUNTS = {
 	"1600": ("Verbindlichkeiten aus Lieferungen und Leistungen", "Liability"),
 }
 
+# The Zusammenfassende Meldung of the turnover in Kz 21, monthly through 2026.
+ZM_MONTHLY = [{"year": 2026, "valid_from_month": 1, "rhythm": "monthly"}]
 REPORTED_IN_NOVEMBER = ["81", "46", "47", "21", "45", "66", "67", "83"]
 
 
@@ -114,7 +118,7 @@ class TestComparison(IntegrationTestCase):
 		super().setUpClass()
 		make_company(COMPANY, "STVV")
 		cls.account = make_accounts(COMPANY)
-		make_settings(COMPANY, [(2026, "monthly", 1)])
+		make_settings(COMPANY, [(2026, "monthly", 1)], zm_rules=ZM_MONTHLY)
 		make_mapping(COMPANY)
 		post_sales_of_august_and_september(COMPANY, cls.account)
 		post_verified_month(COMPANY, cls.account, "2026-10-10")
@@ -132,7 +136,8 @@ class TestComparison(IntegrationTestCase):
 		post_sales_of_august_and_september(STRICT_COMPANY, strict_account)
 
 	def test_the_verified_november_gives_only_the_reconciliation_and_the_missing_catalogue(self):
-		doc = calculated(COMPANY, 11)
+		with self.freeze_time("2026-12-15 09:00:00", tick=True):
+			doc = calculated(COMPANY, 11)
 		self.assertEqual((doc.ready, doc.status), (1, "Bereit"))
 		self.assertEqual(
 			hints_of(doc),
@@ -358,7 +363,7 @@ class TestHintsFromInvoices(IntegrationTestCase):
 		super().setUpClass()
 		make_company(INVOICING_COMPANY, "STVR")
 		a = cls.account = make_accounts(INVOICING_COMPANY)
-		make_settings(INVOICING_COMPANY, [(2026, "monthly", 1)])
+		make_settings(INVOICING_COMPANY, [(2026, "monthly", 1)], zm_rules=ZM_MONTHLY)
 		make_mapping(INVOICING_COMPANY)
 		german = make_party("Customer", "Muster Handels GmbH", "Germany", "DE123456789")
 		austrian = make_party("Customer", "Alpen Beratung GmbH", "Austria")
@@ -496,19 +501,21 @@ class TestHintsFromInvoices(IntegrationTestCase):
 		self.assertEqual([line.voucher_no for line in lines], ["SINV-STVR-0002"])
 		self.assertEqual(load_lines(INVOICING_COMPANY, "2026-11-01", "2026-11-30", ["8400"], ["3123"]), [])
 
-	def test_an_eu_service_to_a_customer_without_vat_id_is_a_warning_that_holds_nothing(self):
+	def test_an_eu_service_to_a_customer_without_vat_id_holds_the_return_until_the_remarks_explain_it(self):
+		"""Without a USt-IdNr. of the recipient the ZM cannot report the service, and the Voranmeldung holds the same
+		voucher the same way (decision of the maintainer, docs/zm.md [Q16])."""
 		doc = calculated(INVOICING_COMPANY, 10)
-		self.assertEqual((doc.ready, doc.status), (1, "Bereit"))
+		self.assertEqual((doc.ready, doc.status), (0, "Berechnet"))
 		invoice_hints = [
 			row for row in doc.hints if row.code not in ("ABWEICHUNG-VORPERIODE", "KEIN-KATALOG")
 		]
 		self.assertEqual(
 			[(row.severity, row.code, row.voucher_type, row.voucher_no, row.party) for row in invoice_hints],
-			[("Warnung", "EU-OHNE-USTID", "Sales Invoice", "SINV-STVR-0002", "Alpen Beratung GmbH")],
+			[("Fehler", "EU-OHNE-USTID", "Sales Invoice", "SINV-STVR-0002", "Alpen Beratung GmbH")],
 		)
 		self.assertEqual(
 			invoice_hints[0].text,
 			f"Rechnung SINV-STVR-0002 über {euros('2000.00')} geht in Kz 21 ein, "
-			"aber der Kunde Alpen Beratung GmbH hat keine USt-IdNr.",
+			f"aber der Kunde Alpen Beratung GmbH hat keine USt-IdNr. {consequence('21')} {NO_VAT_ID_ADVICE}",
 		)
 		self.assertEqual(doc.hints[0].code, "EU-OHNE-USTID")

@@ -17,6 +17,9 @@ the same way, so AnnualFiling generalises the rules of the VAT Return and the Zu
   of the key (jahresmeldung.corrections says how each Datenart marks it).
 - Before a document is transmitted, made into a file or submitted, the amounts of its lines are computed again from
   what they hold (require_amounts_as_stored).
+- A document that is not ready is filed only once each error of its findings is acknowledged with a reason, on the
+  finding itself (acknowledge_finding), and none is one that can never be (jahresmeldung.acknowledgements). The
+  remarks are a note and file nothing. Berechnen keeps the acknowledgement of a finding that stays the same.
 - An Erklärung and the E-Bilanz are filed through an accepted Senden or the note of their filing, never by Buchen
   alone, and nothing filed is cancelled. A Jahresabschluss is submitted by hand, which is its Feststellung, moves on
   to Übermittelt and Eingestellt (move_on), and is cancelled and amended when it changes, never corrected by a
@@ -40,11 +43,11 @@ from typing import Any
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, cstr, escape_html, getdate
+from frappe.utils import cint, cstr, escape_html, fmt_money, getdate, now_datetime
 
 from steuerbote.elster import vorsatz as elster_vorsatz
 from steuerbote.eric import header as eric_header
-from steuerbote.jahresmeldung import corrections, findings, lifecycle, overrides
+from steuerbote.jahresmeldung import acknowledgements, corrections, findings, lifecycle, overrides
 from steuerbote.jahresmeldung.findings import Finding, Severity
 from steuerbote.jahresmeldung.lifecycle import (
 	FILING,
@@ -86,6 +89,9 @@ SETTINGS_DOCTYPE = "VAT Return Settings"
 INCOME_TAX_DATENARTEN = frozenset({"KSt", "GewSt", "Bilanz"})
 GERMANY_IN_GERMAN = "Deutschland"
 RECALCULATE = "SB-NEU-BERECHNEN"
+# A correction whose line Berechnen now computes at another amount than the one it was made against
+# (jahresmeldung.overrides.stale).
+STALE_CORRECTION = "SB-KORREKTUR-UEBERHOLT"
 
 
 @dataclass(frozen=True)
@@ -269,8 +275,9 @@ class AnnualFiling(Filing):
 		for table, rows in calculation.tables.items():
 			self.set(table, [dict(row) for row in rows])
 		self.update(dict(calculation.values))
-		found = (*calculation.findings, *self.check_reported(lines))
-		self.set(FINDINGS_TABLE, findings.rows(found))
+		found = (*calculation.findings, *self.check_reported(lines), *self._stale_corrections(lines))
+		before = _rows(self.get(FINDINGS_TABLE))
+		self.set(FINDINGS_TABLE, acknowledgements.carried(findings.rows(found), before))
 		ready = findings.ready(found, calculation.passed)
 		self.ready = int(ready)
 		self.status = self._move(Event.CALCULATE, ready=ready)
@@ -279,6 +286,59 @@ class AnnualFiling(Filing):
 			self.save()
 		finally:
 			self.flags.calculating = False
+
+	def _stale_corrections(self, lines: Sequence[Mapping[str, Any]]) -> tuple[Finding, ...]:
+		"""An error per correction whose line Berechnen computes at another amount than the one it was made against: the
+		correction would hide the change, also in a Berichtigung, which takes the corrections with their bases."""
+		if not self.LINES:
+			return ()
+		currency = frappe.get_cached_value("Company", self.company, "default_currency")
+		return tuple(
+			Finding(
+				STALE_CORRECTION,
+				Severity.ERROR,
+				_(
+					"The correction of line {0} was entered when Berechnen computed {1}; Berechnen computes {2} now. Change the amount or the reason of the correction to confirm it, or remove it."
+				).format(key, fmt_money(basis, currency=currency), fmt_money(amount, currency=currency)),
+				key,
+			)
+			for key, basis, amount in self._lines(overrides.stale, lines, self.LINE_COLUMNS)
+		)
+
+	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
+	def acknowledge_finding(self, finding: str, reason: str | None = None) -> None:
+		"""File the document although this error of its findings holds it back, for the reason given, noted with the user
+		and the time; an empty reason withdraws the acknowledgement. An error that makes the file wrong by construction
+		is never acknowledged (jahresmeldung.acknowledgements)."""
+		self.check_permission("write")
+		if self.docstatus != 0 or self.status not in self.LIFECYCLE.calculated:
+			frappe.throw(_("Only an error of a calculated draft is acknowledged."))
+		if self.transmits:
+			self.refuse_changes_while_transmitting()
+			self.refuse_if_sent()
+		row = next((row for row in self.get(FINDINGS_TABLE) or () if row.name == finding), None)
+		if row is None:
+			frappe.throw(_("{0} has no such finding.").format(self.name))
+		try:
+			values = acknowledgements.acknowledge(row.as_dict(), reason, frappe.session.user, now_datetime())
+		except acknowledgements.AcknowledgementError as error:
+			messages = {
+				acknowledgements.Problem.NEVER: _(
+					"The error {0} makes the file wrong whatever the reason, so it cannot be acknowledged: correct the books or the mapping and calculate again."
+				),
+				acknowledgements.Problem.NOT_AN_ERROR: _("{0} is a hint, which holds nothing back."),
+			}
+			frappe.throw(messages[error.problem].format(escape_html(error.code)))
+		row.db_set({name: values[name] for name in acknowledgements.FIELDS})
+		self.add_comment(
+			"Info",
+			_("Error {0} acknowledged: {1}").format(
+				escape_html(row.code), escape_html(values[acknowledgements.REASON])
+			)
+			if values[acknowledgements.ACKNOWLEDGED]
+			else _("Acknowledgement of error {0} withdrawn.").format(escape_html(row.code)),
+		)
 
 	@frappe.whitelist(methods=["POST"])
 	@guards.on_stored("read")
@@ -432,14 +492,22 @@ class AnnualFiling(Filing):
 		)
 
 	def check_fit_for_filing(self) -> None:
-		"""Bereit oder Anmerkungen: a calculated document that is ready, or explained in its remarks; then the checks of
-		the module."""
-		try:
-			lifecycle.fit_for_filing(self.LIFECYCLE, self.status, bool(cint(self.ready)), self.remarks)
-		except LifecycleError as error:
-			self._refuse(error)
+		"""Bereit oder bestätigt: a calculated document whose checks of the module pass, and that is ready or whose every
+		error is acknowledged with a reason and none can never be. The checks of the module come before the
+		acknowledgements, since they say what to correct."""
+		if self.status not in self.LIFECYCLE.calculated:
+			self._refuse(LifecycleError(Problem.NOT_CALCULATED, self.status))
 		self._check_revision_status(filing=True)
 		self.check_filing()
+		try:
+			lifecycle.fit_for_filing(
+				self.LIFECYCLE,
+				self.status,
+				bool(cint(self.ready)),
+				[row.as_dict() for row in self.get(FINDINGS_TABLE) or ()],
+			)
+		except LifecycleError as error:
+			self._refuse(error)
 
 	def require_amounts_as_stored(self, stored: Document) -> None:
 		"""A filing carries the amounts the document holds, which every save sets from its lines: computed again from the
@@ -494,6 +562,15 @@ class AnnualFiling(Filing):
 				).format(self.name, sent[0].transferticket)
 			)
 
+	def add_finding(self, finding: Finding) -> None:
+		"""Add a finding to those Berechnen stored, such as the one that asks for Berechnen, and keep the
+		acknowledgements of the others."""
+		stored = _rows(self.get(FINDINGS_TABLE))
+		self.set(
+			FINDINGS_TABLE,
+			acknowledgements.carried(findings.rows((*findings.of_rows(stored), finding)), stored),
+		)
+
 	def manual_lines(self) -> tuple[overrides.ManualLine, ...]:
 		"""The lines by hand, for a module whose computation takes them in."""
 		return self._lines(overrides.manual_lines, _rows(self.get(self.LINES or "")), self.LINE_COLUMNS)
@@ -506,6 +583,9 @@ class AnnualFiling(Filing):
 		"""What the shared includes of the print formats read (templates/includes/annual_filing)."""
 		tax_number, elster_tax_number = self.tax_numbers()
 		columns = self.LINE_COLUMNS
+		shown = printed_findings(
+			self.get(FINDINGS_TABLE) or (), all_hints=bool(cint(frappe.form_dict.get("all_hints")))
+		)
 		corrected = [
 			row
 			for row in (self.get(self.LINES) if self.LINES else ())
@@ -516,7 +596,10 @@ class AnnualFiling(Filing):
 			"mein_elster": self.transmits and MEIN_ELSTER in self.FILED_OUTSIDE,
 			"tax_number": tax_number,
 			"elster_tax_number": elster_tax_number,
-			"findings": list(self.get(FINDINGS_TABLE) or ()),
+			"findings": shown["findings"],
+			"errors": shown["errors"],
+			"hint_kinds": shown["hint_kinds"],
+			"hints": shown["hints"],
 			"corrections": [
 				{
 					"key": row.get(columns.key),
@@ -712,7 +795,12 @@ class AnnualFiling(Filing):
 					"A correction or a line by hand changed since Berechnen. Calculate again: Berechnen checks the document with them and keeps them."
 				),
 			)
-			self.set(FINDINGS_TABLE, findings.rows((*stored_findings, recalculate)))
+			self.set(
+				FINDINGS_TABLE,
+				acknowledgements.carried(
+					findings.rows((*stored_findings, recalculate)), _rows(before.get(FINDINGS_TABLE))
+				),
+			)
 
 	def _set_reported(self) -> None:
 		if not self.LINES:
@@ -814,8 +902,15 @@ class AnnualFiling(Filing):
 			Problem.NO_MOVE: _("{0} cannot change from {1} this way.").format(self.name, _(error.subject)),
 			Problem.NOT_CALCULATED: _("Calculate {0} before filing it.").format(self.name),
 			Problem.NOT_READY: _(
-				"{0} is not ready: an error of its findings holds it. Explain in the remarks why it is filed nonetheless."
+				"{0} is not ready: the error {1} of its findings holds it. Correct it and calculate again, or acknowledge it in the findings with the reason why it is filed nonetheless; the remarks file nothing."
+			).format(self.name, escape_html(error.subject))
+			if error.subject
+			else _(
+				"{0} is not ready: a check of Berechnen failed. Calculate it again and look at its findings."
 			).format(self.name),
+			Problem.NEVER_ACKNOWLEDGED: _(
+				"{0} is not ready: the error {1} of its findings makes the file wrong whatever the reason. Correct the books or the mapping and calculate again."
+			).format(self.name, escape_html(error.subject)),
 			Problem.DRAFT_EXISTS: _(
 				"{0} is a draft for the same company and year already. File it or delete it first."
 			).format(error.subject),
@@ -845,6 +940,25 @@ class AnnualFiling(Filing):
 				).format(key),
 			}
 			frappe.throw(messages[error.problem])
+
+
+def printed_findings(rows: Sequence[Any], *, all_hints: bool = False) -> dict[str, Any]:
+	"""The findings as the print formats show them: every error with its acknowledgement, the hints by kind with their
+	number and the first of each, and every hint for an annex only when the print asks for it."""
+	errors = [row for row in rows if cint(row.get("blocking"))]
+	hints = [row for row in rows if not cint(row.get("blocking"))]
+	kinds: dict[str, dict[str, Any]] = {}
+	for row in hints:
+		kind = kinds.setdefault(
+			row.get("code") or "", {"code": row.get("code"), "count": 0, "text": row.get("text")}
+		)
+		kind["count"] += 1
+	return {
+		"findings": list(rows),
+		"errors": errors,
+		"hint_kinds": list(kinds.values()),
+		"hints": hints if all_hints else [],
+	}
 
 
 def fiscal_year_ending_in(company: str, year: int) -> frappe._dict:
