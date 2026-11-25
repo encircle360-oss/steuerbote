@@ -117,7 +117,8 @@ def placed_lines(
 		if booking.account_number in accounts
 	]
 	settings = frappe.get_doc(SETTINGS, company) if frappe.db.exists(SETTINGS, company) else None
-	months = [Period.month(year, month) for year, month in _months(start, span[1])]
+	# The whole year, so that a booking entered after the filing of its month can move to the month open then.
+	months = [Period.month(year, month) for year, month in _months(start, date(span[1].year, 12, 31))]
 	assignment = Assignment(
 		PeriodBasis.POSTING_DATE,
 		treatment_of(settings),
