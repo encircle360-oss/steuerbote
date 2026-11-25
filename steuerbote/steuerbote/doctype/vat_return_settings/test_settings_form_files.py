@@ -46,3 +46,21 @@ class RuleChangeWarningTest(TestCase):
 		for field in ("period_basis", "late_documents"):
 			with self.subTest(field=field):
 				self.assertIn(f"{field}(frm) {{\n\t\twarn_of_filed_periods(frm);", form)
+
+
+class ListIndicatorTest(TestCase):
+	"""The lists of the Voranmeldung and the Dauerfristverlängerung show the status Steuerbote sets, not only whether
+	the document is a draft."""
+
+	def test_each_list_shows_every_status_of_its_doctype(self):
+		import json
+
+		for name, doctype in (("vat_return", "VAT Return"), ("vat_return_extension", "VAT Return Extension")):
+			with self.subTest(doctype=doctype):
+				script = (DOCTYPES / name / f"{name}_list.js").read_text(encoding="utf-8")
+				self.assertIn(f'frappe.listview_settings["{doctype}"]', script)
+				self.assertIn('add_fields: ["status"]', script)
+				definition = json.loads((DOCTYPES / name / f"{name}.json").read_text(encoding="utf-8"))
+				(status,) = (field for field in definition["fields"] if field["fieldname"] == "status")
+				for option in status["options"].split("\n"):
+					self.assertIn(f"{option}:", script)
