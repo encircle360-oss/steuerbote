@@ -991,7 +991,11 @@ class RowNamesTest(TestCase):
 		)
 
 	def test_rows_of_the_same_key_take_one_name_each(self):
-		stored = [{"name": "h1", "code": "X", "text": "a"}, {"name": "h2", "code": "X", "text": "a"}]
+		stored = [
+			{"name": "h1", "code": "X", "text": "a"},
+			{"code": "X", "text": "a"},
+			{"name": "h2", "code": "X", "text": "a"},
+		]
 		rows = [{"code": "X", "text": "a"}] * 3
 		self.assertEqual(
 			[row.get("name") for row in bridge.with_names(rows, stored, ("code", "text"))], ["h1", "h2", None]
