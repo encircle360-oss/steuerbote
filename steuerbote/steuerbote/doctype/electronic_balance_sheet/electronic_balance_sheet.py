@@ -62,6 +62,7 @@ from steuerbote.jahresmeldung import findings as annual_findings
 from steuerbote.jahresmeldung.findings import Finding, Severity
 from steuerbote.jahresmeldung.lifecycle import Event
 from steuerbote.jahresmeldung.overrides import OverrideError, to_amount
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, AnnualFiling, Calculation
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
@@ -357,6 +358,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 	# What the form and the print format read.
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def export_xbrl(self) -> str:
 		"""XBRL exportieren: the instance of the E-Bilanz as saved, for the Steuerberatung, attached privately. A filed
 		E-Bilanz gives the file as it was filed, a draft one while it could be filed. Returns the address of the
@@ -674,12 +676,8 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 
 	def _keep_the_inputs(self, before: Document | None) -> None:
 		"""A save keeps what Berechnen wrote in the Anlagenspiegel and the Überleitung and takes the entries of the
-		company; another key discards both with the calculation."""
+		company."""
 		if before is None or self.flags.calculating:
-			return
-		if self._key_of(before) != self._key_of(self):
-			self.set(FIXED_ASSETS, [])
-			self.set(TRANSFERS, [])
 			return
 		self.set(FIXED_ASSETS, bridge.kept_assets(self._rows(FIXED_ASSETS, before), self._rows(FIXED_ASSETS)))
 		self.set(TRANSFERS, bridge.kept_transfers(self._rows(TRANSFERS, before), self._rows(TRANSFERS)))

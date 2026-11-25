@@ -56,7 +56,7 @@ def test_the_e_bilanz_names_its_jahresabschluss_and_opens_it(desk, expect, base_
 	expect(link).to_be_visible()
 	link.click()
 	expect(desk.page).to_have_url(form_url(ACCOUNTS, accounts))
-	expect(desk.field("company").locator("input")).to_have_value(data.EBILANZ_COMPANY)
+	expect(desk.field("company").locator(".control-value")).to_contain_text(data.EBILANZ_COMPANY)
 
 
 def test_the_jahresabschluss_lists_the_e_bilanz_among_its_connections(desk, expect, base_url):
@@ -75,7 +75,7 @@ def test_the_koerperschaftsteuererklaerung_names_the_e_bilanz_and_opens_it(desk,
 	field.locator("input").hover()
 	field.locator(".btn-open").click()
 	expect(desk.page).to_have_url(form_url(EBILANZ, ebilanz))
-	expect(desk.field("company").locator("input")).to_have_value(data.EBILANZ_COMPANY)
+	expect(desk.field("company").locator(".control-value")).to_contain_text(data.EBILANZ_COMPANY)
 
 
 def test_the_umsatzsteuererklaerung_hints_that_the_umsatzerloese_are_not_its_sales(desk, expect, base_url):

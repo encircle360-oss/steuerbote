@@ -74,14 +74,16 @@
    "label": "Company",
    "options": "Company",
    "remember_last_selected_value": 1,
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1
   },
   {
    "fieldname": "year",
    "fieldtype": "Int",
    "in_standard_filter": 1,
    "label": "Year",
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1
   },
   {
    "default": "month",
@@ -91,14 +93,16 @@
    "in_standard_filter": 1,
    "label": "Reporting Period Kind",
    "options": "month\ntwo_months\nquarter\nyear",
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1
   },
   {
    "depends_on": "eval:doc.period_kind != 'year'",
    "description": "Month 1 to 12, or quarter 1 to 4 for two months and for a quarter.",
    "fieldname": "period_index",
    "fieldtype": "Int",
-   "label": "Period Number"
+   "label": "Period Number",
+   "set_only_once": 1
   },
   {
    "default": "Erstmeldung",
@@ -403,7 +407,7 @@
    "link_fieldname": "recapitulative_statement"
   }
  ],
- "modified": "2026-11-21 18:00:00.000000",
+ "modified": "2026-11-25 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Recapitulative Statement",
