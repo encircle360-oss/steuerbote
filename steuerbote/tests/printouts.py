@@ -176,6 +176,33 @@ def lonely_headings(pages, margins: Margins, headings) -> list[str]:
 	return problems
 
 
+def foot_fragments(pages, margins: Margins) -> list[str]:
+	"""Nothing stands between the content and the line of the running foot, such as the dots of an Ü that Chromium
+	paints there from the first line of the next page."""
+	problems = []
+	for number, page in enumerate(pages, start=1):
+		bottom = page.height - margins.bottom * MM
+		below = [word for word in page.words if word.y1 > bottom + BLEED]
+		foot = [word for word in below if word.text == "Seite"]
+		problems += [
+			f"Seite {number}: „{word.text}“ unter dem Inhalt über dem Fuß"
+			for word in below
+			if foot and word.y1 < min(line.y1 for line in foot) - SAME_LINE
+		]
+	return problems
+
+
+def lonely_table_heads(pages, margins: Margins) -> list[str]:
+	"""No page ends with the head of a table whose rows begin on the next page, which opens with the head again."""
+	problems = []
+	for number, (page, following) in enumerate(itertools.pairwise(pages), start=1):
+		ending = [text_of(line) for line in lines(body(page, margins))]
+		opening = [text_of(line) for line in lines(body(following, margins))][:2]
+		if ending and ending[-1] in opening:
+			problems.append(f"Seite {number}: Kopf der Tabelle „{ending[-1]}“ allein am Seitenende")
+	return problems
+
+
 def first_page_of(pages, text: str) -> int | None:
 	wanted = " ".join(text.split())
 	for number, page in enumerate(pages, start=1):
@@ -269,6 +296,8 @@ def check(pages, expected: Expectations) -> list[str]:
 		*overprint(pages),
 		*last_page(pages, margins, expected.last_page_lines),
 		*lonely_headings(pages, margins, expected.headings),
+		*lonely_table_heads(pages, margins),
+		*foot_fragments(pages, margins),
 		*together(pages, expected.together),
 		*somewhere(pages, expected.somewhere),
 		*nowhere(pages, expected.nowhere),

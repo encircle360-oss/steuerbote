@@ -10,8 +10,9 @@
 	(chromium.html). Neither sets the page option for the spacing of the header: Frappe 16.60 hands it to its
 	Chromium-based generator as text and fails. Line heights, the padding of cells and the rules of tables are whole
 	pixels: wkhtmltopdf rounds each down to a pixel and Chromium keeps the fraction, so that with fractions every row
-	is higher with Chromium and its printouts run to more pages. A line of 9 pt is 17 px high, so that Chromium does not
-	paint the dots of an Ü at the top of a page onto the foot of the page before.
+	is higher with Chromium and its printouts run to more pages. A line outside a cell is at least 1.39 times as
+	high as its text: Nimbus Sans rises 0.729 of its size, the dots of a bold Ü 0.922, and Chromium paints what stands
+	above the box of the first line of a page onto the foot of the page before.
 -#}
 <style>
 	@page {
@@ -55,20 +56,21 @@
 	.sb-print h1 {
 		font-size: 15pt;
 		font-weight: bold;
-		line-height: 24px;
+		line-height: 28px;
 		margin: 0 0 1mm;
 	}
 
 	.sb-print h2 {
 		font-size: 11pt;
 		font-weight: bold;
-		line-height: 18px;
+		line-height: 21px;
 		margin: 0 0 2mm;
 	}
 
 	.sb-print h3 {
 		font-size: 9.5pt;
 		font-weight: bold;
+		line-height: 18px;
 		margin: 4mm 0 1.5mm;
 	}
 
@@ -227,7 +229,7 @@
 
 	.sb-print .sb-small {
 		font-size: 8pt;
-		line-height: 13px;
+		line-height: 15px;
 	}
 
 	.sb-print .sb-line,
@@ -387,7 +389,7 @@
 	.sb-print .sb-unverified {
 		color: #555;
 		font-size: 7.5pt;
-		line-height: 13px;
+		line-height: 14px;
 		margin: 0.5mm 0 1.5mm;
 	}
 
@@ -399,7 +401,7 @@
 		border-top: 0.3mm solid #777;
 		color: #333;
 		font-size: 7.5pt;
-		line-height: 13px;
+		line-height: 14px;
 		margin-top: 6mm;
 		padding-top: 1.5mm;
 	}
