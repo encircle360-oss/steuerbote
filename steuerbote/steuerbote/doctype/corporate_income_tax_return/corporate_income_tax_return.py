@@ -464,6 +464,74 @@ def core_errors() -> Iterator[None]:
 		frappe.throw(_(error.template).format(*error.values), title=_(DOCTYPE))
 
 
+PROVISIONS_ELSEWHERE = "SB-RUECKSTELLUNG-ABWEICHUNG"
+CALCULATED_STATUSES = ("Berechnet", "Bereit", "Abgegeben")
+
+
+def provision_differences(company: str, year: int) -> list[Finding]:
+	"""For the Jahresabschluss and the E-Bilanz, which would be filed with the provisions in the books: a hint where the
+	books hold provisions for the taxes on income of the year that differ from the balances of the latest calculated
+	Körperschaft- and Gewerbesteuererklärung, naming the return that proposes the difference (§ 249 Abs. 1 Satz 1 HGB).
+	Nothing without such a return or without provisions in the books."""
+	latest = frappe.get_all(
+		DOCTYPE,
+		filters={
+			"company": company,
+			"year": year,
+			"docstatus": ["<", 2],
+			"status": ["in", CALCULATED_STATUSES],
+		},
+		fields=["name", "kst_balance", "solz_balance"],
+		order_by="creation desc",
+		limit=1,
+	)
+	if not latest:
+		return []
+	corporate = latest[0]
+	posted = frappe.get_doc(DOCTYPE, corporate.name).posted_provisions()
+	if not posted or not any(posted.values()):
+		return []
+	balances = {
+		provisions.Tax.KST: Decimal(str(corporate.kst_balance or 0)),
+		provisions.Tax.SOLZ: Decimal(str(corporate.solz_balance or 0)),
+	}
+	trade = frappe.get_all(
+		"Trade Tax Return",
+		filters={
+			"company": company,
+			"year": year,
+			"docstatus": ["<", 2],
+			"status": ["in", CALCULATED_STATUSES],
+		},
+		fields=["name", "balance"],
+		order_by="creation desc",
+		limit=1,
+	)
+	if trade:
+		balances[provisions.Tax.GEWST] = Decimal(str(trade[0].balance or 0))
+	found = {
+		tax: (balance - posted.get(tax, Decimal(0))).quantize(Decimal("0.01"))
+		for tax, balance in balances.items()
+	}
+	found = {tax: difference for tax, difference in found.items() if difference}
+	if not found:
+		return []
+	parts = ", ".join(
+		f"{tax} {euro(abs(difference))} {'mehr' if difference > 0 else 'weniger'} als gebucht"
+		for tax, difference in found.items()
+	)
+	returns = ", ".join([corporate.name, *(row.name for row in trade)])
+	return [
+		Finding(
+			PROVISIONS_ELSEWHERE,
+			Severity.HINT,
+			_(
+				"The provisions for the taxes of {0} in the books differ from the returns {1}: {2}. This balance sheet would show them so; Rückstellungen vorschlagen at {3} proposes the difference (§ 249 Abs. 1 Satz 1 HGB)."
+			).format(year, returns, parts, corporate.name),
+		)
+	]
+
+
 def provision_entry(company: str, posting_date: date, rows, document: str) -> str:
 	"""The draft Journal Entry of the provisions, on the last day of the Wirtschaftsjahr: a debit and a credit of each
 	row of steuerbote.kst.provisions, each with its remark. Returns its name."""

@@ -67,6 +67,7 @@ from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, Ann
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.steuerbote.doctype.balance_sheet_mapping.balance_sheet_mapping import position_taxonomy
+from steuerbote.steuerbote.doctype.corporate_income_tax_return import corporate_income_tax_return
 from steuerbote.steuerbote.doctype.electronic_balance_sheet import bridge, comparison, layout
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import OTHER_WAY
 from steuerbote.steuerbote.doctype.elster_transmission.transmission import Transmittable
@@ -241,6 +242,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 				and not (self.bvv_previous_equity_reason or "").strip(),
 			),
 			*self._comparison_findings(ebilanz, accounts),
+			*corporate_income_tax_return.provision_differences(self.company, cint(self.year)),
 		)
 		return Calculation(
 			lines=bridge.position_rows(

@@ -1732,6 +1732,7 @@
 "The price of the shares, or the value in its place.","Der Preis der Anteile oder der an seine Stelle tretende Wert."
 "The product name has at most {0} characters.","Der Produktname hat höchstens {0} Zeichen."
 "The product name must not contain the word ELSTER.","Der Produktname darf das Wort ELSTER nicht enthalten."
+"The provisions for the taxes of {0} in the books differ from the returns {1}: {2}. This balance sheet would show them so; Rückstellungen vorschlagen at {3} proposes the difference (§ 249 Abs. 1 Satz 1 HGB).","Die Rückstellungen für die Steuern {0} in den Büchern weichen von den Erklärungen {1} ab: {2}. Diese Bilanz würde sie so zeigen; „Rückstellungen vorschlagen“ an {3} schlägt die Differenz vor (§ 249 Abs. 1 Satz 1 HGB)."
 "The proxy URL needs the port of the proxy, such as http://proxy.example.com:3128.","Die Proxy-URL braucht den Port des Proxys, etwa http://proxy.example.com:3128."
 "The proxy takes a user only with a password, and a password only with a user.","Der Proxy nimmt einen Benutzer nur mit Passwort und ein Passwort nur mit Benutzer."
 "The quart code of ELSTER: 21 to 32 for a month, 11 to 14 for two months, 1 to 4 for a quarter, 5 for the year.","Der Code quart von ELSTER: 21 bis 32 für einen Monat, 11 bis 14 für zwei Monate, 1 bis 4 für ein Quartal, 5 für das Jahr."

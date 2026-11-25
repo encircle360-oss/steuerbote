@@ -62,6 +62,7 @@ from steuerbote.steuerbote.doctype.annual_accounts import bridge, layout, xbrl_e
 from steuerbote.steuerbote.doctype.annual_accounts.bridge import BridgeError, DisclosureMode, Problem
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import record_adoption
 from steuerbote.steuerbote.doctype.annual_filing_settings.rules import SizeRecord, size_class_on
+from steuerbote.steuerbote.doctype.corporate_income_tax_return import corporate_income_tax_return
 from steuerbote.steuerbote.recorded_vouchers import ProposedJournalEntries
 
 DOCTYPE = "Annual Accounts"
@@ -303,7 +304,10 @@ class AnnualAccounts(ProposedJournalEntries, AnnualFiling, Document):
 			lines=bridge.line_rows(found, sources.parents),
 			tables={NOTES: notes, SIGNATORIES: signatories},
 			values=calculated,
-			findings=found_findings,
+			findings=(
+				*found_findings,
+				*corporate_income_tax_return.provision_differences(self.company, cint(self.year)),
+			),
 		)
 
 	def compute_deadline(self) -> date | None:
