@@ -325,14 +325,76 @@ class TestFiling(AnnualFilingTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "before filing it"):
 			doc.mark_filed_outside("mein_elster")
 
-	def test_a_document_that_is_not_ready_is_filed_with_its_remarks(self):
+	def test_remarks_file_nothing_while_an_error_holds_the_document(self):
 		doc = self.calculated(*LINES, SOURCE_ERROR)
-		with self.assertRaisesRegex(frappe.ValidationError, "is not ready"):
-			doc.mark_filed_outside("mein_elster")
-		doc.reload()
 		doc.remarks = "Das Konto 1590 ist mit der Steuerberatung abgestimmt."
 		doc.save()
+		with self.assertRaisesRegex(frappe.ValidationError, "the error SB-QUELLE of its findings holds it"):
+			doc.mark_filed_outside("mein_elster")
+
+	def test_a_document_that_is_not_ready_is_filed_once_its_error_is_acknowledged(self):
+		doc = self.calculated(*LINES, SOURCE_ERROR)
+		(error,) = [row for row in doc.findings if row.blocking]
+		self.assertEqual((error.acknowledgeable, error.acknowledged), (1, 0))
+		doc.acknowledge_finding(error.name, " Das Konto 1590 ist mit der Steuerberatung abgestimmt. ")
+		doc.reload()
+		(error,) = [row for row in doc.findings if row.blocking]
+		self.assertEqual(
+			(error.acknowledged, error.acknowledgement_reason, error.acknowledged_by),
+			(1, "Das Konto 1590 ist mit der Steuerberatung abgestimmt.", frappe.session.user),
+		)
+		self.assertTrue(error.acknowledged_on)
 		self.assertEqual(self.filed(doc).status, "Abgegeben")
+
+	def test_an_empty_reason_withdraws_the_acknowledgement(self):
+		doc = self.calculated(*LINES, SOURCE_ERROR)
+		(error,) = [row for row in doc.findings if row.blocking]
+		doc.acknowledge_finding(error.name, "Abgestimmt.")
+		doc.reload()
+		doc.acknowledge_finding(error.name, "")
+		doc.reload()
+		self.assertEqual([row.acknowledged for row in doc.findings if row.blocking], [0])
+		with self.assertRaisesRegex(frappe.ValidationError, "is not ready"):
+			doc.mark_filed_outside("mein_elster")
+
+	def test_berechnen_keeps_the_acknowledgement_of_the_same_finding_and_asks_again_for_a_changed_one(self):
+		doc = self.calculated(*LINES, SOURCE_ERROR)
+		(error,) = [row for row in doc.findings if row.blocking]
+		doc.acknowledge_finding(error.name, "Abgestimmt.")
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		self.assertEqual([row.acknowledged for row in doc.findings if row.blocking], [1])
+		doc.source = source(*LINES, {**SOURCE_ERROR, "text": "Ein Konto ohne Zuordnung hat jetzt 50 Euro."})
+		doc.save()
+		doc.calculate()
+		doc.reload()
+		self.assertEqual([row.acknowledged for row in doc.findings if row.blocking], [0])
+
+	def test_an_error_that_makes_the_file_wrong_is_never_acknowledged(self):
+		unbalanced = {**SOURCE_ERROR, "finding": "JA-BILANZ-UNGLEICH", "text": "Aktiva und Passiva weichen ab."}
+		doc = self.calculated(*LINES, unbalanced)
+		(error,) = [row for row in doc.findings if row.blocking]
+		self.assertEqual(error.acknowledgeable, 0)
+		with self.assertRaisesRegex(frappe.ValidationError, "cannot be acknowledged"):
+			doc.acknowledge_finding(error.name, "Trotzdem.")
+		frappe.db.set_value(
+			"Annual Filing Finding", error.name, {"acknowledged": 1, "acknowledgement_reason": "Trotzdem."}
+		)
+		doc.reload()
+		with self.assertRaisesRegex(frappe.ValidationError, "makes the file wrong whatever the reason"):
+			doc.mark_filed_outside("mein_elster")
+
+	def test_a_hint_is_not_acknowledged_and_a_filed_document_takes_no_acknowledgement(self):
+		doc = self.calculated(*LINES, SOURCE_HINT)
+		(hint,) = doc.findings
+		with self.assertRaisesRegex(frappe.ValidationError, "is a hint"):
+			doc.acknowledge_finding(hint.name, "Gesehen.")
+		with self.assertRaisesRegex(frappe.ValidationError, "has no such finding"):
+			doc.acknowledge_finding("no-such-row", "Gesehen.")
+		filed = self.filed(doc)
+		with self.assertRaisesRegex(frappe.ValidationError, "Only an error of a calculated draft"):
+			filed.acknowledge_finding(hint.name, "Gesehen.")
 
 	def test_a_filed_document_is_not_cancelled(self):
 		doc = self.filed(self.calculated())
@@ -454,10 +516,14 @@ class TestWhatAModuleCalls(AnnualFilingTestCase):
 		doc.require_fit_for_export()
 		self.filed(doc).require_fit_for_export()
 
-	def test_a_file_waits_for_the_remarks_of_a_document_that_is_not_ready(self):
-		doc = self.calculated(*LINES, SOURCE_ERROR)
+	def test_a_file_waits_for_the_acknowledgement_of_each_error_whatever_the_remarks_say(self):
+		doc = self.calculated(*LINES, SOURCE_ERROR, remarks="Eine Anmerkung.")
 		with self.assertRaisesRegex(frappe.ValidationError, "is not ready"):
 			doc.require_fit_for_export()
+		(error,) = [row for row in doc.findings if row.blocking]
+		doc.acknowledge_finding(error.name, "Abgestimmt.")
+		doc.reload()
+		doc.require_fit_for_export()
 
 	def test_no_file_is_made_of_a_document_that_elster_may_have(self):
 		doc = self.calculated()
