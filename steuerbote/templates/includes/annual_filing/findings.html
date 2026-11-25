@@ -3,6 +3,8 @@
 	document is filed nonetheless; the hints by kind with their number and the first of them; every hint in an annex
 	only when the print asks for it (all_hints). The table Befunde of the form holds every finding. Each heading is the
 	first row of its table's head, so that it stays with the first row and repeats on every page the table runs on.
+	The short table of the hints by kind stays on one page whole, since wkhtmltopdf would leave its head alone at the
+	foot of a page.
 -#}
 {%- set annual = annual if annual is defined else doc.annual_print() -%}
 {%- if annual.findings %}
@@ -37,6 +39,7 @@
 	</table>
 	{%- endif %}
 	{%- if annual.hint_kinds %}
+	<div class="sb-keep">
 	<table class="sb-lines sb-findings">
 		<colgroup>
 			<col class="sb-code">
@@ -66,6 +69,7 @@
 			{%- endfor %}
 		</tbody>
 	</table>
+	</div>
 	{%- endif %}
 	{%- if annual.hints %}
 	<table class="sb-lines sb-findings">
