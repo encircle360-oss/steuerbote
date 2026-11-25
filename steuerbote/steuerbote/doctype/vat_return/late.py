@@ -1,8 +1,9 @@
 """What a VAT Return says about bookings and amounts of filed periods that changed after the filing.
 
 A return being prepared lists in its table „Nach der Abgabe geändert“ (late_changes) each booking that was made
-after the filing of an earlier period of the same or the previous year and either belongs to that period and needs
-its corrected return (Kz 10), or was moved into this period (steuerbote.ustva.assignment), and each Kennzahl of a
+after the filing of an earlier period of the same or the previous year, and each cancellation made then of a voucher of
+that period, that either belongs to that period and needs its corrected return (Kz 10), or was moved into this period
+(steuerbote.ustva.assignment), and each Kennzahl of a
 filed period whose ledger amount differs today from the amount its return took. A filed return says the same of its
 own period when it is opened. The rows are recorded with the return, so what it decided stays traceable.
 
@@ -19,6 +20,7 @@ from steuerbote.ustva.assignment import Change, Placement
 from steuerbote.ustva.period import Period
 
 BOOKED_AFTER_FILING = "Booked after Filing"
+CANCELLED_AFTER_FILING = "Cancelled after Filing"
 CHANGED_SINCE_FILING = "Changed since Filing"
 
 MOVED_HERE = "Belongs to {0} and was booked after {0} was filed: reported in this period."
@@ -31,6 +33,7 @@ OUTSIDE_MOVED_HERE = "Belongs to {0}, which was filed outside Steuerbote before 
 OUTSIDE_NEEDS_CORRECTION = "Belongs to {0}, which was filed outside Steuerbote before the start of its books: its corrected return (Kz 10) goes where {0} was filed, or Documents for a Filed Period set to Current Period reports it in the period open when it was booked."
 MESSAGES = (
 	BOOKED_AFTER_FILING,
+	CANCELLED_AFTER_FILING,
 	CHANGED_SINCE_FILING,
 	MOVED_HERE,
 	MOVED_TO,
@@ -61,9 +64,8 @@ class Row:
 
 def _voucher(placement: Placement, period: Period, template: str, values: tuple[str, ...]) -> Row:
 	voucher_type, _, voucher_no = placement.booking.voucher.partition(":")
-	return Row(
-		period, BOOKED_AFTER_FILING, template, values, voucher_type, voucher_no, placement.booking.booked_at
-	)
+	kind = CANCELLED_AFTER_FILING if placement.booking.cancellation else BOOKED_AFTER_FILING
+	return Row(period, kind, template, values, voucher_type, voucher_no, placement.booking.booked_at)
 
 
 def current_rows(

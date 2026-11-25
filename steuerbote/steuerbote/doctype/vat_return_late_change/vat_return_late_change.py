@@ -13,7 +13,7 @@ class VATReturnLateChange(RecordedVoucherRow, Document):
 		from frappe.types import DF
 
 		booked_at: DF.Datetime | None
-		kind: DF.Literal["Booked after Filing", "Changed since Filing"]
+		kind: DF.Literal["Booked after Filing", "Cancelled after Filing", "Changed since Filing"]
 		message: DF.SmallText | None
 		parent: DF.Data
 		parentfield: DF.Data

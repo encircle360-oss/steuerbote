@@ -346,6 +346,7 @@
 "Calculate {0} before transmitting it.","{0} muss vor der Übermittlung berechnet werden."
 "Calculate {0} first.","Berechnen Sie {0} zuerst."
 "Calculated: that of the filed E-Bilanz of the previous year, else that of the books at the beginning of the Wirtschaftsjahr; zero in the founding year.","Berechnet: das der abgegebenen E-Bilanz des Vorjahres, sonst das der Buchhaltung zu Beginn des Wirtschaftsjahres; null im Gründungsjahr."
+"Cancelled after Filing","Nach der Abgabe storniert"
 "Cancelled voucher","Storniert"
 "Carry-Forwards","Festgestellte Vorträge"
 "Cash Contribution","Bareinlage"
