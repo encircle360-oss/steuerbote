@@ -116,6 +116,7 @@ class KennzahlRowsTest(TestCase):
 				"override": d("0"),
 				"override_reason": "",
 				"override_basis": d("0"),
+				"override_basis_unknown": 0,
 			},
 		)
 
@@ -214,6 +215,41 @@ class OverrideBasisTest(TestCase):
 			"jetzt 1.300,00 €. Die Voranmeldung ist nicht bereit, bis die Korrektur bestätigt ist: Passe Betrag oder "
 			"Begründung an, oder lösche die Korrektur.",
 		)
+
+	def test_an_override_whose_basis_is_unknown_holds_the_return_until_it_is_confirmed(self):
+		"""An override from before Steuerbote kept the basis has the ledger amount of the day of the update as its
+		basis, which may already include a late booking. It holds the return even where that amount is the
+		ledger's, keeps its mark while it stays as it is and loses it once its amount or reason changes."""
+		stored = (
+			{
+				"kennzahl": "81",
+				"amount": 1300,
+				"override": 1100,
+				"override_reason": "Spät",
+				"override_basis": 1300,
+				"override_basis_unknown": 1,
+			},
+		)
+		(hint,) = bridge.stale_override_hints(stored, FIGURES)
+		self.assertEqual(hint.code, plausibility.Code.OVERRIDE_STALE)
+		self.assertEqual(
+			hint.text,
+			"Kz 81: Die Korrektur auf 1.100,00 € stammt aus einer Version von Steuerbote, die nicht festhielt, bei "
+			"welchem Betrag im Hauptbuch sie eingetragen wurde; das Hauptbuch bucht jetzt 1.300,00 €. Die "
+			"Voranmeldung ist nicht bereit, bis die Korrektur bestätigt ist: Prüfen Sie sie gegen das Hauptbuch und "
+			"ändern Sie Betrag oder Begründung, oder löschen Sie die Korrektur.",
+		)
+		kept = {"kennzahl": "81", "override": 1100, "override_reason": "Spät", "override_basis_unknown": 0}
+		changed = {"kennzahl": "81", "override": 1100, "override_reason": "Spät, geprüft"}
+		self.assertEqual(bridge.unknown_bases(stored, [kept, changed, {"kennzahl": "86"}]), [1, 0, 0])
+		override = bridge.overrides_of(stored, KENNZAHLEN)["81"]
+		self.assertTrue(override.basis_unknown)
+		row = next(
+			row
+			for row in bridge.kennzahl_rows(calculate(verified_month(), SKR03), KENNZAHLEN, {"81": override})
+			if row["kennzahl"] == "81"
+		)
+		self.assertEqual((row["override_basis"], row["override_basis_unknown"]), (d("1300.00"), 1))
 
 
 class ReadyOfTest(TestCase):

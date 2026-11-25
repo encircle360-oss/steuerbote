@@ -15,6 +15,7 @@ from steuerbote.jahresmeldung.overrides import (
 	reported,
 	restored,
 	stale,
+	unconfirmed,
 )
 
 # The columns of a line table such as that of the Umsatzsteuererklärung: the Feldkennung, the amount the form takes
@@ -45,7 +46,9 @@ class ColumnsTest(TestCase):
 			("key", ("computed",), (), "correction", "correction_reason"),
 		)
 		self.assertEqual((columns.reported, columns.manual), ("reported", "manual"))
-		self.assertEqual(columns.basis, "correction_basis")
+		self.assertEqual(
+			(columns.basis, columns.basis_unknown), ("correction_basis", "correction_basis_unknown")
+		)
 
 	def test_berechnen_fills_the_key_its_amounts_and_the_description(self):
 		self.assertEqual(COLUMNS.filled, ("element", "form", "ledger", "label"))
@@ -325,6 +328,42 @@ class CorrectionBasisTest(TestCase):
 		changed_amount = [row("E3003303", correction="950", reason=REASON, name="r1")]
 		(line,) = restored(stored[:1], changed_amount, COLUMNS)
 		self.assertEqual(line["correction_basis"], Decimal("1000.00"))
+
+	def test_a_correction_whose_basis_is_unknown_is_unconfirmed_until_it_changes(self):
+		"""A correction from before Steuerbote kept the basis has the amount of the day of the update as its basis,
+		which may already include a late booking: it holds its line even where Berechnen computes that amount, keeps
+		its mark over Berechnen and a save while it stays as it is, and loses it once its amount or reason changes."""
+		before = [
+			row(
+				"E3003303",
+				"1000",
+				correction="900",
+				reason=REASON,
+				name="r1",
+				correction_basis="1000",
+				correction_basis_unknown=1,
+			)
+		]
+		(line,) = recalculated([row("E3003303", "1000")], before, COLUMNS)
+		self.assertEqual(
+			(line["correction_basis"], line["correction_basis_unknown"]), (Decimal("1000.00"), 1)
+		)
+		self.assertEqual(unconfirmed([line], COLUMNS), (("E3003303", Decimal("1000.00")),))
+		self.assertEqual(stale([line], COLUMNS), ())
+		(kept_line,) = restored(
+			before, [row("E3003303", correction="900", reason=REASON, name="r1")], COLUMNS
+		)
+		self.assertEqual(kept_line["correction_basis_unknown"], 1)
+		changed_reason = [row("E3003303", correction="900", reason=f"{REASON}, geprüft", name="r1")]
+		(confirmed,) = restored(before, changed_reason, COLUMNS)
+		self.assertEqual(
+			(confirmed["correction_basis"], confirmed["correction_basis_unknown"]), (Decimal("1000.00"), 0)
+		)
+		self.assertEqual(unconfirmed([confirmed], COLUMNS), ())
+		(plain,) = recalculated([row("E3003303", "1000")], [], COLUMNS)
+		self.assertEqual(plain["correction_basis_unknown"], 0)
+		by_hand = row("E3005901", manual=1, correction="250", reason=REASON, correction_basis_unknown=1)
+		self.assertEqual(unconfirmed([by_hand], COLUMNS), ())
 
 
 class KeptTest(TestCase):

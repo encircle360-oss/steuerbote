@@ -471,6 +471,27 @@ class OverrideBasisTest(TestCase):
 			Override(d("10"), "Grund", basis=d("1.001"))
 		self.assertIsNone(Override(d("10"), "Grund").basis)
 
+	def test_an_override_whose_basis_is_unknown_holds_the_line_until_it_is_confirmed(self):
+		"""An override from before Steuerbote kept the basis has the ledger amount of the day of the update as its
+		basis, which may already include a late invoice; it holds its line even where that amount is the ledger's."""
+		override = Override(d("55000"), "Nachweis", basis=d("57000.99"), basis_unknown=True)
+		result = statement(
+			invoice("1", "55000.99"), invoice("2", "2000.00"), overrides={(AUSTRIA, Art.L): override}
+		)
+		line = result.lines[0]
+		self.assertEqual(codes(line), [Code.OVERRIDE_STALE])
+		self.assertEqual(
+			line.findings[0].text,
+			f"Die Korrektur der Zeile {AUSTRIA} (L) auf 55.000,00 € stammt aus einer Version von Steuerbote, die nicht "
+			"festhielt, bei welchem Betrag im Hauptbuch sie eingetragen wurde; das Hauptbuch bucht jetzt 57.000,99 €. "
+			"Die Zeile hält die Meldung an, bis die Korrektur bestätigt ist: Prüfen Sie sie gegen das Hauptbuch und "
+			"ändern Sie Betrag oder Begründung, oder löschen Sie die Korrektur, dann meldet die Zeile das Hauptbuch.",
+		)
+		self.assertTrue(line.override.basis_unknown)
+		self.assertTrue(line.blocked)
+		self.assertFalse(result.ready)
+		self.assertFalse(Override(d("10"), "Grund").basis_unknown)
+
 
 class AcceptanceTest(TestCase):
 	"""Releasing an unconfirmed or invalid USt-IdNr. is not the same as reporting another amount: the line keeps the
