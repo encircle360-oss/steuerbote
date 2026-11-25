@@ -583,11 +583,15 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[(AUSTRIAN, "L", money(3800), money(3800))],
 		)
 
-	def test_a_cancellation_in_a_later_month_gives_that_month_a_negative_line_with_the_immutable_ledger(self):
+	def test_a_cancellation_after_the_filing_lands_where_the_settings_say_with_the_immutable_ledger(self):
 		"""With „Unveränderliches Hauptbuch aktivieren“ ERPNext posts the reversal of a cancelled invoice on the day
-		of the cancellation, as the Anleitung zur ZM wants „Stornierungen von Rechnungen“ in the Meldezeitraum of
-		the change (IV.10): the month filed stays as filed, and the month of the cancellation reports the amount
-		with a minus sign under the customer of the invoice."""
+		of the cancellation; the ZM counts it on the day of the invoice, entered when it was cancelled, as the
+		Voranmeldung does (ledger.load_bookings, assignment). With „Belege für abgegebene Zeiträume“ set to the period
+		open at the time, as here, the month filed stays as filed, and the month of the cancellation reports the
+		amount with a minus sign under the customer of the invoice, as the Anleitung zur ZM wants „Stornierungen von
+		Rechnungen“ in the Meldezeitraum of the change (IV.10)."""
+		self.roll_back_afterwards()
+		frappe.db.set_value("VAT Return Settings", COMPANY, "late_documents", "Current Period")
 		a = self.account
 		post_sales_invoice(
 			COMPANY,
@@ -612,6 +616,97 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[(AUSTRIAN, "L", ALPEN, money(-2500))],
 		)
 		self.assertEqual(contents(december.make_csv_file()), HEADER + b"ATU12345678,-2500,L")
+
+	def test_a_cancellation_falls_in_the_same_month_of_the_zm_and_the_voranmeldung_under_every_setting(self):
+		"""The ZM reads a cancelled voucher as the Voranmeldung does (ledger.load_bookings, assignment): before the
+		month of the voucher is filed, voucher and reversal cancel out there; after the filing, a corrected return and a
+		Berichtigung of that month (§ 18a Abs. 10 UStG), or with „im laufenden Zeitraum melden“ the month open at the
+		cancellation. Kz 41 keeps the posting date under both bases (§ 18b Satz 2 UStG), so the four combinations of
+		the two settings give the same month in both."""
+		company = make_company("Steuerbote Test ZM Stornierung GmbH", "STZC")
+		a = {
+			number: make_account(company, number, name, root_type)
+			for number, (name, root_type) in ACCOUNTS.items()
+		}
+		make_settings(
+			company,
+			[(2026, "monthly", 1)],
+			ust_idnr=OWN_VAT_ID,
+			zm_rules=[{"year": 2026, "valid_from_month": 1, "rhythm": "monthly", "services_monthly": 1}],
+		)
+		make_mapping(company)
+		for basis in ("By Service Date", "By Posting Date"):
+			for treatment in ("Corrected Return", "Current Period"):
+				for filed in (False, True):
+					with self.subTest(basis=basis, treatment=treatment, filed=filed):
+						frappe.db.savepoint("zm_cancellation_case")
+						try:
+							self.cancellation_case(company, a, basis, treatment, filed)
+						finally:
+							frappe.db.rollback(save_point="zm_cancellation_case")
+
+	def cancellation_case(self, company: str, a: dict, basis: str, treatment: str, filed: bool) -> None:
+		frappe.db.set_value(
+			"VAT Return Settings", company, {"period_basis": basis, "late_documents": treatment}
+		)
+		post_sales_invoice(
+			company, "SINV-STZC-05-1", ALPEN, "2026-05-12", [(a["1400"], 5000, 0), (a["8125"], 0, 5000)]
+		)
+		may = self.statement(5, company=company, remarks="Testabgabe")
+		may.calculate()
+		may.reload()
+		if filed:
+			vat_may = self.vat_return(company, 5)
+			vat_may.mark_filed_outside("In Mein ELSTER abgegeben")
+			may.mark_filed_outside(filed_via="mein_elster")
+			may.reload()
+		cancel_voucher("Sales Invoice", "SINV-STZC-05-1", immutable_on="2026-06-03")
+		june = self.statement(6, company=company)
+		june.calculate()
+		june.reload()
+		vat_june = self.vat_return(company, 6)
+		zm_june = [(row.vat_id, money(row.reported)) for row in june.lines]
+		kz41_june = [money(row.amount) for row in vat_june.kennzahlen if row.kennzahl == "41"]
+		if not filed:
+			may.calculate()
+			may.reload()
+			self.assertEqual((list(may.lines), zm_june, kz41_june), ([], [], []))
+			self.assertEqual(
+				[row.kennzahl for row in self.vat_return(company, 5).kennzahlen if row.kennzahl == "41"], []
+			)
+		elif treatment == "Corrected Return":
+			self.assertEqual((zm_june, kz41_june), ([], []))
+			(change,) = may.ledger_changes_since_filing()
+			self.assertIn("SINV-STZC-05-1", change)
+			correction = frappe.get_doc(DOCTYPE, may.make_correction())
+			self.assertEqual(
+				[
+					(row.vat_id, money(row.reported), money(row.filed_amount), row.in_file)
+					for row in correction.lines
+				],
+				[(AUSTRIAN, money(0), money(5000), 1)],
+			)
+			self.assertIn(
+				"SINV-STZC-05-1", [row["voucher_no"] for row in vat_may.changes_since_filing() or ()]
+			)
+		else:
+			self.assertEqual(may.ledger_changes_since_filing(), [])
+			self.assertEqual((zm_june, kz41_june), ([(AUSTRIAN, money(-5000))], [money(-5000)]))
+
+	def vat_return(self, company: str, month: int):
+		doc = frappe.get_doc(
+			{
+				"doctype": "VAT Return",
+				"company": company,
+				"year": 2026,
+				"rhythm": "monthly",
+				"period_index": month,
+				"remarks": "Testabgabe",
+			}
+		).insert()
+		doc.calculate()
+		doc.reload()
+		return doc
 
 	def test_a_filed_statement_says_when_the_ledger_of_its_months_changed_since_the_filing(self):
 		"""Without „Unveränderliches Hauptbuch aktivieren“ ERPNext takes a cancelled invoice out of its own month,

@@ -1080,3 +1080,33 @@ class UncomparedTest(TestCase):
 			[row["filed_note"] for row in bridge.reconciliation_rows(reconcile(lines, [], FIGURES))],
 			["", "", ""],
 		)
+
+
+class MonthFilingsTest(TestCase):
+	"""The ZM places its bookings by month with the rule of the Voranmeldung (steuerbote.ustva.assignment): a month
+	counts as filed with the statements that reported its Lieferungen, or its sonstige Leistungen, first and latest."""
+
+	def test_each_month_of_a_filed_span_with_its_first_and_latest_filing(self):
+		first, berichtigung, other = (
+			datetime(2026, 4, 20, 9),
+			datetime(2026, 6, 2, 10),
+			datetime(2026, 5, 20, 8),
+		)
+		found = bridge.month_filings(
+			[
+				((date(2026, 1, 1), date(2026, 3, 31)), [first]),
+				((date(2026, 1, 1), date(2026, 3, 31)), [berichtigung]),
+				((date(2026, 4, 1), date(2026, 4, 30)), [other]),
+				(None, [other]),
+				((date(2026, 5, 1), date(2026, 5, 31)), []),
+			]
+		)
+		self.assertEqual(
+			[(filing.period.label, filing.first, filing.latest) for filing in found],
+			[
+				("Januar 2026", first, berichtigung),
+				("Februar 2026", first, berichtigung),
+				("März 2026", first, berichtigung),
+				("April 2026", other, other),
+			],
+		)
