@@ -2165,6 +2165,7 @@
 "{0} lacks the accounts {1} of the provisions. Create them before proposing the provisions.","{0} fehlen die Konten {1} der Rückstellungen. Bitte sie anlegen, bevor die Rückstellungen vorgeschlagen werden."
 "{0} needs a reason.","{0} braucht eine Begründung."
 "{0} needs exactly one Fiscal Year that ends in {1}, not {2}.","{0} braucht genau ein Geschäftsjahr, das im Jahr {1} endet, nicht {2}."
+"{0} of {1} has a draft already: {2}. Delete one of them before filing.","{0} von {1} hat schon einen Entwurf: {2}. Löschen Sie einen davon vor der Abgabe."
 "{0} of {1} is filed already as {2}. Make a Berichtigung of it.","{0} von {1} ist bereits als {2} abgegeben. Bitte dort eine Berichtigung anlegen."
 "{0} of {1} is filed already as {2}. Mark this return as a corrected return (Kz 10).","{0} von {1} ist bereits als {2} abgegeben. Diese Meldung bitte als berichtigte Anmeldung (Kz 10) kennzeichnen."
 "{0} of {1} was transmitted already as {2}. Clear its filing there first; a further statement of the Meldezeitraum is a Berichtigung of it.","{0} von {1} ist bereits als {2} übermittelt. Bitte zuerst dort die Abgabe klären; jede weitere Meldung des Meldezeitraums ist eine Berichtigung."

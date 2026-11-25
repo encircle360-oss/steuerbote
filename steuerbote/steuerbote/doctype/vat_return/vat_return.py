@@ -192,6 +192,38 @@ class VATReturn(Confirming, Transmittable, Document):
 		self.set_onload("confirmation", self.confirmation_state())
 		if self.docstatus == 1 and self.status == FILED:
 			self.set_onload("changes_since_filing", self.changes_since_filing())
+		self.set_onload("cancellable", self.cancellable())
+
+	def cancellable(self) -> bool:
+		"""Whether the form offers Stornieren: only a submitted return without a record that files it, which a version
+		of Steuerbote before such records submitted with Buchen alone (before_cancel)."""
+		return self.docstatus == 1 and not any(row.status == SUCCEEDED for row in self.filings())
+
+	def after_insert(self) -> None:
+		"""A second draft of the same period is allowed, as the forms of a period may be prepared side by side, but the
+		user hears of the first, which may be the one meant."""
+		if self.is_correction:
+			return
+		others = frappe.get_all(
+			DOCTYPE,
+			filters={
+				"company": self.company,
+				"year": cint(self.year),
+				"period_code": self.period_code,
+				"docstatus": 0,
+				"is_correction": 0,
+				"name": ["!=", self.name],
+			},
+			pluck="name",
+		)
+		if others:
+			frappe.msgprint(
+				_("{0} of {1} has a draft already: {2}. Delete one of them before filing.").format(
+					self.period_label, escape_html(self.company), ", ".join(others)
+				),
+				indicator="orange",
+				alert=True,
+			)
 
 	def before_insert(self) -> None:
 		"""A new return starts as a draft that Berechnen has not read, whatever it was made with: its Kennzahlen keep
