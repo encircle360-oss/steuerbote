@@ -31,7 +31,7 @@ of an earlier version comes in lifted the same way; one of a later version stays
 """
 
 import re
-from collections.abc import Collection, Iterator
+from collections.abc import Callable, Collection, Iterator
 from collections.abc import Mapping as ReadOnlyMapping
 from contextlib import contextmanager
 from datetime import date
@@ -191,6 +191,18 @@ class BalanceSheetMapping(Document):
 		with mapping_errors():
 			return rows_to_mapping(self.chart, *self._rows(), self.taxonomy_version)
 
+	def _position_labels(self) -> Callable[[str], str]:
+		"""Names a position with its label in the taxonomy of the mapping and its name, as the rows show it; by its
+		name alone without the taxonomy installed."""
+		view = position_taxonomy(self.taxonomy_version)
+
+		def label(name: str) -> str:
+			if view is None or not view.has(name):
+				return name
+			return f"{view.label(name)} ({name})"
+
+		return label
+
 	def check_positions(self, mapping: Mapping) -> None:
 		"""Every position the rules may not name, against the fiscal view of the taxonomy of the mapping, with the label
 		of each position; without the taxonomy installed, a note that the positions wait for it, unless the caller notes
@@ -308,7 +320,9 @@ class BalanceSheetMapping(Document):
 			"version": defaults_version(self.chart, self.taxonomy_version),
 			"taken_over": self.defaults_version or "",
 			"base_known": base is not None,
-			"differences": [presented(difference) for difference in comparison.differences],
+			"differences": [
+				presented(difference, self._position_labels()) for difference in comparison.differences
+			],
 			"unchanged": len(comparison.unchanged),
 		}
 
@@ -360,6 +374,7 @@ class BalanceSheetMapping(Document):
 		here, each difference proposed, and what its header says, with the earlier version it was lifted from."""
 		header, items, _defaults, version = self._read_file(file_url, content)
 		comparison = diff.compare(self.current_items(), items, None)
+		labels = self._position_labels()
 		return {
 			"company": header.company,
 			"chart": header.chart,
@@ -368,7 +383,7 @@ class BalanceSheetMapping(Document):
 			"app_version": header.app_version,
 			"lifted_from": "" if version == self.taxonomy_version else version,
 			"differences": [
-				{**presented(difference), "proposes": True} for difference in comparison.differences
+				{**presented(difference, labels), "proposes": True} for difference in comparison.differences
 			],
 			"unchanged": len(comparison.unchanged),
 		}
@@ -647,8 +662,9 @@ def export_file_name(company: str, day: date) -> str:
 	return f"Bilanzzuordnung-{re.sub(r'[^\w]+', '-', company).strip('-')}-{day.isoformat()}.json"
 
 
-def presented(difference: diff.Difference) -> dict:
-	"""A difference as the dialog of the form shows it, in the language of the user."""
+def presented(difference: diff.Difference, label: Callable[[str], str] = str) -> dict:
+	"""A difference as the dialog of the form shows it, in the language of the user, each position as ``label`` names
+	it."""
 	_kind, number = difference.key
 	return {
 		"id": difference_id(difference),
@@ -657,24 +673,24 @@ def presented(difference: diff.Difference) -> dict:
 		"fields": ", ".join(_(FIELD_LABELS[name]) for name in difference.fields)
 		if difference.change is diff.Change.CHANGED
 		else "",
-		"current": described(difference.current),
-		"proposed": described(difference.proposed),
+		"current": described(difference.current, label),
+		"proposed": described(difference.proposed, label),
 		"origin": _(ORIGINS[difference.origin]),
 		"proposes": difference.proposes,
 	}
 
 
-def described(fields: dict | None) -> str:
-	"""The place of an account in a few words; empty where it has none."""
+def described(fields: dict | None, label: Callable[[str], str] = str) -> str:
+	"""The place of an account in a few words, each position as ``label`` names it; empty where it has none."""
 	if fields is None:
 		return ""
 	if fields["place"] == WATCHED:
 		return _("Watched, level {0}").format(_(fields["level"]))
 	if fields["place"] == EXCLUDED:
 		return _("Outside the Bilanz and the GuV: {0}").format(fields["reason"])
-	parts = [_("Position {0}").format(fields["concept"])]
+	parts = [_("Position {0}").format(label(fields["concept"]))]
 	if fields["opposite_concept"]:
-		parts.append(_("opposite balance {0}").format(fields["opposite_concept"]))
+		parts.append(_("opposite balance {0}").format(label(fields["opposite_concept"])))
 	parts.append(_(fields["purpose"]))
 	if fields["shareholder"]:
 		parts.append(_("owed to or by shareholders"))
