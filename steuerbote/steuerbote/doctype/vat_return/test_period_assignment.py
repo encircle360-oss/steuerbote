@@ -192,3 +192,97 @@ class TestPeriodAssignment(IntegrationTestCase):
 	def test_only_a_filed_return_makes_a_corrected_return(self):
 		with self.assertRaises(frappe.ValidationError):
 			self.calculated(10).make_correction()
+
+
+START_COMPANY = "Steuerbote Test Buchstart GmbH"
+JUNE = Period.month(2026, 6)
+
+
+class TestBeforeTheStart(IntegrationTestCase):
+	"""The books of the company start on 1 July 2026; June was filed outside Steuerbote on 8 July."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		make_company(START_COMPANY, "STBS")
+		cls.account = {
+			number: make_account(START_COMPANY, number, name, root_type)
+			for number, (name, root_type) in ACCOUNTS.items()
+		}
+		make_settings(START_COMPANY, [(2026, "monthly", 1)], books_start="2026-07-01")
+		make_mapping(START_COMPANY)
+		frappe.get_doc(
+			{
+				"doctype": "VAT Return Prior Filing",
+				"company": START_COMPANY,
+				"year": 2026,
+				"rhythm": "monthly",
+				"period_index": 6,
+				"filed_on": "2026-07-08",
+				"kz83": 500,
+				"source_document": "Übermittlungsprotokoll",
+				"reason": "Erfunden: vor Steuerbote abgegeben",
+			}
+		).insert().submit()
+
+	def setUp(self):
+		frappe.db.savepoint("before_the_start_test")
+		self.addCleanup(frappe.db.rollback, save_point="before_the_start_test")
+
+	def july(self):
+		doc = frappe.get_doc(
+			{
+				"doctype": "VAT Return",
+				"company": START_COMPANY,
+				"year": 2026,
+				"rhythm": "monthly",
+				"period_index": 7,
+			}
+		).insert()
+		doc.calculate()
+		doc.reload()
+		return doc
+
+	def june_invoice(self) -> None:
+		"""Booked on 2 July, before June was filed on 8 July, but in ERPNext, so not in the June return."""
+		sales_invoice(
+			START_COMPANY,
+			self.account,
+			"SINV-BS-0001",
+			"2026-07-02",
+			"2026-07-02 09:00:00",
+			to_date="2026-06-30",
+		)
+
+	def kz81(self, doc) -> Decimal:
+		row = next((row for row in doc.kennzahlen if row.kennzahl == "81"), None)
+		return Decimal(str(row.amount)) if row else Decimal(0)
+
+	def test_a_booking_for_a_period_filed_before_steuerbote_says_where_its_correction_goes(self):
+		self.june_invoice()
+		july = self.july()
+		self.assertEqual(self.kz81(july), Decimal(0))
+		(row,) = july.late_changes
+		self.assertEqual((row.period_label, row.voucher_no), ("Juni 2026", "SINV-BS-0001"))
+		self.assertIn("filed outside Steuerbote", row.message)
+
+	def test_in_the_current_period_it_is_reported_in_the_first_period_of_the_books(self):
+		set_rule(START_COMPANY, late="Current Period")
+		self.june_invoice()
+		july = self.july()
+		self.assertEqual(self.kz81(july), Decimal("1000.00"))
+		(row,) = july.late_changes
+		self.assertEqual((row.period_label, row.voucher_no), ("Juni 2026", "SINV-BS-0001"))
+		self.assertIn("reported in this period", row.message)
+
+	def test_the_period_before_the_start_still_makes_no_return(self):
+		with self.assertRaises(frappe.ValidationError):
+			frappe.get_doc(
+				{
+					"doctype": "VAT Return",
+					"company": START_COMPANY,
+					"year": 2026,
+					"rhythm": "monthly",
+					"period_index": 6,
+				}
+			).insert()
