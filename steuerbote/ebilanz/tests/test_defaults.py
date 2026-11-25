@@ -289,6 +289,104 @@ class CoverageTest(TestCase):
 					self.assertEqual(account.label, " ".join(account.label.split()))
 
 
+class EarlierEditionTest(TestCase):
+	"""The accounts of the DATEV edition valid for 2020 that the edition valid for 2026 no longer labels take the place
+	of the account of today's chart for the same thing, most of them that of their twin in SKR04."""
+
+	def place(self, chart: str, number: str) -> tuple[str, object]:
+		found = defaults_for(chart, "6.9")
+		for rule in found.rules:
+			if number in rule.accounts:
+				return ("position", rule.concept)
+		for watched in found.watched:
+			if number in watched.accounts:
+				return ("watched", watched.level)
+		raise AssertionError(f"{chart} {number} has no place")
+
+	def test_each_account_of_skr03_takes_the_place_of_its_model_in_skr04(self):
+		for number, model in (
+			("0583", "0964"),
+			("0978", "3098"),
+			("1300", "1235"),
+			("1305", "1235"),
+			("1310", "1266"),
+			("1315", "1269"),
+			("1320", "1286"),
+			("1325", "1289"),
+			("1327", "1520"),
+			("1330", "1550"),
+			("1583", "1484"),
+			("1587", "1484"),
+			("1660", "3350"),
+			("1788", "3850"),
+			("2006", "7552"),
+			("2008", "7554"),
+			("2010", "6967"),
+			("2090", "7560"),
+			("2091", "7561"),
+			("2094", "7563"),
+			("2130", "7340"),
+			("2139", "7349"),
+			("2307", "6967"),
+			("2309", "6969"),
+			("2508", "7454"),
+			("2590", "7460"),
+			("2594", "7464"),
+			("2670", "7130"),
+			("2679", "7139"),
+			("2705", "4835"),
+			("2707", "4837"),
+			("2720", "4900"),
+			("3788", "5787"),
+			("3796", "5795"),
+			("4905", "6304"),
+			("8195", "4185"),
+			("8196", "4186"),
+			("8516", "4566"),
+			("8574", "4574"),
+			("8575", "4575"),
+			("8576", "4576"),
+			("8579", "4579"),
+			("8600", "4835"),
+		):
+			with self.subTest(account=number):
+				self.assertEqual(self.place("SKR03", number), self.place("SKR04", model))
+
+	def test_each_account_of_skr04_takes_the_place_of_its_model(self):
+		for number, model in (("1230", "1235"), ("1483", "1484"), ("5788", "5787"), ("5796", "5795")):
+			with self.subTest(account=number):
+				self.assertEqual(self.place("SKR04", number), self.place("SKR04", model))
+
+	def test_the_round_off_accounts_of_skr03_take_the_other_operating_expenses(self):
+		"""A company that rounds on SKR03 2309 „Sonstige Aufwendungen unregelmäßig“ or 2307 books the cents of its
+		roundings there; they belong to the sonstige betriebliche Aufwendungen like SKR04 6969 and 6967."""
+		for number in ("2307", "2309"):
+			with self.subTest(account=number):
+				self.assertEqual(
+					self.place("SKR03", number),
+					("position", "is.netIncome.regular.operatingTC.otherCost.otherOrdinary"),
+				)
+
+	def test_an_account_no_edition_places_is_watched(self):
+		"""The Verschmelzungsmehrwert, the interest of the Körperschaftsteuer-Erhöhungsbetrag of § 38 KStG and the
+		receivables against Kommanditisten have no position the taxonomy of today names for a GmbH: the account holds
+		the E-Bilanz until the Steuerberatung gives it one."""
+		for chart, numbers in (
+			("SKR03", ("0040", "2106", "2688", "1373")),
+			("SKR04", ("0160", "7307", "7128", "1327")),
+		):
+			for number in numbers:
+				with self.subTest(chart=chart, account=number):
+					self.assertEqual(self.place(chart, number), ("watched", WatchLevel.BLOCKING))
+
+	def test_an_account_of_no_edition_has_no_place(self):
+		"""SKR03 1716 is labelled in neither edition, 2280, 2282 and 2284 are reserved in 2020 and gone in 2026, and 2990
+		is in neither: no default, so the account names itself as one without a place."""
+		for number in ("1716", "2280", "2282", "2284", "2990"):
+			with self.subTest(account=number), self.assertRaises(AssertionError):
+				self.place("SKR03", number)
+
+
 class SourcesTest(TestCase):
 	"""Every choice the labels of the account and the position do not tell alone carries its reason, and every reason
 	its source."""

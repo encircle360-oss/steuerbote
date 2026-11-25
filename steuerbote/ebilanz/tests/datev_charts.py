@@ -357,16 +357,21 @@ REMAINING_TERMS = {
 """The accounts whose label names a Restlaufzeit, by the words of the label."""
 
 EARLIER = {
-	"SKR03": frozenset({"2323", "2723"}),
-	"SKR04": frozenset(),
+	"SKR03": frozenset(
+		_numbers(
+			"""
+0040 0583 0978 1300 1305 1310 1315 1320 1325 1327 1330 1373 1583 1587 1660 1788 2006 2008 2010 2090 2091 2094
+2106 2130 2139 2307 2309 2323 2508 2590 2594 2670 2679 2688 2705 2707 2720 2723 3788 3796 4905 8195 8196 8516
+8574 8575 8576 8579 8600
+"""
+		)
+	),
+	"SKR04": frozenset(_numbers("0160 1230 1327 1483 5788 5796 7128 7307")),
 }
-"""Accounts of the sale of shares of a Kapitalgesellschaft that the DATEV edition valid for 2020 holds and the edition
-valid for 2026 does not (DATEV-Kontenrahmen nach dem Bilanzrichtlinie-Umsetzungsgesetz, Standardkontenrahmen SKR 03,
-Art.-Nr. 11174, „Gültig für 2020“, Programmverbindung G K, footnote 9: 2323 „Verluste aus der Veräußerung von Anteilen
-an Kapitalgesellschaften (Finanzanlagevermögen) § 3 Nr. 40 EStG bzw. § 8b Abs. 3 KStG“, 2723 „Erträge aus der
-Veräußerung von Anteilen an Kapitalgesellschaften (Finanzanlagevermögen) § 3 Nr. 40 EStG bzw. § 8b Abs. 2 KStG“). A
-company whose chart was made from that edition books on them; their SKR04 twins 4901 and 6903 are in ERPNext's
-template (TEMPLATES)."""
+"""Accounts the DATEV edition valid for 2020 labels and the edition valid for 2026 does not, and that neither ERPNext's
+template nor the labelled ranges of 2026 hold: DATEV-Kontenrahmen nach dem Bilanzrichtlinie-Umsetzungsgesetz,
+Standardkontenrahmen SKR 03 (Art.-Nr. 11174) and SKR 04 (Art.-Nr. 11175), „Gültig für 2020“, every account either
+labels, the accounts of class 9 aside. A company whose chart was made from that edition books on them."""
 
 TEMPLATES = {
 	"SKR03": {

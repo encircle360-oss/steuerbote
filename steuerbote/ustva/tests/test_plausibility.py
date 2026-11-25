@@ -32,6 +32,7 @@ from steuerbote.ustva.plausibility import (
 	member_state,
 	merged,
 	purchase_accounts,
+	rate_account_hints,
 	reconciliation_hints,
 	residence_hints,
 	sales_accounts,
@@ -441,6 +442,17 @@ class DerivedBaseHintsTest(TestCase):
 		)
 		self.assertEqual(codes(found), [Code.WATCHED_ACCOUNT, Code.BASE_FROM_TAX])
 
+	def test_hints_say_what_to_do_with_an_account_without_a_rate_that_holds_the_return(self):
+		comparison = compare(
+			{},
+			EarlierPeriod(Period.month(2026, 10), {}),
+			EarlierPeriod(Period.month(2025, 11), {}),
+			KENNZAHLEN,
+			report_rule,
+		)
+		found = hints(comparison, [], {}, SKR03, FIGURES, unmapped=("8730", "1560"))
+		self.assertEqual(codes(found), [Code.ACCOUNT_WITHOUT_RATE])
+
 
 def turnover(voucher: str, base: str, tax: str, accounts: tuple[str, ...]) -> DerivedBase:
 	return DerivedBase("Umsatzsteuer 19 %", voucher, "81", d("19"), d(tax), d(base), accounts)
@@ -719,6 +731,38 @@ class ResidenceHintsTest(TestCase):
 			findings=findings,
 		)
 		self.assertEqual(codes(found), [Code.ACQUISITION_OUTSIDE_EU, Code.BASE_FROM_TAX, Code.RESIDENCE_OPEN])
+
+
+class RateAccountHintsTest(TestCase):
+	"""A cash discount or a bad debt on the account without a rate holds the Voranmeldung, since nothing tells which
+	Kennzahl it reduces; the hint names the accounts of the rates and the row the company may add instead."""
+
+	def test_names_the_accounts_of_the_rates_for_a_discount_without_one(self):
+		(hint,) = rate_account_hints(["8730"], "SKR03", {"8730": "Gewährte Skonti"})
+		self.assertEqual((hint.code, hint.severity), (Code.ACCOUNT_WITHOUT_RATE, Severity.HINT))
+		self.assertEqual(
+			hint.text,
+			"Konto 8730 Gewährte Skonti nennt keinen Steuersatz: Es sagt nicht, welche Kennzahl ein Betrag darauf "
+			"mindert (Kz 81, 86 oder 87), deshalb hält sein Saldo die Voranmeldung an. Buchen Sie die Beträge auf die "
+			"Konten mit Steuersatz (8736 für 19 %, 8731 für 7 %, 8734 für 0 %), oder geben Sie dem Konto in der "
+			"Kontenzuordnung eine Zeile mit seiner Kennzahl, wenn alle Beträge darauf zu einem Steuersatz gehören.",
+		)
+
+	def test_names_the_accounts_of_the_rates_for_a_bad_debt_in_each_chart(self):
+		for chart, account, accounts in (
+			("SKR03", "2400", "2406 für 19 %, 2401 für 7 %"),
+			("SKR03", "2430", "2436 für 19 %, 2431 für 7 %"),
+			("SKR04", "6930", "6936 für 19 %, 6931 für 7 %"),
+			("SKR04", "4730", "4736 für 19 %, 4731 für 7 %, 4734 für 0 %"),
+		):
+			with self.subTest(chart=chart, account=account):
+				(hint,) = rate_account_hints([account], chart, {})
+				self.assertIn(f"Konto {account} nennt keinen Steuersatz", hint.text)
+				self.assertIn(f"Konten mit Steuersatz ({accounts})", hint.text)
+
+	def test_an_account_with_its_rate_or_of_another_kind_gets_none(self):
+		self.assertEqual(rate_account_hints(["8736", "1560"], "SKR03", {}), [])
+		self.assertEqual(rate_account_hints(["8730"], "Eigener", {}), [])
 
 
 class WatchedAccountHintsTest(TestCase):

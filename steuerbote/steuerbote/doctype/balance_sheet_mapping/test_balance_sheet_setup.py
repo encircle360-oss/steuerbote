@@ -105,13 +105,14 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		self.addCleanup(patcher.stop)
 
 	def test_the_setup_runs_the_step_of_the_hook_last(self):
-		"""Last of the steps that make a document; only the steps on the exchange accounts of the company, on the
+		"""Last of the steps that make a document; only the steps on the exchange and default accounts of the company, on the
 		USt-IdNrn. of partners and on the ERiC Settings follow it."""
 		self.assertEqual(
-			[found.key for found in setup.setup_steps()][-6:],
+			[found.key for found in setup.setup_steps()][-7:],
 			[
 				"balance_sheet_mapping",
 				"exchange_accounts",
+				"company_default_accounts",
 				"vat_id_label",
 				"erpnext_germany_vat_id_check",
 				"vat_id_automatic_check",

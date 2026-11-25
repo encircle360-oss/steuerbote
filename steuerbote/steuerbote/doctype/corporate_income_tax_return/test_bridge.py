@@ -961,6 +961,12 @@ class LedgerFindingsTest(TestCase):
 		)
 		self.assertNotIn(UNKNOWN, [item.code for item in self.findings(credit("4400", "8000.00", "JV-9"))])
 
+	def test_a_rounding_on_the_account_of_an_earlier_datev_edition_is_no_unknown_account(self):
+		"""SKR03 2309 „Sonstige Aufwendungen unregelmäßig“ of the DATEV edition valid for 2020, where a company may round,
+		has its place in the defaults; 1716, which no edition at hand labels, has none."""
+		self.assertNotIn(UNKNOWN, [item.code for item in self.findings(debit("2309", "0.01", "JV-9"))])
+		self.assertIn(UNKNOWN, [item.code for item in self.findings(debit("1716", "0.01", "JV-9"))])
+
 	def test_a_sale_of_shares_on_the_account_of_an_earlier_datev_edition_needs_its_place(self):
 		"""SKR03 2723 of the DATEV edition valid for 2020 holds gains under § 8b Abs. 2 KStG; the defaults know it, so a
 		mapping without its row holds the return back like any account of the defaults."""

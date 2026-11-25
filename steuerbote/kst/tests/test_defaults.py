@@ -392,8 +392,8 @@ FLAGGED = {
 # income from holdings of no named legal form holds the filing back, the others ask for a look.
 HOLDING_INCOME = {"SKR03": {"2600", "2619"}, "SKR04": {"7000", "7009"}}
 SHARE_RESULTS = {
-	"SKR03": {"2620", "2640", "2725", "2325", "4870", "4875", "4877", "4878"},
-	"SKR04": {"7010", "7020", "4905", "6905", "7200", "7210", "7207", "7217"},
+	"SKR03": {"2620", "2640", "2647", "2649", "2725", "2325", "4870", "4875", "4877", "4878"},
+	"SKR04": {"7010", "7020", "7017", "7019", "4905", "6905", "7200", "7210", "7207", "7217"},
 }
 UNMARKED = {
 	"SKR03": {
@@ -404,6 +404,17 @@ UNMARKED = {
 		"4665": Category.OTHER_NONDEDUCTIBLE,
 		"2723": Category.SHARE_GAIN,
 		"2323": Category.SHARE_LOSS,
+		"2130": Category.INTEREST,
+		"2139": Category.INTEREST,
+		"2140": Category.INTEREST,
+		"2149": Category.INTEREST,
+		"2666": Category.TRADING_UNCLASSIFIED,
+		"2094": None,
+		"2594": None,
+		"2106": None,
+		"2688": None,
+		"2623": None,
+		"2646": None,
 		**dict.fromkeys(HOLDING_INCOME["SKR03"] | SHARE_RESULTS["SKR03"]),
 	},
 	"SKR04": {
@@ -417,6 +428,13 @@ UNMARKED = {
 		"7007": Category.DIVIDENDS,
 		"7340": Category.INTEREST,
 		"7349": Category.INTEREST,
+		"7330": Category.INTEREST,
+		"7339": Category.INTEREST,
+		"4843": Category.TRADING_UNCLASSIFIED,
+		"7307": None,
+		"7128": None,
+		"7013": None,
+		"7016": None,
 		"4901": Category.SHARE_GAIN,
 		"6903": Category.SHARE_LOSS,
 		"7464": None,
@@ -623,6 +641,10 @@ class CategoriesTest(TestCase):
 					"2125",
 					"2126",
 					"2129",
+					"2130",
+					"2139",
+					"2140",
+					"2149",
 					"8994",
 				},
 				{
@@ -643,6 +665,8 @@ class CategoriesTest(TestCase):
 					"7329",
 					"7340",
 					"7349",
+					"7330",
+					"7339",
 					"4824",
 				},
 			),
@@ -666,7 +690,7 @@ class CategoriesTest(TestCase):
 				self.assertEqual(self.numbers("SKR04", category), skr04)
 
 	def test_the_trading_accounts_get_no_class(self):
-		for chart, numbers in (("SKR03", {"2654", "2166"}), ("SKR04", {"7115", "6883"})):
+		for chart, numbers in (("SKR03", {"2654", "2166", "2666"}), ("SKR04", {"7115", "6883", "4843"})):
 			with self.subTest(chart=chart):
 				self.assertEqual(self.numbers(chart, Category.TRADING_UNCLASSIFIED), numbers)
 				self.assertEqual(
@@ -723,6 +747,12 @@ class WatchedTest(TestCase):
 				"2618",
 				"4872",
 				"2745",
+				"2623",
+				"2646",
+				"2094",
+				"2594",
+				"2106",
+				"2688",
 				"9890",
 				"9906",
 				"9908",
@@ -765,6 +795,10 @@ class WatchedTest(TestCase):
 				"7464",
 				"7563",
 				"7452",
+				"7013",
+				"7016",
+				"7307",
+				"7128",
 			},
 		}
 		for chart in CHARTS:

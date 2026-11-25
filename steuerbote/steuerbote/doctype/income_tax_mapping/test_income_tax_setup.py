@@ -86,6 +86,7 @@ class IntegrationTestIncomeTaxSetup(IntegrationTestCase):
 				"income_tax_mapping",
 				"balance_sheet_mapping",
 				"exchange_accounts",
+				"company_default_accounts",
 				"vat_id_label",
 				"erpnext_germany_vat_id_check",
 				"vat_id_automatic_check",

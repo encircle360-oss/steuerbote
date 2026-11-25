@@ -892,8 +892,10 @@ class PlacesOfBalancesTest(TestCase):
 			finding.text,
 			"Konto 1360 Geldtransit hat einen Saldo, aber keinen Platz in der Bilanzzuordnung: Ordnen Sie es einer "
 			"Position zu, oder sagen Sie, warum es außerhalb von Bilanz und GuV liegt. Die Vorgaben geben Konten, die "
-			"der Kontenrahmen nicht beschriftet, keinen Platz; die Steuerberatung entscheidet ihn. „Konten prüfen“ in "
-			"der Bilanzzuordnung nennt alle Konten ohne Platz.",
+			"der Kontenrahmen nicht beschriftet, keinen Platz; die Steuerberatung entscheidet ihn. Ein Unterkonto, das "
+			"das Unternehmen zwischen beschrifteten Konten anlegt, etwa ein weiteres Bankkonto SKR03 1221 neben „Bank "
+			"2“, bekommt in der Regel die Position des beschrifteten Kontos, das es unterteilt. „Konten prüfen“ in der "
+			"Bilanzzuordnung nennt alle Konten ohne Platz.",
 		)
 		self.assertEqual((finding.amount, finding.source), (Decimal("5"), "§ 246 Abs. 1 Satz 1 HGB"))
 		self.assertEqual((placement.left_out, placement.ready), ((books[1],), False))
