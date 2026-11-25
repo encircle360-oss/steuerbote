@@ -242,14 +242,12 @@ class BlockedNotesTest(TestCase):
 	"""The report names the accounts watched at the blocking level that hold the return back, as the return lists them."""
 
 	def test_names_each_account_with_its_name(self):
+		rest = (
+			" ist auf der Stufe „Sperrt“ beobachtet und hat im Zeitraum einen Saldo, der in keine Kennzahl eingeht"
+			": Die Voranmeldung ist nicht bereit, bis das Konto zugeordnet ist."
+		)
 		self.assertEqual(
 			blocked_notes(("1548", "1560"), {"1548": "Vorsteuer in Folgeperiode/im Folgejahr abziehbar"}),
-			[
-				"Konto 1548 Vorsteuer in Folgeperiode/im Folgejahr abziehbar ist auf der Stufe „Sperrt“ beobachtet "
-				"und hat im Zeitraum einen Saldo, der in keine Kennzahl eingeht: Die Voranmeldung ist nicht bereit, "
-				"bis das Konto zugeordnet ist.",
-				"Konto 1560 ist auf der Stufe „Sperrt“ beobachtet und hat im Zeitraum einen Saldo, der in keine "
-				"Kennzahl eingeht: Die Voranmeldung ist nicht bereit, bis das Konto zugeordnet ist.",
-			],
+			[f"Konto 1548 Vorsteuer in Folgeperiode/im Folgejahr abziehbar{rest}", f"Konto 1560{rest}"],
 		)
 		self.assertEqual(blocked_notes((), {}), [])
