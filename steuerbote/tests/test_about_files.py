@@ -199,7 +199,9 @@ class AboutBlockPlacesTest(TestCase):
 
 class CreatedWithTest(TestCase):
 	def test_every_print_format_ends_its_footer_with_the_version_of_steuerbote(self):
-		print_formats = sorted(path.name for path in PRINT_FORMATS.iterdir() if path.is_dir())
+		print_formats = sorted(
+			path.parent.name for path in PRINT_FORMATS.glob("*/*.json") if path.stem == path.parent.name
+		)
 		self.assertEqual(len(print_formats), 8)
 		annual = (APP.parent / ANNUAL_FOOTER).read_text(encoding="utf-8")
 		self.assertRegex(annual, rf'\{{% include "{CREATED_WITH}" %\}}\n</div>\s*$')

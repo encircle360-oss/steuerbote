@@ -1,3 +1,5 @@
+import json
+
 import frappe
 from frappe.desk.desktop import get_desktop_page
 from frappe.tests import IntegrationTestCase
@@ -41,7 +43,7 @@ class AboutBlockTest(IntegrationTestCase):
 		self.assertTrue(frappe.has_permission("Custom HTML Block", "read", about.BLOCK, user=ACCOUNTS_USER))
 
 	def test_the_workspace_steuern_shows_the_block(self):
-		page = get_desktop_page("Steuern")
+		page = get_desktop_page(json.dumps({"name": "Steuern", "title": "Steuern", "public": 1}))
 		self.assertIn(about.BLOCK, [block.label for block in page["custom_blocks"]["items"]])
 
 	def test_the_line_of_the_printouts_names_the_installed_version(self):
