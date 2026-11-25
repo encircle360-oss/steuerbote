@@ -142,3 +142,9 @@ class TestObligations(IntegrationTestCase):
 			[(row.voucher_no, row.kind) for row in changed.late_changes], [(late.name, "Booked after Filing")]
 		)
 		self.assertIn("reported by this corrected return", changed.late_changes[0].message)
+
+	def test_a_rhythm_or_a_year_it_does_not_know_is_refused_by_name(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "knows no rhythm daily"):
+			self.new_return(3, rhythm="daily")
+		with self.assertRaisesRegex(frappe.ValidationError, "zwanzig is no year"):
+			self.new_return(3, year="zwanzig")

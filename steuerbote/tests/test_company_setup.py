@@ -183,6 +183,10 @@ class CompanySetupTest(IntegrationTestCase):
 		self.assertEqual([row.tax_accounts for row in mapping.checks], ["1776"])
 		self.assertEqual([(row.account_number, row.level) for row in mapping.watched], [("1548", "blocking")])
 
+	def test_without_a_company_it_asks_for_one(self):
+		with self.assertRaisesRegex(frappe.ValidationError, "There is no company"):
+			setup.set_up()
+
 	def test_reports_what_it_made_and_what_is_left_to_the_user(self):
 		done = setup.run(SKR03_COMPANY, TODAY)
 		settings = result_of(done, "vat_return_settings")
