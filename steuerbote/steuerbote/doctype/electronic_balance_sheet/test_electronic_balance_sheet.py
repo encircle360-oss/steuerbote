@@ -384,7 +384,9 @@ class TestElectronicBalanceSheet(Transmitting, IntegrationTestCase):
 				},
 			)
 		settings.save(ignore_permissions=True)
-		self.addCleanup(frappe.db.delete, "Annual Filing Shareholder", {"parent": COMPANY, "parenttype": SETTINGS})
+		self.addCleanup(
+			frappe.db.delete, "Annual Filing Shareholder", {"parent": COMPANY, "parenttype": SETTINGS}
+		)
 		doc = self.calculated()
 		_, _, run = self.transmitted(doc, "validate")
 		_, nutzdaten, *_ = run.call_args.args
