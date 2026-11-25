@@ -64,3 +64,22 @@ class ListIndicatorTest(TestCase):
 				(status,) = (field for field in definition["fields"] if field["fieldname"] == "status")
 				for option in status["options"].split("\n"):
 					self.assertIn(f"{option}:", script)
+
+
+class VatReturnFormTest(TestCase):
+	def setUp(self):
+		self.form = FORMS["VAT Return"].read_text(encoding="utf-8")
+		self.controller = (DOCTYPES / "vat_return" / "vat_return.py").read_text(encoding="utf-8")
+
+	def test_a_filed_return_offers_no_cancellation_the_server_refuses(self):
+		self.assertIn('self.set_onload("cancellable", self.cancellable())', self.controller)
+		self.assertIn("frm.page.clear_secondary_action();", self.form)
+
+	def test_the_note_of_a_filing_keeps_its_dialog_open_until_the_server_takes_it(self):
+		(ask,) = re.findall(r"function ask_for_filing_note\(frm, filed_via\) \{.*?\n\}", self.form, re.DOTALL)
+		self.assertIn("new frappe.ui.Dialog(", ask)
+		self.assertNotIn("frappe.prompt(", ask)
+		self.assertIn("dialog.hide();", ask)
+		self.assertIn("TRANSFERTICKET.test(", ask)
+		(pattern,) = re.findall(r"const TRANSFERTICKET = /\^(.*)\$/;", self.form)
+		self.assertIn(pattern, self.controller)

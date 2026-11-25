@@ -104,3 +104,20 @@ class TestObligations(IntegrationTestCase):
 			COMPANY, "2026-08-10", [(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)]
 		)
 		self.assertNotIn("ZM-OHNE-RHYTHMUS", self.codes(self.calculate(self.new_return(8))))
+
+	def test_a_second_draft_of_an_open_period_names_the_first(self):
+		first = self.new_return(5)
+		frappe.clear_messages()
+		second = self.new_return(5)
+		self.assertIn(first.name, " ".join(str(message) for message in frappe.get_message_log()))
+		self.assertTrue(second.name)
+
+	def test_a_filed_return_is_not_cancellable_and_a_draft_has_nothing_to_cancel(self):
+		a = self.account
+		post_journal_entry(
+			COMPANY, "2026-04-10", [(a["1400"], 119, 0), (a["8400"], 0, 100), (a["1776"], 0, 19)]
+		)
+		doc = self.calculate(self.new_return(4))
+		self.assertFalse(doc.cancellable())
+		doc.mark_filed_outside(filed_via="mein_elster")
+		self.assertFalse(frappe.get_doc("VAT Return", doc.name).cancellable())
