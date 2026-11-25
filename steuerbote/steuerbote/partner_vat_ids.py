@@ -328,6 +328,18 @@ def default_company() -> str | None:
 	return frappe.db.get_single_value("Global Defaults", "default_company") or None
 
 
+def companies_asking(
+	party_type: str, party: str, trigger: str, source: tuple[str, str] | None
+) -> list[CompanyPolicy]:
+	"""The companies that confirm the partner's number for the trigger: for an invoice its company, else those of
+	companies_for."""
+	if source and source[0] == "Sales Invoice":
+		company = frappe.db.get_value("Sales Invoice", source[1], "company")
+		policy = company_policy(company) if company else None
+		return [policy] if policy else []
+	return companies_for(party_type, party, trigger)
+
+
 def companies_for(party_type: str, party: str, trigger: str) -> list[CompanyPolicy]:
 	"""The companies that confirm the partner's number for the trigger: those it deals with, or the default company
 	when it deals with none, each with its own German USt-IdNr.; a change asks only where the settings confirm on a
@@ -415,7 +427,7 @@ def request(
 				_("{0} has no USt-IdNr. of another member state that the BZSt confirms.").format(party)
 			)
 		return False
-	if not companies_for(party_type, party, trigger):
+	if not companies_asking(party_type, party, trigger, source):
 		if throw:
 			frappe.throw(
 				_(
@@ -486,7 +498,7 @@ def run_party_confirmation(
 			number = vatid.normalize(tax_id)
 			details = party_details(party_type, party)
 			source = (source_doctype, source_name) if source_doctype and source_name else None
-			for policy in companies_for(party_type, party, trigger):
+			for policy in companies_asking(party_type, party, trigger, source):
 				outcome = _confirm(policy, number, details, (party_type, party), trigger, source)
 				if outcome is Asked.FAILED:
 					failed.append(policy.company)
