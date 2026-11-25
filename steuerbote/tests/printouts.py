@@ -55,13 +55,16 @@ class Margins:
 @dataclass(frozen=True)
 class Expectations:
 	"""What a printout must hold: its pages, the texts on every page, the headings that must not end a page, the
-	pairs of texts that must stand on the same page and the least number of lines of the body of a last page."""
+	pairs of texts that must stand on the same page, the least number of lines of the body of a last page, texts it
+	must hold somewhere, such as one in the language it is printed in, and texts it must not hold anywhere."""
 
 	pages: tuple[int, int]
 	on_every_page: tuple[str, ...] = ()
 	headings: tuple[str, ...] = ()
 	together: tuple[tuple[str, str], ...] = ()
 	last_page_lines: int = 4
+	somewhere: tuple[str, ...] = ()
+	nowhere: tuple[str, ...] = ()
 	margins: Margins = field(default_factory=lambda: Margins(top=28, bottom=18, left=20, right=15))
 
 
@@ -191,6 +194,21 @@ def together(pages, pairs) -> list[str]:
 	return problems
 
 
+def somewhere(pages, texts) -> list[str]:
+	"""Each text stands on some page, such as a text in the language the printout is meant to be in."""
+	return [f"„{text}“ fehlt im Ausdruck" for text in texts if first_page_of(pages, text) is None]
+
+
+def nowhere(pages, texts) -> list[str]:
+	"""No text stands on any page, such as one of the source language a missing translation falls back to."""
+	return [
+		f"Seite {number}: „{text}“ im Ausdruck"
+		for text in texts
+		for number, page in enumerate(pages, start=1)
+		if " ".join(text.split()) in page_text(page)
+	]
+
+
 def check(pages, expected: Expectations) -> list[str]:
 	"""Every problem of a printout, empty when it is clean."""
 	margins = expected.margins
@@ -203,4 +221,6 @@ def check(pages, expected: Expectations) -> list[str]:
 		*last_page(pages, margins, expected.last_page_lines),
 		*lonely_headings(pages, margins, expected.headings),
 		*together(pages, expected.together),
+		*somewhere(pages, expected.somewhere),
+		*nowhere(pages, expected.nowhere),
 	]
