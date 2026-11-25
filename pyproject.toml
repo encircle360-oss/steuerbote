@@ -200,6 +200,7 @@ source = [
     "steuerbote.steuerbote.doctype.electronic_balance_sheet.layout",
     "steuerbote.steuerbote.report.e_bilanz_positionen.rows",
     "steuerbote.steuerbote.about",
+    "steuerbote.steuerbote.print_medium",
     "steuerbote.tests.printouts",
 ]
 omit = ["*/tests/*", "*/steuerbote/eric/secrets.py"]

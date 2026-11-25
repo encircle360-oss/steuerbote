@@ -41,6 +41,8 @@ jinja = {
 	"methods": [
 		"steuerbote.steuerbote.about.steuerbote_version",
 		"steuerbote.steuerbote.about.steuerbote_pdf_generator",
+		"steuerbote.steuerbote.print_medium.steuerbote_print_medium",
+		"steuerbote.steuerbote.print_medium.steuerbote_browser_page",
 	]
 }
 

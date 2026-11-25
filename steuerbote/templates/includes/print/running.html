@@ -4,9 +4,28 @@
 	which version of Steuerbote the printout was made and the page of how many. A page that comes loose can so be put
 	back and its state told. The print format sets running_title, running_number_label, running_number and
 	running_period before it includes the part, each of them may be missing; the spans page and topage are the ones
-	wkhtmltopdf fills in. The preview in the browser hides both (visible-pdf).
+	wkhtmltopdf fills in. The preview on the screen and the page /printview, which a browser prints itself, hide both;
+	the browser gets them from the margin boxes of @page instead, with its own page numbers (print_medium.py).
 -#}
 {%- set running_created = frappe.utils.format_datetime(frappe.utils.now_datetime(), "dd.MM.yyyy HH:mm") -%}
+{%- set running_number_line = (running_number_label | default("")) ~ " " ~ (running_number | default("")) if running_number | default("") else "" -%}
+{%- if steuerbote_print_medium() != "pdf" %}
+<style>
+	#header-html,
+	#footer-html {
+		display: none !important;
+	}
+</style>
+{%- endif %}
+{%- if steuerbote_print_medium() == "browser" %}
+<style>
+	{{ steuerbote_browser_page(
+		[(running_title | default("")) ~ " · " ~ doc.company, running_number_line],
+		[doc.name ~ " · " ~ (doc.status or ""), running_period | default("")],
+		"Erstellt am " ~ running_created ~ " mit Steuerbote " ~ steuerbote_version(),
+	) }}
+</style>
+{%- endif %}
 <div id="header-html" class="visible-pdf">
 	<div class="sb-running sb-running-head">
 		<div class="sb-running-rule">

@@ -1,6 +1,8 @@
 """Where a printout goes (print_medium.py), read without a bench."""
 
-from unittest import TestCase
+import sys
+from types import SimpleNamespace
+from unittest import TestCase, mock
 
 from steuerbote.steuerbote import print_medium
 
@@ -41,3 +43,22 @@ class PageRuleTest(TestCase):
 		)
 		self.assertIn(print_medium.css_string("Erstellt am 25.11.2026 10:00 mit Steuerbote 0.15.1"), rule)
 		self.assertEqual(rule.count("{"), rule.count("}"))
+
+
+class JinjaTest(TestCase):
+	def medium(self, request) -> str:
+		frappe = SimpleNamespace(local=SimpleNamespace(request=request) if request else SimpleNamespace())
+		with mock.patch.dict(sys.modules, {"frappe": frappe}):
+			return print_medium.steuerbote_print_medium()
+
+	def test_reads_the_path_of_the_request(self):
+		self.assertEqual(self.medium(SimpleNamespace(path="/printview")), print_medium.BROWSER)
+
+	def test_a_job_without_a_request_prints_a_pdf(self):
+		self.assertEqual(self.medium(None), print_medium.PDF)
+
+	def test_the_browser_page_takes_the_lines_of_head_and_foot(self):
+		self.assertEqual(
+			print_medium.steuerbote_browser_page(["a", "b"], ["c", "d"], "e"),
+			print_medium.page_rule(("a", "b"), ("c", "d"), "e"),
+		)
