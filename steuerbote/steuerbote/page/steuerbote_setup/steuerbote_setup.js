@@ -41,7 +41,7 @@ frappe.pages["steuerbote-setup"].on_page_load = function (wrapper) {
 	$(page.main).append(
 		$('<p class="text-muted steuerbote-setup-intro"></p>').text(
 			__(
-				"Makes what a company needs for the Umsatzsteuer-Voranmeldung and leaves what it has: the VAT Return Settings, the VAT Return Mapping with the defaults of SKR03 or SKR04 and, where § 18 Absatz 2 UStG decides it, the first Voranmeldungszeitraum. A second run changes nothing."
+				"Makes what a company needs for its filings and leaves what it has: the VAT Return Settings, the VAT Return Mapping, the Income Tax Mapping and the Balance Sheet Mapping with the defaults of SKR03 or SKR04 and, where § 18 Absatz 2 UStG decides it, the first Voranmeldungszeitraum. Then it checks what only the company settles, such as the start in Steuerbote, the deadlines and their reminder, the USt-IdNrn. and the ERiC Settings, and names what is open. A second run changes nothing."
 			)
 		),
 		report,
