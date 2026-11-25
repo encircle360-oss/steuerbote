@@ -41,7 +41,13 @@ def fields(name: str) -> dict[str, dict]:
 
 
 def whitelisted(source: str, method: str) -> bool:
-	return re.search(rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(', source) is not None
+	return (
+		re.search(
+			rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\t@guards\.on_stored\([^\n]*\)\n\tdef {method}\(',
+			source,
+		)
+		is not None
+	)
 
 
 class FormTest(TestCase):

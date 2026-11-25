@@ -133,7 +133,10 @@ class FormFilesTest(TestCase):
 		)
 		for method in methods:
 			with self.subTest(method=method):
-				self.assertRegex(self.source, rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\tdef {method}\(')
+				self.assertRegex(
+					self.source,
+					rf'@frappe\.whitelist\(methods=\["POST"\]\)\n\t@guards\.on_stored\([^\n]*\)\n\tdef {method}\(',
+				)
 
 	def test_the_form_includes_the_dialog_of_the_differences(self):
 		self.assertTrue(

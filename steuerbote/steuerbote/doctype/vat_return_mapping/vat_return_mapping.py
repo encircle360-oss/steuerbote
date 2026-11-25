@@ -64,6 +64,7 @@ from steuerbote.mapping_sync import (
 	rows_to_mapping,
 )
 from steuerbote.mappings import diff, taking_over, transfer
+from steuerbote.steuerbote import guards
 from steuerbote.tax_templates import template_accounts
 from steuerbote.ustjahr.split import Split, SplitError
 from steuerbote.ustjahr.years import LATEST_YEAR as ANNUAL_YEAR
@@ -270,6 +271,7 @@ class VATReturnMapping(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write", new=True)
 	def load_defaults(self) -> list[str]:
 		"""Replace the rows by the defaults of the chart, reduced to the ledger accounts of the company, and note
 		the version of the defaults and the rows they gave.
@@ -309,6 +311,7 @@ class VATReturnMapping(Document):
 		return defaults.missing
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read", new=True)
 	def compare_with_defaults(self) -> dict:
 		"""Vorgaben aktualisieren: each difference between the rows and the defaults of today, with whether it comes
 		from the defaults, which the form proposes to take over, or from the user."""
@@ -324,6 +327,7 @@ class VATReturnMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def update_from_defaults(self, chosen: list[str] | None = None, acknowledge: bool = False) -> int:
 		"""Take over the chosen differences of compare_with_defaults, by their id, keep every other row, note the
 		defaults of today as taken over, and save. Taking over none notes them only with ``acknowledge``, the word of
@@ -340,6 +344,7 @@ class VATReturnMapping(Document):
 		return len(keys)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def export_mapping(self) -> dict:
 		"""Zuordnung exportieren: the mapping as saved, with the defaults it took over, as a file attached privately,
 		where a file of the same content attached before is kept instead. Returns the name, the address and the text
@@ -363,6 +368,7 @@ class VATReturnMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read")
 	def compare_with_file(self, file_url: str | None = None, content: str | None = None) -> dict:
 		"""Zuordnung importieren: what the file of a mapping, uploaded privately to this mapping or pasted, would change
 		here, each difference proposed, and what its header says."""
@@ -381,6 +387,7 @@ class VATReturnMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def import_file(
 		self, file_url: str | None = None, content: str | None = None, chosen: list[str] | None = None
 	) -> int:
@@ -525,6 +532,7 @@ class VATReturnMapping(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read", new=True)
 	def check_tax_templates(self) -> list[dict]:
 		"""Steuervorlagen prüfen: the accounts the tax templates of the company name that the mapping, as the form
 		holds it, gives no place, each with its number, its name and its templates."""
@@ -539,6 +547,7 @@ class VATReturnMapping(Document):
 		]
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def watch_template_accounts(self) -> list[str]:
 		"""Watch every account of check_tax_templates that has an account number at the level Sperrt, then save.
 

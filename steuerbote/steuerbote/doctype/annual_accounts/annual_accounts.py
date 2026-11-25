@@ -54,6 +54,7 @@ from steuerbote.jahresmeldung.findings import Finding, Severity
 from steuerbote.jahresmeldung.lifecycle import ACCOUNTS, Event, Status
 from steuerbote.jahresmeldung.overrides import to_amount
 from steuerbote.ledger import account_names
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, AnnualFiling, Calculation
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.doctype.annual_accounts import bridge, layout, xbrl_export
@@ -383,6 +384,7 @@ class AnnualAccounts(AnnualFiling, Document):
 	# The steps after Berechnen.
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def make_disclosure_preview(self) -> str:
 		"""Vorschau der Offenlegung: what becomes visible, printed with the PDF engine of the Print Settings into a
 		private PDF attached to the document. Returns its address."""
@@ -399,6 +401,7 @@ class AnnualAccounts(AnnualFiling, Document):
 		return url
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def make_xbrl(self) -> dict[str, Any]:
 		"""XBRL für das Unternehmensregister: the file of the Offenlegung, attached privately, or the findings that hold
 		it back, which take the place of those of the file before in the table Befunde."""
@@ -430,6 +433,7 @@ class AnnualAccounts(AnnualFiling, Document):
 		return {"file_url": url, "held_back": []}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("submit")
 	def record_transmission(
 		self,
 		transmitted_on: str,
@@ -489,6 +493,7 @@ class AnnualAccounts(AnnualFiling, Document):
 		return status
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("submit")
 	def record_publication(
 		self, published_on: str, receipt_file: str | None = None, fees: float | str | None = None
 	) -> str:
@@ -512,6 +517,7 @@ class AnnualAccounts(AnnualFiling, Document):
 		return status
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def make_appropriation_entry(self) -> str:
 		"""Ergebnisverwendung buchen: a draft Journal Entry of the resolution on the day of the Feststellung, on the
 		accounts of the chart (bridge.APPROPRIATION_ACCOUNTS), which the company checks and submits. Returns its name."""
@@ -582,13 +588,8 @@ class AnnualAccounts(AnnualFiling, Document):
 	# The rules of a save.
 
 	def _keep_the_entered_tables(self, before: Document | None) -> None:
-		"""A save keeps the table Angaben as Berechnen wrote it and takes the answers alone; another key discards the
-		Angaben and the signatories, which Berechnen starts again for it."""
+		"""A save keeps the table Angaben as Berechnen wrote it and takes the answers alone."""
 		if before is None or self.flags.calculating:
-			return
-		if self._key_of(before) != self._key_of(self):
-			self.set(NOTES, [])
-			self.set(SIGNATORIES, [])
 			return
 		self.set(NOTES, bridge.notes_kept(self._rows(NOTES, before), self._rows(NOTES)))
 

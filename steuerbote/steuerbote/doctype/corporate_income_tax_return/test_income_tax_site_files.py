@@ -164,7 +164,7 @@ class FormScriptFilesTest(TestCase):
 		self.assertIn('frm.call("propose_provisions")', source)
 		self.assertIn('frappe.set_route("Form", "Journal Entry", r.message)', source)
 		self.assertIn(
-			'@frappe.whitelist(methods=["POST"])\n\tdef propose_provisions(self)',
+			'@frappe.whitelist(methods=["POST"])\n\t@guards.on_stored("write")\n\tdef propose_provisions(self)',
 			controller(KST).read_text(encoding="utf-8"),
 		)
 
