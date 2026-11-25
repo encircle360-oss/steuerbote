@@ -42,6 +42,7 @@ from steuerbote.ustva.assignment import (
 	Placement,
 	filed_outside,
 	periods_with_the_books,
+	settled,
 )
 
 VAT_RETURN = "VAT Return"
@@ -127,7 +128,9 @@ class VatLedger:
 		return self.lines_between(period.start, period.end)
 
 	def lines_between(self, start: date, end: date) -> list[LedgerLine]:
-		return [placement.booking.line() for placement in self.placements if start <= placement.date <= end]
+		"""The ledger lines of a time without a voucher that its cancellation takes back in it (assignment.settled)."""
+		placed = (placement for placement in self.placements if start <= placement.date <= end)
+		return [placement.booking.line() for placement in settled(placed)]
 
 	def posting_dates(self, period: Period) -> dict[str, date]:
 		"""The first posting date of each voucher reported in ``period``, by voucher key."""

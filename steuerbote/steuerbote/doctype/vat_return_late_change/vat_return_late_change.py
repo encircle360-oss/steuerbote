@@ -1,7 +1,9 @@
 from frappe.model.document import Document
 
+from steuerbote.steuerbote.recorded_vouchers import RecordedVoucherRow
 
-class VATReturnLateChange(Document):
+
+class VATReturnLateChange(RecordedVoucherRow, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -11,7 +13,7 @@ class VATReturnLateChange(Document):
 		from frappe.types import DF
 
 		booked_at: DF.Datetime | None
-		kind: DF.Literal["Booked after Filing", "Changed since Filing"]
+		kind: DF.Literal["Booked after Filing", "Cancelled after Filing", "Changed since Filing"]
 		message: DF.SmallText | None
 		parent: DF.Data
 		parentfield: DF.Data

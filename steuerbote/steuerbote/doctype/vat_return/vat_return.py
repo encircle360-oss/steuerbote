@@ -82,11 +82,13 @@ from steuerbote.steuerbote.guards import Filing
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds, year_before
 from steuerbote.suppliers import load_vouchers
 from steuerbote.tax_templates import template_accounts
-from steuerbote.ustva import carried, plausibility, registers, tax_templates
+from steuerbote.ustva import carried, input_tax, obligations, plausibility, registers, tax_templates
 from steuerbote.ustva.assignment import changes
-from steuerbote.ustva.defaults import TIMING_ACCOUNTS, deliberately_without_kennzahl
+from steuerbote.ustva.defaults import TIMING_ACCOUNTS, deliberately_without_kennzahl, purchase_rates
 from steuerbote.vat_periods import VatLedger, filed_amounts
 from steuerbote.vatid import Details, UrllibFetch
+from steuerbote.zm import rhythm as zm_rhythm
+from steuerbote.zm.errors import ZmError
 from steuerbote.zm.lines import VoucherAmount
 
 DOCTYPE = "VAT Return"
@@ -193,6 +195,38 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		self.set_onload("confirmation", self.confirmation_state())
 		if self.docstatus == 1 and self.status == FILED:
 			self.set_onload("changes_since_filing", self.changes_since_filing())
+		self.set_onload("cancellable", self.cancellable())
+
+	def cancellable(self) -> bool:
+		"""Whether the form offers Stornieren: only a submitted return without a record that files it, which a version
+		of Steuerbote before such records submitted with Buchen alone (before_cancel)."""
+		return self.docstatus == 1 and not any(row.status == SUCCEEDED for row in self.filings())
+
+	def after_insert(self) -> None:
+		"""A second draft of the same period is allowed, as the forms of a period may be prepared side by side, but the
+		user hears of the first, which may be the one meant."""
+		if self.is_correction:
+			return
+		others = frappe.get_all(
+			DOCTYPE,
+			filters={
+				"company": self.company,
+				"year": cint(self.year),
+				"period_code": self.period_code,
+				"docstatus": 0,
+				"is_correction": 0,
+				"name": ["!=", self.name],
+			},
+			pluck="name",
+		)
+		if others:
+			frappe.msgprint(
+				_("{0} of {1} has a draft already: {2}. Delete one of them before filing.").format(
+					self.period_label, escape_html(self.company), ", ".join(others)
+				),
+				indicator="orange",
+				alert=True,
+			)
 
 	def before_insert(self) -> None:
 		"""A new return starts as a draft that Berechnen has not read, whatever it was made with: its Kennzahlen keep
@@ -218,6 +252,7 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		self.refuse_changes_after_sending()
 		if self._lacks_mandatory_values():
 			return  # the mandatory check that follows names the missing fields
+		self._require_known_rhythm_and_year()
 		self._refuse_a_period_before_the_start()
 		self._require_catalogue()
 		self.provisional = int(bridge.provisional_forms(cint(self.year)) is not None)
@@ -286,7 +321,10 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		)
 		comparison = build_comparison(self, period, settings, mapping, ledger)
 		self.set("comparison", bridge.comparison_rows(comparison))
-		self.set("late_changes", late_change_rows(ledger, period, settings, mapping))
+		late_rows = late_change_rows(ledger, period, settings, mapping)
+		if self.is_correction:
+			late_rows += [_late_row(row) for row in late.correction_rows(ledger.late(), period)]
+		self.set("late_changes", late_rows)
 		self.update({"period_basis": ledger.basis.value, "late_treatment": ledger.treatment.value})
 		reconciliation = build_reconciliation(
 			self.company, period, mapping, load_lines(self.company, period.start, period.end)
@@ -304,7 +342,14 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		)
 		hints = build_hints(self, period, mapping, result, comparison, reconciliation, sales_invoices(lines))
 		stale = bridge.stale_override_hints(self.kennzahlen, _figures(self.company))
-		self.set("hints", bridge.hint_rows(plausibility.merged(stale, (*hints, *release_hints))))
+		hints = plausibility.merged(
+			stale,
+			hints,
+			release_hints,
+			return_hints(self.company, period, mapping, lines, settings, result),
+			self._correction_hints(),
+		)
+		self.set("hints", bridge.hint_rows(hints))
 		self._set_ready()
 		self.accounts_without_number = len(accounts_without_number(self.company))
 		self.flags.calculating = True
@@ -312,6 +357,22 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 			self.save()
 		finally:
 			self.flags.calculating = False
+
+	def _correction_hints(self) -> list[plausibility.Hint]:
+		"""For a corrected return, whether it files the amounts the return it replaces filed."""
+		if not self.is_correction:
+			return []
+		filed = self._other_filed_returns(status=FILED)
+		if not filed:
+			return []
+		year = cint(self.year)
+		statutory = self.statutory_tax_of_the_return()
+		final = _read_rows(bridge.final_amounts, self.kennzahlen, year, statutory)
+		before = frappe.get_doc(DOCTYPE, filed[0])
+		amounts = _read_rows(
+			bridge.final_amounts, before.kennzahlen, year, before.statutory_tax_of_the_return()
+		)
+		return obligations.correction_hints(final, amounts, before.name)
 
 	def changes_since_filing(self) -> list[dict] | None:
 		"""For the form of a filed return: the bookings made after the filing of its period, where they are
@@ -384,9 +445,10 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 
 	def _set_ready(self) -> None:
 		"""Bereit or Berechnet, from the Verprobung, the watched accounts, the errors among the hints and the forms of
-		the year, as the return stores them."""
+		the year, as the return stores them; a period that has not ended is never ready."""
 		provisional = bridge.provisional_forms(cint(self.year)) is not None
-		self.ready = int(bridge.ready_of(self.checks, self.unmapped, self.hints, provisional))
+		ended = obligations.has_ended(self._chosen_period(cint(self.year)), getdate())
+		self.ready = int(ended and bridge.ready_of(self.checks, self.unmapped, self.hints, provisional))
 		self.status = READY if self.ready else CALCULATED
 
 	def _stored_kennzahlen(self) -> list[Document]:
@@ -498,13 +560,18 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 		self._require_explained_differences()
 
 	def _not_ready(self) -> str:
-		"""Why a return that is not ready is filed with remarks only: the forms of a provisional year, or else the
-		Verprobung and the watched accounts."""
+		"""Why a return that is not ready is filed with remarks only: the forms of a provisional year, a period that had
+		not ended when it was calculated, or else the Verprobung and the watched accounts."""
 		forms = bridge.provisional_forms(cint(self.year))
 		if forms is not None:
 			return _(
 				"Steuerbote has the forms of {0} provisionally from the documentation of {1} and form USt 1 A {2}: until ERiC and the BMF publish those of {0}, the return is not ready. Explain in the remarks why it is filed nonetheless."
 			).format(cint(self.year), forms["documentation"], forms["form_year"])
+		if any(row.code == plausibility.Code.PERIOD_NOT_ENDED for row in self.hints):
+			period = self._chosen_period(cint(self.year))
+			return _(
+				"{0} ends on {1}, and the return was calculated before: it is not ready. Calculate it again after that day, or explain in the remarks why it is filed nonetheless."
+			).format(period.label, formatdate(period.end))
 		return _(
 			"The return is not ready: a Verprobung deviates, a watched account has a balance, or an error among the hints holds it, such as a customer without a valid USt-IdNr. or an override whose ledger amount changed. Explain in the remarks why it is filed nonetheless."
 		)
@@ -608,6 +675,17 @@ class VATReturn(Filing, Confirming, Transmittable, Document):
 			or self.period_index is None
 			or any(not row.kennzahl for row in self.kennzahlen)
 		)
+
+	def _require_known_rhythm_and_year(self) -> None:
+		"""A rhythm and a year as the form offers them, named as given where they are not."""
+		if self.rhythm not in {rhythm.value for rhythm in ustva.Rhythm}:
+			frappe.throw(
+				_("Steuerbote knows no rhythm {0}: a Voranmeldung is filed monthly or quarterly.").format(
+					escape_html(str(self.rhythm))
+				)
+			)
+		if not str(self.year).strip().isdigit() or not 1000 <= cint(self.year) <= 9999:
+			frappe.throw(_("{0} is no year.").format(escape_html(str(self.year))))
 
 	def _require_catalogue(self) -> None:
 		try:
@@ -1066,6 +1144,40 @@ def build_hints(
 			figures,
 		),
 	)
+
+
+def return_hints(
+	company: str,
+	period: ustva.Period,
+	mapping: ustva.Mapping,
+	lines: list[ustva.LedgerLine],
+	settings: Document,
+	result: ustva.UstvaResult,
+) -> list[plausibility.Hint]:
+	"""The hints on the input tax of the vouchers of the period (steuerbote.ustva.input_tax), with the tolerance per
+	voucher of the Verprobung, on a period that has not ended, and on turnover of the Zusammenfassende Meldung in
+	months without its rhythm (steuerbote.ustva.obligations)."""
+	figures = SiteFigures(frappe.get_cached_value("Company", company, "default_currency"))
+	amounts = {number: value.reported for number, value in result.values.items()}
+	return [
+		*input_tax.input_tax_hints(
+			lines, mapping, purchase_rates(mapping.chart), bridge.to_amount(settings.tolerance), figures
+		),
+		*obligations.period_hints(period, getdate()),
+		*obligations.zm_rhythm_hints(amounts, months_without_zm_rhythm(settings, period), figures),
+	]
+
+
+def months_without_zm_rhythm(settings: Document, period: ustva.Period) -> list[str]:
+	"""The months of the period for which the VAT Return Settings record no rhythm of the Zusammenfassende Meldung."""
+	rules = settings.get_zm_rules()
+	missing = []
+	for month in range(period.first_month, period.last_month + 1):
+		try:
+			zm_rhythm.rule_for(rules, period.year, month)
+		except ZmError:
+			missing.append(ustva.Period.month(period.year, month).label)
+	return missing
 
 
 def sales_invoices(lines: Iterable[ustva.LedgerLine]) -> list[str]:

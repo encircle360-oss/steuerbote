@@ -47,6 +47,8 @@ ACCOUNTS = {
 	"1600": ("Verbindlichkeiten aus Lieferungen und Leistungen", "Liability"),
 }
 
+# The Zusammenfassende Meldung of the turnover in Kz 21, monthly through 2026.
+ZM_MONTHLY = [{"year": 2026, "valid_from_month": 1, "rhythm": "monthly"}]
 REPORTED_IN_NOVEMBER = ["81", "46", "47", "21", "45", "66", "67", "83"]
 
 
@@ -116,7 +118,7 @@ class TestComparison(IntegrationTestCase):
 		super().setUpClass()
 		make_company(COMPANY, "STVV")
 		cls.account = make_accounts(COMPANY)
-		make_settings(COMPANY, [(2026, "monthly", 1)])
+		make_settings(COMPANY, [(2026, "monthly", 1)], zm_rules=ZM_MONTHLY)
 		make_mapping(COMPANY)
 		post_sales_of_august_and_september(COMPANY, cls.account)
 		post_verified_month(COMPANY, cls.account, "2026-10-10")
@@ -134,7 +136,8 @@ class TestComparison(IntegrationTestCase):
 		post_sales_of_august_and_september(STRICT_COMPANY, strict_account)
 
 	def test_the_verified_november_gives_only_the_reconciliation_and_the_missing_catalogue(self):
-		doc = calculated(COMPANY, 11)
+		with self.freeze_time("2026-12-15 09:00:00", tick=True):
+			doc = calculated(COMPANY, 11)
 		self.assertEqual((doc.ready, doc.status), (1, "Bereit"))
 		self.assertEqual(
 			hints_of(doc),
@@ -360,7 +363,7 @@ class TestHintsFromInvoices(IntegrationTestCase):
 		super().setUpClass()
 		make_company(INVOICING_COMPANY, "STVR")
 		a = cls.account = make_accounts(INVOICING_COMPANY)
-		make_settings(INVOICING_COMPANY, [(2026, "monthly", 1)])
+		make_settings(INVOICING_COMPANY, [(2026, "monthly", 1)], zm_rules=ZM_MONTHLY)
 		make_mapping(INVOICING_COMPANY)
 		german = make_party("Customer", "Muster Handels GmbH", "Germany", "DE123456789")
 		austrian = make_party("Customer", "Alpen Beratung GmbH", "Austria")

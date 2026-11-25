@@ -83,6 +83,9 @@ class VATReturnSettings(Document):
 		zm_rules: DF.Table[ZMRule]
 	# end: auto-generated types
 
+	def onload(self) -> None:
+		self.set_onload("filed_periods", filed_periods(self.company))
+
 	def validate(self) -> None:
 		self.set_elster_tax_number()
 		self.set_datenlieferant()
@@ -244,6 +247,19 @@ class VATReturnSettings(Document):
 			)
 			for row in self.prepayments
 		]
+
+
+def filed_periods(company: str) -> list[str]:
+	"""The periods of the company with a filed VAT Return, in the order of the periods."""
+	if not company:
+		return []
+	returns = frappe.get_all(
+		"VAT Return",
+		filters={"company": company, "docstatus": 1, "status": "Abgegeben"},
+		fields=["period_label", "from_date"],
+		order_by="from_date asc",
+	)
+	return list(dict.fromkeys(row.period_label for row in returns if row.period_label))
 
 
 def company_contact(company: str) -> dict[str, str | None]:

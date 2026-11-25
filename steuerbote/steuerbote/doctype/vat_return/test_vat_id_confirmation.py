@@ -82,7 +82,12 @@ class TestVatIdConfirmationOfTheReturn(IntegrationTestCase):
 			number: make_account(COMPANY, number, name, root_type)
 			for number, (name, root_type) in ACCOUNTS.items()
 		}
-		make_settings(COMPANY, [(2026, "monthly", 1)], ust_idnr=OWN_VAT_ID)
+		make_settings(
+			COMPANY,
+			[(2026, "monthly", 1)],
+			ust_idnr=OWN_VAT_ID,
+			zm_rules=[{"year": 2026, "valid_from_month": 1, "rhythm": "monthly"}],
+		)
 		make_mapping(COMPANY)
 		alpen = make_customer(ALPEN, "Austria", AUSTRIAN, city="Wien")
 		paris = make_customer(PARIS, "France", FRENCH, city="Paris")

@@ -189,8 +189,10 @@ class ChecklistTest(TestCase):
 				Item.START,
 				Item.OPENING_ENTRIES,
 				Item.PRIOR_RETURNS,
+				Item.CARRIED_BALANCES,
 				Item.PRIOR_PAYMENTS,
 				Item.DAUERFRIST,
+				Item.ZM_RHYTHM,
 				Item.CARRY_FORWARDS,
 				Item.PREPAYMENTS,
 				Item.PRIOR_YEAR_ACCOUNTS,
@@ -205,8 +207,10 @@ class ChecklistTest(TestCase):
 				Item.START: True,
 				Item.OPENING_ENTRIES: True,
 				Item.PRIOR_RETURNS: True,
+				Item.CARRIED_BALANCES: None,
 				Item.PRIOR_PAYMENTS: True,
 				Item.DAUERFRIST: None,
+				Item.ZM_RHYTHM: None,
 				Item.CARRY_FORWARDS: True,
 				Item.PREPAYMENTS: None,
 				Item.PRIOR_YEAR_ACCOUNTS: None,
@@ -252,6 +256,25 @@ class ChecklistTest(TestCase):
 			),
 		)
 
+	def test_the_rhythm_of_the_zm_is_open_when_the_prior_filings_report_eu_turnover(self):
+		self.assertEqual(
+			self.items(Facts(START, eu_turnover=True))[Item.ZM_RHYTHM],
+			Check(Item.ZM_RHYTHM, False, start.ZM_RHYTHM_MISSING, ()),
+		)
+		self.assertEqual(
+			self.items(Facts(START))[Item.ZM_RHYTHM], Check(Item.ZM_RHYTHM, None, start.ZM_RHYTHM_IF_ANY, ())
+		)
+		self.assertEqual(
+			self.items(Facts(START, zm_rhythm=True, eu_turnover=True))[Item.ZM_RHYTHM],
+			Check(Item.ZM_RHYTHM, True, start.ZM_RHYTHM_SET, ()),
+		)
+
+	def test_a_balance_carried_into_the_first_month_needs_nothing(self):
+		self.assertEqual(
+			self.items(Facts(START))[Item.CARRIED_BALANCES],
+			Check(Item.CARRIED_BALANCES, None, start.CARRIED_BALANCES_INFO, ()),
+		)
+
 	def test_without_annual_filing_settings_it_asks_for_them(self):
 		checks = self.items(Facts(START))
 		self.assertEqual(
@@ -265,6 +288,8 @@ class ChecklistTest(TestCase):
 			Facts(START),
 			Facts(START, annual_settings=True),
 			Facts(START, ("X",), ((2026, 1),), True, (LOSS,)),
+			Facts(START, eu_turnover=True),
+			Facts(START, zm_rhythm=True),
 		)
 		for checks in map(start.checklist, facts):
 			for check in checks:

@@ -78,9 +78,26 @@ PRIOR_PAYMENTS_FOUND = (
 	"The Umsatzsteuererklärung leaves them out of the Vorauszahlungen of the year; book such payments on the prior-year "
 	"VAT account."
 )
+CARRIED_BALANCES_INFO = (
+	"A balance the opening entries leave on Vorsteuer deductible in a later period or Umsatzsteuer not yet due stays on "
+	"its account; the first Voranmeldung that releases it is not held by it. Nothing to enter."
+)
 DAUERFRIST_INFO = (
 	"If the Finanzamt granted the Dauerfristverlängerung before Steuerbote, give the VAT Return Settings its row for "
 	"{0}; a monthly filer files the Sondervorauszahlung of {0} as a Dauerfristverlängerung without the Antrag."
+)
+ZM_RHYTHM_SET = (
+	"The VAT Return Settings record the rhythm of the Zusammenfassende Meldung; Kz 41 and 42 of the Voranmeldungen filed "
+	"before Steuerbote give the threshold of the quarters before."
+)
+ZM_RHYTHM_MISSING = (
+	"The Voranmeldungen filed before Steuerbote report turnover of the Zusammenfassende Meldung: enter its rhythm in "
+	"the VAT Return Settings, or Steuerbote knows neither the Meldung nor its deadline (§ 18a UStG)."
+)
+ZM_RHYTHM_IF_ANY = (
+	"If the company makes innergemeinschaftliche Lieferungen, Dreiecksgeschäfte or sonstige Leistungen whose tax the "
+	"recipient owes in another member state, enter the rhythm of the Zusammenfassende Meldung in the VAT Return "
+	"Settings (§ 18a UStG)."
 )
 ANNUAL_SETTINGS_MISSING = (
 	"Make the Annual Filing Settings and enter the carry-forwards of the last notices as of {0}, 0 as well."
@@ -109,7 +126,11 @@ MESSAGES = (
 	PRIOR_MISSING,
 	PRIOR_PAYMENTS_CLEAN,
 	PRIOR_PAYMENTS_FOUND,
+	CARRIED_BALANCES_INFO,
 	DAUERFRIST_INFO,
+	ZM_RHYTHM_SET,
+	ZM_RHYTHM_MISSING,
+	ZM_RHYTHM_IF_ANY,
 	ANNUAL_SETTINGS_MISSING,
 	CARRY_FORWARDS_COMPLETE,
 	CARRY_FORWARDS_MISSING,
@@ -289,8 +310,10 @@ class Item(Enum):
 	START = "start"
 	OPENING_ENTRIES = "opening_entries"
 	PRIOR_RETURNS = "prior_returns"
+	CARRIED_BALANCES = "carried_balances"
 	PRIOR_PAYMENTS = "prior_payments"
 	DAUERFRIST = "dauerfrist"
+	ZM_RHYTHM = "zm_rhythm"
 	CARRY_FORWARDS = "carry_forwards"
 	PREPAYMENTS = "prepayments"
 	PRIOR_YEAR_ACCOUNTS = "prior_year_accounts"
@@ -300,7 +323,9 @@ class Item(Enum):
 class Facts:
 	"""What the site says about the start: the start of the books, the Journal Entries of its day that the Voranmeldung
 	would count, the months missing_months() names, whether the company has Annual Filing Settings and the
-	carry-forwards missing_carry_forwards() names."""
+	carry-forwards missing_carry_forwards() names, the payments prior_payments() finds, whether the settings record a
+	rhythm of the Zusammenfassende Meldung for the month of the start, and whether the Voranmeldungen filed before
+	Steuerbote report turnover of the Meldung."""
 
 	start: date | None
 	unflagged: tuple[str, ...] = ()
@@ -308,6 +333,8 @@ class Facts:
 	annual_settings: bool = False
 	missing_carry_forwards: tuple[CarryForwardKind, ...] = ()
 	prior_payments: tuple[str, ...] = ()
+	zm_rhythm: bool = False
+	eu_turnover: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,6 +368,7 @@ def checklist(facts: Facts) -> tuple[Check, ...]:
 		checks.append(Check(Item.PRIOR_RETURNS, False, PRIOR_MISSING, (labels,)))
 	else:
 		checks.append(Check(Item.PRIOR_RETURNS, True, PRIOR_COMPLETE, (day,)))
+	checks.append(Check(Item.CARRIED_BALANCES, None, CARRIED_BALANCES_INFO))
 	if facts.prior_payments:
 		checks.append(
 			Check(Item.PRIOR_PAYMENTS, False, PRIOR_PAYMENTS_FOUND, (", ".join(facts.prior_payments),))
@@ -348,6 +376,12 @@ def checklist(facts: Facts) -> tuple[Check, ...]:
 	else:
 		checks.append(Check(Item.PRIOR_PAYMENTS, True, PRIOR_PAYMENTS_CLEAN, (start.year,)))
 	checks.append(Check(Item.DAUERFRIST, None, DAUERFRIST_INFO, (start.year,)))
+	if facts.zm_rhythm:
+		checks.append(Check(Item.ZM_RHYTHM, True, ZM_RHYTHM_SET))
+	elif facts.eu_turnover:
+		checks.append(Check(Item.ZM_RHYTHM, False, ZM_RHYTHM_MISSING))
+	else:
+		checks.append(Check(Item.ZM_RHYTHM, None, ZM_RHYTHM_IF_ANY))
 	if not facts.annual_settings:
 		checks.append(Check(Item.CARRY_FORWARDS, False, ANNUAL_SETTINGS_MISSING, (year_end,)))
 	elif facts.missing_carry_forwards:

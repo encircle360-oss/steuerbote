@@ -14,10 +14,14 @@ Zusammenfassende Meldung those of Kz 41, 42 and 21, names their numbers and read
 load_lines reads by posting date. The Voranmeldung, its report and the annual return read through load_bookings
 instead, which keeps the posting date, the time of the entry and the date of the supply a Sales Invoice names, so
 that steuerbote.ustva.assignment can place each booking into its Voranmeldungszeitraum (steuerbote/vat_periods.py).
+load_bookings reads a cancelled voucher whatever the ledger flags: its entries as they were booked, and the reversal
+of each as a cancellation on the posting date of the entries it reverses, entered when the voucher was cancelled
+(assignment, „A cancelled voucher“). With the immutable ledger that day may lie in another period, before the voucher
+or after it, so it reads the reversals of the vouchers of its time wherever ERPNext posted them.
 """
 
 from collections.abc import Collection, Iterable
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import frappe
@@ -30,6 +34,9 @@ from steuerbote.ustva.rounding import CENT
 
 EXCLUDE_FIELD = "steuerbote_exclude_from_vat_return"
 SALES_INVOICE = "Sales Invoice"
+# make_reverse_gl_entries of ERPNext (erpnext/accounts/general_ledger.py) writes this and the voucher's name into the
+# remarks of every GL Entry that reverses one of a cancelled voucher, with the immutable ledger and without it.
+REVERSAL_REMARKS = "On cancellation of "
 
 
 def load_lines(
@@ -98,13 +105,23 @@ def load_bookings(
 	every booking of a Sales Invoice whose supply falls in it, wherever it is posted. Each Sales Invoice carries the
 	date of its supply (assignment.service_date); the assignment decides which of the bookings count."""
 	rows = _booking_rows(company, posting_between=(from_date, to_date))
+	supplied: list[str] = []
 	if by_service_date:
 		seen = {(row.account_number, row.voucher_type, row.voucher_no, row.posting_date) for row in rows}
 		supplied = _invoices_supplied_between(company, from_date, to_date)
 		for row in _booking_rows(company, sales_invoices=supplied):
 			if (row.account_number, row.voucher_type, row.voucher_no, row.posting_date) not in seen:
 				rows.append(row)
-	rows.sort(key=lambda row: (str(row.posting_date), row.voucher_type, row.voucher_no, row.account_number))
+	rows.extend(_reversals(company, getdate(from_date), {(row.voucher_type, row.voucher_no) for row in rows}))
+	rows.sort(
+		key=lambda row: (
+			str(row.posting_date),
+			row.voucher_type,
+			row.voucher_no,
+			row.account_number,
+			bool(row.cancellation),
+		)
+	)
 	invoices = _supplies([row.voucher_no for row in rows if row.voucher_type == SALES_INVOICE])
 	return [
 		Booking(
@@ -115,6 +132,7 @@ def load_bookings(
 			debit=_cents(row.debit),
 			credit=_cents(row.credit),
 			service_date=invoices.get(row.voucher_no) if row.voucher_type == SALES_INVOICE else None,
+			cancellation=bool(row.cancellation),
 		)
 		for row in rows
 	]
@@ -124,12 +142,15 @@ def _booking_rows(
 	company: str,
 	posting_between: tuple[date | str, date | str] | None = None,
 	sales_invoices: Collection[str] = (),
+	reversals_from: date | None = None,
 ) -> list[frappe._dict]:
 	"""The ledger rows per account, voucher and posting date with the time of their first entry, posted in a time or
-	of some Sales Invoices."""
+	of some Sales Invoices, flagged as cancelled or not; with ``reversals_from``, the reversals posted from that day on
+	instead."""
 	gl_entry = frappe.qb.DocType("GL Entry")
 	account = frappe.qb.DocType("Account")
 	journal_entry = frappe.qb.DocType("Journal Entry")
+	remarks = Coalesce(gl_entry.remarks, "")
 	query = (
 		frappe.qb.from_(gl_entry)
 		.inner_join(account)
@@ -146,20 +167,25 @@ def _booking_rows(
 			Sum(gl_entry.credit).as_("credit"),
 		)
 		.where(gl_entry.company == company)
-		.where(gl_entry.is_cancelled == 0)
 		.where(gl_entry.is_opening == "No")
 		.where(gl_entry.voucher_type != "Period Closing Voucher")
 		.where(Coalesce(journal_entry[EXCLUDE_FIELD], 0) == 0)
 		.where(Coalesce(account.account_number, "") != "")
 	)
-	if posting_between is not None:
-		query = query.where(gl_entry.posting_date.between(*posting_between))
-	else:
-		if not sales_invoices:
-			return []
-		query = query.where(gl_entry.voucher_type == SALES_INVOICE).where(
-			gl_entry.voucher_no.isin(list(sales_invoices))
+	if reversals_from is not None:
+		query = query.where(remarks.like(f"{REVERSAL_REMARKS}%")).where(
+			gl_entry.posting_date >= reversals_from
 		)
+	else:
+		query = query.where(remarks.not_like(f"{REVERSAL_REMARKS}%"))
+		if posting_between is not None:
+			query = query.where(gl_entry.posting_date.between(*posting_between))
+		elif sales_invoices:
+			query = query.where(gl_entry.voucher_type == SALES_INVOICE).where(
+				gl_entry.voucher_no.isin(list(sales_invoices))
+			)
+		else:
+			return []
 	return (
 		query.groupby(
 			account.account_number, gl_entry.voucher_type, gl_entry.voucher_no, gl_entry.posting_date
@@ -170,6 +196,41 @@ def _booking_rows(
 		.orderby(account.account_number)
 		.run(as_dict=True)
 	)
+
+
+def _reversals(company: str, start: date, vouchers: Collection[tuple[str, str]]) -> list[frappe._dict]:
+	"""The reversals of the vouchers, each as a cancellation dated on the first posting date of the voucher's own
+	entries, which ERPNext posts on one day. A reversal is posted on the day of the voucher or of its cancellation,
+	which may precede a voucher dated ahead, but not by a year: the reversals are read from a year before ``start``."""
+	if not vouchers:
+		return []
+	found = [
+		row
+		for row in _booking_rows(company, reversals_from=start - timedelta(days=366))
+		if (row.voucher_type, row.voucher_no) in vouchers
+	]
+	if not found:
+		return []
+	booked_on = _first_posting_dates(company, {(row.voucher_type, row.voucher_no) for row in found})
+	for row in found:
+		row.posting_date = booked_on.get((row.voucher_type, row.voucher_no), row.posting_date)
+		row.cancellation = True
+	return found
+
+
+def _first_posting_dates(company: str, vouchers: Collection[tuple[str, str]]) -> dict[tuple[str, str], date]:
+	"""The first posting date of the entries of each voucher that are no reversal, by voucher type and name."""
+	gl_entry = frappe.qb.DocType("GL Entry")
+	rows = (
+		frappe.qb.from_(gl_entry)
+		.select(gl_entry.voucher_type, gl_entry.voucher_no, Min(gl_entry.posting_date).as_("posting_date"))
+		.where(gl_entry.company == company)
+		.where(gl_entry.voucher_no.isin(sorted({name for _voucher_type, name in vouchers})))
+		.where(Coalesce(gl_entry.remarks, "").not_like(f"{REVERSAL_REMARKS}%"))
+		.groupby(gl_entry.voucher_type, gl_entry.voucher_no)
+		.run(as_dict=True)
+	)
+	return {(row.voucher_type, row.voucher_no): getdate(row.posting_date) for row in rows}
 
 
 def _invoices_supplied_between(company: str, from_date: date | str, to_date: date | str) -> list[str]:

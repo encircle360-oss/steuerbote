@@ -1,7 +1,12 @@
 {% include "steuerbote/public/js/elster_transmission.js" %}
 {% include "steuerbote/public/js/vat_id_confirmation.js" %}
+{% include "steuerbote/public/js/timeline_values.js" %}
 
 frappe.ui.form.on("VAT Return", {
+	timeline_refresh(frm) {
+		translate_select_values_in_timeline(frm);
+	},
+
 	setup(frm) {
 		listen_for_transmissions(frm);
 		listen_for_confirmations(frm);
@@ -51,6 +56,7 @@ frappe.ui.form.on("VAT Return", {
 				__("View")
 			);
 		}
+		offer_no_cancellation_the_server_refuses(frm);
 		show_ready_note(frm);
 		show_latest_run(frm);
 		show_intro(frm);
@@ -183,13 +189,20 @@ function add_elster_buttons(frm) {
 	frm.add_custom_button(__("Mark as Filed Outside"), () => ask_for_filing_note(frm, "other_way"), group);
 }
 
+// TransferTicketSType in headerbasis_datentypen.xsd of the ELSTER Basisschema, as TRANSFERTICKET in vat_return.py.
+const TRANSFERTICKET = /^[0-9a-km-z]{2}[0-9]{3}[0-9a-km-z]{27}$/;
+
+// The dialog stays open with what was entered until the server has taken the note, so that a refusal, such as of a
+// Transferticket, loses nothing.
 function ask_for_filing_note(frm, filed_via) {
 	if (!saved(frm, return_texts())) {
 		return;
 	}
 	const in_mein_elster = filed_via === "mein_elster";
-	prompt_until_filed(
-		[
+	const title = in_mein_elster ? __("Filed in Mein ELSTER") : __("Mark as Filed Outside");
+	const dialog = new frappe.ui.Dialog({
+		title,
+		fields: [
 			{
 				fieldtype: "Data",
 				fieldname: "transferticket",
@@ -212,38 +225,44 @@ function ask_for_filing_note(frm, filed_via) {
 				reqd: in_mein_elster ? 0 : 1,
 			},
 		],
-		(values) =>
-			frm
-				.call("mark_filed_outside", {
-					remarks: values.remarks,
-					filed_via,
-					transferticket: values.transferticket,
-					filed_on: values.filed_on,
-				})
-				.then(() => frm.reload_doc()),
-		in_mein_elster ? __("Filed in Mein ELSTER") : __("Mark as Filed Outside"),
-		__("Mark as Filed")
-	);
-}
-
-// frappe.prompt closes its dialog before the call, so a note the server refuses, such as a mistyped Transferticket,
-// would lose what was entered; this dialog closes only once the filing is noted.
-function prompt_until_filed(fields, file, title, primary_action_label) {
-	const dialog = new frappe.ui.Dialog({
-		title,
-		fields,
-		primary_action_label,
+		primary_action_label: __("Mark as Filed"),
 		primary_action(values) {
-			file(values).then(() => dialog.hide());
+			const ticket = (values.transferticket || "").trim();
+			if (ticket && !TRANSFERTICKET.test(ticket)) {
+				frappe.msgprint(
+					__("{0} is no Transferticket: it has 32 characters, as the protocol of ELSTER shows it.", [
+						frappe.utils.escape_html(ticket),
+					])
+				);
+				return;
+			}
+			frm.call("mark_filed_outside", {
+				remarks: values.remarks,
+				filed_via,
+				transferticket: ticket,
+				filed_on: values.filed_on,
+			}).then(() => {
+				dialog.hide();
+				frm.reload_doc();
+			});
 		},
 	});
 	dialog.show();
+}
+
+// Frappe offers Stornieren for every submitted document; a return with a record of its filing refuses it (before_cancel
+// in vat_return.py), since the Finanzamt keeps what it received.
+function offer_no_cancellation_the_server_refuses(frm) {
+	if (frm.doc.docstatus === 1 && !(frm.doc.__onload || {}).cancellable) {
+		frm.page.clear_secondary_action();
+	}
 }
 
 function show_intro(frm) {
 	const notes = elster_notes(frm, return_texts());
 	if (!frm.is_new() && frm.doc.docstatus === 0 && frm.doc.confirmation_in_progress) {
 		notes.unshift(__("The USt-IdNrn. are being confirmed. The form reloads when the confirmation has finished."));
+		poll_while_running(frm, "confirmation_in_progress");
 	}
 	notes.push(...late_notes(frm));
 	frm.set_intro(notes.join("<br>"), "orange");

@@ -9,12 +9,14 @@ from frappe.tests import IntegrationTestCase
 from steuerbote.ledger import load_bookings, load_lines
 from steuerbote.patches import set_the_assignment_to_the_voranmeldungszeitraum as patch
 from steuerbote.tests.helpers import (
+	cancel_voucher,
 	ensure_fiscal_year,
 	make_account,
 	make_company,
 	make_mapping,
 	make_settings,
 	post_journal_entry,
+	post_ledger,
 )
 from steuerbote.tests.late_documents import ACCOUNTS, delivery_note, filed_return, sales_invoice, set_rule
 from steuerbote.ustva import LedgerLine, Period
@@ -25,6 +27,11 @@ COMPANY = "Steuerbote Test Leistungsdatum GmbH"
 JULY = Period.month(2026, 7)
 AUGUST = Period.month(2026, 8)
 SEPTEMBER = Period.month(2026, 9)
+NOVEMBER = Period.month(2026, 11)
+DECEMBER = Period.month(2026, 12)
+# Without „Unveränderliches Hauptbuch aktivieren“ the reversal keeps the date of the voucher; with it, it is posted on
+# the day of the cancellation.
+LEDGERS = {"without the immutable ledger": None, "with the immutable ledger": "2026-09-04"}
 
 
 class VatPeriodsTest(IntegrationTestCase):
@@ -187,3 +194,87 @@ class VatPeriodsTest(IntegrationTestCase):
 	def test_load_lines_still_reads_by_posting_date(self):
 		voucher = self.invoice("SINV-LD-0012", "2026-08-03", "2026-08-03 09:00:00", to_date="2026-07-31")
 		self.assertIn(voucher, self.vouchers(load_lines(COMPANY, "2026-08-01", "2026-08-31")))
+
+	def balances(self, lines: list[LedgerLine], voucher: str) -> dict[str, object]:
+		found: dict[str, object] = {}
+		for line in lines:
+			if line.voucher == voucher:
+				found[line.account_number] = found.get(line.account_number, 0) + line.debit - line.credit
+		return found
+
+	def test_a_voucher_cancelled_before_its_month_is_filed_is_reported_nowhere(self):
+		for index, (ledger_kind, immutable_on) in enumerate(LEDGERS.items()):
+			with self.subTest(ledger=ledger_kind):
+				voucher = self.invoice(f"SINV-LD-002{index}", "2026-07-10", "2026-07-10 09:00:00")
+				cancel_voucher("Sales Invoice", f"SINV-LD-002{index}", immutable_on, "2026-09-04 10:00:00")
+				ledger = VatLedger.for_period(COMPANY, SEPTEMBER)
+				self.assertEqual(self.balances(ledger.lines(JULY), voucher), {})
+				self.assertEqual(self.balances(ledger.lines(SEPTEMBER), voucher), {})
+				self.assertEqual(ledger.late(), [])
+
+	def test_a_cancellation_reads_as_one_whatever_the_ledger_flags(self):
+		for index, (ledger_kind, immutable_on) in enumerate(LEDGERS.items()):
+			with self.subTest(ledger=ledger_kind):
+				name = f"SINV-LD-003{index}"
+				self.invoice(name, "2026-07-10", "2026-07-10 09:00:00")
+				cancel_voucher("Sales Invoice", name, immutable_on, "2026-09-04 10:00:00")
+				bookings = [
+					booking
+					for booking in load_bookings(COMPANY, "2026-07-01", "2026-07-31", by_service_date=True)
+					if booking.voucher == f"Sales Invoice:{name}"
+				]
+				self.assertEqual(
+					sorted((booking.cancellation, booking.posting_date) for booking in bookings),
+					[(False, date(2026, 7, 10))] * 3 + [(True, date(2026, 7, 10))] * 3,
+				)
+				self.assertEqual(
+					{booking.booked_at for booking in bookings if booking.cancellation},
+					{datetime(2026, 9, 4, 10)},
+				)
+
+	def test_a_cancellation_after_the_filing_of_its_month_needs_a_corrected_return(self):
+		self.file(JULY, "2026-08-10 12:00:00")
+		for index, (ledger_kind, immutable_on) in enumerate(LEDGERS.items()):
+			with self.subTest(ledger=ledger_kind):
+				name = f"SINV-LD-004{index}"
+				voucher = self.invoice(name, "2026-07-10", "2026-07-10 09:00:00")
+				cancel_voucher("Sales Invoice", name, immutable_on, "2026-09-04 10:00:00")
+				ledger = VatLedger.for_period(COMPANY, SEPTEMBER)
+				(late,) = [placement for placement in ledger.late() if placement.booking.voucher == voucher]
+				self.assertTrue(late.booking.cancellation)
+				self.assertEqual((late.tax_period, late.period), (JULY, JULY))
+				self.assertTrue(late.needs_correction)
+				self.assertEqual(self.balances(ledger.lines(SEPTEMBER), voucher), {})
+
+	def test_in_the_current_period_a_cancellation_after_the_filing_goes_to_the_month_open_when_it_was_made(
+		self,
+	):
+		self.set_rule(late="Current Period")
+		self.file(JULY, "2026-08-10 12:00:00")
+		for index, (ledger_kind, immutable_on) in enumerate(LEDGERS.items()):
+			with self.subTest(ledger=ledger_kind):
+				name = f"SINV-LD-005{index}"
+				voucher = self.invoice(name, "2026-07-10", "2026-07-10 09:00:00")
+				cancel_voucher("Sales Invoice", name, immutable_on, "2026-09-04 10:00:00")
+				ledger = VatLedger.for_period(COMPANY, SEPTEMBER)
+				self.assertEqual(
+					self.balances(ledger.lines(AUGUST), voucher),
+					{"1400": -1190, "8400": 1000, "1776": 190},
+				)
+				self.assertEqual(
+					self.balances(ledger.lines(JULY), voucher), {"1400": 1190, "8400": -1000, "1776": -190}
+				)
+
+	def test_a_voucher_cancelled_before_its_own_date_leaves_the_month_of_the_cancellation_alone(self):
+		a = self.account
+		post_ledger(
+			COMPANY,
+			"Journal Entry",
+			"JV-LD-0060",
+			"2026-12-31",
+			[(a["1776"], 95, 0), (a["1200"], 0, 95)],
+		)
+		cancel_voucher("Journal Entry", "JV-LD-0060", "2026-11-25", "2026-11-25 10:00:00")
+		voucher = "Journal Entry:JV-LD-0060"
+		self.assertEqual(self.balances(VatLedger.for_period(COMPANY, NOVEMBER).lines(NOVEMBER), voucher), {})
+		self.assertEqual(self.balances(VatLedger.for_period(COMPANY, DECEMBER).lines(DECEMBER), voucher), {})

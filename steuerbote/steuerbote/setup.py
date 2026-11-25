@@ -44,6 +44,8 @@ from steuerbote.steuerbote.doctype.vat_return.bridge import statutory_tax_of
 from steuerbote.ustva import CATALOGUES, DEFAULTS, MappingError, UnknownYearError, calculate
 from steuerbote.ustva.period import MONTH_NAMES
 from steuerbote.vat_periods import VatLedger
+from steuerbote.zm import rhythm as zm_rhythm
+from steuerbote.zm.errors import ZmError
 
 STEPS_HOOK = "steuerbote_setup_steps"
 ROLES = ("System Manager", "Accounts Manager")
@@ -60,6 +62,13 @@ DATENLIEFERANT_LABELS = (
 	("city", "Town"),
 	("phone", "Phone"),
 	("email", "Email"),
+)
+
+# The parts of the Datenlieferant that the file for Mein ELSTER and ERiC require (steuerbote/elster/ustva_xml.py).
+REQUIRED_DATENLIEFERANT = tuple(
+	(field, label)
+	for field, label in DATENLIEFERANT_LABELS
+	if field in ("filer_name", "street", "postal_code", "city")
 )
 
 BUILT_IN_STEPS = (
@@ -126,6 +135,11 @@ NOT_READY = "No proposal: the tax of {0} decides (§ 18 Absatz 2 UStG), and in t
 ENTER_FILING_PERIOD = "Enter the Voranmeldungszeitraum the Finanzamt set in the VAT Return Settings."
 PROPOSED_FROM_PRIOR = "Proposed: {0} from {1}, because the tax of {2} comes to {3} by its Voranmeldungen filed before Steuerbote (§ 18 Absatz 2 Sätze 1 and 2 UStG)."
 NO_PRIOR_FILINGS = "No proposal: the tax of {0} decides (§ 18 Absatz 2 UStG), and the books in ERPNext begin after the start of {0}. Enter the Voranmeldungen of {0} filed before Steuerbote as VAT Return Prior Filings and run the setup again."
+TEMPLATES_PLACED = (
+	"Check Tax Templates finds every account of the tax templates of the company placed in the mapping."
+)
+TEMPLATES_UNPLACED = "Check Tax Templates finds accounts of the tax templates without a place in the mapping: {0}. A chart of accounts copied from another company may point a template to another account: correct the template, or give the account its place in the mapping."
+DATENLIEFERANT_MISSING = "Enter the missing parts of the Datenlieferant in the VAT Return Settings, which the file for Mein ELSTER and ERiC need: {0}."
 START_PROPOSED = "Books Start set to {0}: the books of the company begin that day with opening entries only. Check the day; the Voranmeldungen before it count as filed outside Steuerbote."
 MESSAGES = (
 	NOT_A_COMPANY,
@@ -163,6 +177,9 @@ MESSAGES = (
 	PROPOSED_FROM_PRIOR,
 	NO_PRIOR_FILINGS,
 	START_PROPOSED,
+	TEMPLATES_PLACED,
+	TEMPLATES_UNPLACED,
+	DATENLIEFERANT_MISSING,
 )
 
 
@@ -178,7 +195,7 @@ class SetupContext:
 
 
 @frappe.whitelist(methods=["POST"])
-def set_up(company: str) -> dict:
+def set_up(company: str | None = None) -> dict:
 	"""Steuerbote einrichten for the company: run every step and report what each did."""
 	frappe.only_for(ROLES, message=True)
 	if not company or not frappe.db.exists("Company", company):
@@ -311,6 +328,8 @@ def make_vat_return_settings(context: SetupContext) -> StepResult:
 		notes.append(Note(VAT_ID_TAKEN, (settings.ust_idnr,)))
 	if taken := [_(label) for field, label in DATENLIEFERANT_LABELS if settings.get(field)]:
 		notes.append(Note(DATENLIEFERANT_TAKEN, (", ".join(taken),)))
+	if lacking := [_(label) for field, label in REQUIRED_DATENLIEFERANT if not settings.get(field)]:
+		notes.append(Note(DATENLIEFERANT_MISSING, (", ".join(lacking),), open=True))
 	notes.append(Note(STATE_AND_TAX_NUMBER, open=True))
 	return StepResult(Outcome.CREATED, tuple(notes), (SETTINGS, settings.name))
 
@@ -333,6 +352,7 @@ def make_vat_return_mapping(context: SetupContext) -> StepResult:
 		notes = [Note(MAPPING_FILLED, (company, mapping.defaults_version, *counted))]
 		if missing:
 			notes.append(Note(DEFAULTS_MISSING, (len(missing),)))
+		notes.append(tax_template_note(mapping))
 		return StepResult(Outcome.CREATED, tuple(notes), (MAPPING, company))
 	detection = context.chart
 	mapping = frappe.new_doc(MAPPING)
@@ -354,7 +374,21 @@ def make_vat_return_mapping(context: SetupContext) -> StepResult:
 	]
 	if missing:
 		notes.append(Note(DEFAULTS_MISSING, (len(missing),)))
+	notes.append(tax_template_note(mapping))
 	return StepResult(Outcome.CREATED, tuple(notes), (MAPPING, mapping.name))
+
+
+def tax_template_note(mapping) -> Note:
+	"""What Steuervorlagen prüfen finds in the mapping the step made: the accounts of the tax templates without a place,
+	which a copied chart of accounts or template may have pointed to another account, or that there are none."""
+	unplaced = mapping.check_tax_templates()
+	if not unplaced:
+		return Note(TEMPLATES_PLACED)
+	accounts = "; ".join(
+		f"{account['account_number'] or account['account']} ({', '.join(account['templates'])})"
+		for account in unplaced
+	)
+	return Note(TEMPLATES_UNPLACED, (accounts,), open=True)
 
 
 def _basis_note(detection: charts.Detection, company: str) -> Note:
@@ -485,14 +519,27 @@ def start_facts(company: str, books_start: date) -> first_year.Facts:
 	if annual is not None:
 		year_end = date(first_year.first_annual_year(books_start) - 1, 12, 31)
 		missing = first_year.missing_carry_forwards(annual.get_carry_forwards(), year_end)
+	filed = prior_filings.prior_filings(company)
 	return first_year.Facts(
 		books_start,
 		unflagged=unflagged_opening_entries(company, books_start),
-		missing_prior=first_year.missing_months(books_start, began, prior_filings.prior_filings(company)),
+		missing_prior=first_year.missing_months(books_start, began, filed),
 		annual_settings=annual is not None,
 		missing_carry_forwards=missing,
 		prior_payments=paid_before_start(company, books_start),
+		zm_rhythm=has_zm_rhythm(company, books_start),
+		eu_turnover=any(filing.kz41 or filing.kz42 or filing.kz21 for filing in filed),
 	)
+
+
+def has_zm_rhythm(company: str, day: date) -> bool:
+	"""Whether the VAT Return Settings record a rhythm of the Zusammenfassende Meldung for the month of the day."""
+	rules = frappe.get_doc(SETTINGS, company).get_zm_rules()
+	try:
+		zm_rhythm.rule_for(rules, day.year, day.month)
+	except ZmError:
+		return False
+	return True
 
 
 def paid_before_start(company: str, books_start: date) -> tuple[str, ...]:
