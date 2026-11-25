@@ -13,7 +13,9 @@ from steuerbote.ustva.assignment import (
 	LateTreatment,
 	PeriodBasis,
 	changes,
+	filed_outside,
 	invoice_date_accounts,
+	periods_with_the_books,
 	service_date,
 )
 from steuerbote.ustva.calculation import LedgerLine
@@ -460,3 +462,56 @@ class ChangesTest(TestCase):
 
 	def test_the_difference_is_the_amount_now_less_the_amount_filed(self):
 		self.assertEqual(Change("81", Decimal("1000.00"), Decimal("1500.00")).difference, Decimal("500.00"))
+
+
+class BeforeTheBooksTest(TestCase):
+	"""Periods before the start of the books in ERPNext were filed outside Steuerbote, from other books."""
+
+	def test_a_period_filed_before_steuerbote_replaces_those_of_the_rules_in_its_months(self):
+		rules = [Period.month(2026, month) for month in range(1, 13)]
+		prior = [Period.quarter(2026, 1), Period.month(2026, 4)]
+		self.assertEqual(
+			periods_with_the_books(rules, prior, date(2026, 7, 1), (2026,)),
+			(
+				Period.quarter(2026, 1),
+				*(Period.month(2026, month) for month in range(4, 13)),
+			),
+		)
+
+	def test_a_month_before_the_start_without_a_period_counts_as_a_month(self):
+		rules = [Period.month(2026, month) for month in range(7, 13)]
+		self.assertEqual(
+			periods_with_the_books(rules, [], date(2026, 3, 1), (2026,)),
+			(Period.month(2026, 1), Period.month(2026, 2), *rules),
+		)
+
+	def test_without_a_start_the_periods_of_the_rules_stay(self):
+		rules = [Period.month(2026, month) for month in range(1, 13)]
+		self.assertEqual(
+			periods_with_the_books(rules, [Period.quarter(2026, 1)], None, (2026,)), tuple(rules)
+		)
+
+	def test_every_period_before_the_start_counts_as_filed_before_any_booking(self):
+		periods = (Period.month(2026, 5), Period.month(2026, 6), JULY)
+		filings = filed_outside(periods, date(2026, 7, 1))
+		self.assertEqual(
+			[filing.period for filing in filings], [Period.month(2026, 5), Period.month(2026, 6)]
+		)
+		self.assertEqual(
+			{(filing.first, filing.latest) for filing in filings}, {(datetime.min, datetime.min)}
+		)
+		self.assertEqual(filed_outside(periods, None), ())
+
+	def test_a_booking_for_a_period_before_the_start_is_late_whenever_it_was_booked(self):
+		june = Period.month(2026, 6)
+		periods = (june, JULY, AUGUST)
+		for treatment, reported in ((LateTreatment.CORRECTION, june), (LateTreatment.CURRENT_PERIOD, JULY)):
+			with self.subTest(treatment=treatment):
+				assignment = Assignment(
+					PeriodBasis.SERVICE_DATE, treatment, periods, filed_outside(periods, date(2026, 7, 1))
+				)
+				placement = assignment.place(
+					booking(posting=date(2026, 7, 2), booked=at(2, 7), service=date(2026, 6, 30))
+				)
+				self.assertTrue(placement.late)
+				self.assertEqual((placement.tax_period, placement.period), (june, reported))

@@ -9,6 +9,8 @@ from steuerbote.steuerbote.doctype.vat_return.late import (
 	MOVED_HERE,
 	MOVED_TO,
 	NEEDS_CORRECTION,
+	OUTSIDE_MOVED_HERE,
+	OUTSIDE_NEEDS_CORRECTION,
 	Row,
 	change_rows,
 	current_rows,
@@ -84,3 +86,17 @@ class ChangeRowsTest(TestCase):
 			row, Row(JULY, CHANGED_SINCE_FILING, CHANGED_AMOUNT, ("81", "1000.00 €", "1500.00 €"))
 		)
 		self.assertTrue(row.needs_correction)
+
+
+class OutsideTest(TestCase):
+	"""A period filed outside Steuerbote, before the start of its books, is corrected where it was filed."""
+
+	def test_a_booking_for_it_names_where_its_correction_goes(self):
+		(row,) = current_rows([placement(JULY, JULY, late=True)], SEPTEMBER, outside={JULY})
+		self.assertEqual((row.template, row.values), (OUTSIDE_NEEDS_CORRECTION, ("Juli 2026",)))
+		self.assertTrue(row.needs_correction)
+
+	def test_a_booking_moved_out_of_it_is_reported_here(self):
+		(row,) = current_rows([placement(JULY, AUGUST, late=True)], AUGUST, outside={JULY})
+		self.assertEqual((row.template, row.values), (OUTSIDE_MOVED_HERE, ("Juli 2026",)))
+		self.assertFalse(row.needs_correction)
