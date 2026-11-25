@@ -160,8 +160,8 @@ class VordruckeTest(TestCase):
 		"""ERiC refuses line 56 of GewSt 1 A without line 57 (rule 40260, „FelderNichtGemeinsamAngegeben(E4003703,
 		E4004103)“) and, for a Körperschaft, line 12 of Anlage BEG without line 14 (rule 40944), Jahresdokumentation
 		GewSt 2025; validation of the worked example with ERiC 44.3.6.0. Line 57 holds the part of line 56 paid to
-		beschränkt Steuerpflichtige (§ 50a Absatz 1 Nummer 3 EStG), which the books do not tell apart: zero, unless a
-		line by hand says otherwise."""
+		beschränkt Steuerpflichtige (§ 50a Absatz 1 Nummer 3 EStG), which the books do not tell apart: zero, a limit
+		docs/ertragsteuern.md names."""
 		(gewst_1a, beg) = vordrucke(gewerbesteuer(koerperschaftsteuer()))
 		self.assertEqual(
 			(gewst_1a.value("E4003703"), gewst_1a.value("E4004103")), (Decimal("10000"), Decimal("0"))

@@ -233,7 +233,7 @@ An der Gewerbesteuererklärung dazu: genau eine Betriebsstätte im Erhebungszeit
 | `GEWST-BETRIEBSSTAETTE` | Fehler | keine oder mehr als eine Betriebsstätte im Erhebungszeitraum |
 | `GEWST-HEBESATZ-FEHLT` | Fehler | für die Gemeinde fehlt der Hebesatz des Jahres mit seiner Quelle |
 | `GEWST-HEBESATZ-UNTER-MINDESTSATZ` | Fehler | der Hebesatz liegt unter dem Mindesthebesatz von § 16 Abs. 4 Satz 2 GewStG |
-| `GEWST-BEG-FINANZIERUNGSANTEILE` | Hinweis | Aufwendungen nach § 8 Nr. 1 GewStG mindern die Kürzung einer Beteiligung; die Hinzurechnung der Anlage BEG Zeile 20 rechnet Steuerbote nicht |
+| `GEWST-BEG-FINANZIERUNGSANTEILE` | Hinweis | Aufwendungen nach § 8 Nr. 1 GewStG mindern die Kürzung einer Beteiligung; die Erklärung nennt die Kürzung der Hinzurechnung in Anlage BEG Zeile 20 und GewSt 1 A Zeile 79, die Rückstellung rechnet ohne sie |
 | `KST-NUTZDATEN`, `GEWST-NUTZDATEN` | Fehler | die Vordrucke lassen sich nicht so schreiben, wie ELSTER sie nimmt |
 | `SB-NEU-BERECHNEN` | Fehler | seit dem Berechnen hat sich etwas geändert, das „Berechnen“ liest |
 | `SB-KORREKTUR-UEBERHOLT` | Fehler | eine Korrektur wurde gegen einen anderen Betrag eingetragen, als „Berechnen“ jetzt für ihre Zeile ergibt, siehe [Jahresmeldungen](jahresmeldungen.md) |
@@ -244,6 +244,16 @@ An der Gewerbesteuererklärung dazu: genau eine Betriebsstätte im Erhebungszeit
 ELSTER hat die Jahresdokumentationen E30 und E20 für 2026 noch nicht veröffentlicht: ERiC 44.3.6.0 kennt Körperschaft- und Gewerbesteuer bis 2025, und die ELSTER-Hilfe beschreibt beide Erklärungen bis 2025. Steuerbote nimmt für 2026 deshalb die Vordrucke, Felder, Regeln und Schemas von 2025 mit den Steuersätzen und Grenzen von 2026. Ob ERiC und die Formulare von Mein ELSTER eine Erklärung 2026 so nehmen, wie Steuerbote sie schreibt, ist damit nicht bekannt: Vordrucke, Zeilen, Felder und Regeln können sich ändern.
 
 Entschieden ist deshalb: Solange die Vordrucke eines Jahres vorläufig sind, steht jede Erklärung des Jahres mit dem Fehler `KST-VORLAEUFIG` oder `GEWST-VORLAEUFIG` in den Befunden. „Bereit“ erreicht eine Erklärung 2026 damit nicht, bis ein Release von Steuerbote die Jahresdokumentationen 2026 übernimmt; dann entfällt der Befund mit dem nächsten „Berechnen“. Abgeben lässt sie sich vorher, wie jeder Beleg, der nicht bereit ist, nur wenn der Fehler mit einer Begründung bestätigt ist (siehe [Bestätigte Fehler](jahresmeldungen.md#bestätigte-fehler)), etwa weil die Steuerberatung den Ausdruck mit den Formularen von Mein ELSTER 2026 abgeglichen hat. Das Feld „Vorläufige Vordrucke“ zeigt den Stand, und beide Druckformate tragen unter dem Titel „vorläufig (Jahresdokumentation 2025)“.
+
+### Geprüft mit ERiC 2025
+
+Weil ERiC 44.3.6.0 Körperschaft- und Gewerbesteuer 2026 nicht kennt, hat Steuerbote die Nutzdaten, die es für 2026 schreibt, im Namensraum und in der Version 2025 mit den Plugins `checkKSt_2025` und `checkGewSt_2025` prüfen lassen, die Daten der erfundenen Muster IT GmbH der Tests (25. November 2026). Dabei hat ERiC Regeln gezeigt, die Steuerbote seither erfüllt:
+
+- KSt 1 Zeile 21a, ob sich die Angaben eines Anteilseigners gegenüber dem Vorjahr geändert haben, je Anteilseigner (Regel 8912022): geändert, wenn eine Besitzzeit im Wirtschaftsjahr beginnt oder vor seinem letzten Tag endet, wie Zeile 27 es für alle zusammen sagt.
+- GewSt 1 A Zeile 57 neben Zeile 56 (Regel 40260), mit 0, siehe [Grenzen](#grenzen).
+- Anlage BEG Zeile 14 neben Zeile 12 (Regel 40944), neben Zeile 7 Zeile 16 (40946), neben Zeile 16 die Zeilen 17 und 18, wo Zeilen 8 und 9 stehen, und Zeile 19 (40947 bis 40949), neben Zeile 17 Zeile 20 mit „Aufrunden([E4051701])“ (40750, 40966), jeweils auch mit 0, und GewSt 1 A Zeilen 79 und 81 als Summen der Zeilen 20 und 19 (40448, 40449, 40491, 40492).
+
+Danach nimmt ERiC die Erklärungen ohne Fehler; als Hinweis bleibt 40922, die Steuernummer der Körperschaft, an der die Beteiligung besteht, die die Einstellungen Jahresmeldungen nicht kennen. Die Prüfung ersetzt nicht die mit den Plugins 2026: Vordrucke und Regeln 2026 können sich ändern. Wie ein Maintainer sie wiederholt, steht in [Entwicklung, Prüfen mit dem echten ERiC](entwicklung.md#prüfen-mit-dem-echten-eric).
 
 ## Rückstellungen vorschlagen
 
@@ -329,7 +339,8 @@ Steuerbote ersetzt keine Steuerberatung. Vor der ersten Erklärung, die abgegebe
 - Leistungen nur der Arten 1 bis 3 von KSt 1 F Zeile 3, wie eine GmbH oder UG sie erbringt.
 - Der Verlustrücktrag geht in die Erklärung des Jahres; die Erklärung des Vorjahres berichtigt Steuerbote nicht.
 - Die Gewerbesteuererklärung nimmt keine Korrektur: Was an ihr anders sein soll, gehört an die Körperschaftsteuererklärung oder in die Kontenzuordnung.
-- Die Hinzurechnung der Anlage BEG Zeile 20 und die Zinsschranke rechnet Steuerbote nicht.
+- Die Kürzung der Hinzurechnung, die Anlage BEG Zeile 20 und GewSt 1 A Zeile 79 nennen, und die Zinsschranke rechnet die Rückstellung von Steuerbote nicht.
+- GewSt 1 A Zeile 57, die in Zeile 56 enthaltenen Vergütungen an beschränkt steuerpflichtige Zahlungsempfänger (§ 50a Abs. 1 Nr. 3 EStG), meldet Steuerbote mit 0: Die Bücher trennen sie nicht, und ERiC nimmt Zeile 56 nur mit Zeile 57 (Regel 40260 der Jahresdokumentation GewSt 2025). Zahlt das Unternehmen solche Vergütungen, ist die Erklärung so nicht richtig (Prüfliste für die Steuerberatung).
 - Erklärte Beträge in vollen Euro rundet der Kern kaufmännisch, wo die Jahresdokumentation keine Richtung nennt; ob ELSTER das so erwartet, ist nicht bestätigt.
 - Jede Zeile der Anlage GK rundet für sich: Enden der Jahresüberschuss nach den Rückstellungen und der Solidaritätszuschlag beide auf 50 Cent, runden Zeile 11 und Zeile 82 beide auf, und das zu versteuernde Einkommen ist nach dem Buchen der Rückstellungen einen Euro höher als vorher.
 - Mein ELSTER nimmt keine Datei der Erklärungen; sie werden dort nach dem Druckformat eingegeben.
