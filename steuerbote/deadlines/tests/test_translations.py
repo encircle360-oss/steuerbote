@@ -146,5 +146,5 @@ class SetupStepTranslationsTest(TestCase):
 			if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) == "SETUP_MESSAGES"
 		)
 		texts = {constants[element.id] for element in messages.elts}
-		self.assertEqual(len(texts), 7)
+		self.assertEqual(len(texts), 8)
 		self.assertEqual(untranslated(texts | {"Deadlines and Reminder"}), [])

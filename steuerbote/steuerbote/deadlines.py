@@ -415,6 +415,7 @@ NO_OUTGOING_ACCOUNT = "The site has no default outgoing e-mail account, so the r
 RECIPIENTS_SET = (
 	"The reminder goes to {0} every day while a deadline is not filed, from {1} days before it is due."
 )
+NO_VAT_RETURN_STATED = "The Annual Filing Settings state that {0} owes no Umsatzsteuererklärung for {1}: {2}. This is the statement of the company, made with its Steuerberatung; Steuerbote does not judge the status for VAT."
 DAUERFRIST_CARRIED = "The VAT Return Settings have the Dauerfristverlängerung for {0} but no row for {1}. It holds until it is given up or revoked (§ 46 UStDV), and a monthly filer pays the Sondervorauszahlung of every year by 10 February (§ 48 Abs. 2 UStDV): enter {1}, with the extension or without it."
 SETUP_MESSAGES = (
 	HOLIDAY_LIST_SET,
@@ -424,6 +425,7 @@ SETUP_MESSAGES = (
 	NO_OUTGOING_ACCOUNT,
 	RECIPIENTS_SET,
 	DAUERFRIST_CARRIED,
+	NO_VAT_RETURN_STATED,
 )
 
 
@@ -455,6 +457,11 @@ def check_setup(context: Any) -> StepResult:
 		notes.append(StepNote(RECIPIENTS_SET, (", ".join(valid), cint(settings.reminder_days))))
 		if not outgoing_account():
 			notes.append(StepNote(NO_OUTGOING_ACCOUNT, open=True))
+	annual = settings_of(company)
+	for row in annual.get_years() if annual else ():
+		if row.no_vat_return:
+			reason = _(row.no_vat_return_reason or "")
+			notes.append(StepNote(NO_VAT_RETURN_STATED, (company, row.year, reason)))
 	outcome = Outcome.UNDECIDED if any(note.open for note in notes) else Outcome.SKIPPED
 	return StepResult(outcome, tuple(notes), (SETTINGS, settings.name))
 

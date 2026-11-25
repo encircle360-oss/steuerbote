@@ -135,7 +135,8 @@ class AnnualYear:
 	"""What the deadlines of one year rest on: the last day of the Wirtschaftsjahr that ends in it, whether a
 	Steuerberatung prepares its Erklärungen, whether the company is a Kleinunternehmer, the earliest day the Finanzamt
 	ordered an Erklärung of the year for, the size class of the fiscal year, whether the company is exempt from the
-	Offenlegung, and whether the company was founded in it."""
+	Offenlegung, whether the company was founded in it, and whether it states that it owes no Umsatzsteuererklärung
+	for the year (YearSettings.no_vat_return), which Steuerbote takes as given."""
 
 	year: int
 	fiscal_year_end: date
@@ -145,6 +146,7 @@ class AnnualYear:
 	size_class: SizeClass | None = None
 	exempt_264_3: bool = False
 	founding: bool = False
+	no_vat_return: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +193,7 @@ class AnnualRules:
 			size_class=None if applied is None else SizeClass[applied.name],
 			exempt_264_3=settings.exempt_264_3,
 			founding=year >= FIRST_YEAR and self.founded_on is not None and self.founded_on.year == year,
+			no_vat_return=settings.no_vat_return,
 		)
 
 
@@ -200,7 +203,7 @@ def year_obligations(year: AnnualYear, holidays: Collection[date] = ()) -> list[
 	due = filing_deadline(year.year, year.advisor_prepares, year.early_request, holidays)
 	notes = (Note.EARLY_REQUEST,) if year.early_request else (Note.ADVISOR,) if year.advisor_prepares else ()
 	erklaerungen = (Kind.KOERPERSCHAFTSTEUERERKLAERUNG, Kind.GEWERBESTEUERERKLAERUNG)
-	if not year.kleinunternehmer:
+	if not (year.kleinunternehmer or year.no_vat_return):
 		erklaerungen = (Kind.UMSATZSTEUERERKLAERUNG, *erklaerungen)
 	owed = [Obligation(kind, year.year, label, due, notes=notes) for kind in erklaerungen]
 	owed.append(Obligation(Kind.E_BILANZ, year.year, label, due, notes=(Note.WITH_KST, *notes)))

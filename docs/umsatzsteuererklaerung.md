@@ -9,7 +9,7 @@ Der Beleg lebt auf der Grundlage der Jahresmeldungen: Status, Berechnen, Korrekt
 - **Unternehmen:** eine GmbH oder UG mit Sitz im Inland und einer Steuernummer, Kontenrahmen SKR03 oder SKR04 mit den Vorgaben der Kontenzuordnung, Geschäftsjahr gleich Kalenderjahr.
 - **Jahre:** 2026, der erste Jahrgang mit Vordruck, Jahresdokumentation und Schema (`steuerbote/ustjahr/years.py`). Ein Jahr ohne Vordruck lehnt der Beleg beim Speichern ab.
 - **Besteuerung:** nach vereinbarten Entgelten; die Erklärung gibt Kz 133 immer mit 1 an.
-- **Nicht darin:** Anlage UN und Anlage FV, die Umsätze nach §§ 25 und 25a UStG (Zeilen 37 und 38) und die Aufgabe des Unternehmens im Lauf des Jahres. Ein Kleinunternehmer gibt keine Erklärung ab (§ 19 Abs. 1 Satz 2 UStG), außer das Finanzamt fordert sie an (§ 149 Abs. 1 Satz 2 AO); ein Jahr, das die Einstellungen Jahresmeldungen als Jahr eines Kleinunternehmers kennzeichnen, hat deshalb kein Fälligkeitsdatum und einen Hinweis.
+- **Nicht darin:** Anlage UN und Anlage FV, die Umsätze nach §§ 25 und 25a UStG (Zeilen 37 und 38) und die Aufgabe des Unternehmens im Lauf des Jahres. Ein Jahr, für das die Einstellungen Jahresmeldungen erklären, dass keine Umsatzsteuererklärung geschuldet ist, hat keine: Steuerbote lehnt eine Erklärung dieses Jahres ab, siehe [Fristen](fristen.md#jahresmeldungen). Ein Kleinunternehmer gibt keine Erklärung ab (§ 19 Abs. 1 Satz 2 UStG), außer das Finanzamt fordert sie an (§ 149 Abs. 1 Satz 2 AO); ein Jahr, das die Einstellungen Jahresmeldungen als Jahr eines Kleinunternehmers kennzeichnen, hat deshalb kein Fälligkeitsdatum und einen Hinweis.
 
 ## Der Beleg
 

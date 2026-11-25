@@ -363,6 +363,9 @@ class AnnualFilingSettings(Document):
 					adopted_on=_date(row.adopted_on),
 					exempt_264_3=bool(cint(row.exempt_264_3)),
 					exempt_264_3_reason=_text(row.exempt_264_3_reason),
+					no_vat_return=bool(cint(row.no_vat_return)),
+					no_vat_return_reason=_text(row.no_vat_return_reason),
+					no_vat_return_note=_text(row.no_vat_return_note),
 				)
 				for row in self.years
 			]
