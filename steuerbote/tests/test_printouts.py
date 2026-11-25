@@ -316,3 +316,15 @@ class TableHeadTest(TestCase):
 			("Anhang: alle Hinweise", "Code Nachricht Referenz", "SB-JA-FEHLT Der Jahresabschluss"),
 		)
 		self.assertEqual(printouts.lonely_table_heads(found, MARGINS), [])
+
+
+class RepeatedRowsTest(TestCase):
+	def test_accepts_rows_whose_lines_repeat_further_down(self):
+		found = pages(
+			("Fehler Keine Voranmeldung deckt Mai ab: sie abgeben", "oder mit Begründung darauf verzichten."),
+			(
+				"Fehler Keine Voranmeldung deckt Juni ab: sie abgeben",
+				"oder mit Begründung darauf verzichten.",
+			),
+		)
+		self.assertEqual(printouts.lonely_table_heads(found, MARGINS), [])
