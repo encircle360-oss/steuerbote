@@ -1,7 +1,7 @@
 """What the Umsatzsteuererklärung reads from ERPNext for its core in steuerbote/ustjahr.
 
 - The ledger of the calendar year, the Besteuerungszeitraum (§ 16 Absatz 1 Satz 2 UStG), and that of each
-  Voranmeldungszeitraum of it, through steuerbote/ledger.py as the Voranmeldung reads it, and the run of the
+  Voranmeldungszeitraum of it, through steuerbote/vat_periods.py as the Voranmeldung reads it, and the run of the
   Voranmeldung on each period with the VAT Return Mapping of the year (period_runs): the reconciliation sets the
   return against them.
 - The line of the annual return of each account: the VAT Return Mapping of the company, to_split(year).
@@ -32,7 +32,6 @@ from frappe.utils import cint, getdate
 from steuerbote import ebilanz_sources
 from steuerbote.jahresmeldung.lifecycle import Status
 from steuerbote.jahresmeldung.overrides import to_amount
-from steuerbote.ledger import load_lines
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.steuerbote.doctype.annual_vat_return import bridge, revenue
 from steuerbote.steuerbote.doctype.vat_return.vat_return import DOCTYPE as VAT_RETURN
@@ -43,6 +42,7 @@ from steuerbote.ustjahr.soll import Filed
 from steuerbote.ustjahr.split import Split
 from steuerbote.ustva import LedgerLine, Mapping, Period, Rhythm, UstvaResult, calculate
 from steuerbote.ustva.rounding import ZERO
+from steuerbote.vat_periods import VatLedger
 
 MAPPING_DOCTYPE = "VAT Return Mapping"
 SETTINGS_DOCTYPE = "VAT Return Settings"
@@ -54,8 +54,10 @@ LAST_OF_DECEMBER = 31
 
 
 def year_lines(company: str, year: int) -> list[LedgerLine]:
-	"""The ledger lines of the calendar year."""
-	return load_lines(company, date(year, 1, 1), date(year, DECEMBER, LAST_OF_DECEMBER))
+	"""The ledger lines of the calendar year, each on the day the Voranmeldung counts it (steuerbote.vat_periods): a
+	booking never moves into another year, so the year holds exactly what its Voranmeldungszeiträume hold."""
+	start, end = date(year, 1, 1), date(year, DECEMBER, LAST_OF_DECEMBER)
+	return VatLedger(company, start, end).lines_between(start, end)
 
 
 def annual_split(company: str, year: int) -> Split:
@@ -74,9 +76,15 @@ def period_runs(
 ) -> dict[Period, UstvaResult]:
 	"""The run of the Voranmeldung on today's ledger of each period, as Berechnen of a VAT Return runs it without the
 	Sondervorauszahlung, which the reconciliation takes from Kz 39 of the filed return."""
+	periods = list(periods)
+	if not periods:
+		return {}
+	ledger = VatLedger(
+		company, min(period.start for period in periods), max(period.end for period in periods)
+	)
 	runs = {}
 	for period in periods:
-		lines = load_lines(company, period.start, period.end)
+		lines = ledger.lines(period)
 		runs[period] = calculate(
 			lines, mapping, tolerance=tolerance, vouchers=load_vouchers(company, lines, mapping)
 		)

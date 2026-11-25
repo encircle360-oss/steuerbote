@@ -44,7 +44,9 @@ class VATReturnSettings(Document):
 		elster_tax_number: DF.Data | None
 		email: DF.Data | None
 		filer_name: DF.Data | None
+		late_documents: DF.Literal["Corrected Return", "Current Period"]
 		max_confirmation_age: DF.Int
+		period_basis: DF.Literal["By Service Date", "By Posting Date"]
 		period_rules: DF.Table[VATReturnPeriodRule]
 		phone: DF.Data | None
 		postal_code: DF.Data | None

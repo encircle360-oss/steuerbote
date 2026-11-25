@@ -30,6 +30,11 @@ frappe.ui.form.on("VAT Return", {
 				)
 			);
 		}
+		if (frm.doc.docstatus === 1 && frm.doc.status === "Abgegeben") {
+			frm.add_custom_button(__("Make Berichtigung"), () =>
+				frm.call("make_correction").then((response) => frappe.set_route("Form", "VAT Return", response.message))
+			);
+		}
 		if (can_make_import_file(frm.doc)) {
 			frm.add_custom_button(__("XML for Mein ELSTER"), () => make_import_file(frm));
 		}
@@ -225,7 +230,27 @@ function show_intro(frm) {
 	if (!frm.is_new() && frm.doc.docstatus === 0 && frm.doc.confirmation_in_progress) {
 		notes.unshift(__("The USt-IdNrn. are being confirmed. The form reloads when the confirmation has finished."));
 	}
+	notes.push(...late_notes(frm));
 	frm.set_intro(notes.join("<br>"), "orange");
+}
+
+// What changed after a filing: on a filed return, what changed in its own period since (changes_since_filing in
+// vat_return.py); on a draft, that the table Changed after Filing names bookings or amounts of filed periods.
+function late_notes(frm) {
+	const changes = (frm.doc.__onload || {}).changes_since_filing || [];
+	if (frm.doc.docstatus === 1 && changes.length) {
+		const lines = changes.map((row) =>
+			row.voucher_no ? `${row.voucher_no}: ${row.message}` : row.message
+		);
+		const heading = changes.some((row) => row.needs_correction)
+			? __("The ledger of this period changed after the filing: make a Berichtigung.")
+			: __("Bookings made after the filing are reported in a later period.");
+		return [heading, ...lines.map(frappe.utils.escape_html)];
+	}
+	if (frm.doc.docstatus === 0 && (frm.doc.late_changes || []).length) {
+		return [__("Filed periods changed after their filing: see Changed after Filing.")];
+	}
+	return [];
 }
 
 // A Currency field stores no blank, so a row of the reconciliation with the registers that is not compared holds 0

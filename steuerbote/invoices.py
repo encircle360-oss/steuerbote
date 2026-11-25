@@ -61,23 +61,31 @@ def load_lines(
 	to_date: date | str,
 	sales_accounts: Collection[str],
 	purchase_accounts: Collection[str],
+	sales_invoices: Collection[str] | None = None,
 ) -> list[InvoiceLine]:
 	"""The lines of the company's submitted invoices from ``from_date`` to ``to_date``, both included, on the
-	given account numbers: sales invoices first, each kind by posting date, invoice and account."""
+	given account numbers: sales invoices first, each kind by posting date, invoice and account. ``sales_invoices``
+	names the Sales Invoices to read instead of those posted in the time: those the Voranmeldung reports in its
+	period, which by service date need not be posted in it (steuerbote.vat_periods)."""
 	return [
-		*_lines(SALES, company, from_date, to_date, sales_accounts),
+		*_lines(SALES, company, from_date, to_date, sales_accounts, sales_invoices),
 		*_lines(PURCHASES, company, from_date, to_date, purchase_accounts),
 	]
 
 
 def _lines(
-	kind: _Invoices, company: str, from_date: date | str, to_date: date | str, accounts: Collection[str]
+	kind: _Invoices,
+	company: str,
+	from_date: date | str,
+	to_date: date | str,
+	accounts: Collection[str],
+	names: Collection[str] | None = None,
 ) -> list[InvoiceLine]:
 	if not accounts:
 		return []
 	taxes = {
 		(row.voucher_no, row.account_number): _cents(row.tax_amount)
-		for row in _taxes(kind, company, from_date, to_date, accounts)
+		for row in _taxes(kind, company, from_date, to_date, accounts, names)
 	}
 	return [
 		InvoiceLine(
@@ -92,14 +100,20 @@ def _lines(
 			tax_amount=taxes.get((row.voucher_no, row.account_number), ZERO),
 			is_return=bool(row.is_return),
 		)
-		for row in _nets(kind, company, from_date, to_date, accounts)
+		for row in _nets(kind, company, from_date, to_date, accounts, names)
 	]
 
 
 def _items(
-	kind: _Invoices, company: str, from_date: date | str, to_date: date | str, accounts: Collection[str]
+	kind: _Invoices,
+	company: str,
+	from_date: date | str,
+	to_date: date | str,
+	accounts: Collection[str],
+	names: Collection[str] | None,
 ):
-	"""The items of the period's submitted invoices on the accounts, with their invoice and account."""
+	"""The items of the period's submitted invoices, or of the invoices ``names``, on the accounts, with their invoice
+	and account."""
 	invoice = frappe.qb.DocType(kind.doctype)
 	item = frappe.qb.DocType(kind.items)
 	account = frappe.qb.DocType("Account")
@@ -112,17 +126,25 @@ def _items(
 		.where(item.parenttype == kind.doctype)
 		.where(invoice.company == company)
 		.where(invoice.docstatus == 1)
-		.where(invoice.posting_date.between(from_date, to_date))
 		.where(invoice.is_opening == "No")
 		.where(account.account_number.isin(list(accounts)))
 	)
+	if names is None:
+		query = query.where(invoice.posting_date.between(from_date, to_date))
+	else:
+		query = query.where(invoice.name.isin(sorted(names) or [""]))
 	return query, invoice, item, account
 
 
 def _nets(
-	kind: _Invoices, company: str, from_date: date | str, to_date: date | str, accounts: Collection[str]
+	kind: _Invoices,
+	company: str,
+	from_date: date | str,
+	to_date: date | str,
+	accounts: Collection[str],
+	names: Collection[str] | None,
 ):
-	query, invoice, item, account = _items(kind, company, from_date, to_date, accounts)
+	query, invoice, item, account = _items(kind, company, from_date, to_date, accounts, names)
 	party = frappe.qb.DocType(kind.party_doctype)
 	address = frappe.qb.DocType("Address")
 	columns = (
@@ -160,11 +182,16 @@ def _nets(
 
 
 def _taxes(
-	kind: _Invoices, company: str, from_date: date | str, to_date: date | str, accounts: Collection[str]
+	kind: _Invoices,
+	company: str,
+	from_date: date | str,
+	to_date: date | str,
+	accounts: Collection[str],
+	names: Collection[str] | None,
 ):
 	"""The tax of the items per invoice and account; ERPNext keeps a deducted tax, such as the § 13b tax a
 	purchase invoice adds and deducts again, as a negative amount."""
-	query, invoice, item, account = _items(kind, company, from_date, to_date, accounts)
+	query, invoice, item, account = _items(kind, company, from_date, to_date, accounts, names)
 	tax = frappe.qb.DocType("Item Wise Tax Detail")
 	return (
 		query.inner_join(tax)

@@ -5,3 +5,4 @@
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 steuerbote.patches.link_transmissions_to_their_document
+steuerbote.patches.set_the_assignment_to_the_voranmeldungszeitraum

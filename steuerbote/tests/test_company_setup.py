@@ -199,8 +199,9 @@ class CompanySetupTest(IntegrationTestCase):
 		self.assertEqual(
 			texts_of(done, "vat_return_settings")[:3],
 			[
-				f"Made the VAT Return Settings of {SKR03_COMPANY} with the chart SKR03, Soll-Versteuerung and "
-				"no Dauerfristverlängerung.",
+				f"Made the VAT Return Settings of {SKR03_COMPANY} with the chart SKR03, Soll-Versteuerung, the "
+				"Voranmeldungszeitraum by service date, a corrected return for bookings of a filed period and no "
+				"Dauerfristverlängerung.",
 				f"USt-IdNr. {OWN_VAT_ID} taken from the Tax ID of the company.",
 				"Datenlieferant taken from the company and its address: Name.",
 			],

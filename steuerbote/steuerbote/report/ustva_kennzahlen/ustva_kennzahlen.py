@@ -2,7 +2,8 @@
 amounts of the previous period and of the same period one year earlier.
 
 The report reads what "Berechnen" on a VAT Return reads: the general ledger of the period through
-steuerbote.ledger, with the same exclusions, and the company's VAT Return Mapping and VAT Return Settings.
+steuerbote.vat_periods, with the same exclusions and the same assignment to the Voranmeldungszeitraum, and the
+company's VAT Return Mapping and VAT Return Settings.
 The core computes the Kennzahlen, attribution.py finds the vouchers behind them, and comparison.py sets them
 beside the previous period of the same rhythm and the same period one year earlier, which this module
 computes the same way from the ledger, with the mapping on the form of their year. Otherwise the module only
@@ -11,18 +12,16 @@ cancelled.
 """
 
 from collections.abc import Iterable
-from datetime import date
 from types import MappingProxyType
 from typing import Any
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.query_builder.functions import Min
 from frappe.utils import cint, formatdate
 
 from steuerbote import prior_filings, ustva
-from steuerbote.ledger import account_labels, account_names, load_lines
+from steuerbote.ledger import account_labels, account_names
 from steuerbote.setup.start import before_start
 from steuerbote.steuerbote.doctype.vat_return import bridge
 from steuerbote.steuerbote.doctype.vat_return.vat_return import mapping_for, released, settings_for
@@ -33,6 +32,7 @@ from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import (
 	vouchers_by_type,
 )
 from steuerbote.suppliers import load_vouchers
+from steuerbote.vat_periods import VatLedger
 
 FILTERS = ("company", "year", "rhythm", "period_index")
 # Optional: only the Kennzahlen and sums that deviate from the previous period.
@@ -56,12 +56,13 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 	period = _period(filters)
 	settings = settings_for(company)
 	mapping = mapping_for(company, period.year)
-	lines = load_lines(company, period.start, period.end)
+	ledger = VatLedger.for_period(company, period)
+	lines = ledger.lines(period)
 	result, released_hints = released(
 		company, _calculate(lines, mapping, period, settings), lines, mapping, period
 	)
-	previous, previous_note = _compared(company, period.previous(), mapping, settings)
-	previous_year, previous_year_note = _compared(company, comparison.year_before(period), mapping, settings)
+	previous, previous_note = _compared(ledger, period.previous(), mapping, settings)
+	previous_year, previous_year_note = _compared(ledger, comparison.year_before(period), mapping, settings)
 	by_kennzahl = contributions(lines, mapping, load_vouchers(company, lines, mapping))
 	numbers = {account for items in by_kennzahl.values() for item in items for account in item.accounts}
 	vouchers = [item.voucher for items in by_kennzahl.values() for item in items]
@@ -69,7 +70,7 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 		result,
 		mapping.catalogue,
 		by_kennzahl,
-		posting_dates=_posting_dates(company, period),
+		posting_dates=ledger.posting_dates(period),
 		account_names=account_names(company, numbers),
 		parties=_parties(vouchers),
 		print_label=_("Print"),
@@ -170,11 +171,11 @@ def _calculate(
 
 
 def _compared(
-	company: str, period: ustva.Period, mapping: ustva.Mapping, settings: Document
+	ledger: VatLedger, period: ustva.Period, mapping: ustva.Mapping, settings: Document
 ) -> tuple[ustva.UstvaResult | None, str | None]:
 	"""What a period to compare with reported, computed from its ledger with the company's mapping on the form
 	of its own year, or why the report cannot compare with it."""
-	books_start = prior_filings.books_start(company)
+	books_start = prior_filings.books_start(ledger.company)
 	if before_start(period.start, books_start):
 		return None, _(
 			"No comparison with {0}: it lies before the start of the books in Steuerbote on {1}."
@@ -189,8 +190,7 @@ def _compared(
 		return None, _(
 			"No comparison with {0}: the VAT Return Mapping does not fit the form of {1} ({2})."
 		).format(period.label, period.year, str(error))
-	lines = load_lines(company, period.start, period.end)
-	return _calculate(lines, year_mapping, period, settings), None
+	return _calculate(ledger.lines(period), year_mapping, period, settings), None
 
 
 def _thresholds(settings: Document) -> comparison.Thresholds:
@@ -226,18 +226,3 @@ def _cancelled(vouchers: Iterable[str | None]) -> set[str]:
 			voucher_type, filters={"name": ["in", names], "docstatus": 2}, pluck="name"
 		)
 	}
-
-
-def _posting_dates(company: str, period: ustva.Period) -> dict[str, date]:
-	"""The posting date of each voucher of the period, by the voucher key of steuerbote.ledger."""
-	gl_entry = frappe.qb.DocType("GL Entry")
-	vouchers = (
-		frappe.qb.from_(gl_entry)
-		.select(gl_entry.voucher_type, gl_entry.voucher_no, Min(gl_entry.posting_date).as_("posting_date"))
-		.where(gl_entry.company == company)
-		.where(gl_entry.posting_date.between(period.start, period.end))
-		.where(gl_entry.is_cancelled == 0)
-		.groupby(gl_entry.voucher_type, gl_entry.voucher_no)
-		.run(as_dict=True)
-	)
-	return {f"{voucher.voucher_type}:{voucher.voucher_no}": voucher.posting_date for voucher in vouchers}
