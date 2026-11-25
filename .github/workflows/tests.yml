@@ -282,6 +282,34 @@ jobs:
         working-directory: /home/runner/frappe-bench
         run: bench --site test_site execute steuerbote.tests.e2e.seed.run
 
+      - name: Install wkhtmltopdf, the fonts of the image and Poppler for the printouts
+        # The image of a site installs wkhtmltopdf 0.12.6.1-3 with patched Qt from the packages of the wkhtmltopdf
+        # project, and its fontconfig finds Nimbus Sans of the URW fonts. The same build for Ubuntu, checked by its
+        # SHA-256, renders the printouts here; Poppler reads the words of their pages for the checks.
+        env:
+          WKHTMLTOPDF: https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
+          WKHTMLTOPDF_SHA256: 4f723b2691ad8638a9df960e0421d346d7315083e3583a334f33362280ddba15
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/wkhtmltox.deb" "$WKHTMLTOPDF"
+          echo "$WKHTMLTOPDF_SHA256  $RUNNER_TEMP/wkhtmltox.deb" | sha256sum --check --strict
+          sudo apt-get install -y "$RUNNER_TEMP/wkhtmltox.deb" fonts-urw-base35 poppler-utils
+          wkhtmltopdf --version
+          fc-match "Nimbus Sans"
+
+      - name: Print every print format as PDF and check its pages
+        # steuerbote/tests/print_proof.py: each print format for the documents of the seed and for variants that
+        # stress the layout, with wkhtmltopdf as on a site; the step fails on a printout with a problem.
+        working-directory: /home/runner/frappe-bench
+        run: |
+          bench --site test_site execute steuerbote.tests.print_proof.run --kwargs "{'directory': '$RUNNER_TEMP/printouts'}"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: printouts
+          path: ${{ runner.temp }}/printouts
+          if-no-files-found: ignore
+
       - name: Start the test site
         # DEV_SERVER sends the desk to socket.io on its own port, as bench start does, and the default site
         # tells socket.io which site localhost is.
