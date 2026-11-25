@@ -12,8 +12,8 @@ the same way, so AnnualFiling generalises the rules of the VAT Return and the Zu
 - Frappe keeps no read-only field from a save through its API, so a save takes only what the company enters: the
   corrections and lines by hand with their reasons, the remarks and the fields of the module that are no
   calculation. What Berechnen computed, the findings, the status and the filing stay as stored, and a save that
-  changes what a line reports leaves the document Berechnet until Berechnen checks it again. Another key discards the
-  calculation, and a key holds one draft and one filing, a further filing being a Berichtigung of a filed document
+  changes what a line reports leaves the document Berechnet until Berechnen checks it again. The key of a document
+  stays as it was created (steuerbote.steuerbote.guards.Filing), and a key holds one draft and one filing, a further filing being a Berichtigung of a filed document
   of the key (jahresmeldung.corrections says how each Datenart marks it).
 - Before a document is transmitted, made into a file or submitted, the amounts of its lines are computed again from
   what they hold (require_amounts_as_stored).
@@ -55,6 +55,7 @@ from steuerbote.jahresmeldung.lifecycle import (
 	Problem,
 	Status,
 )
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.steuerbote.doctype.elster_transmission.elster_transmission import (
 	EXTERN,
@@ -71,6 +72,7 @@ from steuerbote.steuerbote.doctype.elster_transmission.transmission import (
 from steuerbote.steuerbote.doctype.eric_settings.eric_settings import vorsatz_copyright
 from steuerbote.steuerbote.doctype.vat_return.vat_return import TRANSFERTICKET
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
+from steuerbote.steuerbote.guards import Filing
 
 FINDINGS_TABLE = "findings"
 FILING_FIELDS = ("filed_via", "filed_on", "transferticket", "filing_note", "filed_by")
@@ -101,7 +103,7 @@ class Calculation:
 	passed: bool = True
 
 
-class AnnualFiling:
+class AnnualFiling(Filing):
 	"""An annual document; see the module docstring and docs/jahresmeldungen.md for the hooks and the fields."""
 
 	LIFECYCLE: Lifecycle = FILING
@@ -249,6 +251,7 @@ class AnnualFiling:
 			)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def calculate(self) -> None:
 		"""Berechnen: compute the document through its module and save it, with the corrections and the lines by hand it
 		held."""
@@ -299,6 +302,7 @@ class AnnualFiling:
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read")
 	def make_correction(self) -> str:
 		"""Berichtigung anlegen: a new document of the key that corrects this filed one, with its corrections and lines by
 		hand, calculated at once. Returns its name."""
@@ -335,6 +339,7 @@ class AnnualFiling:
 		return correction.name
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("submit")
 	def mark_filed_outside(
 		self,
 		filed_via: str = OTHER_WAY,
@@ -695,17 +700,11 @@ class AnnualFiling:
 			self.update({fieldname: before.get(fieldname) for fieldname in FILING_FIELDS})
 
 	def _keep_the_calculation(self) -> None:
-		"""A save keeps what Berechnen stored, and takes from the lines what the company enters on them. Another key
-		discards the calculation; a save that changes what a line reports leaves the document Berechnet, with a finding
-		that asks for Berechnen."""
+		"""A save keeps what Berechnen stored, and takes from the lines what the company enters on them; the key stays
+		as the document was created (guards.Filing). A save that changes what a line reports leaves the document
+		Berechnet, with a finding that asks for Berechnen."""
 		before = self.get_doc_before_save()
 		if before is None or self.flags.calculating:
-			return
-		if self._key_of(before) != self._key_of(self):
-			for table in (*self.CALCULATED_TABLES, FINDINGS_TABLE, *((self.LINES,) if self.LINES else ())):
-				self.set(table, [])
-			self.update({"ready": 0, **dict.fromkeys(self.CALCULATED_FIELDS)})
-			self.status = self._move(Event.DISCARD, status=before.status)
 			return
 		self.update(
 			{fieldname: before.get(fieldname) for fieldname in ("status", "ready", *self.CALCULATED_FIELDS)}

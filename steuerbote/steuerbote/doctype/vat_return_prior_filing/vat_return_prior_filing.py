@@ -21,12 +21,13 @@ from frappe.utils import cint, getdate, now_datetime
 
 from steuerbote import prior_filings
 from steuerbote.setup import start
+from steuerbote.steuerbote.guards import Filing
 from steuerbote.ustva import Period, Rhythm
 
 VAT_RETURN = "VAT Return"
 
 
-class VATReturnPriorFiling(Document):
+class VATReturnPriorFiling(Filing, Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 

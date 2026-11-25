@@ -199,7 +199,7 @@ Ohne abgegebene Voranmeldung des Vorjahres, ohne Voranmeldung vor Steuerbote und
 
 | Status | Bedeutung |
 |---|---|
-| Entwurf | angelegt und noch nicht berechnet, oder Unternehmen, Jahr, Antrag oder erster verlängerter Monat haben sich geändert; das verwirft eine Berechnung |
+| Entwurf | angelegt und noch nicht berechnet, oder Antrag oder erster verlängerter Monat haben sich geändert; das verwirft eine Berechnung. Unternehmen und Jahr bleiben, wie der Vordruck angelegt wurde |
 | Berechnet | berechnet, aber mit offenen Punkten |
 | Bereit | berechnet und ohne offene Punkte |
 | Abgegeben | nach einem Senden, das ELSTER angenommen hat, oder mit einem Vermerk der Abgabe eingereicht |

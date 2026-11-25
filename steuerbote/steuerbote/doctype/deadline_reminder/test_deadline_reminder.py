@@ -10,7 +10,7 @@ from unittest.mock import patch
 import frappe
 from frappe.tests import IntegrationTestCase
 
-from steuerbote.steuerbote import deadlines
+from steuerbote.steuerbote import deadlines, guards
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import reminder_name
 from steuerbote.tests import annual_deadlines
 from steuerbote.tests.annual_deadlines import FILING_DOCTYPE, insert_annual, make_annual_company
@@ -293,15 +293,17 @@ class TestDeadlineReminder(IntegrationTestCase):
 			"sent_on": "2027-02-01",
 			"recipients": "buchhaltung@example.com",
 		}
-		first = frappe.get_doc(values).insert(ignore_permissions=True)
+		first = guards.insert_record(frappe.get_doc(values))
 		self.assertEqual(
 			first.name, reminder_name(COMPANY, "Sondervorauszahlung", "2027", "2027-02-10", "2027-02-01")
 		)
 		with self.assertRaises(frappe.DuplicateEntryError):
-			frappe.get_doc(values).insert(ignore_permissions=True)
+			guards.insert_record(frappe.get_doc(values))
 		first.period_label = "2028"
 		with self.assertRaisesRegex(frappe.ValidationError, "cannot be changed"):
 			first.save(ignore_permissions=True)
+		with self.assertRaises(frappe.PermissionError):
+			frappe.get_doc({**values, "sent_on": "2027-02-02"}).insert(ignore_permissions=True)
 
 
 # Files no Voranmeldung, keeps its annual filings in Steuerbote since 4 January 2027 and has no Steuerberatung; its

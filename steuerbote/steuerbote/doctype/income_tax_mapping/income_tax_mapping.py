@@ -48,6 +48,7 @@ from steuerbote.income_tax_mapping_sync import (
 from steuerbote.kst.categories import Mapping
 from steuerbote.kst.defaults import DEFAULTS, defaults_version
 from steuerbote.mappings import diff, taking_over, transfer
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.vat_return_mapping.vat_return_mapping import (
 	CHANGES,
 	INVALID_FILE_MAPPING,
@@ -159,6 +160,7 @@ class IncomeTaxMapping(Document):
 		)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write", new=True)
 	def load_defaults(self) -> list[dict]:
 		"""Replace the rows by the defaults of the chart, reduced to the ledger accounts of the company, and note the
 		version of the defaults and the rows they gave.
@@ -179,6 +181,7 @@ class IncomeTaxMapping(Document):
 		return [account._asdict() for account in defaults.missing]
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read", new=True)
 	def compare_with_defaults(self) -> dict:
 		"""Vorgaben aktualisieren: each difference between the rows and the defaults of today, with whether it comes
 		from the defaults, which the form proposes to take over, or from the user."""
@@ -194,6 +197,7 @@ class IncomeTaxMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def update_from_defaults(self, chosen: list[str] | None = None, acknowledge: bool = False) -> int:
 		"""Take over the chosen differences of compare_with_defaults, by their id, keep every other row, note the
 		defaults of today as taken over, and save. Taking over none notes them only with ``acknowledge``, the word of
@@ -210,6 +214,7 @@ class IncomeTaxMapping(Document):
 		return len(keys)
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def export_mapping(self) -> dict:
 		"""Zuordnung exportieren: the mapping as saved, with the defaults it took over, as a file attached privately,
 		where a file of the same content attached before is kept instead. Returns the name, the address and the text
@@ -233,6 +238,7 @@ class IncomeTaxMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("read")
 	def compare_with_file(self, file_url: str | None = None, content: str | None = None) -> dict:
 		"""Zuordnung importieren: what the file of a mapping, uploaded privately to this mapping or pasted, would change
 		here, each difference proposed, and what its header says."""
@@ -251,6 +257,7 @@ class IncomeTaxMapping(Document):
 		}
 
 	@frappe.whitelist(methods=["POST"])
+	@guards.on_stored("write")
 	def import_file(
 		self, file_url: str | None = None, content: str | None = None, chosen: list[str] | None = None
 	) -> int:

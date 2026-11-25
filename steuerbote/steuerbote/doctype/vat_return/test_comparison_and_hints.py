@@ -245,12 +245,15 @@ class TestComparison(IntegrationTestCase):
 			],
 		)
 
-	def test_changing_the_period_discards_the_comparison_and_the_hints(self):
+	def test_the_period_of_a_saved_return_stays_with_its_comparison_and_hints(self):
 		doc = calculated(COMPANY, 11)
 		self.assertTrue(doc.comparison and doc.hints)
+		counts = (len(doc.comparison), len(doc.hints), doc.status)
 		doc.period_index = 10
-		doc.save()
-		self.assertEqual((doc.comparison, doc.hints, doc.status), ([], [], "Entwurf"))
+		with self.assertRaises(frappe.CannotChangeConstantError):
+			doc.save()
+		doc.reload()
+		self.assertEqual((len(doc.comparison), len(doc.hints), doc.status), counts)
 
 
 def insert(doctype: str, **fields) -> str:

@@ -46,6 +46,7 @@ from steuerbote import deadlines, holiday_list, zm_sources
 from steuerbote.deadlines import Deadline, Filing, Kind, Note, Status, annual
 from steuerbote.setup.steps import Note as StepNote
 from steuerbote.setup.steps import Outcome, StepResult
+from steuerbote.steuerbote import guards
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import DOCTYPE as REMINDER
 from steuerbote.steuerbote.doctype.deadline_reminder.deadline_reminder import reminder_name
@@ -504,17 +505,19 @@ def remind(company: str, today: date) -> bool:
 	if not due:
 		return False
 	for deadline in due:
-		frappe.get_doc(
-			{
-				"doctype": REMINDER,
-				"company": company,
-				"kind": deadline.kind.value,
-				"period_label": deadline.period_label,
-				"due_date": deadline.due,
-				"sent_on": today,
-				"recipients": "\n".join(recipients),
-			}
-		).insert(ignore_permissions=True)
+		guards.insert_record(
+			frappe.get_doc(
+				{
+					"doctype": REMINDER,
+					"company": company,
+					"kind": deadline.kind.value,
+					"period_label": deadline.period_label,
+					"due_date": deadline.due,
+					"sent_on": today,
+					"recipients": "\n".join(recipients),
+				}
+			)
+		)
 	html = reminder_message(company, due, today)
 	frappe.sendmail(
 		recipients=recipients,

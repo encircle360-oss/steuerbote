@@ -117,7 +117,8 @@
    "label": "Company",
    "options": "Company",
    "remember_last_selected_value": 1,
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1
   },
   {
    "description": "The calendar year of the return, its Besteuerungszeitraum; it chooses form USt 2 A.",
@@ -126,7 +127,8 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Year",
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1
   },
   {
    "default": "0",
@@ -702,7 +704,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-23 20:00:00.000000",
+ "modified": "2026-11-25 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Annual VAT Return",

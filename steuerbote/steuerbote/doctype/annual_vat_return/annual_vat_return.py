@@ -292,12 +292,8 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 	# The rules of a save.
 
 	def _keep_the_periods(self, before: Document | None) -> None:
-		"""A save keeps the table Voranmeldungszeiträume as Berechnen stored it and takes the reasons alone; another key
-		discards it with the calculation."""
+		"""A save keeps the table Voranmeldungszeiträume as Berechnen stored it and takes the reasons alone."""
 		if before is None or self.flags.calculating:
-			return
-		if (before.company, cint(before.year)) != (self.company, cint(self.year)):
-			self.set(PERIODS, [])
 			return
 		self.set(PERIODS, bridge.waivers_kept(self._rows(PERIODS, before), self._rows(PERIODS)))
 
