@@ -55,7 +55,7 @@ class TestDefaultAccountsSetup(IntegrationTestCase):
 				(default_accounts_setup.UNKNOWN, "2318"),
 			],
 		)
-		self.assertIn("8736 für 19 %", result.notes[0].values[3])
+		self.assertEqual(result.notes[0].values[3], "8736 (19 %), 8731 (7 %), 8734 (0 %)")
 		self.assertEqual(frappe.db.get_value("Company", COMPANY, "default_discount_account"), self.discount)
 
 	def test_accounts_that_hold_nothing_back_leave_the_step_done(self):
