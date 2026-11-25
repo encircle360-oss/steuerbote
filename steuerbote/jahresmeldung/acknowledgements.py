@@ -20,7 +20,8 @@ with the ground and its source in SOURCES):
 - STRUCTURE: sums, Mussfelder and positions the HGB-Taxonomie demands of the „amtlich vorgeschriebener Datensatz“ (§ 5b
   Abs. 1 Satz 1 EStG; Technischer Leitfaden zur HGB-Taxonomie A.10, B.10).
 - VERSION: a mapping of another version of the taxonomy than the document's.
-- STALE: a calculation older than what it reads; Berechnen comes first.
+- STALE: a calculation older than what it reads; Berechnen comes first. So is a correction made against another amount
+  than Berechnen computes now (jahresmeldung.overrides.stale): it is confirmed or removed, not acknowledged.
 - FILE: Nutzdaten that do not pass their schema.
 
 Berechnen writes the findings anew and keeps the acknowledgement of a finding that stays the same, by its code,
@@ -112,6 +113,7 @@ NEVER: MappingProxyType[str, Ground] = MappingProxyType(
 		"BILANZ-TAXONOMIE": Ground.VERSION,
 		"SB-ZUORDNUNG-VERSION": Ground.VERSION,
 		"SB-NEU-BERECHNEN": Ground.STALE,
+		"SB-KORREKTUR-UEBERHOLT": Ground.STALE,
 		"KST-NUTZDATEN": Ground.FILE,
 		"GEWST-NUTZDATEN": Ground.FILE,
 	}

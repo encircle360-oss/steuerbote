@@ -50,6 +50,7 @@ class GroundTest(TestCase):
 			("EB-SUMME", Ground.STRUCTURE),
 			("XBRL-MUSSFELD", Ground.STRUCTURE),
 			("SB-NEU-BERECHNEN", Ground.STALE),
+			("SB-KORREKTUR-UEBERHOLT", Ground.STALE),
 			("SB-ZUORDNUNG-VERSION", Ground.VERSION),
 			("KST-NUTZDATEN", Ground.FILE),
 			("KST-EBILANZ-ABWEICHUNG", Ground.RESULT),

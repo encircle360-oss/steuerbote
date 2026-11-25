@@ -160,6 +160,22 @@ def has_dauerfrist(prepayments: Iterable[Prepayment], year: int) -> bool:
 	return any(prepayment.year == year and prepayment.dauerfristverlaengerung for prepayment in prepayments)
 
 
+def carried_dauerfrist(prepayments: Iterable[Prepayment], year: int) -> int | None:
+	"""The year whose Dauerfristverlängerung may still hold in ``year``, which has no row: the latest earlier row, when
+	it has the extension. „Die Fristverlängerung gilt solange, bis Sie gegenüber dem Finanzamt erklären, dass Sie die
+	Fristverlängerung nicht mehr in Anspruch nehmen wollen oder das Finanzamt die Fristverlängerung widerruft“
+	(Anleitung USt 5 E, § 46 UStDV); a row without the extension ends it. None where the year has a row or nothing is
+	carried."""
+	prepayments = tuple(prepayments)
+	if any(prepayment.year == year for prepayment in prepayments):
+		return None
+	earlier = [prepayment for prepayment in prepayments if prepayment.year < year]
+	if not earlier:
+		return None
+	latest = max(earlier, key=lambda prepayment: prepayment.year)
+	return latest.year if latest.dauerfristverlaengerung else None
+
+
 def sondervorauszahlung(prepayments: Iterable[Prepayment], year: int) -> Decimal:
 	return next(
 		(prepayment.sondervorauszahlung for prepayment in prepayments if prepayment.year == year), ZERO

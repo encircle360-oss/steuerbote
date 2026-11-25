@@ -64,6 +64,7 @@ Die Tabelle „Posten des Jahresabschlusses“ (`Annual Accounts Line`) hält je
 | `concept` | Position der Taxonomie | die Position der HGB-Taxonomie oder ihres Vermerks, ohne das Präfix `de-gaap-ci:` |
 | `amount`, `prior` | Betrag, Vorjahr | was „Berechnen“ aus den Büchern ermittelt und der Betrag des Vorjahres (§ 265 Abs. 2 Satz 1 HGB) |
 | `correction`, `correction_reason` | Korrigierter Betrag, Begründung der Korrektur | eine Korrektur mit ihrer Begründung, nur an einer Zeile, die Salden selbst aufnimmt, siehe [Korrekturen](#korrekturen) |
+| `correction_basis` | Berechnet bei der Korrektur | der Betrag, den „Berechnen“ für die Zeile ergab, als die Korrektur eingetragen oder zuletzt geändert wurde, siehe [Jahresmeldungen](jahresmeldungen.md) |
 | `reported` | Betrag im Abschluss | was die Zeile ausweist: die Korrektur, sonst der Betrag |
 | `shown` | Im Abschluss gezeigt | ob der Posten in einem der beiden Jahre einen Betrag hat (§ 265 Abs. 8 HGB) |
 | `takes_correction` | Korrigierbar | ob die Zeile eine Korrektur nimmt |
@@ -155,6 +156,7 @@ Neben den Befunden der Bilanzzuordnung (`BILANZ-…`) schreibt „Berechnen“ d
 | `JA-UNTERSCHRIFT-OHNE-DATUM` | Fehler | einer Unterschrift fehlt das Datum |
 | `JA-UNTERSCHRIFT-DATUM` | Fehler | eine Unterschrift liegt im Geschäftsjahr |
 | `SB-NEU-BERECHNEN` | Fehler | seit „Berechnen“ hat sich eine Eingabe geändert: eine Korrektur, eine Angabe, ein Unterzeichner, das Vorjahr von Hand, Größenklasse oder Arbeitnehmer von Hand, die Ergebnisverwendung, die Offenlegung oder der Tag der Feststellung |
+| `SB-KORREKTUR-UEBERHOLT` | Fehler | eine Korrektur wurde gegen einen anderen Betrag eingetragen, als „Berechnen“ jetzt für ihre Zeile ergibt, siehe [Jahresmeldungen](jahresmeldungen.md) |
 
 Was die XBRL-Datei anhält (`JA-XBRL-…` und `XBRL-…`), steht in [Befunde der Offenlegung](offenlegung.md#befunde).
 

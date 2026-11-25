@@ -204,6 +204,16 @@
 	</table>
 	{%- endif %}
 
+	{%- set errors = (doc.hints or []) | selectattr("severity", "equalto", "Fehler") | list %}
+	{%- if errors %}
+	<h2>Offene Fehler</h2>
+	<ul>
+		{%- for row in errors %}
+		<li>{{ row.code | e }}: {{ (row.text or "") | e }}</li>
+		{%- endfor %}
+	</ul>
+	{%- endif %}
+
 	{%- if doc.remarks %}
 	<h2>Bemerkungen</h2>
 	<p>{{ doc.get_formatted("remarks") }}</p>

@@ -13,6 +13,8 @@
   "column_break_amounts",
   "override",
   "override_reason",
+  "override_basis",
+  "acceptance_reason",
   "reported",
   "blocked",
   "manual",
@@ -52,8 +54,10 @@
    "read_only": 1
   },
   {
+   "columns": 2,
    "fieldname": "amount",
    "fieldtype": "Currency",
+   "in_list_view": 1,
    "label": "Ledger Amount",
    "options": "Company:company:default_currency",
    "read_only": 1
@@ -63,11 +67,9 @@
    "fieldtype": "Column Break"
   },
   {
-   "columns": 2,
    "description": "In whole euros and with a reason, it replaces the amount filed and lifts the block of the line; 0 drops the line.",
    "fieldname": "override",
    "fieldtype": "Currency",
-   "in_list_view": 1,
    "label": "Override Amount",
    "options": "Company:company:default_currency"
   },
@@ -75,6 +77,20 @@
    "fieldname": "override_reason",
    "fieldtype": "Small Text",
    "label": "Reason for the Override"
+  },
+  {
+   "description": "The ledger amount of the line when the override was entered or last changed. When the ledger books another amount, the line holds the statement until the override is confirmed or removed.",
+   "fieldname": "override_basis",
+   "fieldtype": "Currency",
+   "label": "Ledger Amount of the Override",
+   "options": "Company:company:default_currency",
+   "read_only": 1
+  },
+  {
+   "description": "Lifts the block of an unconfirmed or invalid VAT ID, for example when a confirmation of the day of the supply is kept outside Steuerbote. The line keeps reporting the ledger amount.",
+   "fieldname": "acceptance_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason for Releasing the VAT ID"
   },
   {
    "bold": 1,
@@ -141,7 +157,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Confirmation Result",
-   "options": "\nvalid\ninvalid\nunknown",
+   "options": "\nvalid\ninvalid\nunknown\nunconfirmed",
    "read_only": 1
   },
   {
@@ -170,7 +186,7 @@
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-21 16:00:00.000000",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Steuerbote",
  "name": "Recapitulative Statement Line",

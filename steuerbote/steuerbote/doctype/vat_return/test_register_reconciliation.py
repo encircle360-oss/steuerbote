@@ -28,8 +28,8 @@ from steuerbote.ustva.registers import Register
 # The companies, their accounts, parties and vouchers are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = ["Account", "Company", "DocType"]
 
-# Sells and buys with invoices in October and November 2026, books a journal entry besides in November and only one
-# in September.
+# Sells and buys with invoices in October and November 2026, the EU services to a customer in Austria with its USt-IdNr.,
+# books a journal entry besides in November and only one in September.
 COMPANY = "Steuerbote Test Register GmbH"
 ABBR = "STRG"
 # Its invoices of October stay out of the reconciliation of COMPANY.
@@ -119,7 +119,7 @@ class TestRegisterReconciliation(IntegrationTestCase):
 			make_mapping(company)
 			if company == COMPANY:
 				cls.account = accounts
-		make_customer(CUSTOMER, "Germany", "DE123456789")
+		make_customer(CUSTOMER, "Austria", "ATU12345678")
 		insert_record("Supplier", name=SUPPLIER, supplier_name=SUPPLIER, country="Sweden")
 		a = cls.account
 		post_month(COMPANY, ABBR, a, "2026-10-05")

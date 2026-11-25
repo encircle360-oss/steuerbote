@@ -31,7 +31,9 @@ from steuerbote.tests.helpers import (
 	post_payment_entry,
 	post_sales_invoice,
 )
+from steuerbote.vatid.exemption import consequence
 from steuerbote.vatid.tests.fakes import BZST_ID, START, FakeBzst, FakeClock, bzst
+from steuerbote.zm.lines import INVALID_ADVICE
 
 # The companies, their accounts, customers and vouchers are made by the tests themselves.
 IGNORE_TEST_RECORD_DEPENDENCIES = [
@@ -581,11 +583,15 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[(AUSTRIAN, "L", money(3800), money(3800))],
 		)
 
-	def test_a_cancellation_in_a_later_month_gives_that_month_a_negative_line_with_the_immutable_ledger(self):
+	def test_a_cancellation_after_the_filing_lands_where_the_settings_say_with_the_immutable_ledger(self):
 		"""With „Unveränderliches Hauptbuch aktivieren“ ERPNext posts the reversal of a cancelled invoice on the day
-		of the cancellation, as the Anleitung zur ZM wants „Stornierungen von Rechnungen“ in the Meldezeitraum of
-		the change (IV.10): the month filed stays as filed, and the month of the cancellation reports the amount
-		with a minus sign under the customer of the invoice."""
+		of the cancellation; the ZM counts it on the day of the invoice, entered when it was cancelled, as the
+		Voranmeldung does (ledger.load_bookings, assignment). With „Belege für abgegebene Zeiträume“ set to the period
+		open at the time, as here, the month filed stays as filed, and the month of the cancellation reports the
+		amount with a minus sign under the customer of the invoice, as the Anleitung zur ZM wants „Stornierungen von
+		Rechnungen“ in the Meldezeitraum of the change (IV.10)."""
+		self.roll_back_afterwards()
+		frappe.db.set_value("VAT Return Settings", COMPANY, "late_documents", "Current Period")
 		a = self.account
 		post_sales_invoice(
 			COMPANY,
@@ -610,6 +616,97 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[(AUSTRIAN, "L", ALPEN, money(-2500))],
 		)
 		self.assertEqual(contents(december.make_csv_file()), HEADER + b"ATU12345678,-2500,L")
+
+	def test_a_cancellation_falls_in_the_same_month_of_the_zm_and_the_voranmeldung_under_every_setting(self):
+		"""The ZM reads a cancelled voucher as the Voranmeldung does (ledger.load_bookings, assignment): before the
+		month of the voucher is filed, voucher and reversal cancel out there; after the filing, a corrected return and a
+		Berichtigung of that month (§ 18a Abs. 10 UStG), or with „im laufenden Zeitraum melden“ the month open at the
+		cancellation. Kz 41 keeps the posting date under both bases (§ 18b Satz 2 UStG), so the four combinations of
+		the two settings give the same month in both."""
+		company = make_company("Steuerbote Test ZM Stornierung GmbH", "STZC")
+		a = {
+			number: make_account(company, number, name, root_type)
+			for number, (name, root_type) in ACCOUNTS.items()
+		}
+		make_settings(
+			company,
+			[(2026, "monthly", 1)],
+			ust_idnr=OWN_VAT_ID,
+			zm_rules=[{"year": 2026, "valid_from_month": 1, "rhythm": "monthly", "services_monthly": 1}],
+		)
+		make_mapping(company)
+		for basis in ("By Service Date", "By Posting Date"):
+			for treatment in ("Corrected Return", "Current Period"):
+				for filed in (False, True):
+					with self.subTest(basis=basis, treatment=treatment, filed=filed):
+						frappe.db.savepoint("zm_cancellation_case")
+						try:
+							self.cancellation_case(company, a, basis, treatment, filed)
+						finally:
+							frappe.db.rollback(save_point="zm_cancellation_case")
+
+	def cancellation_case(self, company: str, a: dict, basis: str, treatment: str, filed: bool) -> None:
+		frappe.db.set_value(
+			"VAT Return Settings", company, {"period_basis": basis, "late_documents": treatment}
+		)
+		post_sales_invoice(
+			company, "SINV-STZC-05-1", ALPEN, "2026-05-12", [(a["1400"], 5000, 0), (a["8125"], 0, 5000)]
+		)
+		may = self.statement(5, company=company, remarks="Testabgabe")
+		may.calculate()
+		may.reload()
+		if filed:
+			vat_may = self.vat_return(company, 5)
+			vat_may.mark_filed_outside("In Mein ELSTER abgegeben")
+			may.mark_filed_outside(filed_via="mein_elster")
+			may.reload()
+		cancel_voucher("Sales Invoice", "SINV-STZC-05-1", immutable_on="2026-06-03")
+		june = self.statement(6, company=company)
+		june.calculate()
+		june.reload()
+		vat_june = self.vat_return(company, 6)
+		zm_june = [(row.vat_id, money(row.reported)) for row in june.lines]
+		kz41_june = [money(row.amount) for row in vat_june.kennzahlen if row.kennzahl == "41"]
+		if not filed:
+			may.calculate()
+			may.reload()
+			self.assertEqual((list(may.lines), zm_june, kz41_june), ([], [], []))
+			self.assertEqual(
+				[row.kennzahl for row in self.vat_return(company, 5).kennzahlen if row.kennzahl == "41"], []
+			)
+		elif treatment == "Corrected Return":
+			self.assertEqual((zm_june, kz41_june), ([], []))
+			(change,) = may.ledger_changes_since_filing()
+			self.assertIn("SINV-STZC-05-1", change)
+			correction = frappe.get_doc(DOCTYPE, may.make_correction())
+			self.assertEqual(
+				[
+					(row.vat_id, money(row.reported), money(row.filed_amount), row.in_file)
+					for row in correction.lines
+				],
+				[(AUSTRIAN, money(0), money(5000), 1)],
+			)
+			self.assertIn(
+				"SINV-STZC-05-1", [row["voucher_no"] for row in vat_may.changes_since_filing() or ()]
+			)
+		else:
+			self.assertEqual(may.ledger_changes_since_filing(), [])
+			self.assertEqual((zm_june, kz41_june), ([(AUSTRIAN, money(-5000))], [money(-5000)]))
+
+	def vat_return(self, company: str, month: int):
+		doc = frappe.get_doc(
+			{
+				"doctype": "VAT Return",
+				"company": company,
+				"year": 2026,
+				"rhythm": "monthly",
+				"period_index": month,
+				"remarks": "Testabgabe",
+			}
+		).insert()
+		doc.calculate()
+		doc.reload()
+		return doc
 
 	def test_a_filed_statement_says_when_the_ledger_of_its_months_changed_since_the_filing(self):
 		"""Without „Unveränderliches Hauptbuch aktivieren“ ERPNext takes a cancelled invoice out of its own month,
@@ -743,6 +840,104 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "latest filed Zusammenfassende Meldung"):
 			doc.make_correction()
 
+	def test_a_late_invoice_after_an_override_holds_the_berichtigung_until_the_override_is_confirmed(self):
+		"""§ 18a Absatz 10 UStG: the Berichtigung reports the full correct sum of a line (Anleitung zur ZM, IV.12.2). An
+		override made against the ledger amount of the filing must not hide a voucher booked later for the same
+		customer: the Berichtigung takes the override with its basis, and the line holds it until the override is
+		confirmed or removed. A release of the number lifts its block without touching the amount."""
+		self.roll_back_afterwards()
+		doc = self.calculated(4)
+		austrian, french = self.line(doc, AUSTRIAN), self.line(doc, FRENCH)
+		austrian.override = 9800
+		austrian.override_reason = "Die Nummer war am Liefertag bestätigt."
+		french.acceptance_reason = "Bestätigung vom Leistungstag liegt in der Akte."
+		doc.save()
+		doc.reload()
+		self.assertEqual((doc.status, doc.ready), ("Bereit", 1))
+		self.assertEqual(
+			[
+				(row.vat_id, money(row.override_basis), row.acceptance_reason or None, row.blocked)
+				for row in doc.lines
+			],
+			[
+				(AUSTRIAN, money(9800), None, 0),
+				(FRENCH, money(0), "Bestätigung vom Leistungstag liegt in der Akte.", 0),
+			],
+		)
+		self.assertIn("ZM-USTID-FREIGEGEBEN", [row.code for row in doc.hints])
+		doc.calculate()
+		doc.reload()
+		self.assertEqual(
+			(doc.status, money(self.line(doc, AUSTRIAN).override_basis)), ("Bereit", money(9800))
+		)
+		doc.mark_filed_outside(filed_via="mein_elster")
+		a = self.account
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-04-3", ALPEN, "2026-04-28", [(a["1400"], 2000, 0), (a["8125"], 0, 2000)]
+		)
+		correction = frappe.get_doc(DOCTYPE, doc.make_correction())
+		line = self.line(correction, AUSTRIAN)
+		self.assertEqual(
+			(money(line.amount), money(line.reported), money(line.override_basis), line.blocked),
+			(money(11800), money(9800), money(9800), 1),
+		)
+		self.assertEqual(correction.status, "Berechnet")
+		(stale,) = (row for row in correction.hints if row.code == "ZM-KORREKTUR-UEBERHOLT")
+		self.assertEqual(stale.severity, "Fehler")
+		self.assertIn("das Hauptbuch bucht jetzt", stale.text)
+		self.assertEqual(
+			self.line(correction, FRENCH).acceptance_reason, "Bestätigung vom Leistungstag liegt in der Akte."
+		)
+		line.override = 0
+		line.override_reason = ""
+		line.acceptance_reason = "Die Nummer war am Liefertag bestätigt."
+		correction.save()
+		correction.reload()
+		line = self.line(correction, AUSTRIAN)
+		self.assertEqual((correction.status, money(line.reported), line.in_file), ("Bereit", money(11800), 1))
+		self.assertEqual(contents(correction.make_csv_file()), HEADER + b"ATU12345678,11800,L")
+
+	def test_a_confirmed_override_holds_nothing_after_the_ledger_changed(self):
+		"""Changing the amount or the Begründung of an override confirms it against the ledger amount the line shows."""
+		self.roll_back_afterwards()
+		doc = self.calculated(4)
+		row = self.line(doc, AUSTRIAN)
+		row.override = 9800
+		row.override_reason = "Nachweis in der Akte."
+		doc.save()
+		a = self.account
+		post_sales_invoice(
+			COMPANY, "SINV-STZM-04-4", ALPEN, "2026-04-29", [(a["1400"], 100, 0), (a["8125"], 0, 100)]
+		)
+		doc.reload()
+		doc.calculate()
+		doc.reload()
+		self.assertEqual(self.line(doc, AUSTRIAN).blocked, 1)
+		self.assertIn("ZM-KORREKTUR-UEBERHOLT", [hint.code for hint in doc.hints])
+		row = self.line(doc, AUSTRIAN)
+		row.override = 9900
+		doc.save()
+		doc.reload()
+		self.assertEqual(
+			(money(self.line(doc, AUSTRIAN).override_basis), self.line(doc, AUSTRIAN).blocked),
+			(money(9900), 0),
+		)
+		self.assertNotIn("ZM-KORREKTUR-UEBERHOLT", [hint.code for hint in doc.hints])
+
+	def test_a_save_keeps_the_names_of_the_rows_that_stay(self):
+		"""Every save builds the lines and findings anew; the version of the statement shows what changed, not every
+		row removed and added."""
+		self.roll_back_afterwards()
+		doc = self.calculated(4)
+		names = ([row.name for row in doc.lines], [row.name for row in doc.hints])
+		doc.remarks = "Geprüft."
+		doc.save()
+		doc.reload()
+		self.assertEqual(([row.name for row in doc.lines], [row.name for row in doc.hints]), names)
+		doc.calculate()
+		doc.reload()
+		self.assertEqual([row.name for row in doc.lines], names[0])
+
 	def test_a_month_is_filed_once_also_when_the_rhythm_changes_afterwards(self):
 		"""The I. Kalendervierteljahr filed quarterly holds the Lieferungen of January; after the rules turn
 		monthly from January, a ZM for January would file them again under another quart."""
@@ -799,7 +994,7 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[row.code for row in doc.hints if row.code == "ZM-USTID-UNBESTAETIGT"],
 			["ZM-USTID-UNBESTAETIGT"] * 2,
 		)
-		self.assertEqual({row.confirmation_outcome for row in doc.lines}, {None})
+		self.assertEqual({row.confirmation_outcome for row in doc.lines}, {"unconfirmed"})
 		self.assertEqual(money(doc.vouchers[0].amount), money(10000))
 
 		quarter = self.statement(1, company=QUARTERLY_COMPANY, kind="quarter")
@@ -1021,7 +1216,13 @@ class TestRecapitulativeStatement(IntegrationTestCase):
 			[
 				(
 					"ZM-USTID-UNGUELTIG",
-					f"Die USt-IdNr. {FRENCH} ist laut Bestätigungsabfrage vom 20. November 2026 ungültig.",
+					" ".join(
+						(
+							f"Die USt-IdNr. {FRENCH} ist laut Bestätigungsabfrage vom 20. November 2026 ungültig.",
+							consequence("21"),
+							INVALID_ADVICE,
+						)
+					),
 				)
 			],
 		)
