@@ -164,7 +164,7 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		self.assertEqual(
 			result.notes,
 			(
-				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.2", 5, 0, 0)),
+				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.3", 5, 0, 0)),
 				Note(step.CHECK_WITH_ADVISER, open=True),
 				Note(step.TAXONOMY_MISSING, ("6.9",), open=True),
 			),
@@ -187,7 +187,7 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		self.assertEqual(
 			result.notes,
 			(
-				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.2", 3, 1, 0)),
+				Note(step.MAPPING_WITH_DEFAULTS, ("SKR04 Taxonomie 6.9 2026.3", 3, 1, 0)),
 				Note(step.WITHOUT_PLACE, (1,), open=True),
 				Note(step.CHECK_WITH_ADVISER, open=True),
 			),
@@ -220,12 +220,12 @@ class IntegrationTestBalanceSheetSetup(IntegrationTestCase):
 		mapping = frappe.get_doc(MAPPING, SKR04_COMPANY)
 		self.assertEqual(
 			(mapping.defaults_version, [row.account_number for row in mapping.rules]),
-			("SKR04 Taxonomie 6.9 2026.2", ["1406", "1800", "2900", "3806", "4400"]),
+			("SKR04 Taxonomie 6.9 2026.3", ["1406", "1800", "2900", "3806", "4400"]),
 		)
 		self.assertEqual(
 			result.notes,
 			(
-				Note(step.MAPPING_FILLED, (SKR04_COMPANY, "SKR04 Taxonomie 6.9 2026.2", 5, 0, 0)),
+				Note(step.MAPPING_FILLED, (SKR04_COMPANY, "SKR04 Taxonomie 6.9 2026.3", 5, 0, 0)),
 				Note(step.CHECK_WITH_ADVISER, open=True),
 				Note(step.TAXONOMY_MISSING, ("6.9",), open=True),
 			),

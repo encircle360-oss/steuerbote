@@ -716,6 +716,7 @@ class Code(StrEnum):
 	RECLASSIFIED = "BILANZ-UMGLIEDERUNG"
 	NO_PARTY = "BILANZ-OHNE-PARTEI"
 	PARTY_SET_OFF = "BILANZ-PARTEI-VERRECHNET"
+	CURRENCY_NETTED = "BILANZ-WAEHRUNG-SALDIERT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -815,6 +816,7 @@ def place(
 		else:
 			placed.append(_placed(mapping, balance, taxonomy, groups))
 	findings.extend(_netted(placed))
+	findings.extend(_currency_netted(placed))
 	findings.extend(_set_off(linked))
 	return Placement(tuple(placed), tuple(left_out), tuple(findings))
 
@@ -995,6 +997,41 @@ def _netted(placed: Iterable[Placed]) -> Iterator[Finding]:
 			concept,
 			total,
 		)
+
+
+CURRENCY_POSITIONS = (
+	"is.netIncome.regular.operatingTC.otherCost.currLoss",
+	"is.netIncome.regular.operatingTC.otherOpRevenue.currGains",
+)
+"""The positions of the Erträge and Aufwendungen aus der Währungsumrechnung, which the GuV shows apart (§ 277 Abs. 5
+Satz 2 HGB) and § 246 Abs. 2 Satz 1 HGB does not let net."""
+
+
+def _currency_netted(placed: Iterable[Placed]) -> Iterator[Finding]:
+	"""A hint for each account of the currency translation that books gains and losses in the year and so shows only
+	their balance, as the Wechselkursneubewertung of ERPNext does on one account."""
+	for item in placed:
+		balance = item.balance
+		if (
+			balance.part is Part.INCOME_STATEMENT
+			and item.concept.rpartition(":")[2] in CURRENCY_POSITIONS
+			and balance.debit > ZERO
+			and balance.credit > ZERO
+		):
+			yield Finding(
+				Code.CURRENCY_NETTED,
+				Severity.HINT,
+				f"Konto {balance.number} bucht im Jahr Erträge und Aufwendungen aus der Währungsumrechnung (Haben "
+				f"{euro(balance.credit)}, Soll {euro(balance.debit)}) und zeigt nur ihren Saldo von "
+				f"{euro(abs(balance.amount))}. Die GuV weist beide gesondert aus (§ 277 Abs. 5 Satz 2 HGB), verrechnet "
+				"werden dürfen sie nicht (§ 246 Abs. 2 Satz 1 HGB): Buchen Sie Erträge und Aufwendungen aus der "
+				"Währungsumrechnung auf getrennte Konten, auch wo die Wechselkursneubewertung von ERPNext beide auf ein "
+				"Konto bucht.",
+				"§ 277 Abs. 5 Satz 2, § 246 Abs. 2 Satz 1 HGB",
+				balance.number,
+				item.concept,
+				balance.amount,
+			)
 
 
 def euro(value: Decimal) -> str:

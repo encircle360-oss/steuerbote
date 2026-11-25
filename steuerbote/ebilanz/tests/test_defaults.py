@@ -70,6 +70,10 @@ DIGESTS = {
 	"SKR04 Taxonomie 6.9 2026.2": "1790d77536396dc29decb8ea65ed28538eb0a33a9e0aa8b4b9acbffde30ecdfe",
 	"SKR03 Taxonomie 6.10 2026.2": "4f33471af195ba79cd19b73a36a92bb481088d450e026aee91c69f30d28a2978",
 	"SKR04 Taxonomie 6.10 2026.2": "5c9ed0ef78bf12965109ff3603f0705231ecf0a12e84b4a5e8827c233c709032",
+	"SKR03 Taxonomie 6.9 2026.3": "70a08abef3fba407aa1b61472bd8457159256f9fbe169bb7e8725b50c340ffd1",
+	"SKR04 Taxonomie 6.9 2026.3": "1c2518fc04e9f59b49f99ea1108bbba5c2fb5c5bdebae2690411c36d559033d7",
+	"SKR03 Taxonomie 6.10 2026.3": "b2577e60834ba4389024764bdd5fe6f7b9f442e3694bd5d428c13ae2ba414e41",
+	"SKR04 Taxonomie 6.10 2026.3": "20e192acff328399ce94b09624802753eced4bbab08aa2635d9121ee77e6b9c5",
 }
 """The SHA-256 of the canonical JSON of the rows of each version of the defaults."""
 
@@ -209,10 +213,10 @@ class DefaultsForTest(TestCase):
 
 class DefaultsVersionTest(TestCase):
 	def test_the_version_names_the_chart_the_taxonomy_the_datev_edition_and_the_revision(self):
-		self.assertEqual(dict(REVISIONS), {"6.9": 2, "6.10": 2})
+		self.assertEqual(dict(REVISIONS), {"6.9": 3, "6.10": 3})
 		self.assertEqual(
 			[defaults_version(chart, "6.9") for chart in sorted(CHARTS)],
-			["SKR03 Taxonomie 6.9 2026.2", "SKR04 Taxonomie 6.9 2026.2"],
+			["SKR03 Taxonomie 6.9 2026.3", "SKR04 Taxonomie 6.9 2026.3"],
 		)
 
 	def test_a_chart_without_defaults_has_no_version(self):
@@ -351,6 +355,9 @@ class PlacesTest(TestCase):
 		"""„... oder ...“ (Fußnote 2), a side in either chart; the Gegenkonto of a split by remaining term and the
 		accounts set off under § 246 Abs. 2 Satz 2 HGB keep one position (REASONS)."""
 		one_position = {Reason.SPLIT_COUNTER, Reason.OFFSET_PENSIONS, Reason.OFFSET_OTHER}
+		# The currency translation takes the position of the other direction although DATEV names one side: ERPNext
+		# books gains and losses onto one account (REASONS).
+		by_reason = {Reason.CURRENCY_TRANSLATION}
 		labelled = {chart: set(LABELLED[chart]) for chart in CHARTS}
 		for group in GROUPS["6.9"]:
 			if group.concept is None:
@@ -365,7 +372,7 @@ class PlacesTest(TestCase):
 				both = both or group.netting is not None
 				with self.subTest(account=account):
 					if group.opposite is not None:
-						self.assertTrue(both or not datev)
+						self.assertTrue(both or not datev or group.reason in by_reason)
 					elif both:
 						self.assertIn(group.reason, one_position)
 
