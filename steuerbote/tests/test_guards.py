@@ -180,7 +180,7 @@ class TestIdentity(GuardsTestCase):
 				with self.assertRaises(frappe.CannotChangeConstantError):
 					doc.save()
 				with self.assertRaises(frappe.CannotChangeConstantError):
-					frappe.client.save({**doc.as_dict(), field: value})
+					frappe.client.save({**frappe.get_doc("VAT Return", draft.name).as_dict(), field: value})
 				with self.assertRaises(frappe.CannotChangeConstantError):
 					frappe.client.set_value("VAT Return", draft.name, field, str(value))
 		stored = frappe.get_doc("VAT Return", draft.name)
