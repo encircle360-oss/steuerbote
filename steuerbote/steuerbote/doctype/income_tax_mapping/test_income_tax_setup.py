@@ -81,6 +81,7 @@ class IntegrationTestIncomeTaxSetup(IntegrationTestCase):
 				"vat_return_settings",
 				"vat_return_mapping",
 				"filing_period",
+				"books_start",
 				"income_tax_mapping",
 				"balance_sheet_mapping",
 			],

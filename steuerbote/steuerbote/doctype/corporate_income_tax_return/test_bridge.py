@@ -844,6 +844,38 @@ class CarryForwardsTest(TestCase):
 		)
 		self.assertEqual(found, [])
 
+	def test_in_its_first_year_in_steuerbote_the_return_needs_the_carry_forwards_of_the_last_notice(self):
+		"""A company whose returns of the previous year were filed outside Steuerbote (steuerbote/setup/start.py): a
+		missing amount would count 0 silently."""
+		first = replace(RETURN, first_year=True)
+		computation = compute(first)
+		missing = [item for item in computation.findings if item.code == bridge.CARRY_FORWARD_MISSING]
+		self.assertEqual(
+			[item.text for item in missing],
+			[
+				bridge.CARRY_FORWARD_MISSING_TEXT.format(kind, "31.12.2025")
+				for kind in ("Loss Carried Forward (§ 10d EStG)", "Einlagekonto (§ 27 KStG)")
+			],
+		)
+		self.assertTrue(all(item.blocking for item in missing))
+		stated = (
+			self.stated(rules.CarryForwardKind.LOSS, "0"),
+			self.stated(rules.CarryForwardKind.EINLAGEKONTO, "25000"),
+		)
+		settings = replace(SETTINGS, carry_forwards=stated)
+		self.assertNotIn(bridge.CARRY_FORWARD_MISSING, codes(compute(first, settings=settings)))
+		self.assertNotIn(bridge.CARRY_FORWARD_MISSING, codes(compute()))
+
+	def test_in_its_first_year_an_amount_of_an_earlier_day_does_not_do(self):
+		stated = (
+			self.stated(rules.CarryForwardKind.LOSS, "0", as_of=date(2024, 12, 31)),
+			self.stated(rules.CarryForwardKind.EINLAGEKONTO, "0"),
+		)
+		computation = compute(
+			replace(RETURN, first_year=True), settings=replace(SETTINGS, carry_forwards=stated)
+		)
+		self.assertEqual(codes(computation).count(bridge.CARRY_FORWARD_MISSING), 1)
+
 	def test_the_einlagekonto_and_the_sonderausweis_go_to_kst_1_f(self):
 		settings = replace(
 			SETTINGS,

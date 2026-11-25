@@ -17,6 +17,7 @@ class VATReturnExtensionBase(Document):
 		parenttype: DF.Data
 		period_code: DF.Data | None
 		period_label: DF.Data | None
+		prior_filing: DF.Link | None
 		vat_return: DF.Link | None
 	# end: auto-generated types
 

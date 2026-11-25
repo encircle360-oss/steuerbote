@@ -18,6 +18,7 @@ steuerbote/                    Repository
 │   │   ├── calculation.py     calculate(): Buchungszeilen zu Kennzahlen, Summen, Kz 83 und Verprobung
 │   │   ├── period.py          Voranmeldungszeiträume, Fristen und ELSTER-Zeitraumcodes
 │   │   ├── plausibility.py    Vorperiodenvergleich und Hinweise aus Rechnungen, Hauptbuch und Vergleich
+│   │   ├── carried.py         Übergang eines Saldos, den ein Konto in eine spätere Voranmeldung trägt
 │   │   ├── tax_templates.py   Konten der Steuervorlagen ohne Platz in der Kontenzuordnung und ihre Hinweise
 │   │   ├── registers.py       Abgleich mit den Berichten Sales Register und Purchase Register
 │   │   ├── yearcheck.py       Jahresprüfung: Daten eines Jahres gegen Jahresdokumentation, Schema und Datenartversionmatrix
@@ -52,7 +53,7 @@ steuerbote/                    Repository
 │   ├── dauerfrist/            Rechenkern von Dauerfristverlängerung und Sondervorauszahlung (USt 1 H), reines Python ohne Frappe-Import
 │   ├── deadlines/             Fristen von Voranmeldung, ZM, Sondervorauszahlung und Jahresmeldungen mit Status, reines Python ohne Frappe-Import; Bericht „Offene Fristen“, tägliche Erinnerung und Fristerinnerung im Frappe-Modul, siehe Fristen
 │   ├── mappings/              Vergleich einer Kontenzuordnung mit ihren Vorgaben oder einer Datei in drei Seiten und die Datei einer Kontenzuordnung mit Prüfsumme, reines Python ohne Frappe-Import
-│   ├── setup/                 Steuerbote einrichten: Schritte und ihre Reihenfolge, Erkennung von SKR03 und SKR04, Vorschlag des Voranmeldungszeitraums, reines Python ohne Frappe-Import; Seite und Schritte im Frappe-Modul, siehe Einrichtung
+│   ├── setup/                 Steuerbote einrichten: Schritte und ihre Reihenfolge, Erkennung von SKR03 und SKR04, Vorschlag des Voranmeldungszeitraums, Start im laufenden Betrieb mit Voranmeldungen vor Steuerbote und Prüfliste (start.py), reines Python ohne Frappe-Import; Seite und Schritte im Frappe-Modul, siehe Einrichtung
 │   ├── ustjahr/               Rechenkern der Umsatzsteuererklärung (USt 2 A) mit den Vorgaben ihrer Zeilen für SKR03 und SKR04, reines Python ohne Frappe-Import
 │   ├── kst/, gewst/           Rechenkerne von Körperschaft- und Gewerbesteuer mit ihren Jahrestabellen, Vordrucken und den Vorgaben der Kontenzuordnung Ertragsteuern, reines Python ohne Frappe-Import
 │   ├── ebilanz/               Kern der E-Bilanz: Positionen, Beträge, Kontensalden, Anlagenspiegel, Überleitung, GCD und Instanz, dazu die Vorgaben der Bilanzzuordnung, reines Python ohne Frappe-Import
@@ -68,7 +69,8 @@ steuerbote/                    Repository
 │   ├── mapping_sync.py        Zeilen der Kontenzuordnung zur Mapping des Kerns und zu den Einträgen des Vergleichs, reines Python
 │   ├── tax_templates.py       liest die Konten der Steuervorlagen eines Unternehmens mit ihren Vorlagen
 │   ├── zm_sources.py          liest für die Zusammenfassende Meldung Hauptbuch, Kunden, Adressen und abgegebene Voranmeldungen
-│   ├── dauerfrist_sources.py  liest für die Dauerfristverlängerung die abgegebenen Voranmeldungen eines Jahres und das Gründungsdatum
+│   ├── dauerfrist_sources.py  liest für die Dauerfristverlängerung die abgegebenen Voranmeldungen eines Jahres, die Voranmeldungen vor Steuerbote und das Gründungsdatum
+│   ├── prior_filings.py       liest den Start der Bücher in ERPNext und die Voranmeldungen vor Steuerbote
 │   ├── holiday_list.py        liest die Feiertage der Fristen aus der Feiertagsliste des Unternehmens
 │   ├── ustjahr_sources.py     liest für die Umsatzsteuererklärung das Hauptbuch des Jahres, die abgegebenen Voranmeldungen, die Sondervorauszahlung und die Zahlungen an das Finanzamt
 │   ├── income_tax_sources.py  liest für Körperschaft- und Gewerbesteuererklärung die Gewinn- und Verlustrechnung, die Buchungen der Steuern, die Kontenzuordnung Ertragsteuern und die Einstellungen Jahresmeldungen

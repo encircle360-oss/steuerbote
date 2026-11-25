@@ -158,6 +158,7 @@ NO_SCHEDULE = "SB-ANLAGE-PLAN"
 TWO_SCHEDULES = "SB-ANLAGE-DOPPELT"
 NO_CLOSING = "SB-PERIODENABSCHLUSS"
 MAPPING_VERSION = "SB-ZUORDNUNG-VERSION"
+PREVIOUS_EQUITY_FROM_BOOKS = "SB-BV-VORJAHR"
 CODES = (
 	TAXONOMY_CODE,
 	ASSET_POSITION,
@@ -166,6 +167,7 @@ CODES = (
 	NO_SCHEDULE,
 	TWO_SCHEDULES,
 	NO_CLOSING,
+	PREVIOUS_EQUITY_FROM_BOOKS,
 	*comparison.CODES,
 	MAPPING_VERSION,
 )
@@ -1066,6 +1068,24 @@ def closing_finding(statement_type: object, closed_by: Collection[str]) -> tuple
 			"Jahresüberschuss aus der GuV und das Ergebnis früherer Jahre ohne Periodenabschlussbeleg auf das "
 			"Abschlusskonto der Einstellungen Jahresmeldungen. Die Erfolgskonten des Jahres schließt in ERPNext erst er "
 			"ab. (Quelle: steuerbote/balances.py; ERPNext 16, Period Closing Voucher)",
+		),
+	)
+
+
+def previous_equity_finding(year: int, from_books: bool) -> tuple[Finding, ...]:
+	"""A hint where the Betriebsvermögen at the end of the previous year comes from the opening balances of the books,
+	because Steuerbote holds no E-Bilanz filed for that year and none was entered by hand: so it is for a company in its
+	first year in Steuerbote, whose previous E-Bilanz went from its tax adviser (steuerbote/setup/start.py)."""
+	if not from_books:
+		return ()
+	return (
+		Finding(
+			PREVIOUS_EQUITY_FROM_BOOKS,
+			Severity.HINT,
+			f"Das Betriebsvermögen zum Schluss von {year - 1} kommt aus den Buchungen zu Beginn des Wirtschaftsjahres: "
+			f"Steuerbote hält keine abgegebene E-Bilanz für {year - 1}. Gleichen Sie es mit dem Betriebsvermögen der "
+			"Steuerbilanz ab, die die E-Bilanz des Vorjahres gemeldet hat, und tragen Sie es bei einer Abweichung "
+			"unter „Betriebsvermögen des Vorjahres laut Unternehmen“ mit Begründung ein.",
 		),
 	)
 

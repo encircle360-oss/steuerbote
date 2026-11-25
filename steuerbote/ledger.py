@@ -119,3 +119,32 @@ def _by_number(company: str, numbers: Iterable[str], field: str) -> dict[str, st
 		fields=[field, "account_number"],
 	)
 	return {account.account_number: account[field] for account in accounts}
+
+
+def closing_balances(
+	company: str, to_date: date | str, account_numbers: Collection[str]
+) -> dict[str, Decimal]:
+	"""Debit less credit of each of the company's accounts with these numbers from every entry up to ``to_date``, the
+	opening entries and the Journal Entries left out of the Voranmeldung included, without cancelled entries; the
+	balance a watched timing account carries is this less the movement of the period (steuerbote/ustva/carried.py)."""
+	numbers = list(account_numbers)
+	if not numbers:
+		return {}
+	gl_entry = frappe.qb.DocType("GL Entry")
+	account = frappe.qb.DocType("Account")
+	rows = (
+		frappe.qb.from_(gl_entry)
+		.inner_join(account)
+		.on(account.name == gl_entry.account)
+		.select(account.account_number, Sum(gl_entry.debit).as_("debit"), Sum(gl_entry.credit).as_("credit"))
+		.where(gl_entry.company == company)
+		.where(gl_entry.posting_date <= to_date)
+		.where(gl_entry.is_cancelled == 0)
+		.where(account.account_number.isin(numbers))
+		.groupby(account.account_number)
+		.run(as_dict=True)
+	)
+	found = dict.fromkeys(numbers, Decimal("0.00"))
+	for row in rows:
+		found[row.account_number.strip()] = _cents(row.debit) - _cents(row.credit)
+	return found

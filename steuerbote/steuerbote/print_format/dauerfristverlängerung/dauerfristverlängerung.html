@@ -81,7 +81,7 @@
 			{%- for row in doc.base_rows %}
 			<tr>
 				<td>{{ (row.period_label or "") | e }}</td>
-				<td>{{ (row.vat_return or "") | e }}</td>
+				<td>{%- if row.prior_filing %}{{ row.prior_filing | e }} (vor Steuerbote abgegeben){%- else %}{{ (row.vat_return or "") | e }}{%- endif %}</td>
 				<td class="sb-num">{{ cents(row.kz83) }}</td>
 				<td class="sb-num">{{ cents(row.kz39) }}</td>
 			</tr>

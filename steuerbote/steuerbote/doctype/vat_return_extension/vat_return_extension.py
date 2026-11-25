@@ -568,7 +568,7 @@ class VATReturnExtension(Transmittable, Document):
 			year = cint(self.year)
 			messages = {
 				bridge.BaseProblem.NO_RETURNS: _(
-					"No VAT Return of {0} is filed for {1}. Enter the base by hand, with the reason."
+					"No VAT Return of {0} is filed for {1}. Enter its Voranmeldungen filed before Steuerbote as VAT Return Prior Filings and calculate again, or enter the base by hand, with the reason."
 				).format(year - 1, self.company),
 				bridge.BaseProblem.EXPECTED_NEEDED: _(
 					"{0} began on {1}: its Sondervorauszahlung is the average Vorauszahlung of a month it expects in {2}. Enter the Vorauszahlungen it expects for the year as the base by hand, with the reason."

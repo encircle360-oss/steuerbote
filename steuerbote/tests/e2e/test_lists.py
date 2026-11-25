@@ -27,6 +27,7 @@ LISTS = {
 	"annual-filing-settings": [data.INCOME_TAX_COMPANY],
 	"income-tax-mapping": [data.INCOME_TAX_COMPANY],
 	"balance-sheet-mapping": [data.EBILANZ_COMPANY],
+	"vat-return-prior-filing": [],
 }
 # The lists whose records the seed makes for a company other than the first.
 COMPANIES = {

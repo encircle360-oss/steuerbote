@@ -71,6 +71,7 @@ class CompanyRules:
 	zm_rules: tuple[zm_rhythm.Rule, ...] = ()
 	since: date | None = None
 	annual: AnnualRules | None = None
+	books_start: date | None = None
 
 	def __post_init__(self) -> None:
 		for name in ("period_rules", "prepayments", "zm_rules"):
@@ -152,7 +153,7 @@ def upcoming(
 	found = []
 	for owed, since in owed_since:
 		document_type = document_types.get(owed.kind)
-		if document_type is None:
+		if document_type is None or _before_start(owed.period, company_rules.books_start):
 			continue
 		status, document = _status(documents.get((owed.kind, owed.period), []))
 		if owed.due < today and not _still_open(status, owed.due, since):
@@ -222,6 +223,17 @@ def _status(documents: list[Filing]) -> tuple[Status, Filing | None]:
 def _owed_at_all(owed: Obligation, reportable: Callable[[zm_rhythm.Coverage], bool] | None) -> bool:
 	"""Whether a deadline without a document is owed: a Meldezeitraum only with something to report."""
 	return owed.coverage is None or reportable is None or reportable(owed.coverage)
+
+
+def _before_start(period: object, books_start: date | None) -> bool:
+	"""Whether a Voranmeldungszeitraum or Meldezeitraum begins before the start of the books, or a year lies before the
+	year of the start."""
+	if books_start is None:
+		return False
+	if isinstance(period, Period | ReportingPeriod):
+		return period.start < books_start
+	year = period.year if isinstance(period, OpeningBalance) else period
+	return year < books_start.year
 
 
 def _still_open(status: Status, due: date, since: date | None) -> bool:

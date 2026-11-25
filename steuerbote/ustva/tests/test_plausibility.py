@@ -597,6 +597,20 @@ class ComparisonHintsTest(TestCase):
 		self.assertEqual((hint.code, hint.severity), (Code.NO_CATALOGUE, Severity.HINT))
 		self.assertEqual(hint.text, "Kein Katalog für 2025: Der Vergleich mit November 2025 bleibt leer.")
 
+	def test_a_period_before_the_start_of_the_books_is_not_compared(self):
+		"""Its ledger holds only the opening balances, so the comparison stays empty instead of showing every Kennzahl
+		as new."""
+		(hint,) = self.hints_for(
+			{"81": d("1000")},
+			EarlierPeriod(Period.month(2026, 12), None, Code.BEFORE_START),
+			EarlierPeriod(Period.month(2026, 1), None, Code.BEFORE_START),
+		)
+		self.assertEqual((hint.code, hint.severity), (Code.BEFORE_START, Severity.HINT))
+		self.assertEqual(
+			hint.text,
+			"Vor dem Start der Bücher in Steuerbote: Der Vergleich mit Dezember 2026 und Januar 2026 bleibt leer.",
+		)
+
 	def test_one_hint_per_year_without_catalogue(self):
 		found = self.hints_for(
 			{"81": d("1000")},
@@ -670,6 +684,7 @@ class HintsTest(TestCase):
 				"STEUERVORLAGE-OHNE-KENNZAHL",
 				"REGISTER-ABWEICHUNG",
 				"GRUNDLAGE-AUS-STEUER",
+				"VOR-START",
 			],
 		)
 		self.assertEqual([severity.value for severity in Severity], ["Hinweis", "Warnung"])

@@ -203,7 +203,7 @@ class SetupPageTest(TestCase):
 			and [getattr(target, "id", None) for target in node.targets] == ["steuerbote_setup_steps"]
 		)
 		keys = [step["key"] for step in ast.literal_eval(assignment.value)]
-		self.assertEqual(keys, ["income_tax_mapping", "balance_sheet_mapping"])
+		self.assertEqual(keys, ["books_start", "income_tax_mapping", "balance_sheet_mapping"])
 		rows = [line for line in SETUP.read_text(encoding="utf-8").splitlines() if line.startswith("| ")]
 		for key in keys:
 			with self.subTest(step=key):

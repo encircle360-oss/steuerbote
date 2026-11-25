@@ -1333,6 +1333,11 @@ SKR03 = _mapping("SKR03", SKR03_ACCOUNTS, SKR03_WATCHED, SKR03_WATCHED_FOR_HINTS
 SKR04 = _mapping("SKR04", SKR04_ACCOUNTS, SKR04_WATCHED, SKR04_WATCHED_FOR_HINTS, SKR04_RANGES)
 
 DEFAULTS = MappingProxyType({"SKR03": SKR03, "SKR04": SKR04})
+# The watched accounts whose balance is a timing case, the first two of each watch list: DATEV Kontenrahmen 2026,
+# SKR 03 „1548 Vorsteuer in Folgeperiode/im Folgejahr abziehbar“ and „1725 Umsatzsteuer nicht fällig“, SKR 04 1434 and
+# 3865 of the same names. A period that releases the balance such an account carries into it blocks nothing
+# (steuerbote/ustva/carried.py).
+TIMING_ACCOUNTS = MappingProxyType({"SKR03": SKR03_WATCHED[:2], "SKR04": SKR04_WATCHED[:2]})
 
 # The edition of the DATEV charts these defaults follow, "Gültig für 2026" as the docstring cites them, and the
 # revision of the defaults within it. Every change of the defaults raises REVISION, and a new edition starts it at 1

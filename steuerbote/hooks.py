@@ -54,6 +54,7 @@ company_data_to_be_ignored = [
 	"VAT Return Extension",
 	"VAT Return",
 	"ELSTER Transmission",
+	"VAT Return Prior Filing",
 	"Annual Filing Settings",
 	*(name for name in _ANNUAL_DOCUMENTS if (_DOCTYPES / name.lower().replace(" ", "_")).is_dir()),
 ]
@@ -81,6 +82,13 @@ after_migrate = ["steuerbote.steuerbote.doctype.eric_settings.eric_settings.refr
 # The steps Steuerbote einrichten runs besides its own (steuerbote/steuerbote/setup.py): the Kontenzuordnung
 # Ertragsteuern and the Bilanzzuordnung, each with the defaults of SKR03 or SKR04.
 steuerbote_setup_steps = [
+	{
+		"key": "books_start",
+		"label": "Start in Steuerbote",
+		"order": 35,
+		"needs": ["vat_return_settings", "vat_return_mapping"],
+		"run": "steuerbote.steuerbote.setup.check_books_start",
+	},
 	{
 		"key": "income_tax_mapping",
 		"label": "Income Tax Mapping",

@@ -93,7 +93,7 @@ Ein Speichern nimmt aus der Tabelle nur die Antworten, Texte und Beträge; „Be
 
 ### Vorjahr
 
-Haben die Bücher kein Vorjahr, etwa weil die Gesellschaft erst mit dem Geschäftsjahr in ERPNext bucht, nimmt die Tabelle „Vorjahresbetrag von Hand“ (`Annual Accounts Prior Entry`) die Beträge des letzten festgestellten Jahresabschlusses auf:
+Haben die Bücher kein Vorjahr, etwa weil die Gesellschaft erst mit dem Geschäftsjahr in ERPNext bucht, nimmt Steuerbote kein Vorjahr aus ihnen. Als Vorjahr der Bücher gilt nur eines mit einer Buchung, die keine Eröffnungsbuchung ist: Eröffnungsbuchungen am letzten Tag des Vorjahres hielten dessen Bilanz ohne Gewinn- und Verlustrechnung. Ebenso wenig gilt es, wenn die Einstellungen Umsatzsteuer-Voranmeldung den Start der Bücher („Bücher in ERPNext ab“) nach dem ersten Tag des Vorjahres nennen (`steuerbote/balances.py`, siehe [Start mit Steuerbote im laufenden Betrieb](einrichtung.md#start-mit-steuerbote-im-laufenden-betrieb)). Dann nimmt die Tabelle „Vorjahresbetrag von Hand“ (`Annual Accounts Prior Entry`) die Beträge des letzten festgestellten Jahresabschlusses auf:
 
 | Feld | Bezeichnung | Inhalt |
 |---|---|---|

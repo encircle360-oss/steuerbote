@@ -43,7 +43,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, getdate
 
-from steuerbote import ustjahr_sources
+from steuerbote import prior_filings, ustjahr_sources
 from steuerbote.dauerfrist_sources import date_of_establishment
 from steuerbote.deadlines import Kind
 from steuerbote.elster import ust2a_xml
@@ -53,7 +53,7 @@ from steuerbote.jahresmeldung import findings as annual_findings
 from steuerbote.jahresmeldung.findings import Finding, Severity
 from steuerbote.jahresmeldung.lifecycle import Event
 from steuerbote.jahresmeldung.overrides import to_amount
-from steuerbote.ledger import account_names
+from steuerbote.ledger import account_names, closing_balances
 from steuerbote.steuerbote.annual_filing import FINDINGS_TABLE, RECALCULATE, AnnualFiling, Calculation
 from steuerbote.steuerbote.deadlines import annual_deadline
 from steuerbote.steuerbote.doctype.annual_filing_settings.annual_filing_settings import settings_of
@@ -64,6 +64,8 @@ from steuerbote.steuerbote.doctype.vat_return.vat_return import settings_for
 from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings import xml_errors
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
 from steuerbote.ustjahr import calculation, form, reconciliation, rules, soll, split
+from steuerbote.ustva import carried
+from steuerbote.ustva.defaults import TIMING_ACCOUNTS
 from steuerbote.ustva.years import UnknownYearError
 
 DOCTYPE = "Annual VAT Return"
@@ -99,6 +101,7 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 			lines = ustjahr_sources.year_lines(self.company, year)
 			manual = self._lines(bridge.manual_lines, stored)
 			result = calculation.calculate(lines, annual_split, manual, tolerance)
+			result, released = _released(self.company, result, lines, mapping, year)
 			periods = bridge.year_periods(
 				settings.get_period_rules(), year, date_of_establishment(self.company)
 			)
@@ -148,7 +151,9 @@ class AnnualVATReturn(AnnualFiling, Transmittable, Document):
 			values=values,
 			findings=bridge.findings(
 				(
+					*bridge.start_findings(year, prior_filings.books_start(self.company)),
 					*bridge.own_findings(result, annual_split, kleinunternehmer),
+					*bridge.release_findings(released, year),
 					*result.findings,
 					*found_soll.findings,
 					*found.findings,
@@ -432,3 +437,17 @@ def _input(doc: Document, fieldname: str) -> str:
 	if fieldtype == "Date":
 		return getdate(value).isoformat() if value else ""
 	return " ".join(str(value or "").split())
+
+
+def _released(
+	company: str, result: calculation.AnnualResult, lines: list, mapping, year: int
+) -> tuple[calculation.AnnualResult, tuple[carried.Release, ...]]:
+	"""The result without the block of a watched timing account whose movement over the year releases the balance it
+	carried into the year, such as the opening balance of input tax deductible in January (steuerbote/ustva/carried.py)."""
+	timing = TIMING_ACCOUNTS.get(mapping.chart, ())
+	candidates = [account for account in result.unmapped if account in timing]
+	if not candidates:
+		return result, ()
+	balances = carried.carried_balances(closing_balances(company, date(year, 12, 31), candidates), lines)
+	found = carried.releases(result.unmapped, lines, balances, timing)
+	return replace(result, unmapped=carried.still_blocked(result.unmapped, found)), found

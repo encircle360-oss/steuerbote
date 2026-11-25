@@ -33,6 +33,7 @@ SIDEBAR_LINKS = [
 	("Page", "steuerbote-setup", "Set Up"),
 	("DocType", "VAT Return Settings", "Settings"),
 	("DocType", "VAT Return Mapping", "Account Mapping"),
+	("DocType", "VAT Return Prior Filing", "Prior Filings"),
 ]
 # The groups of the sidebar, each with its icon.
 SIDEBAR_GROUPS = [
@@ -91,6 +92,7 @@ class WorkspaceTest(IntegrationTestCase):
 				("DocType", "VAT Return"),
 				("DocType", "VAT Return Extension"),
 				("DocType", "VAT Return Mapping"),
+				("DocType", "VAT Return Prior Filing"),
 				("DocType", "VAT Return Settings"),
 				("Page", "steuerbote-setup"),
 				("Report", "Offene Fristen"),

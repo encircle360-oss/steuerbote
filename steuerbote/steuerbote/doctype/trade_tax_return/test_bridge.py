@@ -409,6 +409,16 @@ class CarryForwardsTest(TestCase):
 		self.assertEqual(line(computation.lines, "E4015001")["form_amount"], Decimal("200"))
 		self.assertEqual(codes(computation), [PROVISIONAL])
 
+	def test_in_its_first_year_in_steuerbote_the_return_needs_the_fehlbetrag_of_the_last_notice(self):
+		computation = compute(replace(RETURN, first_year=True))
+		(missing,) = (item for item in computation.findings if item.code == bridge.CARRY_FORWARD_MISSING)
+		self.assertTrue(missing.text.startswith("Fehlbetrag (§ 10a GewStG) has no amount as of 31.12.2025"))
+		self.assertTrue(missing.blocking)
+		settings = replace(SETTINGS, carry_forwards=(stated(rules.CarryForwardKind.FEHLBETRAG, "0"),))
+		self.assertNotIn(
+			bridge.CARRY_FORWARD_MISSING, codes(compute(replace(RETURN, first_year=True), settings=settings))
+		)
+
 	def test_a_carry_forward_not_confirmed_counts_not_and_holds_the_return_back(self):
 		settings = replace(
 			SETTINGS, carry_forwards=(stated(rules.CarryForwardKind.FEHLBETRAG, "7600.40", False),)

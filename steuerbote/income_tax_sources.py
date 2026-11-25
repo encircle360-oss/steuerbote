@@ -30,7 +30,7 @@ from frappe import _
 from frappe.query_builder.functions import Coalesce, Sum
 from frappe.utils import cint, cstr, getdate
 
-from steuerbote import ebilanz_sources
+from steuerbote import ebilanz_sources, prior_filings
 from steuerbote.jahresmeldung.overrides import to_amount
 from steuerbote.kst.categories import Mapping
 from steuerbote.kst.provisions import ProvisionAccounts
@@ -292,3 +292,12 @@ def _entries(gl_entry, account, company: str, from_date: date, to_date: date, fi
 
 def _text(value: object) -> str | None:
 	return cstr(value).strip() or None
+
+
+def first_year(company: str, doctype: str, year: int) -> bool:
+	"""Whether the return of ``year`` is the first of the company in Steuerbote after a start with opening balances: its
+	VAT Return Settings name the start of the books in ERPNext (steuerbote/setup/start.py), and no return of the
+	DocType for the year before is filed through Steuerbote. Its carry-forwards then come from the last notices."""
+	if prior_filings.books_start(company) is None:
+		return False
+	return not frappe.db.exists(doctype, {"company": company, "year": year - 1, "docstatus": 1})

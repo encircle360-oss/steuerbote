@@ -252,6 +252,7 @@ class TradeTaxReturn(AnnualFiling, Transmittable, Document):
 			getdate(self.to_date),
 			supplement_key=self.supplement_key or None,
 			supplement_text=self.supplement_text or None,
+			first_year=income_tax_sources.first_year(self.company, DOCTYPE, cint(self.year)),
 		)
 
 

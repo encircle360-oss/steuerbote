@@ -1,0 +1,253 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-11-25 12:00:00.000000",
+ "description": "A Voranmeldung filed before Steuerbote, before the books of the company began in ERPNext, entered once as filed: the Sondervorauszahlung, the proposal of the Voranmeldungszeitraum and the threshold of the Zusammenfassende Meldung take it like a VAT Return filed through Steuerbote.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "company",
+  "year",
+  "rhythm",
+  "period_index",
+  "column_break_period",
+  "period_label",
+  "filed_on",
+  "amounts_section",
+  "kz83",
+  "kz39",
+  "column_break_amounts",
+  "kz41",
+  "kz42",
+  "kz21",
+  "source_section",
+  "source_document",
+  "attachment",
+  "reason",
+  "column_break_source",
+  "entered_by",
+  "entered_on",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "default": "VVS-.{year}.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "VVS-.{year}.-.#####",
+   "print_hide": 1,
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "remember_last_selected_value": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_standard_filter": 1,
+   "label": "Year",
+   "reqd": 1
+  },
+  {
+   "description": "Monthly or quarterly, as the Voranmeldung was filed.",
+   "fieldname": "rhythm",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Rhythm",
+   "options": "monthly\nquarterly",
+   "reqd": 1
+  },
+  {
+   "description": "Month 1 to 12 or quarter 1 to 4.",
+   "fieldname": "period_index",
+   "fieldtype": "Int",
+   "label": "Period Number",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_period",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "fieldname": "period_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Return Period",
+   "read_only": 1
+  },
+  {
+   "description": "The day the Voranmeldung went to the Finanzamt, as its protocol of ELSTER shows it.",
+   "fieldname": "filed_on",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Filed On",
+   "reqd": 1
+  },
+  {
+   "description": "Enter the amounts as filed, with their signs, as the protocol of the filing shows them. A later corrected Voranmeldung of the period is entered as a further record; the latest filed counts.",
+   "fieldname": "amounts_section",
+   "fieldtype": "Section Break",
+   "label": "Amounts as Filed"
+  },
+  {
+   "description": "Remaining advance payment or surplus, a surplus negative.",
+   "fieldname": "kz83",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Kz 83",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "The Sondervorauszahlung the Voranmeldung deducted, as a rule in December.",
+   "fieldname": "kz39",
+   "fieldtype": "Currency",
+   "label": "Kz 39",
+   "non_negative": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "column_break_amounts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Steuerfreie innergemeinschaftliche Lieferungen an Abnehmer mit USt-IdNr.",
+   "fieldname": "kz41",
+   "fieldtype": "Currency",
+   "label": "Kz 41",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "Lieferungen des ersten Abnehmers bei innergemeinschaftlichen Dreiecksgeschäften.",
+   "fieldname": "kz42",
+   "fieldtype": "Currency",
+   "label": "Kz 42",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "Nicht steuerbare sonstige Leistungen im übrigen Gemeinschaftsgebiet (§ 18b UStG).",
+   "fieldname": "kz21",
+   "fieldtype": "Currency",
+   "label": "Kz 21",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "source_section",
+   "fieldtype": "Section Break",
+   "label": "Source of the Amounts"
+  },
+  {
+   "description": "Where the amounts come from, such as the transmission protocol of the tax adviser with its Transferticket.",
+   "fieldname": "source_document",
+   "fieldtype": "Data",
+   "label": "Source Document",
+   "reqd": 1
+  },
+  {
+   "description": "A copy of the source document, kept privately with this record.",
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Copy of the Source Document"
+  },
+  {
+   "description": "Why the Voranmeldung was filed outside Steuerbote, such as by the tax adviser before the company kept its books in ERPNext.",
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The user who entered the record.",
+   "fieldname": "entered_by",
+   "fieldtype": "Data",
+   "label": "Entered By",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "entered_on",
+   "fieldtype": "Datetime",
+   "label": "Entered On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "VAT Return Prior Filing",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-11-25 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Steuerbote",
+ "name": "VAT Return Prior Filing",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User"
+  }
+ ],
+ "quick_entry": 0,
+ "row_format": "Dynamic",
+ "search_fields": "company,year",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

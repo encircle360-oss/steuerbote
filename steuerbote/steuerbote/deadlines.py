@@ -101,6 +101,7 @@ def deadlines_of(company: str, settings: Document | None, today: date, horizon_d
 			"prepayments": settings.get_prepayments(),
 			"zm_rules": settings.get_zm_rules(),
 			"since": getdate(settings.creation),
+			"books_start": getdate(settings.books_start) if settings.get("books_start") else None,
 		}
 	rules = deadlines.CompanyRules(company, annual=annual_rules(company), **vat_rules)
 	return deadlines.upcoming(

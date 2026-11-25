@@ -107,9 +107,19 @@ ESTABLISHMENTS = "GEWST-BETRIEBSSTAETTE"
 DETAILS_MISSING = "GEWST-ANGABEN-FEHLEN"
 UNCONFIRMED = "GEWST-VORTRAG-UNBESTAETIGT"
 NOT_IN_EUROS = "GEWST-VORTRAG-CENT"
+CARRY_FORWARD_MISSING = "GEWST-VORTRAG-FEHLT"
 PREPAYMENTS = "GEWST-VORAUSZAHLUNGEN"
 NUTZDATEN = "GEWST-NUTZDATEN"
-CODES = (PROVISIONAL, ESTABLISHMENTS, DETAILS_MISSING, UNCONFIRMED, NOT_IN_EUROS, PREPAYMENTS, NUTZDATEN)
+CODES = (
+	PROVISIONAL,
+	ESTABLISHMENTS,
+	DETAILS_MISSING,
+	UNCONFIRMED,
+	NOT_IN_EUROS,
+	PREPAYMENTS,
+	NUTZDATEN,
+	CARRY_FORWARD_MISSING,
+)
 """The codes of the findings of this module, beside those of the core, of the Körperschaftsteuer it builds on and the
 Fehlercodes of the rules."""
 
@@ -151,6 +161,8 @@ class Return:
 	to_date: date
 	supplement_key: str | None = None
 	supplement_text: str | None = None
+	first_year: bool = False
+	"""The first year of the company in Steuerbote, as for the Körperschaftsteuererklärung."""
 
 	@property
 	def opening_day(self) -> date:
@@ -192,6 +204,14 @@ def compute(
 		)
 		for name, kind in CARRY_FORWARDS.items()
 	}
+	kst.missing_carry_forwards(
+		settings.carry_forwards if settings else (),
+		(rules.CarryForwardKind.FEHLBETRAG,),
+		kst.Return(ret.year, ret.from_date, ret.to_date, first_year=ret.first_year),
+		translate,
+		found,
+		CARRY_FORWARD_MISSING,
+	)
 	establishment = _establishment(ret, settings, translate, found)
 	rate = rules.hebesatz_of(settings.trade_tax_rates, establishment.ags, ret.year) if establishment else None
 	inputs = GewstInputs(

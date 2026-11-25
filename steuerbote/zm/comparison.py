@@ -15,8 +15,10 @@ of the VAT Return Settings. A hint never holds the ZM back.
 
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
+from steuerbote.ustva.period import day_label
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import HUNDRED, ZERO, to_cents
 from steuerbote.zm.findings import Code, Finding
@@ -105,3 +107,24 @@ def _hint(row: ComparisonRow, previous_period: ReportingPeriod, figures: Figures
 	earlier_text = f"der Vorperiode {previous_period.label} ({figures.money(row.previous)})"
 	text = f"Die Zeile {row.vat_id} ({row.art.value}) liegt mit {figures.money(row.current)}{share} {direction} {earlier_text}."
 	return Finding(Code.PREVIOUS_PERIOD, text)
+
+
+def before_start(before: Earlier, start: date | None) -> Finding | None:
+	"""A hint instead of the comparison where an earlier Meldezeitraum begins before the start of the books in
+	Steuerbote (steuerbote/setup/start.py): the ledger holds only the opening balances of that time, so every line
+	would look new."""
+	if start is None:
+		return None
+	periods = [before.goods.period]
+	if before.services is not None and before.services.period not in periods:
+		periods.append(before.services.period)
+	outside = [period for period in periods if period.start < start]
+	if not outside:
+		return None
+	labels = " und ".join(period.label for period in outside)
+	subject = "Es liegt" if len(outside) == 1 else "Sie liegen"
+	return Finding(
+		Code.BEFORE_START,
+		f"Kein Vorperiodenvergleich mit {labels}: {subject} vor dem Start der Bücher in Steuerbote am "
+		f"{day_label(start)}.",
+	)

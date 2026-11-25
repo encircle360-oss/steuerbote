@@ -284,6 +284,7 @@ FILINGS = (
 	"VAT Return Extension",
 	"VAT Return",
 	"ELSTER Transmission",
+	"VAT Return Prior Filing",
 )
 
 

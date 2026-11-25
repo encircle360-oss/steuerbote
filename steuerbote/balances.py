@@ -31,8 +31,9 @@ currency, each account with its name, number, label and part, debit and credit i
 books() reads a fiscal year, opening_books() the Eröffnungsbilanz of the day a company begins: the accounts of the
 Bilanz with every entry before the day and the opening entries up to it, and no account of the GuV.
 fiscal_year_books() reads a Fiscal Year with the year before it, which the Jahresabschluss shows beside it (§ 265
-Abs. 2 Satz 1 HGB); that is None where the company has no Fiscal Year before or no entry up to its end, as in its
-first year or its first year in ERPNext. It names the Period Closing Vouchers of the year, which the documents do not
+Abs. 2 Satz 1 HGB); that is None where the company has no Fiscal Year before or no entry up to its end but opening entries, as in its
+first year or its first year in ERPNext, or where its VAT Return Settings start the books after the first day of
+that year (steuerbote/setup/start.py). It names the Period Closing Vouchers of the year, which the documents do not
 need. closing_account() is the account the Annual Filing Settings name for the result, with its number.
 """
 
@@ -130,7 +131,7 @@ def fiscal_year_books(
 	prior, prior_from, prior_to = None, None, None
 	if before:
 		prior_from, prior_to = getdate(before[1]), getdate(before[2])
-		if _has_entries(company, prior_to):
+		if _has_prior_books(company, prior_from, prior_to):
 			prior = books(
 				company, prior_from, prior_to, finance_book=finance_book, closing_account=closing_account
 			)
@@ -224,9 +225,18 @@ def _without_entries(name: str) -> AccountBalance:
 	)
 
 
-def _has_entries(company: str, to_date: date) -> bool:
+def _has_prior_books(company: str, from_date: date, to_date: date) -> bool:
+	"""Whether the books hold the year before: an entry up to its end that is no opening entry, and no start of the
+	books in ERPNext after its first day (steuerbote/setup/start.py). Opening balances alone, posted on its last day,
+	hold its Bilanz without its GuV."""
+	books_start = frappe.db.get_value("VAT Return Settings", company, "books_start")
+	if books_start and getdate(books_start) > from_date:
+		return False
 	return bool(
-		frappe.db.exists("GL Entry", {"company": company, "is_cancelled": 0, "posting_date": ["<=", to_date]})
+		frappe.db.exists(
+			"GL Entry",
+			{"company": company, "is_cancelled": 0, "is_opening": "No", "posting_date": ["<=", to_date]},
+		)
 	)
 
 

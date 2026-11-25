@@ -192,6 +192,31 @@ class OverdueTest(TestCase):
 		self.assertEqual(len([item for item in found if item.kind is ZM]), 10)
 
 
+class BeforeTheStartTest(TestCase):
+	"""What lies before the start of the books in Steuerbote was filed outside it (steuerbote/setup/start.py): no
+	deadline of that time is listed, nor is the Steuerbote's to file."""
+
+	def test_no_voranmeldung_or_zusammenfassende_meldung_before_the_start(self):
+		rules = replace(RULES, since=None, books_start=date(2026, 11, 1))
+		self.assertEqual(periods(upcoming(rules, (), TODAY, 30)), [NOVEMBER])
+
+	def test_the_december_before_a_start_in_january_is_left_to_the_filing_outside(self):
+		rules = CompanyRules(
+			COMPANY,
+			period_rules=(PeriodRule(2026, "monthly"),),
+			prepayments=(Prepayment(2026, True), Prepayment(2027, True)),
+			books_start=date(2027, 1, 1),
+		)
+		self.assertEqual(
+			upcoming(rules, (), date(2027, 2, 1), 9), [deadline(SVZ, 2027, "2027", date(2027, 2, 10))]
+		)
+
+	def test_no_annual_filing_of_a_year_before_the_start(self):
+		self.assertTrue(upcoming(ANNUAL_RULES, (), SUMMER, 30))
+		self.assertEqual(upcoming(replace(ANNUAL_RULES, books_start=date(2027, 1, 1)), (), SUMMER, 30), [])
+		self.assertTrue(upcoming(replace(ANNUAL_RULES, books_start=date(2026, 1, 1)), (), SUMMER, 30))
+
+
 class ReportableTest(TestCase):
 	def test_a_zusammenfassende_meldung_without_a_document_is_due_only_with_something_to_report(self):
 		asked = []

@@ -233,6 +233,11 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 				),
 			),
 			*bridge.closing_finding(self.statement_type, closed_by),
+			*bridge.previous_equity_finding(
+				cint(self.year),
+				bool(self.flags.previous_equity_from_books)
+				and not (self.bvv_previous_equity_reason or "").strip(),
+			),
 			*self._comparison_findings(ebilanz, accounts),
 		)
 		return Calculation(
@@ -540,6 +545,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		reported, or the books at the beginning of the Wirtschaftsjahr, for a Handelsbilanz with the steuerlicher
 		Ausgleichsposten of the last Stichtag (Leitfaden B.14.3.2.12)."""
 		zero = Decimal("0.00")
+		self.flags.previous_equity_from_books = False
 		if self._opening:
 			return zero, zero
 		with core_errors():
@@ -551,6 +557,7 @@ class ElectronicBalanceSheet(AnnualFiling, Transmittable, Document):
 		filed = ebilanz_sources.filed_tax_equity(self.company, cint(self.year) - 1)
 		if filed is not None:
 			return filed, zero
+		self.flags.previous_equity_from_books = True
 		if self._handelsbilanz:
 			with core_errors():
 				transferred = ueberleitung(

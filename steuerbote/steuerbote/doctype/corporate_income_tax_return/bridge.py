@@ -106,6 +106,7 @@ from steuerbote.kst.form import (
 from steuerbote.kst.holdings import Exemption, Holding, HoldingResult, exemption
 from steuerbote.kst.provisions import ProvisionAccounts
 from steuerbote.kst.years import year_of
+from steuerbote.setup import start
 from steuerbote.steuerbote.doctype.annual_filing_settings import rules
 from steuerbote.ustva.calculation import LedgerLine
 from steuerbote.ustva.plausibility import Figures
@@ -288,6 +289,7 @@ DETAILS_MISSING = "KST-ANGABEN-FEHLEN"
 SHARES = "KST-ANTEILSEIGNER"
 UNCONFIRMED = "KST-VORTRAG-UNBESTAETIGT"
 NOT_IN_EUROS = "KST-VORTRAG-CENT"
+CARRY_FORWARD_MISSING = "KST-VORTRAG-FEHLT"
 NO_UEBERLEITUNG = "KST-UEBERLEITUNG-FEHLT"
 UNMAPPED = "KST-KONTO-OHNE-ZUORDNUNG"
 UNNUMBERED = "KST-KONTO-OHNE-NUMMER"
@@ -349,6 +351,10 @@ UNCONFIRMED_TEXT = (
 	"confirmed carry-forwards."
 )
 NOT_IN_EUROS_TEXT = "{0} as of {1} is {2}, not whole euros as a notice states it; the return takes {3}."
+CARRY_FORWARD_MISSING_TEXT = (
+	"{0} has no amount as of {1} in the Annual Filing Settings. In its first year in Steuerbote the return takes the "
+	"carry-forwards of the last notice: enter it, 0 as well, and confirm it against the notice."
+)
 NO_UEBERLEITUNG_TEXT = (
 	"The Annual Filing Settings keep a Handelsbilanz with Überleitungsrechnung, and line 11 of Anlage GK has no line by "
 	"hand with the Überleitung to the Steuerbilanz. Add each step of it as a line by hand of E8002001 with its reason."
@@ -462,6 +468,7 @@ MESSAGES = (
 	SHARES_TEXT,
 	UNCONFIRMED_TEXT,
 	NOT_IN_EUROS_TEXT,
+	CARRY_FORWARD_MISSING_TEXT,
 	NO_UEBERLEITUNG_TEXT,
 	UNMAPPED_TEXT,
 	UNNUMBERED_TEXT,
@@ -680,6 +687,9 @@ class Return:
 	previous_nominal_capital: Decimal = ZERO
 	ebilanz: EBilanz | None = None
 	prior_ebilanz: PriorEBilanz | None = None
+	first_year: bool = False
+	"""The first year of the company in Steuerbote: no return of the previous year was filed through it, and the
+	company did not begin in the year (steuerbote/setup/start.py)."""
 
 	def __post_init__(self) -> None:
 		for name in ("lines", "holding_results", "credits", "donations", "distributions", "contributions"):
@@ -720,6 +730,13 @@ def compute(
 		)
 		for name, kind in CARRY_FORWARDS.items()
 	}
+	missing_carry_forwards(
+		settings.carry_forwards if settings else (),
+		(rules.CarryForwardKind.LOSS, rules.CarryForwardKind.EINLAGEKONTO),
+		ret,
+		translate,
+		found,
+	)
 	base = _inputs(ret, ledger, mapping, settings, carry_forwards, translate, found)
 	manual = (*base.manual, *_manual_lines(ret.lines, chain.compute(base, figures)))
 	result = chain.compute(replace(base, manual=manual), figures)
@@ -1137,6 +1154,26 @@ def carry_forward(
 		)
 		found.append(_error(not_in_euros, text, "Einstellungen"))
 	return euros
+
+
+def missing_carry_forwards(
+	stated: Iterable[rules.CarryForward],
+	kinds: Iterable[rules.CarryForwardKind],
+	ret: Return,
+	translate: Translate,
+	found: list[Finding],
+	code: str = CARRY_FORWARD_MISSING,
+) -> None:
+	"""An error for each kind of ``kinds`` without an amount as of the opening day, in the first year of the company in
+	Steuerbote: its last returns went elsewhere, so 0 for a carry-forward nobody entered would be a guess."""
+	if not ret.first_year:
+		return
+	stated = tuple(stated)
+	day = ret.opening_day.strftime("%d.%m.%Y")
+	for kind in start.missing_carry_forwards(stated, ret.opening_day):
+		if kind in kinds:
+			text = translate(CARRY_FORWARD_MISSING_TEXT).format(translate(str(kind)), day)
+			found.append(_error(code, text, "Einstellungen"))
 
 
 def prepayments_of(year: int, settings: Settings | None) -> dict[str, Decimal]:

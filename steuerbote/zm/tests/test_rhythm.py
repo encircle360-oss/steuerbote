@@ -18,6 +18,7 @@ from steuerbote.zm.rhythm import (
 	rule_for,
 	services_period,
 	threshold_findings,
+	threshold_unknown,
 	threshold_window,
 )
 from steuerbote.zm.tests.support import FIGURES, d
@@ -363,3 +364,42 @@ class NoticesTest(TestCase):
 
 	def test_neither(self):
 		check_notices(ReportingPeriod.calendar_year(2026), anzeige=False, widerruf=False)
+
+
+class ThresholdBeforeTheStartTest(TestCase):
+	"""A quarterly ZM needs the Lieferungen of the four quarters before (§ 18a Absatz 1 Satz 2 UStG). Before the start
+	of the books in Steuerbote the ledger holds none of them, only the Voranmeldungen filed before Steuerbote do."""
+
+	QUARTERLY_2027 = (Rule(2026, 1, QUARTERLY),)
+	START = date(2027, 1, 1)
+	FIRST_QUARTER = ReportingPeriod.quarter(2027, 1)
+
+	def test_names_the_quarters_before_the_start_no_voranmeldung_gives(self):
+		(finding,) = threshold_unknown(self.QUARTERLY_2027, self.FIRST_QUARTER, self.START, ())
+		self.assertEqual(finding.code, Code.THRESHOLD_UNKNOWN)
+		self.assertTrue(finding.blocking)
+		self.assertEqual(
+			finding.text,
+			"Ob die Lieferungen im I. Kalendervierteljahr 2026, II. Kalendervierteljahr 2026, III. "
+			"Kalendervierteljahr 2026 und IV. Kalendervierteljahr 2026 50.000 € überstiegen, weiß Steuerbote nicht: "
+			"Sie liegen vor dem Start der Bücher in Steuerbote am 1. Januar 2027. Tragen Sie die Voranmeldungen "
+			"dieser Zeit mit Kz 41 und 42 als Voranmeldungen vor Steuerbote ein (§ 18a Absatz 1 Satz 2 UStG).",
+		)
+
+	def test_the_voranmeldungen_filed_before_steuerbote_give_them(self):
+		known = {(2026, month) for month in range(1, 13)}
+		self.assertEqual(threshold_unknown(self.QUARTERLY_2027, self.FIRST_QUARTER, self.START, known), ())
+		known.discard((2026, 2))
+		(finding,) = threshold_unknown(self.QUARTERLY_2027, self.FIRST_QUARTER, self.START, known)
+		self.assertIn("im I. Kalendervierteljahr 2026 50.000 €", finding.text)
+
+	def test_only_quarters_before_the_start_are_unknown(self):
+		(finding,) = threshold_unknown(self.QUARTERLY_2027, self.FIRST_QUARTER, date(2026, 7, 1), ())
+		self.assertIn(
+			"im I. Kalendervierteljahr 2026 und II. Kalendervierteljahr 2026 50.000 €", finding.text
+		)
+
+	def test_a_monthly_zm_or_a_company_without_a_start_needs_nothing(self):
+		monthly = (Rule(2026, 1, MONTHLY),)
+		self.assertEqual(threshold_unknown(monthly, month(2027, 1), self.START, ()), ())
+		self.assertEqual(threshold_unknown(self.QUARTERLY_2027, self.FIRST_QUARTER, None, ()), ())
