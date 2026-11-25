@@ -18,7 +18,7 @@ from steuerbote.tests.helpers import (
 	post_journal_entry,
 	post_ledger,
 )
-from steuerbote.xbrl.mapping import AccountBalance, Books, Part
+from steuerbote.xbrl.mapping import AccountBalance, AccountKind, Books, Part
 
 COMPANY = "Steuerbote Test Salden GmbH"
 OPEN = "Steuerbote Test Salden Offen GmbH"
@@ -311,3 +311,92 @@ class IntegrationTestEarlierResult(IntegrationTestCase):
 		self.assertIsNone(balances.closing_account(OPEN))
 		insert_record(balances.SETTINGS, name=OPEN, company=OPEN, closing_account=self.accounts["2970"])
 		self.assertEqual(balances.closing_account(OPEN), (self.accounts["2970"], "2970"))
+
+
+PARTIES = "Steuerbote Test Salden Parteien GmbH"
+
+
+class IntegrationTestPartyBalances(IntegrationTestCase):
+	"""The accounts of type Receivable and Payable split by party at the Stichtag, as ERPNext keeps the party on every
+	GL Entry of them: a customer with a credit balance, a supplier with a debit balance, a receivable account of one
+	party, postings without a party and a customer linked to a supplier (Party Link). Every name is invented."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		ensure_fiscal_year(PARTIES, date(2026, 6, 30))
+		make_company(PARTIES, "STSP")
+		cls.receivable = make_account(PARTIES, "1200", "Forderungen", "Asset", account_type="Receivable")
+		cls.own = make_account(PARTIES, "1210", "Forderungen Kunde Nord", "Asset", account_type="Receivable")
+		cls.payable = make_account(PARTIES, "3300", "Verbindlichkeiten", "Liability", account_type="Payable")
+		cls.sales = make_account(PARTIES, "4400", "Erlöse", "Income")
+		rows = (
+			(cls.receivable, "Customer", "Kunde Süd", 1000, 0),
+			(cls.receivable, "Customer", "Kunde West", 0, 300),
+			(cls.receivable, "", "", 0, 50),
+			(cls.own, "Customer", "Kunde Nord", 400, 0),
+			(cls.payable, "Supplier", "Lieferant Ost", 0, 800),
+			(cls.payable, "Supplier", "Lieferant Mitte", 90, 0),
+			(cls.payable, "Supplier", "Kunde Süd GmbH", 0, 200),
+			(cls.sales, "", "", 0, 140),
+		)
+		for index, (account, party_type, party, debit, credit) in enumerate(rows):
+			insert_record(
+				"GL Entry",
+				company=PARTIES,
+				posting_date="2026-05-01",
+				account=account,
+				party_type=party_type or None,
+				party=party or None,
+				debit=debit,
+				credit=credit,
+				voucher_type="Journal Entry",
+				voucher_no=f"STSP-2026-{index}",
+				is_cancelled=0,
+				is_opening="No",
+				docstatus=1,
+			)
+		insert_record(
+			"Party Link",
+			primary_role="Customer",
+			primary_party="Kunde Süd",
+			secondary_role="Supplier",
+			secondary_party="Kunde Süd GmbH",
+		)
+
+	def found(self) -> dict[str, AccountBalance]:
+		books = balances.books(PARTIES, "2026-01-01", "2026-12-31")
+		return {balance.number: balance for balance in books.balances}
+
+	def test_an_account_of_type_receivable_or_payable_holds_the_balance_of_each_party(self):
+		found = self.found()
+		self.assertEqual(
+			(found["1200"].kind, [(item.party, item.amount) for item in found["1200"].parties]),
+			(
+				AccountKind.RECEIVABLE,
+				[("", Decimal("-50.00")), ("Kunde Süd", Decimal("1000.00")), ("Kunde West", Decimal("-300.00"))],
+			),
+		)
+		self.assertEqual(
+			(found["3300"].kind, sorted((item.party, item.amount) for item in found["3300"].parties)),
+			(
+				AccountKind.PAYABLE,
+				[
+					("Kunde Süd GmbH", Decimal("-200.00")),
+					("Lieferant Mitte", Decimal("90.00")),
+					("Lieferant Ost", Decimal("-800.00")),
+				],
+			),
+		)
+		self.assertEqual([item.party for item in found["1210"].parties], ["Kunde Nord"])
+		self.assertEqual((found["4400"].kind, found["4400"].parties), (None, ()))
+
+	def test_a_party_link_gives_the_customer_and_the_supplier_the_same_key(self):
+		found = self.found()
+		linked = {
+			item.party: item.linked
+			for balance in (found["1200"], found["3300"])
+			for item in balance.parties
+			if item.linked
+		}
+		self.assertEqual(linked, {"Kunde Süd": "Kunde Süd", "Kunde Süd GmbH": "Kunde Süd"})
