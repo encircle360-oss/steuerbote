@@ -364,7 +364,7 @@ class TestAnnualAccounts(IntegrationTestCase):
 			frappe.delete_doc("Journal Entry", name)
 			self.assertIsNone(frappe.db.get_value(doc.doctype, doc.name, "appropriation_entry"))
 			again = doc.make_appropriation_entry()
-		self.assertNotEqual(again, name)
+		self.assertEqual(frappe.db.get_value("Journal Entry", again, "docstatus"), 0)
 
 	def test_the_uebermittlung_and_the_einstellung_move_the_festgestellter_jahresabschluss_on(self):
 		doc = data.ready_for_the_feststellung(KLEINST)

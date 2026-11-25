@@ -602,7 +602,7 @@ class TestCorporateIncomeTaxReturn(Transmitting, IntegrationTestCase):
 		frappe.delete_doc("Journal Entry", name)
 		self.assertIsNone(frappe.db.get_value(DOCTYPE, doc.name, "provisions_entry"))
 		again = frappe.get_doc(DOCTYPE, doc.name).propose_provisions()
-		self.assertNotEqual(again, name)
+		self.assertEqual(frappe.db.get_value("Journal Entry", again, "docstatus"), 0)
 		self.assertEqual(frappe.db.get_value(DOCTYPE, doc.name, "provisions_entry"), again)
 
 	def test_the_zve_stays_the_same_once_the_proposed_provisions_are_posted(self):
