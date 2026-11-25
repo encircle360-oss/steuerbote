@@ -225,6 +225,7 @@ class FieldFilesTest(TestCase):
 				"vat_id_check_on_change": "0",
 				"vat_id_renewal": "0",
 				"vat_id_check_suppliers": "1",
+				"vat_id_check_german": "1",
 				"vat_id_invoice_goods": "Block",
 				"vat_id_goods_max_age": "0",
 				"vat_id_invoice_services": "Warn",
