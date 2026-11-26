@@ -16,7 +16,8 @@ from steuerbote.steuerbote import partner_vat_ids
 
 COMPANY = "company"
 PARTY_TYPE = "party_type"
-FILTERS = (COMPANY, PARTY_TYPE)
+PARTY = "party"
+FILTERS = (COMPANY, PARTY_TYPE, PARTY)
 NO_REQUESTER = "{0} has no own USt-IdNr. in its VAT Return Settings, so Steuerbote confirms nothing for it."
 AUTOMATIC_OFF = "The automatic check is off for {0}: Steuerbote confirms a partner only when someone presses „Confirm VAT ID“ on the partner or on an invoice. Switch it on in Set Up Steuerbote or in the VAT Return Settings."
 STANDING_NOTES = {
@@ -44,7 +45,17 @@ def execute(filters: dict | None = None) -> tuple[list[dict[str, Any]], list[dic
 	chosen = filters.get(PARTY_TYPE)
 	types = (chosen,) if chosen in partner_vat_ids.PARTY_TYPES else partner_vat_ids.PARTY_TYPES
 	message = None if policy.on_change or policy.renewal else _(AUTOMATIC_OFF).format(company)
-	return get_columns(), [_row(row) for row in partner_vat_ids.worklist(company, types)], message
+	rows = partner_vat_ids.worklist(company, types)
+	names = partner_vat_ids.party_names((row["party_type"], row["party"]) for row in rows)
+	search = (filters.get(PARTY) or "").strip().casefold()
+	found = [
+		_row(row, names.get((row["party_type"], row["party"])) or row["party"])
+		for row in rows
+		if not search
+		or search in row["party"].casefold()
+		or search in (names.get((row["party_type"], row["party"])) or "").casefold()
+	]
+	return get_columns(), found, message
 
 
 def get_columns() -> list[dict[str, Any]]:
@@ -61,8 +72,9 @@ def get_columns() -> list[dict[str, Any]]:
 			"label": _("Party"),
 			"fieldtype": "Dynamic Link",
 			"options": "party_type",
-			"width": 220,
+			"width": 140,
 		},
+		{"fieldname": "party_name", "label": _("Partner Name"), "fieldtype": "Data", "width": 240},
 		{"fieldname": "tax_id", "label": _("VAT ID"), "fieldtype": "Data", "width": 150},
 		{"fieldname": "standing", "label": _("Confirmation Standing"), "fieldtype": "Data", "width": 200},
 		{"fieldname": "asked_on", "label": _("Latest Answer"), "fieldtype": "Date", "width": 140},
@@ -79,12 +91,13 @@ def get_columns() -> list[dict[str, Any]]:
 	]
 
 
-def _row(row: dict) -> dict[str, Any]:
+def _row(row: dict, name: str) -> dict[str, Any]:
 	standing = row["standing"].value
 	answer = row["answer"]
 	return {
 		"party_type": row["party_type"],
 		"party": row["party"],
+		"party_name": name,
 		"tax_id": row["tax_id"],
 		"standing": _(standing),
 		"asked_on": answer.asked_on if answer else None,

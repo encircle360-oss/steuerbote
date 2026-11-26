@@ -38,6 +38,7 @@ from steuerbote.steuerbote.report.ustva_kennzahlen.attribution import (
 )
 from steuerbote.suppliers import load_vouchers
 from steuerbote.vat_periods import VatLedger
+from steuerbote.vatid.partners import party_label
 
 FILTERS = ("company", "year", "rhythm", "period_index")
 # Optional: only the Kennzahlen and sums that deviate from the previous period.
@@ -239,7 +240,7 @@ def _parties(vouchers: Iterable[str | None]) -> dict[str, str]:
 			voucher_type, filters={"name": ["in", names]}, fields=["name", party, party_name]
 		)
 		for invoice in invoices:
-			parties[f"{voucher_type}:{invoice.name}"] = invoice[party_name] or invoice[party]
+			parties[f"{voucher_type}:{invoice.name}"] = party_label(invoice[party], invoice[party_name])
 	return parties
 
 

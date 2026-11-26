@@ -42,6 +42,7 @@ from steuerbote.vatid.partners import (
 	Problem,
 	Standing,
 	TodayQuery,
+	party_label,
 )
 from steuerbote.vatid.result import Details, Outcome
 from steuerbote.vatid.transport import UrllibFetch
@@ -382,6 +383,23 @@ def policies() -> list[CompanyPolicy]:
 	return [policy for policy in (company_policy(name) for name in names) if policy is not None]
 
 
+def party_names(parties: Iterable[tuple[str, str]]) -> dict[tuple[str, str], str]:
+	"""The name of each customer and supplier, by party type and ID, which ERPNext keeps beside an ID that may be a
+	number of a naming series (NAME_FIELDS)."""
+	wanted: dict[str, set[str]] = {}
+	for party_type, party in parties:
+		if party_type in NAME_FIELDS and party:
+			wanted.setdefault(party_type, set()).add(party)
+	found = {}
+	for party_type, names in wanted.items():
+		field = NAME_FIELDS[party_type]
+		for row in frappe.get_all(
+			party_type, filters={"name": ["in", sorted(names)]}, fields=["name", field]
+		):
+			found[(party_type, row.name)] = row.get(field) or row.name
+	return found
+
+
 def dealings(party_type: str, parties: Collection[str] | None = None) -> dict[str, set[str]]:
 	"""The companies each partner deals with: those of its Party Accounts and of its submitted invoices, quotations
 	and orders (DEALINGS)."""
@@ -498,6 +516,8 @@ def on_party_update(doc, method: str | None = None) -> None:
 			title=_("USt-IdNr."),
 			indicator="orange",
 		)
+	if before is not None and before.get(NAME_FIELDS[doc.doctype]) != doc.get(NAME_FIELDS[doc.doctype]):
+		vat_id_confirmation.follow_party_name(doc.doctype, doc.name, doc.get(NAME_FIELDS[doc.doctype]))
 	watched = (*WATCHED_PARTY_FIELDS, NAME_FIELDS[doc.doctype], ADDRESS_FIELDS[doc.doctype])
 	if before is not None and all(before.get(field) == doc.get(field) for field in watched):
 		return
@@ -804,7 +824,7 @@ def check_invoice(doc, method: str | None = None) -> None:
 	)
 	if finding is None:
 		return
-	text = finding_text(finding, vat_id, doc.customer_name or doc.customer, fact.answer)
+	text = finding_text(finding, vat_id, party_label(doc.customer, doc.customer_name), fact.answer)
 	if finding.problem in EXEMPTION_PROBLEMS:
 		text = f"{text} {consequence(finding.kennzahlen[0])}"
 	title = _("USt-IdNr. of the Customer")

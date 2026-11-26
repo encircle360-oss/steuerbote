@@ -33,7 +33,16 @@ function what_leaves_the_site(frm) {
 	const escape = frappe.utils.escape_html;
 	return __(
 		"Sent to the BZSt: the own USt-IdNr. {0}, the USt-IdNrn. {1} and, where they are known, the name, street, postal code and town of each customer. Only when the BZSt cannot answer does the same go to VIES of the European Commission.",
-		[escape(confirmation.requester || ""), (confirmation.numbers || []).map(escape).join(", ")]
+		[
+			escape(confirmation.requester || ""),
+			(confirmation.numbers || [])
+				.map((number) => {
+					// The customer as „Name (ID)“, since ERPNext names customers by a number as well.
+					const party = (confirmation.parties || {})[number];
+					return escape(party ? `${number} (${party})` : number);
+				})
+				.join(", "),
+		]
 	);
 }
 

@@ -401,7 +401,7 @@ class WorklistColumnsTest(TestCase):
 		as its German heading in the font of the desk, about 8 pixels a character, and the padding of the cell."""
 		source = (REPORT / f"{REPORT.name}.py").read_text(encoding="utf-8")
 		columns = re.findall(r'"label": _\("([^"]+)"\),[^}]*?"width": (\d+)', source, re.DOTALL)
-		self.assertEqual(len(columns), 9)
+		self.assertEqual(len(columns), 10)
 		german = translations()
 		for label, width in columns:
 			with self.subTest(label=label):

@@ -26,7 +26,7 @@ from frappe.utils.background_jobs import is_job_enqueued
 from steuerbote import vatid
 from steuerbote.steuerbote import guards, partner_vat_ids
 from steuerbote.steuerbote.doctype.vat_id_confirmation import vat_id_confirmation
-from steuerbote.vatid.partners import covered_today
+from steuerbote.vatid.partners import covered_today, party_label
 from steuerbote.vatid.transport import Clock, Fetch
 
 LOCK_FIELD = "confirmation_in_progress"
@@ -47,16 +47,33 @@ class Confirming:
 		calculated draft the numbers a confirmation would ask about now and the own USt-IdNr. it would send, which
 		its dialog names."""
 		draft = self.docstatus == 0 and not self.is_new()
-		state = {"stale": draft and self._has_stale_confirmation(), "numbers": [], "requester": None}
+		state = {
+			"stale": draft and self._has_stale_confirmation(),
+			"numbers": [],
+			"parties": {},
+			"requester": None,
+		}
 		if draft and self.get("status") in CALCULATED_STATUSES and not cint(self.get(LOCK_FIELD)):
 			ust_idnr = frappe.db.get_value(SETTINGS_DOCTYPE, self.company, "ust_idnr")
 			state["requester"] = vatid.normalize(ust_idnr) if vatid.is_german(ust_idnr) else None
 			shown = len(frappe.local.message_log)
 			try:
 				state["numbers"] = self.pending_numbers()
+				state["parties"] = self.party_labels(state["numbers"])
 			except frappe.ValidationError, ValueError:
 				del frappe.local.message_log[shown:]
 		return state
+
+	def party_labels(self, numbers: list[str]) -> dict[str, str]:
+		"""The customer of each number as the dialog names it, „Name (ID)“, by the number."""
+		customers = {number: customer for number in numbers if (customer := self.party_for(number))}
+		names = partner_vat_ids.party_names(
+			(partner_vat_ids.CUSTOMER, customer) for customer in customers.values()
+		)
+		return {
+			number: party_label(customer, names.get((partner_vat_ids.CUSTOMER, customer)))
+			for number, customer in customers.items()
+		}
 
 	def pending_numbers(self) -> list[str]:
 		"""The numbers to confirm that no query of today has answered already."""

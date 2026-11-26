@@ -14,5 +14,11 @@ frappe.query_reports["Partner ohne aktuelle USt-IdNr-Bestätigung"] = {
 			fieldtype: "Select",
 			options: ["", "Customer", "Supplier"],
 		},
+		{
+			// Finds a partner by a part of its name or of its ID, since ERPNext names partners by number as well.
+			fieldname: "party",
+			label: __("Partner"),
+			fieldtype: "Data",
+		},
 	],
 };
