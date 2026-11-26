@@ -38,7 +38,27 @@ function show_mapping_differences({ title, intro, differences, unchanged, subjec
 	);
 	dialog.fields_dict.differences.$wrapper.html(`
 		<p>${escape(intro)}</p>
+		<style>
+			/* A position carries its label and its element name, which has no space to break at: the columns share
+			   the width of the dialog and break such words, so the last column stays inside it. */
+			.steuerbote-differences {
+				table-layout: fixed;
+				width: 100%;
+			}
+			.steuerbote-differences th,
+			.steuerbote-differences td {
+				overflow-wrap: anywhere;
+			}
+		</style>
 		<table class="table table-bordered steuerbote-differences">
+			<colgroup>
+				<col style="width: 2.5rem">
+				<col style="width: 12%">
+				<col style="width: 14%">
+				<col>
+				<col>
+				${show_origin ? '<col style="width: 12%">' : ""}
+			</colgroup>
 			<thead><tr>
 				<th><input type="checkbox" class="steuerbote-all-differences" title="${escape(__("Choose All"))}"></th>
 				<th>${escape(subject_label || __("Account or Tax Check"))}</th>
