@@ -7,6 +7,7 @@ from frappe.modules.patch_handler import PatchType, get_patches_from_app
 from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days
 
+from steuerbote.patches import fill_the_party_names_of_confirmations as party_names
 from steuerbote.patches import link_transmissions_to_their_document as transmissions
 from steuerbote.patches import mark_the_bases_of_earlier_overrides_unknown as unknown_bases
 from steuerbote.patches import set_the_basis_of_overrides as bases
@@ -325,3 +326,43 @@ class TestUseKeysForKz500(IntegrationTestCase):
 					},
 				)
 				self.assertFalse(frappe.db.get_value(doctype, names[doctype, ""], fieldname))
+
+
+class TestFillThePartyNamesOfConfirmations(IntegrationTestCase):
+	"""Confirmations from before the name column name their partner by ID alone."""
+
+	PATCH = "steuerbote.patches.fill_the_party_names_of_confirmations"
+
+	def setUp(self):
+		frappe.db.savepoint("party_names_test")
+		self.addCleanup(frappe.db.rollback, save_point="party_names_test")
+
+	def test_runs_after_the_doctypes_are_migrated(self):
+		self.assertIn(self.PATCH, get_patches_from_app("steuerbote", PatchType.post_model_sync))
+
+	def test_gives_each_confirmation_the_name_of_its_partner_and_runs_again(self):
+		frappe.get_doc({"doctype": "Customer", "name": "10042", "customer_name": "Muster GmbH"}).db_insert()
+		frappe.get_doc(
+			{"doctype": "Supplier", "name": "70042", "supplier_name": "Beispiel Lieferant KG"}
+		).db_insert()
+		for name, party_type, party in (
+			("Steuerbote Test Name K", "Customer", "10042"),
+			("Steuerbote Test Name L", "Supplier", "70042"),
+			("Steuerbote Test Name O", None, None),
+		):
+			frappe.get_doc(
+				{"doctype": "VAT ID Confirmation", "name": name, "party_type": party_type, "party": party}
+			).db_insert()
+		party_names.execute()
+		party_names.execute()
+		self.assertEqual(
+			{
+				name: frappe.db.get_value("VAT ID Confirmation", name, "party_name")
+				for name in ("Steuerbote Test Name K", "Steuerbote Test Name L", "Steuerbote Test Name O")
+			},
+			{
+				"Steuerbote Test Name K": "Muster GmbH",
+				"Steuerbote Test Name L": "Beispiel Lieferant KG",
+				"Steuerbote Test Name O": None,
+			},
+		)

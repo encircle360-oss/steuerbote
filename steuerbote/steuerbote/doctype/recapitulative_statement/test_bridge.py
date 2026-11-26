@@ -92,11 +92,44 @@ class VoucherAmountsTest(TestCase):
 				for item in amounts
 			],
 			[
-				("Sales Invoice:SINV-1", "41", d("1000.00"), "Alpen GmbH", "ATU 123 456 78", None),
-				("Payment Entry:PE-1", "41", d("-20.00"), "Alpen GmbH", AUSTRIA, "Austria"),
+				("Sales Invoice:SINV-1", "41", d("1000.00"), "Alpen GmbH (CUST-1)", "ATU 123 456 78", None),
+				("Payment Entry:PE-1", "41", d("-20.00"), "Alpen GmbH (CUST-1)", AUSTRIA, "Austria"),
 				("Journal Entry:JE-1", "21", d("300.00"), None, None, None),
 			],
 		)
+
+	def test_a_customer_named_by_number_reads_as_its_name_and_its_number(self):
+		"""ERPNext names a customer by a number of a naming series as well as by its name: the voucher, its line and
+		every hint about it name both."""
+		(item,) = bridge.voucher_amounts_of(
+			[share("Sales Invoice:SINV-7", "500.00")],
+			{"Sales Invoice:SINV-7": Party("10042", "Muster GmbH", AUSTRIA, "Austria")},
+		)
+		self.assertEqual(item.party, "Muster GmbH (10042)")
+
+	def test_the_stored_vouchers_take_the_current_name_of_their_customer(self):
+		"""A customer renamed since Berechnen, by its name or its number, reads as it is called now when the
+		statement is saved; a voucher without customer keeps its text."""
+		rows = [
+			{
+				"voucher_type": "Sales Invoice",
+				"voucher_no": "SINV-7",
+				"customer": "10042",
+				"party": "Alt GmbH (10042)",
+				"kennzahl": "41",
+				"amount": 500,
+			},
+			{
+				"voucher_type": "Journal Entry",
+				"voucher_no": "JE-7",
+				"customer": None,
+				"party": "Notiz",
+				"kennzahl": "41",
+				"amount": 1,
+			},
+		]
+		amounts = bridge.voucher_amounts(rows, {"10042": "Muster GmbH"})
+		self.assertEqual([item.party for item in amounts], ["Muster GmbH (10042)", "Notiz"])
 
 	def test_leaves_out_shares_without_voucher_or_amount(self):
 		"""A share without voucher stays on the side of the ledger, where the reconciliation names it."""
@@ -116,7 +149,7 @@ class VoucherAmountsTest(TestCase):
 				"voucher_type": "Payment Entry",
 				"voucher_no": "PE-1",
 				"customer": "CUST-1",
-				"party": "Alpen GmbH",
+				"party": "Alpen GmbH (CUST-1)",
 				"vat_id": AUSTRIA,
 				"kennzahl": "42",
 				"art": "D",

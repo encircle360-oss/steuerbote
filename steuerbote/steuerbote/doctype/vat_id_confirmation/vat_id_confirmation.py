@@ -68,6 +68,7 @@ class VATIDConfirmation(Document):
 		name_match: DF.Literal["", "A", "B", "C", "D"]
 		outcome: DF.Literal["valid", "invalid", "unknown"]
 		party: DF.DynamicLink | None
+		party_name: DF.Data | None
 		party_type: DF.Link | None
 		postcode_match: DF.Literal["", "A", "B", "C", "D"]
 		previous: DF.Link | None
@@ -125,7 +126,7 @@ def store(
 	query."""
 	origin = {SOURCE_FIELDS[source[0]]: source[1]} if source else {}
 	if party:
-		origin |= {"party_type": party[0], "party": party[1]}
+		origin |= {"party_type": party[0], "party": party[1], "party_name": party_name(*party)}
 	if started_by:
 		origin["started_by"] = started_by
 	previous = None
@@ -207,7 +208,7 @@ def share(
 		row = frappe.db.get_value(DOCTYPE, name, [*SHARED_FIELDS, "response_file"], as_dict=True)
 		origin = {SOURCE_FIELDS[source[0]]: source[1]} if source else {}
 		if party:
-			origin |= {"party_type": party[0], "party": party[1]}
+			origin |= {"party_type": party[0], "party": party[1], "party_name": party_name(*party)}
 		if started_by:
 			origin["started_by"] = started_by
 		record = guards.insert_record(
@@ -238,6 +239,29 @@ def share(
 			frappe.db.set_value(DOCTYPE, record.name, "response_file", file.file_url, update_modified=False)
 		previous = record.name
 	return previous
+
+
+# The field of the name of a partner, which ERPNext keeps beside an ID that may be a number of a naming series.
+PARTY_NAME_FIELDS = MappingProxyType({"Customer": "customer_name", "Supplier": "supplier_name"})
+
+
+def party_name(party_type: str, party: str) -> str | None:
+	"""The name of the customer or supplier now, None for another party type or one that does not exist."""
+	field = PARTY_NAME_FIELDS.get(party_type)
+	return frappe.db.get_value(party_type, party, field) if field else None
+
+
+def follow_party_name(party_type: str, party: str, name: str | None) -> None:
+	"""Give the records of the partner the name it has now. The name is no part of the proof, which the query, its
+	answer and its file are, so it follows the partner as the link to it does when the partner gets another ID."""
+	table = frappe.qb.DocType(DOCTYPE)
+	(
+		frappe.qb.update(table)
+		.set(table.party_name, name)
+		.where(table.party_type == party_type)
+		.where(table.party == party)
+		.run()
+	)
 
 
 def latest(company: str, vat_ids: Iterable[str]) -> dict[str, frappe._dict]:

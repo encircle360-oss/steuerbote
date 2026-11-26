@@ -83,6 +83,7 @@ from steuerbote.steuerbote.doctype.vat_return_settings.vat_return_settings impor
 from steuerbote.steuerbote.guards import Filing
 from steuerbote.steuerbote.report.ustva_kennzahlen.comparison import Thresholds
 from steuerbote.vatid import Details, UrllibFetch
+from steuerbote.vatid.partners import party_label
 from steuerbote.zm.comparison import before_start, compare, comparison_hints, earlier
 from steuerbote.zm.correction import as_filed
 from steuerbote.zm.csv_file import csv_file
@@ -851,8 +852,12 @@ class RecapitulativeStatement(Filing, Confirming, Transmittable, Document):
 			self.set("hints", _rows(before.hints))
 			self.update({field: before.get(field) for field in TOTALS})
 			return
+		names = customer_names(self.vouchers)
+		for row in self.vouchers:
+			if row.customer in names:
+				row.party = party_label(row.customer, names[row.customer])
 		with zm_errors():
-			amounts = bridge.voucher_amounts(self.vouchers)
+			amounts = bridge.voucher_amounts(self.vouchers, names)
 			overrides = bridge.overrides_of(self.lines)
 			statement, confirmations = self._build(amounts, overrides, covered, self._figures())
 			held = self._held() if self.meldeart == bridge.BERICHTIGUNG else None
@@ -1112,3 +1117,17 @@ def _thresholds(settings: Document) -> Thresholds:
 	return Thresholds.of(
 		settings.get("comparison_threshold_percent"), settings.get("comparison_threshold_amount")
 	)
+
+
+def customer_names(rows: Iterable[Document]) -> dict[str, str]:
+	"""The names the customers of the rows have now, by ID, so that a statement saved after a customer got another
+	name names it so."""
+	customers = sorted({row.customer for row in rows if row.get("customer")})
+	if not customers:
+		return {}
+	return {
+		row.name: row.customer_name
+		for row in frappe.get_all(
+			"Customer", filters={"name": ["in", customers]}, fields=["name", "customer_name"]
+		)
+	}

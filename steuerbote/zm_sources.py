@@ -32,6 +32,7 @@ vouchers name no customer, and the ZM says so of each of them.
 """
 
 from collections.abc import Collection, Iterable, Iterator
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -188,7 +189,20 @@ def parties(vouchers: Iterable[str | None]) -> dict[str, Party]:
 	found.update(_sales_invoices(by_type.get(SALES_INVOICE, [])))
 	found.update(_payment_entries(by_type.get(PAYMENT_ENTRY, [])))
 	found.update(_journal_entries(by_type.get(JOURNAL_ENTRY, [])))
-	return found
+	customers = sorted({party.customer for party in found.values() if party.customer})
+	if not customers:
+		return found
+	# The name the customer has now, not the one a voucher copied when it was made: the lines and hints of a
+	# recalculation name the partner as it is called today.
+	names = dict(
+		frappe.get_all(
+			"Customer", filters={"name": ["in", customers]}, fields=["name", "customer_name"], as_list=True
+		)
+	)
+	return {
+		key: replace(party, name=names.get(party.customer) or party.name) if party.customer else party
+		for key, party in found.items()
+	}
 
 
 def _sales_invoices(names: list[str]) -> dict[str, Party]:
@@ -208,7 +222,7 @@ def _sales_invoices(names: list[str]) -> dict[str, Party]:
 	return {
 		f"{SALES_INVOICE}:{invoice.name}": Party(
 			invoice.customer,
-			invoice.customer_name or invoice.customer,
+			invoice.customer_name,
 			invoice.tax_id,
 			countries.get(invoice.shipping_address_name) or countries.get(invoice.customer_address),
 		)

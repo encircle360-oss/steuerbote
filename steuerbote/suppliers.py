@@ -21,6 +21,7 @@ from datetime import date
 import frappe
 
 from steuerbote.ustva import Classification, LedgerLine, Mapping, Supplier, Voucher, purchase_vouchers
+from steuerbote.vatid.partners import party_label
 
 MAPPING_DOCTYPE = "VAT Return Mapping"
 PURCHASE_INVOICE = "Purchase Invoice"
@@ -123,7 +124,7 @@ def _suppliers(names: Iterable[str]) -> dict[str, Supplier]:
 	)
 	return {
 		row.name: Supplier(
-			name=row.supplier_name or row.name,
+			name=party_label(row.name, row.supplier_name),
 			country=row.country or None,
 			address_country=addresses.get(row.supplier_primary_address) or None,
 			vat_id=row.tax_id or None,

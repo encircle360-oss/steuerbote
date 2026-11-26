@@ -20,6 +20,7 @@ from frappe.query_builder.functions import Sum
 
 from steuerbote.ustva.plausibility import AssetSale, AssetSaleCorrection, InvoiceLine
 from steuerbote.ustva.rounding import CENT, ZERO
+from steuerbote.vatid.partners import party_label
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +93,7 @@ def _lines(
 			voucher_type=kind.doctype,
 			voucher_no=row.voucher_no,
 			posting_date=row.posting_date,
-			party=row.party_name or row.party,
+			party=party_label(row.party, row.party_name),
 			party_country=row.country,
 			party_tax_id=row.tax_id,
 			account_number=row.account_number.strip(),
@@ -152,7 +153,7 @@ def _nets(
 		invoice.posting_date,
 		invoice.is_return,
 		invoice[kind.party],
-		invoice[kind.party_name],
+		party[kind.party_name],
 		party.tax_id,
 		address.country,
 		account.account_number,
@@ -167,7 +168,7 @@ def _nets(
 			invoice.posting_date,
 			invoice.is_return,
 			invoice[kind.party].as_("party"),
-			invoice[kind.party_name].as_("party_name"),
+			party[kind.party_name].as_("party_name"),
 			party.tax_id,
 			address.country,
 			account.account_number,
@@ -238,7 +239,7 @@ def asset_sales_without_tax(
 		query = query.where(invoice.posting_date.between(from_date, to_date))
 	else:
 		query = query.where(invoice.name.isin(sorted(names) or [""]))
-	columns = (invoice.name, invoice[SALES.party], invoice[SALES.party_name], party.tax_id, address.country)
+	columns = (invoice.name, invoice[SALES.party], party[SALES.party_name], party.tax_id, address.country)
 	rows = (
 		query.select(*columns, Sum(item.base_net_amount).as_("net_amount"))
 		.groupby(*columns)
@@ -248,7 +249,7 @@ def asset_sales_without_tax(
 	return [
 		AssetSale(
 			voucher_no=row.name,
-			party=row[SALES.party_name] or row[SALES.party],
+			party=party_label(row[SALES.party], row[SALES.party_name]),
 			party_country=row.country,
 			party_tax_id=row.tax_id,
 			net_amount=_cents(row.net_amount),

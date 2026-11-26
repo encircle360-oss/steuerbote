@@ -10,3 +10,4 @@ steuerbote.patches.set_the_tax_on_turnover_at_a_statutory_rate
 steuerbote.patches.set_the_basis_of_overrides
 steuerbote.patches.mark_the_bases_of_earlier_overrides_unknown
 steuerbote.patches.use_keys_for_kz_500
+steuerbote.patches.fill_the_party_names_of_confirmations

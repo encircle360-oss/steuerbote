@@ -5,6 +5,7 @@ needs before it is submitted. The numbers are invented or the examples of the Op
 from datetime import UTC, date, datetime
 from unittest import TestCase
 
+from steuerbote.vatid import partners
 from steuerbote.vatid.partners import (
 	GOODS,
 	MAX_PER_RUN,
@@ -370,3 +371,22 @@ class ReleaseTest(TestCase):
 		)
 		self.assertTrue(Finding(Problem.INVALID, Level.BLOCK, ("41",)).releasable)
 		self.assertFalse(Finding(Problem.NO_VAT_ID, Level.BLOCK, ("41",)).releasable)
+
+
+class PartyLabelTest(TestCase):
+	"""ERPNext names a customer or supplier by its name or by a number of a naming series; whoever reads a list or a
+	hint needs both, the name to know the partner and the ID to find it."""
+
+	def test_a_partner_named_by_number_reads_as_its_name_and_its_number(self):
+		self.assertEqual(partners.party_label("10042", "Muster GmbH"), "Muster GmbH (10042)")
+		self.assertEqual(
+			partners.party_label("70042", " Beispiel Lieferant KG "), "Beispiel Lieferant KG (70042)"
+		)
+
+	def test_a_partner_named_by_its_name_reads_once(self):
+		self.assertEqual(partners.party_label("Muster GmbH", "Muster GmbH"), "Muster GmbH")
+		self.assertEqual(partners.party_label("Muster GmbH", None), "Muster GmbH")
+
+	def test_a_name_without_an_id_and_nothing_at_all(self):
+		self.assertEqual(partners.party_label(None, "Muster GmbH"), "Muster GmbH")
+		self.assertEqual(partners.party_label(None, None), "")

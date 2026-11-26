@@ -464,3 +464,16 @@ def _finding(
 	else:
 		return None
 	return Finding(problem_found, policy.level, kennzahlen, days, policy.max_age)
+
+
+def party_label(party_id: str | None, name: str | None) -> str:
+	"""A customer or supplier as a person reads it: its name with its ID behind, „Muster GmbH (10042)“, since ERPNext
+	names a partner by a number of a naming series as well as by its name; once where the ID is the name, and
+	whichever of the two there is."""
+	party_id = (party_id or "").strip()
+	name = (name or "").strip()
+	if not name or name == party_id:
+		return party_id
+	if not party_id:
+		return name
+	return f"{name} ({party_id})"

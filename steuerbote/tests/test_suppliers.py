@@ -11,6 +11,7 @@ from frappe.tests import IntegrationTestCase
 from steuerbote.ledger import load_lines
 from steuerbote.suppliers import classifications, load_vouchers
 from steuerbote.tests.helpers import (
+	NUMBERED_SUPPLIER,
 	insert_record,
 	make_account,
 	make_company,
@@ -43,9 +44,14 @@ TEMPLATE = "Reverse Charge Leistungen - STLF"
 
 
 def make_supplier(
-	name: str, country: str | None = None, tax_id: str | None = None, address: str | None = None
+	name: str,
+	country: str | None = None,
+	tax_id: str | None = None,
+	address: str | None = None,
+	title: str | None = None,
 ):
-	"""A supplier with a country in its master data and, given ``address``, a primary address in that country."""
+	"""A supplier with a country in its master data and, given ``address``, a primary address in that country;
+	``title`` is its name where ``name`` is a number of a naming series."""
 	primary = None
 	if address is not None:
 		primary = insert_record(
@@ -61,7 +67,7 @@ def make_supplier(
 	insert_record(
 		"Supplier",
 		name=name,
-		supplier_name=name,
+		supplier_name=title or name,
 		country=country,
 		tax_id=tax_id,
 		supplier_primary_address=primary,
@@ -174,6 +180,14 @@ class IntegrationTestSuppliers(IntegrationTestCase):
 		)
 		self.assertEqual(vouchers[f"Purchase Invoice:{self.nowhere}"].suppliers, (Supplier(NOWHERE),))
 		self.assertEqual(vouchers[f"Journal Entry:{self.journal}"], Voucher(date(2026, 5, 8)))
+
+	def test_a_supplier_named_by_number_reads_as_its_name_and_its_number(self):
+		"""The hints on the residence of a supplier name it as a person knows it, with the ID to find it."""
+		number, name = NUMBERED_SUPPLIER
+		make_supplier(number, "Czech Republic", "CZ87654321", title=name)
+		invoice = self.service("PI-STLF-42", number, "2026-05-10", "100")
+		(supplier,) = self.vouchers()[f"Purchase Invoice:{invoice}"].suppliers
+		self.assertEqual(supplier.name, "Beispiel Lieferant KG (70042)")
 
 	def test_reads_the_classifications_of_the_mapping(self):
 		self.classify(

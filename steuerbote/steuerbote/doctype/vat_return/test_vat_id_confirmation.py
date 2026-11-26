@@ -324,6 +324,17 @@ class TestVatIdConfirmationOfTheReturn(IntegrationTestCase):
 			),
 		)
 
+	def test_the_hints_and_the_dialog_name_a_customer_by_its_name_and_its_id(self):
+		"""Where ERPNext names a customer by a number or the name of the customer differs from its ID, the hints and
+		the dialog of „USt-IdNrn. prüfen“ name it as „Name (ID)“, from the name it has when the return is calculated."""
+		frappe.db.set_value("Customer", ALPEN, "customer_name", "Alpen Handel GmbH")
+		doc = self.calculated()
+		(row,) = [row for row in vat_id_rows(doc) if AUSTRIAN in row.text]
+		self.assertEqual(row.party, f"Alpen Handel GmbH ({ALPEN})")
+		self.assertIn(f"des Kunden Alpen Handel GmbH ({ALPEN})", row.text)
+		doc.run_method("onload")
+		self.assertEqual(doc.get_onload("confirmation")["parties"][AUSTRIAN], f"Alpen Handel GmbH ({ALPEN})")
+
 	def test_only_a_calculated_draft_with_numbers_to_confirm_and_an_own_ust_idnr_asks(self):
 		draft = self.vat_return(10)
 		with patch("frappe.enqueue") as enqueue:

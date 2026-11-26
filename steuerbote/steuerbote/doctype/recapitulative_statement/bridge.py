@@ -31,6 +31,7 @@ from steuerbote.ustva.assignment import Filing
 from steuerbote.ustva.period import Period
 from steuerbote.ustva.plausibility import Figures
 from steuerbote.ustva.rounding import ZERO
+from steuerbote.vatid.partners import party_label
 from steuerbote.vatid.result import valid_through
 from steuerbote.zm.comparison import ComparisonRow
 from steuerbote.zm.correction import correct
@@ -216,7 +217,12 @@ def voucher_amounts_of(shares: Iterable[Share], parties: ReadOnlyMapping[str, Pa
 		party = parties.get(item.voucher, Party())
 		amounts.append(
 			VoucherAmount(
-				item.voucher, item.kennzahl, item.amount, party.name, party.vat_id, party.destination
+				item.voucher,
+				item.kennzahl,
+				item.amount,
+				party_label(party.customer, party.name) or None,
+				party.vat_id,
+				party.destination,
 			)
 		)
 	return amounts
@@ -244,14 +250,24 @@ def voucher_rows(
 	return rows
 
 
-def voucher_amounts(rows: Iterable[Row]) -> list[VoucherAmount]:
-	"""The voucher amounts of the rows of the vouchers' table."""
+def voucher_amounts(
+	rows: Iterable[Row], names: ReadOnlyMapping[str, str] | None = None
+) -> list[VoucherAmount]:
+	"""The voucher amounts of the rows of the vouchers' table. ``names`` are the names the customers have now, by
+	ID: a row of a customer among them names it as it is called now, so that a customer renamed since Berechnen
+	reads right; any other row keeps the text it stored."""
+	names = names or {}
 	return [
 		VoucherAmount(
 			f"{row.get('voucher_type')}:{row.get('voucher_no')}",
 			str(row.get("kennzahl") or ""),
 			to_amount(row.get("amount")),
-			row.get("party") or None,
+			(
+				party_label(row.get("customer"), names[row.get("customer")])
+				if row.get("customer") in names
+				else row.get("party")
+			)
+			or None,
 			row.get("vat_id") or None,
 			row.get("destination") or None,
 		)

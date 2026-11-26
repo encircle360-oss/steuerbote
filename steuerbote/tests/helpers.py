@@ -197,6 +197,12 @@ def ensure_fiscal_year(company: str, posting_date: date | str) -> None:
 	).insert(ignore_permissions=True)
 
 
+# A customer and a supplier named by a number of a naming series, as ERPNext names partners with „Naming Series“, and
+# their names, which a person reads.
+NUMBERED_CUSTOMER = ("10042", "Muster GmbH")
+NUMBERED_SUPPLIER = ("70042", "Beispiel Lieferant KG")
+
+
 def insert_record(doctype: str, **fields) -> str:
 	"""A record written as ERPNext keeps it once submitted, without the validations of its form.
 
@@ -209,10 +215,16 @@ def insert_record(doctype: str, **fields) -> str:
 
 
 def make_customer(
-	name: str, country: str, tax_id: str | None = None, city: str = "Teststadt", primary: bool = True
+	name: str,
+	country: str,
+	tax_id: str | None = None,
+	city: str = "Teststadt",
+	primary: bool = True,
+	customer_name: str | None = None,
 ) -> str:
 	"""A customer with an address in the country, which is its primary address or, without ``primary``, only
-	linked to it; returns the address."""
+	linked to it; returns the address. ``customer_name`` is its name where ``name`` is a number of a naming series,
+	as NUMBERED_CUSTOMER."""
 	address = insert_record(
 		"Address",
 		name=f"{name}-Billing",
@@ -237,7 +249,7 @@ def make_customer(
 	insert_record(
 		"Customer",
 		name=name,
-		customer_name=name,
+		customer_name=customer_name or name,
 		tax_id=tax_id,
 		customer_primary_address=address if primary else None,
 	)
