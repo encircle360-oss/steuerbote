@@ -153,7 +153,7 @@ def _nets(
 		invoice.posting_date,
 		invoice.is_return,
 		invoice[kind.party],
-		invoice[kind.party_name],
+		party[kind.party_name],
 		party.tax_id,
 		address.country,
 		account.account_number,
@@ -168,7 +168,7 @@ def _nets(
 			invoice.posting_date,
 			invoice.is_return,
 			invoice[kind.party].as_("party"),
-			invoice[kind.party_name].as_("party_name"),
+			party[kind.party_name].as_("party_name"),
 			party.tax_id,
 			address.country,
 			account.account_number,
@@ -239,7 +239,7 @@ def asset_sales_without_tax(
 		query = query.where(invoice.posting_date.between(from_date, to_date))
 	else:
 		query = query.where(invoice.name.isin(sorted(names) or [""]))
-	columns = (invoice.name, invoice[SALES.party], invoice[SALES.party_name], party.tax_id, address.country)
+	columns = (invoice.name, invoice[SALES.party], party[SALES.party_name], party.tax_id, address.country)
 	rows = (
 		query.select(*columns, Sum(item.base_net_amount).as_("net_amount"))
 		.groupby(*columns)

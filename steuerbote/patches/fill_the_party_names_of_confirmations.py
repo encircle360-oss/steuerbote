@@ -17,8 +17,18 @@ from steuerbote.steuerbote.doctype.vat_id_confirmation.vat_id_confirmation impor
 
 
 def execute() -> None:
-	record = frappe.qb.DocType(DOCTYPE)
+	records = frappe.get_all(
+		DOCTYPE,
+		filters={"party_type": ["in", list(PARTY_NAME_FIELDS)], "party": ["is", "set"]},
+		fields=["name", "party_type", "party"],
+	)
 	for party_type, field in PARTY_NAME_FIELDS.items():
-		party = frappe.qb.DocType(party_type)
-		name = frappe.qb.from_(party).select(party[field]).where(party.name == record.party)
-		frappe.qb.update(record).set(record.party_name, name).where(record.party_type == party_type).run()
+		parties = sorted({row.party for row in records if row.party_type == party_type})
+		names = dict(
+			frappe.get_all(
+				party_type, filters={"name": ["in", parties or [""]]}, fields=["name", field], as_list=True
+			)
+		)
+		for row in records:
+			if row.party_type == party_type and row.party in names:
+				frappe.db.set_value(DOCTYPE, row.name, "party_name", names[row.party], update_modified=False)

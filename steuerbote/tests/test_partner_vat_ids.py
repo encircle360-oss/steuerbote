@@ -775,9 +775,10 @@ class TestPartnerVatIds(IntegrationTestCase):
 		name = self.stored(AUSTRIAN, noon(), party=("Customer", number))
 		self.assertEqual(frappe.db.get_value(CONFIRMATION, name, "party_name"), "Muster GmbH")
 		customer = frappe.get_doc("Customer", number)
+		customer._doc_before_save = frappe.get_doc("Customer", number)
 		customer.customer_name = "Muster Handel GmbH"
 		with patch("frappe.enqueue"):
-			customer.save()
+			partner_module.on_party_update(customer)
 		self.assertEqual(frappe.db.get_value(CONFIRMATION, name, "party_name"), "Muster Handel GmbH")
 
 	def test_the_gate_of_an_invoice_names_the_customer_by_its_name_and_its_number(self):
