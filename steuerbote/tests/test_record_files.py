@@ -113,7 +113,7 @@ class TestRecordFiles(Transmitting, IntegrationTestCase):
 		self.assertKept(answer, f"The answer of {answer.attached_to_name} is part of the proof")
 
 	def test_the_cross_of_the_form_cannot_remove_the_answer_of_a_confirmation(self):
-		"""The form of a confirmation shows the × of its attachment to the Administrator, who holds every permission
+		"""The form of a confirmation shows the cross that removes its attachment to the Administrator, who holds every permission
 		(R3-F-13); the server refuses what it calls, remove_attach, and the answer stays with its record."""
 		from frappe.desk.form.utils import remove_attach
 
