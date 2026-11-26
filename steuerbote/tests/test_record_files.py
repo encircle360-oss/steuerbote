@@ -112,6 +112,18 @@ class TestRecordFiles(Transmitting, IntegrationTestCase):
 		answer = self.answer_of_a_confirmation()
 		self.assertKept(answer, f"The answer of {answer.attached_to_name} is part of the proof")
 
+	def test_the_cross_of_the_form_cannot_remove_the_answer_of_a_confirmation(self):
+		"""The form of a confirmation shows the × of its attachment to the Administrator, who holds every permission
+		(R3-F-13); the server refuses what it calls, remove_attach, and the answer stays with its record."""
+		from frappe.desk.form.utils import remove_attach
+
+		answer = self.answer_of_a_confirmation()
+		frappe.form_dict.update({"fid": answer.name, "dt": CONFIRMATION, "dn": answer.attached_to_name})
+		self.addCleanup(frappe.form_dict.clear)
+		with self.assertRaisesRegex(frappe.ValidationError, "is part of the proof"):
+			remove_attach()
+		self.assertTrue(frappe.db.exists("File", answer.name))
+
 	def test_deleting_a_transmission_deletes_its_files(self):
 		transmission, files = self.transmission_files(2)
 		frappe.delete_doc(TRANSMISSION, transmission.name)
