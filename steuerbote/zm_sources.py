@@ -208,7 +208,7 @@ def _sales_invoices(names: list[str]) -> dict[str, Party]:
 	return {
 		f"{SALES_INVOICE}:{invoice.name}": Party(
 			invoice.customer,
-			invoice.customer_name or invoice.customer,
+			invoice.customer_name,
 			invoice.tax_id,
 			countries.get(invoice.shipping_address_name) or countries.get(invoice.customer_address),
 		)
