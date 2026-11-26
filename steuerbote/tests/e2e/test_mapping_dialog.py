@@ -6,10 +6,9 @@ The module imports neither pytest nor Playwright, see conftest.py.
 """
 
 import json
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote
 
 from steuerbote.tests.e2e import data
-from steuerbote.tests.e2e.desk import doc_method
 
 LAPTOP = {"width": 1366, "height": 768}
 POSITION = (
@@ -42,7 +41,7 @@ def test_the_differences_fit_into_their_dialog_at_1366_pixels(desk, expect):
 	}
 
 	def answer(route):
-		if doc_method(route.request) == "compare_with_defaults":
+		if parse_qs(route.request.post_data or "").get("method") == ["compare_with_defaults"]:
 			route.fulfill(
 				status=200, content_type="application/json", body=json.dumps({"message": comparison})
 			)
