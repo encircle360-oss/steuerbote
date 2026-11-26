@@ -83,6 +83,20 @@ class ChoicesTest(TestCase):
 
 
 class ReviewTest(TestCase):
+	def test_an_account_the_page_leaves_without_place_has_no_default(self):
+		"""What the page says stays without a place after „Steuerbote einrichten“ has no default in SKR03 or SKR04;
+		an account the defaults place, such as a Wechsel of the edition 2020, may not read as one without place."""
+		text = DOC.read_text(encoding="utf-8")
+		for sentence in re.findall(r"[^.]*ohne Platz[^.]*\.", text):
+			numbers = set(re.findall(r"\b\d{4}\b", sentence))
+			for low, high in re.findall(r"\b(\d{4}) bis (\d{4})\b", sentence):
+				numbers |= {f"{number:04d}" for number in range(int(low), int(high) + 1)}
+			for chart in sorted(CHARTS):
+				with self.subTest(chart=chart, sentence=sentence[:60]):
+					self.assertEqual(
+						sorted(number for number in numbers if place(chart, number) != "ohne Vorgabe"), []
+					)
+
 	def test_the_review_list_for_the_steuerberatung(self):
 		text = section("## Prüfliste für die Steuerberatung")
 		items = re.findall(r"^\d+\. \*\*(.+?)\*\*", text, re.MULTILINE)
